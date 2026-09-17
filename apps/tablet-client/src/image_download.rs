@@ -14,7 +14,7 @@
 use std::collections::VecDeque;
 use std::time::UNIX_EPOCH;
 
-use oz_core::sync_client::SyncConfig;
+use kasirmu_core::sync_client::SyncConfig;
 
 /// ── Configuration (tunable — tweak at the top) ─────────────────────────
 ///
@@ -203,7 +203,7 @@ impl ImageDownloadManager {
         // Phase 1: brief lock.
         let (config, referenced): (Option<SyncConfig>, Vec<(String, i32)>) = {
             let guard = db.lock().await;
-            let store = oz_core::Store::new(&guard);
+            let store = kasirmu_core::Store::new(&guard);
             let config = SyncConfig::from_settings(&store).ok().flatten();
             // Collect all (hash, slot) assignments from product_images.
             let referenced = store.list_all_product_images().unwrap_or_default();

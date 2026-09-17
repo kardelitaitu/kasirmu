@@ -14,7 +14,7 @@ use tauri::command;
 
 use modules_currency::commands::CurrencyDto;
 use modules_currency::repository::CurrencyRepository;
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
@@ -32,7 +32,7 @@ pub struct CurrencyInfo {
 #[command]
 /// Currency info.
 pub async fn currency_info(code: String) -> Result<CurrencyInfo, AppError> {
-    let currency: oz_core::Currency = code
+    let currency: kasirmu_core::Currency = code
         .parse()
         .map_err(|_| AppError::Invalid(format!("invalid currency code: {code}")))?;
     Ok(CurrencyInfo {
@@ -58,7 +58,7 @@ pub async fn list_currencies_scoped(
     require_permission_for_user(
         &Store::new(&db),
         &session.user_id,
-        oz_core::permissions::SETTINGS_READ,
+        kasirmu_core::permissions::SETTINGS_READ,
     )?;
     let repo = CurrencyRepository::new(&db);
     let out = repo.list_currencies()?;
@@ -120,7 +120,7 @@ pub async fn get_default_currency_scoped(
     require_permission_for_user(
         &Store::new(&db),
         &session.user_id,
-        oz_core::permissions::SETTINGS_READ,
+        kasirmu_core::permissions::SETTINGS_READ,
     )?;
     let repo = CurrencyRepository::new(&db);
     let out = repo.get_default_currency()?;
@@ -140,7 +140,7 @@ pub async fn set_default_currency_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     args.code
-        .parse::<oz_core::Currency>()
+        .parse::<kasirmu_core::Currency>()
         .map_err(|_| AppError::Invalid(format!("invalid currency code: {}", args.code)))?;
     let session = state.resolve_session(&session_token)?;
     let conn = state
@@ -153,7 +153,7 @@ pub async fn set_default_currency_scoped(
     require_permission_for_user(
         &Store::new(&db),
         &session.user_id,
-        oz_core::permissions::SETTINGS_EDIT,
+        kasirmu_core::permissions::SETTINGS_EDIT,
     )?;
     let repo = CurrencyRepository::new(&db);
     repo.set_default_currency(&args.code)?;

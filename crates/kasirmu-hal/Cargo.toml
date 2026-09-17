@@ -12,7 +12,7 @@ description = "Hardware Abstraction Layer for kasir.mu: barcode scanners, receip
 workspace = true
 
 [dependencies]
-oz-core = { workspace = true }
+kasirmu-core = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }

@@ -1,6 +1,6 @@
 use super::*;
-use oz_core::SyncPriority;
-use oz_core::migrations;
+use kasirmu_core::SyncPriority;
+use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
@@ -485,9 +485,9 @@ fn denied_key_persists_when_written_raw_but_get_refuses_it() {
     let conn = fresh_conn();
     // Seed door: the untracked `Settings::set`. The funnel refuses this write
     // now, so it cannot be the scaffolding for a read-side test.
-    Settings::set(&conn, oz_core::settings::keys::AUTH_TOKEN, "sk_test_abc123").unwrap();
+    Settings::set(&conn, kasirmu_core::settings::keys::AUTH_TOKEN, "sk_test_abc123").unwrap();
     assert_eq!(
-        run_get_setting(&conn, oz_core::settings::keys::AUTH_TOKEN).unwrap(),
+        run_get_setting(&conn, kasirmu_core::settings::keys::AUTH_TOKEN).unwrap(),
         None,
         "sync.auth_token is a cleartext copy of the sync API key and must never reach the renderer"
     );
@@ -495,7 +495,7 @@ fn denied_key_persists_when_written_raw_but_get_refuses_it() {
     // table. Naming the difference keeps the next reader from "fixing" this
     // by deleting the write and concluding the guard works.
     assert_eq!(
-        Settings::get(&conn, oz_core::settings::keys::AUTH_TOKEN).unwrap(),
+        Settings::get(&conn, kasirmu_core::settings::keys::AUTH_TOKEN).unwrap(),
         Some("sk_test_abc123".into()),
         "the row must exist, or the read refusal above proves nothing"
     );
@@ -717,12 +717,12 @@ fn run_set_setting_refuses_a_deny_listed_credential_as_invalid() {
 fn run_set_setting_credential_refusal_carries_platform_core_wording() {
     let conn = fresh_conn();
     let expected = platform_core::settings::Settings::cleartext_credential_refusal(
-        oz_core::settings::keys::STRIPE_API_KEY,
+        kasirmu_core::settings::keys::STRIPE_API_KEY,
     )
     .expect("stripe.api_key must be on the credential deny list");
     let err = run_set_setting(
         &conn,
-        oz_core::settings::keys::STRIPE_API_KEY,
+        kasirmu_core::settings::keys::STRIPE_API_KEY,
         "sk_test_live",
         "term-1",
     )
@@ -806,9 +806,9 @@ fn run_set_setting_store_name_control_still_writes() {
 /// refusal asserted on it into a pass over a missing key.
 #[test]
 fn sync_auth_token_is_refused_on_read_and_never_replicated() {
-    use oz_core::settings::IngestPolicyKind as _;
+    use kasirmu_core::settings::IngestPolicyKind as _;
     let conn = fresh_conn();
-    let key = oz_core::settings::keys::AUTH_TOKEN;
+    let key = kasirmu_core::settings::keys::AUTH_TOKEN;
 
     // Seeded through the untracked door so every refusal below is a refusal of
     // an EXISTING row, not a vacuous pass over a missing one; the row-exists
@@ -861,7 +861,7 @@ fn sync_auth_token_is_refused_on_read_and_never_replicated() {
 
 // ── Scoped user preferences (tablet parity — AUDIT-25) ─────────
 
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
@@ -910,11 +910,11 @@ async fn scoped_user_preferences_rejects_invalid_token() {
 
 #[tokio::test]
 async fn scoped_user_preferences_roundtrip_targets_session_store_and_user() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     seed_session(&mut state, "store-a-token", "store-a", "cashier-a");
     seed_session(&mut state, "store-b-token", "store-b", "cashier-a");
     seed_session(&mut state, "other-user-token", "store-a", "cashier-b");
@@ -971,7 +971,7 @@ fn enqueue_settings_update_refuses_credential_key_for_egress() {
     let store = Store::new(&conn);
     enqueue_settings_update(
         &store,
-        oz_core::settings::keys::LOCAL_API_SECRET,
+        kasirmu_core::settings::keys::LOCAL_API_SECRET,
         "signing-secret",
         "term-1",
     )
@@ -991,7 +991,7 @@ fn enqueue_settings_update_refuses_credential_key_for_egress() {
 fn redis_url_with_embedded_password_is_refused_for_read_and_egress() {
     let conn = fresh_conn();
     let url = "redis://:s3cr3t@10.0.0.5:6379";
-    let key = oz_core::settings::keys::REDIS_URL;
+    let key = kasirmu_core::settings::keys::REDIS_URL;
     // Seed door: the untracked `Settings::set`. Since 0f26a4b29 the funnel
     // refuses a cleartext `redis.url`, so seeding through it would fail the
     // write and leave the read and egress refusals below untested. Do NOT tidy
@@ -1009,7 +1009,7 @@ fn redis_url_with_embedded_password_is_refused_for_read_and_egress() {
         "redis.url must not be queued for sync egress"
     );
     assert_eq!(
-        oz_core::Settings::get_redis_url(&conn).unwrap(),
+        kasirmu_core::Settings::get_redis_url(&conn).unwrap(),
         url,
         "the local typed accessor is not an egress surface"
     );
@@ -1023,7 +1023,7 @@ fn enqueue_settings_update_still_queues_ordinary_key() {
     let store = Store::new(&conn);
     enqueue_settings_update(
         &store,
-        oz_core::settings::keys::STORE_NAME,
+        kasirmu_core::settings::keys::STORE_NAME,
         "Renamed",
         "term-1",
     )
@@ -1042,14 +1042,14 @@ fn enqueue_settings_update_still_queues_ordinary_key() {
 /// already refused the portable package before this key was registered.
 #[test]
 fn license_phone_is_denied_as_a_credential_and_refused_on_egress() {
-    use oz_core::settings::IngestPolicyKind as _;
-    let phone = oz_core::settings::keys::LICENSE_PHONE;
+    use kasirmu_core::settings::IngestPolicyKind as _;
+    let phone = kasirmu_core::settings::keys::LICENSE_PHONE;
     assert!(
         platform_core::settings::keys::is_secret_setting_key(phone),
         "license.phone must be IPC-hidden like the rest of the license family"
     );
     assert!(
-        !oz_core::settings::keys::NON_EXPORTABLE_DEVICE_KEYS.contains(&phone),
+        !kasirmu_core::settings::keys::NON_EXPORTABLE_DEVICE_KEYS.contains(&phone),
         "it is per-install identity, not device identity — the acts differ"
     );
     for policy in [IngestPolicy::RemoteSync, IngestPolicy::PortablePackage] {
@@ -1771,7 +1771,7 @@ fn store_state(conn: rusqlite::Connection) -> AppState {
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     state
 }
 

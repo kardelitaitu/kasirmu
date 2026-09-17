@@ -51,9 +51,9 @@ use crate::error::AppError;
 #[cfg(not(test))]
 use crate::state::AppState;
 #[cfg(not(test))]
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 #[cfg(not(test))]
-use oz_core::sync_client::SyncConfig;
+use kasirmu_core::sync_client::SyncConfig;
 #[cfg(not(test))]
 use tauri::Manager;
 
@@ -112,7 +112,7 @@ pub fn run() {
                             .unwrap_or_else(|| "unknown".to_string());
                         let (profile, terminals) = {
                             let conn = state.db.lock().await;
-                            let store = oz_core::db::Store::new(&conn);
+                            let store = kasirmu_core::db::Store::new(&conn);
                             (
                                 platform_startup::hardware::load_profile(
                                     &conn,
@@ -214,7 +214,7 @@ pub fn run() {
                             let now = chrono::Utc::now()
                                 .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
                             let conn = state.db.lock().await;
-                            let store = oz_core::db::Store::new(&conn);
+                            let store = kasirmu_core::db::Store::new(&conn);
                             match store.sweep_all_expired(&now) {
                                 Ok(n) if n > 0 => {
                                     tracing::info!("tablet memo sweep: expired {n} memo(s)")
@@ -233,7 +233,7 @@ pub fn run() {
                             }
                             match store.sweep_expired_archives(
                                 &now,
-                                oz_core::memo::RETENTION_WINDOW_DAYS,
+                                kasirmu_core::memo::RETENTION_WINDOW_DAYS,
                             ) {
                                 Ok(n) if n > 0 => tracing::info!(
                                     "tablet memo sweep: deleted {n} archived memo(s)"
@@ -269,10 +269,10 @@ pub fn run() {
                             let now = chrono::Utc::now()
                                 .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
                             let conn = state.db.lock().await;
-                            let store = oz_core::db::Store::new(&conn);
-                            let ent = oz_core::entitlements::build_entitlements(
+                            let store = kasirmu_core::db::Store::new(&conn);
+                            let ent = kasirmu_core::entitlements::build_entitlements(
                                 &store,
-                                oz_core::availability::UsageCounts::default(),
+                                kasirmu_core::availability::UsageCounts::default(),
                                 false,
                             );
                             if !ent.loaded {
@@ -366,7 +366,7 @@ pub fn run() {
                                 }
 
                                 // Phase 2: Async HTTP push (no DB lock).
-                                let outcomes = oz_core::sync_client::send_items_to_server(
+                                let outcomes = kasirmu_core::sync_client::send_items_to_server(
                                     &config,
                                     &pending_items,
                                 )
@@ -379,7 +379,7 @@ pub fn run() {
                                     match outcomes {
                                         Ok(outcomes) => {
                                             if let Err(e) =
-                                                oz_core::sync_client::apply_sync_outcomes(
+                                                kasirmu_core::sync_client::apply_sync_outcomes(
                                                     &store,
                                                     &pending_items,
                                                     &outcomes,
@@ -395,13 +395,13 @@ pub fn run() {
                                         // is gated, not broken — keep items
                                         // `pending` so they sync automatically
                                         // after an upgrade (no mark_all_failed).
-                                        Err(oz_core::sync_client::SyncHttpError::PlanRequired) => {
+                                        Err(kasirmu_core::sync_client::SyncHttpError::PlanRequired) => {
                                             tracing::error!(
                                                 "tablet sync daemon: cloud sync requires a paid plan"
                                             );
                                         }
                                         Err(e) => {
-                                            let _ = oz_core::sync_client::mark_all_failed(
+                                            let _ = kasirmu_core::sync_client::mark_all_failed(
                                                 &store,
                                                 &pending_items,
                                                 &e.to_string(),

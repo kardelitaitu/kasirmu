@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 use tower::ServiceExt;
 
 fn fresh_db() -> rusqlite::Connection {
-    oz_core::migrations::fresh_db()
+    kasirmu_core::migrations::fresh_db()
 }
 
 fn test_state() -> CloudServerState {
@@ -358,9 +358,9 @@ async fn post_stripe_subscription(
     (status, json)
 }
 
-fn tenant_plan(state: &CloudServerState, tenant_id: &str) -> Option<oz_core::TenantPlan> {
+fn tenant_plan(state: &CloudServerState, tenant_id: &str) -> Option<kasirmu_core::TenantPlan> {
     let conn = state.db.try_lock().unwrap();
-    oz_core::Store::new(&conn)
+    kasirmu_core::Store::new(&conn)
         .get_tenant_plan(tenant_id)
         .unwrap()
 }
@@ -384,7 +384,7 @@ async fn subscription_created_upgrades_tenant_to_pro() {
     assert_eq!(json["plan"], "pro");
     assert_eq!(
         tenant_plan(&state, "tenant-a"),
-        Some(oz_core::TenantPlan::Pro),
+        Some(kasirmu_core::TenantPlan::Pro),
         "paid subscription must upgrade the tenant's sync plan"
     );
 }
@@ -404,7 +404,7 @@ async fn subscription_created_records_customer_mapping() {
     )
     .await;
     let conn = state.db.try_lock().unwrap();
-    let tenant = oz_core::Store::new(&conn)
+    let tenant = kasirmu_core::Store::new(&conn)
         .get_tenant_for_stripe_customer("cus_123")
         .unwrap();
     assert_eq!(tenant, Some("tenant-a".to_string()));
@@ -417,9 +417,9 @@ async fn subscription_deleted_downgrades_tenant_to_free_via_mapping() {
     // original checkout (deleted events carry only the customer id).
     {
         let conn = state.db.try_lock().unwrap();
-        let store = oz_core::Store::new(&conn);
+        let store = kasirmu_core::Store::new(&conn);
         store
-            .set_tenant_plan("tenant-a", oz_core::TenantPlan::Pro)
+            .set_tenant_plan("tenant-a", kasirmu_core::TenantPlan::Pro)
             .unwrap();
         store.set_stripe_customer("cus_123", "tenant-a").unwrap();
     }
@@ -434,7 +434,7 @@ async fn subscription_deleted_downgrades_tenant_to_free_via_mapping() {
     assert_eq!(json["plan"], "free");
     assert_eq!(
         tenant_plan(&state, "tenant-a"),
-        Some(oz_core::TenantPlan::Free),
+        Some(kasirmu_core::TenantPlan::Free),
         "cancelled subscription must downgrade the tenant's sync plan"
     );
 }
@@ -457,7 +457,7 @@ async fn checkout_completed_upgrades_tenant_to_pro() {
     assert_eq!(json["plan"], "pro");
     assert_eq!(
         tenant_plan(&state, "tenant-b"),
-        Some(oz_core::TenantPlan::Pro)
+        Some(kasirmu_core::TenantPlan::Pro)
     );
 }
 
@@ -466,7 +466,7 @@ async fn invoice_paid_renews_pro_via_customer_mapping() {
     let state = test_state_with_stripe("whsec_sub_test");
     {
         let conn = state.db.try_lock().unwrap();
-        oz_core::Store::new(&conn)
+        kasirmu_core::Store::new(&conn)
             .set_stripe_customer("cus_789", "tenant-c")
             .unwrap();
     }
@@ -481,7 +481,7 @@ async fn invoice_paid_renews_pro_via_customer_mapping() {
     assert_eq!(json["plan"], "pro");
     assert_eq!(
         tenant_plan(&state, "tenant-c"),
-        Some(oz_core::TenantPlan::Pro)
+        Some(kasirmu_core::TenantPlan::Pro)
     );
 }
 
@@ -490,8 +490,8 @@ async fn subscription_updated_canceled_downgrades_tenant() {
     let state = test_state_with_stripe("whsec_sub_test");
     {
         let conn = state.db.try_lock().unwrap();
-        oz_core::Store::new(&conn)
-            .set_tenant_plan("tenant-a", oz_core::TenantPlan::Pro)
+        kasirmu_core::Store::new(&conn)
+            .set_tenant_plan("tenant-a", kasirmu_core::TenantPlan::Pro)
             .unwrap();
     }
     let (status, _) = post_stripe_subscription(
@@ -508,7 +508,7 @@ async fn subscription_updated_canceled_downgrades_tenant() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         tenant_plan(&state, "tenant-a"),
-        Some(oz_core::TenantPlan::Free),
+        Some(kasirmu_core::TenantPlan::Free),
         "a canceled subscription must downgrade the plan"
     );
 }
@@ -763,7 +763,7 @@ async fn pg_integration_webhooks_read_write_postgres() {
         kasirmu_api::pg::get_tenant_plan(&pool, &tenant)
             .await
             .expect("get_tenant_plan"),
-        Some(oz_core::TenantPlan::Pro)
+        Some(kasirmu_core::TenantPlan::Pro)
     );
 
     // ── Clean up so a shared dev DB stays tidy ──
@@ -1078,7 +1078,7 @@ async fn pg_integration_webhooks_restricted_role_after_cutover() {
         kasirmu_api::pg::get_tenant_plan(&schema_pool, &tenant)
             .await
             .expect("get_tenant_plan"),
-        Some(oz_core::TenantPlan::Pro)
+        Some(kasirmu_core::TenantPlan::Pro)
     );
     {
         let mut client = schema_pool.get().await.expect("mapping client");

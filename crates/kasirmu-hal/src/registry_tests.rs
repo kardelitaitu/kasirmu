@@ -119,10 +119,10 @@ async fn register_tcp_printer_and_lookup() {
 
 // --- EDC card-payment terminals ------------------------------------------
 
-fn usd(minor: i64) -> oz_core::Money {
-    oz_core::Money {
+fn usd(minor: i64) -> kasirmu_core::Money {
+    kasirmu_core::Money {
         minor_units: minor,
-        currency: "USD".parse::<oz_core::Currency>().unwrap(),
+        currency: "USD".parse::<kasirmu_core::Currency>().unwrap(),
     }
 }
 

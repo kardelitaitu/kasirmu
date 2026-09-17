@@ -8,13 +8,13 @@
 //!
 //! Wire contract: the core `RegionalConfig` is returned **as-is** — its
 //! fields are documented "serialized as snake_case so the IPC DTOs of later
-//! slices reuse these names verbatim" (`oz_core::regional`), so there is no
+//! slices reuse these names verbatim" (`kasirmu_core::regional`), so there is no
 //! shell-side mirror DTO to drift. `ConfigScope` rides along with its
 //! serde names ("location", "legal_entity", "organization", "built_in").
 //!
 //! ADR #48 (87114abf6) settled the design's timezone-representation question:
 //! storage is an IANA zone name and offsets are derived at display/report
-//! time (`oz_core::timezone::business_date_in_zone`). This read model is
+//! time (`kasirmu_core::timezone::business_date_in_zone`). This read model is
 //! therefore a faithful pass-through of the **stored** string — it never
 //! re-derives or formats an offset on this side of the boundary, and the
 //! front-end must not either.
@@ -38,7 +38,7 @@ use crate::state::AppState;
 // Retained for the sibling test module, which reaches it through
 // `use super::*`; the command bodies no longer name it.
 #[allow(unused_imports)]
-use oz_core::Store;
+use kasirmu_core::Store;
 
 pub use kasirmu_bridge::regional::SetRegionalConfig;
 
@@ -58,7 +58,7 @@ pub async fn get_regional_config_scoped(
     location_id: String,
     session_token: String,
     state: State<'_, AppState>,
-) -> Result<oz_core::RegionalConfig, AppError> {
+) -> Result<kasirmu_core::RegionalConfig, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::regional::get_scoped(&ctx, &session_token, &location_id)
         .await
@@ -88,7 +88,7 @@ pub async fn set_regional_config_scoped(
     config: SetRegionalConfig,
     session_token: String,
     state: State<'_, AppState>,
-) -> Result<oz_core::RegionalConfig, AppError> {
+) -> Result<kasirmu_core::RegionalConfig, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::regional::set_scoped(&ctx, &session_token, &location_id, &config)
         .await

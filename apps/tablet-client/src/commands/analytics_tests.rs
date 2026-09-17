@@ -1,6 +1,6 @@
 use super::*;
-use oz_core::db::Store;
-use oz_core::migrations;
+use kasirmu_core::db::Store;
+use kasirmu_core::migrations;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
@@ -43,7 +43,7 @@ fn analytics_state() -> (AppState, tempfile::TempDir) {
 fn mint_session(state: &mut AppState, token: &str, user: &str, role: &str, store: &str) {
     state.session_store.write().unwrap().insert(
         token.into(),
-        oz_core::session::SessionContext::new(
+        kasirmu_core::session::SessionContext::new(
             user.into(),
             role.into(),
             "terminal-1".into(),

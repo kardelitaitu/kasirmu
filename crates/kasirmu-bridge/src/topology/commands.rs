@@ -11,9 +11,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use oz_core::permissions;
-use oz_core::subscription::TenantSubscription;
-use oz_core::topology::semantic_branch_profile_id;
+use kasirmu_core::permissions;
+use kasirmu_core::subscription::TenantSubscription;
+use kasirmu_core::topology::semantic_branch_profile_id;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -176,7 +176,7 @@ pub async fn load_topology(
     // nothing about whether a diagram exists, in this branch or any other.
     ctx.resolve_session(&session_token)?;
     let conn = ctx.db.lock().await;
-    let raw = match oz_core::Settings::get(&conn, &setting_key)? {
+    let raw = match kasirmu_core::Settings::get(&conn, &setting_key)? {
         Some(json) => Some(json),
         None => {
             // Migrate only an old diagram whose canonical branch identity
@@ -185,7 +185,7 @@ pub async fn load_topology(
             let Some(branch_id) = branch_id.as_deref() else {
                 return Ok(None);
             };
-            let Some(legacy_json) = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)? else {
+            let Some(legacy_json) = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)? else {
                 return Ok(None);
             };
             let value: Value = serde_json::from_str(&legacy_json)
@@ -519,7 +519,7 @@ pub async fn apply_topology_diff(
     // revision check and this ledger lookup deterministic.
     {
         let global_db = ctx.db.lock().await;
-        if let Some(raw) = oz_core::Settings::get(&global_db, &request_key)? {
+        if let Some(raw) = kasirmu_core::Settings::get(&global_db, &request_key)? {
             let value: Value = serde_json::from_str(&raw).map_err(|e| {
                 BridgeError::Internal(format!("invalid topology request ledger: {e}"))
             })?;
@@ -540,7 +540,7 @@ pub async fn apply_topology_diff(
             // A pre-fingerprint ledger entry can only come from an interrupted
             // development build. Remove it rather than treating an unbound
             // request id as an idempotent success for an unrelated payload.
-            oz_core::Settings::remove(&global_db, &request_key)?;
+            kasirmu_core::Settings::remove(&global_db, &request_key)?;
         }
     }
 
@@ -647,7 +647,7 @@ pub async fn apply_topology_diff(
     // compensated from this snapshot.
     let previous_topology = {
         let global_db = ctx.db.lock().await;
-        oz_core::Settings::get(&global_db, &topology_key)?
+        kasirmu_core::Settings::get(&global_db, &topology_key)?
     };
     let desired_topology = topology_envelope_json(
         &diagram_nodes,

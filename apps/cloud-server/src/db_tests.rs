@@ -226,7 +226,7 @@ fn db_error_debug() {
 
 #[test]
 fn db_error_from_core_error() {
-    let core_err = oz_core::CoreError::NotFound {
+    let core_err = kasirmu_core::CoreError::NotFound {
         entity: "table",
         id: "x".into(),
     };
@@ -826,7 +826,7 @@ async fn pg_integration_rls_force_blocks_owner() {
     // `crates/kasirmu-api/src/pg_tests.rs:78`-`:82`: an error path that yields a PASS
     // is worse than one that yields a failure. `expect` here fails loudly.
     client
-        .batch_execute(oz_core::migrations::PG_INIT)
+        .batch_execute(kasirmu_core::migrations::PG_INIT)
         .await
         .expect("PG_INIT should apply to the throwaway database");
     let ns = format!("rls-force-{}", std::process::id());

@@ -24,7 +24,7 @@ image = { workspace = true }
 # through AsyncTransport. Spec + features live in the root workspace table.
 lettre = { workspace = true }
 modules-currency = { workspace = true }
-oz-core = { workspace = true }
+kasirmu-core = { workspace = true }
 kasirmu-hal = { workspace = true }
 kasirmu-lua = { workspace = true }
 kasirmu-plugin = { workspace = true }

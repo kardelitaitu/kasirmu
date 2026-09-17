@@ -2,7 +2,7 @@ use super::*;
 
 use crate::testing::seeded_row_loads;
 use crate::testing::{FAIL_CLOSED_GATES_LOCKED, FAIL_CLOSED_STATE, FAIL_CLOSED_TIER, TestBridge};
-use oz_core::subscription::TenantSubscription;
+use kasirmu_core::subscription::TenantSubscription;
 
 // ── AuditEntryDto ───────────────────────────────────────────────────
 
@@ -108,7 +108,7 @@ fn export_dto_serialize_has_all_fields() {
 
 /// Global DB with an owner (all permissions) on the given tier.
 fn seeded_conn(tier_key: &str) -> rusqlite::Connection {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();
@@ -203,7 +203,7 @@ fn app_for(user_id: &str, role_id: &str, tier_key: &str) -> TestBridge {
     let bridge = TestBridge::new().with_conn(conn);
     bridge.sessions().write().unwrap().insert(
         "tok".into(),
-        oz_core::session::SessionContext::new(
+        kasirmu_core::session::SessionContext::new(
             user_id.into(),
             role_id.into(),
             "terminal-1".into(),
@@ -363,7 +363,7 @@ async fn the_gate_still_denies_a_session_without_audit_view() {
     let lite = TestBridge::new().with_conn(lite_conn);
     lite.sessions().write().unwrap().insert(
         "lite-tok".into(),
-        oz_core::session::SessionContext::new(
+        kasirmu_core::session::SessionContext::new(
             "user-lite".into(),
             "role-lite".into(),
             "terminal-1".into(),

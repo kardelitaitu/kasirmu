@@ -66,11 +66,11 @@ fn staff_login_result_debug() {
 //
 // Parity with the desktop client: `create_session` must fail closed
 // when the caller claims an identity it has not authenticated. The
-// gate itself is `oz_core::Store::verify_instance_access` (shared with
+// gate itself is `kasirmu_core::Store::verify_instance_access` (shared with
 // the desktop client); these tests pin the command-level behavior on
 // the tablet too.
 
-use oz_core::migrations;
+use kasirmu_core::migrations;
 use tauri::Manager as _;
 
 /// Seed the built-in roles plus one owner user in the GLOBAL identity DB.
@@ -105,7 +105,7 @@ async fn staff_login_mints_verifiable_picker_ticket() {
     let conn = migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
-    let hash = oz_core::auth::hash_pin("1234").unwrap();
+    let hash = kasirmu_core::auth::hash_pin("1234").unwrap();
     conn.execute(
         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
          VALUES ('user-owner', 'owner', ?1, 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
@@ -153,7 +153,7 @@ async fn staff_login_returns_granted_permission_keys() {
     let conn = migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
-    let hash = oz_core::auth::hash_pin("1234").unwrap();
+    let hash = kasirmu_core::auth::hash_pin("1234").unwrap();
     conn.execute(
         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
          VALUES ('user-owner', 'owner', ?1, 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
@@ -407,7 +407,7 @@ fn login_app(tier_key: Option<&str>) -> tauri::App<tauri::test::MockRuntime> {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();
     }
-    let hash = oz_core::auth::hash_pin("1234").unwrap();
+    let hash = kasirmu_core::auth::hash_pin("1234").unwrap();
     conn.execute(
         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
          VALUES ('user-owner', 'owner', ?1, 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
@@ -604,7 +604,7 @@ async fn an_unreadable_subscription_row_still_records_on_the_tablet() {
 // session (invalidate-then-mint), authority re-derived from the assignment, no
 // credential carryover, enumerated-list-only, integrity re-check on switch.
 
-use oz_core::db::assignments::{AssignmentSpec, ScopeMode};
+use kasirmu_core::db::assignments::{AssignmentSpec, ScopeMode};
 
 /// Seed a legal entity owned by `tenant_id` with the given id and name.
 fn seed_legal_entity(conn: &rusqlite::Connection, tenant_id: &str, id: &str, name: &str) {
@@ -648,7 +648,7 @@ fn l194_app_with(
 ) -> (tauri::App<tauri::test::MockRuntime>, String) {
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
-    let hash = oz_core::auth::hash_pin("1234").unwrap();
+    let hash = kasirmu_core::auth::hash_pin("1234").unwrap();
     let user = store
         .create_user("alice", &hash, "Alice", "role-owner")
         .unwrap();
@@ -866,12 +866,12 @@ async fn l194_switch_organization_records_an_org_switch_event() {
     let rows = audit_rows(&app).await;
     let hit = rows
         .iter()
-        .find(|(_, action, ..)| *action == oz_core::db::audit_security::SECURITY_ACTION_ORG_SWITCH)
+        .find(|(_, action, ..)| *action == kasirmu_core::db::audit_security::SECURITY_ACTION_ORG_SWITCH)
         .expect("a successful switch must record an org.switch row");
     let (user_id, action, outcome, target_id, _details) = hit;
     assert_eq!(
         action,
-        &oz_core::db::audit_security::SECURITY_ACTION_ORG_SWITCH
+        &kasirmu_core::db::audit_security::SECURITY_ACTION_ORG_SWITCH
     );
     assert_eq!(outcome, &"success");
     assert_eq!(user_id, &uid, "the row names the operator who switched");

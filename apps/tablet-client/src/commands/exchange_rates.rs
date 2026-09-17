@@ -9,7 +9,7 @@ use tauri::{State, command};
 
 use modules_currency::commands::{CreateExchangeRateArgs, ExchangeRateDto};
 use modules_currency::repository::CurrencyRepository;
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
@@ -41,7 +41,7 @@ fn validate_create_rate_args(args: &CreateExchangeRateArgs) -> Result<(), AppErr
         } else {
             &args.to_currency
         };
-        code.parse::<oz_core::Currency>().map_err(|_| {
+        code.parse::<kasirmu_core::Currency>().map_err(|_| {
             AppError::Invalid(format!("{field}: not a valid ISO-4217 currency code"))
         })?;
     }
@@ -126,7 +126,7 @@ pub async fn list_exchange_rates_scoped(
     require_permission_for_user(
         &Store::new(&db),
         &session.user_id,
-        oz_core::permissions::SETTINGS_READ,
+        kasirmu_core::permissions::SETTINGS_READ,
     )?;
     let out = run_list_exchange_rates(&db)?;
     drop(db);
@@ -155,7 +155,7 @@ pub async fn list_latest_exchange_rates_scoped(
     require_permission_for_user(
         &Store::new(&db),
         &session.user_id,
-        oz_core::permissions::SETTINGS_READ,
+        kasirmu_core::permissions::SETTINGS_READ,
     )?;
     let out = run_list_latest_exchange_rates(&db)?;
     drop(db);
@@ -185,7 +185,7 @@ pub async fn create_exchange_rate_scoped(
     require_permission_for_user(
         &Store::new(&db),
         &session.user_id,
-        oz_core::permissions::SETTINGS_EDIT,
+        kasirmu_core::permissions::SETTINGS_EDIT,
     )?;
     let repo = CurrencyRepository::new(&db);
     // ADR #48 (Decision 3): default the effective date to the business date in
@@ -198,7 +198,7 @@ pub async fn create_exchange_rate_scoped(
         .unwrap_or_else(|| "UTC".to_string());
     let date = args
         .effective_date
-        .unwrap_or_else(|| oz_core::timezone::business_date_in_zone(chrono::Utc::now(), &timezone));
+        .unwrap_or_else(|| kasirmu_core::timezone::business_date_in_zone(chrono::Utc::now(), &timezone));
     let source = args.source.unwrap_or_else(|| "manual".to_string());
     let row = repo.create_exchange_rate(
         &args.from_currency,
@@ -232,7 +232,7 @@ pub async fn delete_exchange_rate_scoped(
     require_permission_for_user(
         &Store::new(&db),
         &session.user_id,
-        oz_core::permissions::SETTINGS_EDIT,
+        kasirmu_core::permissions::SETTINGS_EDIT,
     )?;
     let repo = CurrencyRepository::new(&db);
     repo.delete_exchange_rate(&id)?;
@@ -264,7 +264,7 @@ pub async fn get_latest_exchange_rate_scoped(
     require_permission_for_user(
         &Store::new(&db),
         &session.user_id,
-        oz_core::permissions::SETTINGS_READ,
+        kasirmu_core::permissions::SETTINGS_READ,
     )?;
     let repo = CurrencyRepository::new(&db);
     let as_of = effective_date.unwrap_or_else(|| {
@@ -274,7 +274,7 @@ pub async fn get_latest_exchange_rate_scoped(
             .flatten()
             .map(|p| p.timezone)
             .unwrap_or_else(|| "UTC".to_string());
-        oz_core::timezone::business_date_in_zone(chrono::Utc::now(), &tz)
+        kasirmu_core::timezone::business_date_in_zone(chrono::Utc::now(), &tz)
     });
     let row = repo.get_latest_exchange_rate(&from_currency, &to_currency, &as_of)?;
     drop(db);

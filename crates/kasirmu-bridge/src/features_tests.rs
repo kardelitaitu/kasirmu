@@ -320,7 +320,7 @@ fn all_feature_metadata_no_duplicate_keys() {
     let metadata = all_feature_metadata();
     let keys: Vec<String> = metadata
         .iter()
-        .map(|(feat, _, _, _)| oz_core::features::feature_key(*feat).to_string())
+        .map(|(feat, _, _, _)| kasirmu_core::features::feature_key(*feat).to_string())
         .collect();
     let mut sorted = keys.clone();
     sorted.sort();

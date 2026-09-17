@@ -13,12 +13,12 @@ use super::*;
 
 use crate::testing::seeded_row_loads;
 use crate::testing::{FAIL_CLOSED_GATES_LOCKED, FAIL_CLOSED_STATE, FAIL_CLOSED_TIER, TestBridge};
-use oz_core::db::audit_security::{SECURITY_ACTIONS, SYSTEM_ACTOR};
-use oz_core::subscription::TenantSubscription;
+use kasirmu_core::db::audit_security::{SECURITY_ACTIONS, SYSTEM_ACTOR};
+use kasirmu_core::subscription::TenantSubscription;
 
 /// Global DB: owner (all permissions) + a Lite user (none), on a paid tier.
 fn seeded_conn(tier_key: &str) -> rusqlite::Connection {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();
@@ -132,7 +132,7 @@ fn app_for(user_id: &str, role_id: &str, tier_key: &str) -> TestBridge {
     let bridge = TestBridge::new().with_conn(conn);
     bridge.sessions().write().unwrap().insert(
         "tok".into(),
-        oz_core::session::SessionContext::new(
+        kasirmu_core::session::SessionContext::new(
             user_id.into(),
             role_id.into(),
             "terminal-1".into(),
@@ -708,7 +708,7 @@ async fn the_handoff_writes_a_self_audit_row_to_the_store_log() {
         // the STORE log, and because `system.export` is NOT in SECURITY_ACTIONS
         // it can never re-enter the security export.
         store
-            .log_audit(&oz_core::AuditEntry::new(
+            .log_audit(&kasirmu_core::AuditEntry::new(
                 "user-owner".to_string(),
                 "system.export".to_string(),
                 Some("audit".to_string()),

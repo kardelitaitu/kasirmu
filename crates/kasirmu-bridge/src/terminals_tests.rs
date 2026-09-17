@@ -21,7 +21,7 @@ use super::*;
 use crate::testing::{TestBridge, temp_conn};
 use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {

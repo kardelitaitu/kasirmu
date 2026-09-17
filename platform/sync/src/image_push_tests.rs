@@ -1,8 +1,8 @@
 //! Tests for the image push scheduler (spec 0046b §3.6).
 
 use super::*;
-use oz_core::db::Store;
-use oz_core::migrations;
+use kasirmu_core::db::Store;
+use kasirmu_core::migrations;
 use std::collections::HashMap;
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -76,9 +76,9 @@ async fn drain_once_noop_when_queue_empty() {
     {
         let db = sched.db.lock().await;
         let store = Store::new(&db);
-        oz_core::settings::Settings::set_sync_enabled(&db, true).unwrap();
-        oz_core::settings::Settings::set_sync_server_url(&db, "http://127.0.0.1:1").unwrap();
-        oz_core::settings::Settings::set_sync_api_key(&db, "sk-test").unwrap();
+        kasirmu_core::settings::Settings::set_sync_enabled(&db, true).unwrap();
+        kasirmu_core::settings::Settings::set_sync_server_url(&db, "http://127.0.0.1:1").unwrap();
+        kasirmu_core::settings::Settings::set_sync_api_key(&db, "sk-test").unwrap();
         // no enqueue → empty
         let _ = store;
     }
@@ -102,9 +102,9 @@ async fn drain_once_enqueues_and_marks_failed_on_network_error() {
     {
         let db = sched.db.lock().await;
         let store = Store::new(&db);
-        oz_core::settings::Settings::set_sync_enabled(&db, true).unwrap();
-        oz_core::settings::Settings::set_sync_server_url(&db, "http://127.0.0.1:1").unwrap();
-        oz_core::settings::Settings::set_sync_api_key(&db, "sk-test").unwrap();
+        kasirmu_core::settings::Settings::set_sync_enabled(&db, true).unwrap();
+        kasirmu_core::settings::Settings::set_sync_server_url(&db, "http://127.0.0.1:1").unwrap();
+        kasirmu_core::settings::Settings::set_sync_api_key(&db, "sk-test").unwrap();
         store
             .enqueue_image_push(&hash_a, bytes_a.len() as i64)
             .unwrap();

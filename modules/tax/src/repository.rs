@@ -24,7 +24,7 @@ impl<'a> TaxRepository<'a> {
     /// Retrieve an active tax rate by ID.
     ///
     /// TAX-03: honours the `is_active` soft-delete flag exactly like
-    /// `oz_core::db::Store::get_tax_rate`, so archived (immutable) rates
+    /// `kasirmu_core::db::Store::get_tax_rate`, so archived (immutable) rates
     /// stay hidden through the module boundary too. The cross-layer
     /// contract test `modules/tax/tests/boundary_contract.rs` pins this
     /// parity.
@@ -54,7 +54,7 @@ impl<'a> TaxRepository<'a> {
     /// List all active tax rates, ordered by name.
     ///
     /// TAX-03: honours the `is_active` soft-delete flag exactly like
-    /// `oz_core::db::Store::list_tax_rates` — archived (immutable) rates
+    /// `kasirmu_core::db::Store::list_tax_rates` — archived (immutable) rates
     /// are filtered out (`is_active = 1`) so callers across the module
     /// boundary only ever see assignable rates. The cross-layer contract
     /// test `modules/tax/tests/boundary_contract.rs` pins this parity.

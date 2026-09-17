@@ -1,16 +1,16 @@
 use super::*;
 use crate::testing::TestBridge;
-use oz_core::RegisterKdsDeviceInput;
-use oz_core::session::SessionContext;
-use oz_core::{CreateKdsOrderInput, Currency, Money, Sale, SaleStatus};
+use kasirmu_core::RegisterKdsDeviceInput;
+use kasirmu_core::session::SessionContext;
+use kasirmu_core::{CreateKdsOrderInput, Currency, Money, Sale, SaleStatus};
 
 // ── Existing tests (preserved) ────────────────────────────────────
 
 #[test]
 fn empty_runtime_kds_targets_disable_ticket_creation() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let key = format!("{TOPOLOGY_RUNTIME_SETTING_KEY}/store-1");
-    oz_core::Settings::set(&conn, &key, r#"{"routes":[]}"#).unwrap();
+    kasirmu_core::Settings::set(&conn, &key, r#"{"routes":[]}"#).unwrap();
 
     let runtime_targets = resolve_runtime_kds_plan(&conn, "store-1")
         .unwrap()
@@ -272,7 +272,7 @@ fn create_kds_order_in_store(app: &TestBridge, order: &KdsOrder) -> KdsOrder {
 
 #[tokio::test]
 async fn scoped_list_kds_orders_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
     let result = list_kds_orders_scoped(&app.ctx(), "bad-token", None).await;
@@ -281,7 +281,7 @@ async fn scoped_list_kds_orders_rejects_invalid_token() {
 
 #[tokio::test]
 async fn scoped_get_kds_queue_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
     let result = get_kds_queue_scoped(&app.ctx(), "bad-token", None).await;
@@ -290,7 +290,7 @@ async fn scoped_get_kds_queue_rejects_invalid_token() {
 
 #[tokio::test]
 async fn scoped_get_kds_order_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
     let result = get_kds_order_scoped(&app.ctx(), "bad-token", "order-1").await;
@@ -301,7 +301,7 @@ async fn scoped_get_kds_order_rejects_invalid_token() {
 
 #[tokio::test]
 async fn owner_can_list_kds_orders_empty() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
@@ -313,7 +313,7 @@ async fn owner_can_list_kds_orders_empty() {
 
 #[tokio::test]
 async fn owner_can_list_kds_orders_with_data() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
@@ -329,7 +329,7 @@ async fn owner_can_list_kds_orders_with_data() {
 
 #[tokio::test]
 async fn list_kds_orders_filters_by_status() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
@@ -361,7 +361,7 @@ async fn list_kds_orders_filters_by_status() {
 
 #[tokio::test]
 async fn owner_can_get_kds_order_by_id() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
@@ -375,7 +375,7 @@ async fn owner_can_get_kds_order_by_id() {
 
 #[tokio::test]
 async fn get_kds_order_returns_none_for_unknown() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
@@ -387,7 +387,7 @@ async fn get_kds_order_returns_none_for_unknown() {
 
 #[tokio::test]
 async fn owner_can_get_kds_queue() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
@@ -401,7 +401,7 @@ async fn owner_can_get_kds_queue() {
 
 #[tokio::test]
 async fn update_kds_status_returns_error_for_unknown_order() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
@@ -413,7 +413,7 @@ async fn update_kds_status_returns_error_for_unknown_order() {
 
 #[tokio::test]
 async fn kds_orders_scoped_to_instance() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
@@ -438,7 +438,7 @@ async fn kds_orders_scoped_to_instance() {
 
 #[tokio::test]
 async fn staff_can_list_kds_orders() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     conn.execute(
         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
@@ -455,7 +455,7 @@ async fn staff_can_list_kds_orders() {
 
 #[tokio::test]
 async fn staff_can_update_kds_status() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     conn.execute(
         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
@@ -476,7 +476,7 @@ async fn staff_can_update_kds_status() {
 
 #[tokio::test]
 async fn register_kds_device_scoped_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "u1", "r1", "s1", "kds-main");
 
     let result = crate::kds_device::register_kds_device(
@@ -496,7 +496,7 @@ async fn register_kds_device_scoped_rejects_invalid_token() {
 
 #[tokio::test]
 async fn register_and_list_kds_devices_scoped() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     // Seed owner.
     seed_owner(&conn);
     let app = scoped_state_with_restaurant(
@@ -540,7 +540,7 @@ async fn register_and_list_kds_devices_scoped() {
 
 #[tokio::test]
 async fn ack_kds_order_scoped_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "u1", "r1", "s1", "kds-main");
 
     let result =
@@ -553,7 +553,7 @@ async fn ack_kds_order_scoped_rejects_invalid_token() {
 
 #[tokio::test]
 async fn resolve_kds_targets_scoped_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "u1", "r1", "s1", "kds-main");
 
     let result = crate::kds_routing::resolve_kds_targets(&app.ctx(), "bad-token", "sale-123").await;
@@ -568,7 +568,7 @@ async fn resolve_kds_targets_scoped_rejects_invalid_token() {
 /// register device → list devices → update status → ack order → stale detection.
 #[tokio::test]
 async fn integration_enrollment_full_lifecycle() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state_with_restaurant(
         conn,
@@ -601,7 +601,7 @@ async fn integration_enrollment_full_lifecycle() {
     assert!(device.is_active);
     assert_eq!(
         device.connection_status,
-        oz_core::kds::KdsConnectionStatus::Disconnected
+        kasirmu_core::kds::KdsConnectionStatus::Disconnected
     );
 
     // Step 2: List devices — should show the registered device.
@@ -623,7 +623,7 @@ async fn integration_enrollment_full_lifecycle() {
         &app.ctx(),
         "tok",
         &device.id,
-        oz_core::kds::KdsConnectionStatus::Connected,
+        kasirmu_core::kds::KdsConnectionStatus::Connected,
     )
     .await
     .unwrap();
@@ -633,7 +633,7 @@ async fn integration_enrollment_full_lifecycle() {
         .unwrap();
     assert_eq!(
         fetched.connection_status,
-        oz_core::kds::KdsConnectionStatus::Connected
+        kasirmu_core::kds::KdsConnectionStatus::Connected
     );
     assert!(fetched.last_seen_at.is_some());
 
@@ -700,7 +700,7 @@ async fn integration_enrollment_full_lifecycle() {
         .unwrap();
     assert_eq!(
         fetched.connection_status,
-        oz_core::kds::KdsConnectionStatus::Stale
+        kasirmu_core::kds::KdsConnectionStatus::Stale
     );
 
     // Step 8: Deactivate the device.
@@ -722,7 +722,7 @@ async fn integration_enrollment_full_lifecycle() {
 /// regardless of kitchen zone.
 #[tokio::test]
 async fn integration_broadcast_device_receives_all_orders() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state_with_restaurant(
         conn,
@@ -794,7 +794,7 @@ async fn integration_broadcast_device_receives_all_orders() {
 /// Deactivated devices must not receive routed orders.
 #[tokio::test]
 async fn integration_inactive_device_excluded_from_routing() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state_with_restaurant(
         conn,
@@ -867,7 +867,7 @@ async fn integration_inactive_device_excluded_from_routing() {
 
 #[tokio::test]
 async fn integration_duplicate_device_name_rejected() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state_with_restaurant(
         conn,
@@ -904,7 +904,7 @@ async fn integration_duplicate_device_name_rejected() {
 /// When two devices try to ack the same order, only the first wins.
 #[tokio::test]
 async fn integration_concurrent_ack_only_first_wins() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state_with_restaurant(
         conn,
@@ -992,7 +992,7 @@ async fn integration_concurrent_ack_only_first_wins() {
 /// mark stale → deactivate long-offline → cleanup old orders.
 #[tokio::test]
 async fn integration_health_monitoring_cycle() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state_with_restaurant(
         conn,
@@ -1039,7 +1039,7 @@ async fn integration_health_monitoring_cycle() {
         &app.ctx(),
         "tok",
         &device_good.id,
-        oz_core::kds::KdsConnectionStatus::Connected,
+        kasirmu_core::kds::KdsConnectionStatus::Connected,
     )
     .await
     .unwrap();
@@ -1047,7 +1047,7 @@ async fn integration_health_monitoring_cycle() {
         &app.ctx(),
         "tok",
         &device_stale.id,
-        oz_core::kds::KdsConnectionStatus::Connected,
+        kasirmu_core::kds::KdsConnectionStatus::Connected,
     )
     .await
     .unwrap();
@@ -1079,14 +1079,14 @@ async fn integration_health_monitoring_cycle() {
         let good = store.get_kds_device(&device_good.id).unwrap().unwrap();
         assert_eq!(
             good.connection_status,
-            oz_core::kds::KdsConnectionStatus::Connected
+            kasirmu_core::kds::KdsConnectionStatus::Connected
         );
 
         // 3. Stale device should be marked stale.
         let stale = store.get_kds_device(&device_stale.id).unwrap().unwrap();
         assert_eq!(
             stale.connection_status,
-            oz_core::kds::KdsConnectionStatus::Stale
+            kasirmu_core::kds::KdsConnectionStatus::Stale
         );
 
         // 4. Backdate stale device's updated_at to trigger auto-deactivation.
@@ -1116,7 +1116,7 @@ async fn integration_health_monitoring_cycle() {
 /// Devices registered to different Restaurant POS instances are isolated.
 #[tokio::test]
 async fn integration_device_isolation_between_restaurants() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state_with_restaurant(
         conn,
@@ -1224,7 +1224,7 @@ fn create_restaurant_sale_in_store(app: &TestBridge, sale_id: &str) {
         user_id: Some("user-owner".into()),
         created_at: now.clone(),
         updated_at: now.clone(),
-        lines: vec![oz_core::SaleLine {
+        lines: vec![kasirmu_core::SaleLine {
             id: line_id.clone(),
             sale_id: sale_id.into(),
             sku: "BURGER".into(),
@@ -1262,7 +1262,7 @@ fn create_restaurant_sale_in_store(app: &TestBridge, sale_id: &str) {
 
 #[tokio::test]
 async fn scoped_line_item_status_update_and_read_end_to_end() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
     seed_restaurant_product(&app);
@@ -1293,7 +1293,7 @@ async fn scoped_line_item_status_update_and_read_end_to_end() {
 
 #[tokio::test]
 async fn scoped_update_kds_order_items_edits_ticket() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
     seed_restaurant_product(&app);
@@ -1306,19 +1306,19 @@ async fn scoped_update_kds_order_items_edits_ticket() {
     let edited = update_kds_order_items_scoped(
         &app.ctx(),
         "tok",
-        oz_core::UpdateKdsOrderItemsInput {
+        kasirmu_core::UpdateKdsOrderItemsInput {
             id: orders[0].id.clone(),
             items_summary: "Burger, Fries".into(),
             item_count: 2,
             line_items: Some(vec![
-                oz_core::CreateKdsLineItemInput {
+                kasirmu_core::CreateKdsLineItemInput {
                     sku: "BURGER".into(),
                     display_name: "Burger".into(),
                     qty: 1,
                     course: Some("main".into()),
                     modifiers: vec![],
                 },
-                oz_core::CreateKdsLineItemInput {
+                kasirmu_core::CreateKdsLineItemInput {
                     sku: "FRIES".into(),
                     display_name: "Fries".into(),
                     qty: 1,
@@ -1349,7 +1349,7 @@ async fn scoped_update_kds_order_items_edits_ticket() {
 
 #[tokio::test]
 async fn scoped_line_item_update_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
     let result =
@@ -1359,7 +1359,7 @@ async fn scoped_line_item_update_rejects_invalid_token() {
 
 #[tokio::test]
 async fn scoped_get_order_lines_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
     let result = get_kds_order_lines_scoped(&app.ctx(), "bad-token", "order-1").await;
@@ -1368,13 +1368,13 @@ async fn scoped_get_order_lines_rejects_invalid_token() {
 
 #[tokio::test]
 async fn scoped_update_order_items_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
     let result = update_kds_order_items_scoped(
         &app.ctx(),
         "bad-token",
-        oz_core::UpdateKdsOrderItemsInput {
+        kasirmu_core::UpdateKdsOrderItemsInput {
             id: "order-1".into(),
             items_summary: String::new(),
             item_count: 0,
@@ -1387,7 +1387,7 @@ async fn scoped_update_order_items_rejects_invalid_token() {
 
 #[tokio::test]
 async fn scoped_create_tickets_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
     let result = create_kds_order_from_sale_scoped(&app.ctx(), "bad-token", "sale-1").await;
@@ -1438,20 +1438,20 @@ fn seed_zoned_ticket(app: &TestBridge) -> KdsOrder {
     .unwrap();
 
     let s = Store::new(&db);
-    let mut cart = oz_core::Cart::new(usd());
-    cart.add_line(oz_core::CartLine::new(
-        oz_core::Sku::new("BURGER"),
+    let mut cart = kasirmu_core::Cart::new(usd());
+    cart.add_line(kasirmu_core::CartLine::new(
+        kasirmu_core::Sku::new("BURGER"),
         1,
         usd_price(500),
     ))
     .unwrap();
-    cart.add_line(oz_core::CartLine::new(
-        oz_core::Sku::new("FRIES"),
+    cart.add_line(kasirmu_core::CartLine::new(
+        kasirmu_core::Sku::new("FRIES"),
         1,
         usd_price(300),
     ))
     .unwrap();
-    let sale = oz_core::Sale::from_cart(&cart).unwrap();
+    let sale = kasirmu_core::Sale::from_cart(&cart).unwrap();
     s.create_sale(&sale).unwrap();
 
     let order = s
@@ -1469,14 +1469,14 @@ fn seed_zoned_ticket(app: &TestBridge) -> KdsOrder {
     s.create_kds_line_items(
         &order.id,
         &[
-            oz_core::CreateKdsLineItemInput {
+            kasirmu_core::CreateKdsLineItemInput {
                 sku: "BURGER".into(),
                 display_name: "Burger".into(),
                 qty: 1,
                 course: Some("main".into()),
                 modifiers: vec![],
             },
-            oz_core::CreateKdsLineItemInput {
+            kasirmu_core::CreateKdsLineItemInput {
                 sku: "FRIES".into(),
                 display_name: "Fries".into(),
                 qty: 1,
@@ -1489,7 +1489,7 @@ fn seed_zoned_ticket(app: &TestBridge) -> KdsOrder {
     order
 }
 
-fn usd() -> oz_core::Currency {
+fn usd() -> kasirmu_core::Currency {
     "USD".parse().unwrap()
 }
 
@@ -1502,7 +1502,7 @@ fn usd_price(minor: i64) -> Money {
 
 #[tokio::test]
 async fn routing_station_claim_sends_each_line_to_its_zone_device() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state_with_restaurant(
         conn,
@@ -1549,7 +1549,7 @@ async fn routing_station_claim_sends_each_line_to_its_zone_device() {
 
 #[tokio::test]
 async fn routing_catch_all_when_no_device_claims_a_station() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state_with_restaurant(
         conn,
@@ -1590,7 +1590,7 @@ async fn routing_catch_all_when_no_device_claims_a_station() {
 
 #[tokio::test]
 async fn routing_restaurant_pos_session_falls_back_to_terminal_id() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     // NO restaurant_pos_id: the command must fall back to terminal_id and
     // find devices registered to "terminal-1" (scoped_state's terminal).
@@ -1642,7 +1642,7 @@ async fn routing_restaurant_pos_session_falls_back_to_terminal_id() {
 
 #[tokio::test]
 async fn routing_unknown_order_fails_with_invalid() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 

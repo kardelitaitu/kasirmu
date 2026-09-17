@@ -23,7 +23,7 @@ use tauri::State;
 // Retained for the sibling test module, which reaches this through
 // `use super::*`; the command bodies no longer name it.
 #[allow(unused_imports)]
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 
 use modules_currency::commands::{CreateExchangeRateArgs, ExchangeRateDto};
 

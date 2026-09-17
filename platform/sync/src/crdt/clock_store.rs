@@ -12,8 +12,8 @@ mutation before mutations it has already seen.
 next: callers should tick the daemon's mutation path | perf: N/A
 */
 
-use oz_core::Store;
-use oz_core::error::CoreError;
+use kasirmu_core::Store;
+use kasirmu_core::error::CoreError;
 use rusqlite::{Connection, Transaction};
 
 use super::lamport::{Counter, LamportClock};

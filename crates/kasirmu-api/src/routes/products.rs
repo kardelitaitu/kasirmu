@@ -19,8 +19,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use oz_core::db::Store;
-use oz_core::{CoreError, ProductWithDetails};
+use kasirmu_core::db::Store;
+use kasirmu_core::{CoreError, ProductWithDetails};
 
 use crate::AppState;
 use crate::auth::ApiTokenClaims;
@@ -80,7 +80,7 @@ pub struct CreateProductRequest {
     /// Product display name.
     pub name: String,
     /// Base unit price.
-    pub price: oz_core::Money,
+    pub price: kasirmu_core::Money,
     /// Optional category ID.
     pub category_id: Option<String>,
     /// Optional barcode string.
@@ -273,14 +273,14 @@ pub async fn create_product(
     // carries the tenant_subscription row (mirrored by the generated PG
     // schema), so the effective tier resolves here directly. An unknown
     // or tampered subscription fails closed at the Free cap.
-    let tier = oz_core::TenantSubscription::load(&db, tenant_id)
+    let tier = kasirmu_core::TenantSubscription::load(&db, tenant_id)
         .ok()
         .flatten()
         .map(|sub| match sub.verify_signature() {
             Ok(()) => sub.effective_tier(),
-            Err(_) => oz_core::SubscriptionTier::Free,
+            Err(_) => kasirmu_core::SubscriptionTier::Free,
         })
-        .unwrap_or(oz_core::SubscriptionTier::Free);
+        .unwrap_or(kasirmu_core::SubscriptionTier::Free);
     if let Err(e) = store.enforce_product_quota(&tier) {
         // 402 Payment Required — the resource exists; the tier does not
         // cover it. Matches the SubscriptionLimitExceeded messaging the

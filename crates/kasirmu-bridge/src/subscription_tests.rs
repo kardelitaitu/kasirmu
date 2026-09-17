@@ -3,9 +3,9 @@ use super::*;
 use crate::testing::{
     FAIL_CLOSED_GATES_LOCKED, FAIL_CLOSED_STATE, FAIL_CLOSED_TIER, seeded_row_loads,
 };
-use oz_core::availability::AvailabilityReason;
-use oz_core::migrations;
-use oz_core::subscription::TenantSubscription;
+use kasirmu_core::availability::AvailabilityReason;
+use kasirmu_core::migrations;
+use kasirmu_core::subscription::TenantSubscription;
 
 fn fresh_db() -> rusqlite::Connection {
     migrations::fresh_db()
@@ -436,7 +436,7 @@ fn capabilities_reflect_server_status_refresh() {
     }
 
     // Refresh status from server (e.g. check_license_status response)
-    oz_core::license_verification::refresh_subscription_status_from_server(
+    kasirmu_core::license_verification::refresh_subscription_status_from_server(
         &conn,
         "default",
         "active",
@@ -469,7 +469,7 @@ fn capabilities_reflect_server_status_refresh() {
     }
 
     // Now simulate cancellation from server
-    oz_core::license_verification::refresh_subscription_status_from_server(
+    kasirmu_core::license_verification::refresh_subscription_status_from_server(
         &conn,
         "default",
         "canceled",
@@ -768,7 +768,7 @@ fn over_quota_report_assesses_the_effective_tier() {
     // Locations: the seeded primary location sits at the Free cap (1) —
     // at-cap-not-over, the §J "compliant but blocks creation" distinction.
     let locations = report
-        .usage(oz_core::downgrade::QuotaDimension::Locations)
+        .usage(kasirmu_core::downgrade::QuotaDimension::Locations)
         .unwrap();
     assert_eq!(locations.limit, Some(1));
     assert_eq!(locations.current, 1);
@@ -803,11 +803,11 @@ fn over_quota_report_names_dimensions_and_excess_after_downgrade() {
         "3 locations / 3 staff / 3 terminals on Free must report over"
     );
     let locations = report
-        .usage(oz_core::downgrade::QuotaDimension::Locations)
+        .usage(kasirmu_core::downgrade::QuotaDimension::Locations)
         .unwrap();
     assert_eq!(locations.excess(), 2);
     let staff = report
-        .usage(oz_core::downgrade::QuotaDimension::Staff)
+        .usage(kasirmu_core::downgrade::QuotaDimension::Staff)
         .unwrap();
     assert_eq!(
         staff.excess(),
@@ -815,7 +815,7 @@ fn over_quota_report_names_dimensions_and_excess_after_downgrade() {
         "2 staff on the Free cap of 1 -> excess 1"
     );
     let terminals = report
-        .usage(oz_core::downgrade::QuotaDimension::PosRegisters)
+        .usage(kasirmu_core::downgrade::QuotaDimension::PosRegisters)
         .unwrap();
     assert_eq!(
         terminals.excess(),
@@ -1073,7 +1073,7 @@ fn verdict_absent_features_block_leaves_the_tier_answer() {
 // ── §J B3: per-location quota rows ───────────────────────────────────
 
 fn b3_manager() -> StoreDatabaseManager {
-    StoreDatabaseManager::new(std::env::temp_dir(), oz_core::migrations::ALL)
+    StoreDatabaseManager::new(std::env::temp_dir(), kasirmu_core::migrations::ALL)
 }
 
 /// A store id unique to this process and test, because `b3_manager` writes into
@@ -1118,7 +1118,7 @@ fn per_location_rows_emit_at_cap_and_omit_zero_counts() {
         let db = conn.lock().unwrap();
         let store = Store::new(&db);
         store
-            .create_location_profile(&oz_core::LocationProfile {
+            .create_location_profile(&kasirmu_core::LocationProfile {
                 id: sid.clone(),
                 name: "Pro Store".into(),
                 address: String::new(),

@@ -12,14 +12,14 @@
 #![allow(deprecated)]
 
 use super::*;
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 
 use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
 /// The release leg for a scoped command this file drives through the
 //-- The release leg for these locations lives in crate::testing (RULE at assert_refused_by_the_seeded_row) --
-use oz_core::migrations;
-use oz_core::session::SessionContext;
+use kasirmu_core::migrations;
+use kasirmu_core::session::SessionContext;
 use serde_json::json;
 
 use crate::testing::TestBridge;

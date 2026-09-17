@@ -1,6 +1,6 @@
 //! Database lifecycle commands — open, migrate, and first-run seeding.
 //!
-//! `run_migrate` applies pending `oz_core` migrations; `run_init_db`
+//! `run_migrate` applies pending `kasirmu_core` migrations; `run_init_db`
 //! seeds default settings, a feature preset, ISO-4217 currencies,
 //! default roles, and the admin user (with a real argon2 hash of the
 //! documented default PIN — CLI-2).
@@ -8,15 +8,15 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 
-use oz_core::db::Store;
-use oz_core::{FeatureRegistry, Settings};
+use kasirmu_core::db::Store;
+use kasirmu_core::{FeatureRegistry, Settings};
 
 use crate::cli::InitDbArgs;
 
 /// Apply pending database migrations.
 pub(crate) fn run_migrate(mut conn: Connection) -> Result<()> {
     eprintln!("applying migrations...");
-    oz_core::migrations::run(&mut conn).context("applying migrations")?;
+    kasirmu_core::migrations::run(&mut conn).context("applying migrations")?;
     eprintln!("migrations up to date");
     Ok(())
 }
@@ -30,7 +30,7 @@ pub(crate) fn run_init_db(conn: &Connection, args: &InitDbArgs) -> Result<()> {
     // --- Default settings ---
     Settings::set_store_name(conn, "My Store").context("setting store name")?;
     Settings::set_default_currency(conn, "USD").context("setting default currency")?;
-    Settings::set(conn, oz_core::settings::keys::SETUP_COMPLETE, "true")
+    Settings::set(conn, kasirmu_core::settings::keys::SETUP_COMPLETE, "true")
         .context("marking setup complete")?;
 
     // --- Feature preset ---
@@ -118,7 +118,7 @@ pub(crate) fn run_init_db(conn: &Connection, args: &InitDbArgs) -> Result<()> {
     // operator is told to change the PIN immediately (hashing takes ~100ms
     // — acceptable one-time init cost).
     let default_admin_pin = "1234";
-    let admin_pin_hash = oz_core::auth::hash_pin(default_admin_pin)
+    let admin_pin_hash = kasirmu_core::auth::hash_pin(default_admin_pin)
         .map_err(|e| anyhow::anyhow!("hashing default admin PIN: {e}"))?;
     conn.execute(
         "INSERT OR IGNORE INTO users (id, username, pin_hash, display_name, role_id) VALUES (?1, ?2, ?3, ?4, ?5)",

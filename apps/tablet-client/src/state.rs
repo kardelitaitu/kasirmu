@@ -35,9 +35,9 @@ use tauri::AppHandle;
 use tauri::Manager;
 use tokio::sync::{Mutex, oneshot};
 
-use oz_core::cache::{Cache, create_cache};
-use oz_core::migrations;
-use oz_core::session::SessionContext;
+use kasirmu_core::cache::{Cache, create_cache};
+use kasirmu_core::migrations;
+use kasirmu_core::session::SessionContext;
 use kasirmu_hal::DriverRegistry;
 use kasirmu_plugin::PluginManager;
 use platform_core::StoreDatabaseManager;
@@ -184,7 +184,7 @@ impl AppState {
         // the operator reconciles it instead of silently mixing tenants.
         // Two indexed COUNTs (`idx_products_tenant` / `idx_users_tenant`)
         // — cheap enough to run at every startup.
-        oz_core::db::Store::new(&conn)
+        kasirmu_core::db::Store::new(&conn)
             .check_tenant_integrity()
             .map_err(|e| AppError::Internal(format!("tenant integrity check: {e}")))?;
 
@@ -194,7 +194,7 @@ impl AppState {
         // come from sale_lines, edit events were seeded by migration 134,
         // search events accumulate from launch). Local-only analytics — a
         // failure must not block startup.
-        if let Err(e) = oz_core::db::Store::new(&conn).recompute_all_popularity() {
+        if let Err(e) = kasirmu_core::db::Store::new(&conn).recompute_all_popularity() {
             tracing::warn!(
                 error = %e,
                 "popularity full pass failed; product popularity sort falls back"
@@ -203,7 +203,7 @@ impl AppState {
 
         // ── Session TTL ──────────────────────────────────────────────
         // Read from settings; default 24h. 0 or missing = no expiry.
-        let session_ttl_seconds: i64 = oz_core::Settings::get(&conn, "session.ttl_seconds")
+        let session_ttl_seconds: i64 = kasirmu_core::Settings::get(&conn, "session.ttl_seconds")
             .ok()
             .flatten()
             .and_then(|s| s.parse::<i64>().ok())
@@ -213,7 +213,7 @@ impl AppState {
             .parent()
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."));
-        let db_manager = StoreDatabaseManager::new(data_dir, oz_core::migrations::ALL);
+        let db_manager = StoreDatabaseManager::new(data_dir, kasirmu_core::migrations::ALL);
         let registry = Arc::new(DriverRegistry::default());
 
         tracing::info!(?db_path, "AppState initialised");
@@ -528,7 +528,7 @@ impl AppState {
             cache: create_cache("", 300),
             plugins: Mutex::new(None),
             topology_apply_lock: Mutex::new(()),
-            db_manager: StoreDatabaseManager::new(std::env::temp_dir(), oz_core::migrations::ALL),
+            db_manager: StoreDatabaseManager::new(std::env::temp_dir(), kasirmu_core::migrations::ALL),
             picker_ticket_secret: b"test-picker-ticket-secret".to_vec(),
         }
     }
@@ -549,7 +549,7 @@ impl AppState {
             cache: create_cache("", 300),
             plugins: Mutex::new(None),
             topology_apply_lock: Mutex::new(()),
-            db_manager: StoreDatabaseManager::new(std::env::temp_dir(), oz_core::migrations::ALL),
+            db_manager: StoreDatabaseManager::new(std::env::temp_dir(), kasirmu_core::migrations::ALL),
             picker_ticket_secret: b"test-picker-ticket-secret".to_vec(),
         }
     }

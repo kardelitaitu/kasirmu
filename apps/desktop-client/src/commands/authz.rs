@@ -10,10 +10,10 @@ next: none | perf: one indexed user lookup + role fetch per gate — fine
 //! has the required permission: it looks up the user's actual role from
 //! the database, preventing role‑ID forgery.
 
-use oz_core::CoreError;
-use oz_core::db::Store;
-use oz_core::db::assignments::ScopeType;
-use oz_core::session::SessionContext;
+use kasirmu_core::CoreError;
+use kasirmu_core::db::Store;
+use kasirmu_core::db::assignments::ScopeType;
+use kasirmu_core::session::SessionContext;
 
 use crate::error::AppError;
 use crate::state::AppState;

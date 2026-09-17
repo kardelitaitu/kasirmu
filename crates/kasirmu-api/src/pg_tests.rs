@@ -114,7 +114,7 @@ async fn test_pool(url: &str) -> Option<deadpool_postgres::Pool> {
                      SELECT pg_advisory_lock({SCHEMA_LOCK_KEY});"
                 ))
                 .await;
-            let apply = client.batch_execute(oz_core::migrations::PG_INIT).await;
+            let apply = client.batch_execute(kasirmu_core::migrations::PG_INIT).await;
             let _ = client
                 .batch_execute(&format!("SELECT pg_advisory_unlock({SCHEMA_LOCK_KEY});"))
                 .await;
@@ -379,7 +379,7 @@ async fn pg_integration_rest_roundtrip() {
     );
 
     // ── Sales: create (with lines), get, transition ──
-    let sale = Sale::from_cart(&oz_core::Cart::new(currency)).expect("from_cart");
+    let sale = Sale::from_cart(&kasirmu_core::Cart::new(currency)).expect("from_cart");
     // Hand-build a single-line sale so the ledger row is well-formed.
     let line_id = unique_id("pg-line");
     let mut sale = sale;
@@ -730,7 +730,7 @@ async fn pg_integration_rest_rls_non_owner() {
     );
 
     // Sales round trip as the restricted role (single-line sale).
-    let mut sale = Sale::from_cart(&oz_core::Cart::new(currency)).expect("from_cart");
+    let mut sale = Sale::from_cart(&kasirmu_core::Cart::new(currency)).expect("from_cart");
     sale.line_count = 1;
     sale.total = Money {
         minor_units: 700,
@@ -1001,7 +1001,7 @@ async fn pg_integration_concurrent_sale_status_transition() {
     };
 
     let currency: Currency = "USD".parse().unwrap();
-    let mut sale = Sale::from_cart(&oz_core::Cart::new(currency)).expect("from_cart");
+    let mut sale = Sale::from_cart(&kasirmu_core::Cart::new(currency)).expect("from_cart");
     sale.line_count = 0;
     sale.total = Money {
         minor_units: 0,

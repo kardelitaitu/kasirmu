@@ -3,16 +3,16 @@
 
 //! Resolution is read-only over the store DB and emits nothing: the caller (the
 //! Restaurant POS) pushes to the returned device ids itself, so this module has
-//! no event-sink use. The pure 3-phase router stays in `oz_core::kds`.
+//! no event-sink use. The pure 3-phase router stays in `kasirmu_core::kds`.
 //! Routing rules (`kds_routing_rules`, todo-kds-agents-1) compose ON TOP of the
 //! zone router per line; `get`/`save` manage the per-restaurant rule sets.
 
 use std::collections::HashMap;
 
-use oz_core::db::Store;
-use oz_core::kds::{KdsDevice, KdsRoutingRule, KdsRoutingRuleInput, KdsRuleMatcher};
-use oz_core::permissions;
-use oz_core::session::SessionContext;
+use kasirmu_core::db::Store;
+use kasirmu_core::kds::{KdsDevice, KdsRoutingRule, KdsRoutingRuleInput, KdsRuleMatcher};
+use kasirmu_core::permissions;
+use kasirmu_core::session::SessionContext;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -38,7 +38,7 @@ fn session_restaurant_pos_id(session: &SessionContext) -> &str {
 /// station for the lines they match — highest-ranked active rule wins per
 /// line — and everything else falls back to the product `kitchen_zone`.
 /// An empty rule set leaves routing identical to the frozen 3-phase
-/// algorithm of `oz_core::kds::resolve_kds_targets`:
+/// algorithm of `kasirmu_core::kds::resolve_kds_targets`:
 /// 1. Station-based targeting — match line item → (rule station | zone) -> device
 /// 2. Broadcast fallback — devices with empty station_ids get everything
 /// 3. Catch-all — if any station has no claiming device, broadcast to all
@@ -115,7 +115,7 @@ pub async fn resolve_kds_targets(
     }
 
     // Use the pure routing function with the real lookups.
-    let targets = oz_core::kds::resolve_kds_targets_with_rules(
+    let targets = kasirmu_core::kds::resolve_kds_targets_with_rules(
         &line_items,
         &active_devices,
         &rules,

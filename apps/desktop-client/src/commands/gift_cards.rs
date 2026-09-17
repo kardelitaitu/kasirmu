@@ -19,7 +19,7 @@
 
 use tauri::State;
 
-use oz_core::gift_card::{
+use kasirmu_core::gift_card::{
     GiftCard, GiftCardFilter, GiftCardWithTransactions, IssueGiftCardInput, RedeemGiftCardResult,
 };
 

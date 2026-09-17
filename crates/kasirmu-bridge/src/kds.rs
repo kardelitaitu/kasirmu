@@ -11,9 +11,9 @@
 
 use std::sync::Arc;
 
-use oz_core::KdsOrder;
-use oz_core::db::Store;
-use oz_core::permissions;
+use kasirmu_core::KdsOrder;
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
 use serde_json::Value;
 
 use crate::ctx::{BridgeCtx, EventSink};
@@ -65,7 +65,7 @@ pub fn resolve_runtime_kds_plan(
     store_id: &str,
 ) -> Result<Option<Value>, BridgeError> {
     let key = format!("{TOPOLOGY_RUNTIME_SETTING_KEY}/{store_id}");
-    let Some(json) = oz_core::Settings::get(conn, &key)? else {
+    let Some(json) = kasirmu_core::Settings::get(conn, &key)? else {
         return Ok(None);
     };
     let plan: Value = serde_json::from_str(&json)
@@ -357,7 +357,7 @@ pub async fn get_kds_queue_scoped(
 pub async fn update_kds_order_items_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
-    args: oz_core::UpdateKdsOrderItemsInput,
+    args: kasirmu_core::UpdateKdsOrderItemsInput,
 ) -> Result<KdsOrder, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, permissions::KDS_UPDATE)
@@ -584,7 +584,7 @@ pub async fn get_kds_order_lines_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
     order_id: &str,
-) -> Result<Vec<oz_core::KdsLineItem>, BridgeError> {
+) -> Result<Vec<kasirmu_core::KdsLineItem>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, permissions::KDS_VIEW)
         .await?;
@@ -616,7 +616,7 @@ pub async fn update_kds_line_item_status_scoped(
     session_token: &str,
     item_id: &str,
     status: &str,
-) -> Result<oz_core::KdsLineItem, BridgeError> {
+) -> Result<kasirmu_core::KdsLineItem, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, permissions::KDS_UPDATE)
         .await?;

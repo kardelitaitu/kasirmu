@@ -542,7 +542,7 @@ pub(super) fn build_base_paths() -> Value {
             "get": {
                 "tags": ["Memos"],
                 "summary": "List the memos a terminal should currently display",
-                "description": "The terminal's active memos (status 'published', not expired, addressed to the terminal via its recipient rows), Location-stacked above Organization, newest-published first, with the server-issued poll cadence (base interval and the KDS 2× derivative from oz_core::memo — one source of truth). Tenant comes from the JWT claims; when the token is terminal-scoped the query's terminal_id must equal the claim (403 terminal_mismatch otherwise). The wire is snake_case, mirroring the desktop IPC DTO's fields. Requires JWT auth.",
+                "description": "The terminal's active memos (status 'published', not expired, addressed to the terminal via its recipient rows), Location-stacked above Organization, newest-published first, with the server-issued poll cadence (base interval and the KDS 2× derivative from kasirmu_core::memo — one source of truth). Tenant comes from the JWT claims; when the token is terminal-scoped the query's terminal_id must equal the claim (403 terminal_mismatch otherwise). The wire is snake_case, mirroring the desktop IPC DTO's fields. Requires JWT auth.",
                 "operationId": "listActiveMemos",
                 "security": [{ "bearerAuth": [] }],
                 "parameters": [

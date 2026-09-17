@@ -1,6 +1,6 @@
 use super::*;
 use crate::testing::TestBridge;
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 
 // ── Existing deserialization tests (preserved) ────────────────────
 
@@ -162,7 +162,7 @@ fn make_promo_args(name: &str) -> CreatePromotionArgs {
 
 #[tokio::test]
 async fn scoped_list_promotions_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let bridge = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
 
     let result = list_promotions_scoped(&bridge.ctx(), "bad-token").await;
@@ -173,7 +173,7 @@ async fn scoped_list_promotions_rejects_invalid_token() {
 
 #[tokio::test]
 async fn owner_can_create_promotion() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -186,7 +186,7 @@ async fn owner_can_create_promotion() {
 
 #[tokio::test]
 async fn owner_can_list_promotions() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -205,7 +205,7 @@ async fn owner_can_list_promotions() {
 
 #[tokio::test]
 async fn owner_can_get_promotion_by_id() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -219,7 +219,7 @@ async fn owner_can_get_promotion_by_id() {
 
 #[tokio::test]
 async fn owner_can_update_promotion() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -234,7 +234,7 @@ async fn owner_can_update_promotion() {
 
 #[tokio::test]
 async fn owner_can_delete_promotion() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -254,7 +254,7 @@ async fn owner_can_delete_promotion() {
 
 #[tokio::test]
 async fn staff_denied_create_promotion() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_staff(&conn);
     let bridge = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
 
@@ -267,7 +267,7 @@ async fn staff_denied_create_promotion() {
 async fn staff_can_list_promotions() {
     // list_promotions_scoped has no permission gate — it's a read-only
     // endpoint that only requires a valid session.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let bridge = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
@@ -282,7 +282,7 @@ async fn staff_can_list_promotions() {
 
 #[tokio::test]
 async fn staff_denied_delete_promotion() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let bridge = scoped_state(conn, "owner-tok", "user-owner", "role-owner", "s1");
@@ -308,7 +308,7 @@ async fn staff_denied_delete_promotion() {
 
 #[tokio::test]
 async fn list_promotions_empty_when_none() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -318,7 +318,7 @@ async fn list_promotions_empty_when_none() {
 
 #[tokio::test]
 async fn get_promotion_returns_none_for_unknown() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
 

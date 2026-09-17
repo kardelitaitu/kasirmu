@@ -12,8 +12,8 @@ use super::*;
 use rusqlite::Connection;
 use serde_json::Value;
 
-use oz_core::migrations;
-use oz_core::topology::TOPOLOGY_CONTRACT_SCHEMA_VERSION;
+use kasirmu_core::migrations;
+use kasirmu_core::topology::TOPOLOGY_CONTRACT_SCHEMA_VERSION;
 use tempfile::tempdir;
 
 use crate::error::BridgeError;
@@ -132,7 +132,7 @@ fn revision_aware_save_increments_and_rejects_stale_writer() {
     assert!(
         matches!(second, Err(BridgeError::TopologyValidation { code, .. }) if code == "topology-revision-conflict")
     );
-    let raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let value: Value = serde_json::from_str(&raw).unwrap();
@@ -196,7 +196,7 @@ fn in_flight_peer_writer_is_not_silently_overwritten() {
         "id": "b-1", "type": "store", "name": "B", "x": 0.0, "y": 0.0
     })];
     let b_envelope = topology_envelope_json(&b_nodes, &[], 1, &[]).unwrap();
-    oz_core::Settings::set(&tx_b, TOPOLOGY_SETTING_KEY, &b_envelope).unwrap();
+    kasirmu_core::Settings::set(&tx_b, TOPOLOGY_SETTING_KEY, &b_envelope).unwrap();
     tx_b.commit().unwrap();
 
     let a = a_handle.join().expect("writer A panicked");
@@ -298,7 +298,7 @@ fn backend_warehouse_quota_allows_two_plus_warehouses() {
         serde_json::json!({ "id": "wh-1", "type": "warehouse" }),
         serde_json::json!({ "id": "wh-2", "type": "warehouse" }),
     ];
-    let result = validate_warehouse_quota(&nodes, &oz_core::subscription::SubscriptionTier::Plus);
+    let result = validate_warehouse_quota(&nodes, &kasirmu_core::subscription::SubscriptionTier::Plus);
     assert!(result.is_ok());
 }
 
@@ -309,7 +309,7 @@ fn backend_warehouse_quota_rejects_multiple_free_warehouses() {
         serde_json::json!({ "id": "wh-1", "type": "warehouse" }),
         serde_json::json!({ "id": "wh-2", "type": "warehouse" }),
     ];
-    let result = validate_warehouse_quota(&nodes, &oz_core::subscription::SubscriptionTier::Free);
+    let result = validate_warehouse_quota(&nodes, &kasirmu_core::subscription::SubscriptionTier::Free);
     assert!(
         matches!(result, Err(BridgeError::PermissionDenied(message)) if message.contains("limit 1"))
     );
@@ -326,7 +326,7 @@ fn backend_warehouse_capacity_requires_operational_route_or_dismissal() {
     let result = validate_warehouse_capacity(
         &nodes,
         &[],
-        &oz_core::subscription::SubscriptionTier::Pro,
+        &kasirmu_core::subscription::SubscriptionTier::Pro,
         &[],
     );
     assert!(
@@ -337,7 +337,7 @@ fn backend_warehouse_capacity_requires_operational_route_or_dismissal() {
     let dismissed = validate_warehouse_capacity(
         &nodes,
         &[],
-        &oz_core::subscription::SubscriptionTier::Pro,
+        &kasirmu_core::subscription::SubscriptionTier::Pro,
         &[issue_key],
     );
     assert!(dismissed.is_ok());
@@ -359,7 +359,7 @@ fn backend_warehouse_capacity_rejects_stock_routing_into_full_pro_room() {
     let result = validate_warehouse_capacity(
         &nodes,
         &wires,
-        &oz_core::subscription::SubscriptionTier::Pro,
+        &kasirmu_core::subscription::SubscriptionTier::Pro,
         &[],
     );
     assert!(

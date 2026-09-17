@@ -20,7 +20,7 @@
 //! ```
 
 use foundation::{Currency, Money};
-use oz_core::PaymentSplitArg;
+use kasirmu_core::PaymentSplitArg;
 use kasirmu_payment::PaymentProcessor;
 use kasirmu_payment::drivers::stripe::StripePaymentProcessor;
 use kasirmu_payment::types::{PaymentMethod, PaymentRequest};

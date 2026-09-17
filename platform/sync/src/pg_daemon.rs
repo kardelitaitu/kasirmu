@@ -18,10 +18,10 @@ use std::time::Duration;
 use serde::Serialize;
 use tokio::sync::{Mutex, Notify, RwLock, watch};
 
-use oz_core::db::Store;
-use oz_core::events::SettingsUpdated;
-use oz_core::offline::OfflineQueueItem;
-use oz_core::settings::Settings;
+use kasirmu_core::db::Store;
+use kasirmu_core::events::SettingsUpdated;
+use kasirmu_core::offline::OfflineQueueItem;
+use kasirmu_core::settings::Settings;
 
 use crate::daemon::SettingsChangedSink;
 use crate::pg_transport::PgTransport;

@@ -1,6 +1,6 @@
 use super::*;
-use oz_core::OfflineQueueStatus;
-use oz_core::migrations;
+use kasirmu_core::OfflineQueueStatus;
+use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {

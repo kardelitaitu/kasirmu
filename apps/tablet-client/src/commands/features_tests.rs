@@ -1,5 +1,5 @@
 use super::*;
-use oz_core::features::feature_key;
+use kasirmu_core::features::feature_key;
 
 #[test]
 fn feature_dto_debug_output() {

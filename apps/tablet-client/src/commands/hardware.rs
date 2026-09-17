@@ -11,7 +11,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State, command};
 
-use oz_core::{Currency, Money, Settings};
+use kasirmu_core::{Currency, Money, Settings};
 use kasirmu_hal::DisplayContent;
 use kasirmu_hal::drivers::receipt;
 use kasirmu_hal::transport::usb::{UsbDeviceInfo, probe_all};
@@ -356,7 +356,7 @@ pub async fn list_scanners_scoped(
     let ids = state.registry.scanner_ids().await;
     let preferred = {
         let conn = state.db.lock().await;
-        oz_core::Settings::get_scanner_device_id(&conn).unwrap_or_default()
+        kasirmu_core::Settings::get_scanner_device_id(&conn).unwrap_or_default()
     }; // guard dropped: Connection is !Send
     Ok(prefer_first(
         ids.into_iter().map(|id| ScannerInfo { id }).collect(),

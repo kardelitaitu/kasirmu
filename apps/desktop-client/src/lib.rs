@@ -173,7 +173,7 @@ pub fn run() {
                     .unwrap_or_else(|| "unknown".to_string());
                 let (profile, terminals) = {
                     let conn = state.db.lock().await;
-                    let store = oz_core::db::Store::new(&conn);
+                    let store = kasirmu_core::db::Store::new(&conn);
                     (
                         platform_startup::hardware::load_profile(&conn, &terminal_id, &base_dir),
                         store.list_active_edc_terminals().unwrap_or_else(|e| {
@@ -386,7 +386,7 @@ pub fn run() {
                                 tracing::warn!(store_id, "kds health: store db lock poisoned");
                                 continue;
                             };
-                            let store = oz_core::db::Store::new(&db);
+                            let store = kasirmu_core::db::Store::new(&db);
                             // 1. Mark stale devices (no ping in 30s).
                             if let Err(e) = store.mark_stale_kds_devices(30) {
                                 tracing::warn!(error = %e, store_id, "kds health: mark_stale failed");
@@ -437,7 +437,7 @@ pub fn run() {
                         // await below.
                         let push_state = {
                             let conn = db.lock().await;
-                            let store = oz_core::db::Store::new(&conn);
+                            let store = kasirmu_core::db::Store::new(&conn);
                             match store.sweep_all_expired(&now) {
                                 Ok(n) if n > 0 => {
                                     tracing::info!("memo expiry sweep: expired {n} memo(s)")
@@ -456,7 +456,7 @@ pub fn run() {
                             }
                             match store.sweep_expired_archives(
                                 &now,
-                                oz_core::memo::RETENTION_WINDOW_DAYS,
+                                kasirmu_core::memo::RETENTION_WINDOW_DAYS,
                             ) {
                                 Ok(n) if n > 0 => tracing::info!(
                                     "memo retention sweep: deleted {n} archived memo(s)"
@@ -472,7 +472,7 @@ pub fn run() {
                             // omission, so a previously failed push
                             // self-corrects on this tick. Best-effort: a
                             // failure only logs; the next tick re-pushes.
-                            match oz_core::sync_client::SyncConfig::from_settings(&store) {
+                            match kasirmu_core::sync_client::SyncConfig::from_settings(&store) {
                                 Ok(Some(config)) => match store.collect_memo_sync_snapshot() {
                                     Ok(snapshot) => Some((config, snapshot)),
                                     Err(e) => {
@@ -490,7 +490,7 @@ pub fn run() {
                         // Phase 2 — HTTP push, no lock or borrow held.
                         if let Some((config, snapshot)) = push_state {
                             let ack =
-                                oz_core::sync_client::push_memos_to_server(&config, &snapshot)
+                                kasirmu_core::sync_client::push_memos_to_server(&config, &snapshot)
                                     .await;
                             match ack {
                                 Ok(ack) if ack.upserted > 0 || ack.deleted > 0 => {
@@ -594,10 +594,10 @@ pub fn run() {
                         // promotion must never widen a purge.
                         let tier = {
                             let conn = db.lock().await;
-                            let store = oz_core::db::Store::new(&conn);
-                            let ent = oz_core::entitlements::build_entitlements(
+                            let store = kasirmu_core::db::Store::new(&conn);
+                            let ent = kasirmu_core::entitlements::build_entitlements(
                                 &store,
-                                oz_core::availability::UsageCounts::default(),
+                                kasirmu_core::availability::UsageCounts::default(),
                                 false,
                             );
                             if !ent.loaded {
@@ -615,7 +615,7 @@ pub fn run() {
                         // Global DB first…
                         {
                             let conn = db.lock().await;
-                            let store = oz_core::db::Store::new(&conn);
+                            let store = kasirmu_core::db::Store::new(&conn);
                             match store.sweep_audit_retention(&tier, &now) {
                                 Ok(n) if n > 0 => tracing::info!(
                                     "audit retention sweep (global): deleted {n} expired audit row(s) (tier: {})",
@@ -640,7 +640,7 @@ pub fn run() {
                                 tracing::warn!(store_id, "audit retention sweep: store db lock poisoned");
                                 continue;
                             };
-                            let store = oz_core::db::Store::new(&db);
+                            let store = kasirmu_core::db::Store::new(&db);
                             match store.sweep_audit_retention(&tier, &now) {
                                 Ok(n) if n > 0 => tracing::info!(
                                     store_id,
@@ -665,7 +665,7 @@ pub fn run() {
             let (lan_bind_addr, lan_psk) = {
                 let state = app.state::<AppState>();
                 let db = state.db.blocking_lock();
-                let bind = oz_core::Settings::get(&db, "lan_server.bind")
+                let bind = kasirmu_core::Settings::get(&db, "lan_server.bind")
                     .unwrap_or(None)
                     .unwrap_or_else(|| "127.0.0.1".to_string());
                 // Read through the TYPED getter, not a raw Settings::get.

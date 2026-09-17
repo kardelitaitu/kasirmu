@@ -14,7 +14,7 @@
 
 use tauri::{State, command};
 
-use oz_core::product_bundle::BundleWithItems;
+use kasirmu_core::product_bundle::BundleWithItems;
 
 use crate::error::AppError;
 use crate::state::AppState;

@@ -1,5 +1,5 @@
 use super::*;
-use oz_core::{Store, migrations};
+use kasirmu_core::{Store, migrations};
 use rusqlite::Connection;
 
 /// Create a fresh in-memory connection with migrations applied.
@@ -62,12 +62,12 @@ fn complete_setup_persists_features() {
     .unwrap();
 
     // Verify setup is marked complete.
-    let completed = Settings::get(&conn, oz_core::settings::keys::SETUP_COMPLETE)
+    let completed = Settings::get(&conn, kasirmu_core::settings::keys::SETUP_COMPLETE)
         .unwrap()
         .unwrap();
     assert_eq!(completed, "1");
 
-    let preset = Settings::get(&conn, oz_core::settings::keys::STORE_PRESET)
+    let preset = Settings::get(&conn, kasirmu_core::settings::keys::STORE_PRESET)
         .unwrap()
         .unwrap();
     assert_eq!(preset, "simple-retail");
@@ -77,10 +77,10 @@ fn complete_setup_persists_features() {
 fn get_setup_status_defaults_to_not_completed() {
     let conn = fresh_conn();
 
-    let completed = Settings::get(&conn, oz_core::settings::keys::SETUP_COMPLETE).unwrap();
+    let completed = Settings::get(&conn, kasirmu_core::settings::keys::SETUP_COMPLETE).unwrap();
     assert_eq!(completed, None);
 
-    let preset = Settings::get(&conn, oz_core::settings::keys::STORE_PRESET).unwrap();
+    let preset = Settings::get(&conn, kasirmu_core::settings::keys::STORE_PRESET).unwrap();
     assert_eq!(preset, None);
 }
 
@@ -96,7 +96,7 @@ fn complete_setup_skips_unknown_features() {
     .unwrap();
 
     // Should still succeed.
-    let completed = Settings::get(&conn, oz_core::settings::keys::SETUP_COMPLETE)
+    let completed = Settings::get(&conn, kasirmu_core::settings::keys::SETUP_COMPLETE)
         .unwrap()
         .unwrap();
     assert_eq!(completed, "1");
@@ -104,8 +104,8 @@ fn complete_setup_skips_unknown_features() {
     // Only cash-payment should be enabled.
     let store = Store::new(&conn);
     let loaded = store.load_features().unwrap();
-    assert!(loaded.is_enabled(oz_core::Feature::CashPayment));
-    assert!(!loaded.is_enabled(oz_core::Feature::BarcodeScanning));
+    assert!(loaded.is_enabled(kasirmu_core::Feature::CashPayment));
+    assert!(!loaded.is_enabled(kasirmu_core::Feature::BarcodeScanning));
 }
 
 #[test]
@@ -114,12 +114,12 @@ fn complete_setup_empty_features() {
 
     run_complete_setup(&conn, "empty-store", &[]).unwrap();
 
-    let completed = Settings::get(&conn, oz_core::settings::keys::SETUP_COMPLETE)
+    let completed = Settings::get(&conn, kasirmu_core::settings::keys::SETUP_COMPLETE)
         .unwrap()
         .unwrap();
     assert_eq!(completed, "1");
 
-    let preset = Settings::get(&conn, oz_core::settings::keys::STORE_PRESET)
+    let preset = Settings::get(&conn, kasirmu_core::settings::keys::STORE_PRESET)
         .unwrap()
         .unwrap();
     assert_eq!(preset, "empty-store");
@@ -153,12 +153,12 @@ fn complete_setup_with_different_presets() {
     )
     .unwrap();
 
-    let completed = Settings::get(&conn, oz_core::settings::keys::SETUP_COMPLETE)
+    let completed = Settings::get(&conn, kasirmu_core::settings::keys::SETUP_COMPLETE)
         .unwrap()
         .unwrap();
     assert_eq!(completed, "1");
 
-    let preset = Settings::get(&conn, oz_core::settings::keys::STORE_PRESET)
+    let preset = Settings::get(&conn, kasirmu_core::settings::keys::STORE_PRESET)
         .unwrap()
         .unwrap();
     assert_eq!(preset, "restaurant");
@@ -166,12 +166,12 @@ fn complete_setup_with_different_presets() {
     // Verify restaurant-specific features.
     let store = Store::new(&conn);
     let loaded = store.load_features().unwrap();
-    assert!(loaded.is_enabled(oz_core::Feature::Restaurant));
-    assert!(loaded.is_enabled(oz_core::Feature::KitchenDisplay));
-    assert!(loaded.is_enabled(oz_core::Feature::TableManagement));
-    assert!(loaded.is_enabled(oz_core::Feature::StaffLogin));
-    assert!(!loaded.is_enabled(oz_core::Feature::SimpleRetail));
-    assert!(!loaded.is_enabled(oz_core::Feature::CardPayment));
+    assert!(loaded.is_enabled(kasirmu_core::Feature::Restaurant));
+    assert!(loaded.is_enabled(kasirmu_core::Feature::KitchenDisplay));
+    assert!(loaded.is_enabled(kasirmu_core::Feature::TableManagement));
+    assert!(loaded.is_enabled(kasirmu_core::Feature::StaffLogin));
+    assert!(!loaded.is_enabled(kasirmu_core::Feature::SimpleRetail));
+    assert!(!loaded.is_enabled(kasirmu_core::Feature::CardPayment));
 }
 
 #[test]
@@ -214,8 +214,8 @@ fn complete_setup_all_features_single_preset() {
     let store = Store::new(&conn);
     let loaded = store.load_features().unwrap();
     assert!(loaded.count() >= 20);
-    assert!(loaded.is_enabled(oz_core::Feature::SimpleRetail));
-    assert!(loaded.is_enabled(oz_core::Feature::Analytics));
+    assert!(loaded.is_enabled(kasirmu_core::Feature::SimpleRetail));
+    assert!(loaded.is_enabled(kasirmu_core::Feature::Analytics));
 
     // Prune should be a no-op since all features match.
     let removed = Settings::prune_stale_features(&conn, &loaded).unwrap();
@@ -249,7 +249,7 @@ fn complete_setup_allows_multiple_calls() {
     .unwrap();
 
     // Preset was overwritten.
-    let preset = Settings::get(&conn, oz_core::settings::keys::STORE_PRESET)
+    let preset = Settings::get(&conn, kasirmu_core::settings::keys::STORE_PRESET)
         .unwrap()
         .unwrap();
     assert_eq!(preset, "restaurant");
@@ -257,8 +257,8 @@ fn complete_setup_allows_multiple_calls() {
     // Features should be from restaurant, not simple-retail.
     let store = Store::new(&conn);
     let loaded = store.load_features().unwrap();
-    assert!(loaded.is_enabled(oz_core::Feature::Restaurant));
-    assert!(!loaded.is_enabled(oz_core::Feature::SimpleRetail));
+    assert!(loaded.is_enabled(kasirmu_core::Feature::Restaurant));
+    assert!(!loaded.is_enabled(kasirmu_core::Feature::SimpleRetail));
 }
 
 #[test]
@@ -273,12 +273,12 @@ fn complete_setup_persists_all_settings() {
     .unwrap();
 
     // Verify DB state directly.
-    let complete = Settings::get(&conn, oz_core::settings::keys::SETUP_COMPLETE)
+    let complete = Settings::get(&conn, kasirmu_core::settings::keys::SETUP_COMPLETE)
         .unwrap()
         .unwrap();
     assert_eq!(complete, "1");
 
-    let preset = Settings::get(&conn, oz_core::settings::keys::STORE_PRESET)
+    let preset = Settings::get(&conn, kasirmu_core::settings::keys::STORE_PRESET)
         .unwrap()
         .unwrap();
     assert_eq!(preset, "simple-retail");
@@ -308,24 +308,24 @@ fn complete_setup_without_transaction_leaves_partial_state() {
     // transaction, simulating a crash halfway through.
     {
         let mut registry = FeatureRegistry::new();
-        registry.enable(oz_core::Feature::CardPayment);
+        registry.enable(kasirmu_core::Feature::CardPayment);
 
         let store = Store::new(&conn);
         store.save_features(&registry).unwrap();
         Settings::prune_stale_features(&conn, &registry).unwrap();
-        Settings::set(&conn, oz_core::settings::keys::STORE_PRESET, "broken").unwrap();
+        Settings::set(&conn, kasirmu_core::settings::keys::STORE_PRESET, "broken").unwrap();
         // Crashing here — setup_complete is NOT written.
     }
 
     // setup_complete is still "1" from the first call because the
     // second attempt crashed before writing it.
-    let complete = Settings::get(&conn, oz_core::settings::keys::SETUP_COMPLETE)
+    let complete = Settings::get(&conn, kasirmu_core::settings::keys::SETUP_COMPLETE)
         .unwrap()
         .unwrap();
     assert_eq!(complete, "1");
 
     // preset was written (outside a transaction, so visible despite crash).
-    let preset = Settings::get(&conn, oz_core::settings::keys::STORE_PRESET)
+    let preset = Settings::get(&conn, kasirmu_core::settings::keys::STORE_PRESET)
         .unwrap()
         .unwrap();
     assert_eq!(preset, "broken");
@@ -346,17 +346,17 @@ fn complete_setup_twice_preserves_latest() {
     .unwrap();
 
     // Second setup's results are in effect.
-    let preset = Settings::get(&conn, oz_core::settings::keys::STORE_PRESET)
+    let preset = Settings::get(&conn, kasirmu_core::settings::keys::STORE_PRESET)
         .unwrap()
         .unwrap();
     assert_eq!(preset, "second");
 
     let store = Store::new(&conn);
     let loaded = store.load_features().unwrap();
-    assert!(loaded.is_enabled(oz_core::Feature::Restaurant));
-    assert!(loaded.is_enabled(oz_core::Feature::KitchenDisplay));
-    assert!(!loaded.is_enabled(oz_core::Feature::BarcodeScanning));
-    assert!(!loaded.is_enabled(oz_core::Feature::SimpleRetail));
+    assert!(loaded.is_enabled(kasirmu_core::Feature::Restaurant));
+    assert!(loaded.is_enabled(kasirmu_core::Feature::KitchenDisplay));
+    assert!(!loaded.is_enabled(kasirmu_core::Feature::BarcodeScanning));
+    assert!(!loaded.is_enabled(kasirmu_core::Feature::SimpleRetail));
 }
 
 // ── show_setup_wizard tests ─────────────────────────────────────
@@ -364,7 +364,7 @@ fn complete_setup_twice_preserves_latest() {
 #[test]
 fn show_setup_wizard_defaults_to_true() {
     let conn = fresh_conn();
-    let val = Settings::get(&conn, oz_core::settings::keys::SHOW_SETUP_WIZARD).unwrap();
+    let val = Settings::get(&conn, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD).unwrap();
     assert_eq!(val, None, "absent means show wizard");
 }
 
@@ -372,7 +372,7 @@ fn show_setup_wizard_defaults_to_true() {
 fn show_setup_wizard_is_false_after_complete_setup() {
     let conn = fresh_conn();
     run_complete_setup(&conn, "restaurant", &["cash-payment"]).unwrap();
-    let val = Settings::get(&conn, oz_core::settings::keys::SHOW_SETUP_WIZARD)
+    let val = Settings::get(&conn, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD)
         .unwrap()
         .unwrap();
     assert_eq!(val, "false");
@@ -381,8 +381,8 @@ fn show_setup_wizard_is_false_after_complete_setup() {
 #[test]
 fn show_setup_wizard_is_false_after_dismiss() {
     let conn = fresh_conn();
-    Settings::set(&conn, oz_core::settings::keys::SHOW_SETUP_WIZARD, "false").unwrap();
-    let val = Settings::get(&conn, oz_core::settings::keys::SHOW_SETUP_WIZARD)
+    Settings::set(&conn, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD, "false").unwrap();
+    let val = Settings::get(&conn, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD)
         .unwrap()
         .unwrap();
     assert_eq!(val, "false");
@@ -391,8 +391,8 @@ fn show_setup_wizard_is_false_after_dismiss() {
 #[test]
 fn get_setup_status_returns_completed_when_wizard_dismissed() {
     let conn = fresh_conn();
-    Settings::set(&conn, oz_core::settings::keys::SHOW_SETUP_WIZARD, "false").unwrap();
-    let completed = Settings::get(&conn, oz_core::settings::keys::SHOW_SETUP_WIZARD)
+    Settings::set(&conn, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD, "false").unwrap();
+    let completed = Settings::get(&conn, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD)
         .unwrap()
         .map(|v| v == "false")
         .unwrap_or(false);
@@ -402,7 +402,7 @@ fn get_setup_status_returns_completed_when_wizard_dismissed() {
 #[test]
 fn get_setup_status_returns_not_completed_when_key_absent() {
     let conn = fresh_conn();
-    let completed = Settings::get(&conn, oz_core::settings::keys::SHOW_SETUP_WIZARD)
+    let completed = Settings::get(&conn, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD)
         .unwrap()
         .map(|v| v == "false")
         .unwrap_or(false);

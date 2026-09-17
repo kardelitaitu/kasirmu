@@ -10,7 +10,7 @@
 
 use tauri::State;
 
-use oz_core::kds::{KdsRoutingRule, KdsRoutingRuleInput};
+use kasirmu_core::kds::{KdsRoutingRule, KdsRoutingRuleInput};
 
 use crate::error::AppError;
 use crate::state::AppState;
@@ -23,7 +23,7 @@ use crate::state::AppState;
 /// filtering or pushing events to those devices.
 ///
 /// Rules compose over the frozen 3-phase algorithm of
-/// `oz_core::kds::resolve_kds_targets` (station targeting per line,
+/// `kasirmu_core::kds::resolve_kds_targets` (station targeting per line,
 /// broadcast fallback, unclaimed-station catch-all); an empty rule set
 /// routes exactly as before.
 #[tauri::command]

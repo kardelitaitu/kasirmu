@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 
 /// Build an in-memory DB with migrations applied.
 fn fresh_db() -> rusqlite::Connection {
-    oz_core::migrations::fresh_db()
+    kasirmu_core::migrations::fresh_db()
 }
 
 fn shared_conn() -> Arc<Mutex<rusqlite::Connection>> {

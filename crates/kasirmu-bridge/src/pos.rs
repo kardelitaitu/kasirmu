@@ -21,9 +21,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use foundation::Percentage;
-use oz_core::db::Store;
-use oz_core::events::{CourseFired, CourseItem, SaleCompleted, SaleCompletedLine};
-use oz_core::{Cart, CartId, CartLine, Currency, LineId, Money, PaymentSplitArg, Sku};
+use kasirmu_core::db::Store;
+use kasirmu_core::events::{CourseFired, CourseItem, SaleCompleted, SaleCompletedLine};
+use kasirmu_core::{Cart, CartId, CartLine, Currency, LineId, Money, PaymentSplitArg, Sku};
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -46,7 +46,7 @@ pub const TOPOLOGY_RUNTIME_SETTING_KEY: &str = "oz-pos/topology-runtime";
 /// checkout receipt resolving on the SAME date instead of straddling a rate
 /// boundary differently — the failure mode that matters, because
 /// `effective_to` is exclusive and a boundary day must have exactly one answer.
-pub fn tax_scope_now(store: &Store, location_id: &str) -> oz_core::TaxSaleScope {
+pub fn tax_scope_now(store: &Store, location_id: &str) -> kasirmu_core::TaxSaleScope {
     // ADR #48 (Decision 3): as_of is the location business date, so resolve it in
     // the store's IANA zone, not raw UTC. The instant stays Utc::now(); only the
     // zone applied before formatting changes. A missing/corrupt timezone falls
@@ -57,9 +57,9 @@ pub fn tax_scope_now(store: &Store, location_id: &str) -> oz_core::TaxSaleScope 
         .flatten()
         .map(|p| p.timezone)
         .unwrap_or_else(|| "UTC".to_string());
-    oz_core::TaxSaleScope {
+    kasirmu_core::TaxSaleScope {
         location_id: location_id.to_string(),
-        as_of: oz_core::timezone::business_date_in_zone(chrono::Utc::now(), &timezone),
+        as_of: kasirmu_core::timezone::business_date_in_zone(chrono::Utc::now(), &timezone),
     }
 }
 
@@ -108,7 +108,7 @@ pub fn resolve_runtime_stock_targets(
     source_instance_id: &str,
 ) -> Result<Vec<String>, BridgeError> {
     let key = format!("{TOPOLOGY_RUNTIME_SETTING_KEY}/{store_id}");
-    let Some(json) = oz_core::Settings::get(conn, &key)? else {
+    let Some(json) = kasirmu_core::Settings::get(conn, &key)? else {
         return Ok(Vec::new());
     };
     let plan: Value = serde_json::from_str(&json)
@@ -175,7 +175,7 @@ pub async fn set_cart_discount_scoped(
     let percent = Percentage::new(args.percent as u8).unwrap();
 
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_DISCOUNT)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_DISCOUNT)
         .await?;
     let conn = ctx
         .db_manager
@@ -229,7 +229,7 @@ pub async fn start_sale_scoped(
     args: StartSaleArgs,
 ) -> Result<StartSaleResult, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
         .await?;
     let conn = ctx.resolve_store(session_token)?;
     let stock_target_instance_id = {
@@ -241,10 +241,10 @@ pub async fn start_sale_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
 
-    let currency: oz_core::Currency = if args.currency.is_empty() {
+    let currency: kasirmu_core::Currency = if args.currency.is_empty() {
         // M-6: lookup the store profile's default currency instead of hardcoding "USD".
         let code =
-            oz_core::Settings::get_default_currency(&db)?.unwrap_or_else(|| "USD".to_string());
+            kasirmu_core::Settings::get_default_currency(&db)?.unwrap_or_else(|| "USD".to_string());
         code.parse()
             .map_err(|_| BridgeError::Invalid(format!("invalid default currency code: {code}")))?
     } else {
@@ -258,11 +258,11 @@ pub async fn start_sale_scoped(
     // Resolve the primary deduction location for this workspace instance.
     let deduction_location_id = match stock_target_instance_id.as_deref() {
         Some(target_instance_id) => {
-            oz_core::location_resolver::resolve_primary_location(&db, target_instance_id, None)?
+            kasirmu_core::location_resolver::resolve_primary_location(&db, target_instance_id, None)?
         }
         None => {
-            oz_core::location_resolver::resolve_primary_location(&db, &session.instance_id, None)
-                .unwrap_or_else(|_| oz_core::location_resolver::get_default_location_id())
+            kasirmu_core::location_resolver::resolve_primary_location(&db, &session.instance_id, None)
+                .unwrap_or_else(|_| kasirmu_core::location_resolver::get_default_location_id())
         }
     };
 
@@ -348,7 +348,7 @@ pub async fn add_line_scoped(
     args: AddLineArgs,
 ) -> Result<AddLineResult, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
         .await?;
     let conn = ctx
         .db_manager
@@ -427,7 +427,7 @@ pub async fn override_line_price_scoped(
     args: OverrideLinePriceScopedArgs,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_OVERRIDE_PRICE)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_OVERRIDE_PRICE)
         .await?;
     let conn = ctx
         .db_manager
@@ -502,7 +502,7 @@ pub async fn set_line_course_scoped(
     args: SetLineCourseArgs,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
         .await?;
     let conn = ctx
         .db_manager
@@ -588,7 +588,7 @@ pub async fn publish_course_fired_scoped(
     args: PublishCourseFiredArgs,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
         .await?;
 
     let course_id = foundation::normalize_course(Some(args.course_id.as_str()))
@@ -659,7 +659,7 @@ pub async fn override_cart_deduction_location_scoped(
     cart_id: CartId,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_OVERRIDE_PRICE)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_OVERRIDE_PRICE)
         .await?;
     let conn = ctx
         .db_manager
@@ -694,14 +694,14 @@ pub async fn override_cart_deduction_location_scoped(
 pub async fn compute_cart_tax_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
-    lines: Vec<oz_core::db::CartLineTaxInput>,
+    lines: Vec<kasirmu_core::db::CartLineTaxInput>,
     currency: String,
-) -> Result<oz_core::db::CartTaxResult, BridgeError> {
-    let parsed: oz_core::Currency = currency
+) -> Result<kasirmu_core::db::CartTaxResult, BridgeError> {
+    let parsed: kasirmu_core::Currency = currency
         .parse()
         .map_err(|_| BridgeError::Invalid(format!("invalid currency code: {currency}")))?;
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
         .await?;
     let conn = ctx
         .db_manager
@@ -715,7 +715,7 @@ pub async fn compute_cart_tax_scoped(
     let tax = store.compute_cart_tax_for_location(
         &lines,
         parsed,
-        oz_core::Settings::get_tax_rounding_mode(&db)?,
+        kasirmu_core::Settings::get_tax_rounding_mode(&db)?,
         Some(&tax_scope_now(&store, &session.store_id)),
     )?;
     drop(db);
@@ -743,10 +743,10 @@ pub const BILL_TYPE_OPEN_BILL: &str = "open_bill";
 /// An open bill is a Restaurant POS concept: its only reader,
 /// `list_open_bills_scoped`, is reached from the restaurant terminal alone, and
 /// the shared `PaymentModal` offers it as the "Open Bill" tender. Every other
-/// vertical — [`oz_core::workspace_type::STORE_POS`], `kds`, `warehouse`,
+/// vertical — [`kasirmu_core::workspace_type::STORE_POS`], `kds`, `warehouse`,
 /// `admin` — is refused.
-pub fn is_restaurant_pos_workspace(session: &oz_core::session::SessionContext) -> bool {
-    oz_core::workspace_type::is_restaurant_pos_type(&session.type_key)
+pub fn is_restaurant_pos_workspace(session: &kasirmu_core::session::SessionContext) -> bool {
+    kasirmu_core::workspace_type::is_restaurant_pos_type(&session.type_key)
 }
 
 #[derive(Debug, Deserialize)]
@@ -794,7 +794,7 @@ pub struct HoldCartResult {
 ///
 /// `bill_type` is checked against the caller's workspace type rather than
 /// trusted. `open_bill` is a Restaurant POS concept, so a session whose
-/// `type_key` is not [`oz_core::workspace_type::RESTAURANT_POS`] is refused fail-closed. Before
+/// `type_key` is not [`kasirmu_core::workspace_type::RESTAURANT_POS`] is refused fail-closed. Before
 /// this check the value was written through as sent, which let the retail
 /// terminal create an open bill — reachable through the shared `PaymentModal`,
 /// whose Open Bill tender was not workspace-gated. A plain `hold` stays
@@ -805,13 +805,13 @@ pub async fn hold_cart_scoped(
     args: HoldCartArgs,
 ) -> Result<HoldCartResult, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
         .await?;
     if args.bill_type == BILL_TYPE_OPEN_BILL && !is_restaurant_pos_workspace(&session) {
         return Err(BridgeError::PermissionDenied(format!(
             "workspace '{}' may not create an open bill; only '{}' may",
             session.type_key,
-            oz_core::workspace_type::RESTAURANT_POS
+            kasirmu_core::workspace_type::RESTAURANT_POS
         )));
     }
     let conn = ctx
@@ -844,9 +844,9 @@ pub async fn hold_cart_scoped(
 pub async fn list_held_carts_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
-) -> Result<Vec<oz_core::db::HeldCartRow>, BridgeError> {
+) -> Result<Vec<kasirmu_core::db::HeldCartRow>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
         .await?;
     let conn = ctx
         .db_manager
@@ -871,20 +871,20 @@ pub async fn list_held_carts_scoped(
 /// Restaurant POS only. An open bill is that terminal's own concept — the
 /// restaurant cart reads it as "Open Bills" while the retail cart reads
 /// `list_held_carts_scoped` as "Held Carts" — so a session whose `type_key` is
-/// not [`oz_core::workspace_type::RESTAURANT_POS`] is refused rather than served an empty list,
+/// not [`kasirmu_core::workspace_type::RESTAURANT_POS`] is refused rather than served an empty list,
 /// which would read as "there are none" instead of "this is not your terminal".
 pub async fn list_open_bills_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
-) -> Result<Vec<oz_core::db::HeldCartRow>, BridgeError> {
+) -> Result<Vec<kasirmu_core::db::HeldCartRow>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
         .await?;
     if !is_restaurant_pos_workspace(&session) {
         return Err(BridgeError::PermissionDenied(format!(
             "workspace '{}' may not list open bills; only '{}' may",
             session.type_key,
-            oz_core::workspace_type::RESTAURANT_POS
+            kasirmu_core::workspace_type::RESTAURANT_POS
         )));
     }
     let conn = ctx
@@ -908,9 +908,9 @@ pub async fn get_held_cart_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
     id: String,
-) -> Result<Option<oz_core::db::HeldCartFull>, BridgeError> {
+) -> Result<Option<kasirmu_core::db::HeldCartFull>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
         .await?;
     let conn = ctx
         .db_manager
@@ -935,7 +935,7 @@ pub async fn delete_held_cart_scoped(
     id: String,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
         .await?;
     let conn = ctx
         .db_manager
@@ -1171,7 +1171,7 @@ enum ReplayVerdict {
 }
 
 /// Build the receipt a replay hands back for a matched sale.
-fn replay_receipt(sale: &oz_core::Sale) -> CompleteSaleResult {
+fn replay_receipt(sale: &kasirmu_core::Sale) -> CompleteSaleResult {
     CompleteSaleResult {
         sale_id: sale.id.clone(),
         total: Some(sale.total),
@@ -1437,7 +1437,7 @@ pub struct CompleteSaleWithResolvedShortfallsArgs {
     /// Optional discount label.
     pub discount_label: Option<String>,
     /// Cashier-resolved shortfalls: per-SKU allocation to specific locations.
-    pub resolutions: Vec<oz_core::sale_deduction::ResolvedShortfall>,
+    pub resolutions: Vec<kasirmu_core::sale_deduction::ResolvedShortfall>,
     /// CUR-02: original sale currency when multi-currency checkout is used.
     pub base_currency: Option<String>,
     /// CUR-02: original sale total in `base_currency` minor units.
@@ -1462,7 +1462,7 @@ pub struct CompleteSaleWithResolvedShortfallsArgs {
 /// and preview commands so a previewed total matches the charged one.
 async fn lua_calc_line_overrides(
     ctx: &BridgeCtx<'_>,
-    cart: &oz_core::Cart,
+    cart: &kasirmu_core::Cart,
 ) -> Result<Vec<(String, i64, bool)>, BridgeError> {
     let mut overrides: Vec<(String, i64, bool)> = Vec::new();
     let plugins = ctx.plugins.lock().await;
@@ -1538,7 +1538,7 @@ pub async fn preview_promoted_total_scoped(
     args: PreviewPromotedTotalArgs,
 ) -> Result<PreviewPromotedTotalResult, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
         .await?;
     let conn = ctx
         .db_manager
@@ -1556,7 +1556,7 @@ pub async fn preview_promoted_total_scoped(
             .ok_or_else(|| BridgeError::Invalid(format!("cart not found: {}", args.cart_id)))?
     };
 
-    let mut sale = oz_core::Sale::from_cart(&cart)
+    let mut sale = kasirmu_core::Sale::from_cart(&cart)
         .ok_or_else(|| BridgeError::Invalid("cart total overflowed i64".into()))?;
 
     // ── Plugin tax overrides (no DB lock held) ────────────────────
@@ -1571,7 +1571,7 @@ pub async fn preview_promoted_total_scoped(
         store.compute_sale_tax_for_location(
             &mut sale,
             &lua_overrides,
-            oz_core::Settings::get_tax_rounding_mode(&db)?,
+            kasirmu_core::Settings::get_tax_rounding_mode(&db)?,
             Some(&tax_scope_now(&store, &session.store_id)),
         )?;
         let base_total_minor = sale.total.minor_units;
@@ -1629,20 +1629,20 @@ pub struct PreviewPromotedTotalFromLinesArgs {
 fn build_preview_cart(
     lines: &[PreviewLineArgs],
     discount_percent: i64,
-) -> Result<oz_core::Cart, BridgeError> {
+) -> Result<kasirmu_core::Cart, BridgeError> {
     let first = lines
         .first()
         .ok_or_else(|| BridgeError::Invalid("cannot preview an empty cart".into()))?;
-    let parse_currency = |code: &str| -> Result<oz_core::Currency, BridgeError> {
+    let parse_currency = |code: &str| -> Result<kasirmu_core::Currency, BridgeError> {
         code.parse()
             .map_err(|_| BridgeError::Invalid(format!("invalid currency code: {code}")))
     };
-    let mut cart = oz_core::Cart::new(parse_currency(&first.unit_price_currency)?);
+    let mut cart = kasirmu_core::Cart::new(parse_currency(&first.unit_price_currency)?);
     for l in lines {
-        cart.add_line(oz_core::CartLine::new(
-            oz_core::Sku::new(l.sku.clone()),
+        cart.add_line(kasirmu_core::CartLine::new(
+            kasirmu_core::Sku::new(l.sku.clone()),
             l.qty,
-            oz_core::Money {
+            kasirmu_core::Money {
                 minor_units: l.unit_price_minor,
                 currency: parse_currency(&l.unit_price_currency)?,
             },
@@ -1673,7 +1673,7 @@ pub async fn preview_promoted_total_from_lines_scoped(
     args: PreviewPromotedTotalFromLinesArgs,
 ) -> Result<PreviewPromotedTotalResult, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
         .await?;
     let conn = ctx
         .db_manager
@@ -1681,7 +1681,7 @@ pub async fn preview_promoted_total_from_lines_scoped(
         .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
 
     let cart = build_preview_cart(&args.lines, args.discount_percent)?;
-    let mut sale = oz_core::Sale::from_cart(&cart)
+    let mut sale = kasirmu_core::Sale::from_cart(&cart)
         .ok_or_else(|| BridgeError::Invalid("cart total overflowed i64".into()))?;
 
     // ── Plugin tax overrides (no DB lock held) ────────────────────
@@ -1696,7 +1696,7 @@ pub async fn preview_promoted_total_from_lines_scoped(
         store.compute_sale_tax_for_location(
             &mut sale,
             &lua_overrides,
-            oz_core::Settings::get_tax_rounding_mode(&db)?,
+            kasirmu_core::Settings::get_tax_rounding_mode(&db)?,
             Some(&tax_scope_now(&store, &session.store_id)),
         )?;
         let base_total_minor = sale.total.minor_units;
@@ -1738,14 +1738,14 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     args: CompleteSaleWithResolvedShortfallsArgs,
 ) -> Result<CompleteSaleResult, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
         .await?;
     let stock_target_instance_id = {
         let global_db = ctx.lock_global().await;
         // §B: when the offline grace window has fully lapsed, the register
         // is read-only — new sales are rejected until the subscription is
         // verified online. Active/in-grace registers pass untouched.
-        let sub = oz_core::TenantSubscription::load(&global_db, "default")?
+        let sub = kasirmu_core::TenantSubscription::load(&global_db, "default")?
             .ok_or_else(|| BridgeError::Internal("default tenant subscription not found".into()))?;
         sub.verify_signature()?;
         sub.enforce_pos_writable()?;
@@ -1804,16 +1804,16 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     }
 
     // ── Reconstruct the Cart from front-end line data ─────────────
-    let currency: oz_core::Currency = args
+    let currency: kasirmu_core::Currency = args
         .currency
         .parse()
         .map_err(|_| BridgeError::Invalid(format!("invalid currency code: {}", args.currency)))?;
 
-    let mut cart = oz_core::Cart::new(currency);
+    let mut cart = kasirmu_core::Cart::new(currency);
     for line_data in &args.lines {
         let unit_price = shortfall_line_unit_price(line_data, cart.currency())?;
         let mut line =
-            oz_core::CartLine::new(oz_core::Sku::new(&line_data.sku), line_data.qty, unit_price);
+            kasirmu_core::CartLine::new(kasirmu_core::Sku::new(&line_data.sku), line_data.qty, unit_price);
         line.set_course(line_data.course.as_deref());
         cart.add_line(line)
             .map_err(|e| BridgeError::Invalid(e.to_string()))?;
@@ -1828,7 +1828,7 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
 
     let line_count = cart.line_count();
 
-    let mut sale = oz_core::Sale::from_cart_with_user(&cart, Some(session.user_id.clone()))
+    let mut sale = kasirmu_core::Sale::from_cart_with_user(&cart, Some(session.user_id.clone()))
         .ok_or_else(|| BridgeError::Invalid("cart total overflowed i64".into()))?;
     sale.payment_method = Some(args.payment_method.clone());
     sale.tendered_minor = args.tendered_minor;
@@ -1850,14 +1850,14 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
         let store = Store::new(&db);
         if let Some(target_instance_id) = stock_target_instance_id.as_deref() {
-            oz_core::location_resolver::resolve_primary_location(&db, target_instance_id, None)?;
+            kasirmu_core::location_resolver::resolve_primary_location(&db, target_instance_id, None)?;
         }
 
         // Compute tax (same as first command)
         store.compute_sale_tax_for_location(
             &mut sale,
             &[],
-            oz_core::Settings::get_tax_rounding_mode(&db)?,
+            kasirmu_core::Settings::get_tax_rounding_mode(&db)?,
             Some(&tax_scope_now(&store, &session.store_id)),
         )?;
 
@@ -1910,10 +1910,10 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
 
     // ── Event publishing (no DB lock held) ────────────────────────
     {
-        let line_items: Vec<oz_core::events::SaleCompletedLine> = sale
+        let line_items: Vec<kasirmu_core::events::SaleCompletedLine> = sale
             .lines
             .iter()
-            .map(|l| oz_core::events::SaleCompletedLine {
+            .map(|l| kasirmu_core::events::SaleCompletedLine {
                 sku: l.sku.clone(),
                 qty: l.qty,
                 unit_price_minor: l.unit_price.minor_units,
@@ -1922,7 +1922,7 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
             })
             .collect();
 
-        ctx.publish_event(&oz_core::events::SaleCompleted {
+        ctx.publish_event(&kasirmu_core::events::SaleCompleted {
             sale_id: sale_id.clone(),
             store_id: Some(session.store_id.clone()),
             line_items,
@@ -1953,12 +1953,12 @@ pub async fn complete_sale_scoped(
     args: CompleteSaleScopedArgs,
 ) -> Result<CompleteSaleResult, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
         .await?;
     let stock_target_instance_ids = {
         let global_db = ctx.lock_global().await;
         // §B read-only lock (see complete_sale_with_resolved_shortfalls_scoped).
-        let sub = oz_core::TenantSubscription::load(&global_db, "default")?
+        let sub = kasirmu_core::TenantSubscription::load(&global_db, "default")?
             .ok_or_else(|| BridgeError::Internal("default tenant subscription not found".into()))?;
         sub.verify_signature()?;
         sub.enforce_pos_writable()?;
@@ -1977,7 +1977,7 @@ pub async fn complete_sale_scoped(
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
         for target_instance_id in &stock_target_instance_ids {
-            oz_core::location_resolver::resolve_primary_location(&db, target_instance_id, None)?;
+            kasirmu_core::location_resolver::resolve_primary_location(&db, target_instance_id, None)?;
         }
     }
 
@@ -2118,7 +2118,7 @@ pub async fn complete_sale_scoped(
         }
     }
 
-    let mut sale = oz_core::Sale::from_cart_with_user(&cart, Some(session.user_id.clone()))
+    let mut sale = kasirmu_core::Sale::from_cart_with_user(&cart, Some(session.user_id.clone()))
         .ok_or_else(|| BridgeError::Invalid("cart total overflowed i64".into()))?;
     let kind = if args.payment_splits.as_ref().is_some_and(|s| !s.is_empty()) {
         PaymentKind::Split
@@ -2149,7 +2149,7 @@ pub async fn complete_sale_scoped(
         let store = Store::new(&db);
         let mut stock_locations = Vec::with_capacity(stock_target_instance_ids.len());
         for target_instance_id in &stock_target_instance_ids {
-            let location = oz_core::location_resolver::resolve_primary_location(
+            let location = kasirmu_core::location_resolver::resolve_primary_location(
                 &db,
                 target_instance_id,
                 None,
@@ -2162,7 +2162,7 @@ pub async fn complete_sale_scoped(
         store.compute_sale_tax_for_location(
             &mut sale,
             &lua_overrides,
-            oz_core::Settings::get_tax_rounding_mode(&db)?,
+            kasirmu_core::Settings::get_tax_rounding_mode(&db)?,
             Some(&tax_scope_now(&store, &session.store_id)),
         )?;
 
@@ -2207,12 +2207,12 @@ pub async fn complete_sale_scoped(
             // complete_sale_deduction wrapper performs internally —
             // routed through with_locations so checkout promotions
             // persist on this branch too.
-            let primary = oz_core::location_resolver::resolve_primary_location(
+            let primary = kasirmu_core::location_resolver::resolve_primary_location(
                 &db,
                 deduction_instance_id,
                 None,
             )
-            .unwrap_or_else(|_| oz_core::location_resolver::get_default_location_id());
+            .unwrap_or_else(|_| kasirmu_core::location_resolver::get_default_location_id());
             store.complete_sale_deduction_with_locations_and_estimate(
                 &sale,
                 Some(deduction_instance_id),

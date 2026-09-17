@@ -17,7 +17,7 @@ workspace = true
 
 [dependencies]
 foundation = { workspace = true }
-oz-core = { workspace = true }
+kasirmu-core = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 clap = { workspace = true }

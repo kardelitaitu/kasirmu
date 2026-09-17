@@ -41,10 +41,10 @@ use tauri::command;
 
 use std::collections::HashMap;
 
-use oz_core::export::email_report::SMTP_CONFIG_SETTINGS_KEY;
-use oz_core::permissions;
-use oz_core::settings::{IngestPolicy, IngestPolicyKind};
-use oz_core::{Settings, Store, UserPreferences};
+use kasirmu_core::export::email_report::SMTP_CONFIG_SETTINGS_KEY;
+use kasirmu_core::permissions;
+use kasirmu_core::settings::{IngestPolicy, IngestPolicyKind};
+use kasirmu_core::{Settings, Store, UserPreferences};
 
 use crate::commands::authz::{require_permission_for_session, require_permission_for_user};
 use crate::error::AppError;
@@ -383,7 +383,7 @@ pub async fn set_setting(
         .unwrap_or_else(|| "unknown".to_string());
 
     let conn = state.db.lock().await;
-    let store = oz_core::db::Store::new(&conn);
+    let store = kasirmu_core::db::Store::new(&conn);
     require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
     run_set_setting(&conn, &key, &value, &terminal_id)?;
     // SYNC-10 parity: enqueue the change so the tablet's sync daemon
@@ -738,7 +738,7 @@ pub async fn set_setting_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db_guard);
+    let store = kasirmu_core::db::Store::new(&db_guard);
     run_set_setting(&db_guard, &key, &value, &terminal_id)?;
     // SYNC-10 parity: enqueue the change so the tablet's sync daemon
     // pushes it to the cloud (and the desktop's pull re-applies it).

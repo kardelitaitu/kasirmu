@@ -25,12 +25,12 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use oz_core::export::email_report::SMTP_CONFIG_SETTINGS_KEY;
-use oz_core::permissions;
-use oz_core::settings::{IngestPolicy, IngestPolicyKind};
-use oz_core::{Settings, Store, UserPreferences};
+use kasirmu_core::export::email_report::SMTP_CONFIG_SETTINGS_KEY;
+use kasirmu_core::permissions;
+use kasirmu_core::settings::{IngestPolicy, IngestPolicyKind};
+use kasirmu_core::{Settings, Store, UserPreferences};
 /// platform-core's OWN `Settings` — the type that holds the tracked write.
-/// `Settings` in this crate is `oz_core::Settings`, the delegating facade, and
+/// `Settings` in this crate is `kasirmu_core::Settings`, the delegating facade, and
 /// the facade cannot carry the in-transaction form: it delegates to
 /// `&Connection` and returns `CoreError`, while the batch door needs the
 /// caller's `&rusqlite::Transaction`. So the batch loop names the owner
@@ -477,7 +477,7 @@ pub fn run_get_setting(
 /// credential deny list, so [`run_get_setting`] refuses it and the email-report
 /// card can never load the stored password back; its save posts a whole blob
 /// whose `password` is null, and a raw write of that blob destroyed the secret
-/// on every save. The key's owner, `oz_core::export::email_report`, answers
+/// on every save. The key's owner, `kasirmu_core::export::email_report`, answers
 /// "what should actually land" and the answer is written through the SAME
 /// tracked path, so the ADR #22 delta still records the change.
 ///
@@ -625,7 +625,7 @@ pub fn run_set_settings_batch(
         // through `CoreError` so a write failure keeps the exact error shape
         // this loop had when it called `Settings::set` itself.
         TrackedSettings::set_tracked_in_tx(tx, key, value, terminal_id)
-            .map_err(oz_core::CoreError::from)?;
+            .map_err(kasirmu_core::CoreError::from)?;
         written.insert(key.clone(), value.to_string());
     }
     Ok(written)
@@ -673,7 +673,7 @@ pub fn enqueue_settings_updates(
 /// The ONE remote-replication gate for this lane.
 ///
 /// Delegates to the sealed [`IngestPolicy::RemoteSync`] owned by platform-core
-/// (re-exported through `oz_core::settings`, so no new dependency edge). Used by
+/// (re-exported through `kasirmu_core::settings`, so no new dependency edge). Used by
 /// [`enqueue_settings_updates`], the single egress funnel for all three
 /// settings-write commands in this module.
 ///
@@ -1075,7 +1075,7 @@ pub async fn set_receipt_settings_scoped(
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db);
+    let store = kasirmu_core::db::Store::new(&db);
     ctx.require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
     run_set_receipt_settings(&db, &args)
 }
@@ -1094,7 +1094,7 @@ pub async fn set_store_settings_scoped(
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db);
+    let store = kasirmu_core::db::Store::new(&db);
     ctx.require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
     run_set_store_settings(&db, &args)
 }
@@ -1113,7 +1113,7 @@ pub async fn set_credit_settings_scoped(
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db);
+    let store = kasirmu_core::db::Store::new(&db);
     ctx.require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
     let tx = db.unchecked_transaction()?;
     Settings::set_credit_enabled(&tx, args.enabled)?;
@@ -1137,7 +1137,7 @@ pub async fn settle_credit_scoped(
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db);
+    let store = kasirmu_core::db::Store::new(&db);
     ctx.require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
     let tx = db.unchecked_transaction()?;
     let now = chrono::Utc::now().to_rfc3339();
@@ -1181,7 +1181,7 @@ pub async fn set_hardware_settings_scoped(
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        let store = oz_core::db::Store::new(&db);
+        let store = kasirmu_core::db::Store::new(&db);
         ctx.require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
     }
 
@@ -1255,7 +1255,7 @@ pub async fn set_setting(
     // Scope block: drop sync guards before .await below.
     {
         let conn = ctx.db.lock().await;
-        let store = oz_core::db::Store::new(&conn);
+        let store = kasirmu_core::db::Store::new(&conn);
         ctx.require_permission_for_user(&store, user_id, permissions::SETTINGS_EDIT)?;
         let effective = run_set_setting(&conn, key, value, &terminal_id)?;
         if let Err(e) = enqueue_settings_updates(
@@ -1271,7 +1271,7 @@ pub async fn set_setting(
     // Publish SettingsUpdated event for cross-terminal reactivity (ADR #22).
     let kernel = ctx.kernel.lock().await;
     let bus = kernel.event_bus();
-    let event = oz_core::events::SettingsUpdated {
+    let event = kasirmu_core::events::SettingsUpdated {
         changed_keys: vec![key.to_string()],
         terminal_id,
     };
@@ -1314,7 +1314,7 @@ pub async fn set_setting_scoped(
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        let store = oz_core::db::Store::new(&db);
+        let store = kasirmu_core::db::Store::new(&db);
         ctx.require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
         run_set_setting(&db, key, value, &terminal_id)?
     }; // db, store, conn dropped here — safe to .await below
@@ -1324,7 +1324,7 @@ pub async fn set_setting_scoped(
     // fan out from here (SYNC-10 enqueue side).
     {
         let conn = ctx.db.lock().await;
-        let store = oz_core::db::Store::new(&conn);
+        let store = kasirmu_core::db::Store::new(&conn);
         if let Err(e) = enqueue_settings_updates(
             &store,
             &HashMap::from([(key.to_string(), effective)]),
@@ -1338,7 +1338,7 @@ pub async fn set_setting_scoped(
     // Publish SettingsUpdated event for cross-terminal reactivity (ADR #22).
     let kernel = ctx.kernel.lock().await;
     let bus = kernel.event_bus();
-    let event = oz_core::events::SettingsUpdated {
+    let event = kasirmu_core::events::SettingsUpdated {
         changed_keys: vec![key.to_string()],
         terminal_id,
     };
@@ -1382,7 +1382,7 @@ pub async fn set_settings_scoped(
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        let store = oz_core::db::Store::new(&db);
+        let store = kasirmu_core::db::Store::new(&db);
         ctx.require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
         let tx = db.unchecked_transaction()?;
         let written = run_set_settings_batch(&tx, &entries, &terminal_id)?;
@@ -1395,7 +1395,7 @@ pub async fn set_settings_scoped(
     // fan out from here (SYNC-10 enqueue side).
     {
         let conn = ctx.db.lock().await;
-        let store = oz_core::db::Store::new(&conn);
+        let store = kasirmu_core::db::Store::new(&conn);
         if let Err(e) = enqueue_settings_updates(&store, &written, &terminal_id, &session.store_id)
         {
             tracing::warn!(key_count = written.len(), error = %e, "failed to enqueue settings.update sync items");
@@ -1405,7 +1405,7 @@ pub async fn set_settings_scoped(
     // Publish a single SettingsUpdated event for all changed keys.
     let kernel = ctx.kernel.lock().await;
     let bus = kernel.event_bus();
-    let event = oz_core::events::SettingsUpdated {
+    let event = kasirmu_core::events::SettingsUpdated {
         changed_keys: keys,
         terminal_id,
     };

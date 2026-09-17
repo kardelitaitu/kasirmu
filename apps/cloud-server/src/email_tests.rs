@@ -1,7 +1,7 @@
 use super::*;
 use chrono::Timelike;
-use oz_core::export::ReportScheduleConfig;
-use oz_core::migrations;
+use kasirmu_core::export::ReportScheduleConfig;
+use kasirmu_core::migrations;
 use std::sync::Arc;
 
 #[tokio::test]
@@ -94,7 +94,7 @@ async fn scheduled_report_enqueues_outbox_entry_when_due() {
     // always matches during the test.
     let now = chrono::Utc::now();
     let send_at_time = format!("{:02}:{:02}", now.hour(), now.minute());
-    let schedule = oz_core::export::ReportScheduleConfig {
+    let schedule = kasirmu_core::export::ReportScheduleConfig {
         enabled: true,
         cadence: "daily".into(),
         send_at_time,

@@ -17,7 +17,7 @@ next: none (migrate supplier/PO logic when built) | perf: N/A
 //! This is a **stub**: it registers with the kernel, declares its
 //! dependency on `inventory`, and logs its lifecycle transitions. It owns
 //! no tables and no commands yet. The `purchase-orders` feature flag
-//! (`oz_core::features::Feature::PurchaseOrders`) already gates the
+//! (`kasirmu_core::features::Feature::PurchaseOrders`) already gates the
 //! capability, so enabling the flag and starting this module are separate,
 //! independently reviewable steps.
 //!

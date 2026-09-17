@@ -25,4 +25,4 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 platform-kernel = { workspace = true }
-oz-core = { workspace = true }
+kasirmu-core = { workspace = true }

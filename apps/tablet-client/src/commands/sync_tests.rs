@@ -345,7 +345,7 @@ fn sync_conflict_dto_resolved_row_parses() {
 // forces the third write to fail and asserts that the prior writes
 // were rolled back (i.e. the function is atomic).
 
-use oz_core::migrations;
+use kasirmu_core::migrations;
 
 fn fresh_sync_conn() -> Connection {
     let conn = migrations::fresh_db();
@@ -486,11 +486,11 @@ async fn sync_run_scoped_plan_required_keeps_store_items_pending() {
     // here said something the old test could not: the shipped path gates the plan the same
     // way. That is why the dead copy could be retired rather than merely left uncalled.
     use crate::state::AppState;
-    use oz_core::Store;
-    use oz_core::auth;
-    use oz_core::migrations;
-    use oz_core::offline::OfflineQueueStatus;
-    use oz_core::session::SessionContext;
+    use kasirmu_core::Store;
+    use kasirmu_core::auth;
+    use kasirmu_core::migrations;
+    use kasirmu_core::offline::OfflineQueueStatus;
+    use kasirmu_core::session::SessionContext;
     use platform_core::StoreDatabaseManager;
     use tauri::Manager as _;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -604,11 +604,11 @@ async fn sync_run_scoped_plan_required_keeps_store_items_pending() {
 #[tokio::test]
 async fn sync_run_scoped_marks_store_queue_and_leaves_global_untouched() {
     use crate::state::AppState;
-    use oz_core::Store;
-    use oz_core::auth;
-    use oz_core::migrations;
-    use oz_core::offline::OfflineQueueStatus;
-    use oz_core::session::SessionContext;
+    use kasirmu_core::Store;
+    use kasirmu_core::auth;
+    use kasirmu_core::migrations;
+    use kasirmu_core::offline::OfflineQueueStatus;
+    use kasirmu_core::session::SessionContext;
     use platform_core::StoreDatabaseManager;
     use tauri::Manager as _;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};

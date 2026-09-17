@@ -13,7 +13,7 @@
 //! transaction — except `distinct_tenant_count`, the one deliberate global
 //! aggregate, documented at its own signature.
 
-use oz_core::TenantPlan;
+use kasirmu_core::TenantPlan;
 use rusqlite::params;
 
 use super::SyncStore;
@@ -21,13 +21,13 @@ use super::SyncStore;
 impl SyncStore {
     /// Read a tenant's sync plan, or `None` when the tenant has no row yet.
     ///
-    /// Mirrors `oz_core::Store::get_tenant_plan` (missing row → `None`;
+    /// Mirrors `kasirmu_core::Store::get_tenant_plan` (missing row → `None`;
     /// unknown plan string degrades to `free`).
     pub async fn get_tenant_plan(&self, tenant_id: &str) -> Result<Option<TenantPlan>, String> {
         match self {
             Self::Sqlite(conn) => {
                 let conn = conn.lock().await;
-                oz_core::Store::new(&conn)
+                kasirmu_core::Store::new(&conn)
                     .get_tenant_plan(tenant_id)
                     .map_err(|e| e.to_string())
             }

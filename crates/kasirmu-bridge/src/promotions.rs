@@ -13,8 +13,8 @@
 
 use serde::Deserialize;
 
-use oz_core::permissions;
-use oz_core::{Promotion, PromotionApplication, Store};
+use kasirmu_core::permissions;
+use kasirmu_core::{Promotion, PromotionApplication, Store};
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;

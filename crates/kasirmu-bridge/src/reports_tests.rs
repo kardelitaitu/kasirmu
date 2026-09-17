@@ -18,7 +18,7 @@
 
 use super::*;
 use crate::testing::TestBridge;
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 
 /// Build a headless test bridge over a seeded global identity DB, with the
 /// session pre-inserted - the bridge stand-in for the desktop helper that
@@ -58,7 +58,7 @@ async fn scoped_report_rejects_invalid_session() {
 
 #[tokio::test]
 async fn scoped_report_denies_user_without_reports_permission() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute(
@@ -119,7 +119,7 @@ fn category_top_rejects_unbounded_values() {
 
 #[test]
 fn trend_args_accepts_valid_granularity_and_top() {
-    for g in oz_core::db::popularity::TREND_GRANULARITIES {
+    for g in kasirmu_core::db::popularity::TREND_GRANULARITIES {
         assert!(validate_trend_args(g, 1).is_ok());
         assert!(validate_trend_args(g, MAX_TREND_CATEGORIES).is_ok());
     }
@@ -149,7 +149,7 @@ async fn scoped_report_rejects_empty_token() {
 
 #[tokio::test]
 async fn scoped_report_returns_conn_for_valid_session() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute(
@@ -192,7 +192,7 @@ fn seed_staff(conn: &rusqlite::Connection) {
 
 #[tokio::test]
 async fn daily_revenue_scoped_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
     let result =
@@ -202,7 +202,7 @@ async fn daily_revenue_scoped_rejects_invalid_token() {
 
 #[tokio::test]
 async fn weekly_revenue_scoped_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
     let result =
@@ -212,7 +212,7 @@ async fn weekly_revenue_scoped_rejects_invalid_token() {
 
 #[tokio::test]
 async fn monthly_revenue_scoped_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
     let result =
@@ -224,7 +224,7 @@ async fn monthly_revenue_scoped_rejects_invalid_token() {
 
 #[tokio::test]
 async fn staff_denied_daily_revenue() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
@@ -234,7 +234,7 @@ async fn staff_denied_daily_revenue() {
 
 #[tokio::test]
 async fn staff_denied_weekly_revenue() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
@@ -244,7 +244,7 @@ async fn staff_denied_weekly_revenue() {
 
 #[tokio::test]
 async fn staff_denied_monthly_revenue() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
@@ -254,7 +254,7 @@ async fn staff_denied_monthly_revenue() {
 
 #[tokio::test]
 async fn staff_denied_top_products() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
@@ -272,7 +272,7 @@ async fn staff_denied_top_products() {
 
 #[tokio::test]
 async fn staff_denied_low_stock_alerts() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
@@ -282,7 +282,7 @@ async fn staff_denied_low_stock_alerts() {
 
 #[tokio::test]
 async fn staff_denied_category_breakdown() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
@@ -293,7 +293,7 @@ async fn staff_denied_category_breakdown() {
 
 #[tokio::test]
 async fn staff_denied_payment_method_breakdown() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
@@ -304,7 +304,7 @@ async fn staff_denied_payment_method_breakdown() {
 
 #[tokio::test]
 async fn staff_denied_voided_sales_summary() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
@@ -315,7 +315,7 @@ async fn staff_denied_voided_sales_summary() {
 
 #[tokio::test]
 async fn staff_denied_basket_size() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
@@ -325,7 +325,7 @@ async fn staff_denied_basket_size() {
 
 #[tokio::test]
 async fn staff_denied_discounts_summary() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
@@ -336,7 +336,7 @@ async fn staff_denied_discounts_summary() {
 
 #[tokio::test]
 async fn staff_denied_inventory_turnover() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
@@ -353,7 +353,7 @@ async fn staff_denied_inventory_turnover() {
 
 #[tokio::test]
 async fn staff_denied_table_turnover() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
@@ -363,7 +363,7 @@ async fn staff_denied_table_turnover() {
 
 #[tokio::test]
 async fn staff_denied_customer_split() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let state = scoped_state(conn, "tok", "user-staff", "role-staff", "s1");
@@ -375,7 +375,7 @@ async fn staff_denied_customer_split() {
 
 #[tokio::test]
 async fn owner_daily_revenue_empty_when_no_sales() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
     let result = get_daily_revenue_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
@@ -384,7 +384,7 @@ async fn owner_daily_revenue_empty_when_no_sales() {
 
 #[tokio::test]
 async fn owner_top_products_empty_when_no_sales() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
     let result = get_top_products_scoped(
@@ -401,7 +401,7 @@ async fn owner_top_products_empty_when_no_sales() {
 
 #[tokio::test]
 async fn owner_low_stock_alerts_empty_when_no_products() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
     let result = get_low_stock_alerts_scoped(&state.ctx(), "tok", 5).await;
@@ -411,7 +411,7 @@ async fn owner_low_stock_alerts_empty_when_no_products() {
 
 #[tokio::test]
 async fn owner_category_breakdown_empty_when_no_sales() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
     let result =
@@ -421,7 +421,7 @@ async fn owner_category_breakdown_empty_when_no_sales() {
 
 #[tokio::test]
 async fn owner_weekly_revenue_empty_when_no_sales() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
     let result = get_weekly_revenue_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
@@ -430,7 +430,7 @@ async fn owner_weekly_revenue_empty_when_no_sales() {
 
 #[tokio::test]
 async fn owner_monthly_revenue_empty_when_no_sales() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
     let result = get_monthly_revenue_scoped(&state.ctx(), "tok", "2026-01-01", "2026-12-31").await;
@@ -439,7 +439,7 @@ async fn owner_monthly_revenue_empty_when_no_sales() {
 
 #[tokio::test]
 async fn owner_payment_method_breakdown_empty() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
     let result =
@@ -452,7 +452,7 @@ async fn owner_payment_method_breakdown_empty() {
 
 #[tokio::test]
 async fn owner_voided_sales_summary_empty() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
     let result =
@@ -462,7 +462,7 @@ async fn owner_voided_sales_summary_empty() {
 
 #[tokio::test]
 async fn owner_basket_size_empty() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
     let result = get_basket_size_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
@@ -471,7 +471,7 @@ async fn owner_basket_size_empty() {
 
 #[tokio::test]
 async fn owner_discounts_summary_empty() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
     let result =
@@ -481,7 +481,7 @@ async fn owner_discounts_summary_empty() {
 
 #[tokio::test]
 async fn owner_inventory_turnover_empty() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
     let result = get_inventory_turnover_scoped(
@@ -497,7 +497,7 @@ async fn owner_inventory_turnover_empty() {
 
 #[tokio::test]
 async fn owner_table_turnover_empty() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
     let result = get_table_turnover_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;
@@ -506,7 +506,7 @@ async fn owner_table_turnover_empty() {
 
 #[tokio::test]
 async fn owner_customer_split_empty() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let state = scoped_state(conn, "tok", "user-owner", "role-owner", "s1");
     let result = get_customer_split_scoped(&state.ctx(), "tok", "2026-01-01", "2026-01-31").await;

@@ -1,7 +1,7 @@
 use super::*;
-use oz_core::Currency;
-use oz_core::Sku;
-use oz_core::migrations;
+use kasirmu_core::Currency;
+use kasirmu_core::Sku;
+use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn usd() -> Currency {
@@ -17,7 +17,7 @@ fn price(minor: i64) -> Money {
 
 #[test]
 fn start_cart_add_line() {
-    let mut cart = oz_core::Cart::new(usd());
+    let mut cart = kasirmu_core::Cart::new(usd());
     let cart_id = cart.id();
 
     let line = CartLine::new(Sku::new("COFFEE"), 2, price(350));
@@ -37,7 +37,7 @@ fn start_cart_add_line() {
 
 #[test]
 fn cart_total_with_fractional_qty() {
-    let mut cart = oz_core::Cart::new(usd());
+    let mut cart = kasirmu_core::Cart::new(usd());
     let line = CartLine::new(Sku::new("TEA"), 3, price(200));
     let line_total = line.total().unwrap();
     cart.add_line(line).unwrap();
@@ -121,7 +121,7 @@ fn seed_active_cart(conn: &Connection) -> CartId {
     )
     .unwrap();
 
-    let cart = oz_core::Cart::new("USD".parse::<Currency>().unwrap());
+    let cart = kasirmu_core::Cart::new("USD".parse::<Currency>().unwrap());
     let cart_id = cart.id();
     let cart_data = serde_json::to_string(&cart).unwrap();
     conn.execute(
@@ -181,7 +181,7 @@ fn override_cart_deduction_location_fails_for_nonexistent_cart() {
     seed_manager_with_override_permission(&conn, "user-mgr");
 
     // Create a CartId that won't exist in the DB.
-    let cart_id = oz_core::Cart::new("USD".parse::<Currency>().unwrap()).id();
+    let cart_id = kasirmu_core::Cart::new("USD".parse::<Currency>().unwrap()).id();
     let result = run_override_cart_deduction_location(&conn, "user-mgr", &cart_id);
 
     assert!(
@@ -440,9 +440,9 @@ async fn get_cart_deduction_location_scoped_rejects_invalid_token() {
 }
 // ── Tax scope at the command layer (tax-separation P1) ─────────────
 
-fn single_line_cart() -> oz_core::Cart {
-    let mut cart = oz_core::Cart::new(usd());
-    cart.add_line(oz_core::CartLine::new(Sku::new("COFFEE"), 2, price(350)))
+fn single_line_cart() -> kasirmu_core::Cart {
+    let mut cart = kasirmu_core::Cart::new(usd());
+    cart.add_line(kasirmu_core::CartLine::new(Sku::new("COFFEE"), 2, price(350)))
         .unwrap();
     cart
 }
@@ -453,7 +453,7 @@ fn tax_scope_now_carries_the_location_and_a_date_the_resolver_accepts() {
     // right. A scope the core resolver rejects fails EVERY sale at this
     // location — loudly, which is the intended failure mode, but loudly at
     // checkout is still a broken checkout.
-    let db = oz_core::migrations::fresh_db();
+    let db = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&db);
     let scope = tax_scope_now(&store, "loc-42");
     assert_eq!(
@@ -474,7 +474,7 @@ fn a_store_scoped_rate_wins_over_the_tenant_default_through_the_command_door() {
     // tax_scope_now + compute_sale_tax_for_location + the settings rounding
     // mode — so a location with its own rate stops inheriting the tenant
     // default at the command layer, and does not leak it next door.
-    let db = oz_core::migrations::fresh_db();
+    let db = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&db);
     db.execute(
         "INSERT INTO legal_entities (id, tenant_id, name) VALUES ('ent-1', 'default', 'Ent')",
@@ -497,9 +497,9 @@ fn a_store_scoped_rate_wins_over_the_tenant_default_through_the_command_door() {
         [],
     )
     .unwrap();
-    let mode = oz_core::Settings::get_tax_rounding_mode(&db).unwrap();
+    let mode = kasirmu_core::Settings::get_tax_rounding_mode(&db).unwrap();
 
-    let mut here = oz_core::Sale::from_cart(&single_line_cart()).unwrap();
+    let mut here = kasirmu_core::Sale::from_cart(&single_line_cart()).unwrap();
     store
         .compute_sale_tax_for_location(
             &mut here,
@@ -511,7 +511,7 @@ fn a_store_scoped_rate_wins_over_the_tenant_default_through_the_command_door() {
     assert_eq!(here.lines[0].tax_rate_id.as_deref(), Some("r-here"));
     assert_eq!(here.tax_total.minor_units, 77, "11% of 700");
 
-    let mut there = oz_core::Sale::from_cart(&single_line_cart()).unwrap();
+    let mut there = kasirmu_core::Sale::from_cart(&single_line_cart()).unwrap();
     store
         .compute_sale_tax_for_location(
             &mut there,
@@ -527,7 +527,7 @@ fn a_store_scoped_rate_wins_over_the_tenant_default_through_the_command_door() {
 
     // The regression this exists to catch: if a future edit drops the scope
     // argument, loc-here silently gets THIS number.
-    let mut forgot = oz_core::Sale::from_cart(&single_line_cart()).unwrap();
+    let mut forgot = kasirmu_core::Sale::from_cart(&single_line_cart()).unwrap();
     store.compute_sale_tax(&mut forgot, &[], mode).unwrap();
     assert_eq!(forgot.tax_total.minor_units, 70);
 }
@@ -543,8 +543,8 @@ fn a_store_scoped_rate_wins_over_the_tenant_default_through_the_command_door() {
 
 /// A session bound to the `sales:process` cashier seeded by
 /// `seed_cashier_without_override_permission`.
-fn replay_session() -> oz_core::session::SessionContext {
-    oz_core::session::SessionContext::new(
+fn replay_session() -> kasirmu_core::session::SessionContext {
+    kasirmu_core::session::SessionContext::new(
         "user-cashier".into(),
         "role-lite".into(),
         "tablet-terminal".into(),
@@ -586,7 +586,7 @@ fn seed_cart_with_line(conn: &Connection, sku: &str, qty: i64, unit_minor: i64) 
         [],
     )
     .unwrap();
-    let mut cart = oz_core::Cart::new(usd());
+    let mut cart = kasirmu_core::Cart::new(usd());
     cart.add_line(CartLine::new(Sku::new(sku), qty, price(unit_minor)))
         .unwrap();
     let cart_id = cart.id();
@@ -828,7 +828,7 @@ fn scoped_args_accept_every_field_the_shipped_ui_sends() {
 /// rebuilds its basket from the request body and never persists a cart row.
 fn shortfall_args(sku: &str, attempt: Option<&str>) -> CompleteSaleWithResolvedShortfallsArgs {
     CompleteSaleWithResolvedShortfallsArgs {
-        cart_id: oz_core::Cart::new(usd()).id(),
+        cart_id: kasirmu_core::Cart::new(usd()).id(),
         payment_method: "cash".into(),
         tendered_minor: Some(700),
         customer_id: None,
@@ -936,7 +936,7 @@ fn unique_collision_that_resolves_to_nothing_propagates_unchanged() {
 
     // b) A UNIQUE violation on some other column — not the replay key.
     let err = AppError::Core {
-        sub_kind: oz_core::CoreErrorKind::Db,
+        sub_kind: kasirmu_core::CoreErrorKind::Db,
         message: "sqlite: UNIQUE constraint failed: payments.id".into(),
     };
     assert!(
@@ -948,7 +948,7 @@ fn unique_collision_that_resolves_to_nothing_propagates_unchanged() {
     // key belongs to something this attempt cannot name, so the original
     // error propagates unchanged rather than a stranger's receipt.
     let err = AppError::Core {
-        sub_kind: oz_core::CoreErrorKind::Db,
+        sub_kind: kasirmu_core::CoreErrorKind::Db,
         message: "sqlite: UNIQUE constraint failed: payments.idempotency_key".into(),
     };
     match replay_on_unique_collision(&store, Some("no-such-attempt"), None, err) {

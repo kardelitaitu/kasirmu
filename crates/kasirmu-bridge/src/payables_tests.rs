@@ -11,7 +11,7 @@
 
 use super::*;
 use crate::testing::{TestBridge, temp_conn};
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 
 fn idr(minor: i64) -> Money {
     Money {

@@ -62,10 +62,10 @@ fn multiple_save_cycles() {
             wires: vec![],
         };
         let json = serde_json::to_string(&data).unwrap();
-        oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
+        kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
     }
     // Verify only the last cycle persisted.
-    let loaded_raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let loaded_raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&loaded_raw).unwrap();
@@ -92,10 +92,10 @@ fn save_twice_same_data() {
         wires: vec![],
     };
     let json = serde_json::to_string(&data).unwrap();
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
 
-    let loaded_raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let loaded_raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&loaded_raw).unwrap();
@@ -112,7 +112,7 @@ fn save_overwrites_with_larger_data() {
         nodes: vec![],
         wires: vec![],
     };
-    oz_core::Settings::set(
+    kasirmu_core::Settings::set(
         &conn,
         TOPOLOGY_SETTING_KEY,
         &serde_json::to_string(&small).unwrap(),
@@ -137,14 +137,14 @@ fn save_overwrites_with_larger_data() {
             .collect(),
         wires: vec![],
     };
-    oz_core::Settings::set(
+    kasirmu_core::Settings::set(
         &conn,
         TOPOLOGY_SETTING_KEY,
         &serde_json::to_string(&large).unwrap(),
     )
     .unwrap();
 
-    let loaded_raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let loaded_raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&loaded_raw).unwrap();
@@ -154,21 +154,21 @@ fn save_overwrites_with_larger_data() {
 #[test]
 fn fresh_conn_different_key_returns_none() {
     let conn = fresh_conn();
-    let result = oz_core::Settings::get(&conn, "oz-pos/some-other-key").unwrap();
+    let result = kasirmu_core::Settings::get(&conn, "oz-pos/some-other-key").unwrap();
     assert!(result.is_none());
 }
 
 #[test]
 fn topology_key_does_not_interfere_with_other_settings() {
     let conn = fresh_conn();
-    oz_core::Settings::set(&conn, "oz-pos/custom-key", "custom_value").unwrap();
+    kasirmu_core::Settings::set(&conn, "oz-pos/custom-key", "custom_value").unwrap();
 
     // Topology key remains empty.
-    let topo = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY).unwrap();
+    let topo = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY).unwrap();
     assert!(topo.is_none());
 
     // Other key still readable.
-    let other = oz_core::Settings::get(&conn, "oz-pos/custom-key").unwrap();
+    let other = kasirmu_core::Settings::get(&conn, "oz-pos/custom-key").unwrap();
     assert_eq!(other.as_deref(), Some("custom_value"));
 }
 
@@ -263,9 +263,9 @@ fn mixed_node_types_preserved_through_save() {
         wires: vec![],
     };
     let json = serde_json::to_string(&data).unwrap();
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
 
-    let loaded_raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let loaded_raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&loaded_raw).unwrap();
@@ -381,13 +381,13 @@ fn save_only_nodes_empty_wires() {
         }],
         wires: vec![],
     };
-    oz_core::Settings::set(
+    kasirmu_core::Settings::set(
         &conn,
         TOPOLOGY_SETTING_KEY,
         &serde_json::to_string(&data).unwrap(),
     )
     .unwrap();
-    let loaded_raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let loaded_raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&loaded_raw).unwrap();
@@ -410,13 +410,13 @@ fn save_only_wires_empty_nodes() {
             to_port: None,
         }],
     };
-    oz_core::Settings::set(
+    kasirmu_core::Settings::set(
         &conn,
         TOPOLOGY_SETTING_KEY,
         &serde_json::to_string(&data).unwrap(),
     )
     .unwrap();
-    let loaded_raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let loaded_raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&loaded_raw).unwrap();
@@ -657,7 +657,7 @@ fn template_is_stored_in_the_settings_table_not_browser_storage() {
     let topo = topology_setting_key(Some("main")).unwrap();
     template_save(&conn, &topo, "Setup", &serde_json::json!({"nodes": []})).unwrap();
 
-    let raw = oz_core::Settings::get(&conn, &template_setting_key(&topo, "Setup")).unwrap();
+    let raw = kasirmu_core::Settings::get(&conn, &template_setting_key(&topo, "Setup")).unwrap();
     assert!(raw.is_some(), "template must live in settings");
 }
 
@@ -737,7 +737,7 @@ fn template_list_does_not_see_the_diagram_or_runtime_plan() {
     )
     .unwrap();
     let runtime_key = topology_runtime_setting_key(&topo).unwrap();
-    oz_core::Settings::set(&conn, &runtime_key, "{}").unwrap();
+    kasirmu_core::Settings::set(&conn, &runtime_key, "{}").unwrap();
 
     assert!(template_list(&conn, &topo).unwrap().is_empty());
 }
@@ -775,7 +775,7 @@ fn corrupt_template_reads_as_absent_instead_of_failing() {
     // whole panel — the merchant keeps access to their other templates.
     let conn = fresh_conn();
     let topo = topology_setting_key(Some("main")).unwrap();
-    oz_core::Settings::set(&conn, &template_setting_key(&topo, "Broken"), "{not json").unwrap();
+    kasirmu_core::Settings::set(&conn, &template_setting_key(&topo, "Broken"), "{not json").unwrap();
 
     assert_eq!(template_load(&conn, &topo, "Broken").unwrap(), None);
     assert_eq!(
@@ -804,7 +804,7 @@ fn a_nested_template_key_is_not_listed_as_a_name() {
     // that load can never round-trip (normalize rejects the slash).
     let conn = fresh_conn();
     let topo = topology_setting_key(Some("main")).unwrap();
-    oz_core::Settings::set(&conn, &format!("{topo}/template/a/b"), "{}").unwrap();
+    kasirmu_core::Settings::set(&conn, &format!("{topo}/template/a/b"), "{}").unwrap();
     template_save(&conn, &topo, "Good", &serde_json::json!({})).unwrap();
 
     assert_eq!(

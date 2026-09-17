@@ -22,19 +22,19 @@
 
 use serde::{Deserialize, Serialize};
 
-use oz_core::auth::hash_pin;
-use oz_core::availability::UsageCounts;
-use oz_core::db::Store;
-use oz_core::db::assignments::{Assignment, AssignmentSpec, ScopeMode, ScopeType};
-use oz_core::db::audit_security::{
+use kasirmu_core::auth::hash_pin;
+use kasirmu_core::availability::UsageCounts;
+use kasirmu_core::db::Store;
+use kasirmu_core::db::assignments::{Assignment, AssignmentSpec, ScopeMode, ScopeType};
+use kasirmu_core::db::audit_security::{
     SECURITY_ACTION_USER_CREATE, SECURITY_ACTION_USER_UPDATE, SECURITY_REASON_ACCOUNT_CREATED,
     SECURITY_REASON_PIN_ROTATED, SECURITY_REASON_PROFILE_CHANGED, SecurityEvent,
 };
-use oz_core::db::profile::{UserProfile, mask_last4};
-use oz_core::entitlements::Entitlements;
-use oz_core::permissions;
-use oz_core::subscription::TenantSubscription;
-use oz_core::{Role, User};
+use kasirmu_core::db::profile::{UserProfile, mask_last4};
+use kasirmu_core::entitlements::Entitlements;
+use kasirmu_core::permissions;
+use kasirmu_core::subscription::TenantSubscription;
+use kasirmu_core::{Role, User};
 use kasirmu_security::mask::mask_token;
 use rusqlite::Connection;
 
@@ -240,8 +240,8 @@ pub struct ProfileViewDto {
     pub is_complete: bool,
 }
 
-impl From<oz_core::db::profile::ProfileView> for ProfileViewDto {
-    fn from(view: oz_core::db::profile::ProfileView) -> Self {
+impl From<kasirmu_core::db::profile::ProfileView> for ProfileViewDto {
+    fn from(view: kasirmu_core::db::profile::ProfileView) -> Self {
         Self {
             user_id: String::new(),
             username: view.username,
@@ -445,7 +445,7 @@ pub struct PermissionKeyDto {
 
 /// One account that holds a role, as the authoring surface shows it.
 ///
-/// Mirrors `oz_core::db::roles::RoleHolder`. The scope fields are `None`
+/// Mirrors `kasirmu_core::db::roles::RoleHolder`. The scope fields are `None`
 /// together when the account has no `assignments` row at all — a different
 /// fact from "scoped to nothing", which the surface has to render apart.
 #[derive(Debug, Serialize)]
@@ -481,8 +481,8 @@ pub struct RoleHolderDto {
     pub workspace_count: Option<i64>,
 }
 
-impl From<oz_core::db::roles::RoleHolder> for RoleHolderDto {
-    fn from(h: oz_core::db::roles::RoleHolder) -> Self {
+impl From<kasirmu_core::db::roles::RoleHolder> for RoleHolderDto {
+    fn from(h: kasirmu_core::db::roles::RoleHolder) -> Self {
         Self {
             user_id: h.user_id,
             username: h.username,
@@ -529,7 +529,7 @@ pub struct BootstrapOwnerArgs {
 #[derive(Debug, Serialize)]
 pub struct BootstrapOwnerResult {
     /// LoginSession dto.
-    pub session: oz_core::auth::LoginSession,
+    pub session: kasirmu_core::auth::LoginSession,
     /// Short-lived picker ticket (audit-open-findings residual).
     ///
     /// The pre-session `list_workspaces` / `list_workspace_screens`
@@ -545,9 +545,9 @@ pub struct BootstrapOwnerResult {
 /// `Store::require_permission` (not the scope-aware form), so they need the
 /// same `PermissionDenied` → [`BridgeError::PermissionDenied`] translation
 /// the authz seam applies.
-fn map_gate_error(e: oz_core::CoreError) -> BridgeError {
+fn map_gate_error(e: kasirmu_core::CoreError) -> BridgeError {
     match e {
-        oz_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
+        kasirmu_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
         other => BridgeError::from(other),
     }
 }
@@ -677,7 +677,7 @@ pub fn role_dto(store: &Store<'_>, role: Role) -> Result<RoleDto, BridgeError> {
     // Everything borrowed from `role` is read before its fields move into
     // the DTO; `permission_keys` takes &self and `name`/`description` move.
     let permissions = role.permission_keys();
-    let is_builtin = oz_core::db::roles::is_builtin_role_id(&role.id);
+    let is_builtin = kasirmu_core::db::roles::is_builtin_role_id(&role.id);
     let refs = store.role_reference_counts(&role.id)?;
     let reference_count = refs.iter().map(|(_, count)| count).sum();
     // Split rather than summed, because the kinds answer different questions:
@@ -720,7 +720,7 @@ pub fn enforce_role_assignment_policy(
     target_is_active: bool,
 ) -> Result<(), BridgeError> {
     // Only Owner-level roles may assign the Owner role.
-    if target_role_id == oz_core::builtin_roles::OWNER {
+    if target_role_id == kasirmu_core::builtin_roles::OWNER {
         require_permission_for_user(store, caller_user_id, permissions::STAFF_MANAGE_ROLES)?;
     }
 
@@ -745,13 +745,13 @@ pub fn enforce_role_assignment_policy(
 
         // Last-owner protection: cannot deactivate/demote the last active Owner.
         if let Some(target) = store.get_user(target_id)?
-            && target.role_id == oz_core::builtin_roles::OWNER
-            && (target_role_id != oz_core::builtin_roles::OWNER || !target_is_active)
+            && target.role_id == kasirmu_core::builtin_roles::OWNER
+            && (target_role_id != kasirmu_core::builtin_roles::OWNER || !target_is_active)
         {
             let active_owners = store
                 .list_users()?
                 .iter()
-                .filter(|u| u.role_id == oz_core::builtin_roles::OWNER && u.is_active)
+                .filter(|u| u.role_id == kasirmu_core::builtin_roles::OWNER && u.is_active)
                 .count();
             if active_owners <= 1 {
                 return Err(BridgeError::PermissionDenied(
@@ -896,7 +896,7 @@ pub async fn list_permission_keys_scoped(
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, permissions::STAFF_READ)
         .await?;
-    Ok(oz_core::permission_registry::REGISTRY
+    Ok(kasirmu_core::permission_registry::REGISTRY
         .iter()
         .map(|entry| PermissionKeyDto {
             key: entry.key.to_string(),
@@ -1028,11 +1028,11 @@ pub async fn list_role_holders_scoped(
     let db = ctx.lock_global().await;
     let store = Store::new(&db);
     require_permission_for_user(&store, &session.user_id, permissions::STAFF_READ)?;
-    let (holders, total) = store.role_holders(id, oz_core::db::roles::ROLE_HOLDERS_MAX)?;
+    let (holders, total) = store.role_holders(id, kasirmu_core::db::roles::ROLE_HOLDERS_MAX)?;
     Ok(RoleHoldersDto {
         holders: holders.into_iter().map(RoleHolderDto::from).collect(),
         total,
-        cap: oz_core::db::roles::ROLE_HOLDERS_MAX,
+        cap: kasirmu_core::db::roles::ROLE_HOLDERS_MAX,
     })
 }
 
@@ -1330,10 +1330,10 @@ pub fn run_bootstrap_owner(
         &username,
         &pin_hash,
         display_name,
-        oz_core::builtin_roles::OWNER,
+        kasirmu_core::builtin_roles::OWNER,
     )?;
     let role = store
-        .get_role(oz_core::builtin_roles::OWNER)?
+        .get_role(kasirmu_core::builtin_roles::OWNER)?
         .ok_or_else(|| BridgeError::Internal("owner role not found after seeding".into()))?;
 
     tracing::info!(username = %username, "owner account bootstrapped");
@@ -1341,7 +1341,7 @@ pub fn run_bootstrap_owner(
     let permissions = role.permission_keys();
 
     Ok(BootstrapOwnerResult {
-        session: oz_core::auth::LoginSession {
+        session: kasirmu_core::auth::LoginSession {
             user_id: user.id,
             display_name: user.display_name,
             role_name: role.name,

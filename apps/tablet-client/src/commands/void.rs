@@ -21,7 +21,7 @@
 
 use tauri::{State, command};
 
-use oz_core::permissions;
+use kasirmu_core::permissions;
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
@@ -38,11 +38,11 @@ pub async fn void_sale_scoped(
     session_token: String,
     args: VoidSaleScopedArgs,
     state: State<'_, AppState>,
-) -> Result<oz_core::Sale, AppError> {
+) -> Result<kasirmu_core::Sale, AppError> {
     let session = state.resolve_session(&session_token)?;
 
     let db = state.db.lock().await;
-    let store = oz_core::db::Store::new(&db);
+    let store = kasirmu_core::db::Store::new(&db);
 
     require_permission_for_user(&store, &session.user_id, permissions::SALES_VOID)?;
 

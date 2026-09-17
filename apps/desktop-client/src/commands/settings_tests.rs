@@ -14,10 +14,10 @@
 
 // No `use super::*` on purpose: this shell's `settings.rs` holds only
 // `#[tauri::command]` shims and re-exported wire DTOs, and every item asserted
-// here is named by its owner instead — `oz_core::Settings`,
+// here is named by its owner instead — `kasirmu_core::Settings`,
 // `platform_core::settings::keys`, `kasirmu_bridge::settings`.
-use oz_core::Settings;
-use oz_core::migrations;
+use kasirmu_core::Settings;
+use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 /// The exact spelling the caller in `ui/src/hooks/useGatewayStatus.ts:23`

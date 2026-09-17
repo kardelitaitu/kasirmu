@@ -14,7 +14,7 @@ next: none | perf: N/A
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
-use oz_core::CoreError;
+use kasirmu_core::CoreError;
 
 /// Daily sales summary row: one row per day in the range.
 #[derive(Debug, Clone, Serialize, Deserialize)]

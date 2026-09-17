@@ -14,7 +14,7 @@
 
 use tauri::State;
 
-use oz_core::{Promotion, PromotionApplication};
+use kasirmu_core::{Promotion, PromotionApplication};
 
 use crate::error::AppError;
 use crate::state::AppState;

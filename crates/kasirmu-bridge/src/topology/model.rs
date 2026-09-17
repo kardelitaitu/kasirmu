@@ -278,7 +278,7 @@ pub const TOPOLOGY_SCHEMA_VERSION: u64 = 1;
 // while the envelope version describes the shape of a saved diagram. A
 // merchant's existing graph is unaffected by a contract change, so a contract
 // bump must not touch the envelope constant, and vice versa. The number itself
-// is owned by `oz_core` — re-exported in `topology.rs`, which exists so callers
+// is owned by `kasirmu_core` — re-exported in `topology.rs`, which exists so callers
 // assert against one declaration rather than a copy that can drift.
 //
 // A plain comment rather than `///`: the constant lives in `topology.rs`, so a

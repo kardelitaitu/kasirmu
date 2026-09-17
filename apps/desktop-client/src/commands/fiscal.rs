@@ -24,7 +24,7 @@
 
 use tauri::State;
 
-use oz_core::db::fiscal::{DocumentNumberSequence, FiscalScheme};
+use kasirmu_core::db::fiscal::{DocumentNumberSequence, FiscalScheme};
 
 use crate::error::AppError;
 use crate::state::AppState;
@@ -32,9 +32,9 @@ use crate::state::AppState;
 // Retained for the sibling test module, which reaches these through
 // `use super::*`; the command bodies themselves no longer name them.
 #[allow(unused_imports)]
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 #[allow(unused_imports)]
-use oz_core::db::fiscal::ResetPeriod;
+use kasirmu_core::db::fiscal::ResetPeriod;
 
 pub use kasirmu_bridge::fiscal::UpsertDocumentNumberSequenceArgs;
 

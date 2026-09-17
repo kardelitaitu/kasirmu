@@ -5,7 +5,7 @@
 //! the transport layer keys off, and the fail-closed contract that stops an
 //! unimplemented codec from ever looking like a decoded approval.
 
-use oz_core::{Currency, Money};
+use kasirmu_core::{Currency, Money};
 
 use super::ingenico::IngenicoCodec;
 use super::pax::PaxCodec;

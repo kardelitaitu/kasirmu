@@ -11,7 +11,7 @@ next: none until a DCC handler | perf: N/A
 //! serial, USB, or Bluetooth — a packet-based protocol with a fixed
 //! header, command/response structure, and CRC.
 
-use oz_core::Money;
+use kasirmu_core::Money;
 
 use super::{ProtocolCodec, ProtocolMessage, stub_error};
 use crate::error::HalError;

@@ -24,17 +24,17 @@ use std::sync::Arc;
 use rusqlite::Connection;
 use tauri::{Emitter, State};
 
-use oz_core::events::SettingsUpdated;
+use kasirmu_core::events::SettingsUpdated;
 #[allow(unused_imports)] // sibling sync_tests.rs depends on it
-use oz_core::settings::Settings;
-use oz_core::sync_client::{self, PullResult, SyncAttemptResult};
+use kasirmu_core::settings::Settings;
+use kasirmu_core::sync_client::{self, PullResult, SyncAttemptResult};
 use platform_sync::daemon::SettingsChangedSink;
 use platform_sync::pg_daemon::PgDaemonStatus;
 
 use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
-use oz_core::permissions;
+use kasirmu_core::permissions;
 
 pub use kasirmu_bridge::sync::{
     PgSyncSettingsDto, SyncPullArgs, SyncSettingsDto, UpdatePgSyncSettingsArgs,
@@ -398,9 +398,9 @@ async fn sync_server_credentials(
     state: &State<'_, AppState>,
 ) -> Result<Option<(String, Option<String>)>, AppError> {
     let db = state.db.lock().await;
-    let url = oz_core::settings::Settings::get_sync_server_url(&db)
+    let url = kasirmu_core::settings::Settings::get_sync_server_url(&db)
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    let key = oz_core::settings::Settings::get_sync_api_key(&db)
+    let key = kasirmu_core::settings::Settings::get_sync_api_key(&db)
         .map_err(|e| AppError::Internal(e.to_string()))?;
     drop(db);
 

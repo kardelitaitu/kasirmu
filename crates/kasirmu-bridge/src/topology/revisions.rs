@@ -517,7 +517,7 @@ pub fn audit_topology_apply(
         "workspace_updates": ctx.workspace_updates,
         "workspace_archives": ctx.workspace_archives,
     });
-    oz_core::Store::new(store_conn).log_audit(&oz_core::AuditEntry::new(
+    kasirmu_core::Store::new(store_conn).log_audit(&kasirmu_core::AuditEntry::new(
         ctx.published_by,
         "topology.apply",
         Some("topology"),
@@ -577,7 +577,7 @@ pub fn insert_topology_revision(
             // The CONTRACT axis, not the envelope axis — model.rs:273-285 is
             // explicit that the two must never be conflated, and ADR #46 §7's
             // "can this still be restored?" question is answered by this one.
-            oz_core::topology::TOPOLOGY_CONTRACT_SCHEMA_VERSION as i64,
+            kasirmu_core::topology::TOPOLOGY_CONTRACT_SCHEMA_VERSION as i64,
             published_at,
             ctx.published_by,
         ],

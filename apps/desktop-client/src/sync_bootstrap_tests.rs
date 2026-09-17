@@ -1,5 +1,5 @@
 use super::*;
-use oz_core::migrations;
+use kasirmu_core::migrations;
 
 #[test]
 fn should_provision_when_no_url_is_configured() {

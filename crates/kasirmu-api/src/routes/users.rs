@@ -15,9 +15,9 @@ use axum::{
 };
 use serde::Deserialize;
 
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 
-use oz_core::CoreError;
+use kasirmu_core::CoreError;
 
 use crate::AppState;
 use crate::auth::ApiTokenClaims;
@@ -29,7 +29,7 @@ pub struct CreateUserRequest {
     /// Unique username for login.
     pub username: String,
     /// PHC-formatted Argon2id hash of the user's PIN, as produced by
-    /// `oz_core::auth::hash_pin` — e.g.
+    /// `kasirmu_core::auth::hash_pin` — e.g.
     /// `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`.
     ///
     /// This is NOT a SHA-256 digest, which an earlier version of this

@@ -1,6 +1,6 @@
 use super::*;
-use oz_core::migrations;
-use oz_core::{Cart, CartLine, Currency, Money, Sale, SaleStatus, Sku};
+use kasirmu_core::migrations;
+use kasirmu_core::{Cart, CartLine, Currency, Money, Sale, SaleStatus, Sku};
 use rusqlite::Connection;
 
 fn fresh() -> Connection {
@@ -19,7 +19,7 @@ fn price(minor: i64) -> Money {
 }
 
 fn seed_product(conn: &Connection, sku: &str, name: &str) {
-    let store = oz_core::db::Store::new(conn);
+    let store = kasirmu_core::db::Store::new(conn);
     store
         .create_product(sku, name, price(500), None, None, 100, None)
         .unwrap();
@@ -32,7 +32,7 @@ fn complete_sale_with_date(
     unit_minor: i64,
     date_str: &str,
 ) -> String {
-    let store = oz_core::db::Store::new(conn);
+    let store = kasirmu_core::db::Store::new(conn);
     let mut cart = Cart::new(usd());
     cart.add_line(CartLine::new(Sku::new(sku), qty, price(unit_minor)))
         .unwrap();
@@ -107,7 +107,7 @@ fn daily_summary_excludes_non_completed() {
     seed_product(&conn, "SODA", "Soda");
 
     // Create a sale but leave it active (not completed).
-    let store = oz_core::db::Store::new(&conn);
+    let store = kasirmu_core::db::Store::new(&conn);
     let mut cart = Cart::new(usd());
     cart.add_line(CartLine::new(Sku::new("SODA"), 1, price(150)))
         .unwrap();
@@ -160,7 +160,7 @@ fn sales_by_hour_multiple_hours() {
     complete_sale_with_date(&conn, "FRIES", 1, 300, "2026-07-20"); // 12:00
 
     // Create a sale at a different hour via raw SQL.
-    let store = oz_core::db::Store::new(&conn);
+    let store = kasirmu_core::db::Store::new(&conn);
     let mut cart = Cart::new(usd());
     cart.add_line(CartLine::new(Sku::new("FRIES"), 2, price(300)))
         .unwrap();
@@ -308,7 +308,7 @@ fn daily_summary_with_customer() {
     .unwrap();
 
     // Create a sale linked to a customer.
-    let store = oz_core::db::Store::new(&conn);
+    let store = kasirmu_core::db::Store::new(&conn);
     let mut cart = Cart::new(usd());
     cart.add_line(CartLine::new(Sku::new("LATTE"), 1, price(400)))
         .unwrap();
@@ -333,7 +333,7 @@ fn top_products_excludes_non_completed() {
     let conn = fresh();
     seed_product(&conn, "VOID", "Voided Item");
     // Sale created but left as draft (not completed).
-    let store = oz_core::db::Store::new(&conn);
+    let store = kasirmu_core::db::Store::new(&conn);
     let mut cart = Cart::new(usd());
     cart.add_line(CartLine::new(Sku::new("VOID"), 5, price(100)))
         .unwrap();
@@ -375,7 +375,7 @@ fn daily_summary_includes_feb_29_leap_day() {
 fn daily_summary_excludes_voided_sales() {
     let conn = fresh();
     seed_product(&conn, "EXCLUDE", "Exclude Item");
-    let store = oz_core::db::Store::new(&conn);
+    let store = kasirmu_core::db::Store::new(&conn);
 
     let mut cart = Cart::new(usd());
     cart.add_line(CartLine::new(Sku::new("EXCLUDE"), 1, price(100)))

@@ -9,12 +9,12 @@ use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
-use oz_core::availability::UsageCounts;
+use kasirmu_core::availability::UsageCounts;
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
-use oz_core::entitlements::Entitlements;
+use kasirmu_core::entitlements::Entitlements;
 
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
-use oz_core::{
+use kasirmu_core::{
     InventoryLocation, InventoryShift, InventoryTransaction, InventoryTransactionLine,
     StockThreshold, Store, WorkspaceInventoryLocation,
     db::inventory::InventoryTransactionLineInput,
@@ -404,7 +404,7 @@ pub async fn get_low_stock_alerts_at_location_scoped(
     location_id: String,
     default_threshold: i64,
     state: State<'_, AppState>,
-) -> Result<Vec<oz_core::db::reports::LowStockAlert>, AppError> {
+) -> Result<Vec<kasirmu_core::db::reports::LowStockAlert>, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::inventory::get_low_stock_alerts_at_location_scoped(
         &ctx,
@@ -426,7 +426,7 @@ pub async fn active_stock_alerts_scoped(
     session_token: String,
     location_id: String,
     state: State<'_, AppState>,
-) -> Result<Vec<oz_core::db::reports::StockAlertEvent>, AppError> {
+) -> Result<Vec<kasirmu_core::db::reports::StockAlertEvent>, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::inventory::active_stock_alerts_scoped(&ctx, &session_token, location_id)
         .await

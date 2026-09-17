@@ -24,8 +24,8 @@ use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
 /// The release leg for a session-minting command in this file.
 //-- The release leg for these session-mints lives in crate::testing (RULE at assert_refused_by_the_seeded_row) --
-use oz_core::db::Store;
-use oz_core::session::SessionContext;
+use kasirmu_core::db::Store;
+use kasirmu_core::session::SessionContext;
 
 /// The picker-ticket HMAC key the desktop's AppState::for_test_with_conn seeded
 /// (apps/desktop-client/src/state.rs:826), so tickets minted and verified here

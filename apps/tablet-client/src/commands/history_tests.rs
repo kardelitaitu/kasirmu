@@ -1,6 +1,6 @@
 use super::*;
 use foundation::Currency;
-use oz_core::{Money, SaleLine};
+use kasirmu_core::{Money, SaleLine};
 
 fn usd() -> Currency {
     "USD".parse().unwrap()
@@ -249,7 +249,7 @@ fn eod_report_serialize() {
 // permission is named by constant, never by a copy of the wire string, and
 // the refusal text is checked for what it must not carry.
 
-use oz_core::migrations;
+use kasirmu_core::migrations;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
@@ -288,7 +288,7 @@ fn history_state() -> (AppState, tempfile::TempDir) {
 fn mint(state: &mut AppState, token: &str, user: &str, role: &str) {
     state.session_store.write().unwrap().insert(
         token.into(),
-        oz_core::session::SessionContext::new(
+        kasirmu_core::session::SessionContext::new(
             user.into(),
             role.into(),
             "terminal-1".into(),
@@ -510,7 +510,7 @@ async fn known_hazard_daily_totals_count_voided_sales_as_revenue() {
             .expect("voiding must not delete the row");
         assert_eq!(
             back.status,
-            oz_core::SaleStatus::Voided,
+            kasirmu_core::SaleStatus::Voided,
             "the pin needs a real voided row, got {:?}",
             back.status
         );

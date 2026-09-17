@@ -22,12 +22,12 @@
 // Retained for the sibling test module, which reaches these through
 // `use super::*`; the command bodies themselves no longer name them.
 #[allow(unused_imports)]
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 #[allow(unused_imports)]
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use oz_core::tax_rate::RoundingMode;
+use kasirmu_core::tax_rate::RoundingMode;
 
 use crate::error::AppError;
 use crate::state::AppState;

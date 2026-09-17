@@ -7,9 +7,9 @@
 
 use super::topology_tests::*;
 use super::*;
-use oz_core::db::Store;
-use oz_core::migrations;
-use oz_core::session::SessionContext;
+use kasirmu_core::db::Store;
+use kasirmu_core::migrations;
+use kasirmu_core::session::SessionContext;
 use serde_json::Value;
 use tempfile::tempdir;
 
@@ -196,7 +196,7 @@ async fn tauri_load_topology_serves_stored_node_without_display_name_raw() {
     {
         let mut conn = state.db.lock().await;
         migrations::run(&mut conn).unwrap();
-        oz_core::Settings::set(
+        kasirmu_core::Settings::set(
                 &conn,
                 TOPOLOGY_SETTING_KEY,
                 r#"{"nodes":[{"id":"store-1","type":"store","x":0,"y":0},{"id":"ws-1","type":"workspace","x":200,"y":0}],"wires":[]}"#,
@@ -322,7 +322,7 @@ async fn tauri_load_topology_serves_corrupt_stored_direction_raw() {
     {
         let mut conn = state.db.lock().await;
         migrations::run(&mut conn).unwrap();
-        oz_core::Settings::set(
+        kasirmu_core::Settings::set(
                 &conn,
                 TOPOLOGY_SETTING_KEY,
                 r#"{"nodes":[{"id":"store-1","type":"store","name":"Legacy","x":0,"y":0},{"id":"ws-1","type":"workspace","name":"POS","x":200,"y":0}],"wires":[{"id":"w-legacy","from_node_id":"store-1","to_node_id":"ws-1","direction":"bidirectional"}]}"#,
@@ -364,7 +364,7 @@ async fn tauri_load_topology_serves_semantic_contract_violation_raw() {
         // Semantic fields present (store_profile_id on the branch) but
         // ws-1 has no location-in wire — a missing-location-input
         // violation the editor would surface as a repair prompt.
-        oz_core::Settings::set(
+        kasirmu_core::Settings::set(
                 &conn,
                 TOPOLOGY_SETTING_KEY,
                 r#"{"nodes":[{"id":"branch","type":"branch-location","name":"HQ","x":0,"y":0,"store_profile_id":"default"},{"id":"ws-1","type":"workspace","name":"POS","x":200,"y":0}],"wires":[]}"#,
@@ -712,7 +712,7 @@ fn legacy_unknown_node_type_loads_as_unknown_then_save_rejects() {
     let conn = fresh_conn();
     // Hand-edited legacy JSON with an unknown type.
     let legacy = r#"{"nodes":[{"id":"n1","type":"foo","name":"Legacy","x":0,"y":0}],"wires":[]}"#;
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, legacy).unwrap();
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, legacy).unwrap();
 
     // Load coerces to Unknown (does not error — backward compat).
     let loaded = load_topology_data(&conn).unwrap().unwrap();
@@ -730,7 +730,7 @@ fn legacy_unknown_direction_loads_then_save_rejects() {
     let legacy = r#"{"nodes":[{"id":"a","type":"store","name":"A","x":0,"y":0},
                                   {"id":"b","type":"workspace","name":"B","x":1,"y":1}],
                           "wires":[{"id":"w1","from_node_id":"a","to_node_id":"b","direction":"sideways"}]}"#;
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, legacy).unwrap();
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, legacy).unwrap();
     let loaded = load_topology_data(&conn).unwrap().unwrap();
     assert_eq!(loaded.wires[0].direction, WireDirection::Unknown);
     let result = save_topology_data(&conn, loaded.nodes, loaded.wires);
@@ -971,7 +971,7 @@ fn diagram_node_without_persisted_metadata_roundtrips() {
 /// TempDir is returned so it outlives the state's lazy store opens.
 fn state_with_store() -> (tempfile::TempDir, AppState) {
     let dir = tempdir().unwrap();
-    let global = oz_core::migrations::fresh_db();
+    let global = kasirmu_core::migrations::fresh_db();
     let mut state = AppState::for_test_with_conn(global);
     state.db_manager =
         platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
@@ -1057,7 +1057,7 @@ async fn crash_before_store_commit_heals_to_exact_prior_state() {
     let creation = crash_creation(store_id, "ws-crash-1");
     {
         let db = state.db.lock().await;
-        oz_core::Settings::set(&db, TOPOLOGY_SETTING_KEY, &previous).unwrap();
+        kasirmu_core::Settings::set(&db, TOPOLOGY_SETTING_KEY, &previous).unwrap();
         persist_topology_recovery(
             &db,
             &TopologyApplyRecovery {
@@ -1077,13 +1077,13 @@ async fn crash_before_store_commit_heals_to_exact_prior_state() {
         .unwrap();
     let db = state.db.lock().await;
     assert!(
-        oz_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)
+        kasirmu_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)
             .unwrap()
             .is_none(),
         "recovery journal must be cleared after healing"
     );
     assert_eq!(
-        oz_core::Settings::get(&db, TOPOLOGY_SETTING_KEY)
+        kasirmu_core::Settings::get(&db, TOPOLOGY_SETTING_KEY)
             .unwrap()
             .unwrap(),
         previous,
@@ -1105,7 +1105,7 @@ async fn crash_after_store_commit_compensates_both_databases() {
     let creation = crash_creation(store_id, "ws-crash-2");
     {
         let db = state.db.lock().await;
-        oz_core::Settings::set(&db, TOPOLOGY_SETTING_KEY, &previous).unwrap();
+        kasirmu_core::Settings::set(&db, TOPOLOGY_SETTING_KEY, &previous).unwrap();
         persist_topology_recovery(
             &db,
             &TopologyApplyRecovery {
@@ -1130,13 +1130,13 @@ async fn crash_after_store_commit_compensates_both_databases() {
 
     let db = state.db.lock().await;
     assert!(
-        oz_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)
+        kasirmu_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)
             .unwrap()
             .is_none(),
         "recovery journal must be cleared after healing"
     );
     assert_eq!(
-        oz_core::Settings::get(&db, TOPOLOGY_SETTING_KEY)
+        kasirmu_core::Settings::get(&db, TOPOLOGY_SETTING_KEY)
             .unwrap()
             .unwrap(),
         previous,
@@ -1165,7 +1165,7 @@ async fn recovery_finalizes_without_compensating_a_completed_apply() {
     {
         let db = state.db.lock().await;
         // The global save DID commit: current == desired.
-        oz_core::Settings::set(&db, TOPOLOGY_SETTING_KEY, &desired).unwrap();
+        kasirmu_core::Settings::set(&db, TOPOLOGY_SETTING_KEY, &desired).unwrap();
         persist_topology_recovery(
             &db,
             &TopologyApplyRecovery {
@@ -1188,13 +1188,13 @@ async fn recovery_finalizes_without_compensating_a_completed_apply() {
 
     let db = state.db.lock().await;
     assert!(
-        oz_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)
+        kasirmu_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)
             .unwrap()
             .is_none(),
         "recovery journal must be cleared after finalizing"
     );
     assert_eq!(
-        oz_core::Settings::get(&db, TOPOLOGY_SETTING_KEY)
+        kasirmu_core::Settings::get(&db, TOPOLOGY_SETTING_KEY)
             .unwrap()
             .unwrap(),
         desired,
@@ -1220,7 +1220,7 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
     // `state.db` tokio mutex (tokio::sync::Mutex is not reentrant).
     let store_id = "store-e2e";
     let dir = tempdir().unwrap();
-    let global = oz_core::migrations::fresh_db();
+    let global = kasirmu_core::migrations::fresh_db();
     {
         let store = Store::new(&global);
         store.seed_default_roles().unwrap();
@@ -1338,7 +1338,7 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
     // through the "apply completed, just finalize" branch. So this is a
     // recovery-finalization check, not a compensation check.
     assert!(
-        oz_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)
+        kasirmu_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)
             .unwrap()
             .is_none(),
         "the FIRST Apply's journal must be finalized by recovery, not left pending \
@@ -1352,7 +1352,7 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
     );
     let request_key = topology_apply_request_key("request-e2e-2").unwrap();
     assert!(
-        oz_core::Settings::get(&db, &request_key).unwrap().is_none(),
+        kasirmu_core::Settings::get(&db, &request_key).unwrap().is_none(),
         "the failed Apply must not leave a request ledger"
     );
 
@@ -1396,7 +1396,7 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
     drop(db);
     let store_conn = app_state.db_manager.open_store(store_id).unwrap();
     let store_db = store_conn.lock().unwrap();
-    let topology_events: Vec<String> = oz_core::Store::new(&store_db)
+    let topology_events: Vec<String> = kasirmu_core::Store::new(&store_db)
         .list_audit_entries(50, 0)
         .unwrap()
         .into_iter()
@@ -1429,7 +1429,7 @@ async fn can_save_topology_probe_gates_on_topology_write_permission() {
     // replacing staff:update, admin/owner only).
     let store_id = "store-cap";
     let dir = tempdir().unwrap();
-    let global = oz_core::migrations::fresh_db();
+    let global = kasirmu_core::migrations::fresh_db();
     {
         let store = Store::new(&global);
         store.seed_default_roles().unwrap();
@@ -1556,7 +1556,7 @@ async fn can_save_topology_probe_gates_on_topology_write_permission() {
 #[tokio::test]
 async fn authorize_topology_write_enforces_location_scope() {
     let dir = tempdir().unwrap();
-    let global = oz_core::migrations::fresh_db();
+    let global = kasirmu_core::migrations::fresh_db();
     {
         let store = Store::new(&global);
         store.seed_default_roles().unwrap();
@@ -1580,13 +1580,13 @@ async fn authorize_topology_write_enforces_location_scope() {
             .set_assignment(
                 "user-scoped-mgr",
                 "role-topo-mgr",
-                &oz_core::db::assignments::AssignmentSpec {
-                    scope_mode: oz_core::db::assignments::ScopeMode::Scoped,
+                &kasirmu_core::db::assignments::AssignmentSpec {
+                    scope_mode: kasirmu_core::db::assignments::ScopeMode::Scoped,
                     branches_all: false,
                     branches: vec!["store-allowed".into()],
                     workspaces_all: true,
                     workspaces: vec![],
-                    scope_type: oz_core::db::assignments::ScopeType::Organization,
+                    scope_type: kasirmu_core::db::assignments::ScopeType::Organization,
                     scope_id: None,
                 },
             )
@@ -1649,7 +1649,7 @@ async fn probe_and_enforcement_agree_for_a_branch_scoped_writer() {
     // lookup unguarded. Fixture shape is authorize_topology_write_enforces_location_scope's,
     // reused so the two checks demonstrably read one rule and one assignment.
     let dir = tempdir().unwrap();
-    let global = oz_core::migrations::fresh_db();
+    let global = kasirmu_core::migrations::fresh_db();
     {
         let store = Store::new(&global);
         store.seed_default_roles().unwrap();
@@ -1670,13 +1670,13 @@ async fn probe_and_enforcement_agree_for_a_branch_scoped_writer() {
             .set_assignment(
                 "user-scoped-mgr2",
                 "role-topo-mgr2",
-                &oz_core::db::assignments::AssignmentSpec {
-                    scope_mode: oz_core::db::assignments::ScopeMode::Scoped,
+                &kasirmu_core::db::assignments::AssignmentSpec {
+                    scope_mode: kasirmu_core::db::assignments::ScopeMode::Scoped,
                     branches_all: false,
                     branches: vec!["store-allowed".into()],
                     workspaces_all: true,
                     workspaces: vec![],
-                    scope_type: oz_core::db::assignments::ScopeType::Organization,
+                    scope_type: kasirmu_core::db::assignments::ScopeType::Organization,
                     scope_id: None,
                 },
             )
@@ -1781,9 +1781,9 @@ async fn restore_topology_setting_none_removes_the_key() {
     let key = TOPOLOGY_SETTING_KEY;
     {
         let db = state.db.lock().await;
-        oz_core::Settings::set(&db, key, "stale-data").unwrap();
+        kasirmu_core::Settings::set(&db, key, "stale-data").unwrap();
         assert!(
-            oz_core::Settings::get(&db, key).unwrap().is_some(),
+            kasirmu_core::Settings::get(&db, key).unwrap().is_some(),
             "setting must exist before restore"
         );
     }
@@ -1793,7 +1793,7 @@ async fn restore_topology_setting_none_removes_the_key() {
     }
     let db = state.db.lock().await;
     assert!(
-        oz_core::Settings::get(&db, key).unwrap().is_none(),
+        kasirmu_core::Settings::get(&db, key).unwrap().is_none(),
         "setting must be removed when previous is None"
     );
 }
@@ -1926,7 +1926,7 @@ async fn crash_recovery_with_snapshots_restores_pre_mutation_rows() {
     let desired = topology_envelope_json(&[], &[], 1, &[]).unwrap();
     {
         let db = state.db.lock().await;
-        oz_core::Settings::set(&db, TOPOLOGY_SETTING_KEY, &previous).unwrap();
+        kasirmu_core::Settings::set(&db, TOPOLOGY_SETTING_KEY, &previous).unwrap();
         persist_topology_recovery(
             &db,
             &TopologyApplyRecovery {
@@ -1972,12 +1972,12 @@ async fn crash_recovery_with_snapshots_restores_pre_mutation_rows() {
     // 6. Global topology restored, journal cleared.
     let db = state.db.lock().await;
     assert!(
-        oz_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)
+        kasirmu_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)
             .unwrap()
             .is_none()
     );
     assert_eq!(
-        oz_core::Settings::get(&db, TOPOLOGY_SETTING_KEY)
+        kasirmu_core::Settings::get(&db, TOPOLOGY_SETTING_KEY)
             .unwrap()
             .unwrap(),
         previous
@@ -2033,11 +2033,11 @@ fn char_audit_count(state: &AppState, store_id: &str) -> i64 {
 
 #[tokio::test]
 async fn apply_naming_a_foreign_store_records_which_database_receives_the_writes() {
-    use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
+    use kasirmu_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
     let store_a = "char-store-a"; // the SESSION store, both users
     let store_b = "char-store-b"; // the DIAGRAM store_profile_id -- foreign
     let dir = tempdir().unwrap();
-    let global = oz_core::migrations::fresh_db();
+    let global = kasirmu_core::migrations::fresh_db();
     {
         let store = Store::new(&global);
         store.seed_default_roles().unwrap();
@@ -2215,7 +2215,7 @@ async fn self_describing_store_passes_the_ownership_gate() {
     // `unknown-branch-location` — the target's self-knowledge is worthless.
     // After the alignment the gate must accept (diagram-only apply saves).
     let dir = tempdir().unwrap();
-    let global = oz_core::migrations::fresh_db();
+    let global = kasirmu_core::migrations::fresh_db();
     {
         let store = Store::new(&global);
         store.seed_default_roles().unwrap();
@@ -2316,7 +2316,7 @@ async fn session_registry_row_still_authorizes_the_fresh_branch() {
     // aligned gate keeps that arm, so the same apply that works today must
     // still work after the target registry joins the slice.
     let dir = tempdir().unwrap();
-    let global = oz_core::migrations::fresh_db();
+    let global = kasirmu_core::migrations::fresh_db();
     {
         let store = Store::new(&global);
         store.seed_default_roles().unwrap();
@@ -2419,7 +2419,7 @@ async fn session_only_row_authorizing_a_foreign_target_is_the_accepted_residual(
     // it; this test fails the day either closure lands, and whoever breaks
     // it should read this comment as the upgrade note it is.
     let dir = tempdir().unwrap();
-    let global = oz_core::migrations::fresh_db();
+    let global = kasirmu_core::migrations::fresh_db();
     {
         let store = Store::new(&global);
         store.seed_default_roles().unwrap();
@@ -2532,7 +2532,7 @@ fn replay_app(
     // The same session/subscription/store-DB shape the stale-revision e2e case
     // builds inline; factored out so both replay cases grade the same harness.
     let dir = tempdir().unwrap();
-    let global = oz_core::migrations::fresh_db();
+    let global = kasirmu_core::migrations::fresh_db();
     {
         let store = Store::new(&global);
         store.seed_default_roles().unwrap();
@@ -2756,7 +2756,7 @@ async fn a_reused_request_id_carrying_a_different_payload_is_refused_by_name() {
     let request_key = topology_apply_request_key("req-reuse-payload").unwrap();
     let ledger_after_first = {
         let db = state.db.lock().await;
-        oz_core::Settings::get(&db, &request_key)
+        kasirmu_core::Settings::get(&db, &request_key)
             .unwrap()
             .expect("a successful Apply must write a request ledger")
     };
@@ -2786,7 +2786,7 @@ async fn a_reused_request_id_carrying_a_different_payload_is_refused_by_name() {
     // nothing: the refusal is graded on state, not on its return value.
     let db = state.db.lock().await;
     assert_eq!(
-        oz_core::Settings::get(&db, &request_key)
+        kasirmu_core::Settings::get(&db, &request_key)
             .unwrap()
             .as_deref(),
         Some(ledger_after_first.as_str()),
@@ -2828,9 +2828,9 @@ async fn a_pre_fingerprint_ledger_entry_is_removed_rather_than_replayed() {
 
     {
         let db = state.db.lock().await;
-        oz_core::Settings::set(&db, &request_key, seeded).unwrap();
+        kasirmu_core::Settings::set(&db, &request_key, seeded).unwrap();
         assert_eq!(
-            oz_core::Settings::get(&db, &request_key)
+            kasirmu_core::Settings::get(&db, &request_key)
                 .unwrap()
                 .as_deref(),
             Some(seeded),
@@ -2853,7 +2853,7 @@ async fn a_pre_fingerprint_ledger_entry_is_removed_rather_than_replayed() {
     // on disk holding the seeded value; that was the first form of this
     // assertion, and it failed with left: None.
     assert!(
-        oz_core::Settings::get(&db, &request_key).unwrap().is_none(),
+        kasirmu_core::Settings::get(&db, &request_key).unwrap().is_none(),
         "the pre-fingerprint ledger entry must be removed by the branch ahead of the \
          revision gate, not left for the next caller"
     );

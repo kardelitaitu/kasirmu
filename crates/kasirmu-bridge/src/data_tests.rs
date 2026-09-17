@@ -469,18 +469,18 @@ fn import_data_result_serialize() {
 // ── W4-S2: import batch quota gate ──────────────────────────────────
 
 fn fresh_conn() -> rusqlite::Connection {
-    oz_core::migrations::fresh_db()
+    kasirmu_core::migrations::fresh_db()
 }
 
 /// One importable product row as `payload.products` carries them (a
-/// serialized `oz_core::Product`), keyed by SKU.
+/// serialized `kasirmu_core::Product`), keyed by SKU.
 fn product_value(sku: &str) -> serde_json::Value {
-    let product = oz_core::Product::new(
+    let product = kasirmu_core::Product::new(
         sku,
         format!("Product {sku}"),
-        oz_core::Money {
+        kasirmu_core::Money {
             minor_units: 100,
-            currency: oz_core::Currency(*b"USD"),
+            currency: kasirmu_core::Currency(*b"USD"),
         },
     );
     serde_json::to_value(&product).unwrap()
@@ -579,7 +579,7 @@ fn import_gate_proceeds_under_cap_and_pins_the_boundary() {
     // The gate only counts; the caller inserts. Materialize the approved
     // batch exactly as the import loop would, THEN ask again.
     for v in edge.iter() {
-        let p: oz_core::Product = serde_json::from_value(v.clone()).unwrap();
+        let p: kasirmu_core::Product = serde_json::from_value(v.clone()).unwrap();
         conn.execute(
             "INSERT INTO products (id, sku, name, price_minor, currency) VALUES (?1, ?2, ?3, 100, 'USD')",
             rusqlite::params![p.id, p.sku.to_string(), p.name],
@@ -597,9 +597,9 @@ fn import_gate_proceeds_under_cap_and_pins_the_boundary() {
 // ── W6-A / S2.1: users-arm batch gate (Staff dimension) ─────────────
 
 /// One importable user row as `payload.users` carries them (a serialized
-/// `oz_core::User`), keyed by the row id.
+/// `kasirmu_core::User`), keyed by the row id.
 fn user_value(id: &str, username: &str) -> serde_json::Value {
-    let mut user = oz_core::User::new(username, "", username, "role-staff");
+    let mut user = kasirmu_core::User::new(username, "", username, "role-staff");
     user.id = id.into();
     serde_json::to_value(&user).unwrap()
 }

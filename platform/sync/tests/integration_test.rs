@@ -7,7 +7,7 @@
 use std::sync::{Arc, Mutex};
 
 use axum::{Json, Router, extract::State, routing::post};
-use oz_core::{
+use kasirmu_core::{
     Store,
     inventory::{CANONICAL_DEFAULT_LOCATION_UUID, LocationId},
     migrations,
@@ -554,7 +554,7 @@ async fn product_created_on_terminal_a_appears_on_terminal_b() {
         .create_product(
             "SYNC-COFFEE",
             "Sync Coffee",
-            oz_core::Money {
+            kasirmu_core::Money {
                 minor_units: 500,
                 currency: "USD".parse().unwrap(),
             },
@@ -664,7 +664,7 @@ async fn stock_adjustment_on_terminal_a_reflected_on_terminal_b() {
         .create_product(
             "STK-TEA",
             "Sync Tea",
-            oz_core::Money {
+            kasirmu_core::Money {
                 minor_units: 300,
                 currency: "USD".parse().unwrap(),
             },
@@ -700,9 +700,9 @@ async fn stock_adjustment_on_terminal_a_reflected_on_terminal_b() {
             -5,
             &LocationId::from(CANONICAL_DEFAULT_LOCATION_UUID),
             None,
-            None::<&oz_core::inventory_transaction::InventoryTransactionId>,
-            None::<&oz_core::terminal::TerminalId>,
-            None::<&oz_core::user::UserId>,
+            None::<&kasirmu_core::inventory_transaction::InventoryTransactionId>,
+            None::<&kasirmu_core::terminal::TerminalId>,
+            None::<&kasirmu_core::user::UserId>,
         )
         .unwrap();
     tx.commit().unwrap();
@@ -763,7 +763,7 @@ async fn full_sync_cycle_completes_under_one_second() {
         .create_product(
             "PERF-SKU",
             "Perf Product",
-            oz_core::Money {
+            kasirmu_core::Money {
                 minor_units: 1000,
                 currency: "USD".parse().unwrap(),
             },
@@ -869,7 +869,7 @@ async fn large_scale_sync_throughput() {
         .create_product(
             "THRUPUT",
             "Throughput Test Product",
-            oz_core::Money {
+            kasirmu_core::Money {
                 minor_units: 1000,
                 currency: "USD".parse().unwrap(),
             },

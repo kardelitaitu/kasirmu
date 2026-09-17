@@ -14,7 +14,7 @@ use crate::state::AppState;
 /// Send a test report email using the currently configured SMTP
 /// settings and report schedule.
 ///
-/// Uses [`oz_core::export::email_sender::generate_filtered_report_email`]
+/// Uses [`kasirmu_core::export::email_sender::generate_filtered_report_email`]
 /// so that the user's report_type checkbox selections are respected.
 ///
 /// # Returns
@@ -34,12 +34,12 @@ pub async fn send_test_report(
 
 /// Get the current report schedule configuration.
 ///
-/// Returns the saved [`ReportScheduleConfig`](oz_core::export::ReportScheduleConfig) or a default if none
+/// Returns the saved [`ReportScheduleConfig`](kasirmu_core::export::ReportScheduleConfig) or a default if none
 /// has been persisted yet.
 #[tauri::command]
 pub async fn get_report_schedule(
     state: State<'_, AppState>,
-) -> Result<oz_core::export::ReportScheduleConfig, AppError> {
+) -> Result<kasirmu_core::export::ReportScheduleConfig, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::email::get_report_schedule(&ctx)
         .await
@@ -51,7 +51,7 @@ pub async fn get_report_schedule(
 pub async fn save_report_schedule(
     session_token: String,
     state: State<'_, AppState>,
-    config: oz_core::export::ReportScheduleConfig,
+    config: kasirmu_core::export::ReportScheduleConfig,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::email::save_report_schedule(&ctx, &session_token, config)
@@ -64,7 +64,7 @@ pub async fn save_report_schedule(
 pub async fn get_report_schedule_scoped(
     session_token: String,
     state: State<'_, AppState>,
-) -> Result<oz_core::export::ReportScheduleConfig, AppError> {
+) -> Result<kasirmu_core::export::ReportScheduleConfig, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::email::get_report_schedule_scoped(&ctx, &session_token)
         .await

@@ -20,16 +20,16 @@
 
 use std::sync::Arc;
 
-use oz_core::db::Store;
-use oz_core::db::popularity::{CategoryForecastRow, CategoryPopularityRow, CategoryTrendPoint};
-use oz_core::db::reports::{
+use kasirmu_core::db::Store;
+use kasirmu_core::db::popularity::{CategoryForecastRow, CategoryPopularityRow, CategoryTrendPoint};
+use kasirmu_core::db::reports::{
     BasketSizeRow, BasketTrendRow, CategoryBreakdownRow, CustomerSplitRow, DailyRevenueRow,
     DiscountsSummaryRow, HourlyHeatmapRow, HourlyOccupancyRow, InventoryTrendRow,
     InventoryTurnoverRow, LowStockAlert, MonthlyRevenueRow, PaymentMethodRow, TableTurnoverRow,
     TopProductRow, VoidedItemRow, VoidedSummaryRow, WeeklyRevenueRow,
 };
-use oz_core::export::{CustomReportRequest, CustomReportResponse};
-use oz_core::permissions;
+use kasirmu_core::export::{CustomReportRequest, CustomReportResponse};
+use kasirmu_core::permissions;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -109,10 +109,10 @@ pub fn validate_category_top(top_per_category: i64) -> Result<(), BridgeError> {
 /// Returns BridgeError::Invalid naming the accepted granularities, or the
 /// bounded-range message for top_categories.
 pub fn validate_trend_args(granularity: &str, top_categories: i64) -> Result<(), BridgeError> {
-    if !oz_core::db::popularity::TREND_GRANULARITIES.contains(&granularity) {
+    if !kasirmu_core::db::popularity::TREND_GRANULARITIES.contains(&granularity) {
         return Err(BridgeError::Invalid(format!(
             "granularity must be one of {:?}",
-            oz_core::db::popularity::TREND_GRANULARITIES
+            kasirmu_core::db::popularity::TREND_GRANULARITIES
         )));
     }
     if !(1..=MAX_TREND_CATEGORIES).contains(&top_categories) {
@@ -411,7 +411,7 @@ pub async fn get_low_stock_alerts_scoped(
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     Ok(Store::new(&db).low_stock_alerts_at_location(
-        oz_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
+        kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
         threshold,
     )?)
 }

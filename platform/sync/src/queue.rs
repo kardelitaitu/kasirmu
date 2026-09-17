@@ -6,13 +6,13 @@ findings: exemplary — apply_remote_atomic_full runs quarantine gate, receipt-e
 next: malformed/conflicting pull items are permanent failures but still burn the retry-3 budget before dead-lettering — consider classifying apply-time Validation/Conflict errors as non-retryable to fail fast (low value, behavior change in the highest-risk path, deliberately not done here) | perf: prepared upserts
 */
 //!
-//! Wraps the `oz_core` offline queue Store methods into a clean interface
+//! Wraps the `kasirmu_core` offline queue Store methods into a clean interface
 //! with additional tracking for conflict resolution and last-sync timing.
 //!
 //! Settings items are the one action type that is NOT applied verbatim: both
 //! dispatchers (`apply_remote_in_tx` and the legacy `apply_remote`) write through
 //! `Settings::set_with_policy(..., IngestPolicy::RemoteSync)`, the sealed policy
-//! owned by platform-core and delegated by the `oz_core::Settings` facade, so a
+//! owned by platform-core and delegated by the `kasirmu_core::Settings` facade, so a
 //! remote item cannot plant a credential
 //! (`local_api.secret`, `license.api_key`, the gateway keys) or a device-bound
 //! identity (`machine_id`, `sync_terminal_id`) on this install. Nothing in
@@ -20,19 +20,19 @@ next: malformed/conflicting pull items are permanent failures but still burn the
 //! authority. A refusal warns and continues — it never aborts the batch and
 //! never logs the value.
 
-use oz_core::db::Store;
-use oz_core::db::offline::SyncStatusSummary;
-use oz_core::error::CoreError;
-use oz_core::offline::{OfflineQueueItem, OfflineQueueStatus};
-use oz_core::settings::Settings;
-use oz_core::settings::{IngestPolicy, IngestPolicyKind};
+use kasirmu_core::db::Store;
+use kasirmu_core::db::offline::SyncStatusSummary;
+use kasirmu_core::error::CoreError;
+use kasirmu_core::offline::{OfflineQueueItem, OfflineQueueStatus};
+use kasirmu_core::settings::Settings;
+use kasirmu_core::settings::{IngestPolicy, IngestPolicyKind};
 use serde::Deserialize;
 use serde_json::Value;
 
 /// The ONE remote-ingest gate for the sync lane.
 ///
 /// Delegates to the sealed [`IngestPolicy::RemoteSync`] policy owned by
-/// platform-core (re-exported through `oz_core::settings`), which refuses every
+/// platform-core (re-exported through `kasirmu_core::settings`), which refuses every
 /// credential in `SECRET_KEY_DENY_LIST`, every device-bound identity in
 /// `NON_EXPORTABLE_DEVICE_KEYS` (`machine_id`, `sync_terminal_id`) and every
 /// lifecycle-manager prefix (`local_api.*`, `lan_server.*`). This lane owns no
@@ -40,7 +40,7 @@ use serde_json::Value;
 ///
 /// Both dispatchers now WRITE through the funnel accessor
 /// `Settings::set_with_policy(..., IngestPolicy::RemoteSync)`, which decides and
-/// warns in one place (delegated to platform-core through the `oz_core::Settings`
+/// warns in one place (delegated to platform-core through the `kasirmu_core::Settings`
 /// facade, so this crate needs no `platform-core` dependency edge). This
 /// boundary remains for the one place that must ask the question WITHOUT
 /// writing: [`settings_change_of`], which must not report a refused key as a
@@ -109,7 +109,7 @@ fn apply_stock_adjustment_delta_in_tx(
             tx,
             &sub.sku,
             sub.delta,
-            &oz_core::inventory::LocationId::from(location),
+            &kasirmu_core::inventory::LocationId::from(location),
             None,
             None,
             None,
@@ -120,7 +120,7 @@ fn apply_stock_adjustment_delta_in_tx(
     match sub.location_id.as_deref() {
         Some(location) => canonical_at(location)?,
         None if has_location_rows => {
-            canonical_at(oz_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID)?
+            canonical_at(kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID)?
         }
         None => {
             Store::new(tx).adjust_stock_in_tx(tx, &sub.sku, sub.delta)?;
@@ -465,10 +465,10 @@ impl SyncQueue {
                 let name = payload["name"].as_str().unwrap_or("");
                 let price_minor = payload["price_minor"].as_i64().unwrap_or(-1);
                 let currency = payload["currency"].as_str().unwrap_or("");
-                let currency_parsed: oz_core::Currency =
+                let currency_parsed: kasirmu_core::Currency =
                     currency
                         .parse()
-                        .map_err(|e: oz_core::money::InvalidCurrencyCode| {
+                        .map_err(|e: kasirmu_core::money::InvalidCurrencyCode| {
                             CoreError::Internal(format!("invalid currency in sync payload: {e}"))
                         })?;
                 let initial_stock = payload["initial_stock"].as_i64().unwrap_or(0);
@@ -477,7 +477,7 @@ impl SyncQueue {
                     tx,
                     sku,
                     name,
-                    oz_core::Money {
+                    kasirmu_core::Money {
                         minor_units: price_minor,
                         currency: currency_parsed,
                     },
@@ -623,14 +623,14 @@ impl SyncQueue {
                 let name = payload["name"].as_str().unwrap_or("Unknown");
                 let price_minor = payload["price_minor"].as_i64().unwrap_or(0);
                 let currency = payload["currency"].as_str().unwrap_or("USD");
-                let currency_parsed: oz_core::Currency =
+                let currency_parsed: kasirmu_core::Currency =
                     currency
                         .parse()
-                        .map_err(|e: oz_core::money::InvalidCurrencyCode| {
+                        .map_err(|e: kasirmu_core::money::InvalidCurrencyCode| {
                             CoreError::Internal(format!("invalid currency in sync payload: {e}"))
                         })?;
                 if !sku.is_empty() && store.get_product(sku).ok().flatten().is_none() {
-                    let price = oz_core::Money {
+                    let price = kasirmu_core::Money {
                         minor_units: price_minor,
                         currency: currency_parsed,
                     };

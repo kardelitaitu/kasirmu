@@ -6,9 +6,9 @@
 
 use super::*;
 use crate::testing::TestBridge;
-use oz_core::migrations;
-use oz_core::regional::ConfigScope;
-use oz_core::session::SessionContext;
+use kasirmu_core::migrations;
+use kasirmu_core::regional::ConfigScope;
+use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
 
 /// Seed roles + the owner user (full permissions) into the global DB.
@@ -124,7 +124,7 @@ async fn write_rejects_credential_shaped_parameters_as_validation() {
     match result {
         Err(BridgeError::Core { sub_kind, .. }) => {
             assert!(
-                matches!(sub_kind, oz_core::CoreErrorKind::Validation),
+                matches!(sub_kind, kasirmu_core::CoreErrorKind::Validation),
                 "{sub_kind:?}"
             );
         }

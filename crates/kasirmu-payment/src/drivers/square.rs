@@ -11,7 +11,7 @@ next: none | perf: N/A
 //!
 //! The processor is constructed with an API key and a location ID. In
 //! production the key should be set in the OS key-ring (see
-//! `oz_core::Keyring`); this driver provides a `new` constructor that
+//! `kasirmu_core::Keyring`); this driver provides a `new` constructor that
 //! accepts an explicit key for that use case.
 
 use async_trait::async_trait;

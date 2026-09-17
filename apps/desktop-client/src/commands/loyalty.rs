@@ -12,8 +12,8 @@ use tauri::State;
 // Retained for the sibling test module, which reaches these through its
 // glob import of this module; the command bodies no longer name them.
 #[allow(unused_imports)]
-use oz_core::db::Store;
-use oz_core::loyalty::{
+use kasirmu_core::db::Store;
+use kasirmu_core::loyalty::{
     LoyaltyAccount, LoyaltyAccountWithDetails, LoyaltyTier, LoyaltyTransaction,
 };
 
@@ -23,7 +23,7 @@ use crate::state::AppState;
 // Retained for the sibling test module (gate keys);
 // the shims no longer name the permission constants.
 #[allow(unused_imports)]
-use oz_core::permissions;
+use kasirmu_core::permissions;
 
 pub use kasirmu_bridge::loyalty::RedeemResult;
 

@@ -11,7 +11,7 @@ next: none | perf: deadpool pool max 5 with bounded timeouts
 //! cloud PostgreSQL database (AWS RDS, Azure Database for PostgreSQL, etc.).
 
 use deadpool_postgres::Pool;
-use oz_core::offline::{OfflineQueueItem, OfflineQueueStatus};
+use kasirmu_core::offline::{OfflineQueueItem, OfflineQueueStatus};
 use tokio_postgres::{NoTls, types::ToSql};
 
 use crate::SyncError;
@@ -573,7 +573,7 @@ impl PgTransport {
                     // Option (not String) avoids a panic on that first row.
                     synced_at: row.get::<_, Option<String>>("synced_at"),
                     tenant_id: row.get("tenant_id"),
-                    priority: oz_core::offline::SyncPriority::Normal,
+                    priority: kasirmu_core::offline::SyncPriority::Normal,
                 }
             })
             .collect();

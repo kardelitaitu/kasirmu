@@ -1,5 +1,5 @@
 use super::*;
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 use tauri::Manager as _;
 
 #[test]
@@ -12,8 +12,8 @@ fn active_memo_dto_nests_memo_and_delivery_status() {
         author_role: "role-owner".into(),
         title: "T".into(),
         body: "B".into(),
-        status: oz_core::memo::MemoStatus::Published,
-        duration: oz_core::memo::MemoDuration::Hours24,
+        status: kasirmu_core::memo::MemoStatus::Published,
+        duration: kasirmu_core::memo::MemoDuration::Hours24,
         revision: 1,
         published_at: None,
         expires_at: None,
@@ -25,7 +25,7 @@ fn active_memo_dto_nests_memo_and_delivery_status() {
     };
     let active = ActiveMemo {
         memo,
-        delivery_status: oz_core::memo::DeliveryStatus::Pending,
+        delivery_status: kasirmu_core::memo::DeliveryStatus::Pending,
     };
     let json = serde_json::to_value(ActiveMemoDto::from(active)).unwrap();
     assert_eq!(json["deliveryStatus"], "pending");
@@ -39,13 +39,13 @@ fn active_memo_dto_nests_memo_and_delivery_status() {
 fn memo_display_dto_carries_server_issued_cadence() {
     // The display read serves the cadence alongside the memos so the UI never
     // hardcodes the intervals: the KDS value is derived as 2 × the base in
-    // `oz_core::memo`, and this test pins both the envelope shape and the 2×
+    // `kasirmu_core::memo`, and this test pins both the envelope shape and the 2×
     // relationship across the wire.
     let dto = MemoDisplayDto {
         memos: vec![],
         cadence: MemoCadenceDto {
-            base_interval_secs: oz_core::memo::NOTIFICATION_BASE_INTERVAL_SECS,
-            kds_interval_secs: oz_core::memo::kds_notification_interval_secs(),
+            base_interval_secs: kasirmu_core::memo::NOTIFICATION_BASE_INTERVAL_SECS,
+            kds_interval_secs: kasirmu_core::memo::kds_notification_interval_secs(),
         },
     };
     let json = serde_json::to_value(&dto).unwrap();
@@ -68,8 +68,8 @@ fn memo_dto_org_scope_serializes_location_id_null() {
         author_role: "role-manager".into(),
         title: "Org".into(),
         body: "All terminals".into(),
-        status: oz_core::memo::MemoStatus::Published,
-        duration: oz_core::memo::MemoDuration::Days3,
+        status: kasirmu_core::memo::MemoStatus::Published,
+        duration: kasirmu_core::memo::MemoDuration::Days3,
         revision: 2,
         published_at: Some("2026-09-06T00:00:00.000Z".into()),
         expires_at: Some("2026-09-09T00:00:00.000Z".into()),
@@ -117,7 +117,7 @@ fn cloud_wire_json() -> serde_json::Value {
 
 #[test]
 fn cloud_wire_shape_decodes_into_display_dto() {
-    let response: oz_core::sync_client::ActiveMemosCloudResponse =
+    let response: kasirmu_core::sync_client::ActiveMemosCloudResponse =
         serde_json::from_value(cloud_wire_json()).unwrap();
     let dto = MemoDisplayDto {
         memos: response
@@ -161,14 +161,14 @@ fn seed_terminal(conn: &rusqlite::Connection, id: &str) {
 fn seed_published_memo(conn: &rusqlite::Connection) -> String {
     let store = Store::new(conn);
     let draft = store
-        .create_memo_draft(&oz_core::memo::NewMemo {
+        .create_memo_draft(&kasirmu_core::memo::NewMemo {
             tenant_id: "default".into(),
             location_ids: vec![],
             author_user_id: "user-manager".into(),
             author_role: "role-manager".into(),
             title: "Heads up".into(),
             body: "Close early".into(),
-            duration: oz_core::memo::MemoDuration::Hours24,
+            duration: kasirmu_core::memo::MemoDuration::Hours24,
         })
         .unwrap();
     store.publish_memo("default", &draft.id).unwrap().id
@@ -192,7 +192,7 @@ async fn local_read_serves_seeded_memo_when_sync_unconfigured() {
     // Sync is unconfigured (`SyncConfig::from_settings` → None), so the
     // command skips the cloud entirely and the local read applies — the
     // pre-cloud behaviour, preserved as the fallback.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_terminal(&conn, "terminal-1");
     let memo_id = seed_published_memo(&conn);
     let app = tauri::test::mock_builder()
@@ -220,13 +220,13 @@ async fn falls_back_to_local_read_when_cloud_unreachable() {
     // repo's standard unreachable endpoint), so the cloud fetch fails and
     // the command must degrade to the local read rather than error out:
     // a network outage must never break memo display entirely.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_terminal(&conn, "terminal-1");
     seed_published_memo(&conn);
     {
-        oz_core::settings::Settings::set_sync_enabled(&conn, true).unwrap();
-        oz_core::settings::Settings::set_sync_server_url(&conn, "http://127.0.0.1:1").unwrap();
-        oz_core::settings::Settings::set_sync_api_key(&conn, "jwt-test").unwrap();
+        kasirmu_core::settings::Settings::set_sync_enabled(&conn, true).unwrap();
+        kasirmu_core::settings::Settings::set_sync_server_url(&conn, "http://127.0.0.1:1").unwrap();
+        kasirmu_core::settings::Settings::set_sync_api_key(&conn, "jwt-test").unwrap();
     }
     let app = tauri::test::mock_builder()
         .manage(AppState::for_test_with_conn(conn))
@@ -281,10 +281,10 @@ async fn ack_goes_to_the_cloud_and_carries_the_wire_contract() {
         let _ = socket.write_all(response.as_bytes()).await;
     });
 
-    let conn = oz_core::migrations::fresh_db();
-    oz_core::settings::Settings::set_sync_enabled(&conn, true).unwrap();
-    oz_core::settings::Settings::set_sync_server_url(&conn, &server_url).unwrap();
-    oz_core::settings::Settings::set_sync_api_key(&conn, "jwt-test").unwrap();
+    let conn = kasirmu_core::migrations::fresh_db();
+    kasirmu_core::settings::Settings::set_sync_enabled(&conn, true).unwrap();
+    kasirmu_core::settings::Settings::set_sync_server_url(&conn, &server_url).unwrap();
+    kasirmu_core::settings::Settings::set_sync_api_key(&conn, "jwt-test").unwrap();
     let app = tauri::test::mock_builder()
         .manage(AppState::for_test_with_conn(conn))
         .build(tauri::generate_context!())
@@ -316,13 +316,13 @@ async fn ack_goes_to_the_cloud_and_carries_the_wire_contract() {
 
 #[tokio::test]
 async fn ack_falls_back_to_local_write_with_seeded_recipient() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_terminal(&conn, "terminal-1");
     let memo_id = seed_published_memo(&conn);
     {
-        oz_core::settings::Settings::set_sync_enabled(&conn, true).unwrap();
-        oz_core::settings::Settings::set_sync_server_url(&conn, "http://127.0.0.1:1").unwrap();
-        oz_core::settings::Settings::set_sync_api_key(&conn, "jwt-test").unwrap();
+        kasirmu_core::settings::Settings::set_sync_enabled(&conn, true).unwrap();
+        kasirmu_core::settings::Settings::set_sync_server_url(&conn, "http://127.0.0.1:1").unwrap();
+        kasirmu_core::settings::Settings::set_sync_api_key(&conn, "jwt-test").unwrap();
     }
     let app = tauri::test::mock_builder()
         .manage(AppState::for_test_with_conn(conn))

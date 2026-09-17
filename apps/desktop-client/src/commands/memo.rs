@@ -30,11 +30,11 @@
 #[allow(unused_imports)] // sibling memo_tests.rs depends on it
 use chrono::Utc;
 #[allow(unused_imports)] // sibling memo_tests.rs depends on it
-use oz_core::memo::{
+use kasirmu_core::memo::{
     ActiveMemo, Memo, NOTIFICATION_BASE_INTERVAL_SECS, NewMemo, kds_notification_interval_secs,
 };
 #[allow(unused_imports)] // sibling memo_tests.rs depends on it
-use oz_core::{Store, permissions};
+use kasirmu_core::{Store, permissions};
 use tauri::State;
 
 #[allow(unused_imports)] // sibling memo_tests.rs depends on it

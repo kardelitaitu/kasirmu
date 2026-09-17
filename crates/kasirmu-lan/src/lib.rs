@@ -87,7 +87,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use foundation::contracts::{EventHandler, ModuleResult};
-use oz_core::events::{CourseFired, SaleCompleted};
+use kasirmu_core::events::{CourseFired, SaleCompleted};
 use serde::Deserialize;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
@@ -274,7 +274,7 @@ impl LanEventForwarder {
     // wiring — build the KdsQueueProvider at startup in lib.rs next to
     // `LanEventForwarder::new(...)` (chain `.with_kds_queue(...)` after
     // `.with_discovery(...)`), sourcing tickets from the kds_orders /
-    // kds_line_items rows and stations from `oz_core::kds::
+    // kds_line_items rows and stations from `kasirmu_core::kds::
     // resolve_kds_targets`. Not edited here: apps/desktop-client/** is
     // owned by the live registration-gate session.
     pub fn with_kds_queue(mut self, provider: KdsQueueProvider) -> Self {
@@ -400,7 +400,7 @@ pub struct KdsDiscoverResponse {
     /// The Restaurant POS terminal ID.
     pub restaurant_pos_id: String,
     /// Active KDS devices registered under this POS.
-    pub devices: Vec<oz_core::kds::KdsDevice>,
+    pub devices: Vec<kasirmu_core::kds::KdsDevice>,
     /// Application version.
     pub version: String,
     /// LAN transports this POS accepts, in preference order:

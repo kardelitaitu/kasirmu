@@ -13,7 +13,7 @@
 
 use super::*;
 use crate::testing::{TestBridge, temp_conn};
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
 
 // ── TaxRateDto ──────────────────────────────────────────────────────
@@ -223,7 +223,7 @@ fn scoped_create_round_trips_scope_and_window() {
         .expect("active scoped row carries a scope");
     assert!(matches!(
         stored,
-        oz_core::db::tax::TaxRateScope::Location(_)
+        kasirmu_core::db::tax::TaxRateScope::Location(_)
     ));
 }
 
@@ -367,7 +367,7 @@ fn scoped_update_moves_tier_and_window() {
         .expect("row still active");
     assert!(matches!(
         stored,
-        oz_core::db::tax::TaxRateScope::LegalEntity(_)
+        kasirmu_core::db::tax::TaxRateScope::LegalEntity(_)
     ));
 }
 
@@ -416,12 +416,12 @@ async fn require_tax_permission_uses_global_identity_db() {
     let ctx = bridge.ctx();
 
     assert!(
-        require_tax_permission(&ctx, "user-owner", oz_core::permissions::SETTINGS_READ)
+        require_tax_permission(&ctx, "user-owner", kasirmu_core::permissions::SETTINGS_READ)
             .await
             .is_ok()
     );
     assert!(
-        require_tax_permission(&ctx, "user-owner", oz_core::permissions::SETTINGS_EDIT)
+        require_tax_permission(&ctx, "user-owner", kasirmu_core::permissions::SETTINGS_EDIT)
             .await
             .is_ok()
     );
@@ -434,7 +434,7 @@ async fn require_tax_permission_rejects_missing_user() {
     let ctx = bridge.ctx();
 
     assert!(matches!(
-        require_tax_permission(&ctx, "missing-user", oz_core::permissions::SETTINGS_READ).await,
+        require_tax_permission(&ctx, "missing-user", kasirmu_core::permissions::SETTINGS_READ).await,
         Err(BridgeError::PermissionDenied(_))
     ));
 }
@@ -487,7 +487,7 @@ async fn scoped_tax_command_reads_only_the_session_store() {
     let conn = temp_conn();
     seed_owner_user(&conn);
 
-    let db_manager = StoreDatabaseManager::new(store_dir(), oz_core::migrations::ALL);
+    let db_manager = StoreDatabaseManager::new(store_dir(), kasirmu_core::migrations::ALL);
     let bridge = TestBridge::new()
         .with_conn(conn)
         .with_db_manager(db_manager.clone());
@@ -604,11 +604,11 @@ fn run_list_tax_rate_rounding_modes_maps_the_statutory_alphabet() {
             .unwrap();
     assert_eq!(
         modes.get("r-trunc"),
-        Some(&Some(oz_core::tax_rate::RoundingMode::Truncate)),
+        Some(&Some(kasirmu_core::tax_rate::RoundingMode::Truncate)),
     );
     assert_eq!(
         modes.get("r-half"),
-        Some(&Some(oz_core::tax_rate::RoundingMode::HalfUp)),
+        Some(&Some(kasirmu_core::tax_rate::RoundingMode::HalfUp)),
     );
     assert_eq!(
         modes.get("r-plain"),
@@ -647,11 +647,11 @@ fn rounding_mode_wire_is_the_core_serde_snake_case() {
     // through verbatim; null = preference. The ui contract test pins the
     // JS half of this contract; this pins the Rust half.
     assert_eq!(
-        serde_json::to_value(oz_core::tax_rate::RoundingMode::HalfUp).unwrap(),
+        serde_json::to_value(kasirmu_core::tax_rate::RoundingMode::HalfUp).unwrap(),
         serde_json::json!("half_up"),
     );
     assert_eq!(
-        serde_json::to_value(oz_core::tax_rate::RoundingMode::Truncate).unwrap(),
+        serde_json::to_value(kasirmu_core::tax_rate::RoundingMode::Truncate).unwrap(),
         serde_json::json!("truncate"),
     );
     let map = run_list_tax_rate_rounding_modes(&temp_conn(), &["r-none"]).unwrap();

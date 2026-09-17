@@ -1,5 +1,5 @@
 use super::*;
-use oz_core::kds::{KdsLineItem, KdsModifier, KdsOrder};
+use kasirmu_core::kds::{KdsLineItem, KdsModifier, KdsOrder};
 
 // ── Test doubles ─────────────────────────────────────────────────────
 

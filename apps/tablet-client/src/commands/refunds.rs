@@ -2,9 +2,9 @@
 
 use tauri::{State, command};
 
-use oz_core::db::Store;
-use oz_core::permissions;
-use oz_core::{Money, Refund, RefundLine, Sale};
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
+use kasirmu_core::{Money, Refund, RefundLine, Sale};
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
@@ -94,7 +94,7 @@ fn run_process_refund(
     let sale = store
         .get_sale(sale_id)?
         .ok_or_else(|| AppError::Invalid(format!("sale {} not found", sale_id)))?;
-    if sale.status != oz_core::SaleStatus::Completed {
+    if sale.status != kasirmu_core::SaleStatus::Completed {
         return Err(AppError::Invalid(format!(
             "cannot refund a sale with status {:?}",
             sale.status
@@ -104,7 +104,7 @@ fn run_process_refund(
     let refund_lines: Vec<RefundLine> = lines
         .iter()
         .map(|l| {
-            let currency: oz_core::Currency = l
+            let currency: kasirmu_core::Currency = l
                 .currency
                 .parse()
                 .map_err(|_| AppError::Invalid(format!("invalid currency code: {}", l.currency)))?;
@@ -171,7 +171,7 @@ pub async fn lookup_sale_by_receipt_barcode_scoped(
     require_permission_for_user(
         &store,
         &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
+        kasirmu_core::permissions::SALES_PROCESS,
     )?;
     let sale = store.lookup_sale_by_receipt_barcode(&barcode)?;
     drop(db);
@@ -191,7 +191,7 @@ pub async fn list_refunds_scoped(
     require_permission_for_user(
         &store,
         &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
+        kasirmu_core::permissions::SALES_PROCESS,
     )?;
     let refunds = store.list_refunds_for_sale(&sale_id)?;
     drop(db);

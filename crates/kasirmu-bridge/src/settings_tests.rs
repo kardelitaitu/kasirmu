@@ -5,7 +5,7 @@
 //! `TestBridge` harness ([`crate::testing`]); the conn-taking `run_*`
 //! helpers resolve against `kasirmu_bridge::settings` directly via `use super::*`.
 use super::*;
-use oz_core::migrations;
+use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
@@ -1280,7 +1280,7 @@ fn batch_smtp_config_write_preserves_the_stored_password() {
     let conn = fresh_conn();
     let store = Store::new(&conn);
     store
-        .save_smtp_config(&oz_core::export::email_report::SmtpConfig {
+        .save_smtp_config(&kasirmu_core::export::email_report::SmtpConfig {
             host: "smtp.old.com".into(),
             from: "a@b.com".into(),
             password: Some("stored-secret".into()),
@@ -1325,7 +1325,7 @@ fn batch_funnel_returns_what_it_wrote_so_the_enqueue_carries_the_merged_blob() {
     let conn = fresh_conn();
     let store = Store::new(&conn);
     store
-        .save_smtp_config(&oz_core::export::email_report::SmtpConfig {
+        .save_smtp_config(&kasirmu_core::export::email_report::SmtpConfig {
             host: "smtp.old.com".into(),
             from: "a@b.com".into(),
             password: Some("stored-secret".into()),
@@ -1377,7 +1377,7 @@ fn single_write_funnel_returns_what_it_wrote() {
     let conn = fresh_conn();
     let store = Store::new(&conn);
     store
-        .save_smtp_config(&oz_core::export::email_report::SmtpConfig {
+        .save_smtp_config(&kasirmu_core::export::email_report::SmtpConfig {
             host: "smtp.old.com".into(),
             from: "a@b.com".into(),
             password: Some("stored-secret".into()),

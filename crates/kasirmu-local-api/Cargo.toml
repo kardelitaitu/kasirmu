@@ -12,7 +12,7 @@ workspace = true
 
 [dependencies]
 kasirmu-api = { workspace = true }
-oz-core = { workspace = true }
+kasirmu-core = { workspace = true }
 platform-core = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }

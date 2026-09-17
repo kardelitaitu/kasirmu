@@ -21,13 +21,13 @@ use serde::{Deserialize, Serialize};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
-use oz_core::{Store, Terminal, TerminalFeatureOverride, TerminalProfile};
+use kasirmu_core::{Store, Terminal, TerminalFeatureOverride, TerminalProfile};
 
 use foundation::validate_not_empty;
 
-use oz_core::availability::UsageCounts;
-use oz_core::entitlements::Entitlements;
-use oz_core::permissions;
+use kasirmu_core::availability::UsageCounts;
+use kasirmu_core::entitlements::Entitlements;
+use kasirmu_core::permissions;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -397,7 +397,7 @@ pub async fn register_terminal(
 
     let db = ctx.lock_global().await;
     let store = Store::new(&db);
-    ctx.require_permission_for_user(&store, &user_id, oz_core::permissions::TERMINALS_REGISTER)?;
+    ctx.require_permission_for_user(&store, &user_id, kasirmu_core::permissions::TERMINALS_REGISTER)?;
     store.create_terminal(&terminal)?;
     drop(db);
 
@@ -420,13 +420,13 @@ pub async fn register_terminal_scoped(
         .map_err(|e| BridgeError::Invalid(e.to_string()))?;
 
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::TERMINALS_REGISTER)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::TERMINALS_REGISTER)
         .await?;
 
     let sub = {
         let global_db = ctx.lock_global().await;
-        oz_core::TenantSubscription::validate_clock_rollback(&global_db)?;
-        oz_core::TenantSubscription::load(&global_db, "default")?
+        kasirmu_core::TenantSubscription::validate_clock_rollback(&global_db)?;
+        kasirmu_core::TenantSubscription::load(&global_db, "default")?
             .ok_or_else(|| BridgeError::Internal("default tenant subscription not found".into()))?
     };
     sub.verify_signature()?;
@@ -467,7 +467,7 @@ pub async fn update_terminal_scoped(
     validate_not_empty("id", &args.id).map_err(|e| BridgeError::Invalid(e.to_string()))?;
 
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::TERMINALS_EDIT)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::TERMINALS_EDIT)
         .await?;
     let conn = ctx
         .db_manager
@@ -518,7 +518,7 @@ pub async fn delete_terminal_scoped(
     validate_not_empty("id", &id).map_err(|e| BridgeError::Invalid(e.to_string()))?;
 
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::TERMINALS_DELETE)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::TERMINALS_DELETE)
         .await?;
     let conn = ctx
         .db_manager
@@ -549,7 +549,7 @@ pub async fn set_terminal_override_scoped(
     validate_not_empty("feature", &feature).map_err(|e| BridgeError::Invalid(e.to_string()))?;
 
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::TERMINALS_EDIT)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::TERMINALS_EDIT)
         .await?;
     let conn = ctx
         .db_manager
@@ -584,7 +584,7 @@ pub async fn delete_terminal_override_scoped(
     validate_not_empty("feature", &feature).map_err(|e| BridgeError::Invalid(e.to_string()))?;
 
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::TERMINALS_EDIT)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::TERMINALS_EDIT)
         .await?;
     let conn = ctx
         .db_manager
@@ -657,7 +657,7 @@ pub async fn set_terminal_profile_scoped(
         .map_err(|e| BridgeError::Invalid(e.to_string()))?;
 
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::TERMINALS_EDIT)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::TERMINALS_EDIT)
         .await?;
     let conn = ctx
         .db_manager
@@ -693,7 +693,7 @@ pub async fn delete_terminal_profile_scoped(
         .map_err(|e| BridgeError::Invalid(e.to_string()))?;
 
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::TERMINALS_EDIT)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::TERMINALS_EDIT)
         .await?;
     let conn = ctx
         .db_manager
@@ -739,7 +739,7 @@ pub async fn set_device_binding_scoped(
         .map_err(|e| BridgeError::Invalid(e.to_string()))?;
 
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::TERMINALS_EDIT)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::TERMINALS_EDIT)
         .await?;
 
     let signature = {
@@ -803,7 +803,7 @@ pub async fn clear_device_binding_scoped(
         .map_err(|e| BridgeError::Invalid(e.to_string()))?;
 
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::TERMINALS_EDIT)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::TERMINALS_EDIT)
         .await?;
     let conn = ctx
         .db_manager

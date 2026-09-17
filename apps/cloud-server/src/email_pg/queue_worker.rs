@@ -12,8 +12,8 @@ use chrono::{Datelike, SecondsFormat, Utc};
 use deadpool_postgres::Pool;
 use tracing::{error, info};
 
-use oz_core::export::ReportScheduleConfig;
-use oz_core::export::email_sender::{
+use kasirmu_core::export::ReportScheduleConfig;
+use kasirmu_core::export::email_sender::{
     LAST_SENT_KEY, resolve_now_in_timezone, should_send_scheduled_with_last_sent,
 };
 

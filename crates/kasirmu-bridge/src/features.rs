@@ -16,7 +16,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use oz_core::{Feature, FeatureGuardRegistry, Store, Terminal};
+use kasirmu_core::{Feature, FeatureGuardRegistry, Store, Terminal};
 
 use platform_kernel::ModuleStatus;
 
@@ -60,15 +60,15 @@ pub async fn list_all_features(ctx: &BridgeCtx<'_>) -> Result<ListAllFeaturesRes
 }
 
 /// Build the full feature DTO list from a loaded registry.
-fn build_feature_list(reg: &oz_core::FeatureRegistry) -> Vec<FeatureDto> {
+fn build_feature_list(reg: &kasirmu_core::FeatureRegistry) -> Vec<FeatureDto> {
     all_feature_metadata()
         .into_iter()
         .map(|(feat, name, desc, group)| {
-            let key = oz_core::features::feature_key(feat).to_string();
+            let key = kasirmu_core::features::feature_key(feat).to_string();
             let deps: Vec<String> = feat
                 .dependencies()
                 .iter()
-                .map(|d| oz_core::features::feature_key(*d).to_string())
+                .map(|d| kasirmu_core::features::feature_key(*d).to_string())
                 .collect();
             FeatureDto {
                 key,
@@ -136,7 +136,7 @@ pub async fn set_features_bulk(
     args: SetFeaturesBulkArgs,
 ) -> Result<ListAllFeaturesResult, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SETTINGS_EDIT)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SETTINGS_EDIT)
         .await?;
     let mut db = ctx.lock_global().await;
 
@@ -151,7 +151,7 @@ pub async fn set_features_bulk(
 
     // Parse and apply each key.
     for key in &args.keys {
-        let feature = oz_core::features::feature_from_key(key)
+        let feature = kasirmu_core::features::feature_from_key(key)
             .ok_or_else(|| BridgeError::Invalid(format!("unknown feature key: {key}")))?;
 
         if args.enabled {
@@ -190,9 +190,9 @@ pub async fn set_feature(
     args: SetFeatureArgs,
 ) -> Result<SetFeatureResult, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SETTINGS_EDIT)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SETTINGS_EDIT)
         .await?;
-    let feature = oz_core::features::feature_from_key(&args.key)
+    let feature = kasirmu_core::features::feature_from_key(&args.key)
         .ok_or_else(|| BridgeError::Invalid(format!("unknown feature key: {}", args.key)))?;
 
     // ── Feature safety guards (before any changes) ────────────────
@@ -302,7 +302,7 @@ pub async fn set_feature(
         // Figure out what was newly auto-enabled.
         for f in reg.enabled_features() {
             if !before_enable.contains(&f) && f != feature {
-                auto_enabled.push(oz_core::features::feature_key(f).to_string());
+                auto_enabled.push(kasirmu_core::features::feature_key(f).to_string());
             }
         }
     } else {

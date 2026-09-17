@@ -10,8 +10,8 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use oz_core::db::Store;
-use oz_core::permissions;
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;

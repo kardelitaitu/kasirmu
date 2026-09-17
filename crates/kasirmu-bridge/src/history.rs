@@ -8,10 +8,10 @@
 
 use serde::Serialize;
 
-use oz_core::Money;
-use oz_core::db::{DailySummaryRow, SalesByHourRow, Store};
-use oz_core::permissions;
-use oz_core::subscription::TenantSubscription;
+use kasirmu_core::Money;
+use kasirmu_core::db::{DailySummaryRow, SalesByHourRow, Store};
+use kasirmu_core::permissions;
+use kasirmu_core::subscription::TenantSubscription;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -84,8 +84,8 @@ pub async fn list_sales_scoped(
     })
 }
 
-/// Shared mapping from `oz_core::Sale` to `SaleListItem`.
-fn map_sale_to_item(s: oz_core::Sale) -> SaleListItem {
+/// Shared mapping from `kasirmu_core::Sale` to `SaleListItem`.
+fn map_sale_to_item(s: kasirmu_core::Sale) -> SaleListItem {
     SaleListItem {
         id: s.id,
         total: s.total,
@@ -122,7 +122,7 @@ pub struct SaleDetail {
     /// ISO-8601 creation timestamp.
     pub created_at: String,
     /// Lines.
-    pub lines: Vec<oz_core::SaleLine>,
+    pub lines: Vec<kasirmu_core::SaleLine>,
     /// F2-7: the core-authored tax-estimate stamp (F2-5) when the checkout
     /// claimed an estimate; `None` = unstamped (absence is never a claim).
     /// Wire-verified: the struct-wide `rename_all` above IS the drift fix —
@@ -160,8 +160,8 @@ pub async fn get_sale_scoped(
     Ok(sale.map(|s| map_sale_to_detail(s, tax_estimate_note)))
 }
 
-/// Shared mapping from `oz_core::Sale` to `SaleDetail`.
-fn map_sale_to_detail(s: oz_core::Sale, tax_estimate_note: Option<String>) -> SaleDetail {
+/// Shared mapping from `kasirmu_core::Sale` to `SaleDetail`.
+fn map_sale_to_detail(s: kasirmu_core::Sale, tax_estimate_note: Option<String>) -> SaleDetail {
     SaleDetail {
         id: s.id,
         total: s.total,

@@ -13,12 +13,12 @@
 
 use tauri::State;
 
-use oz_core::stock_transfer::{StockTransfer, StockTransferLine};
+use kasirmu_core::stock_transfer::{StockTransfer, StockTransferLine};
 
 // Retained for the sibling test module, which reaches these through its
 // glob import of this module; the command bodies no longer name them.
 #[allow(unused_imports)]
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 
 use crate::error::AppError;
 use crate::state::AppState;

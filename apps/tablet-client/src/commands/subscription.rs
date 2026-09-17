@@ -46,14 +46,14 @@ use serde::Serialize;
 use tauri::{State, command};
 
 use kasirmu_bridge::subscription::load_over_quota_report;
-use oz_core::availability::{AvailabilityFeature, FeatureVerdict, UsageCounts};
-use oz_core::db::Store;
-use oz_core::db::assignments::ScopeType;
-use oz_core::downgrade::OverQuotaReport;
-use oz_core::entitlements::{Entitlements, SubscriptionLoader, build_entitlements};
-use oz_core::permissions;
-use oz_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
-use oz_core::workspace_type::{RESTAURANT_POS, STORE_POS, WAREHOUSE};
+use kasirmu_core::availability::{AvailabilityFeature, FeatureVerdict, UsageCounts};
+use kasirmu_core::db::Store;
+use kasirmu_core::db::assignments::ScopeType;
+use kasirmu_core::downgrade::OverQuotaReport;
+use kasirmu_core::entitlements::{Entitlements, SubscriptionLoader, build_entitlements};
+use kasirmu_core::permissions;
+use kasirmu_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
+use kasirmu_core::workspace_type::{RESTAURANT_POS, STORE_POS, WAREHOUSE};
 
 use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
@@ -85,7 +85,7 @@ pub struct SubscriptionCapabilitiesDto {
     /// The signed payload's explicit per-feature instructions (Phase D1,
     /// surfaced over the caps wire by C+D-RES-1): the server's `features`
     /// map keyed by the canonical
-    /// [`oz_core::availability::AvailabilityFeature`] wire names. Empty
+    /// [`kasirmu_core::availability::AvailabilityFeature`] wire names. Empty
     /// when the payload has no opinion - silence is the only safe reading
     /// of data that cannot be trusted, so no default grant is invented.
     pub features: std::collections::HashMap<String, bool>,
@@ -371,7 +371,7 @@ fn load_feature_verdict(
     // Fail closed on unknown keys: never resolve to "available".
     let feature = AvailabilityFeature::parse(feature_key).ok_or_else(|| {
         AppError::Invalid(format!(
-            "unknown feature key {feature_key:?} — see oz_core::availability::AvailabilityFeature"
+            "unknown feature key {feature_key:?} — see kasirmu_core::availability::AvailabilityFeature"
         ))
     })?;
 
@@ -445,7 +445,7 @@ fn load_feature_verdict(
         expires_at_owned.as_deref(),
         grace_until_owned.as_deref(),
     );
-    Ok(oz_core::availability::explain_availability(&facts))
+    Ok(kasirmu_core::availability::explain_availability(&facts))
 }
 
 /// Explain WHY a feature is (un)available for the session user — the

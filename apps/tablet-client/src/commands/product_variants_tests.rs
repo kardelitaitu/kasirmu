@@ -1,5 +1,5 @@
 use super::*;
-use oz_core::migrations;
+use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
@@ -130,9 +130,9 @@ fn product_variant_dto_from_with_price() {
         parent_sku: "TEA".into(),
         name: "Black".into(),
         sku: "TEA-BLACK".into(),
-        price: Some(oz_core::Money {
+        price: Some(kasirmu_core::Money {
             minor_units: 400,
-            currency: oz_core::Currency([85, 83, 68]),
+            currency: kasirmu_core::Currency([85, 83, 68]),
         }),
         barcode: None,
         sort_order: 2,

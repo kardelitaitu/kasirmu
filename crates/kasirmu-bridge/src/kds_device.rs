@@ -15,9 +15,9 @@
 //! variant-for-variant, including the exact `opening store db: {e}` and
 //! `store db lock: {e}` texts.
 
-use oz_core::db::Store;
-use oz_core::kds::{KdsConnectionStatus, KdsDevice, RegisterKdsDeviceInput};
-use oz_core::permissions;
+use kasirmu_core::db::Store;
+use kasirmu_core::kds::{KdsConnectionStatus, KdsDevice, RegisterKdsDeviceInput};
+use kasirmu_core::permissions;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;

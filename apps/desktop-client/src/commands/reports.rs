@@ -1,6 +1,6 @@
 //! Intelligence / reporting commands: revenue, heatmap, top products, alerts.
 //!
-//! These commands expose the `oz_core::db::reports` Store methods as
+//! These commands expose the `kasirmu_core::db::reports` Store methods as
 //! Tauri IPC handlers for the dashboard and analytics front-end.
 //!
 //! Wave E / E6: the bodies now live in the headless `kasirmu_bridge::reports` module.
@@ -18,17 +18,17 @@
 use tauri::State;
 
 #[allow(unused_imports)] // sibling reports_tests.rs depends on it
-use oz_core::db::Store;
-use oz_core::db::popularity::{CategoryForecastRow, CategoryPopularityRow, CategoryTrendPoint};
-use oz_core::db::reports::{
+use kasirmu_core::db::Store;
+use kasirmu_core::db::popularity::{CategoryForecastRow, CategoryPopularityRow, CategoryTrendPoint};
+use kasirmu_core::db::reports::{
     BasketSizeRow, BasketTrendRow, CategoryBreakdownRow, CustomerSplitRow, DailyRevenueRow,
     DiscountsSummaryRow, HourlyHeatmapRow, HourlyOccupancyRow, InventoryTrendRow,
     InventoryTurnoverRow, LowStockAlert, MonthlyRevenueRow, PaymentMethodRow, TableTurnoverRow,
     TopProductRow, VoidedItemRow, VoidedSummaryRow, WeeklyRevenueRow,
 };
-use oz_core::export::{CustomReportRequest, CustomReportResponse};
+use kasirmu_core::export::{CustomReportRequest, CustomReportResponse};
 #[allow(unused_imports)] // sibling reports_tests.rs depends on it
-use oz_core::permissions;
+use kasirmu_core::permissions;
 
 use crate::error::AppError;
 use crate::state::AppState;

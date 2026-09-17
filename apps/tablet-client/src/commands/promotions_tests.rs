@@ -71,7 +71,7 @@ fn create_promotion_args_debug() {
 //
 // Harness duplicated from `tables_tests.rs` for the same reason noted there.
 
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
@@ -92,12 +92,12 @@ fn seed_identity(conn: &rusqlite::Connection) {
 fn promotions_app(
     sessions: &[(&str, &str)],
 ) -> (tauri::App<tauri::test::MockRuntime>, tempfile::TempDir) {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_identity(&conn);
     let temp = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp.path().to_path_buf(), kasirmu_core::migrations::ALL);
     for (token, user_id) in sessions {
         let role = if *user_id == "user-owner" {
             "role-owner"

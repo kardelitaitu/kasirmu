@@ -16,9 +16,9 @@
 //! exact `#[tauri::command]` names/signatures/`Result<_, AppError>`
 //! wire contract.
 
-use oz_core::db::assignments::ScopeType;
-use oz_core::db::receipt_formats::{EffectiveReceiptFormat, ReceiptContent, ReceiptLayout};
-use oz_core::{Store, permissions};
+use kasirmu_core::db::assignments::ScopeType;
+use kasirmu_core::db::receipt_formats::{EffectiveReceiptFormat, ReceiptContent, ReceiptLayout};
+use kasirmu_core::{Store, permissions};
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;

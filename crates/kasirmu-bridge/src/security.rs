@@ -17,7 +17,7 @@
 
 use serde::Serialize;
 
-use oz_core::permissions;
+use kasirmu_core::permissions;
 use kasirmu_security::Keyring;
 
 use crate::ctx::BridgeCtx;

@@ -323,7 +323,7 @@ fn health_endpoints_have_no_security() {
 /// resolves to a real route (≠ 404 ≠ 405).
 fn test_full_router() -> axum::Router {
     let state = crate::CloudServerState {
-        db: std::sync::Arc::new(tokio::sync::Mutex::new(oz_core::migrations::fresh_db())),
+        db: std::sync::Arc::new(tokio::sync::Mutex::new(kasirmu_core::migrations::fresh_db())),
         pg: None,
         started_at: std::time::Instant::now(),
         health_depth_cache: crate::HealthDepthCache::default(),
@@ -1018,7 +1018,7 @@ fn validates(spec: &Value, schema: &Value, value: &Value) -> bool {
 
 #[test]
 fn push_outcome_documented_schema_matches_serde_wire_shape() {
-    use oz_core::offline::OfflineQueueItem;
+    use kasirmu_core::offline::OfflineQueueItem;
     use platform_sync::transport::{PushOutcome, PushResponse};
 
     let spec = openapi_spec();

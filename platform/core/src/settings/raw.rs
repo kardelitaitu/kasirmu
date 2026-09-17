@@ -562,7 +562,7 @@ impl Settings {
         // `crates/kasirmu-bridge/src/settings.rs::run_set_settings_batch`.
         //
         // DEAD CODE, RECORDED NOT DELETED (08-09-26 review): this function has
-        // no production caller — only `oz_core::settings` re-exports it and
+        // no production caller — only `kasirmu_core::settings` re-exports it and
         // the platform-core tests exercise it. It also cannot be called from
         // inside a caller's transaction: like `set_tracked` it opens its own
         // `unchecked_transaction`, and a second BEGIN fails with "cannot start

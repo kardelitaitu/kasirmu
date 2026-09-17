@@ -13,8 +13,8 @@ use axum::{
 };
 use serde::Deserialize;
 
-use oz_core::TenantPlan;
-use oz_core::db::Store;
+use kasirmu_core::TenantPlan;
+use kasirmu_core::db::Store;
 
 use crate::AppState;
 use crate::auth::ApiTokenClaims;

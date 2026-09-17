@@ -20,9 +20,9 @@
 use serde::{Deserialize, Serialize};
 
 use foundation::validate_not_empty;
-use oz_core::Customer;
-use oz_core::db::Store;
-use oz_core::permissions;
+use kasirmu_core::Customer;
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -190,9 +190,9 @@ pub struct CustomerHistoryDto {
 /// use `Store::require_permission` (not the scope-aware form), so they need
 /// the same `PermissionDenied` → [`BridgeError::PermissionDenied`]
 /// translation the authz seam applies.
-fn map_gate_error(e: oz_core::CoreError) -> BridgeError {
+fn map_gate_error(e: kasirmu_core::CoreError) -> BridgeError {
     match e {
-        oz_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
+        kasirmu_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
         other => BridgeError::from(other),
     }
 }
@@ -587,7 +587,7 @@ pub async fn history_scoped(
     let customer =
         store
             .get_customer(customer_id)?
-            .ok_or_else(|| oz_core::error::CoreError::NotFound {
+            .ok_or_else(|| kasirmu_core::error::CoreError::NotFound {
                 entity: "customer",
                 id: customer_id.to_string(),
             })?;

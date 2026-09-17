@@ -33,7 +33,7 @@ tempfile = { workspace = true }
 [dependencies]
 foundation = { workspace = true }
 kasirmu-api = { workspace = true }
-oz-core = { workspace = true }
+kasirmu-core = { workspace = true }
 kasirmu-bridge = { workspace = true }
 reqwest = { workspace = true }
 kasirmu-hal = { workspace = true }

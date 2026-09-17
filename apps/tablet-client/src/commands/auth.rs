@@ -7,22 +7,22 @@ next: none | perf: N/A
 //! Staff authentication commands — login, logout, session verification.
 //!
 //! These commands are the IPC surface for `ui/src/features/auth/`. PIN
-//! hashing and verification is delegated to `oz_core::auth`.
+//! hashing and verification is delegated to `kasirmu_core::auth`.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::{State, command};
 
-use oz_core::auth::LoginSession;
-use oz_core::db::Store;
-use oz_core::db::assignments::ScopeType;
-use oz_core::db::audit_security::{
+use kasirmu_core::auth::LoginSession;
+use kasirmu_core::db::Store;
+use kasirmu_core::db::assignments::ScopeType;
+use kasirmu_core::db::audit_security::{
     SECURITY_REASON_BAD_PIN, SECURITY_REASON_INACTIVE, SECURITY_REASON_RATE_LIMITED,
     SECURITY_REASON_UNKNOWN_USER, SecurityEvent,
 };
-use oz_core::permissions;
-use oz_core::session::SessionContext;
-use oz_core::subscription::TenantSubscription;
+use kasirmu_core::permissions;
+use kasirmu_core::session::SessionContext;
+use kasirmu_core::subscription::TenantSubscription;
 use kasirmu_security::mask::mask_token;
 
 use crate::commands::authz::require_permission_for_session;
@@ -193,7 +193,7 @@ pub async fn staff_login(
     if let Err(retry_after) = store.record_login_attempt_scoped(
         &username,
         device_id.as_deref(),
-        oz_core::db::staff::LoginLimits {
+        kasirmu_core::db::staff::LoginLimits {
             max_attempts: 3,         // per-account max
             window_secs: 60,         // window secs
             device_max_attempts: 10, // per-device max
@@ -266,7 +266,7 @@ pub async fn staff_login(
     // Verify PIN against stored hash.
     // `verify_pin` fails closed (Ok(false)) on malformed/placeholder hashes;
     // the Err arm is retained for future argon2 library errors.
-    let valid = oz_core::auth::verify_pin(&args.pin, &user.pin_hash)
+    let valid = kasirmu_core::auth::verify_pin(&args.pin, &user.pin_hash)
         .map_err(|e| AppError::Internal(format!("PIN verification failed: {e}")))?;
 
     if !valid {
@@ -394,7 +394,7 @@ pub async fn create_session(
     let org_label: Option<String> = match args.org_id.as_ref().filter(|o| !o.is_empty()) {
         Some(org_id) => {
             let db = state.db.lock().await;
-            let store = oz_core::db::Store::new(&db);
+            let store = kasirmu_core::db::Store::new(&db);
             let entity = store
                 .get_legal_entity("default", org_id)?
                 .ok_or_else(|| AppError::Invalid("Unknown organization".into()))?;
@@ -419,7 +419,7 @@ pub async fn create_session(
     // for the requested workspace instance (ADR #4 / ADR #7).
     {
         let db = state.db.lock().await;
-        let store = oz_core::db::Store::new(&db);
+        let store = kasirmu_core::db::Store::new(&db);
         if !store.verify_instance_access(
             &args.role_id,
             &args.user_id,
@@ -536,7 +536,7 @@ pub async fn create_session(
     // Invalidate the location cache — a new session means either a fresh
     // login or a workspace switch, so cached location bindings from the
     // previous session should not carry over.
-    oz_core::location_resolver::invalidate_location_cache();
+    kasirmu_core::location_resolver::invalidate_location_cache();
 
     tracing::info!(
         user_id = %args.user_id,
@@ -572,7 +572,7 @@ pub async fn list_organizations(
     state: State<'_, AppState>,
 ) -> Result<Vec<OrganizationSummary>, AppError> {
     let db = state.db.lock().await;
-    let store = oz_core::db::Store::new(&db);
+    let store = kasirmu_core::db::Store::new(&db);
     let orgs = store
         .list_legal_entities("default")?
         .into_iter()
@@ -616,7 +616,7 @@ pub async fn switch_organization(
     // 2. Enumerated-list-only: the org must be one this device knows.
     let org_name = {
         let db = state.db.lock().await;
-        let store = oz_core::db::Store::new(&db);
+        let store = kasirmu_core::db::Store::new(&db);
         store
             .get_legal_entity("default", &org_id)?
             .map(|le| le.name)
@@ -633,7 +633,7 @@ pub async fn switch_organization(
     // 3. Assignment gate (fail-closed — mirrors the impersonation guard).
     {
         let db = state.db.lock().await;
-        let store = oz_core::db::Store::new(&db);
+        let store = kasirmu_core::db::Store::new(&db);
         let covered =
             store.assignment_covers_resource(&user_id, ScopeType::LegalEntity, &org_id)?;
         if !covered.unwrap_or(false) {
@@ -651,11 +651,11 @@ pub async fn switch_organization(
     // 4. FULL re-authentication — no credential carryover.
     let role_id = {
         let db = state.db.lock().await;
-        let store = oz_core::db::Store::new(&db);
+        let store = kasirmu_core::db::Store::new(&db);
         let user = store
             .get_user(&user_id)?
             .ok_or_else(|| AppError::Invalid("user not found".into()))?;
-        let valid = oz_core::auth::verify_pin(&pin, &user.pin_hash)
+        let valid = kasirmu_core::auth::verify_pin(&pin, &user.pin_hash)
             .map_err(|e| AppError::Internal(format!("PIN verification failed: {e}")))?;
         if !valid {
             tracing::warn!(
@@ -671,7 +671,7 @@ pub async fn switch_organization(
     // 5. Defense-in-depth: re-run tenant integrity on the active DB.
     {
         let db = state.db.lock().await;
-        oz_core::db::Store::new(&db)
+        kasirmu_core::db::Store::new(&db)
             .check_tenant_integrity()
             .map_err(|e| AppError::Internal(format!("tenant integrity check: {e}")))?;
     }
@@ -733,7 +733,7 @@ pub async fn switch_organization(
         // Send (the same shape destroy_session uses for its logout
         // event).
         let db = state.db.lock().await;
-        let store = oz_core::db::Store::new(&db);
+        let store = kasirmu_core::db::Store::new(&db);
         let username = store
             .get_user(&user_id)
             .ok()

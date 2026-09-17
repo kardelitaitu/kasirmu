@@ -16,10 +16,10 @@ use serde::Serialize;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
-use oz_core::db::Store;
-use oz_core::db::workspaces::{CreateWorkspaceInstanceArgs, WorkspaceDto};
-use oz_core::permissions;
-use oz_core::subscription::TenantSubscription;
+use kasirmu_core::db::Store;
+use kasirmu_core::db::workspaces::{CreateWorkspaceInstanceArgs, WorkspaceDto};
+use kasirmu_core::permissions;
+use kasirmu_core::subscription::TenantSubscription;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -36,7 +36,7 @@ const DEVICE_BINDING_KEYRING_NAME: &str = "oz-pos/device-binding-hmac-key";
 /// Legacy workspace DTO (pre-ADR #4).
 ///
 /// Kept for the session-scoped workspace-type listing command. New code
-/// should use `WorkspaceDto` from `oz_core::db::workspaces` when it needs
+/// should use `WorkspaceDto` from `kasirmu_core::db::workspaces` when it needs
 /// instance-aware data.
 #[derive(Debug, Serialize)]
 #[allow(dead_code)]

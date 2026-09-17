@@ -454,7 +454,7 @@ pub async fn serve() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .map_err(|e| format!("enabling foreign_keys: {e}"))?;
     conn.pragma_update(None, "journal_mode", "WAL")
         .map_err(|e| format!("enabling WAL: {e}"))?;
-    oz_core::migrations::run(&mut conn).map_err(|e| format!("running migrations: {e}"))?;
+    kasirmu_core::migrations::run(&mut conn).map_err(|e| format!("running migrations: {e}"))?;
 
     let admin_key = std::env::var("OZ_ADMIN_KEY")
         .ok()

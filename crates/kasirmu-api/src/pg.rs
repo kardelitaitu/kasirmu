@@ -8,7 +8,7 @@ next: propagate sale money-column read errors (API-3) | perf: PRODUCT_SELECT reu
 */
 //!
 //! The desktop/tablet/cloud POS share one SQLite data layer
-//! ([`oz_core::Store`]), which cannot be rewritten to Postgres. The cloud
+//! ([`kasirmu_core::Store`]), which cannot be rewritten to Postgres. The cloud
 //! server therefore gets a **parallel async data layer** for the REST
 //! surface, exactly like `apps/cloud-server/src/sync_store.rs` is for the
 //! sync function. Each handler dispatches on `AppState::pg`:
@@ -16,7 +16,7 @@ next: propagate sale money-column read errors (API-3) | perf: PRODUCT_SELECT reu
 //! - `Some(pool)` → the cloud server's Postgres branch: this module runs the
 //!   query against `deadpool_postgres::Pool`.
 //! - `None` → local dev / tests / SQLite branch: the existing
-//!   `oz_core::Store` path runs unchanged.
+//!   `kasirmu_core::Store` path runs unchanged.
 //!
 //! The SQL is written natively for Postgres (`$n` parameters). The port
 //! schema (`20260813_init.pg.sql`) stores boolean-ish columns as `BIGINT`
@@ -34,9 +34,9 @@ use axum::{
 use deadpool_postgres::Pool;
 use tokio_postgres::error::SqlState;
 
-use oz_core::db::tax::{TaxRateScope, TaxRateWindow};
-use oz_core::tax_rate::TaxRate;
-use oz_core::{
+use kasirmu_core::db::tax::{TaxRateScope, TaxRateWindow};
+use kasirmu_core::tax_rate::TaxRate;
+use kasirmu_core::{
     Category, Currency, Money, Product, ProductWithDetails, Sale, SaleLine, SaleStatus, Sku,
     TenantPlan, User,
 };
@@ -1061,7 +1061,7 @@ fn pg_row_to_product_with_details(
     // constraint in either engine). Parsed here rather than in the literal below
     // so the warning names `sku_str` before it moves into `Sku::new`, instead of
     // re-reading the column.
-    let product_type = oz_core::ProductType::parse_stored_or_default(
+    let product_type = kasirmu_core::ProductType::parse_stored_or_default(
         Some(product_type_str.as_str()),
         &sku_str,
         "pg_row_to_product_with_details",
@@ -1216,7 +1216,7 @@ async fn attach_product_images(
     }
     let mut by_product: std::collections::HashMap<
         String,
-        Vec<oz_core::db::products::ProductImage>,
+        Vec<kasirmu_core::db::products::ProductImage>,
     > = std::collections::HashMap::new();
     for row in rows {
         let product_id: String = row
@@ -1234,7 +1234,7 @@ async fn attach_product_images(
         by_product
             .entry(product_id)
             .or_default()
-            .push(oz_core::db::products::ProductImage {
+            .push(kasirmu_core::db::products::ProductImage {
                 slot,
                 hash,
                 position,
@@ -1491,7 +1491,7 @@ pub async fn create_product(
             updated_at: now.clone(),
             price_updated_at: now,
             track_serial: false,
-            product_type: oz_core::ProductType::Retail,
+            product_type: kasirmu_core::ProductType::Retail,
             version: 1,
             cost_minor: 0,
             brand: None,

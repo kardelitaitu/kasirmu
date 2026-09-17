@@ -1,6 +1,6 @@
 //! Tauri commands for location-profile CRUD.
 //!
-//! Wire contract: each command talks to the `oz_core::Store` facade via the shared
+//! Wire contract: each command talks to the `kasirmu_core::Store` facade via the shared
 //! `AppState` database connection. The old store-profile command names
 //! were retired once every client migrated to the canonical commands
 //! (todo-global-saas-1.md, rename slice 1c/1d).

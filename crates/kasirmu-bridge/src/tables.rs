@@ -7,8 +7,8 @@
 //! gate kinds on writes, lock order and count, and all error strings are
 //! unchanged.
 
-use oz_core::Table;
-use oz_core::db::Store;
+use kasirmu_core::Table;
+use kasirmu_core::db::Store;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -67,7 +67,7 @@ pub async fn create_table_scoped(
     table: Table,
 ) -> Result<Table, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::TABLES_CREATE)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::TABLES_CREATE)
         .await?;
     let conn = ctx
         .db_manager
@@ -90,7 +90,7 @@ pub async fn update_table_scoped(
     table: Table,
 ) -> Result<Table, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::TABLES_EDIT)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::TABLES_EDIT)
         .await?;
     let conn = ctx
         .db_manager
@@ -113,7 +113,7 @@ pub async fn delete_table_scoped(
     id: &str,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::TABLES_DELETE)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::TABLES_DELETE)
         .await?;
     let conn = ctx
         .db_manager
@@ -137,7 +137,7 @@ pub async fn update_table_status_scoped(
     status: &str,
 ) -> Result<Table, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::TABLES_CLOSE)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::TABLES_CLOSE)
         .await?;
     let conn = ctx
         .db_manager
@@ -161,7 +161,7 @@ pub async fn assign_table_order_scoped(
     sale_id: &str,
 ) -> Result<Table, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::TABLES_ASSIGN)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::TABLES_ASSIGN)
         .await?;
     let conn = ctx
         .db_manager
@@ -184,7 +184,7 @@ pub async fn release_table_scoped(
     table_id: &str,
 ) -> Result<Table, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::TABLES_CLOSE)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::TABLES_CLOSE)
         .await?;
     let conn = ctx
         .db_manager

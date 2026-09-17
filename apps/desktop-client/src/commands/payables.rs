@@ -25,13 +25,13 @@
 use chrono::Utc;
 
 #[allow(unused_imports)]
-use oz_core::money::Currency;
+use kasirmu_core::money::Currency;
 
 #[allow(unused_imports)]
-use oz_core::payable::{NewPayable, Payable, PayableStatus};
+use kasirmu_core::payable::{NewPayable, Payable, PayableStatus};
 
 #[allow(unused_imports)]
-use oz_core::{Money, Store, permissions};
+use kasirmu_core::{Money, Store, permissions};
 
 #[allow(unused_imports)]
 use serde::{Deserialize, Serialize};

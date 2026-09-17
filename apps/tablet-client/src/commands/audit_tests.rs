@@ -38,7 +38,7 @@ fn audit_entry_dto_serialize() {
 
 #[test]
 fn audit_entry_dto_from_core_entry() {
-    let entry = oz_core::AuditEntry {
+    let entry = kasirmu_core::AuditEntry {
         id: "e2".into(),
         user_id: "u2".into(),
         action: "product.create".into(),
@@ -139,7 +139,7 @@ use tauri::Manager as _;
 
 /// Global DB with an owner (all permissions) on the given tier.
 fn seeded_conn(tier_key: &str) -> rusqlite::Connection {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();
@@ -164,10 +164,10 @@ fn app_for(tier_key: &str) -> tauri::App<tauri::test::MockRuntime> {
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     state.session_store.write().unwrap().insert(
         "tok".into(),
-        oz_core::session::SessionContext::new(
+        kasirmu_core::session::SessionContext::new(
             "user-owner".into(),
             "role-owner".into(),
             "terminal-1".into(),

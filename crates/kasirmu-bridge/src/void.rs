@@ -8,8 +8,8 @@
 
 use serde::Deserialize;
 
-use oz_core::db::Store;
-use oz_core::permissions;
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -51,7 +51,7 @@ pub async fn void_sale_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
     args: &VoidSaleScopedArgs,
-) -> Result<oz_core::Sale, BridgeError> {
+) -> Result<kasirmu_core::Sale, BridgeError> {
     let (session, conn) = ctx.resolve_scope(session_token)?;
     ctx.require_session_permission(&session, permissions::SALES_VOID)
         .await?;

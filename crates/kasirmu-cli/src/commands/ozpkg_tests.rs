@@ -13,8 +13,8 @@
 //! it instead of silently dropping coverage.
 
 use super::*;
-use oz_core::ozpkg::{OzpkgPayload, export_ozpkg, import_ozpkg};
-use oz_core::settings::keys;
+use kasirmu_core::ozpkg::{OzpkgPayload, export_ozpkg, import_ozpkg};
+use kasirmu_core::settings::keys;
 
 /// Password for throwaway packages. Non-empty: `export_ozpkg` refuses an
 /// empty password (B50) and the CLI passes `--password` straight through.
@@ -53,7 +53,7 @@ const MANAGER_OWNED: &[&str] = &[
 /// Seed a source database with both halves of the settings table: the
 /// ordinary rows that must survive and the secrets that must not.
 fn seeded_source_db() -> Connection {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let rows: &[(&str, &str)] = &[
         (keys::STORE_NAME, "Warung Sedap"),
         (keys::DEFAULT_CURRENCY, "IDR"),
@@ -203,7 +203,7 @@ fn ozpkg_import_leaves_install_secrets_byte_identical() {
         (keys::SYNC_TERMINAL_ID, "own-terminal-id"),
         (keys::STORE_NAME, "Own Store"),
     ];
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     for (key, value) in own {
         Settings::set(&conn, key, value).unwrap();
     }
@@ -239,7 +239,7 @@ fn ozpkg_import_leaves_install_secrets_byte_identical() {
 fn ozpkg_import_still_restores_ordinary_settings() {
     // The same arm keeps doing its job on portable rows, otherwise the gate
     // is a sledgehammer rather than a filter.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     Settings::set(&conn, keys::STORE_NAME, "Own Store").unwrap();
     let path = legacy_package(&[
         (keys::STORE_NAME, "Packaged Store"),
@@ -275,7 +275,7 @@ fn ozpkg_export_omits_manager_owned_settings() {
     // predicate let it out; restoring it would tell the target install its
     // Local API server should be running when nothing started one (fail-open
     // intent), and lan_server.bind would widen a listener with no PSK change.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     for key in MANAGER_OWNED {
         Settings::set(&conn, key, "from-source-install").unwrap();
     }
@@ -307,7 +307,7 @@ fn ozpkg_import_refuses_machine_id_secret_and_manager_rows() {
     // local_api.secret and a manager-prefixed row must write NONE of them into
     // a fresh install, while the ordinary rows in the SAME package still land.
     // Refusal is warn-and-continue: never an error, never a rollback.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let path = legacy_package(&[
         (keys::MACHINE_ID, "PLANTED-FINGERPRINT"),
         (keys::LOCAL_API_SECRET, "PLANTED-SIGNING-SECRET"),

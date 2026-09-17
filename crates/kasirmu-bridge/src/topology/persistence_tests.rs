@@ -192,7 +192,7 @@ fn store_node_val(id: &str) -> Value {
 
 #[test]
 fn validate_warehouse_quota_no_warehouses_always_ok() {
-    use oz_core::subscription::SubscriptionTier;
+    use kasirmu_core::subscription::SubscriptionTier;
     let nodes = vec![store_node_val("n1")];
     assert!(validate_warehouse_quota(&nodes, &SubscriptionTier::Free).is_ok());
     assert!(validate_warehouse_quota(&nodes, &SubscriptionTier::Pro).is_ok());
@@ -200,14 +200,14 @@ fn validate_warehouse_quota_no_warehouses_always_ok() {
 
 #[test]
 fn validate_warehouse_quota_free_tier_one_warehouse() {
-    use oz_core::subscription::SubscriptionTier;
+    use kasirmu_core::subscription::SubscriptionTier;
     let nodes = vec![wh_node("n1")];
     assert!(validate_warehouse_quota(&nodes, &SubscriptionTier::Free).is_ok());
 }
 
 #[test]
 fn validate_warehouse_quota_free_tier_two_warehouses_rejected() {
-    use oz_core::subscription::SubscriptionTier;
+    use kasirmu_core::subscription::SubscriptionTier;
     let nodes = vec![wh_node("n1"), wh_node("n2")];
     let err = validate_warehouse_quota(&nodes, &SubscriptionTier::Free).unwrap_err();
     assert!(format!("{err}").contains("quota exceeded"));
@@ -215,7 +215,7 @@ fn validate_warehouse_quota_free_tier_two_warehouses_rejected() {
 
 #[test]
 fn validate_warehouse_quota_no_limit_for_tier_without_cap() {
-    use oz_core::subscription::SubscriptionTier;
+    use kasirmu_core::subscription::SubscriptionTier;
     let nodes: Vec<Value> = (0..100).map(|i| wh_node(&format!("w{i}"))).collect();
     // Premium/Enterprise have no warehouse cap (§3).
     assert!(validate_warehouse_quota(&nodes, &SubscriptionTier::Premium).is_ok());

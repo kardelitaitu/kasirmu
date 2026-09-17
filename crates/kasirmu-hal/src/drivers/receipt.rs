@@ -35,7 +35,7 @@ next: none | perf: N/A
 //! └───────────────────────────────────────────────┘
 //! ```
 
-use oz_core::{Money, format_minor};
+use kasirmu_core::{Money, format_minor};
 
 use super::escpos::{self, cell_width};
 
@@ -240,7 +240,7 @@ fn format_money(m: &Money, config: &ReceiptConfig) -> String {
 
 /// Best-effort currency symbol for the given ISO-4217 code.
 /// Falls back to the code itself if no common symbol is known.
-fn currency_symbol(currency: &oz_core::Currency) -> &'static str {
+fn currency_symbol(currency: &kasirmu_core::Currency) -> &'static str {
     let code = std::str::from_utf8(&currency.0).unwrap_or("  ");
     match code {
         "USD" | "SGD" | "HKD" => "$",

@@ -9,9 +9,9 @@ next: none | perf: fine
 //! Provides `require_permission` and `require_permission_for_user`
 //! to verify that the caller has the required permission.
 
-use oz_core::CoreError;
-use oz_core::db::Store;
-use oz_core::session::SessionContext;
+use kasirmu_core::CoreError;
+use kasirmu_core::db::Store;
+use kasirmu_core::session::SessionContext;
 
 use crate::error::AppError;
 use crate::state::AppState;

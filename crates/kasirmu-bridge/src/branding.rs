@@ -16,9 +16,9 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use oz_core::Settings;
-use oz_core::db::Store;
-use oz_core::permissions;
+use kasirmu_core::Settings;
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;

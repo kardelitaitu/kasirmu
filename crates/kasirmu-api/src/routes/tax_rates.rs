@@ -21,10 +21,10 @@ use axum::{
 };
 use serde::Deserialize;
 
-use oz_core::db::Store;
-use oz_core::db::tax::TaxRateScope;
+use kasirmu_core::db::Store;
+use kasirmu_core::db::tax::TaxRateScope;
 
-use oz_core::CoreError;
+use kasirmu_core::CoreError;
 
 use crate::AppState;
 use crate::auth::ApiTokenClaims;

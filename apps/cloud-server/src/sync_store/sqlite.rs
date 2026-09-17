@@ -13,7 +13,7 @@
 //! SAVEPOINT loop. `MULTIROW_CHUNK` stays the parent's and is read via
 //! `use super::`, needing no widened visibility.
 
-use oz_core::offline::{OfflineQueueItem, OfflineQueueStatus, SyncPriority};
+use kasirmu_core::offline::{OfflineQueueItem, OfflineQueueStatus, SyncPriority};
 use platform_sync::transport::PushOutcome;
 use rusqlite::{Connection, params};
 

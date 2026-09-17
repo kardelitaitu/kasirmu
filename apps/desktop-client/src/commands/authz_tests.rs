@@ -1,6 +1,6 @@
 use super::*;
-use oz_core::migrations;
-use oz_core::permissions;
+use kasirmu_core::migrations;
+use kasirmu_core::permissions;
 
 fn seeded_store() -> rusqlite::Connection {
     let conn = migrations::fresh_db();
@@ -105,14 +105,14 @@ fn owner_role_grants_loyalty_management() {
 /// permission to do this." bug.
 #[tokio::test]
 async fn session_permission_checks_global_identity_db_not_store_db() {
-    use oz_core::session::SessionContext;
+    use kasirmu_core::session::SessionContext;
 
     use crate::state::AppState;
 
     // Global identity DB: migrated, roles seeded, owner created with a
     // FIXED id (create_user mints a UUID). This mirrors `bootstrap_owner`
     // (staff lives ONLY here).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();
@@ -131,7 +131,7 @@ async fn session_permission_checks_global_identity_db_not_store_db() {
     let dir = std::env::temp_dir().join(format!("oz-authz-test-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     state.db_manager =
-        platform_core::StoreDatabaseManager::new(dir.clone(), oz_core::migrations::ALL);
+        platform_core::StoreDatabaseManager::new(dir.clone(), kasirmu_core::migrations::ALL);
 
     let session = SessionContext::new(
         "user-owner".into(),
@@ -178,13 +178,13 @@ async fn session_permission_checks_global_identity_db_not_store_db() {
 /// closed on EVERY command, not just at the picker.
 #[tokio::test]
 async fn session_gate_enforces_scoped_assignment_workspace_dimension() {
-    use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
-    use oz_core::session::SessionContext;
+    use kasirmu_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
+    use kasirmu_core::session::SessionContext;
 
     use crate::state::AppState;
 
     // Owner scoped to workspace type `store-pos` only (branches all).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();
@@ -247,13 +247,13 @@ async fn session_gate_enforces_scoped_assignment_workspace_dimension() {
 
 #[tokio::test]
 async fn session_gate_enforces_scoped_assignment_branch_dimension() {
-    use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
-    use oz_core::session::SessionContext;
+    use kasirmu_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
+    use kasirmu_core::session::SessionContext;
 
     use crate::state::AppState;
 
     // Owner scoped to branch store-a only (workspaces all).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();
@@ -319,13 +319,13 @@ async fn session_gate_passes_global_and_legacy_users_unrestricted() {
     // Note: "unrestricted" refers to SCOPE (no assignment row = global
     // scope), not permissions — legacy role-staff is checkout-only and is
     // still denied staff:* grants.
-    use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
-    use oz_core::session::SessionContext;
+    use kasirmu_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
+    use kasirmu_core::session::SessionContext;
 
     use crate::state::AppState;
 
     // user-legacy: NO assignment row — not scope-restricted.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();

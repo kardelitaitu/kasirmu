@@ -195,7 +195,7 @@ pub(crate) fn validate_semantic_ownership(
 pub(crate) fn validate_warehouse_capacity(
     nodes: &[Value],
     wires: &[Value],
-    tier: &oz_core::subscription::SubscriptionTier,
+    tier: &kasirmu_core::subscription::SubscriptionTier,
     resolved_issue_keys: &[String],
 ) -> Result<(), AppError> {
     kasirmu_bridge::topology::persistence::validate_warehouse_capacity(
@@ -290,7 +290,7 @@ pub(crate) fn save_topology_data(
     }))
     .map_err(|e| AppError::Internal(e.to_string()))?;
     let tx = conn.unchecked_transaction()?;
-    oz_core::Settings::set(&tx, TOPOLOGY_SETTING_KEY, &json)?;
+    kasirmu_core::Settings::set(&tx, TOPOLOGY_SETTING_KEY, &json)?;
     tx.commit()?;
     Ok(())
 }
@@ -315,7 +315,7 @@ pub(crate) fn save_topology_data(
 /// Pinned by the `..._preserves_raw_legacy_null_ports` test below.
 #[cfg(test)]
 pub(crate) fn load_topology_data(conn: &Connection) -> Result<Option<TopologyData>, AppError> {
-    let raw = oz_core::Settings::get(conn, TOPOLOGY_SETTING_KEY)?;
+    let raw = kasirmu_core::Settings::get(conn, TOPOLOGY_SETTING_KEY)?;
     match raw {
         Some(json) => {
             let value: Value =

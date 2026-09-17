@@ -52,7 +52,7 @@ use std::time::Duration;
 use kasirmu_security::mask::mask_token;
 
 use notify::Watcher as _;
-use oz_core::cache::Cache;
+use kasirmu_core::cache::Cache;
 use kasirmu_plugin::PluginManager;
 
 use rusqlite::Connection;
@@ -61,8 +61,8 @@ use tauri::AppHandle;
 use tauri::Manager;
 use tokio::sync::{Mutex, oneshot};
 
-use oz_core::migrations;
-use oz_core::session::SessionContext;
+use kasirmu_core::migrations;
+use kasirmu_core::session::SessionContext;
 use kasirmu_hal::DriverRegistry;
 use platform_core::StoreDatabaseManager;
 use platform_kernel::Kernel;
@@ -237,7 +237,7 @@ impl AppState {
         // the operator reconciles it instead of silently mixing tenants.
         // Two indexed COUNTs (`idx_products_tenant` / `idx_users_tenant`)
         // — cheap enough to run at every startup.
-        oz_core::db::Store::new(&conn)
+        kasirmu_core::db::Store::new(&conn)
             .check_tenant_integrity()
             .map_err(|e| AppError::Internal(format!("tenant integrity check: {e}")))?;
 
@@ -251,7 +251,7 @@ impl AppState {
         // sales are read from sale_lines, edit events were seeded by
         // migration 134, and search events accumulate from launch. The pass
         // is local-only analytics — a failure must not block startup.
-        if let Err(e) = oz_core::db::Store::new(&conn).recompute_all_popularity() {
+        if let Err(e) = kasirmu_core::db::Store::new(&conn).recompute_all_popularity() {
             tracing::warn!(
                 error = %e,
                 "popularity full pass failed; retail popularity sort falls back"
@@ -259,11 +259,11 @@ impl AppState {
         }
 
         // ── Cache layer initialisation (read settings BEFORE moving conn) ──
-        let redis_url = oz_core::Settings::get_redis_url(&conn).unwrap_or_else(|e| {
+        let redis_url = kasirmu_core::Settings::get_redis_url(&conn).unwrap_or_else(|e| {
             tracing::warn!(error = %e, "failed to read redis_url setting, falling back to localhost");
             "redis://127.0.0.1/".into()
         });
-        let cache_ttl = oz_core::Settings::get_redis_cache_ttl(&conn).unwrap_or_else(|e| {
+        let cache_ttl = kasirmu_core::Settings::get_redis_cache_ttl(&conn).unwrap_or_else(|e| {
             tracing::warn!(error = %e, "failed to read cache_ttl setting, falling back to 300s");
             300u64
         });
@@ -272,7 +272,7 @@ impl AppState {
         // ── Session TTL ──────────────────────────────────────────────
         // Read from settings; default 24h. 0 or missing = no expiry.
         // MUST be read before `conn` is moved into `Arc::new(Mutex::new(conn))`.
-        let session_ttl_seconds: i64 = oz_core::Settings::get(&conn, "session.ttl_seconds")
+        let session_ttl_seconds: i64 = kasirmu_core::Settings::get(&conn, "session.ttl_seconds")
             .ok()
             .flatten()
             .and_then(|s| s.parse::<i64>().ok())
@@ -285,13 +285,13 @@ impl AppState {
         // The Redis pub/sub subscriber and inventory change publisher read
         // it from this field — they no longer call std::env::var().
         let terminal_id: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-        let reg = oz_core::Settings::load_features(&conn).unwrap_or_default();
-        if reg.is_enabled(oz_core::Feature::MultiTerminal) {
+        let reg = kasirmu_core::Settings::load_features(&conn).unwrap_or_default();
+        if reg.is_enabled(kasirmu_core::Feature::MultiTerminal) {
             let device_id = std::env::var("COMPUTERNAME")
                 .or_else(|_| std::env::var("HOSTNAME"))
                 .unwrap_or_default();
             if !device_id.is_empty() {
-                let store = oz_core::db::Store::new(&conn);
+                let store = kasirmu_core::db::Store::new(&conn);
                 if let Ok(Some(terminal)) = store.get_terminal_by_device_id(&device_id) {
                     *terminal_id.blocking_lock() = Some(terminal.id.clone());
                     tracing::info!(
@@ -318,7 +318,7 @@ impl AppState {
             .parent()
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| PathBuf::from("."));
-        let db_manager = StoreDatabaseManager::new(db_dir, oz_core::migrations::ALL);
+        let db_manager = StoreDatabaseManager::new(db_dir, kasirmu_core::migrations::ALL);
 
         let registry = Arc::new(DriverRegistry::default());
 
@@ -449,8 +449,8 @@ impl AppState {
         &self,
         conn: &'a Connection,
         tid: Option<String>,
-    ) -> oz_core::db::Store<'a> {
-        oz_core::db::Store::with_cache(conn, self.cache.clone()).with_terminal_id(tid)
+    ) -> kasirmu_core::db::Store<'a> {
+        kasirmu_core::db::Store::with_cache(conn, self.cache.clone()).with_terminal_id(tid)
     }
 
     /// Resolve an opaque session token to its [`SessionContext`].
@@ -843,7 +843,7 @@ impl AppState {
         let db = Arc::new(Mutex::new(Connection::open_in_memory().unwrap()));
         Self {
             db,
-            db_manager: StoreDatabaseManager::new(std::env::temp_dir(), oz_core::migrations::ALL),
+            db_manager: StoreDatabaseManager::new(std::env::temp_dir(), kasirmu_core::migrations::ALL),
             registry: Arc::new(DriverRegistry::default()),
             app: None,
             db_path: ":memory:".into(),
@@ -854,7 +854,7 @@ impl AppState {
             plugin_hot_reload_task: None,
             sync_daemon: SyncDaemon::new(),
             pg_sync_daemon: PgSyncDaemon::new(),
-            cache: oz_core::cache::create_cache("redis://127.0.0.1/", 300),
+            cache: kasirmu_core::cache::create_cache("redis://127.0.0.1/", 300),
             inventory_pubsub_shutdown: None,
             kernel_shutdown: None,
             session_store: Arc::new(RwLock::new(HashMap::new())),

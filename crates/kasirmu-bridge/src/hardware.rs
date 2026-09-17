@@ -30,8 +30,8 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
-use oz_core::permissions;
-use oz_core::{Currency, Money, Settings};
+use kasirmu_core::permissions;
+use kasirmu_core::{Currency, Money, Settings};
 use kasirmu_hal::drivers::receipt;
 use kasirmu_hal::transport::usb::{UsbDeviceInfo, probe_all};
 use kasirmu_hal::{BarcodeScanner, DisplayContent};
@@ -201,7 +201,7 @@ pub struct MoneyDto {
 }
 
 impl MoneyDto {
-    /// Convert to an `oz_core::Money`, validating the currency code.
+    /// Convert to an `kasirmu_core::Money`, validating the currency code.
     ///
     /// # Errors
     ///

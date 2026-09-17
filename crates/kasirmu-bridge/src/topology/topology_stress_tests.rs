@@ -15,7 +15,7 @@
 use super::*;
 use crate::topology::persistence::save_topology_json_at_key_with_revision;
 use crate::topology::revisions::TopologyRevisionContext;
-use oz_core::migrations;
+use kasirmu_core::migrations;
 use rusqlite::Connection;
 use tempfile::tempdir;
 
@@ -245,8 +245,8 @@ fn star_topology_preserved_through_db() {
         .collect();
     let data = TopologyData { nodes, wires };
     let json = serde_json::to_string(&data).unwrap();
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
-    let loaded_raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
+    let loaded_raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&loaded_raw).unwrap();
@@ -309,8 +309,8 @@ fn five_thousand_node_graph_db_roundtrip() {
         wires: vec![],
     };
     let json = serde_json::to_string(&data).unwrap();
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
-    let loaded_raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
+    let loaded_raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&loaded_raw).unwrap();
@@ -362,8 +362,8 @@ fn three_thousand_wires_db_roundtrip() {
         .collect();
     let data = TopologyData { nodes, wires };
     let json = serde_json::to_string(&data).unwrap();
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
-    let loaded_raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
+    let loaded_raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&loaded_raw).unwrap();
@@ -487,8 +487,8 @@ fn direction_preserved_through_db() {
         }],
     };
     let json = serde_json::to_string(&data).unwrap();
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
-    let loaded_raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
+    let loaded_raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&loaded_raw).unwrap();
@@ -590,8 +590,8 @@ fn wire_order_preserved_through_db() {
         wires,
     };
     let json = serde_json::to_string(&data).unwrap();
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
-    let loaded_raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
+    let loaded_raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&loaded_raw).unwrap();
@@ -630,8 +630,8 @@ fn node_order_preserved_through_db() {
         wires: vec![],
     };
     let json = serde_json::to_string(&data).unwrap();
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
-    let loaded_raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
+    let loaded_raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&loaded_raw).unwrap();
@@ -666,7 +666,7 @@ fn sequential_save_a_then_b_then_verify_b() {
         }],
         wires: vec![],
     };
-    oz_core::Settings::set(
+    kasirmu_core::Settings::set(
         &conn,
         TOPOLOGY_SETTING_KEY,
         &serde_json::to_string(&data_a).unwrap(),
@@ -689,7 +689,7 @@ fn sequential_save_a_then_b_then_verify_b() {
         }],
         wires: vec![],
     };
-    oz_core::Settings::set(
+    kasirmu_core::Settings::set(
         &conn,
         TOPOLOGY_SETTING_KEY,
         &serde_json::to_string(&data_b).unwrap(),
@@ -697,7 +697,7 @@ fn sequential_save_a_then_b_then_verify_b() {
     .unwrap();
 
     // Verify B is loaded.
-    let loaded_raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let loaded_raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&loaded_raw).unwrap();
@@ -741,7 +741,7 @@ fn hundred_save_cycles_data_integrity() {
             }],
             wires: vec![],
         };
-        oz_core::Settings::set(
+        kasirmu_core::Settings::set(
             &conn,
             TOPOLOGY_SETTING_KEY,
             &serde_json::to_string(&data).unwrap(),
@@ -749,7 +749,7 @@ fn hundred_save_cycles_data_integrity() {
         .unwrap();
     }
     // Verify last cycle.
-    let loaded_raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let loaded_raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&loaded_raw).unwrap();
@@ -790,13 +790,13 @@ fn raw_stored_json_is_valid_topology() {
             to_port: Some("in".into()),
         }],
     };
-    oz_core::Settings::set(
+    kasirmu_core::Settings::set(
         &conn,
         TOPOLOGY_SETTING_KEY,
         &serde_json::to_string(&data).unwrap(),
     )
     .unwrap();
-    let raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     // Raw JSON must parse as TopologyData.
@@ -953,7 +953,7 @@ fn concurrent_saves_to_same_db() {
                     nodes: vec![payload],
                     wires: vec![],
                 };
-                oz_core::Settings::set(
+                kasirmu_core::Settings::set(
                     &conn,
                     TOPOLOGY_SETTING_KEY,
                     &serde_json::to_string(&data).unwrap(),
@@ -970,7 +970,7 @@ fn concurrent_saves_to_same_db() {
     // At least one thread's data should be visible (last writer
     // wins — SQLite serialises writes via its internal mutex).
     let final_conn = Connection::open(&db_path).unwrap();
-    let raw = oz_core::Settings::get(&final_conn, TOPOLOGY_SETTING_KEY)
+    let raw = kasirmu_core::Settings::get(&final_conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&raw).unwrap();
@@ -1002,7 +1002,7 @@ fn concurrent_readers_dont_block_each_other() {
             }],
             wires: vec![],
         };
-        oz_core::Settings::set(
+        kasirmu_core::Settings::set(
             &setup,
             TOPOLOGY_SETTING_KEY,
             &serde_json::to_string(&data).unwrap(),
@@ -1016,7 +1016,7 @@ fn concurrent_readers_dont_block_each_other() {
             let p = path_str.clone();
             std::thread::spawn(move || {
                 let conn = Connection::open(&p).unwrap();
-                let raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+                let raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
                     .unwrap()
                     .unwrap();
                 let loaded: TopologyData = serde_json::from_str(&raw).unwrap();
@@ -1062,7 +1062,7 @@ fn concurrent_read_write_cycle_stress() {
                     }],
                     wires: vec![],
                 };
-                oz_core::Settings::set(
+                kasirmu_core::Settings::set(
                     &conn,
                     TOPOLOGY_SETTING_KEY,
                     &serde_json::to_string(&data).unwrap(),
@@ -1077,7 +1077,7 @@ fn concurrent_read_write_cycle_stress() {
         std::thread::spawn(move || {
             for _ in 0..25 {
                 let conn = Connection::open(&p).unwrap();
-                if let Ok(Some(raw)) = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+                if let Ok(Some(raw)) = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
                     && let Ok(loaded) = serde_json::from_str::<TopologyData>(&raw)
                     && !loaded.nodes.is_empty()
                 {
@@ -1123,11 +1123,11 @@ fn concurrent_saves_different_keys_dont_interfere() {
                     }],
                     wires: vec![],
                 };
-                oz_core::Settings::set(&conn, &key, &serde_json::to_string(&data).unwrap())
+                kasirmu_core::Settings::set(&conn, &key, &serde_json::to_string(&data).unwrap())
                     .unwrap();
 
                 // Verify our own write is readable.
-                let raw = oz_core::Settings::get(&conn, &key).unwrap().unwrap();
+                let raw = kasirmu_core::Settings::get(&conn, &key).unwrap().unwrap();
                 let loaded: TopologyData = serde_json::from_str(&raw).unwrap();
                 assert_eq!(loaded.nodes[0].id, format!("race-{i}"));
             })
@@ -1196,7 +1196,7 @@ fn five_hundred_db_save_load_cycles() {
             }],
             wires: vec![],
         };
-        oz_core::Settings::set(
+        kasirmu_core::Settings::set(
             &conn,
             TOPOLOGY_SETTING_KEY,
             &serde_json::to_string(&data).unwrap(),
@@ -1205,7 +1205,7 @@ fn five_hundred_db_save_load_cycles() {
 
         if i % 50 == 0 {
             // Verify intermediate state.
-            let raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+            let raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
                 .unwrap()
                 .unwrap();
             let loaded: TopologyData = serde_json::from_str(&raw).unwrap();
@@ -1215,7 +1215,7 @@ fn five_hundred_db_save_load_cycles() {
     }
 
     // Final verification.
-    let raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&raw).unwrap();
@@ -1246,7 +1246,7 @@ fn big_small_oscillation_db() {
                 .collect(),
             wires: vec![],
         };
-        oz_core::Settings::set(
+        kasirmu_core::Settings::set(
             &conn,
             TOPOLOGY_SETTING_KEY,
             &serde_json::to_string(&big).unwrap(),
@@ -1269,7 +1269,7 @@ fn big_small_oscillation_db() {
             }],
             wires: vec![],
         };
-        oz_core::Settings::set(
+        kasirmu_core::Settings::set(
             &conn,
             TOPOLOGY_SETTING_KEY,
             &serde_json::to_string(&small).unwrap(),
@@ -1277,7 +1277,7 @@ fn big_small_oscillation_db() {
         .unwrap();
     }
 
-    let raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&raw).unwrap();
@@ -1399,13 +1399,13 @@ fn entire_topology_data_struct_equality_through_db() {
         }],
     };
 
-    oz_core::Settings::set(
+    kasirmu_core::Settings::set(
         &conn,
         TOPOLOGY_SETTING_KEY,
         &serde_json::to_string(&original).unwrap(),
     )
     .unwrap();
-    let raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&raw).unwrap();
@@ -1456,8 +1456,8 @@ fn entire_topology_data_struct_equality_through_db() {
 #[test]
 fn empty_settings_value_fails_to_deserialise() {
     let conn = fresh_conn();
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, "").unwrap();
-    let raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, "").unwrap();
+    let raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let result: Result<TopologyData, _> = serde_json::from_str(&raw);
@@ -1470,8 +1470,8 @@ fn empty_settings_value_fails_to_deserialise() {
 #[test]
 fn whitespace_only_settings_value_fails() {
     let conn = fresh_conn();
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, "   ").unwrap();
-    let raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, "   ").unwrap();
+    let raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let result: Result<TopologyData, _> = serde_json::from_str(&raw);
@@ -1674,8 +1674,8 @@ fn twenty_five_thousand_wires_db() {
     let json = serde_json::to_string(&data).unwrap();
 
     // -- DB roundtrip --
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
-    let loaded_raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
+    let loaded_raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&loaded_raw).unwrap();
@@ -1726,8 +1726,8 @@ fn five_thousand_nodes_with_five_thousand_wires_combined_db() {
     let data = TopologyData { nodes, wires };
     let json = serde_json::to_string(&data).unwrap();
 
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
-    let loaded_raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
+    let loaded_raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&loaded_raw).unwrap();

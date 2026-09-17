@@ -1,8 +1,8 @@
 use super::*;
 use kasirmu_bridge::reports::MAX_TOP_PRODUCTS;
-use oz_core::db::Store;
-use oz_core::permissions;
-use oz_core::session::SessionContext;
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
+use kasirmu_core::session::SessionContext;
 
 #[tokio::test]
 async fn scoped_report_rejects_invalid_session() {
@@ -13,7 +13,7 @@ async fn scoped_report_rejects_invalid_session() {
 
 #[tokio::test]
 async fn scoped_report_denies_user_without_reports_permission() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute(

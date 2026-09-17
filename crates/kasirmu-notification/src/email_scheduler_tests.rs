@@ -1,6 +1,6 @@
 use super::*;
-use oz_core::db::Store;
-use oz_core::migrations;
+use kasirmu_core::db::Store;
+use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn test_db() -> Arc<tokio::sync::Mutex<Connection>> {

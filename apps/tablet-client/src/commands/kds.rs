@@ -21,9 +21,9 @@
 
 use tauri::{Emitter, State, command};
 
-use oz_core::KdsOrder;
-use oz_core::db::Store;
-use oz_core::permissions;
+use kasirmu_core::KdsOrder;
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
 
 use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;

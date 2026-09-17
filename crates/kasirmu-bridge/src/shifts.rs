@@ -18,9 +18,9 @@
 use serde::{Deserialize, Serialize};
 
 use foundation::validate_not_empty;
-use oz_core::db::{ShiftPaymentBreakdown, ShiftReport, ShiftSalesByHour};
-use oz_core::permissions;
-use oz_core::{CashPayout, Shift, Store};
+use kasirmu_core::db::{ShiftPaymentBreakdown, ShiftReport, ShiftSalesByHour};
+use kasirmu_core::permissions;
+use kasirmu_core::{CashPayout, Shift, Store};
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;

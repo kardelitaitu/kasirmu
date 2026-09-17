@@ -7,11 +7,11 @@ next: none | perf: N/A
 //! Background email report scheduler.
 //!
 //! Polls every 60 seconds and sends scheduled report emails using the
-//! shared [`oz_core::export::email_sender`] module for cadence, timezone,
+//! shared [`kasirmu_core::export::email_sender`] module for cadence, timezone,
 //! deduplication, and report-type filtering logic.
 
-use oz_core::Store;
-use oz_core::export::email_sender;
+use kasirmu_core::Store;
+use kasirmu_core::export::email_sender;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
@@ -71,7 +71,7 @@ async fn try_send_scheduled(
     let (report, recipients) = {
         let conn = db.lock().await;
         let store = Store::new(&conn);
-        let name = oz_core::Settings::get(store.conn, "store.name")
+        let name = kasirmu_core::Settings::get(store.conn, "store.name")
             .ok()
             .flatten()
             .unwrap_or_else(|| "OZ-POS Store".to_string());
@@ -107,8 +107,8 @@ async fn try_send_scheduled(
 
 /// Send a single email report via SMTP using the shared transport builder.
 async fn send_email_via_smtp(
-    config: &oz_core::export::email_report::SmtpConfig,
-    email: &oz_core::export::email_report::ReportEmail,
+    config: &kasirmu_core::export::email_report::SmtpConfig,
+    email: &kasirmu_core::export::email_report::ReportEmail,
     to: &[String],
 ) -> Result<(), String> {
     use lettre::AsyncTransport;

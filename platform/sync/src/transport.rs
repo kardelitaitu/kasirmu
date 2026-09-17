@@ -19,17 +19,17 @@ next: none | perf: gzip on
 //! - `POST /api/sync/push` — receives an array of queue items
 //! - `POST /api/sync/pull` — receives a `since` timestamp, returns updates
 
-use oz_core::offline::OfflineQueueItem;
+use kasirmu_core::offline::OfflineQueueItem;
 use serde::{Deserialize, Serialize};
 
 use crate::SyncError;
 
 /// Outcome of pushing a single item to the server.
 ///
-/// Single definition lives in [`oz_core::sync_client::PushOutcome`]; this
+/// Single definition lives in [`kasirmu_core::sync_client::PushOutcome`]; this
 /// re-export keeps the `platform_sync::transport::PushOutcome` import path
 /// compiling for cloud-server and in-crate callers.
-pub use oz_core::sync_client::PushOutcome;
+pub use kasirmu_core::sync_client::PushOutcome;
 
 /// Response from the push endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,7 +181,7 @@ pub struct SnapshotTaxRate {
     pub updated_at: Option<String>,
     /// Scope: the legal entity this rate applies to, or `None` when it is not
     /// entity-scoped. With [`Self::location_id`] this is
-    /// one-or-the-other-or-neither — `oz_core::db::tax::TaxRateScope` is the
+    /// one-or-the-other-or-neither — `kasirmu_core::db::tax::TaxRateScope` is the
     /// type that cannot represent both.
     ///
     /// These four fields exist because a scoped rate that travels WITHOUT its
@@ -198,7 +198,7 @@ pub struct SnapshotTaxRate {
     pub location_id: Option<String>,
     /// Validity window start, business date `YYYY-MM-DD`; `None` = no lower
     /// bound. Compared as a DATE, never as text — see
-    /// `oz_core::db::tax::parse_effective_date`.
+    /// `kasirmu_core::db::tax::parse_effective_date`.
     #[serde(default)]
     pub effective_from: Option<String>,
     /// Validity window end, business date `YYYY-MM-DD`, EXCLUSIVE; `None` =

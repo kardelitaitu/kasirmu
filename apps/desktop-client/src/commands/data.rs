@@ -16,7 +16,7 @@
 
 use tauri::State;
 
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 
 use crate::error::AppError;
 use crate::state::AppState;

@@ -44,9 +44,9 @@ pub(crate) use user::*;
 
 // Re-exported in turn by the `use super::*` in `commands_tests.rs`.
 #[cfg(test)]
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 #[cfg(test)]
-use oz_core::{CoreError, Currency, Money, SaleStatus};
+use kasirmu_core::{CoreError, Currency, Money, SaleStatus};
 use rusqlite::Connection;
 #[cfg(test)]
 use std::str::FromStr;

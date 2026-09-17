@@ -91,7 +91,7 @@ fn test_config() -> config::CloudServerConfig {
 
 /// Helper: build an in-memory database with migrations applied.
 fn fresh_db() -> Connection {
-    oz_core::migrations::fresh_db()
+    kasirmu_core::migrations::fresh_db()
 }
 
 /// Helper: create a test router backed by an in-memory database.
@@ -301,7 +301,7 @@ async fn cloud_health_reports_the_portable_derivation_selection() {
     assert!(field.is_boolean(), "must be a plain bool, got {field}");
     assert_eq!(
         field.as_bool().unwrap(),
-        oz_core::crypto::master_key_derivation_active(),
+        kasirmu_core::crypto::master_key_derivation_active(),
         "the payload must carry the derivation own answer"
     );
     // Nothing key-shaped may ride along with it.

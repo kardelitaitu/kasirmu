@@ -19,15 +19,15 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 
-use oz_core::Settings;
-use oz_core::db::Store;
-use oz_core::settings::{IngestPolicy, IngestPolicyKind};
+use kasirmu_core::Settings;
+use kasirmu_core::db::Store;
+use kasirmu_core::settings::{IngestPolicy, IngestPolicyKind};
 
 /// The ONE portable-package settings gate for the CLI `.ozpkg` lane.
 ///
 /// Returns `true` when a settings row may travel in — or be restored from —
 /// a portable `.ozpkg`. Asks the sealed [`IngestPolicy::PortablePackage`]
-/// itself, reached through `oz_core`'s re-export: this crate owns NO key list
+/// itself, reached through `kasirmu_core`'s re-export: this crate owns NO key list
 /// and NO prefix rule, because a hand-copied predicate is exactly how the GUI
 /// and CLI lanes drifted apart. The policy refuses `SECRET_KEY_DENY_LIST`
 /// (credentials — `local_api.secret`, `sync_terminal_secret`, `license.api_key`,
@@ -37,7 +37,7 @@ use oz_core::settings::{IngestPolicy, IngestPolicyKind};
 /// to call did NOT cover.
 ///
 /// WHY THE POLICY AND NOT `Settings::set_with_policy`: `oz-cli` has no
-/// `platform-core` dependency edge and `oz_core::Settings` does not yet
+/// `platform-core` dependency edge and `kasirmu_core::Settings` does not yet
 /// delegate `load_exportable` / `set_with_policy` / `set_batch_with_policy`,
 /// so the funnelled accessors are unreachable from this crate. This boundary
 /// is the one-line swap point: when the delegation lands, the egress arm
@@ -97,7 +97,7 @@ pub(crate) fn run_export_ozpkg(
     types_str: &str,
     password: &str,
 ) -> Result<()> {
-    use oz_core::ozpkg::{OzpkgPayload, export_ozpkg};
+    use kasirmu_core::ozpkg::{OzpkgPayload, export_ozpkg};
 
     let store = Store::new(conn);
 
@@ -181,7 +181,7 @@ pub(crate) fn run_export_ozpkg(
         // `prune_stale_features` read through it), so the filtering has to
         // happen HERE: this is `Settings::load_exportable`'s job, and the line
         // below is where it moves once `oz-core` delegates that accessor.
-        let rows = oz_core::Settings::load_all(conn)?;
+        let rows = kasirmu_core::Settings::load_all(conn)?;
         let total = rows.len();
         let kept = portable_settings_rows(rows);
         let dropped = total - kept.len();
@@ -251,7 +251,7 @@ pub(crate) fn run_export_ozpkg(
 /// Decode a product's raw currency bytes as UTF-8, returning a recoverable
 /// error instead of panicking when an imported `.ozpkg` carries non-UTF-8
 /// currency bytes (RUST-07: recoverable user-supplied input).
-pub(crate) fn currency_to_utf8(product: &oz_core::Product) -> Result<String> {
+pub(crate) fn currency_to_utf8(product: &kasirmu_core::Product) -> Result<String> {
     std::str::from_utf8(&product.price.currency.0)
         .map(|s| s.to_owned())
         .map_err(|e| {
@@ -269,7 +269,7 @@ pub(crate) fn run_import_ozpkg(
     password: &str,
     dry_run: bool,
 ) -> Result<()> {
-    use oz_core::ozpkg::import_ozpkg;
+    use kasirmu_core::ozpkg::import_ozpkg;
 
     eprintln!("reading {input}...");
     let data = std::fs::read(input).with_context(|| format!("reading {input}"))?;
@@ -314,7 +314,7 @@ pub(crate) fn run_import_ozpkg(
 
     // ── Categories ──────────────────────────────────────────────
     for val in &payload.categories {
-        if let Ok(cat) = serde_json::from_value::<oz_core::Category>(val.clone()) {
+        if let Ok(cat) = serde_json::from_value::<kasirmu_core::Category>(val.clone()) {
             let colour = if cat.colour.is_empty() {
                 "#6366f1"
             } else {
@@ -344,7 +344,7 @@ pub(crate) fn run_import_ozpkg(
 
     // ── Products ────────────────────────────────────────────────
     for val in &payload.products {
-        if let Ok(product) = serde_json::from_value::<oz_core::Product>(val.clone()) {
+        if let Ok(product) = serde_json::from_value::<kasirmu_core::Product>(val.clone()) {
             let exists = tx
                 .query_row(
                     "SELECT 1 FROM products WHERE sku = ?1",
@@ -375,7 +375,7 @@ pub(crate) fn run_import_ozpkg(
     // ── Sales ───────────────────────────────────────────────────
     if let Some(ref sales) = payload.sales {
         for val in sales {
-            if let Ok(sale) = serde_json::from_value::<oz_core::Sale>(val.clone()) {
+            if let Ok(sale) = serde_json::from_value::<kasirmu_core::Sale>(val.clone()) {
                 let exists = tx
                     .query_row(
                         "SELECT 1 FROM sales WHERE id = ?1",
@@ -398,7 +398,7 @@ pub(crate) fn run_import_ozpkg(
     // ── Customers ───────────────────────────────────────────────
     if let Some(ref customers) = payload.customers {
         for val in customers {
-            if let Ok(cust) = serde_json::from_value::<oz_core::Customer>(val.clone()) {
+            if let Ok(cust) = serde_json::from_value::<kasirmu_core::Customer>(val.clone()) {
                 let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
                 let exists = tx
                     .query_row(
@@ -429,7 +429,7 @@ pub(crate) fn run_import_ozpkg(
     // ── Users ───────────────────────────────────────────────────
     if let Some(ref users) = payload.users {
         for val in users {
-            if let Ok(user) = serde_json::from_value::<oz_core::User>(val.clone()) {
+            if let Ok(user) = serde_json::from_value::<kasirmu_core::User>(val.clone()) {
                 let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
                 let exists = tx
                     .query_row(

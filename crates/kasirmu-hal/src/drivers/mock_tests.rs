@@ -233,7 +233,7 @@ fn scale_mock_default_implements_weight_scale_trait() {
 fn usd(minor: i64) -> Money {
     Money {
         minor_units: minor,
-        currency: "USD".parse::<oz_core::Currency>().unwrap(),
+        currency: "USD".parse::<kasirmu_core::Currency>().unwrap(),
     }
 }
 

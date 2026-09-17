@@ -219,7 +219,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // One line, presence only: which portable key derivation this process
     // picked. Emitted at boot because a re-keyed deployment is silent by
     // default, and the value itself is never read or logged here.
-    if oz_core::crypto::master_key_derivation_active() {
+    if kasirmu_core::crypto::master_key_derivation_active() {
         tracing::warn!(
             "portable credential derivation: master-key path ACTIVE (see portable_derivation_uses_master_key on /health)"
         );
@@ -229,7 +229,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--validate-config") {
         info!("running config validation only (--validate-config)");
-        match oz_core::config_validator::validate_config() {
+        match kasirmu_core::config_validator::validate_config() {
             Ok(()) => {
                 info!("all configuration checks passed");
                 std::process::exit(0);
@@ -254,7 +254,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Check critical env vars before the server starts. Failures are
     // logged as warnings (non-blocking) because the server may still
     // function with SQLite defaults if DATABASE_URL is misconfigured.
-    if let Err(errors) = oz_core::config_validator::validate_config() {
+    if let Err(errors) = kasirmu_core::config_validator::validate_config() {
         for err in &errors {
             tracing::warn!(%err, "configuration warning");
         }
@@ -601,7 +601,7 @@ async fn health_handler(
         last_sync_at,
         // Read per request, never cached: the answer describes the process
         // that is answering, and it costs one env read plus one hex decode.
-        portable_derivation_uses_master_key: oz_core::crypto::master_key_derivation_active(),
+        portable_derivation_uses_master_key: kasirmu_core::crypto::master_key_derivation_active(),
     })
 }
 

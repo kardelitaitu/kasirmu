@@ -7,7 +7,7 @@
 use super::*;
 use rusqlite::Connection;
 
-use oz_core::migrations;
+use kasirmu_core::migrations;
 
 /// A fresh, fully-migrated in-memory identity database.
 fn fresh_db() -> Connection {
@@ -205,7 +205,7 @@ fn over_quota_report_assesses_the_effective_tier() {
     let (report, _tier) = load_over_quota_report(&conn).unwrap();
     assert_eq!(report.tier_key, "free");
     let locations = report
-        .usage(oz_core::downgrade::QuotaDimension::Locations)
+        .usage(kasirmu_core::downgrade::QuotaDimension::Locations)
         .unwrap();
     assert_eq!(locations.limit, Some(1));
     assert!(!locations.is_over_quota());
@@ -224,7 +224,7 @@ fn over_quota_report_seam_returns_the_effective_tier() {
     let (report, _tier) = load_over_quota_report(&conn).unwrap();
     assert_eq!(report.tier_key, "premium");
     let locations = report
-        .usage(oz_core::downgrade::QuotaDimension::Locations)
+        .usage(kasirmu_core::downgrade::QuotaDimension::Locations)
         .unwrap();
     assert_eq!(locations.limit, Some(5));
     assert!(!locations.is_over_quota());

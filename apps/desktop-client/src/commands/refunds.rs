@@ -11,11 +11,11 @@
 use tauri::State;
 
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
-use oz_core::{Money, RefundLine};
+use kasirmu_core::{Money, RefundLine};
 
-use oz_core::{Refund, Sale};
+use kasirmu_core::{Refund, Sale};
 
 use crate::error::AppError;
 use crate::state::AppState;

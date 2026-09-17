@@ -18,9 +18,9 @@
 
 use tauri::State;
 
-use oz_core::availability::FeatureVerdict;
-use oz_core::downgrade::{OverQuotaMarker, OverQuotaReport, QuotaDimension};
-use oz_core::subscription::SubscriptionTier;
+use kasirmu_core::availability::FeatureVerdict;
+use kasirmu_core::downgrade::{OverQuotaMarker, OverQuotaReport, QuotaDimension};
+use kasirmu_core::subscription::SubscriptionTier;
 
 use platform_core::StoreDatabaseManager;
 
@@ -28,11 +28,11 @@ use crate::error::AppError;
 use crate::state::AppState;
 
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
-use oz_core::downgrade::OverQuotaSeverity;
+use kasirmu_core::downgrade::OverQuotaSeverity;
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
-use oz_core::permissions;
+use kasirmu_core::permissions;
 
 pub use kasirmu_bridge::subscription::SubscriptionCapabilitiesDto;
 

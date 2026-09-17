@@ -389,9 +389,9 @@ async fn a_registered_terminal_still_fails_closed() {
     let registry = DriverRegistry::default();
     register_card_terminals(&registry, &[row("t-1", "wired", "usb", "/dev/ttyUSB0")]).await;
     let terminal = registry.terminal("t-1").await.expect("registered");
-    let money = oz_core::Money {
+    let money = kasirmu_core::Money {
         minor_units: 100,
-        currency: "USD".parse::<oz_core::Currency>().unwrap(),
+        currency: "USD".parse::<kasirmu_core::Currency>().unwrap(),
     };
     assert!(matches!(
         terminal.authorize(money).await,

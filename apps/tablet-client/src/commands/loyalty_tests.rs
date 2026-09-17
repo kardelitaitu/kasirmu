@@ -1,7 +1,7 @@
 use super::*;
-use oz_core::db::Store;
-use oz_core::permissions;
-use oz_core::session::SessionContext;
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
+use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
@@ -51,7 +51,7 @@ fn redeem_result_zero_discount() {
 
 #[tokio::test]
 async fn permission_check_uses_global_identity_db() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -76,7 +76,7 @@ async fn permission_check_uses_global_identity_db() {
 
 #[tokio::test]
 async fn permission_check_rejects_missing_user() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let state = AppState::for_test_with_conn(conn);
 
     assert!(matches!(
@@ -98,7 +98,7 @@ async fn scoped_command_rejects_invalid_session() {
 
 #[tokio::test]
 async fn scoped_command_denies_user_without_loyalty_permission() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute(
@@ -113,7 +113,7 @@ async fn scoped_command_denies_user_without_loyalty_permission() {
         uuid::Uuid::now_v7()
     ));
     let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager = StoreDatabaseManager::new(temp_dir.clone(), oz_core::migrations::ALL);
+    state.db_manager = StoreDatabaseManager::new(temp_dir.clone(), kasirmu_core::migrations::ALL);
     state.session_store.write().unwrap().insert(
         "cashier-token".into(),
         SessionContext::new(
@@ -138,7 +138,7 @@ async fn scoped_command_denies_user_without_loyalty_permission() {
 
 #[tokio::test]
 async fn scoped_command_reads_only_the_session_store() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute(
@@ -153,7 +153,7 @@ async fn scoped_command_reads_only_the_session_store() {
         uuid::Uuid::now_v7()
     ));
     let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager = StoreDatabaseManager::new(temp_dir.clone(), oz_core::migrations::ALL);
+    state.db_manager = StoreDatabaseManager::new(temp_dir.clone(), kasirmu_core::migrations::ALL);
     for (token, store_id) in [("store-a-token", "store-a"), ("store-b-token", "store-b")] {
         state.session_store.write().unwrap().insert(
             token.into(),

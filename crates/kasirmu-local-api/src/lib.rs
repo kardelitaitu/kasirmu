@@ -132,7 +132,7 @@ pub fn store_exists(global: &Connection, id: &str) -> bool {
 /// auto-start — the Settings UI re-validates on the next explicit
 /// switch.
 pub fn resolve_store_id(global: &Connection) -> String {
-    match oz_core::Settings::get(global, SETTINGS_STORE)
+    match kasirmu_core::Settings::get(global, SETTINGS_STORE)
         .ok()
         .flatten()
     {
@@ -170,7 +170,7 @@ pub fn open_api_store_connection(
 
 /// Read `local_api.enabled` from the settings table.
 pub fn is_enabled(conn: &Connection) -> bool {
-    oz_core::Settings::get(conn, SETTINGS_ENABLED)
+    kasirmu_core::Settings::get(conn, SETTINGS_ENABLED)
         .unwrap_or(None)
         .as_deref()
         == Some("1")
@@ -178,7 +178,7 @@ pub fn is_enabled(conn: &Connection) -> bool {
 
 /// Read and validate `local_api.port`; falls back to [`DEFAULT_PORT`].
 pub fn resolve_port(conn: &Connection) -> u16 {
-    oz_core::Settings::get(conn, SETTINGS_PORT)
+    kasirmu_core::Settings::get(conn, SETTINGS_PORT)
         .unwrap_or(None)
         .and_then(|s| s.trim().parse::<u16>().ok())
         .filter(|p| (1024..=65535).contains(p))
@@ -200,14 +200,14 @@ fn new_secret() -> String {
 /// Load the per-install secret, generating and persisting one on first
 /// use.
 pub fn load_or_create_secret(conn: &Connection) -> Result<String, String> {
-    if let Some(existing) = oz_core::Settings::get(conn, SETTINGS_SECRET)
+    if let Some(existing) = kasirmu_core::Settings::get(conn, SETTINGS_SECRET)
         .map_err(|e| format!("reading {SETTINGS_SECRET}: {e}"))?
         .filter(|s| !s.trim().is_empty())
     {
         return Ok(existing);
     }
     let secret = new_secret();
-    oz_core::Settings::set(conn, SETTINGS_SECRET, &secret)
+    kasirmu_core::Settings::set(conn, SETTINGS_SECRET, &secret)
         .map_err(|e| format!("persisting {SETTINGS_SECRET}: {e}"))?;
     tracing::info!("local API: generated new per-install signing secret");
     Ok(secret)
@@ -220,7 +220,7 @@ pub fn load_or_create_secret(conn: &Connection) -> Result<String, String> {
 /// the recovery path when a backup carrying the old secret leaked).
 pub fn rotate_secret(conn: &Connection) -> Result<String, String> {
     let secret = new_secret();
-    oz_core::Settings::set(conn, SETTINGS_SECRET, &secret)
+    kasirmu_core::Settings::set(conn, SETTINGS_SECRET, &secret)
         .map_err(|e| format!("persisting {SETTINGS_SECRET}: {e}"))?;
     tracing::info!("local API: signing secret rotated — previously minted tokens are invalid");
     Ok(secret)
@@ -398,7 +398,7 @@ impl kasirmu_api::api_audit::AuditSink for StoreAuditSink {
                 "store_id": store_id,
             })
             .to_string();
-            let entry = oz_core::AuditEntry {
+            let entry = kasirmu_core::AuditEntry {
                 id: uuid::Uuid::now_v7().to_string(),
                 user_id: event
                     .token_label
@@ -417,7 +417,7 @@ impl kasirmu_api::api_audit::AuditSink for StoreAuditSink {
                 created_at: chrono::Utc::now().to_rfc3339(),
             };
             let conn = store.lock().await;
-            if let Err(e) = oz_core::Store::new(&conn).log_audit(&entry) {
+            if let Err(e) = kasirmu_core::Store::new(&conn).log_audit(&entry) {
                 tracing::warn!(error = %e, "local API audit write failed");
             }
         });

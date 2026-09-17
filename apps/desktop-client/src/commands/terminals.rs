@@ -16,7 +16,7 @@ use tauri::State;
 // `Store` and `Terminal` are no longer referenced once the bodies moved, but
 // `terminals_tests.rs` reaches for them through `use super::*`.
 #[allow(unused_imports)] // sibling terminals_tests.rs depends on them
-use oz_core::{Store, Terminal, TerminalFeatureOverride, TerminalProfile};
+use kasirmu_core::{Store, Terminal, TerminalFeatureOverride, TerminalProfile};
 
 use crate::error::AppError;
 use crate::state::AppState;

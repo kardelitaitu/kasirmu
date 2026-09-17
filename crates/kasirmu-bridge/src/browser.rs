@@ -17,7 +17,7 @@ use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
 
 /// Build the Google Images search query: product name plus brand (when set).
-pub fn build_image_query(product: &oz_core::Product) -> String {
+pub fn build_image_query(product: &kasirmu_core::Product) -> String {
     let mut query = product.name.trim().to_owned();
     if let Some(brand) = product
         .brand
@@ -68,9 +68,9 @@ pub async fn product_image_search_url(
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        let store = oz_core::db::Store::new(&db);
+        let store = kasirmu_core::db::Store::new(&db);
         let product = store.get_product(sku)?.ok_or_else(|| BridgeError::Core {
-            sub_kind: oz_core::CoreErrorKind::NotFound,
+            sub_kind: kasirmu_core::CoreErrorKind::NotFound,
             message: format!("product {sku} not found"),
         })?;
         build_image_query(&product.product)

@@ -3,7 +3,7 @@ use super::*;
 use rusqlite::Connection;
 
 fn fresh() -> Connection {
-    oz_core::migrations::fresh_db()
+    kasirmu_core::migrations::fresh_db()
 }
 
 fn seed_product(conn: &Connection, id: &str, sku: &str, name: &str, price: i64) {

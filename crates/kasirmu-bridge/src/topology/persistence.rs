@@ -20,7 +20,7 @@ use serde_json::Value;
 use crate::error::BridgeError;
 use crate::workspaces::CreateInstanceRequest;
 
-use oz_core::topology::{
+use kasirmu_core::topology::{
     has_semantic_fields, is_warehouse_operational_input_port, semantic_node_type, value_string,
 };
 use platform_core::StoreDatabaseManager;
@@ -165,7 +165,7 @@ pub fn template_save(
     let key = template_setting_key(topology_key, &name);
     let json = serde_json::to_string(payload)
         .map_err(|e| BridgeError::Internal(format!("serialize topology template: {e}")))?;
-    oz_core::Settings::set(conn, &key, &json)?;
+    kasirmu_core::Settings::set(conn, &key, &json)?;
     Ok(())
 }
 
@@ -179,7 +179,7 @@ pub fn template_load(
 ) -> Result<Option<Value>, BridgeError> {
     let name = normalize_template_name(raw_name)?;
     let key = template_setting_key(topology_key, &name);
-    let Some(raw) = oz_core::Settings::get(conn, &key)? else {
+    let Some(raw) = kasirmu_core::Settings::get(conn, &key)? else {
         return Ok(None);
     };
     Ok(serde_json::from_str(&raw).ok())
@@ -215,7 +215,7 @@ pub fn template_delete(
 ) -> Result<bool, BridgeError> {
     let name = normalize_template_name(raw_name)?;
     let key = template_setting_key(topology_key, &name);
-    Ok(oz_core::Settings::remove(conn, &key)?)
+    Ok(kasirmu_core::Settings::remove(conn, &key)?)
 }
 
 /// Sort template names for the list. Case-insensitive with a case-sensitive
@@ -381,12 +381,12 @@ pub fn save_topology_json_at_key_with_registries(
     let runtime_json = serde_json::to_string(&runtime_plan)
         .map_err(|e| BridgeError::Internal(format!("serialize topology runtime plan: {e}")))?;
     let json = topology_envelope_json(&nodes, &wires, revision, resolved_issue_keys)?;
-    oz_core::Settings::set(&tx, setting_key, &json)?;
-    oz_core::Settings::set(&tx, &runtime_key, &runtime_json)?;
+    kasirmu_core::Settings::set(&tx, setting_key, &json)?;
+    kasirmu_core::Settings::set(&tx, &runtime_key, &runtime_json)?;
     if let Some((request_key, fingerprint)) = request {
         let ledger = topology_apply_ledger_json(revision, fingerprint)?;
-        oz_core::Settings::set(&tx, request_key, &ledger)?;
-        oz_core::Settings::remove(&tx, TOPOLOGY_APPLY_RECOVERY_KEY)?;
+        kasirmu_core::Settings::set(&tx, request_key, &ledger)?;
+        kasirmu_core::Settings::remove(&tx, TOPOLOGY_APPLY_RECOVERY_KEY)?;
     }
     // ADR #46 §3: the revision row commits or rolls back with the envelope.
     // Placed after the envelope write so `json` is recorded byte-identically
@@ -453,9 +453,9 @@ pub fn restore_topology_setting(
 ) -> Result<(), BridgeError> {
     let tx = conn.unchecked_transaction()?;
     match previous {
-        Some(json) => oz_core::Settings::set(&tx, setting_key, json)?,
+        Some(json) => kasirmu_core::Settings::set(&tx, setting_key, json)?,
         None => {
-            oz_core::Settings::remove(&tx, setting_key)?;
+            kasirmu_core::Settings::remove(&tx, setting_key)?;
         }
     }
     tx.commit()?;
@@ -470,7 +470,7 @@ pub fn persist_topology_recovery(
     let json = serde_json::to_string(recovery)
         .map_err(|e| BridgeError::Internal(format!("serialize topology recovery: {e}")))?;
     let tx = conn.unchecked_transaction()?;
-    oz_core::Settings::set(&tx, TOPOLOGY_APPLY_RECOVERY_KEY, &json)?;
+    kasirmu_core::Settings::set(&tx, TOPOLOGY_APPLY_RECOVERY_KEY, &json)?;
     tx.commit()?;
     Ok(())
 }
@@ -478,7 +478,7 @@ pub fn persist_topology_recovery(
 /// Remove the Apply compensation journal once both databases are settled.
 pub fn clear_topology_recovery(conn: &Connection) -> Result<(), BridgeError> {
     let tx = conn.unchecked_transaction()?;
-    oz_core::Settings::remove(&tx, TOPOLOGY_APPLY_RECOVERY_KEY)?;
+    kasirmu_core::Settings::remove(&tx, TOPOLOGY_APPLY_RECOVERY_KEY)?;
     tx.commit()?;
     Ok(())
 }
@@ -494,7 +494,7 @@ pub async fn recover_pending_topology_apply_at_startup(
 ) -> Result<(), BridgeError> {
     let expected_store_id = {
         let db = db.lock().await;
-        let Some(raw) = oz_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)? else {
+        let Some(raw) = kasirmu_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)? else {
             return Ok(());
         };
         serde_json::from_str::<TopologyApplyRecovery>(&raw)
@@ -521,7 +521,7 @@ pub async fn recover_pending_topology_apply(
 ) -> Result<(), BridgeError> {
     let recovery = {
         let db = db.lock().await;
-        oz_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)?
+        kasirmu_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)?
             .map(|json| serde_json::from_str::<TopologyApplyRecovery>(&json))
             .transpose()
             .map_err(|e| BridgeError::Internal(format!("invalid topology recovery journal: {e}")))?
@@ -542,7 +542,7 @@ pub async fn recover_pending_topology_apply(
         let current = {
             let db = db.lock().await;
             let key = topology_setting_key(recovery.topology_branch_id.as_deref())?;
-            oz_core::Settings::get(&db, &key)?
+            kasirmu_core::Settings::get(&db, &key)?
         };
         if current.as_deref() == Some(desired) {
             let db = db.lock().await;
@@ -774,7 +774,7 @@ pub(crate) fn validate_apply_gate(
 /// cases, so no client can reach a quota check that skipped the gates above it.
 pub(crate) fn validate_warehouse_quota(
     nodes: &[Value],
-    tier: &oz_core::subscription::SubscriptionTier,
+    tier: &kasirmu_core::subscription::SubscriptionTier,
 ) -> Result<(), BridgeError> {
     if let Some(limit) = tier.max_warehouses()
         && nodes
@@ -796,14 +796,14 @@ pub(crate) fn validate_warehouse_quota(
 pub fn validate_warehouse_capacity(
     nodes: &[Value],
     wires: &[Value],
-    tier: &oz_core::subscription::SubscriptionTier,
+    tier: &kasirmu_core::subscription::SubscriptionTier,
     resolved_issue_keys: &[String],
 ) -> Result<(), BridgeError> {
     if !matches!(
         tier,
-        oz_core::subscription::SubscriptionTier::Pro
-            | oz_core::subscription::SubscriptionTier::Premium
-            | oz_core::subscription::SubscriptionTier::Enterprise
+        kasirmu_core::subscription::SubscriptionTier::Pro
+            | kasirmu_core::subscription::SubscriptionTier::Premium
+            | kasirmu_core::subscription::SubscriptionTier::Enterprise
     ) {
         return Ok(());
     }

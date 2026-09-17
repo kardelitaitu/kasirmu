@@ -769,7 +769,7 @@ pub async fn fanout_from_outcomes(
     db: &Arc<Mutex<rusqlite::Connection>>,
     pg: &Option<deadpool_postgres::Pool>,
     tenant_id: &str,
-    items: &[oz_core::offline::OfflineQueueItem],
+    items: &[kasirmu_core::offline::OfflineQueueItem],
     outcomes: &[platform_sync::transport::PushOutcome],
 ) {
     let accepted: Vec<AcceptedItem<'_>> = items

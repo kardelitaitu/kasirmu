@@ -10,8 +10,8 @@
 //! chain the ported bridge body runs.
 
 use super::*;
-use oz_core::error::CoreError;
-use oz_core::subscription::TenantSubscription;
+use kasirmu_core::error::CoreError;
+use kasirmu_core::subscription::TenantSubscription;
 
 #[test]
 fn clock_tampered_serializes_camel_case() {
@@ -81,7 +81,7 @@ fn generate_machine_id_is_deterministic() {
 
 #[test]
 fn machine_id_is_persisted_in_settings() {
-    use oz_core::migrations;
+    use kasirmu_core::migrations;
     let conn = migrations::fresh_db();
     let id1 = generate_machine_id();
     // Simulate what get_machine_id does: persist to Settings.
@@ -121,7 +121,7 @@ fn hardware_fingerprint_has_spec_shape_and_is_deterministic() {
 
 #[test]
 fn hardware_fingerprint_is_persisted_in_settings() {
-    use oz_core::migrations;
+    use kasirmu_core::migrations;
     let conn = migrations::fresh_db();
     let fp1 = generate_hardware_fingerprint();
     // Simulate what get_hardware_fingerprint does: persist to Settings.
@@ -137,7 +137,7 @@ fn hardware_fingerprint_is_persisted_in_settings() {
 
 #[test]
 fn clock_tamper_detected_on_future_ledger_timestamps() {
-    use oz_core::migrations;
+    use kasirmu_core::migrations;
     let conn = migrations::fresh_db();
 
     // Insert a sale with a timestamp far in the future
@@ -202,14 +202,14 @@ fn server_license_status_dto_null_optionals() {
 
 #[test]
 fn store_subscription_updates_tenant_subscription_default() {
-    use oz_core::migrations;
+    use kasirmu_core::migrations;
     let conn = migrations::fresh_db();
 
     // Verify bootstrap Free tier is seeded
     let sub = TenantSubscription::load(&conn, "default")
         .expect("load")
         .expect("bootstrap row should exist");
-    assert_eq!(sub.tier, oz_core::SubscriptionTier::Free);
+    assert_eq!(sub.tier, kasirmu_core::SubscriptionTier::Free);
 
     // Simulate a Pro activation — store_subscription should
     // replace the bootstrap row with the activated tier. This payload
@@ -234,7 +234,7 @@ fn store_subscription_updates_tenant_subscription_default() {
     let updated = TenantSubscription::load(&conn, "default")
         .expect("load")
         .expect("row should exist after update");
-    assert_eq!(updated.tier, oz_core::SubscriptionTier::Pro);
+    assert_eq!(updated.tier, kasirmu_core::SubscriptionTier::Pro);
     assert_eq!(updated.max_locations, 2);
     assert_eq!(updated.max_pos_instances, 3);
     assert_eq!(updated.signature, "SIG_PRO");
@@ -315,7 +315,7 @@ fn grace_deadline_fails_closed_on_unknown_tiers() {
 /// Proves the duplicate is closed without damaging the machine-bound lane.
 #[test]
 fn subscription_store_leaves_the_cleartext_column_empty_and_the_sealed_row_intact() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let machine_id = "MACHINE-FOR-CLEARTTEXT-COPY-TEST";
     let plaintext = "oz-live-API-KEY-9f2c1d";
 

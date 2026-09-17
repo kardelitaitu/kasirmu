@@ -17,9 +17,9 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use oz_core::db::Store;
-use oz_core::db::tax::TaxRateWindow;
-use oz_core::tax_rate::RoundingMode;
+use kasirmu_core::db::Store;
+use kasirmu_core::db::tax::TaxRateWindow;
+use kasirmu_core::tax_rate::RoundingMode;
 use rusqlite::Connection;
 
 use crate::ctx::BridgeCtx;
@@ -180,9 +180,9 @@ pub struct TaxRateDependencyCountsDto {
 /// use `Store::require_permission` (not the scope-aware form), so they need
 /// the same `PermissionDenied` → [`BridgeError::PermissionDenied`]
 /// translation the authz seam applies.
-fn map_gate_error(e: oz_core::CoreError) -> BridgeError {
+fn map_gate_error(e: kasirmu_core::CoreError) -> BridgeError {
     match e {
-        oz_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
+        kasirmu_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
         other => BridgeError::from(other),
     }
 }
@@ -214,8 +214,8 @@ pub async fn require_tax_permission(
 }
 
 /// Project a core scope onto its wire form.
-fn scope_dto(s: &oz_core::db::tax::TaxRateScope) -> TaxRateScopeDto {
-    use oz_core::db::tax::TaxRateScope;
+fn scope_dto(s: &kasirmu_core::db::tax::TaxRateScope) -> TaxRateScopeDto {
+    use kasirmu_core::db::tax::TaxRateScope;
     match s {
         TaxRateScope::Global => TaxRateScopeDto {
             scope: "global".into(),
@@ -236,7 +236,7 @@ fn scope_dto(s: &oz_core::db::tax::TaxRateScope) -> TaxRateScopeDto {
 }
 
 /// Project a core validity window onto its wire form.
-fn window_dto(w: &oz_core::db::tax::TaxRateWindow) -> TaxRateWindowDto {
+fn window_dto(w: &kasirmu_core::db::tax::TaxRateWindow) -> TaxRateWindowDto {
     TaxRateWindowDto {
         effective_from: w.effective_from.clone(),
         effective_to: w.effective_to.clone(),
@@ -244,7 +244,7 @@ fn window_dto(w: &oz_core::db::tax::TaxRateWindow) -> TaxRateWindowDto {
 }
 
 /// Project a core `TaxRate` onto the wire DTO, with scope/window unfilled.
-fn to_dto(r: oz_core::tax_rate::TaxRate) -> TaxRateDto {
+fn to_dto(r: kasirmu_core::tax_rate::TaxRate) -> TaxRateDto {
     let display_rate = r.display_rate();
     TaxRateDto {
         id: r.id,
@@ -266,9 +266,9 @@ fn to_dto(r: oz_core::tax_rate::TaxRate) -> TaxRateDto {
 fn scoped_scope(
     legal_entity_id: Option<&str>,
     location_id: Option<&str>,
-) -> Result<oz_core::db::tax::TaxRateScope, BridgeError> {
-    oz_core::db::tax::TaxRateScope::classify(legal_entity_id, location_id).ok_or_else(|| {
-        BridgeError::from(oz_core::CoreError::Validation {
+) -> Result<kasirmu_core::db::tax::TaxRateScope, BridgeError> {
+    kasirmu_core::db::tax::TaxRateScope::classify(legal_entity_id, location_id).ok_or_else(|| {
+        BridgeError::from(kasirmu_core::CoreError::Validation {
             field: "legal_entity_id",
             message: "legal_entity_id and location_id are mutually exclusive: a tax rate                       is entity-scoped OR location-scoped OR tenant-global"
                 .into(),
@@ -292,7 +292,7 @@ pub fn run_list_tax_rates(conn: &Connection) -> Result<Vec<TaxRateDto>, BridgeEr
     let store = Store::new(conn);
     let rates = store.list_tax_rates()?;
     let scopes = store.list_tax_rate_scopes()?;
-    let by_id: HashMap<&str, &oz_core::db::tax::TaxRateScopeInfo> =
+    let by_id: HashMap<&str, &kasirmu_core::db::tax::TaxRateScopeInfo> =
         scopes.iter().map(|s| (s.id.as_str(), s)).collect();
     Ok(rates
         .into_iter()
@@ -356,7 +356,7 @@ pub fn run_create_tax_rate(
             args.is_inclusive,
         )?;
         let mut dto = to_dto(rate);
-        dto.scope = Some(scope_dto(&oz_core::db::tax::TaxRateScope::Global));
+        dto.scope = Some(scope_dto(&kasirmu_core::db::tax::TaxRateScope::Global));
         dto.window = Some(window_dto(&TaxRateWindow {
             effective_from: None,
             effective_to: None,
@@ -415,7 +415,7 @@ pub fn run_update_tax_rate(
             args.is_inclusive,
         )?;
         let mut dto = to_dto(rate);
-        dto.scope = Some(scope_dto(&oz_core::db::tax::TaxRateScope::Global));
+        dto.scope = Some(scope_dto(&kasirmu_core::db::tax::TaxRateScope::Global));
         dto.window = Some(window_dto(&TaxRateWindow {
             effective_from: None,
             effective_to: None,
@@ -486,7 +486,7 @@ pub async fn list_rates_scoped(
     session_token: &str,
 ) -> Result<Vec<TaxRateDto>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_tax_permission(ctx, &session.user_id, oz_core::permissions::SETTINGS_READ).await?;
+    require_tax_permission(ctx, &session.user_id, kasirmu_core::permissions::SETTINGS_READ).await?;
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -511,7 +511,7 @@ pub async fn create_rate_scoped(
     args: &CreateTaxRateArgs,
 ) -> Result<TaxRateDto, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_tax_permission(ctx, &session.user_id, oz_core::permissions::SETTINGS_EDIT).await?;
+    require_tax_permission(ctx, &session.user_id, kasirmu_core::permissions::SETTINGS_EDIT).await?;
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -534,7 +534,7 @@ pub async fn update_rate_scoped(
     args: &UpdateTaxRateArgs,
 ) -> Result<TaxRateDto, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_tax_permission(ctx, &session.user_id, oz_core::permissions::SETTINGS_EDIT).await?;
+    require_tax_permission(ctx, &session.user_id, kasirmu_core::permissions::SETTINGS_EDIT).await?;
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -567,7 +567,7 @@ pub async fn delete_rate_scoped(
     id: &str,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_tax_permission(ctx, &session.user_id, oz_core::permissions::SETTINGS_EDIT).await?;
+    require_tax_permission(ctx, &session.user_id, kasirmu_core::permissions::SETTINGS_EDIT).await?;
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -598,7 +598,7 @@ pub async fn dependency_counts_scoped(
     id: &str,
 ) -> Result<TaxRateDependencyCountsDto, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_tax_permission(ctx, &session.user_id, oz_core::permissions::SETTINGS_READ).await?;
+    require_tax_permission(ctx, &session.user_id, kasirmu_core::permissions::SETTINGS_READ).await?;
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -626,7 +626,7 @@ pub async fn list_category_rates_scoped(
     session_token: &str,
 ) -> Result<Vec<CategoryTaxRateRow>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_tax_permission(ctx, &session.user_id, oz_core::permissions::SETTINGS_READ).await?;
+    require_tax_permission(ctx, &session.user_id, kasirmu_core::permissions::SETTINGS_READ).await?;
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -649,7 +649,7 @@ pub async fn set_category_rates_scoped(
     args: &SetCategoryTaxRatesArgs,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_tax_permission(ctx, &session.user_id, oz_core::permissions::SETTINGS_EDIT).await?;
+    require_tax_permission(ctx, &session.user_id, kasirmu_core::permissions::SETTINGS_EDIT).await?;
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -684,7 +684,7 @@ pub async fn rounding_modes_scoped(
     rate_ids: &[String],
 ) -> Result<HashMap<String, Option<RoundingMode>>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_tax_permission(ctx, &session.user_id, oz_core::permissions::SETTINGS_READ).await?;
+    require_tax_permission(ctx, &session.user_id, kasirmu_core::permissions::SETTINGS_READ).await?;
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()

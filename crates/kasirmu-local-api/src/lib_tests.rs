@@ -9,31 +9,31 @@ fn temp_image_dir(tag: &str) -> PathBuf {
 
 #[test]
 fn resolve_port_defaults_and_validates() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     assert_eq!(resolve_port(&conn), DEFAULT_PORT);
-    oz_core::Settings::set(&conn, SETTINGS_PORT, "8080").unwrap();
+    kasirmu_core::Settings::set(&conn, SETTINGS_PORT, "8080").unwrap();
     assert_eq!(resolve_port(&conn), 8080);
     // Below the registered range → default.
-    oz_core::Settings::set(&conn, SETTINGS_PORT, "80").unwrap();
+    kasirmu_core::Settings::set(&conn, SETTINGS_PORT, "80").unwrap();
     assert_eq!(resolve_port(&conn), DEFAULT_PORT);
     // Garbage → default.
-    oz_core::Settings::set(&conn, SETTINGS_PORT, "not-a-port").unwrap();
+    kasirmu_core::Settings::set(&conn, SETTINGS_PORT, "not-a-port").unwrap();
     assert_eq!(resolve_port(&conn), DEFAULT_PORT);
 }
 
 #[test]
 fn is_enabled_requires_explicit_one() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     assert!(!is_enabled(&conn), "default is off");
-    oz_core::Settings::set(&conn, SETTINGS_ENABLED, "1").unwrap();
+    kasirmu_core::Settings::set(&conn, SETTINGS_ENABLED, "1").unwrap();
     assert!(is_enabled(&conn));
-    oz_core::Settings::set(&conn, SETTINGS_ENABLED, "0").unwrap();
+    kasirmu_core::Settings::set(&conn, SETTINGS_ENABLED, "0").unwrap();
     assert!(!is_enabled(&conn));
 }
 
 #[test]
 fn secret_is_generated_once_and_stable() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let first = load_or_create_secret(&conn).unwrap();
     assert_eq!(first.len(), 64, "32 CSPRNG bytes as hex");
     assert!(first.bytes().all(|b| b.is_ascii_hexdigit()));
@@ -43,7 +43,7 @@ fn secret_is_generated_once_and_stable() {
 
 #[tokio::test]
 async fn rotate_secret_replaces_persisted_value_and_invalidates_old_tokens() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let original = load_or_create_secret(&conn).unwrap();
     let rotated = rotate_secret(&conn).unwrap();
     assert_ne!(original, rotated);
@@ -106,7 +106,7 @@ async fn minted_token_rejected_under_wrong_secret() {
 #[tokio::test]
 async fn server_serves_health_protected_routes_and_stops() {
     let dir = temp_image_dir("serve");
-    let db = Arc::new(Mutex::new(oz_core::migrations::fresh_db()));
+    let db = Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db()));
     let secret = "d".repeat(32);
     let handle = start(
         db.clone(),
@@ -247,7 +247,7 @@ async fn server_serves_health_protected_routes_and_stops() {
 #[tokio::test]
 async fn start_reports_port_conflict_as_error() {
     let dir = temp_image_dir("conflict");
-    let db = Arc::new(Mutex::new(oz_core::migrations::fresh_db()));
+    let db = Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db()));
     let first = start(
         db.clone(),
         PathBuf::from(":memory:"),
@@ -279,7 +279,7 @@ async fn start_reports_port_conflict_as_error() {
 
 #[test]
 fn primary_store_id_resolves_and_falls_back() {
-    let global = oz_core::migrations::fresh_db();
+    let global = kasirmu_core::migrations::fresh_db();
     // Migration 025 seeds 'default' with is_primary = 0 → fallback.
     assert_eq!(primary_store_id(&global), "default");
     global
@@ -316,14 +316,14 @@ fn primary_store_id_resolves_and_falls_back() {
 async fn serves_the_primary_store_database_not_the_global_one() {
     let tmp = std::env::temp_dir().join(format!("oz-local-api-store-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).unwrap();
-    let global = oz_core::migrations::fresh_db();
+    let global = kasirmu_core::migrations::fresh_db();
     global
         .execute(
             "UPDATE locations SET is_primary = 1 WHERE id = 'default'",
             [],
         )
         .unwrap();
-    let manager = platform_core::StoreDatabaseManager::new(tmp.clone(), oz_core::migrations::ALL);
+    let manager = platform_core::StoreDatabaseManager::new(tmp.clone(), kasirmu_core::migrations::ALL);
 
     let store_id = primary_store_id(&global);
     let (api_db, api_path) = open_api_store_connection(&manager, &store_id).unwrap();
@@ -383,7 +383,7 @@ async fn serves_the_primary_store_database_not_the_global_one() {
     // stop_async guarantees the listener is gone: an immediate re-bind
     // of the same port must not race OS socket teardown (review MED-3).
     let again = start(
-        Arc::new(Mutex::new(oz_core::migrations::fresh_db())),
+        Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db())),
         PathBuf::from(":memory:"),
         tmp.join("images2"),
         secret,
@@ -403,7 +403,7 @@ async fn serves_the_primary_store_database_not_the_global_one() {
 
 #[test]
 fn resolve_store_id_prefers_configured_and_degrades() {
-    let global = oz_core::migrations::fresh_db();
+    let global = kasirmu_core::migrations::fresh_db();
     global
         .execute(
             "UPDATE locations SET is_primary = 1 WHERE id = 'default'",
@@ -420,7 +420,7 @@ fn resolve_store_id_prefers_configured_and_degrades() {
     // Unset → primary.
     assert_eq!(resolve_store_id(&global), "default");
     // Configured real store → it.
-    oz_core::Settings::set(&global, SETTINGS_STORE, "store-b").unwrap();
+    kasirmu_core::Settings::set(&global, SETTINGS_STORE, "store-b").unwrap();
     assert_eq!(resolve_store_id(&global), "store-b");
     // Configured but the store was deleted → degrade to primary.
     global
@@ -433,14 +433,14 @@ fn resolve_store_id_prefers_configured_and_degrades() {
 async fn api_writes_land_in_the_audit_log_of_the_served_store() {
     let tmp = std::env::temp_dir().join(format!("oz-local-api-audit-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).unwrap();
-    let global = oz_core::migrations::fresh_db();
+    let global = kasirmu_core::migrations::fresh_db();
     global
         .execute(
             "UPDATE locations SET is_primary = 1 WHERE id = 'default'",
             [],
         )
         .unwrap();
-    let manager = platform_core::StoreDatabaseManager::new(tmp.clone(), oz_core::migrations::ALL);
+    let manager = platform_core::StoreDatabaseManager::new(tmp.clone(), kasirmu_core::migrations::ALL);
     let (api_db, api_path) = open_api_store_connection(&manager, "default").unwrap();
 
     let secret = "d".repeat(32);

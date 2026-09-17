@@ -3,7 +3,7 @@
 //! Pins target addressing (the part a setup wizard and the registry both
 //! key off) and the fail-closed contract.
 
-use oz_core::{Currency, Money};
+use kasirmu_core::{Currency, Money};
 
 use super::*;
 use crate::error::HalError;

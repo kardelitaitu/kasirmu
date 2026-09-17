@@ -9,7 +9,7 @@
 use super::*;
 use crate::testing::TestBridge;
 use foundation::{Currency, Money};
-use oz_core::SaleLine;
+use kasirmu_core::SaleLine;
 
 fn usd() -> Currency {
     "USD".parse().unwrap()

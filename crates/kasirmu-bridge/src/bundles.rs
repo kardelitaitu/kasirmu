@@ -6,9 +6,9 @@
 //! connection and read or write — the same order and the same number of locks
 //! as the shell.
 
-use oz_core::Store;
-use oz_core::permissions;
-use oz_core::product_bundle::{BundleItem, BundleWithItems, ProductBundle};
+use kasirmu_core::Store;
+use kasirmu_core::permissions;
+use kasirmu_core::product_bundle::{BundleItem, BundleWithItems, ProductBundle};
 use serde::Deserialize;
 
 use crate::ctx::BridgeCtx;

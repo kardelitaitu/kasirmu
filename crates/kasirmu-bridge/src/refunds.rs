@@ -17,9 +17,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use oz_core::db::Store;
-use oz_core::permissions;
-use oz_core::{Money, Refund, RefundLine, Sale};
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
+use kasirmu_core::{Money, Refund, RefundLine, Sale};
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -106,7 +106,7 @@ pub fn process_refund_unchecked(
     let sale = store
         .get_sale(sale_id)?
         .ok_or_else(|| BridgeError::Invalid(format!("sale {} not found", sale_id)))?;
-    if sale.status != oz_core::SaleStatus::Completed {
+    if sale.status != kasirmu_core::SaleStatus::Completed {
         return Err(BridgeError::Invalid(format!(
             "cannot refund a sale with status {:?}; only completed sales can be refunded",
             sale.status
@@ -119,7 +119,7 @@ pub fn process_refund_unchecked(
     let refund_lines: Vec<RefundLine> = lines
         .iter()
         .map(|l| {
-            let currency: oz_core::Currency = l.currency.parse().map_err(|_| {
+            let currency: kasirmu_core::Currency = l.currency.parse().map_err(|_| {
                 BridgeError::Invalid(format!("invalid currency code: {}", l.currency))
             })?;
             let unit_price = Money {

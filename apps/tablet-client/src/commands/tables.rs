@@ -1,7 +1,7 @@
 use tauri::{State, command};
 
-use oz_core::Table;
-use oz_core::db::Store;
+use kasirmu_core::Table;
+use kasirmu_core::db::Store;
 
 use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
@@ -85,7 +85,7 @@ pub async fn create_table_scoped(
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::TABLES_CREATE).await?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::TABLES_CREATE).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -105,7 +105,7 @@ pub async fn update_table_scoped(
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::TABLES_EDIT).await?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::TABLES_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -125,7 +125,7 @@ pub async fn delete_table_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::TABLES_DELETE).await?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::TABLES_DELETE).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -146,7 +146,7 @@ pub async fn update_table_status_scoped(
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::TABLES_CLOSE).await?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::TABLES_CLOSE).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -167,7 +167,7 @@ pub async fn assign_table_order_scoped(
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::TABLES_ASSIGN).await?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::TABLES_ASSIGN).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -187,7 +187,7 @@ pub async fn release_table_scoped(
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::TABLES_CLOSE).await?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::TABLES_CLOSE).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;

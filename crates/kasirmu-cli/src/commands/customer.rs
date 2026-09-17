@@ -7,8 +7,8 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 
-use oz_core::CoreError;
-use oz_core::db::Store;
+use kasirmu_core::CoreError;
+use kasirmu_core::db::Store;
 
 use crate::cli::{CustomerAction, CustomerArgs};
 

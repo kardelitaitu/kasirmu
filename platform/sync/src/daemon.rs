@@ -20,10 +20,10 @@ use std::time::Duration;
 use rand::Rng;
 use tokio::sync::{Mutex, Notify, RwLock, watch};
 
-use oz_core::db::Store;
-use oz_core::events::SettingsUpdated;
-use oz_core::settings::Settings;
-use oz_core::sync_client::SyncConfig;
+use kasirmu_core::db::Store;
+use kasirmu_core::events::SettingsUpdated;
+use kasirmu_core::settings::Settings;
+use kasirmu_core::sync_client::SyncConfig;
 
 use crate::queue::SyncQueue;
 use crate::transport::PushOutcome;
@@ -130,7 +130,7 @@ pub struct SyncDaemon {
 /// configured or disabled.
 pub(crate) fn read_config_and_pending(
     conn: &rusqlite::Connection,
-) -> (Option<SyncConfig>, Vec<oz_core::offline::OfflineQueueItem>) {
+) -> (Option<SyncConfig>, Vec<kasirmu_core::offline::OfflineQueueItem>) {
     let store = Store::new(conn);
     let config = SyncConfig::from_settings(&store).ok().flatten();
     let pending = store.list_pending_offline().unwrap_or_default();
@@ -158,12 +158,12 @@ async fn refresh_persisted_api_key(db: &DbConnection, server_url: &str) -> bool 
     };
     let token = match (terminal_id, terminal_secret) {
         (Some(id), Some(secret)) => {
-            oz_core::sync_client::request_token_client_credentials(server_url, &id, &secret).await
+            kasirmu_core::sync_client::request_token_client_credentials(server_url, &id, &secret).await
         }
         _ => {
-            oz_core::sync_client::request_token(
+            kasirmu_core::sync_client::request_token(
                 server_url,
-                oz_core::sync_client::admin_key_from_env().as_deref(),
+                kasirmu_core::sync_client::admin_key_from_env().as_deref(),
             )
             .await
         }
@@ -197,7 +197,7 @@ async fn refresh_persisted_api_key(db: &DbConnection, server_url: &str) -> bool 
 /// inline apply block exactly.
 async fn apply_push_results(
     db: &DbConnection,
-    pending: Vec<oz_core::offline::OfflineQueueItem>,
+    pending: Vec<kasirmu_core::offline::OfflineQueueItem>,
     results: Vec<PushOutcome>,
 ) -> Option<String> {
     let db_clone = db.clone();
@@ -217,7 +217,7 @@ async fn apply_push_results(
                     }
                 }
                 PushOutcome::Rejected { reason }
-                    if oz_core::sync_client::is_duplicate_id_rejection(reason) =>
+                    if kasirmu_core::sync_client::is_duplicate_id_rejection(reason) =>
                 {
                     // Idempotent replay — the server already holds this exact
                     // item (same client-generated id), so the mutation landed.

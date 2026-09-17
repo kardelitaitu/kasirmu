@@ -14,7 +14,7 @@ next: Bluetooth/WiFi protocol handler | perf: N/A
 //! [`HalError::Unsupported`] until the real handler lands.
 
 use async_trait::async_trait;
-use oz_core::Money;
+use kasirmu_core::Money;
 
 use crate::error::HalError;
 use crate::traits::edc::{EdcPaymentResult, EdcTerminal, TerminalStatus};

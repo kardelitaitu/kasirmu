@@ -48,7 +48,7 @@ pub mod rate_sync;
 
 use std::sync::{Arc, Mutex};
 
-use oz_core::cache::Cache;
+use kasirmu_core::cache::Cache;
 use platform_kernel::Kernel;
 use rusqlite::Connection;
 use tokio::sync::Mutex as AsyncMutex;
@@ -70,7 +70,7 @@ fn open_handler_connection(
 /// Falls back to a no-op cache when Redis is unavailable or the
 /// `cache-redis` feature is disabled.
 pub fn init_cache(redis_url: &str, ttl_seconds: u64) -> Arc<dyn Cache> {
-    oz_core::cache::create_cache(redis_url, ttl_seconds)
+    kasirmu_core::cache::create_cache(redis_url, ttl_seconds)
 }
 
 /// Register all business modules and wire event handlers on the kernel.
@@ -124,7 +124,7 @@ pub fn init_module_system(
         let k = kernel.blocking_lock();
         let bus = k.event_bus();
 
-        bus.subscribe::<oz_core::events::SaleCompleted>(
+        bus.subscribe::<kasirmu_core::events::SaleCompleted>(
             "sale.completed",
             Box::new(crate::event_handlers::SaleSyncEnqueuer::new(
                 handler_conn.clone(),
@@ -139,49 +139,49 @@ pub fn init_module_system(
         // and no currency validation (foreign-currency sales were
         // added raw); leaving it subscribed alongside the transactional
         // hook would double-count every sale.
-        bus.subscribe::<oz_core::events::SaleCompleted>(
+        bus.subscribe::<kasirmu_core::events::SaleCompleted>(
             "sale.completed",
             Box::new(crate::event_handlers::AuditLogHandler::new(
                 handler_conn.clone(),
             )),
         );
-        bus.subscribe::<oz_core::events::ProductCreated>(
+        bus.subscribe::<kasirmu_core::events::ProductCreated>(
             "product.created",
             Box::new(crate::event_handlers::AuditLogHandler::new(
                 handler_conn.clone(),
             )),
         );
-        bus.subscribe::<oz_core::events::ProductCreated>(
+        bus.subscribe::<kasirmu_core::events::ProductCreated>(
             "product.created",
             Box::new(crate::event_handlers::InventorySyncEnqueuer::new(
                 handler_conn.clone(),
             )),
         );
-        bus.subscribe::<oz_core::events::StockAdjusted>(
+        bus.subscribe::<kasirmu_core::events::StockAdjusted>(
             "stock.adjusted",
             Box::new(crate::event_handlers::AuditLogHandler::new(
                 handler_conn.clone(),
             )),
         );
-        bus.subscribe::<oz_core::events::StockAdjusted>(
+        bus.subscribe::<kasirmu_core::events::StockAdjusted>(
             "stock.adjusted",
             Box::new(crate::event_handlers::InventorySyncEnqueuer::new(
                 handler_conn.clone(),
             )),
         );
-        bus.subscribe::<oz_core::events::SaleCompleted>(
+        bus.subscribe::<kasirmu_core::events::SaleCompleted>(
             "sale.completed",
             Box::new(modules_reporting::handlers::SaleCompletedReporter::new(
                 handler_conn.clone(),
             )),
         );
-        bus.subscribe::<oz_core::events::SaleCompleted>(
+        bus.subscribe::<kasirmu_core::events::SaleCompleted>(
             "sale.completed",
             Box::new(crate::event_handlers::LoyaltyEarnHandler::new(handler_conn)),
         );
 
         // ── ADR #22 Phase 0e: SettingsUpdated handler (non-blocking) ──
-        bus.subscribe::<oz_core::events::SettingsUpdated>(
+        bus.subscribe::<kasirmu_core::events::SettingsUpdated>(
             "settings.updated",
             Box::new(crate::event_handlers::SettingsUpdatedHandler::new()),
         );
@@ -196,14 +196,14 @@ pub fn init_module_system(
                     let client: std::sync::Arc<dyn NotificationClient> =
                         std::sync::Arc::new(whatsapp);
 
-                    bus.subscribe::<oz_core::events::SaleCompleted>(
+                    bus.subscribe::<kasirmu_core::events::SaleCompleted>(
                         "sale.completed",
                         Box::new(kasirmu_notification::handlers::OrderConfirmationHandler::new(
                             client.clone(),
                             std::env::var("WHATSAPP_STORE_PHONE").ok(),
                         )),
                     );
-                    bus.subscribe::<oz_core::events::SaleCompleted>(
+                    bus.subscribe::<kasirmu_core::events::SaleCompleted>(
                         "sale.completed",
                         Box::new(kasirmu_notification::handlers::PaymentReceiptHandler::new(
                             client.clone(),
@@ -218,7 +218,7 @@ pub fn init_module_system(
                         .unwrap_or(5);
                     let manager_phone = std::env::var("WHATSAPP_MANAGER_PHONE")
                         .unwrap_or_else(|_| "+15550000000".into());
-                    bus.subscribe::<oz_core::events::StockAdjusted>(
+                    bus.subscribe::<kasirmu_core::events::StockAdjusted>(
                         "stock.adjusted",
                         Box::new(kasirmu_notification::handlers::StockLowAlertHandler::new(
                             client,
@@ -305,7 +305,7 @@ fn open_reaper_connection(
 /// If the database at `db_path` cannot be opened, the reaper logs an error
 /// and exits — it does not crash the application.
 pub fn init_pending_sale_reaper(db_path: &std::path::Path) {
-    use oz_core::db::Store;
+    use kasirmu_core::db::Store;
     use std::time::Duration;
 
     let path = db_path.to_owned();

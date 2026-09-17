@@ -21,10 +21,10 @@ use std::path::{Path, PathBuf};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
-use oz_core::db::Store;
-use oz_core::permissions;
-use oz_core::settings::Settings;
-use oz_core::sync_client::{self, PullResult, SyncAttemptResult, SyncConfig};
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
+use kasirmu_core::settings::Settings;
+use kasirmu_core::sync_client::{self, PullResult, SyncAttemptResult, SyncConfig};
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;

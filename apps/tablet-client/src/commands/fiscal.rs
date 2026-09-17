@@ -22,7 +22,7 @@
 
 use tauri::{State, command};
 
-use oz_core::db::fiscal::{DocumentNumberSequence, FiscalScheme};
+use kasirmu_core::db::fiscal::{DocumentNumberSequence, FiscalScheme};
 
 use crate::error::AppError;
 use crate::state::AppState;

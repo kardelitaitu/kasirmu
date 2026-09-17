@@ -2,7 +2,7 @@
 //!
 //! The live read surface is `list_audit_log_scoped`, which exposes the
 //! append-only audit log entries stored in SQLite via
-//! `oz_core::db::Store::list_audit_entries`. Every scoped body
+//! `kasirmu_core::db::Store::list_audit_entries`. Every scoped body
 //! lives in the headless `kasirmu_bridge::audit` module (ADR #49 Slice 1): each
 //! `#[command]` below keeps its exact name, parameter list and
 //! `Result<_, AppError>` return, so the registered IPC surface and the
@@ -30,10 +30,10 @@
 
 use tauri::{State, command};
 
-use oz_core::availability::UsageCounts;
-use oz_core::db::Store;
-use oz_core::entitlements::build_entitlements;
-use oz_core::subscription::SubscriptionTier;
+use kasirmu_core::availability::UsageCounts;
+use kasirmu_core::db::Store;
+use kasirmu_core::entitlements::build_entitlements;
+use kasirmu_core::subscription::SubscriptionTier;
 
 use crate::error::AppError;
 use crate::state::AppState;

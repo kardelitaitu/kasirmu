@@ -2,16 +2,16 @@
 //! moved out of `apps/desktop-client/src/commands/refunds_tests.rs`).
 //!
 //! Mounted at the foot of `refunds.rs` with `#[cfg(test)] #[path]`, so
-//! `use super::*` resolves the DTOs, args and the `oz_core` store types
+//! `use super::*` resolves the DTOs, args and the `kasirmu_core` store types
 //! the module imports. The two Store-level refund-arithmetic tests run
-//! against `oz_core`'s fully migrated in-memory database exactly as
+//! against `kasirmu_core`'s fully migrated in-memory database exactly as
 //! before (the store work is not Tauri-coupled); session rejection goes
 //! through the bridge context's shared session map; DTO and serde
 //! assertions are verbatim.
 
 use super::*;
 use crate::testing::TestBridge;
-use oz_core::migrations;
+use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
@@ -48,7 +48,7 @@ fn process_full_refund() {
     let refund_lines: Vec<RefundLine> = lines
         .iter()
         .map(|l| {
-            let currency: oz_core::Currency = l.currency.parse().unwrap();
+            let currency: kasirmu_core::Currency = l.currency.parse().unwrap();
             RefundLine::new(
                 &l.sale_line_id,
                 &l.sku,

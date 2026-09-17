@@ -1,6 +1,6 @@
 use super::*;
-use oz_core::migrations;
-use oz_core::session::SessionContext;
+use kasirmu_core::migrations;
+use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
@@ -39,7 +39,7 @@ fn seed_restaurant_sale(state: &AppState) {
     s.create_product(
         "BURGER",
         "Burger",
-        oz_core::Money {
+        kasirmu_core::Money {
             minor_units: 500,
             currency: "USD".parse().unwrap(),
         },
@@ -51,14 +51,14 @@ fn seed_restaurant_sale(state: &AppState) {
     .unwrap();
 
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let usd: oz_core::Currency = "USD".parse().unwrap();
-    let unit = oz_core::Money {
+    let usd: kasirmu_core::Currency = "USD".parse().unwrap();
+    let unit = kasirmu_core::Money {
         minor_units: 500,
         currency: usd,
     };
-    let sale = oz_core::Sale {
+    let sale = kasirmu_core::Sale {
         id: "sale-kds-t1".into(),
-        status: oz_core::SaleStatus::Pending,
+        status: kasirmu_core::SaleStatus::Pending,
         total: unit,
         line_count: 1,
         currency: usd,
@@ -67,7 +67,7 @@ fn seed_restaurant_sale(state: &AppState) {
         user_id: Some("user-owner".into()),
         created_at: now.clone(),
         updated_at: now,
-        lines: vec![oz_core::SaleLine {
+        lines: vec![kasirmu_core::SaleLine {
             id: "sl-kds-t1".into(),
             sale_id: "sale-kds-t1".into(),
             sku: "BURGER".into(),
@@ -75,7 +75,7 @@ fn seed_restaurant_sale(state: &AppState) {
             unit_price: unit,
             line_total: unit,
             line_position: 1,
-            tax_amount: oz_core::Money {
+            tax_amount: kasirmu_core::Money {
                 minor_units: 0,
                 currency: usd,
             },
@@ -88,7 +88,7 @@ fn seed_restaurant_sale(state: &AppState) {
         discount_percent: 0,
         discount_label: None,
         subtotal: unit,
-        tax_total: oz_core::Money {
+        tax_total: kasirmu_core::Money {
             minor_units: 0,
             currency: "USD".parse().unwrap(),
         },
@@ -130,7 +130,7 @@ fn create_order_in_store(state: &AppState, _id: &str) -> KdsOrder {
     let store_db = state.db_manager.open_store("store-a").unwrap();
     let db = store_db.lock().unwrap();
     let s = Store::new(&db);
-    s.create_kds_order(oz_core::CreateKdsOrderInput {
+    s.create_kds_order(kasirmu_core::CreateKdsOrderInput {
         sale_id: "sale-kds-t1".into(),
         store_id: Some("store-a".into()),
         items_summary: "Burger".into(),
@@ -226,7 +226,7 @@ async fn get_kds_order_returns_none_for_another_instances_ticket() {
         let db = store_db.lock().unwrap();
         let s = Store::new(&db);
         s.create_kds_order_routed(
-            oz_core::CreateKdsOrderInput {
+            kasirmu_core::CreateKdsOrderInput {
                 sale_id: "sale-kds-t1".into(),
                 store_id: Some("store-a".into()),
                 items_summary: "Burger".into(),

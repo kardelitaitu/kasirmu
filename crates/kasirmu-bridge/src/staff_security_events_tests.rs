@@ -104,7 +104,7 @@ fn owner_app(tier_key: &str) -> TestBridge {
     let bridge = TestBridge::new().with_conn(conn);
     bridge.sessions().write().unwrap().insert(
         "owner-token".into(),
-        oz_core::session::SessionContext::new(
+        kasirmu_core::session::SessionContext::new(
             "user-owner".into(),
             "role-owner".into(),
             "terminal-1".into(),
@@ -162,7 +162,7 @@ fn lite_app(tier_key: &str) -> TestBridge {
     let bridge = TestBridge::new().with_conn(conn);
     bridge.sessions().write().unwrap().insert(
         "lite-token".into(),
-        oz_core::session::SessionContext::new(
+        kasirmu_core::session::SessionContext::new(
             "user-lite".into(),
             "role-lite".into(),
             "terminal-1".into(),

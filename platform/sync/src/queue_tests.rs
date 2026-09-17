@@ -7,7 +7,7 @@
 //! Extracted from the inline `mod tests` in `queue.rs` (F-018).
 
 use super::*;
-use oz_core::migrations;
+use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn setup_store() -> Store<'static> {
@@ -325,7 +325,7 @@ fn queue_apply_resolution_local_wins() {
         created_at: "2025-01-01T00:00:00.000Z".into(),
         synced_at: None,
         tenant_id: "default".into(),
-        priority: oz_core::offline::SyncPriority::Normal,
+        priority: kasirmu_core::offline::SyncPriority::Normal,
     };
 
     let resolved = ResolvedItem {
@@ -358,7 +358,7 @@ fn queue_apply_resolution_remote_wins() {
         created_at: "2025-06-01T12:00:00.000Z".into(),
         synced_at: None,
         tenant_id: "default".into(),
-        priority: oz_core::offline::SyncPriority::Normal,
+        priority: kasirmu_core::offline::SyncPriority::Normal,
     };
 
     let resolved = ResolvedItem {
@@ -675,14 +675,14 @@ fn apply_remote_atomic_settings_update_writes_row_and_delta() {
         "settings.update must apply instead of erroring as unsupported"
     );
     assert_eq!(
-        oz_core::settings::Settings::get(store.conn(), "store.name")
+        kasirmu_core::settings::Settings::get(store.conn(), "store.name")
             .unwrap()
             .as_deref(),
         Some("Remote Acme"),
         "the settings row must be updated"
     );
     assert_eq!(
-        oz_core::settings::Settings::get_version(store.conn(), "store.name", "term-remote")
+        kasirmu_core::settings::Settings::get_version(store.conn(), "store.name", "term-remote")
             .unwrap(),
         Some(1),
         "a versioned delta row must be written for the (key, terminal) pair"
@@ -740,13 +740,13 @@ fn apply_remote_settings_update_non_atomic() {
 
     queue.apply_remote(&store, &remote).unwrap();
     assert_eq!(
-        oz_core::settings::Settings::get(store.conn(), "store.name")
+        kasirmu_core::settings::Settings::get(store.conn(), "store.name")
             .unwrap()
             .as_deref(),
         Some("Remote Acme")
     );
     assert_eq!(
-        oz_core::settings::Settings::get_version(store.conn(), "store.name", "term-remote")
+        kasirmu_core::settings::Settings::get_version(store.conn(), "store.name", "term-remote")
             .unwrap(),
         Some(1)
     );
@@ -768,7 +768,7 @@ fn apply_remote_settings_change_alias() {
         Some(("store.name".to_string(), "term-remote".to_string()))
     );
     assert_eq!(
-        oz_core::settings::Settings::get(store.conn(), "store.name")
+        kasirmu_core::settings::Settings::get(store.conn(), "store.name")
             .unwrap()
             .as_deref(),
         Some("Remote Acme")
@@ -1077,7 +1077,7 @@ fn seed_two_location_stock(store: &Store<'_>) -> String {
                 &tx,
                 "LOC-TWO",
                 delta,
-                &oz_core::inventory::LocationId::from(loc),
+                &kasirmu_core::inventory::LocationId::from(loc),
                 Some("seed"),
                 None,
                 None,
@@ -1140,7 +1140,7 @@ fn assert_location_scoped_merge(store: &Store<'_>, pid: &str) {
     let default_rows: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM stock_summary WHERE item_id = ?1 AND location_id = ?2",
-            [pid, oz_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+            [pid, kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
             |r| r.get(0),
         )
         .unwrap();
@@ -1220,7 +1220,7 @@ fn apply_remote_atomic_crdt_envelope_mixed_location_and_unscoped_sides() {
     );
     assert_eq!(qty_at("loc-b"), 3, "unrelated named row untouched");
     assert_eq!(
-        qty_at(oz_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID),
+        qty_at(kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID),
         5,
         "unscoped side landed at the canonical default location"
     );
@@ -1786,7 +1786,7 @@ fn a_hazard_name_refused_from_the_network_still_travels_in_a_package() {
         // of them - the hazard refusal belongs to one lane only - without this
         // crate reaching across a dependency edge it does not have (platform-sync
         // deliberately has no platform-core edge; queue.rs imports the policy
-        // through the oz_core::settings facade, and reaching for
+        // through the kasirmu_core::settings facade, and reaching for
         // platform_core::settings::keys here would build one).
         //
         // The same boolean therefore carries two facts, and the pair is what a

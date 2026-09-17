@@ -9,9 +9,9 @@
 // stay GATE-FREE (no permission check by design — resolve_store alone);
 // the six write commands keep their TABLES_* gates in the bridge fn.
 
-use oz_core::Table;
+use kasirmu_core::Table;
 #[allow(unused_imports)] // sibling tables_tests.rs depends on it
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 use tauri::State;
 
 use crate::error::AppError;

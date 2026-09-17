@@ -29,7 +29,7 @@
 //! moved still trips the pin.
 //!
 //! Test-module blocks are stripped before census. The gate itself is
-//! `oz_core::db::Store::require_permission`; the wrappers in each root's helper
+//! `kasirmu_core::db::Store::require_permission`; the wrappers in each root's helper
 //! module (`authz.rs` in the shells, `ctx.rs` in the bridge) are the only
 //! entry points, so a module with zero gate calls is ungated by construction
 //! (its census is pinned as `0, &[]`).
@@ -796,7 +796,7 @@ fn tablet_command_census_matches_pin() {
 /// real constants keeps this honest: renaming a constant breaks the match
 /// arm here, forcing the census to be updated deliberately.
 fn permission_value(name: &str) -> &'static str {
-    use oz_core::permissions as p;
+    use kasirmu_core::permissions as p;
     match name {
         "ANALYTICS_VIEW" => p::ANALYTICS_VIEW,
         "AUDIT_EXPORT" => p::AUDIT_EXPORT,

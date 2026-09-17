@@ -8,16 +8,16 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use tauri::{State, command};
 
-use oz_core::{Store, Terminal, TerminalFeatureOverride};
+use kasirmu_core::{Store, Terminal, TerminalFeatureOverride};
 
 use foundation::validate_not_empty;
 
 use crate::commands::authz::{require_permission_for_session, require_permission_for_user};
 use crate::error::AppError;
 use crate::state::AppState;
-use oz_core::availability::UsageCounts;
-use oz_core::entitlements::Entitlements;
-use oz_core::permissions;
+use kasirmu_core::availability::UsageCounts;
+use kasirmu_core::entitlements::Entitlements;
+use kasirmu_core::permissions;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -193,7 +193,7 @@ pub async fn set_device_binding_scoped(
     require_permission_for_user(
         &store,
         &session.user_id,
-        oz_core::permissions::TERMINALS_EDIT,
+        kasirmu_core::permissions::TERMINALS_EDIT,
     )?;
     run_set_device_binding(&db, keyring.as_ref(), &args)?;
     drop(db);
@@ -321,8 +321,8 @@ pub async fn register_terminal_scoped(
 
     let sub = {
         let global_db = state.db.lock().await;
-        oz_core::TenantSubscription::validate_clock_rollback(&global_db)?;
-        oz_core::TenantSubscription::load(&global_db, "default")?
+        kasirmu_core::TenantSubscription::validate_clock_rollback(&global_db)?;
+        kasirmu_core::TenantSubscription::load(&global_db, "default")?
             .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?
     };
     sub.verify_signature()?;

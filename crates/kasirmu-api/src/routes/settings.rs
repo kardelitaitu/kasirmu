@@ -37,7 +37,7 @@ next: none here | perf: N/A
 //! `report_schedule:{tenant}`, `store.name:{tenant}`), which is exactly
 //! what the cloud report loop reads — a second tenant is enabled purely by
 //! provisioning its scoped keys, with no data migration. SMTP passwords
-//! are encrypted at rest with `oz_core::crypto::encrypt_smtp_at_rest`
+//! are encrypted at rest with `kasirmu_core::crypto::encrypt_smtp_at_rest`
 //! (matching what the report loop's `decrypt_smtp_at_rest` expects) and
 //! decrypted in the GET response so admin round-trips are lossless.
 
@@ -50,12 +50,12 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use oz_core::db::Store;
-use oz_core::export::email_report::{
+use kasirmu_core::db::Store;
+use kasirmu_core::export::email_report::{
     SMTP_CONFIG_SETTINGS_KEY, SmtpConfig, merge_smtp_password_json,
 };
-use oz_core::export::email_sender::LAST_SENT_KEY;
-use oz_core::export::{REPORT_SCHEDULE_SETTINGS_KEY, ReportScheduleConfig};
+use kasirmu_core::export::email_sender::LAST_SENT_KEY;
+use kasirmu_core::export::{REPORT_SCHEDULE_SETTINGS_KEY, ReportScheduleConfig};
 
 use crate::AppState;
 use crate::routes::tokens::admin_key_authorised;
@@ -188,7 +188,7 @@ fn parse_smtp_config(raw: &str) -> Option<SmtpConfig> {
     if let Some(ref pwd) = config.password
         && !pwd.is_empty()
     {
-        match oz_core::crypto::decrypt_smtp_at_rest(pwd) {
+        match kasirmu_core::crypto::decrypt_smtp_at_rest(pwd) {
             Ok(plaintext) => config.password = Some(plaintext),
             Err(e) => {
                 tracing::error!(error = %e, "smtp at-rest ciphertext failed authentication");

@@ -1,4 +1,4 @@
-use oz_core::Currency;
+use kasirmu_core::Currency;
 
 use super::*;
 
@@ -444,9 +444,9 @@ fn decimal_separator_effective_exponent() {
 
 #[test]
 fn currency_symbol_known_codes() {
-    let usd: oz_core::Currency = "USD".parse().unwrap();
-    let eur: oz_core::Currency = "EUR".parse().unwrap();
-    let idr: oz_core::Currency = "IDR".parse().unwrap();
+    let usd: kasirmu_core::Currency = "USD".parse().unwrap();
+    let eur: kasirmu_core::Currency = "EUR".parse().unwrap();
+    let idr: kasirmu_core::Currency = "IDR".parse().unwrap();
     assert_eq!(currency_symbol(&usd), "$");
     assert_eq!(currency_symbol(&eur), "€");
     assert_eq!(currency_symbol(&idr), "Rp");

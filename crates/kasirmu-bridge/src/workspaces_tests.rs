@@ -142,9 +142,9 @@ fn boot_resolution_dto_debug() {
 // `role-owner`. Now the caller presents a short-lived HMAC ticket and the
 // REAL role is resolved from the global identity DB.
 
-use oz_core::LocationProfile;
-use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
-use oz_core::migrations;
+use kasirmu_core::LocationProfile;
+use kasirmu_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
+use kasirmu_core::migrations;
 
 /// Seed the GLOBAL identity DB with an owner and a limited user whose
 /// role has no workspace-type grants (so it sees no instances — the
@@ -215,7 +215,7 @@ async fn list_workspaces_for_store_scoped_uses_session_role() {
     let tb = picker_state(|_| {});
     tb.sessions().write().unwrap().insert(
         "cashier-token".into(),
-        oz_core::session::SessionContext::new(
+        kasirmu_core::session::SessionContext::new(
             "user-cashier".into(),
             "role-lite".into(),
             "terminal-1".into(),
@@ -257,7 +257,7 @@ async fn list_workspaces_for_store_scoped_uses_session_role() {
 fn mint_session(tb: &TestBridge, token: &str, user: &str, role: &str, store: &str) {
     tb.sessions().write().unwrap().insert(
         token.into(),
-        oz_core::session::SessionContext::new(
+        kasirmu_core::session::SessionContext::new(
             user.into(),
             role.into(),
             "terminal-1".into(),
@@ -504,7 +504,7 @@ async fn list_workspaces_scoped_rejects_tampered_subscription_signature() {
 /// than relying on whatever `fresh_db` seeds, so a future change to the default
 /// location cannot quietly flip these assertions.
 fn conn_with_location(id: &str) -> rusqlite::Connection {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     conn.execute(
         "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, 'Seeded Store')",
         rusqlite::params![id],

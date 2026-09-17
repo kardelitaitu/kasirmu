@@ -1,6 +1,6 @@
 //! Customer management commands — list, get, create, update, delete.
 //!
-//! Delegates to `oz_core::db::Store` for all CRUD operations.
+//! Delegates to `kasirmu_core::db::Store` for all CRUD operations.
 //!
 //! # ADR #49 status — 1 of 7 doors extracted, 6 refused
 //!
@@ -32,8 +32,8 @@
 use tauri::{State, command};
 
 use foundation::validate_not_empty;
-use oz_core::db::Store;
-use oz_core::permissions;
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
@@ -233,7 +233,7 @@ pub async fn get_customer_history_scoped(
     let customer =
         store
             .get_customer(&customer_id)?
-            .ok_or_else(|| oz_core::error::CoreError::NotFound {
+            .ok_or_else(|| kasirmu_core::error::CoreError::NotFound {
                 entity: "customer",
                 id: customer_id.clone(),
             })?;

@@ -1,7 +1,7 @@
 //! Customer management commands — list, get, create, update, delete.
 //!
 //! Wave B / B1: the bodies now live in the headless `kasirmu_bridge::customers`
-//! module (backed by `oz_core::db::Store`). Each `#[tauri::command]` below
+//! module (backed by `kasirmu_core::db::Store`). Each `#[tauri::command]` below
 //! keeps its exact name, parameter list and `Result<_, AppError>` return so
 //! the registered IPC surface and the serialized error shape are unchanged; it
 //! borrows a `BridgeCtx` from `AppState`, calls the bridge, and maps
@@ -22,11 +22,11 @@
 #[allow(unused_imports)]
 use foundation::validate_not_empty;
 #[allow(unused_imports)]
-use oz_core::Customer;
+use kasirmu_core::Customer;
 #[allow(unused_imports)]
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 #[allow(unused_imports)]
-use oz_core::permissions;
+use kasirmu_core::permissions;
 #[allow(unused_imports)]
 use serde::{Deserialize, Serialize};
 use tauri::State;

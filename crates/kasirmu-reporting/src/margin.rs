@@ -24,7 +24,7 @@ next: cosmetic analytics polish in fix-order | perf: DATE() non-sargable
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
-use oz_core::CoreError;
+use kasirmu_core::CoreError;
 
 /// One enriched sale line with cost and margin figures.
 #[derive(Debug, Clone, Serialize, Deserialize)]

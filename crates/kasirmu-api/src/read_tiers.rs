@@ -2,7 +2,7 @@
 //! tokens (spec 0047 Part B F2–F3).
 //!
 //! A token may carry an optional `permissions` claim — a list of registry
-//! keys. Reads are gated through [`oz_core::has_permission`] against a
+//! keys. Reads are gated through [`kasirmu_core::has_permission`] against a
 //! static route-to-key map. A token without the claim = legacy full-read
 //! (grandfathered, backward compatible).
 //!
@@ -147,11 +147,11 @@ pub fn resolve_preset(name: &str) -> Option<&'static [&'static str]> {
 /// Validate that every key is registered in the permission registry.
 ///
 /// Returns the list of unknown keys (empty = all valid). Uses
-/// `oz_core::permission_registry::is_registered` for each key.
+/// `kasirmu_core::permission_registry::is_registered` for each key.
 pub fn validate_keys(keys: &[String]) -> Result<(), Vec<String>> {
     let unknown: Vec<String> = keys
         .iter()
-        .filter(|k| !oz_core::permission_registry::is_registered(k))
+        .filter(|k| !kasirmu_core::permission_registry::is_registered(k))
         .cloned()
         .collect();
     if unknown.is_empty() {
@@ -231,7 +231,7 @@ pub async fn read_gate_middleware(req: Request, next: Next) -> Result<Response, 
         return Ok(next.run(req).await);
     };
 
-    if !oz_core::has_permission(permissions, entry.key) {
+    if !kasirmu_core::has_permission(permissions, entry.key) {
         return Err(insufficient_scope());
     }
 

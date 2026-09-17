@@ -17,11 +17,11 @@
 
 use serde::Serialize;
 
-use oz_core::db::Store;
-use oz_core::loyalty::{
+use kasirmu_core::db::Store;
+use kasirmu_core::loyalty::{
     LoyaltyAccount, LoyaltyAccountWithDetails, LoyaltyTier, LoyaltyTransaction,
 };
-use oz_core::permissions;
+use kasirmu_core::permissions;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -39,9 +39,9 @@ pub struct RedeemResult {
 /// `Store::require_permission` (not the scope-aware form), so they need the
 /// same `PermissionDenied` → [`BridgeError::PermissionDenied`] translation
 /// the authz seam applies.
-fn map_gate_error(e: oz_core::CoreError) -> BridgeError {
+fn map_gate_error(e: kasirmu_core::CoreError) -> BridgeError {
     match e {
-        oz_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
+        kasirmu_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
         other => BridgeError::from(other),
     }
 }

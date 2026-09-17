@@ -23,8 +23,8 @@ use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use oz_core::db::Store;
-use oz_core::session::SessionContext;
+use kasirmu_core::db::Store;
+use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
 
 /// Seed a user with inventory:view but NOT inventory:locations_manage.
@@ -80,7 +80,7 @@ fn unique_store_dir() -> std::path::PathBuf {
 /// open and mutate their store DB through this handle *before* it is handed
 /// to the bridge, because `TestBridge` keeps the manager private.
 fn store_manager() -> StoreDatabaseManager {
-    StoreDatabaseManager::new(unique_store_dir(), oz_core::migrations::ALL)
+    StoreDatabaseManager::new(unique_store_dir(), kasirmu_core::migrations::ALL)
 }
 
 /// `TestBridge` with a fresh migrated global DB, an isolated store-db dir
@@ -119,7 +119,7 @@ async fn cashier_can_list_locations_but_cannot_create_them() {
     // The limited role has INVENTORY_VIEW (list is allowed) but must NOT
     // hold INVENTORY_LOCATIONS_MANAGE (create/rename/deactivate/rebind
     // are management capabilities, not sales side-effects).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_cashier_user(&conn);
     let bridge = scoped_bridge(
         conn,
@@ -162,7 +162,7 @@ async fn cashier_can_list_locations_but_cannot_create_them() {
 
 #[tokio::test]
 async fn owner_can_create_and_deactivate_locations() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
     let bridge = scoped_bridge(
         conn,
@@ -200,7 +200,7 @@ async fn sales_process_gated_inventory_commands_authorise_via_global_db() {
     // thresholds/alerts/pending-sale) must also authorise against the
     // GLOBAL identity DB — the store DB has no users, so a store-scoped
     // check would deny every caller with "user not found".
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
     let bridge = scoped_bridge(
         conn,
@@ -218,7 +218,7 @@ async fn sales_process_gated_inventory_commands_authorise_via_global_db() {
 
 #[tokio::test]
 async fn location_read_is_scoped_to_session_store() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
     let manager = store_manager();
 
@@ -268,7 +268,7 @@ async fn location_read_is_scoped_to_session_store() {
 
 #[tokio::test]
 async fn owner_can_update_location_name_and_type() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
     let bridge = scoped_bridge(
         conn,
@@ -315,7 +315,7 @@ async fn owner_can_update_location_name_and_type() {
 
 #[tokio::test]
 async fn cashier_cannot_update_location() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_cashier_user(&conn);
     let bridge = scoped_bridge(
         conn,
@@ -326,7 +326,7 @@ async fn cashier_cannot_update_location() {
     );
 
     // First create a location as owner to have something to update.
-    let owner_conn = oz_core::migrations::fresh_db();
+    let owner_conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&owner_conn);
     let owner_bridge = scoped_bridge(
         owner_conn,
@@ -370,7 +370,7 @@ async fn cashier_cannot_update_location() {
 
 #[tokio::test]
 async fn owner_can_start_and_end_inventory_shift() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
     let manager = store_manager();
     // Seed user, role, and terminal in the store DB.
@@ -460,7 +460,7 @@ async fn owner_can_start_and_end_inventory_shift() {
 
 #[tokio::test]
 async fn owner_can_list_inventory_shifts() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
     let bridge = scoped_bridge(
         conn,
@@ -480,7 +480,7 @@ async fn owner_can_list_inventory_shifts() {
 
 #[tokio::test]
 async fn owner_can_list_inventory_transactions() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
     let bridge = scoped_bridge(
         conn,
@@ -502,7 +502,7 @@ async fn owner_can_list_inventory_transactions() {
 
 #[tokio::test]
 async fn owner_can_get_low_stock_alerts() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
     let bridge = scoped_bridge(
         conn,
@@ -526,7 +526,7 @@ async fn owner_can_get_low_stock_alerts() {
 
 #[tokio::test]
 async fn owner_can_get_active_stock_alerts() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
     let bridge = scoped_bridge(
         conn,
@@ -546,7 +546,7 @@ async fn owner_can_get_active_stock_alerts() {
 
 #[tokio::test]
 async fn acknowledge_nonexistent_alert_returns_error() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
     let bridge = scoped_bridge(
         conn,
@@ -566,7 +566,7 @@ async fn acknowledge_nonexistent_alert_returns_error() {
 
 #[tokio::test]
 async fn cashier_denied_inventory_shifts() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_cashier_user(&conn);
     let bridge = scoped_bridge(
         conn,
@@ -583,7 +583,7 @@ async fn cashier_denied_inventory_shifts() {
 
 #[tokio::test]
 async fn cashier_denied_inventory_transactions() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_cashier_user(&conn);
     let bridge = scoped_bridge(
         conn,
@@ -599,7 +599,7 @@ async fn cashier_denied_inventory_transactions() {
 
 #[tokio::test]
 async fn cashier_denied_delete_stock_threshold() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_cashier_user(&conn);
     let bridge = scoped_bridge(
         conn,

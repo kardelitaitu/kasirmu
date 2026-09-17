@@ -12,7 +12,7 @@ description = "Payment processor abstraction for kasir.mu — Stripe, Square, EM
 workspace = true
 
 [dependencies]
-oz-core = { workspace = true }
+kasirmu-core = { workspace = true }
 kasirmu-hal = { workspace = true }
 foundation = { workspace = true }
 async-trait = { workspace = true }

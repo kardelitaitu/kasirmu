@@ -7,10 +7,10 @@
 use serde::Serialize;
 use tauri::{State, command};
 
-use oz_core::Money;
-use oz_core::db::{DailySummaryRow, SalesByHourRow, Store};
-use oz_core::permissions;
-use oz_core::subscription::TenantSubscription;
+use kasirmu_core::Money;
+use kasirmu_core::db::{DailySummaryRow, SalesByHourRow, Store};
+use kasirmu_core::permissions;
+use kasirmu_core::subscription::TenantSubscription;
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
@@ -102,7 +102,7 @@ pub struct SaleDetail {
     /// ISO-8601 creation timestamp.
     pub created_at: String,
     /// Lines.
-    pub lines: Vec<oz_core::SaleLine>,
+    pub lines: Vec<kasirmu_core::SaleLine>,
     /// F2-7: the core-authored tax-estimate stamp (F2-5) when the checkout
     /// claimed an estimate; `None` = unstamped (absence is never a claim).
     /// Wire-verified: struct-wide `rename_all` is the drift fix (desktop twin).

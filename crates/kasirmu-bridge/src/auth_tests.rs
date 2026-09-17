@@ -171,7 +171,7 @@ fn staff_login_result_null_role_id() {
 // TDD red: `create_session` must fail closed when the caller claims an
 // identity it has not authenticated — unknown user, or a role_id that
 // does not match the user's actual database role. Previously the gate
-// (oz_core `Store::verify_instance_access`) trusted the claimed role
+// (kasirmu_core `Store::verify_instance_access`) trusted the claimed role
 // and never resolved the user, so a caller who knew an owner's user id
 // could mint a session as that owner and inherit every permission.
 
@@ -194,7 +194,7 @@ async fn staff_login_mints_verifiable_picker_ticket() {
     let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
-    let hash = oz_core::auth::hash_pin("1234").unwrap();
+    let hash = kasirmu_core::auth::hash_pin("1234").unwrap();
     conn.execute(
         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
          VALUES ('user-owner', 'owner', ?1, 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
@@ -233,7 +233,7 @@ async fn staff_login_returns_granted_permission_keys() {
     let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
-    let hash = oz_core::auth::hash_pin("1234").unwrap();
+    let hash = kasirmu_core::auth::hash_pin("1234").unwrap();
     conn.execute(
         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
          VALUES ('user-owner', 'owner', ?1, 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
@@ -524,7 +524,7 @@ async fn refresh_picker_ticket_rejects_expired_session() {
     let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
-    let hash = oz_core::auth::hash_pin("1234").unwrap();
+    let hash = kasirmu_core::auth::hash_pin("1234").unwrap();
     conn.execute(
         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
          VALUES ('user-owner', 'owner', ?1, 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
@@ -621,7 +621,7 @@ async fn staff_login_rejects_short_pin() {
     let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
-    let hash = oz_core::auth::hash_pin("123").unwrap(); // 3 digits
+    let hash = kasirmu_core::auth::hash_pin("123").unwrap(); // 3 digits
     conn.execute(
         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
          VALUES ('user-1', 'testuser', ?1, 'Test User', 'role-staff', 1, '2026-08-30T00:00:00.000Z', '2026-08-30T00:00:00.000Z')",
@@ -676,7 +676,7 @@ async fn staff_login_accepts_exactly_4_digit_pin() {
     let conn = crate::testing::temp_conn();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
-    let hash = oz_core::auth::hash_pin("5678").unwrap();
+    let hash = kasirmu_core::auth::hash_pin("5678").unwrap();
     conn.execute(
         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
          VALUES ('user-1', 'testuser', ?1, 'Test User', 'role-staff', 1, '2026-08-30T00:00:00.000Z', '2026-08-30T00:00:00.000Z')",
@@ -731,7 +731,7 @@ fn login_app(tier_key: Option<&str>) -> TestBridge {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();
     }
-    let hash = oz_core::auth::hash_pin("1234").unwrap();
+    let hash = kasirmu_core::auth::hash_pin("1234").unwrap();
     conn.execute(
         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
          VALUES ('user-owner', 'owner', ?1, 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
@@ -1009,7 +1009,7 @@ async fn a_rejected_login_leaves_exactly_one_event() {
 // SessionContext — org_label lives only on SessionContextDto, so the
 // fail-closed authority path is exercised end to end.
 
-use oz_core::db::assignments::{AssignmentSpec, ScopeMode};
+use kasirmu_core::db::assignments::{AssignmentSpec, ScopeMode};
 
 /// Seed a legal entity owned by `tenant_id` with the given id and name.
 fn seed_legal_entity(conn: &rusqlite::Connection, tenant_id: &str, id: &str, name: &str) {
@@ -1053,7 +1053,7 @@ fn set_user_assignment(
 fn l194_app_with(conn: rusqlite::Connection, org_scope: Option<&str>) -> (TestBridge, String) {
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
-    let hash = oz_core::auth::hash_pin("1234").unwrap();
+    let hash = kasirmu_core::auth::hash_pin("1234").unwrap();
     let user = store
         .create_user("alice", &hash, "Alice", "role-owner")
         .unwrap();
@@ -1283,12 +1283,12 @@ async fn l194_switch_organization_records_an_org_switch_event() {
     let rows = audit_rows(&app).await;
     let hit = rows
         .iter()
-        .find(|(_, action, ..)| *action == oz_core::db::audit_security::SECURITY_ACTION_ORG_SWITCH)
+        .find(|(_, action, ..)| *action == kasirmu_core::db::audit_security::SECURITY_ACTION_ORG_SWITCH)
         .expect("a successful switch must record an org.switch row");
     let (user_id, action, outcome, target_id, _details) = hit;
     assert_eq!(
         action,
-        &oz_core::db::audit_security::SECURITY_ACTION_ORG_SWITCH
+        &kasirmu_core::db::audit_security::SECURITY_ACTION_ORG_SWITCH
     );
     assert_eq!(outcome, &"success");
     assert_eq!(user_id, &uid, "the row names the operator who switched");

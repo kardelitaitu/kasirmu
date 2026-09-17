@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 
 use modules_currency::commands::{CreateExchangeRateArgs, CurrencyDto, ExchangeRateDto};
 use modules_currency::repository::CurrencyRepository;
-use oz_core::db::Store;
-use oz_core::permissions;
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -41,7 +41,7 @@ pub struct SetDefaultCurrencyArgs {
 
 /// Currency info for a code. Pure: needs no database and no session.
 pub fn currency_info(code: &str) -> Result<CurrencyInfo, BridgeError> {
-    let currency: oz_core::Currency = code
+    let currency: kasirmu_core::Currency = code
         .parse()
         .map_err(|_| BridgeError::Invalid(format!("invalid currency code: {code}")))?;
     Ok(CurrencyInfo {
@@ -131,7 +131,7 @@ pub async fn set_default_currency_scoped(
     args: &SetDefaultCurrencyArgs,
 ) -> Result<(), BridgeError> {
     args.code
-        .parse::<oz_core::Currency>()
+        .parse::<kasirmu_core::Currency>()
         .map_err(|_| BridgeError::Invalid(format!("invalid currency code: {}", args.code)))?;
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, permissions::SETTINGS_EDIT)
@@ -176,7 +176,7 @@ pub fn validate_create_rate_args(args: &CreateExchangeRateArgs) -> Result<(), Br
         } else {
             &args.to_currency
         };
-        code.parse::<oz_core::Currency>().map_err(|_| {
+        code.parse::<kasirmu_core::Currency>().map_err(|_| {
             BridgeError::Invalid(format!("{field}: not a valid ISO-4217 currency code"))
         })?;
     }
@@ -299,7 +299,7 @@ pub async fn create_exchange_rate_scoped(
     let date = args
         .effective_date
         .clone()
-        .unwrap_or_else(|| oz_core::timezone::business_date_in_zone(chrono::Utc::now(), &timezone));
+        .unwrap_or_else(|| kasirmu_core::timezone::business_date_in_zone(chrono::Utc::now(), &timezone));
     let source = args.source.clone().unwrap_or_else(|| "manual".to_string());
     let row = repo.create_exchange_rate(
         &args.from_currency,
@@ -356,7 +356,7 @@ pub async fn get_latest_exchange_rate_scoped(
             .flatten()
             .map(|p| p.timezone)
             .unwrap_or_else(|| "UTC".to_string());
-        oz_core::timezone::business_date_in_zone(chrono::Utc::now(), &tz)
+        kasirmu_core::timezone::business_date_in_zone(chrono::Utc::now(), &tz)
     });
     let row = repo.get_latest_exchange_rate(from_currency, to_currency, &as_of)?;
     drop(db);

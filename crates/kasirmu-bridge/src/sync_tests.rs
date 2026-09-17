@@ -120,7 +120,7 @@ fn update_sync_settings_data_clear_url_writes_empty_row() {
     // provisioning on the next debug launch). THIS app is where the
     // should_auto_provision discriminator runs, so the pin belongs
     // here, not just on the tablet twin.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     Settings::set_sync_server_url(&conn, "https://sync.example.com").unwrap();
     Settings::set_sync_enabled(&conn, false).unwrap();
 
@@ -307,7 +307,7 @@ fn update_pg_sync_settings_args_deserialize() {
 
 #[test]
 fn update_pg_sync_settings_data_roundtrip() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let args = UpdatePgSyncSettingsArgs {
         enabled: true,
         host: Some("db.example.com".into()),
@@ -331,7 +331,7 @@ fn update_pg_sync_settings_data_roundtrip() {
 
 #[test]
 fn update_pg_sync_settings_data_disabled_default() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let dto = run_get_pg_sync_settings(&conn).unwrap();
     assert!(!dto.enabled);
     assert!(dto.host.is_none());
@@ -345,7 +345,7 @@ fn update_pg_sync_settings_data_disabled_default() {
 
 #[test]
 fn update_pg_sync_settings_data_none_clears_optional_fields() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     update_pg_sync_settings_data(
         &conn,
         &UpdatePgSyncSettingsArgs {
@@ -388,7 +388,7 @@ fn update_pg_sync_settings_data_none_clears_optional_fields() {
 
 #[test]
 fn update_pg_sync_settings_data_password_preserved_when_none() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     update_pg_sync_settings_data(
         &conn,
         &UpdatePgSyncSettingsArgs {

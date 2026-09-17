@@ -6,7 +6,7 @@
 //! `AppState::for_test` (`apps/desktop-client/src/state.rs`) — every
 //! `BridgeCtx` field is constructible without tauri, gtk or a driver
 //! registry — and `temp_conn` delegates to the repo's canonical
-//! migrated-test-conn helper `oz_core::migrations::fresh_db` (snapshot
+//! migrated-test-conn helper `kasirmu_core::migrations::fresh_db` (snapshot
 //! clone; one `schema_migrations` row per migration).
 //!
 //! The harness deliberately uses in-memory databases: `tempfile` is not a
@@ -31,10 +31,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use oz_core::cache::Cache;
-use oz_core::migrations;
-use oz_core::session::SessionContext;
-use oz_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
+use kasirmu_core::cache::Cache;
+use kasirmu_core::migrations;
+use kasirmu_core::session::SessionContext;
+use kasirmu_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
 use kasirmu_hal::DriverRegistry;
 use kasirmu_plugin::PluginManager;
 use platform_core::StoreDatabaseManager;
@@ -72,8 +72,8 @@ fn unique_store_dir() -> PathBuf {
 
 /// Open a fresh, fully migrated connection for a test.
 ///
-/// Delegates to `oz_core::migrations::fresh_db`: an in-memory database with
-/// every migration from `oz_core::migrations::ALL` applied (the canonical
+/// Delegates to `kasirmu_core::migrations::fresh_db`: an in-memory database with
+/// every migration from `kasirmu_core::migrations::ALL` applied (the canonical
 /// migrated-test-conn pattern — the first call migrates a snapshot, later
 /// calls clone it via the SQLite backup API, so per-test cost is a page
 /// copy). Foreign keys are ON; `WAL`/`busy_timeout` PRAGMAs are irrelevant
@@ -152,7 +152,7 @@ pub fn temp_conn() -> Connection {
 /// It does NOT extend to the settings pair `get_license_status` reads. That pair
 /// (`license.payload` / `license.signature`, `license.rs:590-591`) is a different
 /// seed shape on a different table, and `temp_conn()` seeds NEITHER key:
-/// `oz_core::migrations::fresh_db` applies `20260813_init.sql`, which inserts the
+/// `kasirmu_core::migrations::fresh_db` applies `20260813_init.sql`, which inserts the
 /// `tenant_subscription` default row (`:1513`) and no `license.payload` or
 /// `license.signature` settings row at all. On a fresh harness connection
 /// `get_license_status` therefore takes its "no stored pair" branch.
@@ -306,7 +306,7 @@ pub async fn assert_refused_by_the_seeded_row<T>(
         matches!(
             err,
             crate::error::BridgeError::Core {
-                sub_kind: oz_core::CoreErrorKind::InvalidSubscriptionSignature,
+                sub_kind: kasirmu_core::CoreErrorKind::InvalidSubscriptionSignature,
                 ..
             }
         ),
@@ -377,7 +377,7 @@ impl TestBridge {
             session_ttl_seconds: TEST_SESSION_TTL_SECONDS,
             // "redis://127.0.0.1/" is unreachable in tests: create_cache
             // falls back to the no-op cache (same default as AppState::for_test).
-            cache: oz_core::cache::create_cache("redis://127.0.0.1/", 300),
+            cache: kasirmu_core::cache::create_cache("redis://127.0.0.1/", 300),
             kernel: Mutex::new(Kernel::new()),
             terminal_id: Arc::new(Mutex::new(None)),
             media_cache_dir: None,

@@ -3,7 +3,7 @@
 //! no panics during deserialization.
 //!
 //! The canonical cart types live in `foundation` (oz-core re-exports them;
-//! the former `oz_core::Sale` type was removed with the migration).
+//! the former `kasirmu_core::Sale` type was removed with the migration).
 //!
 //! Requires `oz-core-fuzz` feature (adds bundled SQLite via oz-core):
 //!   `cargo fuzz run --features oz-core-fuzz cart_deser`

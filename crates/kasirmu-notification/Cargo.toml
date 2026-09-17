@@ -12,7 +12,7 @@ description = "WhatsApp Cloud API notification client for kasir.mu — template 
 workspace = true
 
 [dependencies]
-oz-core = { workspace = true }
+kasirmu-core = { workspace = true }
 foundation = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }

@@ -1,6 +1,6 @@
 use super::*;
 use foundation::{Email, Phone};
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
@@ -55,7 +55,7 @@ async fn scoped_customer_command_rejects_invalid_session() {
 #[tokio::test]
 async fn scoped_customer_command_denies_user_without_permission() {
     // Kitchen role lacks customers:create (ROLE_PRESETS).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -69,7 +69,7 @@ async fn scoped_customer_command_denies_user_without_permission() {
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     state.session_store.write().unwrap().insert(
         "kitchen-token".into(),
         SessionContext::new(
@@ -99,7 +99,7 @@ async fn list_customers_scoped_denies_user_without_view_permission() {
     // scoped list must enforce the declared view permission, not just
     // resolve the store. Before the fix a valid kitchen session could
     // enumerate every customer (name, email, phone, notes).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -113,7 +113,7 @@ async fn list_customers_scoped_denies_user_without_view_permission() {
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     state.session_store.write().unwrap().insert(
         "kitchen-token".into(),
         SessionContext::new(
@@ -138,13 +138,13 @@ async fn list_customers_scoped_denies_user_without_view_permission() {
 
 #[tokio::test]
 async fn scoped_customer_write_command_targets_only_the_session_store() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
 
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     for (token, store_id) in [("store-a-token", "store-a"), ("store-b-token", "store-b")] {
         state.session_store.write().unwrap().insert(
             token.into(),
@@ -339,28 +339,28 @@ fn phone_optional_when_none_is_ok() {
 #[test]
 fn dto_maps_email_to_string() {
     let customer =
-        oz_core::Customer::new("Test").with_email(Email::new("alice@example.com").unwrap());
+        kasirmu_core::Customer::new("Test").with_email(Email::new("alice@example.com").unwrap());
     let dto = CustomerDto::from(customer);
     assert_eq!(dto.email, Some("alice@example.com".into()));
 }
 
 #[test]
 fn dto_maps_phone_to_string() {
-    let customer = oz_core::Customer::new("Test").with_phone(Phone::new("+1-555-0102").unwrap());
+    let customer = kasirmu_core::Customer::new("Test").with_phone(Phone::new("+1-555-0102").unwrap());
     let dto = CustomerDto::from(customer);
     assert_eq!(dto.phone, Some("+1-555-0102".into()));
 }
 
 #[test]
 fn dto_maps_none_email() {
-    let customer = oz_core::Customer::new("Test");
+    let customer = kasirmu_core::Customer::new("Test");
     let dto = CustomerDto::from(customer);
     assert!(dto.email.is_none());
 }
 
 #[test]
 fn dto_maps_none_phone() {
-    let customer = oz_core::Customer::new("Test");
+    let customer = kasirmu_core::Customer::new("Test");
     let dto = CustomerDto::from(customer);
     assert!(dto.phone.is_none());
 }
@@ -508,13 +508,13 @@ async fn search_customers_scoped_rejects_invalid_session() {
 
 #[tokio::test]
 async fn search_customers_scoped_is_bounded_and_store_isolated() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
 
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     for (token, store_id) in [("store-a-token", "store-a"), ("store-b-token", "store-b")] {
         state.session_store.write().unwrap().insert(
             token.into(),
@@ -574,13 +574,13 @@ async fn search_customers_scoped_is_bounded_and_store_isolated() {
 
 #[tokio::test]
 async fn get_customer_history_scoped_returns_profile_loyalty_and_sales() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
 
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     state.session_store.write().unwrap().insert(
         "store-a-token".into(),
         SessionContext::new(
@@ -639,13 +639,13 @@ async fn get_customer_history_scoped_returns_profile_loyalty_and_sales() {
 
 #[tokio::test]
 async fn get_customer_history_scoped_unknown_customer_is_not_found() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
 
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     state.session_store.write().unwrap().insert(
         "store-a-token".into(),
         SessionContext::new(
@@ -680,13 +680,13 @@ async fn delete_customer_scoped_is_blocked_by_loyalty_and_sales_references() {
     // CUST-11: a customer referenced by a loyalty account or sales rows
     // must NOT be silently deleted — the FK guard (foreign_keys = ON)
     // rejects the delete so no orphaned child rows can be left behind.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
 
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     state.session_store.write().unwrap().insert(
         "store-a-token".into(),
         SessionContext::new(
@@ -742,13 +742,13 @@ async fn delete_customer_scoped_is_blocked_by_loyalty_and_sales_references() {
 async fn delete_customer_scoped_succeeds_without_references() {
     // CUST-11 positive control: deleting an unreferenced customer in the
     // session store works and is isolated from other stores.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
 
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     for (token, store_id) in [("store-a-token", "store-a"), ("store-b-token", "store-b")] {
         state.session_store.write().unwrap().insert(
             token.into(),
@@ -806,7 +806,7 @@ async fn get_customer_scoped_denies_user_without_view_permission() {
     // difference that matters here: the finding was about an UNGUARDED COMMAND, this test
     // is about the guarded one, and deleting the former changed no behavior -- so the
     // history stays worth reading without anyone going looking for a function that is gone.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -820,7 +820,7 @@ async fn get_customer_scoped_denies_user_without_view_permission() {
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     state.session_store.write().unwrap().insert(
         "kitchen-token".into(),
         SessionContext::new(

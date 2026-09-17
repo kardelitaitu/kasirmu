@@ -7,7 +7,7 @@
 //! adapters over these same functions.
 
 use super::*;
-use oz_core::migrations;
+use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {

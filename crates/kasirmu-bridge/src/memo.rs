@@ -19,10 +19,10 @@
 //!   may always stop it; anyone else must hold `memo:stop`.
 
 use chrono::Utc;
-use oz_core::memo::{
+use kasirmu_core::memo::{
     ActiveMemo, Memo, NOTIFICATION_BASE_INTERVAL_SECS, NewMemo, kds_notification_interval_secs,
 };
-use oz_core::{Store, permissions};
+use kasirmu_core::{Store, permissions};
 use serde::{Deserialize, Serialize};
 
 use crate::ctx::BridgeCtx;
@@ -107,7 +107,7 @@ impl From<ActiveMemo> for ActiveMemoDto {
 /// Display cadence served with the memo list. The backend is the single
 /// source of truth for the notification intervals — the UI schedules its polls
 /// from these values and never duplicates the literals (the spec's "coded as
-/// 2× the shared base interval" lives in `oz_core::memo`, not in TypeScript).
+/// 2× the shared base interval" lives in `kasirmu_core::memo`, not in TypeScript).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MemoCadenceDto {
@@ -172,7 +172,7 @@ pub async fn create_memo_scoped(
         Some(s) => s
             .parse()
             .map_err(|_| BridgeError::Invalid(format!("invalid memo duration '{s}'")))?,
-        None => oz_core::memo::DEFAULT_MEMO_DURATION,
+        None => kasirmu_core::memo::DEFAULT_MEMO_DURATION,
     };
     let new = NewMemo {
         tenant_id: DEFAULT_TENANT_ID.into(),

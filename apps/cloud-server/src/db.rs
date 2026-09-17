@@ -131,7 +131,7 @@ impl DbPool {
         let mut conn = rusqlite::Connection::open(path)?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
-        oz_core::migrations::run(&mut conn)?;
+        kasirmu_core::migrations::run(&mut conn)?;
         info!(db = %path, "SQLite database opened and migrations applied");
         Ok(Self::Sqlite(Arc::new(Mutex::new(conn))))
     }
@@ -140,7 +140,7 @@ impl DbPool {
     pub fn connect_sqlite_in_memory() -> Result<Self, DbError> {
         let mut conn = rusqlite::Connection::open_in_memory()?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
-        oz_core::migrations::run(&mut conn)?;
+        kasirmu_core::migrations::run(&mut conn)?;
         info!("In-memory SQLite database initialized");
         Ok(Self::Sqlite(Arc::new(Mutex::new(conn))))
     }
@@ -341,7 +341,7 @@ impl DbPool {
                 .map_err(|e| DbError::Migration(format!("failed to take schema lock: {e}")))?;
             let apply = tokio::time::timeout(
                 std::time::Duration::from_secs(60),
-                migrate_client.batch_execute(oz_core::migrations::PG_INIT),
+                migrate_client.batch_execute(kasirmu_core::migrations::PG_INIT),
             )
             .await
             .map_err(|_| DbError::Migration("schema migration timed out after 60s".into()))?
@@ -405,7 +405,7 @@ pub enum DbError {
 
     /// An error from the `oz-core` crate.
     #[error("Core error: {0}")]
-    Core(#[from] oz_core::error::CoreError),
+    Core(#[from] kasirmu_core::error::CoreError),
 
     /// Invalid or missing configuration.
     #[error("Configuration error: {0}")]

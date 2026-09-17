@@ -1,6 +1,6 @@
 use super::*;
-use oz_core::migrations;
-use oz_core::permissions;
+use kasirmu_core::migrations;
+use kasirmu_core::permissions;
 
 fn seeded_store() -> rusqlite::Connection {
     let conn = migrations::fresh_db();

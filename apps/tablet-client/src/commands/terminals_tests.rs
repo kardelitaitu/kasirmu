@@ -1,5 +1,5 @@
 use super::*;
-use oz_core::migrations;
+use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
@@ -91,7 +91,7 @@ fn update_terminal_not_found() {
 
     let t = Terminal::new("Ghost", "ghost");
     let err = store.update_terminal(&t).unwrap_err();
-    assert!(matches!(err, oz_core::CoreError::NotFound { .. }));
+    assert!(matches!(err, kasirmu_core::CoreError::NotFound { .. }));
 }
 
 #[test]
@@ -125,7 +125,7 @@ fn ping_terminal_not_found() {
     let conn = fresh_conn();
     let store = Store::new(&conn);
     let err = store.ping_terminal("nope").unwrap_err();
-    assert!(matches!(err, oz_core::CoreError::NotFound { .. }));
+    assert!(matches!(err, kasirmu_core::CoreError::NotFound { .. }));
 }
 
 // ── Terminal Feature Override tests ────────────────────────────
@@ -260,7 +260,7 @@ fn set_terminal_override_nonexistent_terminal_fails() {
     let err = store
         .set_terminal_override("no-such-terminal", "card-payment", true)
         .unwrap_err();
-    assert!(matches!(err, oz_core::CoreError::Db(_)));
+    assert!(matches!(err, kasirmu_core::CoreError::Db(_)));
 }
 
 #[test]
@@ -274,12 +274,12 @@ fn delete_terminal_override_not_found() {
         .delete_terminal_override(&t.id, "nonexistent")
         .unwrap_err();
     assert!(
-        matches!(err, oz_core::CoreError::NotFound { entity, .. } if entity == "terminal_feature_override")
+        matches!(err, kasirmu_core::CoreError::NotFound { entity, .. } if entity == "terminal_feature_override")
     );
 }
 
 // ── Store::delete_terminal ───────────────────────────────────────
-// These cases reach the `oz_core` store method, not a command fn: the unscoped
+// These cases reach the `kasirmu_core` store method, not a command fn: the unscoped
 // `delete_terminal` command this banner used to name was retired on 2026-09-16 (T7-4) and all 37
 // cases passed unchanged before and after, which is the proof that none of them ever called it.
 
@@ -301,7 +301,7 @@ fn delete_terminal_not_found() {
     let conn = fresh_conn();
     let store = Store::new(&conn);
     let err = store.delete_terminal("nope").unwrap_err();
-    assert!(matches!(err, oz_core::CoreError::NotFound { .. }));
+    assert!(matches!(err, kasirmu_core::CoreError::NotFound { .. }));
 }
 
 // -- DTO struct tests --
@@ -520,7 +520,7 @@ fn set_device_binding_args_debug() {
 // undetectable by any test that exists, and no test in this file will ever
 // detect its return. See the argument-shape gate proposed in the plan file.
 
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
@@ -546,12 +546,12 @@ fn seed_identity(conn: &rusqlite::Connection) {
 fn terminals_app(
     sessions: &[(&str, &str)],
 ) -> (tauri::App<tauri::test::MockRuntime>, tempfile::TempDir) {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_identity(&conn);
     let temp = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp.path().to_path_buf(), kasirmu_core::migrations::ALL);
     for (token, user_id) in sessions {
         let role = if *user_id == "user-owner" {
             "role-owner"

@@ -72,7 +72,7 @@ pub fn run_seed_demo(conn: &Connection, args: &SeedDemoArgs) -> Result<()> {
     {
         let mut mig_conn = rusqlite::Connection::open(db_path)
             .with_context(|| format!("opening {db_path} for migrations"))?;
-        oz_core::migrations::run(&mut mig_conn).context("applying migrations before seed")?;
+        kasirmu_core::migrations::run(&mut mig_conn).context("applying migrations before seed")?;
     }
 
     let days = args.days;
@@ -144,7 +144,7 @@ fn seed_store_databases(
             // Run migrations on the store DB (idempotent)
             {
                 let mut mconn = rusqlite::Connection::open(&path)?;
-                oz_core::migrations::run(&mut mconn)
+                kasirmu_core::migrations::run(&mut mconn)
                     .with_context(|| format!("migrating store db {}", path.display()))?;
             }
 

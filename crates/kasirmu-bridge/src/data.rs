@@ -20,10 +20,10 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use oz_core::db::Store;
-use oz_core::ozpkg::{export_ozpkg, import_ozpkg};
-use oz_core::permissions;
-use oz_core::settings::{IngestPolicy, IngestPolicyKind};
+use kasirmu_core::db::Store;
+use kasirmu_core::ozpkg::{export_ozpkg, import_ozpkg};
+use kasirmu_core::permissions;
+use kasirmu_core::settings::{IngestPolicy, IngestPolicyKind};
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -182,7 +182,7 @@ fn human_size(bytes: u64) -> String {
 /// installs the same signing secret, and one carrying `local_api.enabled` or
 /// `lan_server.bind` would flip a manager's persisted intent behind its back.
 /// Both answers now come from the ONE policy owned by platform-core and
-/// re-exported through `oz_core::settings` — this lane holds no key list and
+/// re-exported through `kasirmu_core::settings` — this lane holds no key list and
 /// no prefix rule of its own, which is precisely how the GUI and CLI lanes
 /// drifted apart before the funnel. Outcome here is unchanged from the
 /// bridge-local `is_non_exportable_key` this replaced (that predicate ORed the
@@ -215,7 +215,7 @@ pub fn gate_import_product_batch(
     let tier = store.resolve_tier_fail_closed()?;
     let new_products = products
         .iter()
-        .filter_map(|val| serde_json::from_value::<oz_core::Product>(val.clone()).ok())
+        .filter_map(|val| serde_json::from_value::<kasirmu_core::Product>(val.clone()).ok())
         .filter(|product| {
             !store
                 .conn()
@@ -229,7 +229,7 @@ pub fn gate_import_product_batch(
         .count() as i64;
     store
         .ensure_quota_allows(
-            oz_core::downgrade::QuotaDimension::Products,
+            kasirmu_core::downgrade::QuotaDimension::Products,
             &tier,
             new_products,
         )
@@ -256,7 +256,7 @@ pub fn gate_import_user_batch(
     let tier = store.resolve_tier_fail_closed()?;
     let new_users = users
         .iter()
-        .filter_map(|val| serde_json::from_value::<oz_core::User>(val.clone()).ok())
+        .filter_map(|val| serde_json::from_value::<kasirmu_core::User>(val.clone()).ok())
         .filter(|user| {
             !store
                 .conn()
@@ -269,7 +269,7 @@ pub fn gate_import_user_batch(
         })
         .count() as i64;
     store
-        .ensure_quota_allows(oz_core::downgrade::QuotaDimension::Staff, &tier, new_users)
+        .ensure_quota_allows(kasirmu_core::downgrade::QuotaDimension::Staff, &tier, new_users)
         .map_err(BridgeError::from)?;
     Ok(new_users)
 }
@@ -368,11 +368,11 @@ pub async fn export_data(
     args: ExportDataArgs,
 ) -> Result<ExportDataResult, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SETTINGS_EDIT)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SETTINGS_EDIT)
         .await?;
     // C-1: Contain output path — reject path traversal.
     validate_contained_path(&args.output_path)?;
-    use oz_core::ozpkg::OzpkgPayload;
+    use kasirmu_core::ozpkg::OzpkgPayload;
 
     let conn = ctx.lock_global().await;
     let store = Store::new(&conn);
@@ -523,7 +523,7 @@ pub async fn import_preview(
     args: ImportPreviewArgs,
 ) -> Result<ImportPreviewResult, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SETTINGS_EDIT)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SETTINGS_EDIT)
         .await?;
     // C-1: Contain input path — reject path traversal.
     validate_contained_path(&args.file_path)?;
@@ -552,7 +552,7 @@ pub async fn import_data(
     args: ImportDataArgs,
 ) -> Result<ImportDataResult, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SETTINGS_EDIT)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SETTINGS_EDIT)
         .await?;
     // C-1: Contain input path — reject path traversal.
     validate_contained_path(&args.file_path)?;
@@ -583,7 +583,7 @@ pub async fn import_data(
 
     let mut products_imported = 0;
     for val in &payload.products {
-        if let Ok(product) = serde_json::from_value::<oz_core::Product>(val.clone()) {
+        if let Ok(product) = serde_json::from_value::<kasirmu_core::Product>(val.clone()) {
             let exists = tx
                 .query_row(
                     "SELECT 1 FROM products WHERE sku = ?1",
@@ -615,7 +615,7 @@ pub async fn import_data(
 
     let mut categories_imported = 0;
     for val in &payload.categories {
-        if let Ok(cat) = serde_json::from_value::<oz_core::Category>(val.clone()) {
+        if let Ok(cat) = serde_json::from_value::<kasirmu_core::Category>(val.clone()) {
             let colour = if cat.colour.is_empty() {
                 "#6366f1"
             } else {
@@ -647,7 +647,7 @@ pub async fn import_data(
     let mut sales_imported = 0;
     if let Some(ref sales) = payload.sales {
         for val in sales {
-            if let Ok(sale) = serde_json::from_value::<oz_core::Sale>(val.clone()) {
+            if let Ok(sale) = serde_json::from_value::<kasirmu_core::Sale>(val.clone()) {
                 let exists = store
                     .conn()
                     .query_row(
@@ -671,7 +671,7 @@ pub async fn import_data(
     let mut customers_imported = 0;
     if let Some(ref customers) = payload.customers {
         for val in customers {
-            if let Ok(cust) = serde_json::from_value::<oz_core::Customer>(val.clone()) {
+            if let Ok(cust) = serde_json::from_value::<kasirmu_core::Customer>(val.clone()) {
                 let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
                 let exists = store
                     .conn()
@@ -703,7 +703,7 @@ pub async fn import_data(
     let mut users_imported = 0;
     if let Some(ref users) = payload.users {
         for val in users {
-            if let Ok(user) = serde_json::from_value::<oz_core::User>(val.clone()) {
+            if let Ok(user) = serde_json::from_value::<kasirmu_core::User>(val.clone()) {
                 let exists = store
                     .conn()
                     .query_row(

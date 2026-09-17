@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use tauri::{Emitter, State};
 
-use oz_core::KdsOrder;
+use kasirmu_core::KdsOrder;
 use kasirmu_lan::{
     KdsLineItemBumped, KdsOrderPlaced, KdsOrderReady, KdsOrderRecalled, KdsQueueSnapshot,
     KdsQueueTicket, KdsSyncEvent,
@@ -32,7 +32,7 @@ use crate::state::AppState;
 #[allow(unused_imports)] // sibling kds_tests.rs depends on it
 use crate::commands::topology::TOPOLOGY_RUNTIME_SETTING_KEY;
 #[allow(unused_imports)] // sibling kds_tests.rs depends on it
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 
 use kasirmu_bridge::ctx::{BridgeCtx, EventSink};
 pub use kasirmu_bridge::kds::{
@@ -166,7 +166,7 @@ pub async fn get_kds_queue_scoped(
 #[tauri::command]
 pub async fn update_kds_order_items_scoped(
     session_token: String,
-    args: oz_core::UpdateKdsOrderItemsInput,
+    args: kasirmu_core::UpdateKdsOrderItemsInput,
     state: State<'_, AppState>,
 ) -> Result<KdsOrder, AppError> {
     let ctx = state.bridge_ctx();
@@ -333,7 +333,7 @@ pub async fn get_kds_order_lines_scoped(
     session_token: String,
     order_id: String,
     state: State<'_, AppState>,
-) -> Result<Vec<oz_core::KdsLineItem>, AppError> {
+) -> Result<Vec<kasirmu_core::KdsLineItem>, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::kds::get_kds_order_lines_scoped(&ctx, &session_token, &order_id)
         .await
@@ -356,7 +356,7 @@ pub async fn update_kds_line_item_status_scoped(
     item_id: String,
     status: String,
     state: State<'_, AppState>,
-) -> Result<oz_core::KdsLineItem, AppError> {
+) -> Result<kasirmu_core::KdsLineItem, AppError> {
     let cache = state.kds_queue_cache.clone();
     let ctx = state.bridge_ctx();
     let item =

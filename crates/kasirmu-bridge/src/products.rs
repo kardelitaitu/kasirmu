@@ -21,14 +21,14 @@
 use serde::{Deserialize, Serialize};
 
 use foundation::validate_not_empty;
-use oz_core::Money;
-use oz_core::availability::UsageCounts;
-use oz_core::db::Store;
-use oz_core::entitlements::Entitlements;
-use oz_core::events::{ProductCreated, StockAdjusted};
-use oz_core::inventory::{CANONICAL_DEFAULT_LOCATION_UUID, LocationId};
-use oz_core::inventory_transaction::InventoryTransactionId;
-use oz_core::permissions;
+use kasirmu_core::Money;
+use kasirmu_core::availability::UsageCounts;
+use kasirmu_core::db::Store;
+use kasirmu_core::entitlements::Entitlements;
+use kasirmu_core::events::{ProductCreated, StockAdjusted};
+use kasirmu_core::inventory::{CANONICAL_DEFAULT_LOCATION_UUID, LocationId};
+use kasirmu_core::inventory_transaction::InventoryTransactionId;
+use kasirmu_core::permissions;
 use rusqlite::Connection;
 
 use crate::ctx::BridgeCtx;
@@ -133,7 +133,7 @@ pub fn run_list_products(conn: &Connection) -> Result<Vec<ProductDto>, BridgeErr
 /// Shared mapping from a vec of ProductWithDetails to ProductDto vec.
 fn map_products_to_dtos(
     store: &Store<'_>,
-    products: Vec<oz_core::db::ProductWithDetails>,
+    products: Vec<kasirmu_core::db::ProductWithDetails>,
 ) -> Result<Vec<ProductDto>, BridgeError> {
     // PROD-12: batch-load tax assignments in ONE query instead of one
     // `get_product_tax_rates` call per product (N+1 catalog-load pattern).
@@ -222,7 +222,7 @@ pub fn run_lookup_product_by_sku(
 /// Shared mapping from `ProductWithDetails` to `ProductDto`.
 fn map_pwd_to_dto(
     store: &Store<'_>,
-    pwd: Option<oz_core::db::ProductWithDetails>,
+    pwd: Option<kasirmu_core::db::ProductWithDetails>,
 ) -> Result<Option<ProductDto>, BridgeError> {
     let tax_rate_ids = match pwd {
         Some(ref p) => store
@@ -510,10 +510,10 @@ pub async fn adjust_stock_scoped(
             &loc,
             Some(&args.reason),
             Some(&InventoryTransactionId::new()),
-            Some(&oz_core::terminal::TerminalId::from(
+            Some(&kasirmu_core::terminal::TerminalId::from(
                 session.terminal_id.as_str(),
             )),
-            Some(&oz_core::user::UserId::from(session.user_id.clone())),
+            Some(&kasirmu_core::user::UserId::from(session.user_id.clone())),
         )?;
         tx.commit()
             .map_err(|e| BridgeError::Internal(format!("commit tx: {e}")))?;
@@ -684,8 +684,8 @@ pub async fn create_scoped(
     // comes from the global identity DB; the count from the store DB.
     let sub = {
         let global_db = ctx.lock_global().await;
-        oz_core::TenantSubscription::validate_clock_rollback(&global_db)?;
-        oz_core::TenantSubscription::load(&global_db, "default")?
+        kasirmu_core::TenantSubscription::validate_clock_rollback(&global_db)?;
+        kasirmu_core::TenantSubscription::load(&global_db, "default")?
             .ok_or_else(|| BridgeError::Internal("default tenant subscription not found".into()))?
     };
     sub.verify_signature()?;
@@ -702,7 +702,7 @@ pub async fn create_scoped(
             &Entitlements::from_subscription(&sub, UsageCounts::default()).tier,
         )?;
 
-        let currency: oz_core::Currency = args
+        let currency: kasirmu_core::Currency = args
             .currency
             .parse()
             .map_err(|_| BridgeError::Invalid(format!("invalid currency '{}'", args.currency)))?;
@@ -720,7 +720,7 @@ pub async fn create_scoped(
             args.barcode.as_deref(),
             args.initial_stock,
             Some(&args.product_type),
-            &oz_core::db::CreateProductAttributes {
+            &kasirmu_core::db::CreateProductAttributes {
                 cost_minor: args.cost_minor,
                 brand: args.brand.clone(),
                 rack_location: args.rack_location.clone(),
@@ -848,8 +848,8 @@ impl UpdateProductArgs {}
 
 impl UpdateProductScopedArgs {
     /// Map the PATCH-style attribute fields onto the core update struct.
-    fn to_update_attributes(&self) -> oz_core::db::UpdateProductAttributes {
-        oz_core::db::UpdateProductAttributes {
+    fn to_update_attributes(&self) -> kasirmu_core::db::UpdateProductAttributes {
+        kasirmu_core::db::UpdateProductAttributes {
             cost_minor: self.cost_minor,
             brand: self.brand.clone(),
             rack_location: self.rack_location.clone(),
@@ -908,7 +908,7 @@ pub async fn update_scoped(
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
         let store = Store::new(&db);
 
-        let currency: oz_core::Currency = args
+        let currency: kasirmu_core::Currency = args
             .currency
             .parse()
             .map_err(|_| BridgeError::Invalid(format!("invalid currency '{}'", args.currency)))?;

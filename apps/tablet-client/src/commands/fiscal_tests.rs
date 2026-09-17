@@ -5,8 +5,8 @@ use super::*;
 // A `#[path]` test module inherits the parent's imports through `use super::*`, so
 // removing them there broke the build here; the fix is to import them here rather
 // than to keep dead imports above.
-use oz_core::db::Store;
-use oz_core::db::fiscal::ResetPeriod;
+use kasirmu_core::db::Store;
+use kasirmu_core::db::fiscal::ResetPeriod;
 
 fn upsert_args(
     entity: &str,
@@ -29,7 +29,7 @@ const SEEDED_ENTITY: &str = "default:default-legal-entity";
 
 #[test]
 fn upsert_then_read_round_trips_the_series() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     run_upsert(&conn, &upsert_args(SEEDED_ENTITY, "invoice", 4, "yearly")).unwrap();
     let seq = store
@@ -44,7 +44,7 @@ fn upsert_then_read_round_trips_the_series() {
 
 #[test]
 fn upsert_twice_reconfigures_without_resetting_the_counter() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     run_upsert(&conn, &upsert_args(SEEDED_ENTITY, "invoice", 4, "never")).unwrap();
     conn.execute(
@@ -67,7 +67,7 @@ fn upsert_twice_reconfigures_without_resetting_the_counter() {
 
 #[test]
 fn unknown_reset_period_is_refused() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let err = run_upsert(&conn, &upsert_args(SEEDED_ENTITY, "invoice", 0, "weekly")).unwrap_err();
     match err {
         AppError::Core { message, .. } => {
@@ -79,13 +79,13 @@ fn unknown_reset_period_is_refused() {
 
 #[test]
 fn negative_padding_is_refused() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     assert!(run_upsert(&conn, &upsert_args(SEEDED_ENTITY, "invoice", -1, "never")).is_err());
 }
 
 #[test]
 fn unconfigured_entity_kind_reads_none() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     assert!(
         store

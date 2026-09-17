@@ -23,15 +23,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 use foundation::validate_not_empty;
-use oz_core::auth::LoginSession;
-use oz_core::db::Store;
-use oz_core::db::assignments::ScopeType;
-use oz_core::db::audit_security::{
+use kasirmu_core::auth::LoginSession;
+use kasirmu_core::db::Store;
+use kasirmu_core::db::assignments::ScopeType;
+use kasirmu_core::db::audit_security::{
     SECURITY_REASON_BAD_PIN, SECURITY_REASON_INACTIVE, SECURITY_REASON_RATE_LIMITED,
     SECURITY_REASON_UNKNOWN_USER, SecurityEvent,
 };
-use oz_core::session::SessionContext;
-use oz_core::subscription::TenantSubscription;
+use kasirmu_core::session::SessionContext;
+use kasirmu_core::subscription::TenantSubscription;
 use kasirmu_security::mask::mask_token;
 
 use crate::ctx::BridgeCtx;
@@ -299,7 +299,7 @@ pub fn insert_session_at(
     // Invalidate the location cache — a new session means either a fresh
     // login or a workspace switch, so cached location bindings from the
     // previous session should not carry over.
-    oz_core::location_resolver::invalidate_location_cache();
+    kasirmu_core::location_resolver::invalidate_location_cache();
 
     Ok(token)
 }
@@ -347,7 +347,7 @@ pub async fn staff_login(
     if let Err(retry_after) = store.record_login_attempt_scoped(
         &username,
         device_id.as_deref(),
-        oz_core::db::staff::LoginLimits {
+        kasirmu_core::db::staff::LoginLimits {
             max_attempts: 3,         // per-account max
             window_secs: 60,         // window secs
             device_max_attempts: 10, // per-device max
@@ -420,7 +420,7 @@ pub async fn staff_login(
     // Verify PIN against stored hash.
     // `verify_pin` fails closed (Ok(false)) on malformed/placeholder hashes;
     // the Err arm is retained for future argon2 library errors.
-    let valid = oz_core::auth::verify_pin(&args.pin, &user.pin_hash)
+    let valid = kasirmu_core::auth::verify_pin(&args.pin, &user.pin_hash)
         .map_err(|e| BridgeError::Internal(format!("PIN verification failed: {e}")))?;
 
     if !valid {
@@ -692,7 +692,7 @@ pub async fn verify_pin(
     if let Err(retry_after) = store.record_login_attempt_scoped(
         &session.user_id,
         None,
-        oz_core::db::staff::LoginLimits {
+        kasirmu_core::db::staff::LoginLimits {
             max_attempts: 5,         // per-account max
             window_secs: 60,         // window secs
             device_max_attempts: 10, // per-device max (no device dimension here)
@@ -713,7 +713,7 @@ pub async fn verify_pin(
     let user = store
         .get_user(&session.user_id)?
         .ok_or_else(|| BridgeError::Invalid("user not found".into()))?;
-    let valid = oz_core::auth::verify_pin(pin, &user.pin_hash)
+    let valid = kasirmu_core::auth::verify_pin(pin, &user.pin_hash)
         .map_err(|e| BridgeError::Internal(format!("PIN verification failed: {e}")))?;
     if valid {
         // PIN correct — clear the limiter for this account.
@@ -1111,7 +1111,7 @@ pub async fn switch_organization(
         let user = store
             .get_user(&user_id)?
             .ok_or_else(|| BridgeError::Invalid("user not found".into()))?;
-        let valid = oz_core::auth::verify_pin(pin, &user.pin_hash)
+        let valid = kasirmu_core::auth::verify_pin(pin, &user.pin_hash)
             .map_err(|e| BridgeError::Internal(format!("PIN verification failed: {e}")))?;
         if !valid {
             tracing::warn!(
@@ -1233,7 +1233,7 @@ pub async fn impersonate_user_scoped(
     // 2. Capability gate: the operator must hold operator:impersonate. This
     //    locks the DB internally and releases before returning, so the later
     //    locks below cannot deadlock.
-    ctx.require_session_permission(&operator, oz_core::permissions::OPERATOR_IMPERSONATE)
+    ctx.require_session_permission(&operator, kasirmu_core::permissions::OPERATOR_IMPERSONATE)
         .await?;
 
     // 3. Validate the target identifier (H-3: no empty input).

@@ -28,7 +28,7 @@
 
 use tauri::{State, command};
 
-use oz_core::stock_transfer::{StockTransfer, StockTransferLine};
+use kasirmu_core::stock_transfer::{StockTransfer, StockTransferLine};
 
 use crate::error::AppError;
 use crate::state::AppState;

@@ -9,18 +9,18 @@
 //!
 //! 1. **Module registration** — `manifest.json` id must match the
 //!    `Module` trait id and declare the documented permissions.
-//! 2. **Type identity** — `oz_core::tax_rate::{TaxRate, RoundingMode}`
+//! 2. **Type identity** — `kasirmu_core::tax_rate::{TaxRate, RoundingMode}`
 //!    are *the same types* as the `modules_tax` ones (compile-time proof).
 //! 3. **DB behaviour parity** — the module repository/service must observe
-//!    exactly the same rows as `oz_core`'s `Store`, including the TAX-03
+//!    exactly the same rows as `kasirmu_core`'s `Store`, including the TAX-03
 //!    soft-delete (`is_active = 0`) policy.
 //! 4. **Serde wire shape** — `TaxRate` serializes the exact field names
 //!    the frontend `TaxRateDto` declares, so IPC payloads stay in sync.
 
 use foundation::contracts::Module;
 use modules_tax::{RoundingMode, TaxModule, TaxRate, TaxService};
-use oz_core::db::Store;
-use oz_core::migrations::fresh_db;
+use kasirmu_core::db::Store;
+use kasirmu_core::migrations::fresh_db;
 
 // ── 1. Module registration contract ─────────────────────────────────
 
@@ -58,9 +58,9 @@ fn oz_core_reexports_exact_module_types() {
     // These function-pointer assignments compile ONLY if the oz-core
     // re-export is literally the same type as the modules_tax type.
     // If someone forks the type in either crate, this fails to build.
-    let _rate: fn(oz_core::tax_rate::TaxRate) -> oz_core::tax_rate::TaxRate =
+    let _rate: fn(kasirmu_core::tax_rate::TaxRate) -> kasirmu_core::tax_rate::TaxRate =
         identity::<modules_tax::TaxRate>;
-    let _mode: fn(oz_core::tax_rate::RoundingMode) -> oz_core::tax_rate::RoundingMode =
+    let _mode: fn(kasirmu_core::tax_rate::RoundingMode) -> kasirmu_core::tax_rate::RoundingMode =
         identity::<modules_tax::RoundingMode>;
 }
 

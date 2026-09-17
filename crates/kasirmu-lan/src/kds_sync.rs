@@ -7,7 +7,7 @@
 //! event-bus bridge (same shape as `SaleCompletedHandler`/`CourseFiredHandler`
 //! in `lib.rs`), and the per-peer [`PeerSubscription`] filtering used by
 //! `handle_peer`. Station semantics mirror the frozen routing engine in
-//! `oz_core::kds`: an empty `stations` list on an event (or an empty
+//! `kasirmu_core::kds`: an empty `stations` list on an event (or an empty
 //! `station_ids` on a subscription) means "see everything" — that is the Expo
 //! surface. Ticket payloads reuse the frozen [`KdsOrder`]/[`KdsLineItem`]
 //! types; this module deliberately contains no routing logic of its own.
@@ -45,7 +45,7 @@
 use std::sync::Arc;
 
 use foundation::contracts::{DomainEvent, EventHandler, ModuleResult};
-use oz_core::kds::{KdsLineItem, KdsOrder};
+use kasirmu_core::kds::{KdsLineItem, KdsOrder};
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 

@@ -11,8 +11,8 @@ use serde::Serialize;
 use sha2::Sha256;
 use tauri::State;
 
-use oz_core::db::Store;
-use oz_core::db::workspaces::WorkspaceDto;
+use kasirmu_core::db::Store;
+use kasirmu_core::db::workspaces::WorkspaceDto;
 use platform_core::StoreDatabaseManager;
 
 use crate::commands::terminals::DEVICE_BINDING_KEYRING_NAME;

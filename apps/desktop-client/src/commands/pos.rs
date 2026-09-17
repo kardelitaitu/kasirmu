@@ -1,14 +1,14 @@
 /*
 last audited 25-07-26 by RSA-Agent (desktop-client slice C: pos head+sweep)
 crate: desktop-client | status: SAFE | lint: CLEAN
-findings: head 1-160 read + global sweep — all six Percentage::new unwraps preceded by explicit 0..=100 range checks with SAFETY comments (contains LUA-2 at consumer); ADR-20 PaymentKind marker; authz decorators present; cart/sale state machine lives in oz_core (audited). Coverage note: risk-ranked sampling, not full deep read
+findings: head 1-160 read + global sweep — all six Percentage::new unwraps preceded by explicit 0..=100 range checks with SAFETY comments (contains LUA-2 at consumer); ADR-20 PaymentKind marker; authz decorators present; cart/sale state machine lives in kasirmu_core (audited). Coverage note: risk-ranked sampling, not full deep read
 next: none | perf: N/A
 */
 //! Point-of-Sale pipeline commands: start a cart, add a line,
 //! complete the sale, hold/resume carts.
 //!
 //! These commands are the IPC surface for the POS screen. The actual
-//! cart/sale state machine lives in `oz_core`; this file translates
+//! cart/sale state machine lives in `kasirmu_core`; this file translates
 //! between the Tauri argument structs and the domain types.
 //!
 //! Carts are persisted in the SQLite `active_carts` table so they
@@ -19,9 +19,9 @@ use serde_json::Value;
 use tauri::State;
 
 #[allow(unused_imports)] // sibling pos_tests.rs depends on it
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 #[allow(unused_imports)] // sibling pos_tests.rs depends on these types
-use oz_core::{Cart, CartId, CartLine, Currency, LineId, Money, PaymentSplitArg, Sku};
+use kasirmu_core::{Cart, CartId, CartLine, Currency, LineId, Money, PaymentSplitArg, Sku};
 
 use crate::error::AppError;
 use crate::state::AppState;
@@ -163,10 +163,10 @@ pub async fn override_cart_deduction_location_scoped(
 #[tauri::command]
 pub async fn compute_cart_tax_scoped(
     session_token: String,
-    lines: Vec<oz_core::db::CartLineTaxInput>,
+    lines: Vec<kasirmu_core::db::CartLineTaxInput>,
     currency: String,
     state: State<'_, AppState>,
-) -> Result<oz_core::db::CartTaxResult, AppError> {
+) -> Result<kasirmu_core::db::CartTaxResult, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::pos::compute_cart_tax_scoped(&ctx, &session_token, lines, currency)
         .await
@@ -191,7 +191,7 @@ pub async fn hold_cart_scoped(
 pub async fn list_held_carts_scoped(
     session_token: String,
     state: State<'_, AppState>,
-) -> Result<Vec<oz_core::db::HeldCartRow>, AppError> {
+) -> Result<Vec<kasirmu_core::db::HeldCartRow>, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::pos::list_held_carts_scoped(&ctx, &session_token)
         .await
@@ -203,7 +203,7 @@ pub async fn list_held_carts_scoped(
 pub async fn list_open_bills_scoped(
     session_token: String,
     state: State<'_, AppState>,
-) -> Result<Vec<oz_core::db::HeldCartRow>, AppError> {
+) -> Result<Vec<kasirmu_core::db::HeldCartRow>, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::pos::list_open_bills_scoped(&ctx, &session_token)
         .await
@@ -216,7 +216,7 @@ pub async fn get_held_cart_scoped(
     session_token: String,
     id: String,
     state: State<'_, AppState>,
-) -> Result<Option<oz_core::db::HeldCartFull>, AppError> {
+) -> Result<Option<kasirmu_core::db::HeldCartFull>, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::pos::get_held_cart_scoped(&ctx, &session_token, id)
         .await

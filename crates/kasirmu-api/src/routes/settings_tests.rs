@@ -12,7 +12,7 @@ use tower::ServiceExt;
 
 fn state_with(admin_key: Option<&str>) -> AppState {
     AppState {
-        db: Arc::new(Mutex::new(oz_core::migrations::fresh_db())),
+        db: Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db())),
         pg: None,
         admin_key: admin_key.map(|s| s.to_owned()),
         api_secret: String::new(),
@@ -202,7 +202,7 @@ async fn password_is_encrypted_at_rest() {
     );
     let stored: SmtpConfig = serde_json::from_str(&raw).unwrap();
     assert_eq!(
-        oz_core::crypto::decrypt_smtp_at_rest(stored.password.as_deref().unwrap()).unwrap(),
+        kasirmu_core::crypto::decrypt_smtp_at_rest(stored.password.as_deref().unwrap()).unwrap(),
         "secret"
     );
 }
@@ -232,7 +232,7 @@ async fn scoped_key_falls_back_to_bare() {
     // matters for legacy deployments — seed a bare row directly (as
     // pre-endpoint provisioning would have) and read a tenant with no
     // scoped override.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     conn.execute(
         "INSERT INTO settings (key, value) VALUES ('store.name', 'Legacy Store')",
         [],
@@ -342,7 +342,7 @@ fn decrypted_password(raw: &str) -> Option<String> {
     stored
         .password
         .as_deref()
-        .map(oz_core::crypto::decrypt_smtp_at_rest)
+        .map(kasirmu_core::crypto::decrypt_smtp_at_rest)
         .and_then(Result::ok)
 }
 
@@ -609,7 +609,7 @@ async fn test_pool() -> Option<deadpool_postgres::Pool> {
         .expect("pool build");
     match pool.get().await {
         Ok(client) => {
-            if let Err(e) = client.batch_execute(oz_core::migrations::PG_INIT).await {
+            if let Err(e) = client.batch_execute(kasirmu_core::migrations::PG_INIT).await {
                 eprintln!("PG settings integration: schema apply failed: {e:?}");
                 return None;
             }
@@ -646,7 +646,7 @@ async fn pg_integration_settings_provision_per_tenant() {
     }
     let query_pool = pool.clone();
     let state = AppState {
-        db: Arc::new(Mutex::new(oz_core::migrations::fresh_db())),
+        db: Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db())),
         pg: Some(pool),
         admin_key: Some("sekret".into()),
         api_secret: String::new(),
@@ -742,7 +742,7 @@ async fn pg_integration_settings_provision_per_tenant() {
 // deny-list tests elsewhere — that list is exact equality on a whole
 // normalised key, so it can only ever catch a key this lane is able to SPELL.
 
-use oz_core::settings::keys::{SECRET_KEY_DENY_LIST, is_secret_setting_key, normalised_candidate};
+use kasirmu_core::settings::keys::{SECRET_KEY_DENY_LIST, is_secret_setting_key, normalised_candidate};
 
 /// The bases this route writes, named by the same constants the handlers use
 /// so a rename moves the case instead of rotting it.

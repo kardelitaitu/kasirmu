@@ -22,7 +22,7 @@
 
 use tauri::State;
 
-use oz_core::db::receipt_formats::EffectiveReceiptFormat;
+use kasirmu_core::db::receipt_formats::EffectiveReceiptFormat;
 
 use crate::error::AppError;
 use crate::state::AppState;

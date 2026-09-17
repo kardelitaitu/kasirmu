@@ -26,7 +26,7 @@ next: cosmetic analytics polish in fix-order | perf: DATE() non-sargable
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
-use oz_core::CoreError;
+use kasirmu_core::CoreError;
 
 /// Aggregated menu engineering row for a single product.
 #[derive(Debug, Clone, Serialize, Deserialize)]

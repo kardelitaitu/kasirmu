@@ -31,7 +31,7 @@ use kasirmu_hal::bootstrap::{
 use kasirmu_hal::drivers::edc::WirelessTarget;
 use kasirmu_hal::types::DeviceInfo;
 
-use oz_core::db::edc_terminals::EdcTerminalConfig;
+use kasirmu_core::db::edc_terminals::EdcTerminalConfig;
 
 /// Registry id the main receipt printer is looked up under.
 ///

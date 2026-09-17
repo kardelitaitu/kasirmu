@@ -1,6 +1,6 @@
 //! Tenant-filtered analytics queries for the Postgres report bundle.
 //!
-//! The Postgres mirror of `oz_core::db::reports`: report-email generation,
+//! The Postgres mirror of `kasirmu_core::db::reports`: report-email generation,
 //! bundle assembly, and the revenue / top-product / heatmap /
 //! category-breakdown / stock-alert queries. Popularity and forecast queries
 //! live in `super::popularity`; scoped settings in `super::settings_store`.
@@ -9,25 +9,25 @@
 use chrono::{NaiveDate, SecondsFormat, Utc};
 use deadpool_postgres::Pool;
 
-use oz_core::db::reports::{
+use kasirmu_core::db::reports::{
     CategoryBreakdownRow, DailyRevenueRow, HourlyHeatmapRow, LowStockAlert, MonthlyRevenueRow,
     StockAlertEvent, TopProductRow, WeeklyRevenueRow,
 };
-use oz_core::export::email_report::ReportEmailBuilder;
-use oz_core::export::email_sender::filter_analytics_bundle;
-use oz_core::export::{AnalyticsBundle, ExportConfig, ExportMetadata, ReportScheduleConfig};
+use kasirmu_core::export::email_report::ReportEmailBuilder;
+use kasirmu_core::export::email_sender::filter_analytics_bundle;
+use kasirmu_core::export::{AnalyticsBundle, ExportConfig, ExportMetadata, ReportScheduleConfig};
 
 use super::popularity::{category_forecast_pg, category_popularity_pg};
 // ── Report email generation ────────────────────────────────────────
 
 /// Generate a filtered report email from Postgres — the mirror of
-/// `oz_core::export::email_sender::generate_filtered_report_email`.
+/// `kasirmu_core::export::email_sender::generate_filtered_report_email`.
 pub async fn generate_filtered_report_email_pg(
     pool: &Pool,
     schedule: &ReportScheduleConfig,
     store_name: &str,
     tenant: &str,
-) -> Result<oz_core::export::email_report::ReportEmail, String> {
+) -> Result<kasirmu_core::export::email_report::ReportEmail, String> {
     let lookback_start = Utc::now()
         .checked_sub_signed(chrono::Duration::days(schedule.lookback_days as i64))
         .unwrap_or(Utc::now())
@@ -62,7 +62,7 @@ pub fn parse_date(s: &str) -> Result<NaiveDate, String> {
 // ── Analytics bundle (Postgres) ────────────────────────────────────
 
 /// Export a complete analytics bundle from Postgres — the mirror of
-/// `oz_core::Store::export_analytics_bundle`.
+/// `kasirmu_core::Store::export_analytics_bundle`.
 pub async fn export_analytics_bundle_pg(
     pool: &Pool,
     config: ExportConfig,
@@ -90,14 +90,14 @@ pub async fn export_analytics_bundle_pg(
         category_breakdown_pg(pool, &config.start_date, &config.end_date, tenant_id).await?;
     let low_stock_alerts = low_stock_alerts_at_location_pg(
         pool,
-        oz_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
+        kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
         config.low_stock_threshold,
         tenant_id,
     )
     .await?;
     let active_stock_alerts = active_stock_alerts_pg(
         pool,
-        oz_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
+        kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
         tenant_id,
     )
     .await?;
@@ -135,7 +135,7 @@ pub async fn export_analytics_bundle_pg(
 }
 
 /// Compute revenue profit fields from a row (shared by the daily/weekly/
-/// monthly queries — same arithmetic as `oz_core::db::reports`).
+/// monthly queries — same arithmetic as `kasirmu_core::db::reports`).
 fn revenue_profit_fields(total_minor: i64, cogs_minor: i64) -> (i64, i64, i64, f64) {
     let gross_profit_minor = total_minor - cogs_minor;
     let gross_margin_percent = if total_minor > 0 {
@@ -152,7 +152,7 @@ fn revenue_profit_fields(total_minor: i64, cogs_minor: i64) -> (i64, i64, i64, f
 }
 
 /// Daily revenue for a date range (Postgres mirror of
-/// `oz_core::db::reports::Store::daily_revenue`).
+/// `kasirmu_core::db::reports::Store::daily_revenue`).
 pub async fn daily_revenue_pg(
     pool: &Pool,
     start_date: &str,

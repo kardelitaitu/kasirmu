@@ -14,11 +14,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use oz_core::availability::UsageCounts;
-use oz_core::db::Store;
-use oz_core::entitlements::build_entitlements;
-use oz_core::permissions;
-use oz_core::subscription::SubscriptionTier;
+use kasirmu_core::availability::UsageCounts;
+use kasirmu_core::db::Store;
+use kasirmu_core::entitlements::build_entitlements;
+use kasirmu_core::permissions;
+use kasirmu_core::subscription::SubscriptionTier;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -46,9 +46,9 @@ pub struct AuditEntryDto {
     pub created_at: String,
 }
 
-impl From<oz_core::AuditEntry> for AuditEntryDto {
-    /// Converts a core [`oz_core::AuditEntry`] into a front-end [`AuditEntryDto`].
-    fn from(e: oz_core::AuditEntry) -> Self {
+impl From<kasirmu_core::AuditEntry> for AuditEntryDto {
+    /// Converts a core [`kasirmu_core::AuditEntry`] into a front-end [`AuditEntryDto`].
+    fn from(e: kasirmu_core::AuditEntry) -> Self {
         Self {
             id: e.id,
             user_id: e.user_id,
@@ -300,8 +300,8 @@ pub struct ReviewCheckpointDto {
     pub reviewed_through_id: String,
 }
 
-impl From<oz_core::AuditReviewCheckpoint> for ReviewCheckpointDto {
-    fn from(cp: oz_core::AuditReviewCheckpoint) -> Self {
+impl From<kasirmu_core::AuditReviewCheckpoint> for ReviewCheckpointDto {
+    fn from(cp: kasirmu_core::AuditReviewCheckpoint) -> Self {
         Self {
             id: cp.id,
             store_id: cp.store_id,
@@ -378,7 +378,7 @@ pub async fn mark_audit_reviewed_scoped(
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
-    let cp = oz_core::AuditReviewCheckpoint {
+    let cp = kasirmu_core::AuditReviewCheckpoint {
         id: uuid::Uuid::now_v7().to_string(),
         store_id: session.store_id.clone(),
         reviewer_user_id: session.user_id.clone(),
@@ -428,7 +428,7 @@ pub fn csv_row(fields: &[&str]) -> String {
 /// from audit entries. Shared by the full-log export and the
 /// security-event export so the columns, BOM and RFC-4180 quoting can
 /// never drift apart.
-fn audit_csv(entries: &[oz_core::AuditEntry]) -> String {
+fn audit_csv(entries: &[kasirmu_core::AuditEntry]) -> String {
     let mut csv = String::with_capacity(entries.len() * 160 + 256);
     csv.push('\u{FEFF}'); // UTF-8 BOM for spreadsheet compatibility
     csv.push_str("id,created_at,user_id,action,target_type,target_id,outcome,details\n");
@@ -484,7 +484,7 @@ pub async fn export_audit_log_scoped(
         serde_json::to_string(&args.query).unwrap_or_else(|_| "null".into()),
         entries.len(),
     );
-    store.log_audit(&oz_core::AuditEntry::new(
+    store.log_audit(&kasirmu_core::AuditEntry::new(
         session.user_id.clone(),
         "system.export",
         Some("audit"),
@@ -576,8 +576,8 @@ pub async fn export_security_events_scoped(
     // SYSTEM_ACTOR constant (currently the same string, but the mapping
     // is the contract, not the coincidence).
     let actor = match args.actor.as_deref() {
-        Some(a) if a == oz_core::db::audit_security::SYSTEM_ACTOR => {
-            Some(oz_core::db::audit_security::SYSTEM_ACTOR.to_string())
+        Some(a) if a == kasirmu_core::db::audit_security::SYSTEM_ACTOR => {
+            Some(kasirmu_core::db::audit_security::SYSTEM_ACTOR.to_string())
         }
         other => other.map(str::to_string),
     };
@@ -587,7 +587,7 @@ pub async fn export_security_events_scoped(
     let entries = {
         let db = ctx.lock_global().await;
         Store::new(&db).list_audit_entries_export_filtered(
-            Some(oz_core::db::audit_security::SECURITY_ACTIONS),
+            Some(kasirmu_core::db::audit_security::SECURITY_ACTIONS),
             actor.as_deref(),
             created_after,
             created_before,
@@ -611,7 +611,7 @@ pub async fn export_security_events_scoped(
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        Store::new(&db).log_audit(&oz_core::AuditEntry::new(
+        Store::new(&db).log_audit(&kasirmu_core::AuditEntry::new(
             session.user_id.clone(),
             "system.export",
             Some("audit"),

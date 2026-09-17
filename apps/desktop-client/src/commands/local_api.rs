@@ -28,7 +28,7 @@ use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::local_api::{self, LocalApiStatus};
 use crate::state::AppState;
-use oz_core::permissions;
+use kasirmu_core::permissions;
 
 /// Resolve the local image store directory (same layout as
 /// `commands::products_images`: `app_cache_dir()/images`).
@@ -42,7 +42,7 @@ fn image_dir_for(app: &tauri::AppHandle) -> Result<PathBuf, AppError> {
 
 /// Persist a `local_api.*` setting on the global DB.
 fn persist_setting(conn: &Connection, key: &str, value: &str) -> Result<(), AppError> {
-    oz_core::Settings::set(conn, key, value)
+    kasirmu_core::Settings::set(conn, key, value)
         .map_err(|e| AppError::Internal(format!("persisting {key}: {e}")))
 }
 

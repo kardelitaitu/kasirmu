@@ -20,7 +20,7 @@ findings: unsafe env::set_var removed from async command path; terminal_id writt
 
 use tauri::State;
 
-use oz_core::Feature;
+use kasirmu_core::Feature;
 
 use crate::error::AppError;
 use crate::state::AppState;

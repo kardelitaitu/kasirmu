@@ -13,8 +13,8 @@
 
 use super::*;
 use crate::testing::TestBridge;
-use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
-use oz_core::migrations;
+use kasirmu_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
+use kasirmu_core::migrations;
 
 /// Global identity DB (owner / manager / staff presets) + a store manager
 /// with store-a seeded with one staff's shifts + sales. `pre_seed` runs on
@@ -61,7 +61,7 @@ fn analytics_state(pre_seed: impl FnOnce(&rusqlite::Connection)) -> TestBridge {
 fn mint_session(bridge: &TestBridge, token: &str, user: &str, role: &str, store: &str) {
     bridge.sessions().write().unwrap().insert(
         token.into(),
-        oz_core::session::SessionContext::new(
+        kasirmu_core::session::SessionContext::new(
             user.into(),
             role.into(),
             "terminal-1".into(),

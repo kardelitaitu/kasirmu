@@ -28,9 +28,9 @@ next: none | perf: N/A
 use std::sync::Arc;
 use std::time::Duration;
 
-use oz_core::CoreError;
-use oz_core::settings::Settings;
-use oz_core::sync_client;
+use kasirmu_core::CoreError;
+use kasirmu_core::settings::Settings;
+use kasirmu_core::sync_client;
 use rusqlite::Connection;
 use tokio::sync::Mutex;
 

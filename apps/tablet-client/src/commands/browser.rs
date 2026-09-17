@@ -32,9 +32,9 @@ pub use kasirmu_bridge::browser::{build_image_query, urlencoding};
 pub async fn open_product_images(sku: String, state: State<'_, AppState>) -> Result<(), AppError> {
     let query = {
         let db = state.db.lock().await;
-        let store = oz_core::db::Store::new(&db);
+        let store = kasirmu_core::db::Store::new(&db);
         let product = store.get_product(&sku)?.ok_or_else(|| AppError::Core {
-            sub_kind: oz_core::CoreErrorKind::NotFound,
+            sub_kind: kasirmu_core::CoreErrorKind::NotFound,
             message: format!("product {sku} not found"),
         })?;
         build_image_query(&product.product)

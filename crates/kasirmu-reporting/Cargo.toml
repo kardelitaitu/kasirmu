@@ -12,7 +12,7 @@ description = "Analytics and CSV export engine for kasir.mu — daily summaries,
 workspace = true
 
 [dependencies]
-oz-core = { workspace = true }
+kasirmu-core = { workspace = true }
 rusqlite = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }

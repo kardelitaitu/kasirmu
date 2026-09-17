@@ -9,9 +9,9 @@
 use super::*;
 
 use crate::testing::seeded_row_loads;
-use oz_core::session::SessionContext;
-use oz_core::subscription::TenantSubscription;
-use oz_core::workspace_type::RESTAURANT_POS;
+use kasirmu_core::session::SessionContext;
+use kasirmu_core::subscription::TenantSubscription;
+use kasirmu_core::workspace_type::RESTAURANT_POS;
 
 // -- The release leg for a PROPAGATING command (crate::testing, RULE at :204-208) --
 
@@ -57,7 +57,7 @@ async fn assert_signature_denial(
         matches!(
             err,
             BridgeError::Core {
-                sub_kind: oz_core::CoreErrorKind::InvalidSubscriptionSignature,
+                sub_kind: kasirmu_core::CoreErrorKind::InvalidSubscriptionSignature,
                 ..
             }
         ),
@@ -349,7 +349,7 @@ async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
             "relationship_type": "stock-routing"
         }]
     });
-    oz_core::Settings::set(&global, &runtime_key, &runtime_plan.to_string()).unwrap();
+    kasirmu_core::Settings::set(&global, &runtime_key, &runtime_plan.to_string()).unwrap();
     {
         let identity_store = Store::new(&global);
         identity_store.seed_default_roles().unwrap();
@@ -1594,9 +1594,9 @@ async fn whitespace_only_attempt_id_is_unguarded_like_the_tablet() {
 }
 // ── Tax scope at the command layer (tax-separation P1) ─────────────
 
-fn single_line_cart() -> oz_core::Cart {
-    let mut cart = oz_core::Cart::new(usd());
-    cart.add_line(oz_core::CartLine::new(Sku::new("COFFEE"), 2, price(350)))
+fn single_line_cart() -> kasirmu_core::Cart {
+    let mut cart = kasirmu_core::Cart::new(usd());
+    cart.add_line(kasirmu_core::CartLine::new(Sku::new("COFFEE"), 2, price(350)))
         .unwrap();
     cart
 }
@@ -1651,9 +1651,9 @@ fn a_store_scoped_rate_wins_over_the_tenant_default_through_the_command_door() {
         [],
     )
     .unwrap();
-    let mode = oz_core::Settings::get_tax_rounding_mode(&db).unwrap();
+    let mode = kasirmu_core::Settings::get_tax_rounding_mode(&db).unwrap();
 
-    let mut here = oz_core::Sale::from_cart(&single_line_cart()).unwrap();
+    let mut here = kasirmu_core::Sale::from_cart(&single_line_cart()).unwrap();
     store
         .compute_sale_tax_for_location(
             &mut here,
@@ -1665,7 +1665,7 @@ fn a_store_scoped_rate_wins_over_the_tenant_default_through_the_command_door() {
     assert_eq!(here.lines[0].tax_rate_id.as_deref(), Some("r-here"));
     assert_eq!(here.tax_total.minor_units, 77, "11% of 700");
 
-    let mut there = oz_core::Sale::from_cart(&single_line_cart()).unwrap();
+    let mut there = kasirmu_core::Sale::from_cart(&single_line_cart()).unwrap();
     store
         .compute_sale_tax_for_location(
             &mut there,
@@ -1681,7 +1681,7 @@ fn a_store_scoped_rate_wins_over_the_tenant_default_through_the_command_door() {
 
     // The regression this exists to catch: if a future edit drops the scope
     // argument, loc-here silently gets THIS number.
-    let mut forgot = oz_core::Sale::from_cart(&single_line_cart()).unwrap();
+    let mut forgot = kasirmu_core::Sale::from_cart(&single_line_cart()).unwrap();
     store.compute_sale_tax(&mut forgot, &[], mode).unwrap();
     assert_eq!(forgot.tax_total.minor_units, 70);
 }

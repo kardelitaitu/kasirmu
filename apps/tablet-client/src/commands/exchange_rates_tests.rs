@@ -60,7 +60,7 @@ async fn create_exchange_rate_rejects_malformed_effective_date() {
 
 #[tokio::test]
 async fn create_exchange_rate_accepts_valid_input() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let app = tauri::test::mock_builder()
         .manage(AppState::for_test_with_conn(conn))
         .build(tauri::generate_context!())

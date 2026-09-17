@@ -29,7 +29,7 @@
 
 use tauri::{State, command};
 
-use oz_core::{StockCount, StockCountStatus, Store};
+use kasirmu_core::{StockCount, StockCountStatus, Store};
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
@@ -88,7 +88,7 @@ async fn require_inventory_count_permission(
     require_permission_for_user(
         &Store::new(&db),
         user_id,
-        oz_core::permissions::INVENTORY_COUNT,
+        kasirmu_core::permissions::INVENTORY_COUNT,
     )
 }
 

@@ -6,7 +6,7 @@
 //! `BridgeError::`. Settings keys, transaction boundaries, gate order and
 //! log lines are byte-identical to the original command bodies.
 
-use oz_core::{FeatureRegistry, Settings, Store, features};
+use kasirmu_core::{FeatureRegistry, Settings, Store, features};
 use serde::{Deserialize, Serialize};
 
 use crate::ctx::BridgeCtx;
@@ -64,7 +64,7 @@ pub async fn get_enabled_features(
 
     let features: Vec<String> = registry
         .enabled_features()
-        .map(|f| oz_core::features::feature_key(f).to_string())
+        .map(|f| kasirmu_core::features::feature_key(f).to_string())
         .collect();
 
     Ok(EnabledFeaturesResult { features })
@@ -112,16 +112,16 @@ pub async fn complete_setup(
         Settings::prune_stale_features(&tx, &registry)?;
 
         // 4. Save the preset name.
-        Settings::set(&tx, oz_core::settings::keys::STORE_PRESET, &args.preset)?;
+        Settings::set(&tx, kasirmu_core::settings::keys::STORE_PRESET, &args.preset)?;
 
         // 5. Mark setup as complete.
-        Settings::set(&tx, oz_core::settings::keys::SETUP_COMPLETE, "1")?;
+        Settings::set(&tx, kasirmu_core::settings::keys::SETUP_COMPLETE, "1")?;
 
         // 6. Set default currency.
         Settings::set_default_currency(&tx, &args.default_currency)?;
 
         // 7. Dismiss the wizard so it doesn't show on next launch.
-        Settings::set(&tx, oz_core::settings::keys::SHOW_SETUP_WIZARD, "false")?;
+        Settings::set(&tx, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD, "false")?;
     }
     tx.commit()?;
 
@@ -141,11 +141,11 @@ pub async fn complete_setup(
 pub async fn get_setup_status(ctx: &BridgeCtx<'_>) -> Result<SetupStatus, BridgeError> {
     let db = ctx.lock_global().await;
 
-    let completed = Settings::get(&db, oz_core::settings::keys::SHOW_SETUP_WIZARD)?
+    let completed = Settings::get(&db, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD)?
         .map(|v| v == "false")
         .unwrap_or(false);
 
-    let preset = Settings::get(&db, oz_core::settings::keys::STORE_PRESET)?;
+    let preset = Settings::get(&db, kasirmu_core::settings::keys::STORE_PRESET)?;
 
     Ok(SetupStatus { completed, preset })
 }
@@ -158,7 +158,7 @@ pub async fn seed_default_roles_scoped(
     let session = ctx.resolve_session(session_token)?;
     // Authorize against the GLOBAL identity DB: users + roles live there,
     // never in the store DB (which this command is about to seed).
-    ctx.require_session_permission(&session, oz_core::permissions::STAFF_MANAGE_ROLES)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::STAFF_MANAGE_ROLES)
         .await?;
     let conn = ctx
         .db_manager
@@ -180,7 +180,7 @@ pub async fn seed_default_roles_scoped(
 /// `show_setup_wizard = false` flag — no preset or features are saved.
 pub async fn dismiss_setup_wizard(ctx: &BridgeCtx<'_>) -> Result<(), BridgeError> {
     let db = ctx.lock_global().await;
-    Settings::set(&db, oz_core::settings::keys::SHOW_SETUP_WIZARD, "false")?;
+    Settings::set(&db, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD, "false")?;
     tracing::info!("setup wizard dismissed (skip)");
     Ok(())
 }

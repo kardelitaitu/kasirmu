@@ -9,7 +9,7 @@ use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn fresh_db() -> rusqlite::Connection {
-    oz_core::migrations::fresh_db()
+    kasirmu_core::migrations::fresh_db()
 }
 
 fn test_token(tenant_id: Option<&str>) -> String {

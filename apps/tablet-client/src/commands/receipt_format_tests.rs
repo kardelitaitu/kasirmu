@@ -2,9 +2,9 @@
 
 use super::*;
 use crate::state::AppState;
-use oz_core::db::receipt_formats::ReceiptSource;
-use oz_core::migrations;
-use oz_core::session::SessionContext;
+use kasirmu_core::db::receipt_formats::ReceiptSource;
+use kasirmu_core::migrations;
+use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager;
 

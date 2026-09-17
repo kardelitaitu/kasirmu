@@ -16,13 +16,13 @@
 
 use serde::{Deserialize, Serialize};
 
-use oz_core::sync_client::{self, SyncAttemptResult, SyncConfig};
+use kasirmu_core::sync_client::{self, SyncAttemptResult, SyncConfig};
 
-use oz_core::{OfflineQueueItem, RemoteSyncFailure, Store, SyncPriority};
+use kasirmu_core::{OfflineQueueItem, RemoteSyncFailure, Store, SyncPriority};
 
 use foundation::validate_not_empty;
 
-use oz_core::permissions;
+use kasirmu_core::permissions;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -230,7 +230,7 @@ pub async fn enqueue_offline_scoped(
     // be held across the global-db .await.
     {
         let global_db = ctx.lock_global().await;
-        let sub = oz_core::TenantSubscription::load(&global_db, "default")?
+        let sub = kasirmu_core::TenantSubscription::load(&global_db, "default")?
             .ok_or_else(|| BridgeError::Internal("default tenant subscription not found".into()))?;
         sub.verify_signature()?;
         sub.enforce_pos_writable()?;

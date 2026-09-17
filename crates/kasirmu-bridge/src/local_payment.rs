@@ -7,9 +7,9 @@
 //! ADR #47 location-resource gate), the single store lock with no drop
 //! (read-after-write on the same guard), SQL and error strings are unchanged.
 
-use oz_core::db::assignments::ScopeType;
-use oz_core::db::payment_methods::{EffectivePaymentRail, NewPaymentRail};
-use oz_core::{Store, permissions};
+use kasirmu_core::db::assignments::ScopeType;
+use kasirmu_core::db::payment_methods::{EffectivePaymentRail, NewPaymentRail};
+use kasirmu_core::{Store, permissions};
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;

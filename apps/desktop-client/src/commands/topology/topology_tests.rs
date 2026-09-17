@@ -10,7 +10,7 @@
 //! via `use super::topology_tests::*`.
 
 use super::*;
-use oz_core::migrations;
+use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 pub(crate) fn fresh_conn() -> Connection {
@@ -158,7 +158,7 @@ fn load_topology_data_preserves_raw_legacy_null_ports() {
     // load boundary deliberately stays raw.
     let conn = fresh_conn();
     let legacy_json = r#"{"nodes":[{"id":"store-1","type":"store","name":"Legacy Store","x":0,"y":0}],"wires":[{"id":"w-legacy","from_node_id":"store-1","to_node_id":"store-1","direction":"one-way"}]}"#;
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, legacy_json).unwrap();
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, legacy_json).unwrap();
 
     let loaded = load_topology_data(&conn).unwrap().unwrap();
     assert_eq!(loaded.wires.len(), 1);
@@ -166,7 +166,7 @@ fn load_topology_data_preserves_raw_legacy_null_ports() {
     assert_eq!(loaded.wires[0].from_port, None);
     assert_eq!(loaded.wires[0].to_port, None);
     // The JSON key round-trips untouched (no write-back side effects).
-    let stored = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let stored = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     assert_eq!(stored, legacy_json);
@@ -229,7 +229,7 @@ fn save_and_load_empty_graph() {
 #[test]
 fn save_topology_data_returns_error_on_corrupt_existing_data() {
     let conn = fresh_conn();
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, "not valid json").unwrap();
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, "not valid json").unwrap();
     let result = load_topology_data(&conn);
     assert!(result.is_err());
 }

@@ -8,8 +8,8 @@
 //! `mod tests` in `lib.rs` (F-018).
 
 use super::*;
-use oz_core::offline::OfflineQueueItem;
-use oz_core::sync_client::SyncConfig;
+use kasirmu_core::offline::OfflineQueueItem;
+use kasirmu_core::sync_client::SyncConfig;
 
 // ── build_batches ────────────────────────────────────────────
 
@@ -64,7 +64,7 @@ fn build_batches_respects_byte_limit() {
 
 #[test]
 fn build_batches_sorts_by_priority() {
-    use oz_core::offline::SyncPriority;
+    use kasirmu_core::offline::SyncPriority;
 
     let critical = OfflineQueueItem::with_priority("a", "{}", SyncPriority::Critical);
     let normal = OfflineQueueItem::with_priority("b", "{}", SyncPriority::Normal);
@@ -125,7 +125,7 @@ fn sync_error_config_display() {
 
 #[test]
 fn sync_error_database_display() {
-    let err = SyncError::Database(oz_core::CoreError::NotFound {
+    let err = SyncError::Database(kasirmu_core::CoreError::NotFound {
         entity: "item",
         id: "x".into(),
     });
@@ -221,8 +221,8 @@ fn sync_result_err() {
 
 #[tokio::test]
 async fn run_sync_cycle_propagates_snapshot_server_migrated() {
-    use oz_core::db::Store;
-    use oz_core::migrations;
+    use kasirmu_core::db::Store;
+    use kasirmu_core::migrations;
 
     let new_url = "https://snapshot-propagated.example.com";
     // Server returns 410 on pull → triggers AnchorExpired → snapshot
@@ -258,8 +258,8 @@ async fn run_sync_cycle_propagates_snapshot_server_migrated() {
 
 #[tokio::test]
 async fn run_sync_cycle_propagates_pull_server_migrated() {
-    use oz_core::db::Store;
-    use oz_core::migrations;
+    use kasirmu_core::db::Store;
+    use kasirmu_core::migrations;
 
     let new_url = "https://pull-propagated.example.com";
     // Server returns 421 on all endpoints — pull gets it directly.
@@ -310,7 +310,7 @@ async fn spawn_replaying_engine_server() -> String {
         })
     }
     async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
-        let mut item = oz_core::offline::OfflineQueueItem::new(
+        let mut item = kasirmu_core::offline::OfflineQueueItem::new(
             "stock.adjusted",
             r#"{"sku":"COFFEE","delta":10}"#,
         );
@@ -347,8 +347,8 @@ async fn spawn_replaying_engine_server() -> String {
 /// re-applied the same remote mutations (silent inventory corruption).
 #[tokio::test]
 async fn engine_applies_replayed_remote_item_only_once() {
-    use oz_core::db::Store;
-    use oz_core::migrations;
+    use kasirmu_core::db::Store;
+    use kasirmu_core::migrations;
 
     let server_url = spawn_replaying_engine_server().await;
     let db = migrations::fresh_db();
@@ -422,7 +422,7 @@ async fn spawn_poison_engine_server() -> String {
         })
     }
     async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
-        let mut item = oz_core::offline::OfflineQueueItem::new(
+        let mut item = kasirmu_core::offline::OfflineQueueItem::new(
             "complete_sale",
             r#"{"line_items":[{"sku":"MISSING","qty":1}]}"#,
         );
@@ -454,8 +454,8 @@ async fn spawn_poison_engine_server() -> String {
 /// dead-letters it.
 #[tokio::test]
 async fn engine_retains_anchor_until_remote_item_is_dead_lettered() {
-    use oz_core::db::Store;
-    use oz_core::migrations;
+    use kasirmu_core::db::Store;
+    use kasirmu_core::migrations;
 
     let server_url = spawn_poison_engine_server().await;
     let db = migrations::fresh_db();
@@ -550,7 +550,7 @@ async fn spawn_anchor_expired_then_healthy_server()
             )
                 .into_response();
         }
-        let mut item = oz_core::offline::OfflineQueueItem::new(
+        let mut item = kasirmu_core::offline::OfflineQueueItem::new(
             "stock.adjusted",
             r#"{"sku":"COFFEE","delta":5}"#,
         );
@@ -615,8 +615,8 @@ async fn spawn_anchor_expired_then_healthy_server()
 /// and re-fetched the whole snapshot.
 #[tokio::test]
 async fn engine_resets_anchor_after_snapshot_import() {
-    use oz_core::db::Store;
-    use oz_core::migrations;
+    use kasirmu_core::db::Store;
+    use kasirmu_core::migrations;
     use std::sync::atomic::Ordering;
 
     let (server_url, snapshot_hits) = spawn_anchor_expired_then_healthy_server().await;
@@ -765,7 +765,7 @@ fn user(username: &str, display_name: &str, role_id: &str) -> transport::Snapsho
 
 #[test]
 fn import_snapshot_empty_returns_zero() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     let snapshot = transport::SyncSnapshotResponse {
         version: 1,
@@ -779,7 +779,7 @@ fn import_snapshot_empty_returns_zero() {
 
 #[test]
 fn import_snapshot_single_product() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     let snapshot = transport::SyncSnapshotResponse {
         version: 1,
@@ -812,7 +812,7 @@ fn import_snapshot_single_product() {
 fn import_snapshot_rejects_blank_sku() {
     // RUST-04: blank required fields must be rejected BEFORE the
     // transaction opens (previously they imported with defaults).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     let snapshot = transport::SyncSnapshotResponse {
         version: 1,
@@ -844,7 +844,7 @@ fn import_snapshot_rejects_blank_sku() {
 
 #[test]
 fn import_snapshot_rejects_blank_name() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     let snapshot = transport::SyncSnapshotResponse {
         version: 1,
@@ -876,7 +876,7 @@ fn import_snapshot_rejects_blank_name() {
 
 #[test]
 fn import_snapshot_rejects_negative_price() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     let snapshot = transport::SyncSnapshotResponse {
         version: 1,
@@ -907,7 +907,7 @@ fn import_snapshot_rejects_negative_price() {
 
 #[test]
 fn import_snapshot_rejects_blank_tax_rate() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     let snapshot = transport::SyncSnapshotResponse {
         version: 1,
@@ -940,7 +940,7 @@ fn import_snapshot_rejects_blank_user_fields() {
     // RUST-04: users must carry username/display_name/role_id;
     // previously a missing role_id imported as the empty string
     // (masking a malformed snapshot).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_role(&conn, "role-real");
     let store = Store::new(&conn);
     let snapshot = transport::SyncSnapshotResponse {
@@ -968,7 +968,7 @@ fn import_snapshot_rejects_blank_user_fields() {
 
 #[test]
 fn import_snapshot_rejects_newer_schema_version() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     let snapshot = transport::SyncSnapshotResponse {
         version: 999,
@@ -986,7 +986,7 @@ fn import_snapshot_rejects_newer_schema_version() {
 
 #[test]
 fn import_snapshot_idempotent_second_call_same_count() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_role(&conn, "role-1");
     let store = Store::new(&conn);
     let snapshot = transport::SyncSnapshotResponse {
@@ -1007,7 +1007,7 @@ fn import_snapshot_idempotent_second_call_same_count() {
 
 #[test]
 fn import_snapshot_overwrites_existing_product() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     let snapshot_v1 = transport::SyncSnapshotResponse {
         version: 1,
@@ -1030,7 +1030,7 @@ fn import_snapshot_overwrites_existing_product() {
 
 #[test]
 fn import_snapshot_overwrites_existing_user() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_role(&conn, "role-admin");
     let store = Store::new(&conn);
     let snapshot_v1 = transport::SyncSnapshotResponse {
@@ -1082,7 +1082,7 @@ fn import_snapshot_rejects_corrupted_product() {
     // RUST-04: a corrupted row (missing required fields) is rejected at
     // deserialization; a blank name is rejected here before the
     // transaction opens — never imported with defaults.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     let snapshot = transport::SyncSnapshotResponse {
         version: 1,
@@ -1114,7 +1114,7 @@ fn import_snapshot_rejects_corrupted_product() {
 
 #[test]
 fn import_snapshot_out_of_schema_fields_ignored() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_role(&conn, "role-1");
     let store = Store::new(&conn);
     // RUST-04: unknown/extra fields stay wire-compatible — serde drops
@@ -1156,7 +1156,7 @@ fn import_snapshot_out_of_schema_fields_ignored() {
 
 #[test]
 fn import_snapshot_all_types_multiple_entities() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_role(&conn, "r1");
     seed_role(&conn, "r2");
     let store = Store::new(&conn);
@@ -1190,7 +1190,7 @@ fn import_snapshot_all_types_multiple_entities() {
 
 #[test]
 fn import_snapshot_partial_rollback_on_error() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
 
     // First import valid product data.
@@ -1229,7 +1229,7 @@ fn import_snapshot_partial_rollback_on_error() {
 
 #[test]
 fn import_snapshot_null_barcode_stored_as_null() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     let snapshot = transport::SyncSnapshotResponse {
         version: 1,
@@ -1263,7 +1263,7 @@ fn import_snapshot_preserves_store_scoping() {
     // A product tagged with store-a stays visible only to store-a (plus
     // the global catalog) — never store-b's — exercising the ?13
     // store_id write-through in the products upsert.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     conn.execute_batch(
         "INSERT INTO locations (id, name) VALUES \
              ('store-a', 'Store A'), ('store-b', 'Store B')",
@@ -1348,7 +1348,7 @@ fn import_snapshot_unknown_store_id_fails_closed_and_rolls_back() {
     // Phase B: a snapshot row tagged with a store the local DB does not
     // know must fail the FK and roll back the WHOLE import (no partial
     // products) — the same fail-closed contract as the oz-core path.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     conn.execute(
         "INSERT INTO locations (id, name) VALUES ('store-a', 'Store A')",
         [],
@@ -1461,7 +1461,7 @@ fn scoped_rate(id: &str, bps: i64) -> transport::SnapshotTaxRate {
 
 #[test]
 fn import_snapshot_lands_a_scoped_tax_rate_as_scoped() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     seed_scope(&conn, "ent-a", "loc-a");
     let snapshot = transport::SyncSnapshotResponse {
@@ -1488,7 +1488,7 @@ fn import_snapshot_lands_an_unscoped_tax_rate_as_tenant_global() {
     // The back-compat direction, pinned: a payload with NO scope keys — which
     // is every payload a pre-20260921 server sends — lands as the tenant-global
     // legacy row, exactly as it did before the columns existed.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     let snapshot = transport::SyncSnapshotResponse {
         version: 1,
@@ -1511,7 +1511,7 @@ fn import_snapshot_refuses_a_scoped_rate_whose_target_is_absent_locally() {
     // were "fail every pull for this tenant" and "flatten the scope", and
     // flattening is the money bug this whole path exists to close. Refusing one
     // row degrades to "no scoped rate here", which is what the branch had.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     seed_scope(&conn, "ent-a", "loc-a");
     let mut ghost = scoped_rate("r-ghost", 1500);
@@ -1552,7 +1552,7 @@ fn import_snapshot_refuses_a_scoped_rate_whose_target_is_absent_locally() {
 fn import_snapshot_refuses_a_rate_scoped_to_both_columns() {
     // Ambiguous, not narrower. The branch refuses rather than picking whichever
     // column it read first — the same rule TaxRateScope encodes.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     seed_scope(&conn, "ent-a", "loc-a");
     let mut both = scoped_rate("r-both", 1500);
@@ -1576,7 +1576,7 @@ fn import_snapshot_clears_a_stale_scope_when_the_server_row_is_unscoped() {
     // COALESCE. The server is the authoritative copy in a pull, so a scope
     // removed at the hub must clear at the branch — COALESCE would keep a dead
     // scope alive forever.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     seed_scope(&conn, "ent-a", "loc-a");
     conn.execute(

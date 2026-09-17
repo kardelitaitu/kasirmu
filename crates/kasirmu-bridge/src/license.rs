@@ -21,17 +21,17 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use chrono::{DateTime, Utc};
-use oz_core::Settings;
-use oz_core::crypto::{decrypt_api_key, encrypt_api_key};
-use oz_core::license_verification::{
+use kasirmu_core::Settings;
+use kasirmu_core::crypto::{decrypt_api_key, encrypt_api_key};
+use kasirmu_core::license_verification::{
     ActivateLicenseRequest, RenewLicenseRequest, SignedSubscriptionPayload,
     activate_license as core_activate_license, check_license_status as core_check_license_status,
     pause_subscription as core_pause_subscription, refresh_subscription_status_from_server,
     renew_license as core_renew_license, resume_subscription as core_resume_subscription,
     store_subscription, verify_license_signature,
 };
-use oz_core::permissions;
-use oz_core::subscription::{SubscriptionTier, TenantSubscription};
+use kasirmu_core::permissions;
+use kasirmu_core::subscription::{SubscriptionTier, TenantSubscription};
 use platform_core::settings::keys;
 
 use crate::ctx::BridgeCtx;
@@ -427,7 +427,7 @@ pub fn generate_hardware_fingerprint() -> String {
 }
 
 /// Data transfer object for server-authoritative license status.
-/// Mirrors `oz_core::LicenseStatusResponse` but lives in this crate
+/// Mirrors `kasirmu_core::LicenseStatusResponse` but lives in this crate
 /// so Tauri can serialize it over IPC.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -529,9 +529,9 @@ pub struct AuthPingResult {
     /// Round-trip latency in milliseconds, if the ping succeeded.
     pub latency_ms: Option<u64>,
     /// Health state read from the server's own payload — see
-    /// [`oz_core::service_health::HealthState`]. This is not the same question
+    /// [`kasirmu_core::service_health::HealthState`]. This is not the same question
     /// as `ok`: a degraded server is answering, and saying what is broken.
-    pub state: oz_core::service_health::HealthState,
+    pub state: kasirmu_core::service_health::HealthState,
     /// The named cause when `state` is not `operational`.
     pub cause: Option<String>,
 }
@@ -546,7 +546,7 @@ pub struct AuthPingResult {
 /// read from the payload the server sends even with a 503. Collapsing the two
 /// is what used to make "up, database down" render identically to "no server".
 pub async fn test_auth_connection() -> Result<AuthPingResult, BridgeError> {
-    let result = oz_core::license_verification::ping_license_server().await;
+    let result = kasirmu_core::license_verification::ping_license_server().await;
     Ok(AuthPingResult {
         ok: result.ok,
         status: result.status,

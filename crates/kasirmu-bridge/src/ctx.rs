@@ -19,10 +19,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
 
-use oz_core::cache::Cache;
-use oz_core::db::Store;
-use oz_core::db::assignments::ScopeType;
-use oz_core::session::SessionContext;
+use kasirmu_core::cache::Cache;
+use kasirmu_core::db::Store;
+use kasirmu_core::db::assignments::ScopeType;
+use kasirmu_core::session::SessionContext;
 use kasirmu_hal::DriverRegistry;
 use kasirmu_plugin::PluginManager;
 use kasirmu_security::mask::mask_token;
@@ -98,9 +98,9 @@ pub struct BridgeCtx<'a> {
 /// `Store::require_permission_scoped` returns `CoreError::PermissionDenied`
 /// for every fail-closed case; anything else (DB errors) becomes a `Core`
 /// error as usual. Mirrors `commands/authz.rs::map_gate_error`.
-fn map_gate_error(e: oz_core::CoreError) -> BridgeError {
+fn map_gate_error(e: kasirmu_core::CoreError) -> BridgeError {
     match e {
-        oz_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
+        kasirmu_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
         other => BridgeError::from(other),
     }
 }

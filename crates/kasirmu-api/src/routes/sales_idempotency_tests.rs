@@ -30,7 +30,7 @@ struct Ctx {
 
 /// Build a router over a fresh migrated database.
 fn ctx() -> Ctx {
-    let state = AppState::test(oz_core::migrations::fresh_db());
+    let state = AppState::test(kasirmu_core::migrations::fresh_db());
     let db = state.db.clone();
     Ctx {
         app: crate::router(state),

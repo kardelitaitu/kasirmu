@@ -11,13 +11,13 @@
 //!
 //! Wire contract: the core `RegionalConfig` is returned **as-is** — its
 //! fields are documented "serialized as snake_case so the IPC DTOs of later
-//! slices reuse these names verbatim" (`oz_core::regional`), so there is no
+//! slices reuse these names verbatim" (`kasirmu_core::regional`), so there is no
 //! shell-side mirror DTO to drift. `ConfigScope` rides along with its
 //! serde names ("location", "legal_entity", "organization", "built_in").
 //!
 //! ADR #48 (87114abf6) settled the design's timezone-representation question:
 //! storage is an IANA zone name and offsets are derived at display/report
-//! time (`oz_core::timezone::business_date_in_zone`). This read model is
+//! time (`kasirmu_core::timezone::business_date_in_zone`). This read model is
 //! therefore a faithful pass-through of the **stored** string — it never
 //! re-derives or formats an offset on this side of the boundary, and the
 //! front-end must not either.
@@ -32,7 +32,7 @@
 //! location-resource gate still has no tablet helper — see the module
 //! header above and the T2 seam notes in `void.rs`).
 
-use oz_core::{Store, permissions};
+use kasirmu_core::{Store, permissions};
 use tauri::State;
 
 use crate::commands::authz::require_permission_for_session;
@@ -57,7 +57,7 @@ pub async fn get_regional_config_scoped(
     location_id: String,
     session_token: String,
     state: State<'_, AppState>,
-) -> Result<oz_core::RegionalConfig, AppError> {
+) -> Result<kasirmu_core::RegionalConfig, AppError> {
     let (session, conn) = state.resolve_scope(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let conn = conn
@@ -94,7 +94,7 @@ pub async fn set_regional_config_scoped(
     config: SetRegionalConfig,
     session_token: String,
     state: State<'_, AppState>,
-) -> Result<oz_core::RegionalConfig, AppError> {
+) -> Result<kasirmu_core::RegionalConfig, AppError> {
     let (session, conn) = state.resolve_scope(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
     let conn = conn

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 use tauri::command;
 
-use oz_core::Settings;
+use kasirmu_core::Settings;
 
 use crate::error::AppError;
 use crate::state::AppState;

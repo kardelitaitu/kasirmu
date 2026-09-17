@@ -1,6 +1,6 @@
 use super::*;
 use crate::testing::TestBridge;
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 
 fn sample_txn() -> LoyaltyTransaction {
     LoyaltyTransaction {

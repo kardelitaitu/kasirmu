@@ -12,11 +12,11 @@
 //! tablet shell yet; see the desktop module and the ipc-parity allowlist.
 
 use chrono::Utc;
-use oz_core::Store;
-use oz_core::memo::{
+use kasirmu_core::Store;
+use kasirmu_core::memo::{
     ActiveMemo, Memo, NOTIFICATION_BASE_INTERVAL_SECS, kds_notification_interval_secs,
 };
-use oz_core::sync_client::{self, ActiveMemoCloud, SyncConfig};
+use kasirmu_core::sync_client::{self, ActiveMemoCloud, SyncConfig};
 use serde::Serialize;
 use tauri::State;
 
@@ -113,7 +113,7 @@ impl From<ActiveMemoCloud> for ActiveMemoDto {
                 author_role: m.author_role,
                 title: m.title,
                 body: m.body,
-                status: oz_core::memo::MemoStatus::Published.as_str().to_string(),
+                status: kasirmu_core::memo::MemoStatus::Published.as_str().to_string(),
                 duration: m.duration,
                 revision: m.revision,
                 published_at: m.published_at,
@@ -128,7 +128,7 @@ impl From<ActiveMemoCloud> for ActiveMemoDto {
 /// Display cadence served with the memo list. The backend is the single
 /// source of truth for the notification intervals — the UI schedules its polls
 /// from these values and never duplicates the literals (the spec's "coded as
-/// 2× the shared base interval" lives in `oz_core::memo`, not in TypeScript).
+/// 2× the shared base interval" lives in `kasirmu_core::memo`, not in TypeScript).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MemoCadenceDto {

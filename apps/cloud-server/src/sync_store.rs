@@ -8,7 +8,7 @@ next: none | perf: multi-row fast path collapses N round trips into ~ceil(N/500)
 //!
 //! This is the foundation of Phase 1.2 in
 //! `docs/archived/2026-08-15-unify-auth-and-sync.md`: the
-//! whole POS data layer ([`oz_core::Store`]) is a synchronous `rusqlite`
+//! whole POS data layer ([`kasirmu_core::Store`]) is a synchronous `rusqlite`
 //! borrow-wrapper used by desktop, tablet, *and* cloud clients, so it cannot
 //! be rewritten to Postgres. The cloud server therefore needs a **parallel
 //! async data layer** covering only the surface the sync function touches:
@@ -48,10 +48,10 @@ use crate::conflict_resolution::{Decision, entity_id_of, extract_vector};
 // names `TenantPlan` any more; it stays test-only because `sync_store_tests.rs` is a
 // child module of this one and builds `TenantPlan::Pro` through `use super::*;`.
 #[cfg(test)]
-use oz_core::TenantPlan;
+use kasirmu_core::TenantPlan;
 #[cfg(test)] // named only by `sync_store_tests.rs`, through `use super::*;`
-use oz_core::offline::SyncPriority;
-use oz_core::offline::{OfflineQueueItem, OfflineQueueStatus};
+use kasirmu_core::offline::SyncPriority;
+use kasirmu_core::offline::{OfflineQueueItem, OfflineQueueStatus};
 use pg::{
     pg_pull_items, pg_push_batch_multirow, pg_snapshot_products, pg_snapshot_tax_rates,
     pg_snapshot_users,

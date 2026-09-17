@@ -42,7 +42,7 @@
 //! holds its role rows by the time the wizard runs. That is why the divergence
 //! is recorded in [`write_setup`] as deliberate rather than owed.
 
-use oz_core::{FeatureRegistry, Settings, features};
+use kasirmu_core::{FeatureRegistry, Settings, features};
 use rusqlite::Connection;
 use tauri::{State, command};
 
@@ -131,10 +131,10 @@ fn write_setup(conn: &Connection, args: &CompleteSetupArgs) -> Result<(), AppErr
     Settings::prune_stale_features(conn, &registry)?;
 
     // 3. Save the preset name.
-    Settings::set(conn, oz_core::settings::keys::STORE_PRESET, &args.preset)?;
+    Settings::set(conn, kasirmu_core::settings::keys::STORE_PRESET, &args.preset)?;
 
     // 4. Mark setup as complete.
-    Settings::set(conn, oz_core::settings::keys::SETUP_COMPLETE, "1")?;
+    Settings::set(conn, kasirmu_core::settings::keys::SETUP_COMPLETE, "1")?;
 
     // 5. Save the currency the wizard collected. The tablet dropped this
     // leg along with the struct field, so the choice never reached the
@@ -142,7 +142,7 @@ fn write_setup(conn: &Connection, args: &CompleteSetupArgs) -> Result<(), AppErr
     Settings::set_default_currency(conn, &args.default_currency)?;
 
     // 6. Dismiss the wizard so it doesn't show on next launch.
-    Settings::set(conn, oz_core::settings::keys::SHOW_SETUP_WIZARD, "false")?;
+    Settings::set(conn, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD, "false")?;
 
     Ok(())
 }

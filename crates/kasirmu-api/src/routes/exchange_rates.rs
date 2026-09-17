@@ -22,7 +22,7 @@ use axum::{
 use serde::Deserialize;
 
 use modules_currency::repository::CurrencyRepository;
-use oz_core::CoreError;
+use kasirmu_core::CoreError;
 
 use crate::AppState;
 use crate::auth::ApiTokenClaims;

@@ -12,7 +12,7 @@
 
 use super::*;
 use crate::testing::TestBridge;
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 
 // ── Existing tests (preserved) ────────────────────────────────────
 
@@ -99,7 +99,7 @@ fn create_product_in_store(bridge: &TestBridge, sku: &str, name: &str) {
     s.create_product(
         sku,
         name,
-        oz_core::Money {
+        kasirmu_core::Money {
             minor_units: 1000,
             currency: "USD".parse().unwrap(),
         },
@@ -115,7 +115,7 @@ fn create_product_in_store(bridge: &TestBridge, sku: &str, name: &str) {
 
 #[tokio::test]
 async fn scoped_list_stock_counts_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
     let result = list_stock_counts_scoped(&bridge.ctx(), "bad-token").await;
@@ -124,7 +124,7 @@ async fn scoped_list_stock_counts_rejects_invalid_token() {
 
 #[tokio::test]
 async fn scoped_get_stock_count_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
     let result = get_stock_count_scoped(&bridge.ctx(), "bad-token", "count-1").await;
@@ -135,7 +135,7 @@ async fn scoped_get_stock_count_rejects_invalid_token() {
 
 #[tokio::test]
 async fn owner_can_create_stock_count() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -148,7 +148,7 @@ async fn owner_can_create_stock_count() {
 
 #[tokio::test]
 async fn owner_can_get_stock_count_by_id() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -162,7 +162,7 @@ async fn owner_can_get_stock_count_by_id() {
 
 #[tokio::test]
 async fn owner_can_list_stock_counts() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -181,7 +181,7 @@ async fn owner_can_list_stock_counts() {
 
 #[tokio::test]
 async fn owner_can_add_count_line() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
     create_product_in_store(&bridge, "WG-001", "Widget");
@@ -202,7 +202,7 @@ async fn owner_can_add_count_line() {
 
 #[tokio::test]
 async fn owner_can_get_count_lines() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
     create_product_in_store(&bridge, "WG-001", "Widget");
@@ -231,7 +231,7 @@ async fn owner_can_get_count_lines() {
 
 #[tokio::test]
 async fn owner_can_update_count_line() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
     create_product_in_store(&bridge, "WG-001", "Widget");
@@ -268,7 +268,7 @@ async fn owner_can_update_count_line() {
 
 #[tokio::test]
 async fn owner_can_remove_count_line() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
     create_product_in_store(&bridge, "WG-001", "Widget");
@@ -306,7 +306,7 @@ async fn owner_can_remove_count_line() {
 
 #[tokio::test]
 async fn owner_can_complete_stock_count() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -333,7 +333,7 @@ async fn owner_can_complete_stock_count() {
 
 #[tokio::test]
 async fn owner_can_list_stock_adjustments() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -347,7 +347,7 @@ async fn owner_can_list_stock_adjustments() {
 
 #[tokio::test]
 async fn staff_denied_create_stock_count() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_staff(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-staff", "role-staff", "s1");
 
@@ -357,7 +357,7 @@ async fn staff_denied_create_stock_count() {
 
 #[tokio::test]
 async fn staff_denied_add_count_line() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-staff", "role-staff", "s1");
@@ -378,7 +378,7 @@ async fn staff_denied_add_count_line() {
 
 #[tokio::test]
 async fn staff_denied_complete_stock_count() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-staff", "role-staff", "s1");
@@ -398,7 +398,7 @@ async fn staff_denied_complete_stock_count() {
 
 #[tokio::test]
 async fn list_stock_counts_empty_when_none() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -410,7 +410,7 @@ async fn list_stock_counts_empty_when_none() {
 
 #[tokio::test]
 async fn get_stock_count_returns_none_for_unknown() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -421,7 +421,7 @@ async fn get_stock_count_returns_none_for_unknown() {
 
 #[tokio::test]
 async fn create_stock_count_validates_count_type() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 

@@ -1,14 +1,14 @@
 /*
 last audited 25-07-26 by RSA-Agent (tablet-client slice A: pos head+sweep)
 crate: tablet-client | status: SAFE | lint: CLEAN
-findings: sweep + guard sites verified — both Percentage::new unwraps (lines 57, 100) preceded by explicit 0..=100 range checks with SAFETY comments; authz decorators present; cart/sale state machine lives in oz_core (audited). Coverage note: risk-ranked sampling, not full deep read
+findings: sweep + guard sites verified — both Percentage::new unwraps (lines 57, 100) preceded by explicit 0..=100 range checks with SAFETY comments; authz decorators present; cart/sale state machine lives in kasirmu_core (audited). Coverage note: risk-ranked sampling, not full deep read
 next: none | perf: N/A
 */
 //! Point-of-Sale pipeline commands: start a cart, add a line,
 //! complete the sale, hold/resume carts.
 //!
 //! These commands are the IPC surface for the POS screen. The actual
-//! cart/sale state machine lives in `oz_core`; this file translates
+//! cart/sale state machine lives in `kasirmu_core`; this file translates
 //! between the Tauri argument structs and the domain types.
 //!
 //! Carts are persisted in the SQLite `active_carts` table so they
@@ -24,11 +24,11 @@ next: none | perf: N/A
 use tauri::{State, command};
 
 use foundation::Percentage;
-use oz_core::db::Store;
-use oz_core::events::{SaleCompleted, SaleCompletedLine};
-use oz_core::location_resolver;
-use oz_core::session::SessionContext;
-use oz_core::{Cart, CartId, CartLine, Currency, Money, PaymentSplitArg, SaleStatus};
+use kasirmu_core::db::Store;
+use kasirmu_core::events::{SaleCompleted, SaleCompletedLine};
+use kasirmu_core::location_resolver;
+use kasirmu_core::session::SessionContext;
+use kasirmu_core::{Cart, CartId, CartLine, Currency, Money, PaymentSplitArg, SaleStatus};
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
@@ -66,7 +66,7 @@ pub use kasirmu_bridge::pos::{
 /// locally-correct business date is not available yet). UTC is what
 /// `sale.created_at` already records, which keeps a cart preview and its
 /// checkout receipt resolving on the same side of an exclusive `effective_to`.
-fn tax_scope_now(store: &Store, location_id: &str) -> oz_core::TaxSaleScope {
+fn tax_scope_now(store: &Store, location_id: &str) -> kasirmu_core::TaxSaleScope {
     // ADR #48 (Decision 3): as_of is the location business date, so resolve it in
     // the store's IANA zone, not raw UTC. The instant stays Utc::now(); only the
     // zone applied before formatting changes. A missing/corrupt timezone falls
@@ -77,9 +77,9 @@ fn tax_scope_now(store: &Store, location_id: &str) -> oz_core::TaxSaleScope {
         .flatten()
         .map(|p| p.timezone)
         .unwrap_or_else(|| "UTC".to_string());
-    oz_core::TaxSaleScope {
+    kasirmu_core::TaxSaleScope {
         location_id: location_id.to_string(),
-        as_of: oz_core::timezone::business_date_in_zone(chrono::Utc::now(), &timezone),
+        as_of: kasirmu_core::timezone::business_date_in_zone(chrono::Utc::now(), &timezone),
     }
 }
 
@@ -108,7 +108,7 @@ pub async fn set_cart_discount_scoped(
     require_permission_for_user(
         &store,
         &session.user_id,
-        oz_core::permissions::SALES_DISCOUNT,
+        kasirmu_core::permissions::SALES_DISCOUNT,
     )?;
 
     let mut cart = store
@@ -140,7 +140,7 @@ pub async fn start_sale_scoped(
     } else {
         &args.currency
     };
-    let currency: oz_core::Currency = currency_str
+    let currency: kasirmu_core::Currency = currency_str
         .parse()
         .map_err(|_| AppError::Invalid(format!("invalid currency code: {currency_str}")))?;
     let cart = Cart::new(currency);
@@ -153,7 +153,7 @@ pub async fn start_sale_scoped(
     require_permission_for_user(
         &store,
         &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
+        kasirmu_core::permissions::SALES_PROCESS,
     )?;
 
     // Resolve the primary deduction location for this workspace instance.
@@ -190,7 +190,7 @@ pub async fn list_active_carts_scoped(
     require_permission_for_user(
         &store,
         &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
+        kasirmu_core::permissions::SALES_PROCESS,
     )?;
     let ids = store.list_active_carts()?;
     drop(db);
@@ -212,7 +212,7 @@ pub async fn get_active_cart_scoped(
     require_permission_for_user(
         &store,
         &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
+        kasirmu_core::permissions::SALES_PROCESS,
     )?;
     let cart = store.load_active_cart(&cart_id)?;
     drop(db);
@@ -266,7 +266,7 @@ fn run_add_line_scoped(
 ) -> Result<AddLineResult, AppError> {
     let store = Store::new(db);
 
-    require_permission_for_user(&store, user_id, oz_core::permissions::SALES_PROCESS)?;
+    require_permission_for_user(&store, user_id, kasirmu_core::permissions::SALES_PROCESS)?;
 
     // ADR-19 §5.1: reject add_line_scoped when the cart has no deduction location lock.
     store
@@ -315,7 +315,7 @@ pub async fn override_line_price_scoped(
     require_permission_for_user(
         &store,
         &session.user_id,
-        oz_core::permissions::SALES_OVERRIDE_PRICE,
+        kasirmu_core::permissions::SALES_OVERRIDE_PRICE,
     )?;
 
     let currency = cart.currency();
@@ -359,7 +359,7 @@ pub async fn set_line_course_scoped(
     require_permission_for_user(
         &store,
         &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
+        kasirmu_core::permissions::SALES_PROCESS,
     )?;
     kasirmu_bridge::pos::run_set_line_course_unchecked(
         &db,
@@ -457,7 +457,7 @@ fn run_override_cart_deduction_location(
 ) -> Result<(), AppError> {
     let store = Store::new(db);
 
-    require_permission_for_user(&store, user_id, oz_core::permissions::SALES_OVERRIDE_PRICE)?;
+    require_permission_for_user(&store, user_id, kasirmu_core::permissions::SALES_OVERRIDE_PRICE)?;
 
     store
         .override_active_cart_deduction_location(cart_id)
@@ -551,7 +551,7 @@ enum ReplayVerdict {
 /// Success-shaped on purpose: the client's `await` resolves with the sale it
 /// lost the response to, so a double-tap cannot be mistaken for a failure
 /// and retried into a third path.
-fn replay_receipt(sale: &oz_core::Sale) -> CompleteSaleResult {
+fn replay_receipt(sale: &kasirmu_core::Sale) -> CompleteSaleResult {
     CompleteSaleResult {
         sale_id: sale.id.clone(),
         total: Some(sale.total),
@@ -640,7 +640,7 @@ struct SaleSettlement {
     /// `Some` only when THIS call created the sale. `None` means the
     /// submission replayed an existing one, so the caller must publish
     /// nothing: the domain event already fired with the original sale.
-    sale: Option<oz_core::Sale>,
+    sale: Option<kasirmu_core::Sale>,
 }
 
 /// Preview the promotion-reduced payable for a cart without mutating it.
@@ -667,16 +667,16 @@ pub async fn preview_promoted_total_scoped(
         require_permission_for_user(
             &store,
             &session.user_id,
-            oz_core::permissions::SALES_PROCESS,
+            kasirmu_core::permissions::SALES_PROCESS,
         )?;
         let cart = store
             .load_active_cart(&args.cart_id)?
             .ok_or_else(|| AppError::Invalid(format!("cart not found: {}", args.cart_id)))?;
-        let rounding_mode = oz_core::Settings::get_tax_rounding_mode(&db)?;
+        let rounding_mode = kasirmu_core::Settings::get_tax_rounding_mode(&db)?;
         (cart, rounding_mode)
     };
 
-    let mut sale = oz_core::Sale::from_cart(&cart)
+    let mut sale = kasirmu_core::Sale::from_cart(&cart)
         .ok_or_else(|| AppError::Invalid("cart total overflowed i64".into()))?;
 
     // ── Lock 2: tax + engine discounts (no writes) ────────────────
@@ -718,20 +718,20 @@ pub async fn preview_promoted_total_scoped(
 fn build_preview_cart(
     lines: &[PreviewLineArgs],
     discount_percent: i64,
-) -> Result<oz_core::Cart, AppError> {
+) -> Result<kasirmu_core::Cart, AppError> {
     let first = lines
         .first()
         .ok_or_else(|| AppError::Invalid("cannot preview an empty cart".into()))?;
-    let parse_currency = |code: &str| -> Result<oz_core::Currency, AppError> {
+    let parse_currency = |code: &str| -> Result<kasirmu_core::Currency, AppError> {
         code.parse()
             .map_err(|_| AppError::Invalid(format!("invalid currency code: {code}")))
     };
-    let mut cart = oz_core::Cart::new(parse_currency(&first.unit_price_currency)?);
+    let mut cart = kasirmu_core::Cart::new(parse_currency(&first.unit_price_currency)?);
     for l in lines {
-        cart.add_line(oz_core::CartLine::new(
-            oz_core::Sku::new(l.sku.clone()),
+        cart.add_line(kasirmu_core::CartLine::new(
+            kasirmu_core::Sku::new(l.sku.clone()),
             l.qty,
-            oz_core::Money {
+            kasirmu_core::Money {
                 minor_units: l.unit_price_minor,
                 currency: parse_currency(&l.unit_price_currency)?,
             },
@@ -765,7 +765,7 @@ pub async fn preview_promoted_total_from_lines_scoped(
     let session = state.resolve_session(&session_token)?;
 
     let cart = build_preview_cart(&args.lines, args.discount_percent)?;
-    let mut sale = oz_core::Sale::from_cart(&cart)
+    let mut sale = kasirmu_core::Sale::from_cart(&cart)
         .ok_or_else(|| AppError::Invalid("cart total overflowed i64".into()))?;
 
     // ── Lock: permission + tax + engine discounts (no writes) ─────
@@ -775,12 +775,12 @@ pub async fn preview_promoted_total_from_lines_scoped(
         require_permission_for_user(
             &store,
             &session.user_id,
-            oz_core::permissions::SALES_PROCESS,
+            kasirmu_core::permissions::SALES_PROCESS,
         )?;
         store.compute_sale_tax_for_location(
             &mut sale,
             &[],
-            oz_core::Settings::get_tax_rounding_mode(&db)?,
+            kasirmu_core::Settings::get_tax_rounding_mode(&db)?,
             Some(&tax_scope_now(&store, &session.store_id)),
         )?;
         let base_total_minor = sale.total.minor_units;
@@ -838,7 +838,7 @@ fn run_complete_sale_scoped(
     require_permission_for_user(
         &store,
         &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
+        kasirmu_core::permissions::SALES_PROCESS,
     )?;
 
     // ── COR-7 replay guard — BEFORE any write, including the cart ──
@@ -875,7 +875,7 @@ fn run_complete_sale_scoped(
 
     let line_count = cart.line_count();
 
-    let mut sale = oz_core::Sale::from_cart_with_user(&cart, Some(session.user_id.clone()))
+    let mut sale = kasirmu_core::Sale::from_cart_with_user(&cart, Some(session.user_id.clone()))
         .ok_or_else(|| AppError::Invalid("cart total overflowed i64".into()))?;
     sale.payment_method = Some(args.payment_method.clone());
     sale.tendered_minor = args.tendered_minor;
@@ -891,7 +891,7 @@ fn run_complete_sale_scoped(
     store.compute_sale_tax_for_location(
         &mut sale,
         &[],
-        oz_core::Settings::get_tax_rounding_mode(db)?,
+        kasirmu_core::Settings::get_tax_rounding_mode(db)?,
         Some(&tax_scope_now(&store, &session.store_id)),
     )?;
 
@@ -932,12 +932,12 @@ fn run_complete_sale_scoped(
     // Same primary-location resolution the legacy complete_sale_deduction
     // wrapper performs internally — routed through with_locations so
     // checkout promotions persist.
-    let primary = oz_core::location_resolver::resolve_primary_location(
+    let primary = kasirmu_core::location_resolver::resolve_primary_location(
         db,
         session.instance_id.as_str(),
         None,
     )
-    .unwrap_or_else(|_| oz_core::location_resolver::get_default_location_id());
+    .unwrap_or_else(|_| kasirmu_core::location_resolver::get_default_location_id());
     store.complete_sale_deduction_with_locations_and_estimate(
         &sale,
         Some(&session.instance_id),
@@ -988,7 +988,7 @@ pub async fn complete_sale_scoped(
     // §B read-only lock: a lapsed grace window rejects new sales.
     {
         let db = state.db.lock().await;
-        let sub = oz_core::TenantSubscription::load(&db, "default")?
+        let sub = kasirmu_core::TenantSubscription::load(&db, "default")?
             .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
         sub.verify_signature()?;
         sub.enforce_pos_writable()?;
@@ -1065,12 +1065,12 @@ pub async fn complete_sale_scoped(
 #[command]
 pub async fn compute_cart_tax_scoped(
     session_token: String,
-    lines: Vec<oz_core::db::CartLineTaxInput>,
+    lines: Vec<kasirmu_core::db::CartLineTaxInput>,
     currency: String,
     state: State<'_, AppState>,
-) -> Result<oz_core::db::CartTaxResult, AppError> {
+) -> Result<kasirmu_core::db::CartTaxResult, AppError> {
     let session = state.resolve_session(&session_token)?;
-    let parsed: oz_core::Currency = currency
+    let parsed: kasirmu_core::Currency = currency
         .parse()
         .map_err(|_| AppError::Invalid(format!("invalid currency code: {currency}")))?;
     let db = state.db.lock().await;
@@ -1078,12 +1078,12 @@ pub async fn compute_cart_tax_scoped(
     require_permission_for_user(
         &store,
         &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
+        kasirmu_core::permissions::SALES_PROCESS,
     )?;
     let tax = store.compute_cart_tax_for_location(
         &lines,
         parsed,
-        oz_core::Settings::get_tax_rounding_mode(&db)?,
+        kasirmu_core::Settings::get_tax_rounding_mode(&db)?,
         Some(&tax_scope_now(&store, &session.store_id)),
     )?;
     drop(db);
@@ -1129,16 +1129,16 @@ fn settle_shortfall_resolved(
     let store = Store::new(db);
 
     // ── Reconstruct the Cart from front-end line data ─────────────
-    let currency: oz_core::Currency = args
+    let currency: kasirmu_core::Currency = args
         .currency
         .parse()
         .map_err(|_| AppError::Invalid(format!("invalid currency code: {}", args.currency)))?;
 
-    let mut cart = oz_core::Cart::new(currency);
+    let mut cart = kasirmu_core::Cart::new(currency);
     for line_data in &args.lines {
         let unit_price = shortfall_line_unit_price(line_data, cart.currency())?;
         let line =
-            oz_core::CartLine::new(oz_core::Sku::new(&line_data.sku), line_data.qty, unit_price);
+            kasirmu_core::CartLine::new(kasirmu_core::Sku::new(&line_data.sku), line_data.qty, unit_price);
         cart.add_line(line)
             .map_err(|e| AppError::Invalid(e.to_string()))?;
     }
@@ -1152,7 +1152,7 @@ fn settle_shortfall_resolved(
 
     let line_count = cart.line_count();
 
-    let mut sale = oz_core::Sale::from_cart_with_user(&cart, Some(session.user_id.clone()))
+    let mut sale = kasirmu_core::Sale::from_cart_with_user(&cart, Some(session.user_id.clone()))
         .ok_or_else(|| AppError::Invalid("cart total overflowed i64".into()))?;
     sale.payment_method = Some(args.payment_method.clone());
     sale.tendered_minor = args.tendered_minor;
@@ -1168,7 +1168,7 @@ fn settle_shortfall_resolved(
     store.compute_sale_tax_for_location(
         &mut sale,
         &[],
-        oz_core::Settings::get_tax_rounding_mode(db)?,
+        kasirmu_core::Settings::get_tax_rounding_mode(db)?,
         Some(&tax_scope_now(&store, &session.store_id)),
     )?;
 
@@ -1257,7 +1257,7 @@ fn replay_on_unique_collision(
     err: AppError,
 ) -> Result<CompleteSaleResult, AppError> {
     let AppError::Core {
-        sub_kind: oz_core::CoreErrorKind::Db,
+        sub_kind: kasirmu_core::CoreErrorKind::Db,
         message,
     } = &err
     else {
@@ -1296,7 +1296,7 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     // §B read-only lock: a lapsed grace window rejects new sales.
     {
         let db = state.db.lock().await;
-        let sub = oz_core::TenantSubscription::load(&db, "default")?
+        let sub = kasirmu_core::TenantSubscription::load(&db, "default")?
             .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
         sub.verify_signature()?;
         sub.enforce_pos_writable()?;
@@ -1365,10 +1365,10 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     {
         let kernel = state.kernel.lock().await;
         let bus = kernel.event_bus();
-        let line_items: Vec<oz_core::events::SaleCompletedLine> = sale
+        let line_items: Vec<kasirmu_core::events::SaleCompletedLine> = sale
             .lines
             .iter()
-            .map(|l| oz_core::events::SaleCompletedLine {
+            .map(|l| kasirmu_core::events::SaleCompletedLine {
                 sku: l.sku.clone(),
                 qty: l.qty,
                 unit_price_minor: l.unit_price.minor_units,
@@ -1377,7 +1377,7 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
             })
             .collect();
 
-        if let Err(e) = bus.publish(&oz_core::events::SaleCompleted {
+        if let Err(e) = bus.publish(&kasirmu_core::events::SaleCompleted {
             sale_id: sale.id.clone(),
             store_id: Some(session.store_id.clone()),
             line_items,
@@ -1412,13 +1412,13 @@ pub async fn hold_cart_scoped(
     require_permission_for_user(
         &store,
         &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
+        kasirmu_core::permissions::SALES_PROCESS,
     )?;
     if args.bill_type == BILL_TYPE_OPEN_BILL && !is_restaurant_pos_workspace(&session) {
         return Err(AppError::PermissionDenied(format!(
             "workspace '{}' may not create an open bill; only '{}' may",
             session.type_key,
-            oz_core::workspace_type::RESTAURANT_POS
+            kasirmu_core::workspace_type::RESTAURANT_POS
         )));
     }
     let id = store.hold_cart(
@@ -1441,14 +1441,14 @@ pub async fn hold_cart_scoped(
 pub async fn list_held_carts_scoped(
     session_token: String,
     state: State<'_, AppState>,
-) -> Result<Vec<oz_core::db::HeldCartRow>, AppError> {
+) -> Result<Vec<kasirmu_core::db::HeldCartRow>, AppError> {
     let session = state.resolve_session(&session_token)?;
     let db = state.db.lock().await;
     let store = Store::new(&db);
     require_permission_for_user(
         &store,
         &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
+        kasirmu_core::permissions::SALES_PROCESS,
     )?;
     let carts = store.list_held_carts()?;
     drop(db);
@@ -1458,7 +1458,7 @@ pub async fn list_held_carts_scoped(
 /// List open bills in the session scope. ADR #7.
 ///
 /// Restaurant POS only — an open bill is that terminal's own concept, so a
-/// session whose `type_key` is not [`oz_core::workspace_type::RESTAURANT_POS`] is refused
+/// session whose `type_key` is not [`kasirmu_core::workspace_type::RESTAURANT_POS`] is refused
 /// rather than served an empty list, which would read as "there are none"
 /// instead of "this is not your terminal". Mirrors
 /// `kasirmu_bridge::pos::list_open_bills_scoped`; this shell forked the body, so the
@@ -1467,20 +1467,20 @@ pub async fn list_held_carts_scoped(
 pub async fn list_open_bills_scoped(
     session_token: String,
     state: State<'_, AppState>,
-) -> Result<Vec<oz_core::db::HeldCartRow>, AppError> {
+) -> Result<Vec<kasirmu_core::db::HeldCartRow>, AppError> {
     let session = state.resolve_session(&session_token)?;
     let db = state.db.lock().await;
     let store = Store::new(&db);
     require_permission_for_user(
         &store,
         &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
+        kasirmu_core::permissions::SALES_PROCESS,
     )?;
     if !is_restaurant_pos_workspace(&session) {
         return Err(AppError::PermissionDenied(format!(
             "workspace '{}' may not list open bills; only '{}' may",
             session.type_key,
-            oz_core::workspace_type::RESTAURANT_POS
+            kasirmu_core::workspace_type::RESTAURANT_POS
         )));
     }
     let carts = store.list_open_bills()?;
@@ -1494,14 +1494,14 @@ pub async fn get_held_cart_scoped(
     session_token: String,
     id: String,
     state: State<'_, AppState>,
-) -> Result<Option<oz_core::db::HeldCartFull>, AppError> {
+) -> Result<Option<kasirmu_core::db::HeldCartFull>, AppError> {
     let session = state.resolve_session(&session_token)?;
     let db = state.db.lock().await;
     let store = Store::new(&db);
     require_permission_for_user(
         &store,
         &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
+        kasirmu_core::permissions::SALES_PROCESS,
     )?;
     let cart = store.get_held_cart(&id)?;
     drop(db);
@@ -1521,7 +1521,7 @@ pub async fn delete_held_cart_scoped(
     require_permission_for_user(
         &store,
         &session.user_id,
-        oz_core::permissions::SALES_PROCESS,
+        kasirmu_core::permissions::SALES_PROCESS,
     )?;
     store.delete_held_cart(&id)?;
     drop(db);

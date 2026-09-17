@@ -10,7 +10,7 @@ next: none | perf: N/A
 //! instance is guaranteed to be non-empty and structurally well-formed.
 //! Both types are `#[serde(transparent)]` so they serialise as bare
 //! strings — compatible with existing `Option<String>` fields in the
-//! [`Customer`](https://docs.rs/oz-core/latest/oz_core/struct.Customer.html)
+//! [`Customer`](https://docs.rs/oz-core/latest/kasirmu_core/struct.Customer.html)
 //! type and its DTOs.
 //!
 //! # Example

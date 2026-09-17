@@ -8,8 +8,8 @@
 //! `mod tests` in `pg_daemon.rs` (F-018).
 
 use super::*;
-use oz_core::migrations;
-use oz_core::offline::{OfflineQueueItem, OfflineQueueStatus};
+use kasirmu_core::migrations;
+use kasirmu_core::offline::{OfflineQueueItem, OfflineQueueStatus};
 
 fn setup_db() -> DbConnection {
     Arc::new(Mutex::new(migrations::fresh_db()))

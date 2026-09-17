@@ -12,9 +12,9 @@ use serde::Deserialize;
 use tauri::State;
 
 use kasirmu_bridge::qris_auto::{QrisAutoChargeDto, QrisAutoStatusDto};
-use oz_core::db::Store;
-use oz_core::permissions;
-use oz_core::sync_client::{self, SyncConfig};
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
+use kasirmu_core::sync_client::{self, SyncConfig};
 
 use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;

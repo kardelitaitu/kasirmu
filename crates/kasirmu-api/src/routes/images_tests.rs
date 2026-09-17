@@ -20,7 +20,7 @@ fn temp_image_dir() -> (AppState, std::path::PathBuf) {
     let dir = base.join(format!("oz-api-img-test-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     let state = AppState {
-        db: Arc::new(Mutex::new(oz_core::migrations::fresh_db())),
+        db: Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db())),
         pg: None,
         admin_key: None,
         api_secret: "test-secret".into(),
@@ -227,7 +227,7 @@ async fn put_image_hash_mismatch_returns_409_without_storing() {
     assert_eq!(stored_count, 0, "hash mismatch must not persist any file");
 
     let db = state.db.lock().await;
-    let n: i64 = oz_core::db::Store::new(&db)
+    let n: i64 = kasirmu_core::db::Store::new(&db)
         .conn
         .query_row("SELECT COUNT(*) FROM image_refs", [], |r| r.get(0))
         .unwrap();

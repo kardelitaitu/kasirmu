@@ -7,7 +7,7 @@ use crate::state::AppState;
 
 #[tokio::test]
 async fn build_status_reflects_settings_and_slot() {
-    let state = AppState::for_test_with_conn(oz_core::migrations::fresh_db());
+    let state = AppState::for_test_with_conn(kasirmu_core::migrations::fresh_db());
 
     // Fresh install: off, not running, default port, no URL.
     let s = build_status(&state).await.unwrap();
@@ -31,7 +31,7 @@ async fn build_status_reflects_settings_and_slot() {
 
 #[tokio::test]
 async fn build_status_reports_running_handle() {
-    let state = AppState::for_test_with_conn(oz_core::migrations::fresh_db());
+    let state = AppState::for_test_with_conn(kasirmu_core::migrations::fresh_db());
     let dir = std::env::temp_dir().join(format!("oz-local-api-cmd-{}", uuid::Uuid::new_v4()));
     let handle = local_api::start(
         state.db.clone(),
@@ -61,7 +61,7 @@ async fn build_status_reports_running_handle() {
 
 #[tokio::test]
 async fn mint_uses_persisted_secret_stably() {
-    let state = AppState::for_test_with_conn(oz_core::migrations::fresh_db());
+    let state = AppState::for_test_with_conn(kasirmu_core::migrations::fresh_db());
     let secret = {
         let db = state.db.lock().await;
         local_api::load_or_create_secret(&db).unwrap()
@@ -99,11 +99,11 @@ fn lifecycle_state() -> (AppState, std::path::PathBuf, u16) {
     let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = probe.local_addr().unwrap().port();
     drop(probe);
-    let conn = oz_core::migrations::fresh_db();
-    oz_core::Settings::set(&conn, local_api::SETTINGS_PORT, &port.to_string()).unwrap();
+    let conn = kasirmu_core::migrations::fresh_db();
+    kasirmu_core::Settings::set(&conn, local_api::SETTINGS_PORT, &port.to_string()).unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        platform_core::StoreDatabaseManager::new(tmp.clone(), oz_core::migrations::ALL);
+        platform_core::StoreDatabaseManager::new(tmp.clone(), kasirmu_core::migrations::ALL);
     (state, tmp.join("images"), port)
 }
 
@@ -131,7 +131,7 @@ async fn enable_disable_cycle_binds_serves_and_persists() {
     {
         let db = state.db.lock().await;
         assert_eq!(
-            oz_core::Settings::get(&db, local_api::SETTINGS_ENABLED).unwrap(),
+            kasirmu_core::Settings::get(&db, local_api::SETTINGS_ENABLED).unwrap(),
             Some("0".into())
         );
     }

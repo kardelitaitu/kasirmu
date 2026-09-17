@@ -3,9 +3,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::*;
 
 use crate::commands::picker_ticket;
-use oz_core::LocationProfile;
-use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
-use oz_core::migrations;
+use kasirmu_core::LocationProfile;
+use kasirmu_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
+use kasirmu_core::migrations;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
@@ -320,7 +320,7 @@ async fn resolve_boot_store_returns_primary_store() {
 
 // ── Device binding auto-boot (parity with desktop client) ───────────
 
-use oz_core::Terminal;
+use kasirmu_core::Terminal;
 use kasirmu_security::Keyring as _;
 
 /// HMAC-SHA256 hex over `{terminal}:{store}:{instance}` with a fixed

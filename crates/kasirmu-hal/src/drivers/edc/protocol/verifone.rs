@@ -11,7 +11,7 @@ next: none until a Verix handler | perf: N/A
 //! unrelated to TLS) protocol over serial or TCP, with Verix as the
 //! application runtime.
 
-use oz_core::Money;
+use kasirmu_core::Money;
 
 use super::{ProtocolCodec, ProtocolMessage, stub_error};
 use crate::error::HalError;

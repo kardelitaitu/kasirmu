@@ -121,7 +121,7 @@ async fn a_configured_terminal_row_makes_the_tender_resolve() {
     // the driver is still a stub, so it must fail closed rather than
     // approve a card.
     let registry = kasirmu_hal::DriverRegistry::default();
-    let rows = [oz_core::db::edc_terminals::EdcTerminalConfig {
+    let rows = [kasirmu_core::db::edc_terminals::EdcTerminalConfig {
         id: "row-1".into(),
         name: "Front counter".into(),
         connection_type: "wired".into(),

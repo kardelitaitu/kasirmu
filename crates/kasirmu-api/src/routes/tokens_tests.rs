@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 
 fn state_with_admin_key(key: Option<&str>) -> AppState {
     AppState {
-        db: Arc::new(Mutex::new(oz_core::migrations::fresh_db())),
+        db: Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db())),
         pg: None,
         admin_key: key.map(|s| s.to_owned()),
         api_secret: String::new(),

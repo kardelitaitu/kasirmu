@@ -1,5 +1,5 @@
 use super::*;
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
@@ -181,7 +181,7 @@ fn create_tax_rate_args_without_scope_fields_stay_none() {
 
 #[test]
 fn scoped_create_round_trips_scope_and_window() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let created = run_create_tax_rate(
         &conn,
         &CreateTaxRateArgs {
@@ -209,13 +209,13 @@ fn scoped_create_round_trips_scope_and_window() {
         .expect("active scoped row carries a scope");
     assert!(matches!(
         stored,
-        oz_core::db::tax::TaxRateScope::Location(_)
+        kasirmu_core::db::tax::TaxRateScope::Location(_)
     ));
 }
 
 #[test]
 fn create_tax_rate_args_reject_both_scope_targets() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let err = run_create_tax_rate(
         &conn,
         &CreateTaxRateArgs {
@@ -240,7 +240,7 @@ fn create_tax_rate_args_reject_both_scope_targets() {
 
 #[test]
 fn legacy_create_without_scope_fields_writes_the_global_arm() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let created = run_create_tax_rate(
         &conn,
         &CreateTaxRateArgs {
@@ -261,7 +261,7 @@ fn legacy_create_without_scope_fields_writes_the_global_arm() {
 
 #[test]
 fn list_tax_rates_dto_joins_scope_and_window() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     run_create_tax_rate(
         &conn,
         &CreateTaxRateArgs {
@@ -305,7 +305,7 @@ fn list_tax_rates_dto_joins_scope_and_window() {
 
 #[test]
 fn scoped_update_moves_tier_and_window() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let created = run_create_tax_rate(
         &conn,
         &CreateTaxRateArgs {
@@ -347,7 +347,7 @@ fn scoped_update_moves_tier_and_window() {
         .expect("row still active");
     assert!(matches!(
         stored,
-        oz_core::db::tax::TaxRateScope::LegalEntity(_)
+        kasirmu_core::db::tax::TaxRateScope::LegalEntity(_)
     ));
 }
 
@@ -367,17 +367,17 @@ fn seed_owner_user(conn: &rusqlite::Connection) {
 
 #[tokio::test]
 async fn require_tax_permission_uses_global_identity_db() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
     let state = AppState::for_test_with_conn(conn);
 
     assert!(
-        require_tax_permission(&state, "user-owner", oz_core::permissions::SETTINGS_READ)
+        require_tax_permission(&state, "user-owner", kasirmu_core::permissions::SETTINGS_READ)
             .await
             .is_ok()
     );
     assert!(
-        require_tax_permission(&state, "user-owner", oz_core::permissions::SETTINGS_EDIT)
+        require_tax_permission(&state, "user-owner", kasirmu_core::permissions::SETTINGS_EDIT)
             .await
             .is_ok()
     );
@@ -385,11 +385,11 @@ async fn require_tax_permission_uses_global_identity_db() {
 
 #[tokio::test]
 async fn require_tax_permission_rejects_missing_user() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let state = AppState::for_test_with_conn(conn);
 
     assert!(matches!(
-        require_tax_permission(&state, "missing-user", oz_core::permissions::SETTINGS_READ).await,
+        require_tax_permission(&state, "missing-user", kasirmu_core::permissions::SETTINGS_READ).await,
         Err(AppError::PermissionDenied(_))
     ));
 }
@@ -407,7 +407,7 @@ async fn scoped_tax_command_rejects_invalid_session() {
 
 #[tokio::test]
 async fn scoped_tax_command_denies_user_without_permission() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute(
@@ -420,7 +420,7 @@ async fn scoped_tax_command_denies_user_without_permission() {
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     state.session_store.write().unwrap().insert(
         "cashier-token".into(),
         SessionContext::new(
@@ -445,13 +445,13 @@ async fn scoped_tax_command_denies_user_without_permission() {
 
 #[tokio::test]
 async fn scoped_tax_command_reads_only_the_session_store() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
 
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     for (token, store_id) in [("store-a-token", "store-a"), ("store-b-token", "store-b")] {
         state.session_store.write().unwrap().insert(
             token.into(),
@@ -499,13 +499,13 @@ async fn scoped_tax_command_reads_only_the_session_store() {
 
 #[tokio::test]
 async fn scoped_tax_write_command_targets_only_the_session_store() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
 
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     for (token, store_id) in [("store-a-token", "store-a"), ("store-b-token", "store-b")] {
         state.session_store.write().unwrap().insert(
             token.into(),
@@ -574,18 +574,18 @@ fn run_list_tax_rate_rounding_modes_maps_the_statutory_alphabet() {
     // modes; '' and unknown ids read as None (the preference applies —
     // unknown and absent read identically, so the batch read is never a
     // second failure mode beside the resolver that produced the ids).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_rounding_rows(&conn);
     let modes =
         run_list_tax_rate_rounding_modes(&conn, &["r-trunc", "r-half", "r-plain", "r-ghost"])
             .unwrap();
     assert_eq!(
         modes.get("r-trunc"),
-        Some(&Some(oz_core::tax_rate::RoundingMode::Truncate)),
+        Some(&Some(kasirmu_core::tax_rate::RoundingMode::Truncate)),
     );
     assert_eq!(
         modes.get("r-half"),
-        Some(&Some(oz_core::tax_rate::RoundingMode::HalfUp)),
+        Some(&Some(kasirmu_core::tax_rate::RoundingMode::HalfUp)),
     );
     assert_eq!(
         modes.get("r-plain"),
@@ -603,7 +603,7 @@ fn run_list_tax_rate_rounding_modes_maps_the_statutory_alphabet() {
 fn run_list_tax_rate_rounding_modes_ignores_archived_rows() {
     // Archived rows must not leak a directive: is_active = 0 reads as
     // "the preference applies", exactly like the core door's contract.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     conn.execute(
         "INSERT INTO tax_rates (id, name, rate_bps, rounding_mode, is_active)
          VALUES ('r-arch', 'Archived', 1000, 'truncate', 0)",
@@ -624,15 +624,15 @@ fn rounding_mode_wire_is_the_core_serde_snake_case() {
     // through verbatim; null = preference. The ui contract test pins the
     // JS half of this contract; this pins the Rust half.
     assert_eq!(
-        serde_json::to_value(oz_core::tax_rate::RoundingMode::HalfUp).unwrap(),
+        serde_json::to_value(kasirmu_core::tax_rate::RoundingMode::HalfUp).unwrap(),
         serde_json::json!("half_up"),
     );
     assert_eq!(
-        serde_json::to_value(oz_core::tax_rate::RoundingMode::Truncate).unwrap(),
+        serde_json::to_value(kasirmu_core::tax_rate::RoundingMode::Truncate).unwrap(),
         serde_json::json!("truncate"),
     );
     let map =
-        run_list_tax_rate_rounding_modes(&oz_core::migrations::fresh_db(), &["r-none"]).unwrap();
+        run_list_tax_rate_rounding_modes(&kasirmu_core::migrations::fresh_db(), &["r-none"]).unwrap();
     assert_eq!(
         serde_json::to_value(map).unwrap(),
         serde_json::json!({ "r-none": null }),

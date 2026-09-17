@@ -11,7 +11,7 @@ next: none | perf: N/A
 //!
 //! The processor reads `STRIPE_SECRET_KEY` from the environment at
 //! construction. In production the key should be set in the OS key-ring
-//! (see `oz_core::Keyring`); this driver provides a `new` constructor
+//! (see `kasirmu_core::Keyring`); this driver provides a `new` constructor
 //! that accepts an explicit key for that use case.
 //!
 //! # Testing

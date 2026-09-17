@@ -1,8 +1,8 @@
 use super::*;
 use crate::testing::TestBridge;
-use oz_core::kds::{KdsRoutingRuleInput, KdsRuleMatcher};
-use oz_core::session::SessionContext;
-use oz_core::{
+use kasirmu_core::kds::{KdsRoutingRuleInput, KdsRuleMatcher};
+use kasirmu_core::session::SessionContext;
+use kasirmu_core::{
     CreateKdsLineItemInput, CreateKdsOrderInput, Currency, Money, RegisterKdsDeviceInput, Sale,
     SaleStatus,
 };

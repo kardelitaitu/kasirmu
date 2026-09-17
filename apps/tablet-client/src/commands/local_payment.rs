@@ -31,8 +31,8 @@
 //! uses. That paragraph predates the Slice 1+ shims and had already stopped
 //! describing this shell.
 
-use oz_core::db::payment_methods::{EffectivePaymentRail, NewPaymentRail};
-use oz_core::{Store, permissions};
+use kasirmu_core::db::payment_methods::{EffectivePaymentRail, NewPaymentRail};
+use kasirmu_core::{Store, permissions};
 use tauri::State;
 
 use crate::commands::authz::require_permission_for_session;

@@ -27,7 +27,7 @@ use std::sync::LazyLock;
 use anyhow::{Context, Result};
 use rusqlite::{Connection, params};
 
-use oz_core::settings::keys::{SECRET_KEY_DENY_LIST, credential_base, normalised_candidate};
+use kasirmu_core::settings::keys::{SECRET_KEY_DENY_LIST, credential_base, normalised_candidate};
 
 use crate::cli::CredentialDeltasArgs;
 
@@ -456,7 +456,7 @@ impl StoredForm {
 
 /// The decrypt half of a crypto family: the only question answerable about a
 /// value without knowing its plaintext.
-type FamilyDecrypt = fn(&str) -> Result<String, oz_core::crypto::CryptoError>;
+type FamilyDecrypt = fn(&str) -> Result<String, kasirmu_core::crypto::CryptoError>;
 
 /// Every family oz-crypto exposes, enumerated because the blind spot this closes
 /// is a mislabelled family: license.api_key used to read CLEARTEXT, no family can
@@ -508,13 +508,13 @@ type FamilyDecrypt = fn(&str) -> Result<String, oz_core::crypto::CryptoError>;
 /// reads INVALID-CIPHERTEXT and never "this was written by another key". Nothing in
 /// the form column is a statement about which family wrote the bytes.
 fn credential_family(key: &str) -> Option<FamilyDecrypt> {
-    use oz_core::settings::keys;
+    use kasirmu_core::settings::keys;
     match key {
-        keys::SYNC_API_KEY => Some(oz_core::crypto::decrypt_sync_api_key),
-        keys::SYNC_TERMINAL_SECRET => Some(oz_core::crypto::decrypt_sync_terminal_secret),
-        keys::PG_SYNC_PASSWORD => Some(oz_core::crypto::decrypt_pg_sync_password),
-        keys::RATE_SYNC_API_KEY => Some(oz_core::crypto::decrypt_rate_api_key),
-        keys::LAN_SERVER_PSK => Some(oz_core::crypto::decrypt_lan_psk),
+        keys::SYNC_API_KEY => Some(kasirmu_core::crypto::decrypt_sync_api_key),
+        keys::SYNC_TERMINAL_SECRET => Some(kasirmu_core::crypto::decrypt_sync_terminal_secret),
+        keys::PG_SYNC_PASSWORD => Some(kasirmu_core::crypto::decrypt_pg_sync_password),
+        keys::RATE_SYNC_API_KEY => Some(kasirmu_core::crypto::decrypt_rate_api_key),
+        keys::LAN_SERVER_PSK => Some(kasirmu_core::crypto::decrypt_lan_psk),
         _ => None,
     }
 }
@@ -529,12 +529,12 @@ fn credential_family(key: &str) -> Option<FamilyDecrypt> {
 /// the enumeration on credential_family: api_key is the live one, smtp_password
 /// has no caller left in the tree.
 fn sealed_by_machine_bound_family(key: &str) -> bool {
-    use oz_core::settings::keys;
+    use kasirmu_core::settings::keys;
     matches!(key, keys::LICENSE_API_KEY)
 }
 
 fn sealed_in_another_lane(key: &str) -> bool {
-    use oz_core::settings::keys;
+    use kasirmu_core::settings::keys;
     matches!(key, keys::LOCAL_API_SECRET | keys::SMTP_CONFIG)
 }
 

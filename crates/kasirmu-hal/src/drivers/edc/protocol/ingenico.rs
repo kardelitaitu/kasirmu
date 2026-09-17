@@ -11,7 +11,7 @@ next: none until a Telium handler | perf: N/A
 //! (RS-232) with a proprietary command set wrapped around ISO 8583
 //! messages.
 
-use oz_core::Money;
+use kasirmu_core::Money;
 
 use super::{ProtocolCodec, ProtocolMessage, stub_error};
 use crate::error::HalError;

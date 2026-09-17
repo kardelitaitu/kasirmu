@@ -11,10 +11,10 @@
 
 use super::*;
 use crate::state::AppState;
-use oz_core::CoreErrorKind;
-use oz_core::migrations;
-use oz_core::regional::ConfigScope;
-use oz_core::session::SessionContext;
+use kasirmu_core::CoreErrorKind;
+use kasirmu_core::migrations;
+use kasirmu_core::regional::ConfigScope;
+use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager;
 
@@ -22,7 +22,7 @@ use tauri::Manager;
 
 #[test]
 fn regional_config_wire_shape_is_the_core_model_unchanged() {
-    let location_layer = oz_core::regional::RegionalLayer::blank(
+    let location_layer = kasirmu_core::regional::RegionalLayer::blank(
         ConfigScope::Location,
         "id-ID",
         "Asia/Jayapura",
@@ -30,8 +30,8 @@ fn regional_config_wire_shape_is_the_core_model_unchanged() {
         "",
     );
     let entity_layer =
-        oz_core::regional::RegionalLayer::blank(ConfigScope::LegalEntity, "", "", "", "ID");
-    let config = oz_core::regional::RegionalConfig::resolve(
+        kasirmu_core::regional::RegionalLayer::blank(ConfigScope::LegalEntity, "", "", "", "ID");
+    let config = kasirmu_core::regional::RegionalConfig::resolve(
         "loc-1",
         Some("le-1".into()),
         &[location_layer, entity_layer],
@@ -55,8 +55,8 @@ fn wire_timezones_are_stored_iana_names_not_derived_offsets() {
     // ADR #48: the read model is a faithful pass-through of the stored IANA
     // name — no offset derivation anywhere on this side of the boundary.
     let location_layer =
-        oz_core::regional::RegionalLayer::blank(ConfigScope::Location, "", "Asia/Jayapura", "", "");
-    let config = oz_core::regional::RegionalConfig::resolve("loc-1", None, &[location_layer]);
+        kasirmu_core::regional::RegionalLayer::blank(ConfigScope::Location, "", "Asia/Jayapura", "", "");
+    let config = kasirmu_core::regional::RegionalConfig::resolve("loc-1", None, &[location_layer]);
     assert_eq!(config.timezone.value, "Asia/Jayapura");
     assert_eq!(config.timezone.scope, ConfigScope::Location);
     let v = serde_json::to_value(&config).unwrap();

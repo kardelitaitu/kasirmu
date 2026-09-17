@@ -64,7 +64,7 @@ fn seed_product(conn: &rusqlite::Connection, product_id: &str) {
 
 #[tokio::test]
 async fn run_cycle_noop_when_sync_disabled() {
-    let db = tokio::sync::Mutex::new(oz_core::migrations::fresh_db());
+    let db = tokio::sync::Mutex::new(kasirmu_core::migrations::fresh_db());
     let tmp = std::env::temp_dir().join(format!("oz-id-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(tmp.join("images")).unwrap();
     let mut mgr = ImageDownloadManager::new();
@@ -77,15 +77,15 @@ async fn run_cycle_noop_when_sync_disabled() {
 async fn run_cycle_downloads_missing_images_from_dead_server() {
     // A dead server (127.0.0.1:1) means the GETs fail → hashes stay
     // missing; nothing panics and the cache dir is untouched.
-    let db = tokio::sync::Mutex::new(oz_core::migrations::fresh_db());
+    let db = tokio::sync::Mutex::new(kasirmu_core::migrations::fresh_db());
     let tmp = std::env::temp_dir().join(format!("oz-id-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(tmp.join("images")).unwrap();
     {
         let guard = db.lock().await;
-        let store = oz_core::Store::new(&guard);
-        oz_core::settings::Settings::set_sync_enabled(&guard, true).unwrap();
-        oz_core::settings::Settings::set_sync_server_url(&guard, "http://127.0.0.1:1").unwrap();
-        oz_core::settings::Settings::set_sync_api_key(&guard, "sk-test").unwrap();
+        let store = kasirmu_core::Store::new(&guard);
+        kasirmu_core::settings::Settings::set_sync_enabled(&guard, true).unwrap();
+        kasirmu_core::settings::Settings::set_sync_server_url(&guard, "http://127.0.0.1:1").unwrap();
+        kasirmu_core::settings::Settings::set_sync_api_key(&guard, "sk-test").unwrap();
         // Assign a primary image to a product.
         let product_id = uuid::Uuid::new_v4().to_string();
         seed_product(&guard, &product_id);
@@ -104,7 +104,7 @@ async fn run_cycle_downloads_missing_images_from_dead_server() {
 
 #[tokio::test]
 async fn run_cycle_seeds_lru_from_existing_cache() {
-    let db = tokio::sync::Mutex::new(oz_core::migrations::fresh_db());
+    let db = tokio::sync::Mutex::new(kasirmu_core::migrations::fresh_db());
     let tmp = std::env::temp_dir().join(format!("oz-id-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(tmp.join("images")).unwrap();
     // Pre-existing cached file.
@@ -112,10 +112,10 @@ async fn run_cycle_seeds_lru_from_existing_cache() {
     let mut mgr = ImageDownloadManager::new();
     {
         let guard = db.lock().await;
-        let store = oz_core::Store::new(&guard);
-        oz_core::settings::Settings::set_sync_enabled(&guard, true).unwrap();
-        oz_core::settings::Settings::set_sync_server_url(&guard, "http://127.0.0.1:1").unwrap();
-        oz_core::settings::Settings::set_sync_api_key(&guard, "sk-test").unwrap();
+        let store = kasirmu_core::Store::new(&guard);
+        kasirmu_core::settings::Settings::set_sync_enabled(&guard, true).unwrap();
+        kasirmu_core::settings::Settings::set_sync_server_url(&guard, "http://127.0.0.1:1").unwrap();
+        kasirmu_core::settings::Settings::set_sync_api_key(&guard, "sk-test").unwrap();
         // Reference a hash that IS present and one that is not.
         let product_id = uuid::Uuid::new_v4().to_string();
         seed_product(&guard, &product_id);

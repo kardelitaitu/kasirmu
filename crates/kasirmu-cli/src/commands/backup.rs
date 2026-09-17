@@ -7,7 +7,7 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 
 /// Create an online SQLite snapshot of the database.
 pub(crate) fn run_backup(conn: &Connection, output: &str) -> Result<()> {

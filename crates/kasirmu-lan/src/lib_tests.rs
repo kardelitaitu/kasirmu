@@ -66,7 +66,7 @@ fn sale_completed_handler_with_items() {
     let event = SaleCompleted {
         sale_id: "sale-2".into(),
         store_id: None,
-        line_items: vec![oz_core::events::SaleCompletedLine {
+        line_items: vec![kasirmu_core::events::SaleCompletedLine {
             sku: "COFFEE".into(),
             qty: 2,
             unit_price_minor: 350,
@@ -98,7 +98,7 @@ fn course_fired_handler_forwards_event() {
         store_id: None,
         course_id: "main".into(),
         display_number: Some(101),
-        items: vec![oz_core::events::CourseItem {
+        items: vec![kasirmu_core::events::CourseItem {
             sku: "STEAK".into(),
             qty: 2,
             name: "Grilled Steak".into(),
@@ -663,7 +663,7 @@ fn parse_discovery(text: &str) -> KdsDiscoverResponse {
 }
 
 fn snapshot_provider() -> KdsQueueProvider {
-    use oz_core::kds::KdsOrder;
+    use kasirmu_core::kds::KdsOrder;
     Arc::new(|| KdsQueueSnapshot {
         generated_at: "2026-09-13T09:00:00Z".into(),
         tickets: vec![KdsQueueTicket {

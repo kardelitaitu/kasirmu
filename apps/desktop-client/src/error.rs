@@ -16,7 +16,7 @@ next: none | perf: N/A
 //! so the front-end can branch on the specific error variant without
 //! parsing the message string.
 
-use oz_core::CoreErrorKind;
+use kasirmu_core::CoreErrorKind;
 use kasirmu_hal::HalErrorKind;
 use thiserror::Error;
 
@@ -24,7 +24,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum AppError {
-    /// Wraps any `oz_core::CoreError` (DB, money, currency mismatch, …).
+    /// Wraps any `kasirmu_core::CoreError` (DB, money, currency mismatch, …).
     #[error("core error: {message}")]
     Core {
         /// Typed sub-discriminator mirroring the `CoreError` variant.
@@ -77,13 +77,13 @@ pub enum AppError {
 
 impl From<modules_currency::CurrencyError> for AppError {
     fn from(e: modules_currency::CurrencyError) -> Self {
-        let core: oz_core::CoreError = e.into();
+        let core: kasirmu_core::CoreError = e.into();
         core.into()
     }
 }
 
-impl From<oz_core::CoreError> for AppError {
-    fn from(e: oz_core::CoreError) -> Self {
+impl From<kasirmu_core::CoreError> for AppError {
+    fn from(e: kasirmu_core::CoreError) -> Self {
         Self::Core {
             sub_kind: e.kind(),
             message: e.to_string(),

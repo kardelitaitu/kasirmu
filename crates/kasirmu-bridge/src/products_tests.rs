@@ -27,7 +27,7 @@
 
 use super::*;
 use crate::testing::{TestBridge, temp_conn};
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
@@ -676,6 +676,6 @@ fn edit_cost_permission_membership_is_manager_only() {
     );
     assert!(matches!(
         store.require_permission("user-staff", permissions::PRODUCTS_EDIT_COST),
-        Err(oz_core::CoreError::PermissionDenied(_))
+        Err(kasirmu_core::CoreError::PermissionDenied(_))
     ));
 }

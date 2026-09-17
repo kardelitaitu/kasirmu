@@ -191,10 +191,10 @@ impl RateSyncDaemon {
                 // (the Connection itself is still usable) instead of panicking.
                 let conn = db_clone.lock().unwrap_or_else(|e| e.into_inner());
                 let enabled =
-                    oz_core::settings::Settings::is_rate_sync_enabled(&conn).unwrap_or(false);
-                let base = oz_core::settings::Settings::get_rate_sync_base_currency(&conn)
+                    kasirmu_core::settings::Settings::is_rate_sync_enabled(&conn).unwrap_or(false);
+                let base = kasirmu_core::settings::Settings::get_rate_sync_base_currency(&conn)
                     .unwrap_or_else(|_| "USD".into());
-                let interval = oz_core::settings::Settings::get_rate_sync_interval(&conn)
+                let interval = kasirmu_core::settings::Settings::get_rate_sync_interval(&conn)
                     .unwrap_or_else(|_| "360".into());
                 (enabled, base, interval)
             })
@@ -381,7 +381,7 @@ mod tests {
 
     #[tokio::test]
     async fn daemon_start_and_stop() {
-        let conn = oz_core::migrations::fresh_db();
+        let conn = kasirmu_core::migrations::fresh_db();
         let db = Arc::new(std::sync::Mutex::new(conn));
         let daemon = RateSyncDaemon::new();
         daemon.start(db).await;
@@ -423,7 +423,7 @@ mod tests {
 
     #[tokio::test]
     async fn daemon_double_start_is_noop() {
-        let conn = oz_core::migrations::fresh_db();
+        let conn = kasirmu_core::migrations::fresh_db();
         let db = Arc::new(std::sync::Mutex::new(conn));
         let daemon = RateSyncDaemon::new();
         daemon.start(db.clone()).await;

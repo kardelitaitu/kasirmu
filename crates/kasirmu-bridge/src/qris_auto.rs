@@ -12,9 +12,9 @@
 //! names); errors surface as [`BridgeError`] so the command layer keeps its
 //! single `map_err(Into::into)` contract.
 
-use oz_core::db::Store;
-use oz_core::permissions;
-use oz_core::sync_client::{self, SyncConfig};
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
+use kasirmu_core::sync_client::{self, SyncConfig};
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;

@@ -112,7 +112,7 @@ fn bootstrap_owner_args_debug() {
 #[test]
 fn bootstrap_owner_result_serialize() {
     let result = BootstrapOwnerResult {
-        session: oz_core::auth::LoginSession {
+        session: kasirmu_core::auth::LoginSession {
             user_id: "u1".into(),
             display_name: "Owner".into(),
             role_name: "Owner".into(),
@@ -129,7 +129,7 @@ fn bootstrap_owner_result_serialize() {
 #[test]
 fn bootstrap_owner_result_debug() {
     let result = BootstrapOwnerResult {
-        session: oz_core::auth::LoginSession {
+        session: kasirmu_core::auth::LoginSession {
             user_id: "u2".into(),
             display_name: "Boss".into(),
             role_name: "Owner".into(),
@@ -144,7 +144,7 @@ fn bootstrap_owner_result_debug() {
 
 // ── run_bootstrap_owner logic ───────────────────────────────────────
 
-use oz_core::migrations;
+use kasirmu_core::migrations;
 use tauri::Manager as _;
 
 #[test]
@@ -166,7 +166,7 @@ fn run_bootstrap_owner_creates_owner_role_user() {
 
     let store = Store::new(&conn);
     let user = store.get_user(&result.session.user_id).unwrap().unwrap();
-    assert_eq!(user.role_id, oz_core::builtin_roles::OWNER);
+    assert_eq!(user.role_id, kasirmu_core::builtin_roles::OWNER);
     assert!(user.is_active);
 }
 
@@ -311,7 +311,7 @@ async fn bootstrap_owner_mints_verifiable_picker_ticket() {
 // branch-pinned set (d45d1119): each guard fires in isolation with an
 // exact-message assert where the branch is distinguishable.
 
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
 
 fn scoped_state_with_token(
@@ -324,7 +324,7 @@ fn scoped_state_with_token(
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     state.session_store.write().unwrap().insert(
         token.into(),
         SessionContext::new(
@@ -364,7 +364,7 @@ fn build_app(state: AppState) -> tauri::App<tauri::test::MockRuntime> {
 
 #[tokio::test]
 async fn scoped_create_staff_denies_cashier_session() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -400,7 +400,7 @@ async fn scoped_create_staff_denies_cashier_session() {
 
 #[tokio::test]
 async fn scoped_list_staff_requires_staff_read() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -423,7 +423,7 @@ async fn scoped_list_staff_requires_staff_read() {
 
 #[tokio::test]
 async fn scoped_update_staff_denies_manager_promoting_to_owner() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -463,7 +463,7 @@ async fn scoped_update_staff_denies_manager_promoting_to_owner() {
 
 #[tokio::test]
 async fn scoped_update_staff_denies_self_promotion() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -499,7 +499,7 @@ async fn scoped_update_staff_denies_self_promotion() {
 
 #[tokio::test]
 async fn scoped_update_staff_protects_last_active_owner() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -540,7 +540,7 @@ async fn scoped_update_staff_protects_last_active_owner() {
 async fn scoped_update_staff_denies_self_deactivation_by_manager() {
     // Branch pin: caller is NOT an Owner — only the self-deactivation
     // rule can reject this, so the message must name it.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -588,7 +588,7 @@ async fn scoped_update_staff_protects_last_owner_from_other_admin() {
     // Branch pin: caller holds staff:manage_roles (Owner-role gate
     // passes) and edits a DIFFERENT user — only the last-active-Owner
     // protection can reject this.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -645,7 +645,7 @@ async fn scoped_update_staff_protects_last_owner_from_other_admin() {
 // write — and asserts on the rows themselves, not the DTO.
 #[tokio::test]
 async fn scoped_update_staff_rolls_back_user_and_assignment_on_late_failure() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(

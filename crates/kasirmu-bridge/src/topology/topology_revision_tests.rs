@@ -145,7 +145,7 @@ fn the_stored_diagram_is_byte_identical_to_the_envelope() {
 
     // ADR #46 §2: a revision must be restorable without reconstruction, so the
     // row holds the same bytes `settings` holds — not a projection of them.
-    let envelope = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let envelope = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .expect("envelope written");
     let stored: String = conn
@@ -255,7 +255,7 @@ fn contract_schema_version_is_stamped_from_the_shared_constant() {
     save(&conn, vec![store_node("store-1")], Some(0), Some(&context)).unwrap();
 
     // Read against ONE declaration rather than a copy that can drift: the
-    // constant is owned by oz_core, where the evaluator that understands it
+    // constant is owned by kasirmu_core, where the evaluator that understands it
     // lives. This is the axis ADR #46 §7 asks about — NOT the envelope's own
     // `schema_version`, which model.rs:273-285 warns must never be conflated
     // with it.
@@ -268,7 +268,7 @@ fn contract_schema_version_is_stamped_from_the_shared_constant() {
         .unwrap();
     assert_eq!(
         stamped as u64,
-        oz_core::topology::TOPOLOGY_CONTRACT_SCHEMA_VERSION
+        kasirmu_core::topology::TOPOLOGY_CONTRACT_SCHEMA_VERSION
     );
 }
 
@@ -437,7 +437,7 @@ fn the_sweep_prunes_each_branch_against_its_own_budget() {
 // ── ADR #46 §6: the audit record ───────────────────────────────
 
 fn audit_rows(conn: &rusqlite::Connection) -> Vec<(String, String, Option<String>, String)> {
-    oz_core::Store::new(conn)
+    kasirmu_core::Store::new(conn)
         .list_audit_entries(50, 0)
         .unwrap()
         .into_iter()
@@ -447,7 +447,7 @@ fn audit_rows(conn: &rusqlite::Connection) -> Vec<(String, String, Option<String
 
 #[test]
 fn the_audit_record_describes_the_apply() {
-    let store_db = oz_core::migrations::fresh_db();
+    let store_db = kasirmu_core::migrations::fresh_db();
     let context = ctx("wired the second kitchen screen", "user-rina");
 
     audit_topology_apply(&store_db, "branch-a", 7, 12, 9, &context).unwrap();
@@ -474,7 +474,7 @@ fn the_audit_record_describes_the_apply() {
 
 #[test]
 fn no_audit_detail_key_collides_with_the_redaction_list() {
-    let store_db = oz_core::migrations::fresh_db();
+    let store_db = kasirmu_core::migrations::fresh_db();
     // log_audit sanitises `details` by matching KEY NAMES against
     // SENSITIVE_DETAIL_KEYS (db/audit.rs:16-37), which contains `pin`,
     // `token`, `secret`, `password`. Topology has PIN-pad hardware nodes, so
@@ -519,7 +519,7 @@ fn no_audit_detail_key_collides_with_the_redaction_list() {
 
 #[test]
 fn the_unscoped_graph_is_audited_under_an_empty_target_id() {
-    let store_db = oz_core::migrations::fresh_db();
+    let store_db = kasirmu_core::migrations::fresh_db();
     let context = ctx("", "user-a");
 
     audit_topology_apply(&store_db, "", 1, 1, 0, &context).unwrap();
@@ -678,11 +678,11 @@ fn load_returns_the_envelope_byte_for_byte_when_it_can() {
     assert_eq!(change_note, "note");
     assert_eq!(
         contract_schema_version as u64,
-        oz_core::topology::TOPOLOGY_CONTRACT_SCHEMA_VERSION
+        kasirmu_core::topology::TOPOLOGY_CONTRACT_SCHEMA_VERSION
     );
     // Same bytes `settings` holds, so the browser can diff and restore-to-draft
     // without reconstructing a graph the backend never wrote.
-    let live = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let live = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     assert_eq!(envelope, live);

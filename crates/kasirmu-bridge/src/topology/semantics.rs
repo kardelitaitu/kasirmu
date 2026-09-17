@@ -10,7 +10,7 @@
 //! `apps/desktop-client/src/commands/topology/semantics.rs` (Wave E step E9c) as
 //! the second leaf of the `kasirmu_bridge::topology` mirror: `super::model::*` and
 //! every relative path stay exactly as written. The desktop module re-exports
-//! this surface and keeps the `oz_core::topology` re-export blocks locally,
+//! this surface and keeps the `kasirmu_core::topology` re-export blocks locally,
 //! because their consumers are sibling desktop modules (two call sites pass
 //! `value_string(..)` straight into `topology_validation`) and the topology
 //! root cfg(test) globs. Only the name these bodies actually use is
@@ -20,24 +20,24 @@ use rusqlite::Connection;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use oz_core::error::CoreError;
+use kasirmu_core::error::CoreError;
 
 use crate::error::BridgeError;
 use crate::workspaces::CreateInstanceRequest;
 
 use super::model::*;
 
-// The pure semantic-validation core lives in oz_core::topology (shared
+// The pure semantic-validation core lives in kasirmu_core::topology (shared
 // domain contract); this module re-exports the value-level helpers the
 // desktop layers consume and adapts validate_semantic_json's CoreError
 // onto the AppError::TopologyValidation wire shape, which the shim mapper
 // rebuilds field-for-field from BridgeError::TopologyValidation.
-pub(crate) use oz_core::topology::semantic_branch_profile_id;
+pub(crate) use kasirmu_core::topology::semantic_branch_profile_id;
 
 /// Validate the semantic ownership contract, mapping core failures onto the
 /// desktop AppError surface (same variant and fields as before the move).
 pub fn validate_semantic_json(nodes: &[Value], wires: &[Value]) -> Result<(), BridgeError> {
-    oz_core::topology::validate_semantic_json(nodes, wires).map_err(map_topology_error)
+    kasirmu_core::topology::validate_semantic_json(nodes, wires).map_err(map_topology_error)
 }
 
 /// Map a core topology validation failure onto the desktop wire shape.
@@ -128,7 +128,7 @@ pub fn topology_apply_ledger_json(revision: u64, fingerprint: &str) -> Result<St
 
 /// Read the current revision of a stored topology envelope (`0` when absent).
 pub fn current_topology_revision(conn: &Connection, setting_key: &str) -> Result<u64, BridgeError> {
-    let Some(raw) = oz_core::Settings::get(conn, setting_key)? else {
+    let Some(raw) = kasirmu_core::Settings::get(conn, setting_key)? else {
         return Ok(0);
     };
     let value: Value = serde_json::from_str(&raw)

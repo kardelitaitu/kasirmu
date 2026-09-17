@@ -14,7 +14,7 @@ workspace = true
 [dependencies]
 anyhow = { workspace = true }
 foundation = { workspace = true }
-oz-core = { workspace = true }
+kasirmu-core = { workspace = true }
 # hardware.rs maps the persisted TerminalProfile onto the HAL's own
 # HardwareConfig and registers the result. platform-core owns the profile
 # type; neither depends on platform-startup, so this adds no cycle.

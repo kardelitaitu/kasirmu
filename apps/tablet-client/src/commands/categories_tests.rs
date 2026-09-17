@@ -1,5 +1,5 @@
 use super::*;
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
@@ -86,7 +86,7 @@ async fn scoped_category_command_rejects_invalid_session() {
 #[tokio::test]
 async fn scoped_category_command_denies_user_without_permission() {
     // Cashier role lacks products:create/update/delete (ROLE_PRESETS).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();
     conn.execute_batch(
@@ -100,7 +100,7 @@ async fn scoped_category_command_denies_user_without_permission() {
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     state.session_store.write().unwrap().insert(
         "cashier-token".into(),
         SessionContext::new(

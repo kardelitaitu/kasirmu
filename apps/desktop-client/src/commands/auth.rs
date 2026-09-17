@@ -7,7 +7,7 @@ next: none | perf: N/A
 //! Staff authentication commands — login, logout, session verification.
 //!
 //! These commands are the IPC surface for `ui/src/features/auth/`. PIN
-//! hashing and verification is delegated to `oz_core::auth`.
+//! hashing and verification is delegated to `kasirmu_core::auth`.
 
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -17,19 +17,19 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
-use oz_core::auth::LoginSession;
+use kasirmu_core::auth::LoginSession;
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
-use oz_core::db::assignments::ScopeType;
+use kasirmu_core::db::assignments::ScopeType;
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
-use oz_core::db::audit_security::SecurityEvent;
+use kasirmu_core::db::audit_security::SecurityEvent;
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
-use oz_core::permissions;
+use kasirmu_core::permissions;
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
-use oz_core::subscription::TenantSubscription;
+use kasirmu_core::subscription::TenantSubscription;
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
 use kasirmu_security::mask::mask_token;
 

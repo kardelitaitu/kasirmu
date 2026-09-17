@@ -22,7 +22,7 @@ pub mod ingenico;
 pub mod pax;
 pub mod verifone;
 
-use oz_core::Money;
+use kasirmu_core::Money;
 
 use crate::error::HalError;
 

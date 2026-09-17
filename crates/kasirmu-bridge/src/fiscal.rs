@@ -22,9 +22,9 @@
 
 use serde::Deserialize;
 
-use oz_core::db::Store;
-use oz_core::db::fiscal::{DocumentNumberSequence, FiscalScheme, ResetPeriod};
-use oz_core::permissions;
+use kasirmu_core::db::Store;
+use kasirmu_core::db::fiscal::{DocumentNumberSequence, FiscalScheme, ResetPeriod};
+use kasirmu_core::permissions;
 use rusqlite::Connection;
 
 use crate::ctx::BridgeCtx;

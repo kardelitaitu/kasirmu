@@ -31,7 +31,7 @@ fn profile() -> ProfileArgs {
 
 /// Global DB with an owner, on a tier with staff-quota headroom.
 fn seeded_conn(tier_key: &str) -> rusqlite::Connection {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();
@@ -56,10 +56,10 @@ fn owner_app(tier_key: &str) -> tauri::App<tauri::test::MockRuntime> {
     let temp_dir = tempfile::tempdir().unwrap();
     let mut state = AppState::for_test_with_conn(conn);
     state.db_manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     state.session_store.write().unwrap().insert(
         "owner-token".into(),
-        oz_core::session::SessionContext::new(
+        kasirmu_core::session::SessionContext::new(
             "user-owner".into(),
             "role-owner".into(),
             "terminal-1".into(),

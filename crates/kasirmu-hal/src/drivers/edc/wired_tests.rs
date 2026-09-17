@@ -4,7 +4,7 @@
 //! terminal that has not been implemented must report `Unsupported` for
 //! every operation rather than look like an approved card.
 
-use oz_core::{Currency, Money};
+use kasirmu_core::{Currency, Money};
 
 use super::*;
 use crate::error::HalError;

@@ -4,7 +4,7 @@
 //!
 //! [`start_report_sender_loop`] spawns a tokio task that polls every 60
 //! seconds. Scheduling logic (cadence, timezone, dedup) and report-type
-//! filtering are delegated to [`oz_core::export::email_sender`].
+//! filtering are delegated to [`kasirmu_core::export::email_sender`].
 //!
 //! ## Test send
 //!
@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use lettre::message::header::ContentType;
 use lettre::{AsyncTransport, Message};
-use oz_core::{
+use kasirmu_core::{
     Store,
     export::{
         email_report::{ReportEmail, SmtpConfig},
@@ -306,7 +306,7 @@ pub async fn send_test_report(
 
 /// Read the store name from settings, falling back to a default.
 fn get_store_name(store: &Store<'_>) -> Result<String, String> {
-    use oz_core::settings::Settings;
+    use kasirmu_core::settings::Settings;
     let name = Settings::get(store.conn, "store.name").map_err(|e| format!("DB error: {e}"))?;
     Ok(name.unwrap_or_else(|| "OZ-POS Store".to_string()))
 }

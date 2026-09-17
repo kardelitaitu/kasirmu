@@ -10,14 +10,14 @@ use super::*;
 use rusqlite::Connection;
 use std::path::PathBuf;
 
-use oz_core::settings::Settings;
-use oz_core::settings::keys::{
+use kasirmu_core::settings::Settings;
+use kasirmu_core::settings::keys::{
     SECRET_KEY_DENY_LIST, SMTP_CONFIG, STORE_NAME, STRIPE_API_KEY, SYNC_API_KEY,
     is_secret_setting_key,
 };
 
 fn fresh_db() -> Connection {
-    oz_core::migrations::fresh_db()
+    kasirmu_core::migrations::fresh_db()
 }
 
 /*
@@ -695,10 +695,10 @@ fn an_existing_file_with_no_tables_is_refused_by_the_second_guard_not_the_first(
 /// than one that under-claims.
 #[test]
 fn a_machine_bound_row_is_listed_as_untested_and_never_counted_cleartext() {
-    use oz_core::settings::keys::LICENSE_API_KEY;
+    use kasirmu_core::settings::keys::LICENSE_API_KEY;
     let conn = fresh_db();
     let sealed =
-        oz_core::crypto::encrypt_api_key("license-key-never-printed", "machine-fp-demo").unwrap();
+        kasirmu_core::crypto::encrypt_api_key("license-key-never-printed", "machine-fp-demo").unwrap();
     Settings::set(&conn, LICENSE_API_KEY, &sealed).unwrap();
 
     let rows = scan_credential_settings(&conn).unwrap();
@@ -735,7 +735,7 @@ fn a_machine_bound_row_is_listed_as_untested_and_never_counted_cleartext() {
 /// control proves that is a machine-bound rule rather than a blanket refusal.
 #[test]
 fn a_plaintext_machine_bound_row_reads_the_same_because_the_tool_cannot_tell() {
-    use oz_core::settings::keys::LICENSE_API_KEY;
+    use kasirmu_core::settings::keys::LICENSE_API_KEY;
     let conn = fresh_db();
     Settings::set(&conn, LICENSE_API_KEY, "sk_live_handed_in_cleartext").unwrap();
 
@@ -795,9 +795,9 @@ fn the_report_states_what_an_excluded_row_means() {
 /// this key)" and was COUNTED in the cleartext headline: the over-count this fixes.
 #[test]
 fn a_sealed_lan_psk_row_reads_encrypted_and_leaves_the_headline() {
-    use oz_core::settings::keys::LAN_SERVER_PSK;
+    use kasirmu_core::settings::keys::LAN_SERVER_PSK;
     let conn = fresh_db();
-    let cipher = oz_core::crypto::encrypt_lan_psk("kafe-lima-0725").unwrap();
+    let cipher = kasirmu_core::crypto::encrypt_lan_psk("kafe-lima-0725").unwrap();
     Settings::set(&conn, LAN_SERVER_PSK, &cipher).unwrap();
 
     let rows = scan_credential_settings(&conn).unwrap();
@@ -825,7 +825,7 @@ fn a_sealed_lan_psk_row_reads_encrypted_and_leaves_the_headline() {
 /// headline rather than being filed as unresolved.
 #[test]
 fn a_plaintext_lan_psk_row_reaches_the_headline_as_legacy_plaintext() {
-    use oz_core::settings::keys::LAN_SERVER_PSK;
+    use kasirmu_core::settings::keys::LAN_SERVER_PSK;
     let conn = fresh_db();
     Settings::set(&conn, LAN_SERVER_PSK, "kafe-lima-0725").unwrap();
 
@@ -850,16 +850,16 @@ fn a_plaintext_lan_psk_row_reaches_the_headline_as_legacy_plaintext() {
 /// anyone later turning the form column into a claim about which family wrote bytes.
 #[test]
 fn portable_envelopes_agree_so_only_the_key_column_separates_them() {
-    use oz_core::settings::keys::LAN_SERVER_PSK;
-    let lan = oz_core::crypto::encrypt_lan_psk("kafe-lima-0725").unwrap();
-    let sync = oz_core::crypto::encrypt_sync_api_key("kafe-lima-0725").unwrap();
+    use kasirmu_core::settings::keys::LAN_SERVER_PSK;
+    let lan = kasirmu_core::crypto::encrypt_lan_psk("kafe-lima-0725").unwrap();
+    let sync = kasirmu_core::crypto::encrypt_sync_api_key("kafe-lima-0725").unwrap();
     assert_eq!(
         lan.len(),
         sync.len(),
         "same layout, so length cannot be the discriminator either"
     );
     assert!(
-        oz_core::crypto::decrypt_lan_psk(&sync).is_err(),
+        kasirmu_core::crypto::decrypt_lan_psk(&sync).is_err(),
         "a sync envelope must not open with the lan decryptor: bytes alone do not name the family"
     );
 
@@ -879,7 +879,7 @@ fn portable_envelopes_agree_so_only_the_key_column_separates_them() {
 /// is what keeps the count conservative without pretending it is complete.
 #[test]
 fn a_base64_shaped_plaintext_psk_reads_invalid_and_the_note_says_so() {
-    use oz_core::settings::keys::LAN_SERVER_PSK;
+    use kasirmu_core::settings::keys::LAN_SERVER_PSK;
     let conn = fresh_db();
     Settings::set(
         &conn,

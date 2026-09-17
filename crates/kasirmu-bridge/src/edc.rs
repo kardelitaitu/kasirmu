@@ -131,7 +131,7 @@ pub async fn edc_sale(
     currency: &str,
 ) -> Result<EdcResultDto, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_PROCESS)
         .await?;
     let amount = parse_amount(amount_minor, currency)?;
     let terminal = resolve_terminal(ctx).await?;
@@ -153,7 +153,7 @@ pub async fn edc_refund(
     currency: &str,
 ) -> Result<EdcResultDto, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_REFUND)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_REFUND)
         .await?;
     let amount = parse_amount(amount_minor, currency)?;
     let terminal = resolve_terminal(ctx).await?;
@@ -173,7 +173,7 @@ pub async fn edc_void(
     transaction_id: &str,
 ) -> Result<EdcResultDto, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SALES_VOID)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_VOID)
         .await?;
     let terminal = resolve_terminal(ctx).await?;
     Ok(terminal.void(transaction_id).await?.into())

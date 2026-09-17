@@ -1,6 +1,6 @@
 use super::*;
 use crate::mock::MockNotificationClient;
-use oz_core::events::SaleCompletedLine;
+use kasirmu_core::events::SaleCompletedLine;
 use tokio::time::Duration;
 
 /// Poll the mock until it has sent at least `expected` messages, sleeping

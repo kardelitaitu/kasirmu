@@ -51,9 +51,9 @@
 
 use tauri::{State, command};
 
-use oz_core::permissions;
-use oz_core::sync_client::{self, SyncAttemptResult, SyncConfig};
-use oz_core::{Store, SyncPriority};
+use kasirmu_core::permissions;
+use kasirmu_core::sync_client::{self, SyncAttemptResult, SyncConfig};
+use kasirmu_core::{Store, SyncPriority};
 
 use foundation::validate_not_empty;
 

@@ -74,7 +74,7 @@ fn resolve_session_rejects_and_removes_expired_token() {
 fn resolve_scope_isolates_store_databases() {
     let temp_dir = tempfile::tempdir().unwrap();
     let manager =
-        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
     let state = AppState::for_test_with_db_manager(manager);
     for (token, store_id) in [("token-a", "store-a"), ("token-b", "store-b")] {
         state.session_store.write().unwrap().insert(

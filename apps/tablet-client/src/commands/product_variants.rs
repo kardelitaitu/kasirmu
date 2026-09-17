@@ -36,8 +36,8 @@
 
 use tauri::{State, command};
 
-use oz_core::permissions;
-use oz_core::{Money, ProductVariant, Store};
+use kasirmu_core::permissions;
+use kasirmu_core::{Money, ProductVariant, Store};
 
 use foundation::validate_not_empty;
 
@@ -133,7 +133,7 @@ pub async fn create_product_variant_scoped(
 
     let price = match (args.price_minor, args.currency) {
         (Some(minor), Some(cur_str)) => {
-            let currency: oz_core::Currency = cur_str
+            let currency: kasirmu_core::Currency = cur_str
                 .parse()
                 .map_err(|_| AppError::Invalid(format!("invalid currency '{cur_str}'")))?;
             Some(Money {
@@ -209,7 +209,7 @@ pub async fn update_product_variant_scoped(
         variant.name = name;
     }
     if let (Some(minor), Some(cur_str)) = (args.price_minor, args.currency) {
-        let currency: oz_core::Currency = cur_str
+        let currency: kasirmu_core::Currency = cur_str
             .parse()
             .map_err(|_| AppError::Invalid(format!("invalid currency '{cur_str}'")))?;
         variant.price = Some(Money {

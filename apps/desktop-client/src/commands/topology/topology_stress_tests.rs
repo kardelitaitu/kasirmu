@@ -28,8 +28,8 @@ fn save_topology_data_rejects_orphan_wires() {
         }],
     };
     let json = serde_json::to_string(&data).unwrap();
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
-    let loaded_raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, &json).unwrap();
+    let loaded_raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let loaded: TopologyData = serde_json::from_str(&loaded_raw).unwrap();

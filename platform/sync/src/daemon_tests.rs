@@ -14,8 +14,8 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
 };
-use oz_core::migrations;
-use oz_core::settings::Settings;
+use kasirmu_core::migrations;
+use kasirmu_core::settings::Settings;
 use tokio::sync::Notify;
 
 fn setup_db() -> DbConnection {
@@ -550,7 +550,7 @@ async fn daemon_surfaces_plan_required_without_retry_or_quarantine() {
 /// work the `spawn_blocking` closure does).
 #[test]
 fn read_config_and_pending_returns_pending_count() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.enqueue_offline("test", r#"{}"#).unwrap();
 
@@ -578,7 +578,7 @@ async fn spawn_replaying_mock_sync_server() -> String {
         })
     }
     async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
-        let mut item = oz_core::offline::OfflineQueueItem::new(
+        let mut item = kasirmu_core::offline::OfflineQueueItem::new(
             "stock.adjusted",
             r#"{"sku":"COFFEE","delta":10}"#,
         );
@@ -697,7 +697,7 @@ async fn spawn_poison_remote_mock_sync_server() -> String {
     let port = listener.local_addr().unwrap().port();
 
     async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
-        let mut item = oz_core::offline::OfflineQueueItem::new(
+        let mut item = kasirmu_core::offline::OfflineQueueItem::new(
             "complete_sale",
             r#"{"line_items":[{"sku":"MISSING","qty":1}]}"#,
         );
@@ -801,7 +801,7 @@ async fn spawn_slow_mock_sync_server() -> (String, Arc<Notify>, Arc<Notify>) {
         // then block until the test rewinds the anchor and releases us.
         arrived.notify_one();
         release.notified().await;
-        let mut item = oz_core::offline::OfflineQueueItem::new(
+        let mut item = kasirmu_core::offline::OfflineQueueItem::new(
             "stock.adjusted",
             r#"{"sku":"COFFEE","delta":10}"#,
         );
@@ -927,13 +927,13 @@ async fn spawn_poison_remote_mock_server_with_two_items() -> String {
     let port = listener.local_addr().unwrap().port();
 
     async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
-        let mut dead = oz_core::offline::OfflineQueueItem::new(
+        let mut dead = kasirmu_core::offline::OfflineQueueItem::new(
             "complete_sale",
             r#"{"line_items":[{"sku":"MISSING-DEAD","qty":1}]}"#,
         );
         dead.id = "remote-poison-dead".into();
         dead.created_at = "2026-01-03T00:00:00.000Z".into();
-        let mut retry = oz_core::offline::OfflineQueueItem::new(
+        let mut retry = kasirmu_core::offline::OfflineQueueItem::new(
             "complete_sale",
             r#"{"line_items":[{"sku":"MISSING-RETRY","qty":1}]}"#,
         );
@@ -1033,7 +1033,7 @@ async fn spawn_conflict_mock_sync_server() -> String {
         let results = items
             .iter()
             .map(|_| {
-                PushOutcome::Conflict(oz_core::offline::OfflineQueueItem::new(
+                PushOutcome::Conflict(kasirmu_core::offline::OfflineQueueItem::new(
                     "product.update",
                     r#"{"version":3,"name":"Server Stale"}"#,
                 ))
@@ -1104,7 +1104,7 @@ async fn daemon_resolves_push_conflict_via_shared_service() {
     // be re-enqueued (old behavior re-enqueued the server's stale v3).
     assert_eq!(all.len(), 1, "no remote winner may be re-enqueued");
     assert!(pending.is_empty(), "local winner must not stay pending");
-    assert_eq!(all[0].status, oz_core::offline::OfflineQueueStatus::Synced);
+    assert_eq!(all[0].status, kasirmu_core::offline::OfflineQueueStatus::Synced);
     assert!(
         all[0]
             .last_error
@@ -1199,7 +1199,7 @@ async fn daemon_marks_duplicate_id_replay_synced_not_failed() {
     assert!(pending.is_empty(), "duplicate-id replay must leave pending");
     assert_eq!(
         all[0].status,
-        oz_core::offline::OfflineQueueStatus::Synced,
+        kasirmu_core::offline::OfflineQueueStatus::Synced,
         "a duplicate-id replay is an idempotent success, not a failure"
     );
     assert_eq!(summary.failed_count, 0, "failed_count must not be polluted");
@@ -1222,7 +1222,7 @@ async fn spawn_crdt_conflict_mock_sync_server() -> String {
         let results = items
             .iter()
             .map(|_| {
-                PushOutcome::Conflict(oz_core::offline::OfflineQueueItem::new(
+                PushOutcome::Conflict(kasirmu_core::offline::OfflineQueueItem::new(
                     "stock.adjusted",
                     r#"{"sku":"COFFEE","delta":-3}"#,
                 ))
@@ -1231,7 +1231,7 @@ async fn spawn_crdt_conflict_mock_sync_server() -> String {
         Json(PushResponse { results })
     }
     async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
-        let mut winner = oz_core::offline::OfflineQueueItem::new(
+        let mut winner = kasirmu_core::offline::OfflineQueueItem::new(
             "stock.adjusted",
             r#"{"local":{"sku":"COFFEE","delta":10},"remote":{"sku":"COFFEE","delta":-3},"merge_type":"crdt_delta"}"#,
         );
@@ -1358,7 +1358,7 @@ async fn spawn_settings_mock_sync_server() -> String {
         })
     }
     async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
-        let mut item = oz_core::offline::OfflineQueueItem::new(
+        let mut item = kasirmu_core::offline::OfflineQueueItem::new(
             "settings.update",
             r#"{"key":"store.name","value":"Remote Acme","terminal_id":"term-remote","version":3}"#,
         );

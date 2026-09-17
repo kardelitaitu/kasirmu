@@ -10,7 +10,7 @@
 //! two writes), then take the global connection lock and read or write.
 
 use chrono::Utc;
-use oz_core::{LegalEntity, Store, UpdateLegalEntity, permissions};
+use kasirmu_core::{LegalEntity, Store, UpdateLegalEntity, permissions};
 use serde::{Deserialize, Serialize};
 
 use crate::ctx::BridgeCtx;

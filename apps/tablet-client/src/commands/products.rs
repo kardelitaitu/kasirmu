@@ -6,15 +6,15 @@
 
 use tauri::{State, command};
 
-use oz_core::availability::UsageCounts;
-use oz_core::entitlements::Entitlements;
-use oz_core::{Money, Store};
+use kasirmu_core::availability::UsageCounts;
+use kasirmu_core::entitlements::Entitlements;
+use kasirmu_core::{Money, Store};
 
-use oz_core::events::{ProductCreated, StockAdjusted};
+use kasirmu_core::events::{ProductCreated, StockAdjusted};
 
 use foundation::validate_not_empty;
 
-use oz_core::permissions;
+use kasirmu_core::permissions;
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
@@ -33,7 +33,7 @@ pub use kasirmu_bridge::products::{
 
 /// Project the store's image assignments into the wire DTO shape (spec 0046b).
 fn image_dtos(
-    images: &[oz_core::db::products::ProductImage],
+    images: &[kasirmu_core::db::products::ProductImage],
 ) -> Vec<kasirmu_bridge::products::ProductImageDto> {
     images
         .iter()
@@ -69,7 +69,7 @@ pub async fn adjust_stock(
     let new_qty = {
         let db = state.db.lock().await;
         let tid = state.terminal_id.lock().await.clone();
-        let store = oz_core::db::Store::new(&db).with_terminal_id(tid);
+        let store = kasirmu_core::db::Store::new(&db).with_terminal_id(tid);
         #[allow(deprecated)]
         store.adjust_stock(&args.sku, args.delta)?
     };
@@ -124,7 +124,7 @@ fn run_list_warehouse_products(conn: &rusqlite::Connection) -> Result<Vec<Produc
 /// Shared mapping from a vec of ProductWithDetails to ProductDto vec.
 fn map_products_to_dtos(
     store: &Store<'_>,
-    products: Vec<oz_core::db::ProductWithDetails>,
+    products: Vec<kasirmu_core::db::ProductWithDetails>,
 ) -> Result<Vec<ProductDto>, AppError> {
     let dtos: Vec<ProductDto> = products
         .into_iter()
@@ -191,7 +191,7 @@ fn run_lookup_product_by_sku(
 /// Shared mapping from `ProductWithDetails` to `ProductDto`.
 fn map_pwd_to_dto(
     store: &Store<'_>,
-    pwd: Option<oz_core::db::ProductWithDetails>,
+    pwd: Option<kasirmu_core::db::ProductWithDetails>,
 ) -> Result<Option<ProductDto>, AppError> {
     let tax_rate_ids = match pwd {
         Some(ref p) => store
@@ -242,8 +242,8 @@ fn map_pwd_to_dto(
 /// Free function rather than an inherent impl: `UpdateProductArgs` is
 /// re-exported from `kasirmu_bridge::products` (Phase 3.3 T6), and Rust does not
 /// permit an inherent impl for a type defined in another crate.
-fn to_update_attributes(args: &UpdateProductArgs) -> oz_core::db::UpdateProductAttributes {
-    oz_core::db::UpdateProductAttributes {
+fn to_update_attributes(args: &UpdateProductArgs) -> kasirmu_core::db::UpdateProductAttributes {
+    kasirmu_core::db::UpdateProductAttributes {
         cost_minor: args.cost_minor,
         brand: args.brand.clone(),
         rack_location: args.rack_location.clone(),
@@ -305,7 +305,7 @@ pub async fn adjust_stock_scoped(
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
         let db = &*db_guard;
-        let store = oz_core::db::Store::new(&db).with_terminal_id(tid);
+        let store = kasirmu_core::db::Store::new(&db).with_terminal_id(tid);
         #[allow(deprecated)]
         store.adjust_stock(&args.sku, args.delta)?
     };
@@ -420,8 +420,8 @@ pub async fn create_product_scoped(
         // scoped store DB.
         let sub = {
             let global_db = state.db.lock().await;
-            oz_core::TenantSubscription::validate_clock_rollback(&global_db)?;
-            oz_core::TenantSubscription::load(&global_db, "default")?
+            kasirmu_core::TenantSubscription::validate_clock_rollback(&global_db)?;
+            kasirmu_core::TenantSubscription::load(&global_db, "default")?
                 .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?
         };
         sub.verify_signature()?;
@@ -442,7 +442,7 @@ pub async fn create_product_scoped(
             &Entitlements::from_subscription(&sub, UsageCounts::default()).tier,
         )?;
 
-        let currency: oz_core::Currency = args
+        let currency: kasirmu_core::Currency = args
             .currency
             .parse()
             .map_err(|_| AppError::Invalid(format!("invalid currency '{}'", args.currency)))?;
@@ -460,7 +460,7 @@ pub async fn create_product_scoped(
             args.barcode.as_deref(),
             args.initial_stock,
             Some(&args.product_type),
-            &oz_core::db::CreateProductAttributes {
+            &kasirmu_core::db::CreateProductAttributes {
                 cost_minor: args.cost_minor,
                 brand: args.brand.clone(),
                 rack_location: args.rack_location.clone(),
@@ -525,7 +525,7 @@ pub async fn update_product_scoped(
         require_permission_for_user(&store, &session.user_id, permissions::PRODUCTS_EDIT_COST)?;
     }
 
-    let currency: oz_core::Currency = args
+    let currency: kasirmu_core::Currency = args
         .currency
         .parse()
         .map_err(|_| AppError::Invalid(format!("invalid currency '{}'", args.currency)))?;

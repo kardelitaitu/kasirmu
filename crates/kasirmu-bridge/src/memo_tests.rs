@@ -74,8 +74,8 @@ fn active_memo_dto_nests_memo_and_delivery_status() {
         author_role: "role-owner".into(),
         title: "T".into(),
         body: "B".into(),
-        status: oz_core::memo::MemoStatus::Published,
-        duration: oz_core::memo::MemoDuration::Hours24,
+        status: kasirmu_core::memo::MemoStatus::Published,
+        duration: kasirmu_core::memo::MemoDuration::Hours24,
         revision: 1,
         published_at: None,
         expires_at: None,
@@ -87,7 +87,7 @@ fn active_memo_dto_nests_memo_and_delivery_status() {
     };
     let active = ActiveMemo {
         memo,
-        delivery_status: oz_core::memo::DeliveryStatus::Pending,
+        delivery_status: kasirmu_core::memo::DeliveryStatus::Pending,
     };
     let json = serde_json::to_value(ActiveMemoDto::from(active)).unwrap();
     assert_eq!(json["deliveryStatus"], "pending");
@@ -99,13 +99,13 @@ fn active_memo_dto_nests_memo_and_delivery_status() {
 fn memo_display_dto_carries_server_issued_cadence() {
     // The display read must serve the cadence alongside the memos so the UI
     // never hardcodes the intervals: the KDS value is derived as 2 × the base
-    // in `oz_core::memo`, and this test pins both the envelope shape and the
+    // in `kasirmu_core::memo`, and this test pins both the envelope shape and the
     // 2× relationship across the wire.
     let dto = MemoDisplayDto {
         memos: vec![],
         cadence: MemoCadenceDto {
-            base_interval_secs: oz_core::memo::NOTIFICATION_BASE_INTERVAL_SECS,
-            kds_interval_secs: oz_core::memo::kds_notification_interval_secs(),
+            base_interval_secs: kasirmu_core::memo::NOTIFICATION_BASE_INTERVAL_SECS,
+            kds_interval_secs: kasirmu_core::memo::kds_notification_interval_secs(),
         },
     };
     let json = serde_json::to_value(&dto).unwrap();
@@ -154,8 +154,8 @@ fn create_args_duration_defaults_to_none_when_absent() {
     .unwrap();
     assert_eq!(args.duration, None);
     assert_eq!(
-        oz_core::memo::DEFAULT_MEMO_DURATION,
-        oz_core::memo::MemoDuration::Hours24
+        kasirmu_core::memo::DEFAULT_MEMO_DURATION,
+        kasirmu_core::memo::MemoDuration::Hours24
     );
 }
 
@@ -182,7 +182,7 @@ fn create_args_rejects_missing_required_fields() {
 // instance, type_key, token?, expiry)`; the role_id on the session is
 // cosmetic, the gate resolves the user's role row.
 
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 
 /// Seed roles + a fixed-id user with the given role on the identity DB.
 fn seed_user(conn: &rusqlite::Connection, user_id: &str, role_id: &str) {
@@ -214,14 +214,14 @@ fn session_for(user_id: &str, role_id: &str) -> SessionContext {
 fn seed_published_memo(conn: &rusqlite::Connection) -> String {
     let store = Store::new(conn);
     let draft = store
-        .create_memo_draft(&oz_core::memo::NewMemo {
+        .create_memo_draft(&kasirmu_core::memo::NewMemo {
             tenant_id: "default".into(),
             location_ids: vec![],
             author_user_id: "user-manager".into(),
             author_role: "role-manager".into(),
             title: "Heads up".into(),
             body: "Close early".into(),
-            duration: oz_core::memo::MemoDuration::Hours24,
+            duration: kasirmu_core::memo::MemoDuration::Hours24,
         })
         .unwrap();
     store.publish_memo("default", &draft.id).unwrap().id
@@ -231,7 +231,7 @@ fn seed_published_memo(conn: &rusqlite::Connection) -> String {
 async fn author_can_stop_their_own_memo_without_memo_stop() {
     // A manager author holds only `memo:write` — the author short-circuit
     // must let them stop their own memo (the ruling preserves that right).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_user(&conn, "user-manager", "role-manager");
     let memo_id = seed_published_memo(&conn);
     let tb = TestBridge::new().with_conn(conn);
@@ -247,7 +247,7 @@ async fn author_can_stop_their_own_memo_without_memo_stop() {
 #[tokio::test]
 async fn admin_can_stop_another_authors_memo() {
     // `memo:stop` covers stopping anyone's memo (Owner/Admin presets).
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_user(&conn, "user-manager", "role-manager");
     seed_user(&conn, "user-admin", "role-admin");
     let memo_id = seed_published_memo(&conn);
@@ -265,7 +265,7 @@ async fn peer_manager_cannot_stop_another_managers_memo() {
     // The property the old strict-> rank rule pinned, now enforced by the
     // grant: a manager holds `memo:write` but NOT `memo:stop`, so stopping
     // another manager's memo denies even though the caller could author.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_user(&conn, "user-manager", "role-manager");
     seed_user(&conn, "user-peer", "role-manager");
     let memo_id = seed_published_memo(&conn);
@@ -284,7 +284,7 @@ async fn staff_cannot_stop_any_memo_even_their_own_claim_is_checked() {
     // must deny — and because the denial comes from the permission gate,
     // not the author check, this also proves an unknown/unrelated user
     // cannot ride the author short-circuit.
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_user(&conn, "user-manager", "role-manager");
     seed_user(&conn, "user-staff", "role-staff");
     let memo_id = seed_published_memo(&conn);
@@ -299,7 +299,7 @@ async fn staff_cannot_stop_any_memo_even_their_own_claim_is_checked() {
 
 #[tokio::test]
 async fn stop_rejects_invalid_session() {
-    let tb = TestBridge::new().with_conn(oz_core::migrations::fresh_db());
+    let tb = TestBridge::new().with_conn(kasirmu_core::migrations::fresh_db());
     let result = stop_memo_scoped(&tb.ctx(), "missing-token", "memo-1").await;
     assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }

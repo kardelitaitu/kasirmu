@@ -2,9 +2,9 @@
 
 use super::*;
 use crate::testing::TestBridge;
-use oz_core::db::receipt_formats::ReceiptSource;
-use oz_core::migrations;
-use oz_core::session::SessionContext;
+use kasirmu_core::db::receipt_formats::ReceiptSource;
+use kasirmu_core::migrations;
+use kasirmu_core::session::SessionContext;
 
 fn seed_owner(conn: &rusqlite::Connection) {
     let store = Store::new(conn);
@@ -136,7 +136,7 @@ async fn layout_write_rejects_nonsense_width_as_validation() {
     match result {
         Err(BridgeError::Core { sub_kind, .. }) => {
             assert!(
-                matches!(sub_kind, oz_core::CoreErrorKind::Validation),
+                matches!(sub_kind, kasirmu_core::CoreErrorKind::Validation),
                 "{sub_kind:?}"
             );
         }

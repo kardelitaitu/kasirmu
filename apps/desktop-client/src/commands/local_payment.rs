@@ -19,10 +19,10 @@
 // inside the bridge fn.
 
 #[allow(unused_imports)] // sibling local_payment_tests.rs depends on it
-use oz_core::db::assignments::ScopeType;
-use oz_core::db::payment_methods::EffectivePaymentRail;
+use kasirmu_core::db::assignments::ScopeType;
+use kasirmu_core::db::payment_methods::EffectivePaymentRail;
 #[allow(unused_imports)] // sibling local_payment_tests.rs depends on it
-use oz_core::{Store, permissions};
+use kasirmu_core::{Store, permissions};
 use tauri::State;
 
 use crate::error::AppError;

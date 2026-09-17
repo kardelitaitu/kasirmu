@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use oz_core::Money;
+use kasirmu_core::Money;
 
 use crate::error::HalError;
 use crate::traits::barcode::BarcodeScanner;

@@ -22,7 +22,7 @@ use tauri_plugin_dialog::DialogExt;
 use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
-use oz_core::permissions;
+use kasirmu_core::permissions;
 
 pub use kasirmu_bridge::branding::{ALLOWED_LOGO_EXTENSIONS, BrandSettingsDto};
 

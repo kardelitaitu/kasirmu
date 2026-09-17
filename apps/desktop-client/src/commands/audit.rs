@@ -1,7 +1,7 @@
 //! Audit log commands.
 //!
 //! `list_audit_log` exposes the append-only audit log entries
-//! stored in SQLite via `oz_core::db::Store::list_audit_entries`.
+//! stored in SQLite via `kasirmu_core::db::Store::list_audit_entries`.
 //!
 //! Wave E / E5: every body lives in the headless `kasirmu_bridge::audit` module.
 //! Each `#[tauri::command]` below keeps its exact name, parameter list and

@@ -268,7 +268,7 @@ fn update_staff_args_debug() {
 // `create_staff_scoped` / `update_staff_scoped` and their arg structs
 // (which carry NO caller-supplied identity) exist.
 
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 
 /// Seed the GLOBAL identity DB with an owner (all permissions) and a
 /// limited user (no staff permissions — the retired cashier role maps
@@ -453,7 +453,7 @@ async fn scoped_create_staff_blocked_at_free_tier_staff_limit() {
         Err(BridgeError::Core { sub_kind, message }) => {
             assert!(matches!(
                 sub_kind,
-                oz_core::CoreErrorKind::SubscriptionLimitExceeded
+                kasirmu_core::CoreErrorKind::SubscriptionLimitExceeded
             ));
             assert!(message.contains("allows maximum 1 staff users"));
         }
@@ -1335,7 +1335,7 @@ fn bootstrap_owner_args_debug() {
 #[test]
 fn bootstrap_owner_result_serialize() {
     let result = BootstrapOwnerResult {
-        session: oz_core::auth::LoginSession {
+        session: kasirmu_core::auth::LoginSession {
             user_id: "u1".into(),
             display_name: "Owner".into(),
             role_name: "Owner".into(),
@@ -1353,7 +1353,7 @@ fn bootstrap_owner_result_serialize() {
 #[test]
 fn bootstrap_owner_result_debug() {
     let result = BootstrapOwnerResult {
-        session: oz_core::auth::LoginSession {
+        session: kasirmu_core::auth::LoginSession {
             user_id: "u2".into(),
             display_name: "Alice".into(),
             role_name: "Owner".into(),

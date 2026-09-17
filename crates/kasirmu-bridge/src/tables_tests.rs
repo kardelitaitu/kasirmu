@@ -13,7 +13,7 @@ use super::*;
 use crate::testing::TestBridge;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 use platform_core::StoreDatabaseManager;
 
 fn seed_owner(conn: &rusqlite::Connection) {
@@ -63,7 +63,7 @@ fn unique_store_dir() -> std::path::PathBuf {
 /// desktop `scoped_state` harness's
 /// `StoreDatabaseManager::new(temp_dir, migrations::ALL)`.
 fn store_manager() -> StoreDatabaseManager {
-    StoreDatabaseManager::new(unique_store_dir(), oz_core::migrations::ALL)
+    StoreDatabaseManager::new(unique_store_dir(), kasirmu_core::migrations::ALL)
 }
 
 /// `TestBridge` with a fresh migrated global DB, an isolated store-db dir
@@ -126,7 +126,7 @@ fn tables_rejects_invalid_token() {
 
 #[tokio::test]
 async fn scoped_list_tables_rejects_invalid_token() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
     let result = list_tables_scoped(&bridge.ctx(), "bad-token", None).await;
@@ -137,7 +137,7 @@ async fn scoped_list_tables_rejects_invalid_token() {
 
 #[tokio::test]
 async fn owner_can_create_table() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -150,7 +150,7 @@ async fn owner_can_create_table() {
 
 #[tokio::test]
 async fn owner_can_list_tables() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -172,7 +172,7 @@ async fn owner_can_list_tables() {
 
 #[tokio::test]
 async fn owner_can_get_table_by_id() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -186,7 +186,7 @@ async fn owner_can_get_table_by_id() {
 
 #[tokio::test]
 async fn owner_can_update_table() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -201,7 +201,7 @@ async fn owner_can_update_table() {
 
 #[tokio::test]
 async fn owner_can_delete_table() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -219,7 +219,7 @@ async fn owner_can_delete_table() {
 
 #[tokio::test]
 async fn owner_can_update_table_status() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -244,7 +244,7 @@ async fn owner_can_update_table_status() {
 
 #[tokio::test]
 async fn staff_denied_assign_table_order() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let bridge = scoped_bridge(conn, "owner-tok", "user-owner", "role-owner", "s1");
@@ -274,7 +274,7 @@ async fn staff_denied_assign_table_order() {
 
 #[tokio::test]
 async fn staff_denied_release_table() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     seed_staff(&conn);
     let bridge = scoped_bridge(conn, "owner-tok", "user-owner", "role-owner", "s1");
@@ -302,7 +302,7 @@ async fn staff_denied_release_table() {
 
 #[tokio::test]
 async fn staff_denied_create_table() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_staff(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-staff", "role-staff", "s1");
 
@@ -314,7 +314,7 @@ async fn staff_denied_create_table() {
 
 #[tokio::test]
 async fn list_tables_empty_when_no_tables() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -326,7 +326,7 @@ async fn list_tables_empty_when_no_tables() {
 
 #[tokio::test]
 async fn list_tables_scoped_filter_by_section() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -353,7 +353,7 @@ async fn list_tables_scoped_filter_by_section() {
 
 #[tokio::test]
 async fn list_sections_returns_created_sections() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -377,7 +377,7 @@ async fn list_sections_returns_created_sections() {
 
 #[tokio::test]
 async fn get_table_scoped_returns_none_for_unknown() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 

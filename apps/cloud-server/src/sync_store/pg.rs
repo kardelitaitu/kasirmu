@@ -21,7 +21,7 @@
 //! - `BIGINT`-as-boolean columns go through [`pg_bool`] (0 → false, else true).
 
 use deadpool_postgres::Pool;
-use oz_core::offline::{OfflineQueueItem, OfflineQueueStatus, SyncPriority};
+use kasirmu_core::offline::{OfflineQueueItem, OfflineQueueStatus, SyncPriority};
 use platform_sync::transport::PushOutcome;
 
 use super::MULTIROW_CHUNK;

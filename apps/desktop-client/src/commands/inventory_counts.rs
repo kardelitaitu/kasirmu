@@ -16,7 +16,7 @@
 //! resolve the store and actor from the opaque session token.
 
 #[allow(unused_imports)] // sibling inventory_counts_tests.rs depends on it
-use oz_core::Store;
+use kasirmu_core::Store;
 use tauri::State;
 
 use crate::error::AppError;

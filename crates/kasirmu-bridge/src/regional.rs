@@ -12,18 +12,18 @@
 //! gate, before the store connection is opened.
 //!
 //! Wire contract is unchanged: the core `RegionalConfig` is returned as-is
-//! (its snake_case field names are the IPC contract, `oz_core::regional`), and
+//! (its snake_case field names are the IPC contract, `kasirmu_core::regional`), and
 //! every axis value is validated by the core, which also owns the ADR #48
 //! IANA-timezone contract. This module adds no validation of its own and
 //! never touches a column directly.
 
 use serde::Deserialize;
 
-use oz_core::RegionalConfig;
-use oz_core::db::Store;
-use oz_core::db::assignments::ScopeType;
-use oz_core::permissions;
-use oz_core::session::SessionContext;
+use kasirmu_core::RegionalConfig;
+use kasirmu_core::db::Store;
+use kasirmu_core::db::assignments::ScopeType;
+use kasirmu_core::permissions;
+use kasirmu_core::session::SessionContext;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -55,9 +55,9 @@ pub struct SetRegionalConfig {
 /// resource gate is the one check `BridgeCtx` does not expose, so it is
 /// carried here with the same `PermissionDenied` → [`BridgeError::PermissionDenied`]
 /// translation the authz seam applies.
-fn map_gate_error(e: oz_core::CoreError) -> BridgeError {
+fn map_gate_error(e: kasirmu_core::CoreError) -> BridgeError {
     match e {
-        oz_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
+        kasirmu_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
         other => BridgeError::from(other),
     }
 }

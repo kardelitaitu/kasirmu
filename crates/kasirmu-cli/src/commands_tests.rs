@@ -3,7 +3,7 @@ use super::*;
 use rusqlite::{Connection, params};
 
 fn setup_in_memory_db() -> Connection {
-    oz_core::migrations::fresh_db()
+    kasirmu_core::migrations::fresh_db()
 }
 
 fn make_store(conn: &Connection) -> Store<'_> {
@@ -386,7 +386,7 @@ fn run_user_create_and_list() {
     run_user_create(
         &store,
         "jdoe",
-        &oz_core::auth::hash_pin("4321").unwrap(),
+        &kasirmu_core::auth::hash_pin("4321").unwrap(),
         "John Doe",
         "role-staff",
     )
@@ -431,19 +431,19 @@ fn currency_from_str_invalid() {
 
 #[test]
 fn run_init_db_simple_retail() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let args = InitDbArgs {
         preset: "simple-retail".into(),
     };
     let result = run_init_db(&conn, &args);
     assert!(result.is_ok());
-    let name = oz_core::Settings::get_store_name(&conn).unwrap();
+    let name = kasirmu_core::Settings::get_store_name(&conn).unwrap();
     assert_eq!(name, Some("My Store".into()));
 }
 
 #[test]
 fn run_init_db_unknown_preset_falls_back_to_custom() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let args = InitDbArgs {
         preset: "unknown-preset".into(),
     };
@@ -453,7 +453,7 @@ fn run_init_db_unknown_preset_falls_back_to_custom() {
 
 #[test]
 fn run_init_db_full_store() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let args = InitDbArgs {
         preset: "full-store".into(),
     };
@@ -463,7 +463,7 @@ fn run_init_db_full_store() {
 
 #[test]
 fn run_init_db_restaurant() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let args = InitDbArgs {
         preset: "restaurant".into(),
     };
@@ -473,7 +473,7 @@ fn run_init_db_restaurant() {
 
 #[test]
 fn run_init_db_custom() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let args = InitDbArgs {
         preset: "custom".into(),
     };
@@ -496,7 +496,7 @@ fn run_migrate_on_fresh_db() {
 fn cli3_phc_validation_accepts_real_argon2_hash() {
     // Produce a genuine argon2id PHC string through the project's own
     // hashing helper, then confirm the validator accepts it.
-    let hash = oz_core::auth::hash_pin("4321").unwrap();
+    let hash = kasirmu_core::auth::hash_pin("4321").unwrap();
     validate_phc_pin_hash(&hash).unwrap();
 }
 

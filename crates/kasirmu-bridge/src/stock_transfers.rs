@@ -18,9 +18,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use oz_core::db::Store;
-use oz_core::permissions;
-use oz_core::stock_transfer::{StockTransfer, StockTransferLine};
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
+use kasirmu_core::stock_transfer::{StockTransfer, StockTransferLine};
 use rusqlite::Connection;
 
 use crate::ctx::BridgeCtx;
@@ -48,9 +48,9 @@ pub struct TransferWithLines {
 /// uses `Store::require_permission` (not the scope-aware form), so it needs
 /// the same `PermissionDenied` → [`BridgeError::PermissionDenied`]
 /// translation the authz seam applies.
-fn map_gate_error(e: oz_core::CoreError) -> BridgeError {
+fn map_gate_error(e: kasirmu_core::CoreError) -> BridgeError {
     match e {
-        oz_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
+        kasirmu_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
         other => BridgeError::from(other),
     }
 }
@@ -342,7 +342,7 @@ pub async fn receive_stock_transfer_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let received_lines = received_lines
         .iter()
-        .map(|line| oz_core::db::stock_transfers::ReceivedLine {
+        .map(|line| kasirmu_core::db::stock_transfers::ReceivedLine {
             line_id: line.line_id.clone(),
             received_qty: line.received_qty,
         })

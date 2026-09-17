@@ -12,8 +12,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use oz_core::db::Store;
-use oz_core::permissions;
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
 use rusqlite::Connection;
 
 use crate::ctx::BridgeCtx;
@@ -92,9 +92,9 @@ pub struct DeleteCategoryResult {
 /// gates use `Store::require_permission` (not the scope-aware form), so they
 /// need the same `PermissionDenied` → [`BridgeError::PermissionDenied`]
 /// translation the authz seam applies.
-fn map_gate_error(e: oz_core::CoreError) -> BridgeError {
+fn map_gate_error(e: kasirmu_core::CoreError) -> BridgeError {
     match e {
-        oz_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
+        kasirmu_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
         other => BridgeError::from(other),
     }
 }

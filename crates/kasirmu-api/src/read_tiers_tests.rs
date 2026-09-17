@@ -286,7 +286,7 @@ fn preset_matrix(preset: &[&str]) -> Vec<(&'static str, bool)> {
         .iter()
         .map(|e| {
             let owned: Vec<String> = preset.iter().map(|k| k.to_string()).collect();
-            (e.path, oz_core::has_permission(&owned, e.key))
+            (e.path, kasirmu_core::has_permission(&owned, e.key))
         })
         .collect()
 }

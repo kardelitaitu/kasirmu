@@ -1,5 +1,5 @@
 use super::*;
-use oz_core::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderWithLines, Supplier};
+use kasirmu_core::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderWithLines, Supplier};
 
 fn make_supplier() -> Supplier {
     Supplier {

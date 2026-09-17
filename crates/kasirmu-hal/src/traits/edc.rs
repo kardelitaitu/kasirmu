@@ -18,7 +18,7 @@ next: real vendor protocol in drivers/edc | perf: N/A — all methods are stubs 
 //! success — the convention inherited from the `oz-payment` stubs.
 
 use async_trait::async_trait;
-use oz_core::Money;
+use kasirmu_core::Money;
 use serde::{Deserialize, Serialize};
 
 use crate::error::HalError;

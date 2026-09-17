@@ -213,8 +213,8 @@ pub async fn list_active_memos_handler(
                 Ok(memos) => Json(ActiveMemosResponse {
                     memos,
                     cadence: CadenceDto {
-                        base_interval_secs: oz_core::memo::NOTIFICATION_BASE_INTERVAL_SECS,
-                        kds_interval_secs: oz_core::memo::kds_notification_interval_secs(),
+                        base_interval_secs: kasirmu_core::memo::NOTIFICATION_BASE_INTERVAL_SECS,
+                        kds_interval_secs: kasirmu_core::memo::kds_notification_interval_secs(),
                     },
                 })
                 .into_response(),

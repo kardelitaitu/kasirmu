@@ -2,7 +2,7 @@ use super::*;
 use rusqlite::Connection;
 
 fn fresh() -> Connection {
-    oz_core::migrations::fresh_db()
+    kasirmu_core::migrations::fresh_db()
 }
 
 // MSL-7 fixed: the query uses the real 	ax_total_minor column, so no

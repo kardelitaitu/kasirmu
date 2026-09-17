@@ -23,10 +23,10 @@
 use serde::{Deserialize, Serialize};
 
 use foundation::validate_not_empty;
-use oz_core::db::Store;
-use oz_core::db::purchase_orders::{CreatePoLineInput, ReceivePoLineInput};
-use oz_core::permissions;
-use oz_core::{PurchaseOrderLine, PurchaseOrderWithLines, Supplier};
+use kasirmu_core::db::Store;
+use kasirmu_core::db::purchase_orders::{CreatePoLineInput, ReceivePoLineInput};
+use kasirmu_core::permissions;
+use kasirmu_core::{PurchaseOrderLine, PurchaseOrderWithLines, Supplier};
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;

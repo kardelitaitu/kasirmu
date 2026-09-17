@@ -12,7 +12,7 @@ description = "kasir.mu OpenAPI REST server — axum-based HTTP API with JWT aut
 workspace = true
 
 [dependencies]
-oz-core = { workspace = true }
+kasirmu-core = { workspace = true }
 modules-currency = { workspace = true }
 rusqlite = { workspace = true }
 axum = { workspace = true }

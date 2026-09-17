@@ -63,7 +63,7 @@ pub(super) fn build_cloud_schemas() -> Value {
             }
         },
         // One offline queue item exactly as it crosses the wire. The Rust type
-        // is `oz_core::offline::OfflineQueueItem`: the push handler
+        // is `kasirmu_core::offline::OfflineQueueItem`: the push handler
         // deserialises `Json<Vec<OfflineQueueItem>>`, the pull response
         // returns the same struct, and the `conflict` branch of `PushOutcome`
         // flattens it next to its tag. Field names, nullability and casing are

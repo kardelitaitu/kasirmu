@@ -16,7 +16,7 @@ next: none | perf: N/A
 //! | `stock.*`               | CRDT merge              | —           |
 //! | `*` (fallback)          | Created-at LWW          | `created_at`|
 
-use oz_core::offline::OfflineQueueItem;
+use kasirmu_core::offline::OfflineQueueItem;
 use serde_json::Value;
 
 use crate::queue::ResolvedItem;

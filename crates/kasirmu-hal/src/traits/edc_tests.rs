@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use oz_core::Currency;
+use kasirmu_core::Currency;
 
 use super::*;
 

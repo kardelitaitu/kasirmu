@@ -14,7 +14,7 @@
 
 use tauri::{State, command};
 
-use oz_core::loyalty::{
+use kasirmu_core::loyalty::{
     LoyaltyAccount, LoyaltyAccountWithDetails, LoyaltyTier, LoyaltyTransaction,
 };
 

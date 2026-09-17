@@ -235,7 +235,7 @@ async fn starting_a_scanner_without_an_event_sink_fails_closed() {
         .await;
     bridge.sessions().write().unwrap().insert(
         "tok".into(),
-        oz_core::session::SessionContext::new(
+        kasirmu_core::session::SessionContext::new(
             "user-1".into(),
             "role-1".into(),
             "terminal-1".into(),

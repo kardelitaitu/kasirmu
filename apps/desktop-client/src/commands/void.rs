@@ -26,7 +26,7 @@ pub async fn void_sale_scoped(
     session_token: String,
     args: VoidSaleScopedArgs,
     state: State<'_, AppState>,
-) -> Result<oz_core::Sale, AppError> {
+) -> Result<kasirmu_core::Sale, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::void::void_sale_scoped(&ctx, &session_token, &args)
         .await

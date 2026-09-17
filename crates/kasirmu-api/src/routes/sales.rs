@@ -26,8 +26,8 @@ use axum::{
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
-use oz_core::db::Store;
-use oz_core::{Cart, CartLine, CoreError, Money, Sale, SaleStatus, Sku};
+use kasirmu_core::db::Store;
+use kasirmu_core::{Cart, CartLine, CoreError, Money, Sale, SaleStatus, Sku};
 
 use crate::AppState;
 use crate::auth::ApiTokenClaims;

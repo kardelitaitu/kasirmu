@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 
 fn state() -> AppState {
     AppState {
-        db: Arc::new(Mutex::new(oz_core::migrations::fresh_db())),
+        db: Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db())),
         pg: None,
         admin_key: None,
         api_secret: String::new(),

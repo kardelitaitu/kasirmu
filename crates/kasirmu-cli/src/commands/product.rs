@@ -9,8 +9,8 @@ use std::str::FromStr;
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 
-use oz_core::db::Store;
-use oz_core::{CoreError, Currency, Money, format_minor};
+use kasirmu_core::db::Store;
+use kasirmu_core::{CoreError, Currency, Money, format_minor};
 
 use crate::cli::{ProductAction, ProductArgs};
 

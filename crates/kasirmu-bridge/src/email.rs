@@ -18,7 +18,7 @@ use crate::error::BridgeError;
 /// Send a test report email using the currently configured SMTP
 /// settings and report schedule.
 ///
-/// Uses [`oz_core::export::email_sender::generate_filtered_report_email`]
+/// Uses [`kasirmu_core::export::email_sender::generate_filtered_report_email`]
 /// so that the user's report_type checkbox selections are respected.
 ///
 /// # Returns
@@ -30,13 +30,13 @@ pub async fn send_test_report(
     session_token: &str,
 ) -> Result<String, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SETTINGS_EDIT)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SETTINGS_EDIT)
         .await?;
     let db = ctx.db.clone();
 
     let (smtp_config, recipients, report_email) = {
         let conn = db.lock().await;
-        let store = oz_core::Store::new(&conn);
+        let store = kasirmu_core::Store::new(&conn);
 
         let smtp_config = store
             .get_smtp_config()
@@ -58,13 +58,13 @@ pub async fn send_test_report(
             schedule.recipients.clone()
         };
 
-        let store_name = oz_core::Settings::get(store.conn, "store.name")
+        let store_name = kasirmu_core::Settings::get(store.conn, "store.name")
             .ok()
             .flatten()
             .unwrap_or_else(|| "OZ-POS Store".to_string());
 
         // Generate filtered report email (respects report_types checkboxes)
-        let report_email = oz_core::export::email_sender::generate_filtered_report_email(
+        let report_email = kasirmu_core::export::email_sender::generate_filtered_report_email(
             &store,
             &schedule,
             &store_name,
@@ -74,7 +74,7 @@ pub async fn send_test_report(
         (smtp_config, recipients, report_email)
     };
 
-    let transport = oz_core::export::email_sender::build_smtp_transport(&smtp_config)
+    let transport = kasirmu_core::export::email_sender::build_smtp_transport(&smtp_config)
         .map_err(|e| BridgeError::Internal(format!("SMTP transport failed: {e}")))?;
 
     for recipient in &recipients {
@@ -120,16 +120,16 @@ pub async fn send_test_report(
 
 /// Get the current report schedule configuration.
 ///
-/// Returns the saved [`ReportScheduleConfig`](oz_core::export::ReportScheduleConfig) or a default if none
+/// Returns the saved [`ReportScheduleConfig`](kasirmu_core::export::ReportScheduleConfig) or a default if none
 /// has been persisted yet.
 ///
 /// GATE-FREE by design (see module doc): the unscoped IPC surface performs
 /// no session resolution and no permission check — do not add one here.
 pub async fn get_report_schedule(
     ctx: &BridgeCtx<'_>,
-) -> Result<oz_core::export::ReportScheduleConfig, BridgeError> {
+) -> Result<kasirmu_core::export::ReportScheduleConfig, BridgeError> {
     let conn = ctx.lock_global().await;
-    let store = oz_core::Store::new(&conn);
+    let store = kasirmu_core::Store::new(&conn);
     store
         .get_report_schedule()
         .map_err(|e| BridgeError::Internal(format!("Failed to load report schedule: {e}")))
@@ -140,13 +140,13 @@ pub async fn get_report_schedule(
 pub async fn save_report_schedule(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
-    config: oz_core::export::ReportScheduleConfig,
+    config: kasirmu_core::export::ReportScheduleConfig,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::SETTINGS_EDIT)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::SETTINGS_EDIT)
         .await?;
     let conn = ctx.lock_global().await;
-    let store = oz_core::Store::new(&conn);
+    let store = kasirmu_core::Store::new(&conn);
     store
         .save_report_schedule(&config)
         .map_err(|e| BridgeError::Internal(format!("Failed to save report schedule: {e}")))
@@ -160,10 +160,10 @@ pub async fn save_report_schedule(
 pub async fn get_report_schedule_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
-) -> Result<oz_core::export::ReportScheduleConfig, BridgeError> {
+) -> Result<kasirmu_core::export::ReportScheduleConfig, BridgeError> {
     // F-017: enforce per-domain permission on this scoped command.
     let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, oz_core::permissions::REPORTS_SCHEDULE)
+    ctx.require_session_permission(&session, kasirmu_core::permissions::REPORTS_SCHEDULE)
         .await?;
     get_report_schedule(ctx).await
 }

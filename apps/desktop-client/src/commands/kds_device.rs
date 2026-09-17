@@ -12,7 +12,7 @@
 
 use tauri::State;
 
-use oz_core::kds::{KdsConnectionStatus, KdsDevice, RegisterKdsDeviceInput};
+use kasirmu_core::kds::{KdsConnectionStatus, KdsDevice, RegisterKdsDeviceInput};
 
 use crate::error::AppError;
 use crate::state::AppState;

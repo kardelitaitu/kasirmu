@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 
 fn state_with_admin_key(key: Option<&str>) -> AppState {
     AppState {
-        db: Arc::new(Mutex::new(oz_core::migrations::fresh_db())),
+        db: Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db())),
         pg: None,
         admin_key: key.map(|s| s.to_owned()),
         api_secret: String::new(),
@@ -318,7 +318,7 @@ fn hash_secret_is_stable_hex() {
 
 #[test]
 fn verify_terminal_credentials_matches_only_correct_secret() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let secret = generate_device_secret();
     conn.execute(
         "INSERT INTO sync_terminals (terminal_id, secret_hash, label)

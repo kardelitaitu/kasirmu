@@ -10,7 +10,7 @@
 //! `AppError` (wire shape unchanged).
 
 #[allow(unused_imports)] // sibling setup_tests.rs depends on it
-use oz_core::{FeatureRegistry, Settings, Store, features};
+use kasirmu_core::{FeatureRegistry, Settings, Store, features};
 use tauri::State;
 
 use crate::error::AppError;

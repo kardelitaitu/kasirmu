@@ -340,7 +340,7 @@ async fn pg_integration_migrate_and_verify() {
 }
 
 /// Volume test: migrate a SQLite DB seeded with the **real** schema
-/// (`oz_core::migrations::run`) and 10k+ rows across several tables, then
+/// (`kasirmu_core::migrations::run`) and 10k+ rows across several tables, then
 /// assert every row made it with an identical checksum. Exercises the
 /// copy batching and the checksum path at the volume the cutover will
 /// actually see. Skips when Postgres is unreachable.
@@ -396,7 +396,7 @@ async fn pg_integration_migrate_large_db() {
 
     {
         let mut conn = Connection::open(&path).unwrap();
-        oz_core::migrations::run(&mut conn).unwrap();
+        kasirmu_core::migrations::run(&mut conn).unwrap();
 
         let now = "2026-03-01T00:00:00Z";
         let tenant = format!("{ns}-default");

@@ -6,9 +6,9 @@
 
 use tauri::{State, command};
 
-use oz_core::db::Store;
-use oz_core::db::tax::TaxRateWindow;
-use oz_core::tax_rate::RoundingMode;
+use kasirmu_core::db::Store;
+use kasirmu_core::db::tax::TaxRateWindow;
+use kasirmu_core::tax_rate::RoundingMode;
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
@@ -53,8 +53,8 @@ pub use kasirmu_bridge::tax::{
     TaxRateDto, TaxRateScopeDto, TaxRateWindowDto, UpdateTaxRateArgs,
 };
 
-fn scope_dto(s: &oz_core::db::tax::TaxRateScope) -> TaxRateScopeDto {
-    use oz_core::db::tax::TaxRateScope;
+fn scope_dto(s: &kasirmu_core::db::tax::TaxRateScope) -> TaxRateScopeDto {
+    use kasirmu_core::db::tax::TaxRateScope;
     match s {
         TaxRateScope::Global => TaxRateScopeDto {
             scope: "global".into(),
@@ -74,14 +74,14 @@ fn scope_dto(s: &oz_core::db::tax::TaxRateScope) -> TaxRateScopeDto {
     }
 }
 
-fn window_dto(w: &oz_core::db::tax::TaxRateWindow) -> TaxRateWindowDto {
+fn window_dto(w: &kasirmu_core::db::tax::TaxRateWindow) -> TaxRateWindowDto {
     TaxRateWindowDto {
         effective_from: w.effective_from.clone(),
         effective_to: w.effective_to.clone(),
     }
 }
 
-fn to_dto(r: oz_core::tax_rate::TaxRate) -> TaxRateDto {
+fn to_dto(r: kasirmu_core::tax_rate::TaxRate) -> TaxRateDto {
     let display_rate = r.display_rate();
     TaxRateDto {
         id: r.id,
@@ -111,7 +111,7 @@ pub async fn list_tax_rates_scoped(
     require_tax_permission(
         &state,
         &session.user_id,
-        oz_core::permissions::SETTINGS_READ,
+        kasirmu_core::permissions::SETTINGS_READ,
     )
     .await?;
     let db = conn
@@ -130,7 +130,7 @@ fn run_list_tax_rates(conn: &rusqlite::Connection) -> Result<Vec<TaxRateDto>, Ap
     let store = Store::new(conn);
     let rates = store.list_tax_rates()?;
     let scopes = store.list_tax_rate_scopes()?;
-    let by_id: std::collections::HashMap<&str, &oz_core::db::tax::TaxRateScopeInfo> =
+    let by_id: std::collections::HashMap<&str, &kasirmu_core::db::tax::TaxRateScopeInfo> =
         scopes.iter().map(|s| (s.id.as_str(), s)).collect();
     Ok(rates
         .into_iter()
@@ -159,7 +159,7 @@ pub async fn create_tax_rate_scoped(
     require_tax_permission(
         &state,
         &session.user_id,
-        oz_core::permissions::SETTINGS_EDIT,
+        kasirmu_core::permissions::SETTINGS_EDIT,
     )
     .await?;
     let db = conn
@@ -211,7 +211,7 @@ fn run_create_tax_rate(
             args.is_inclusive,
         )?;
         let mut dto = to_dto(rate);
-        dto.scope = Some(scope_dto(&oz_core::db::tax::TaxRateScope::Global));
+        dto.scope = Some(scope_dto(&kasirmu_core::db::tax::TaxRateScope::Global));
         dto.window = Some(window_dto(&TaxRateWindow {
             effective_from: None,
             effective_to: None,
@@ -227,9 +227,9 @@ fn run_create_tax_rate(
 fn scoped_scope(
     legal_entity_id: Option<&str>,
     location_id: Option<&str>,
-) -> Result<oz_core::db::tax::TaxRateScope, AppError> {
-    oz_core::db::tax::TaxRateScope::classify(legal_entity_id, location_id).ok_or_else(|| {
-        AppError::from(oz_core::CoreError::Validation {
+) -> Result<kasirmu_core::db::tax::TaxRateScope, AppError> {
+    kasirmu_core::db::tax::TaxRateScope::classify(legal_entity_id, location_id).ok_or_else(|| {
+        AppError::from(kasirmu_core::CoreError::Validation {
             field: "legal_entity_id",
             message: "legal_entity_id and location_id are mutually exclusive: a tax rate                       is entity-scoped OR location-scoped OR tenant-global"
                 .into(),
@@ -251,7 +251,7 @@ pub async fn update_tax_rate_scoped(
     require_tax_permission(
         &state,
         &session.user_id,
-        oz_core::permissions::SETTINGS_EDIT,
+        kasirmu_core::permissions::SETTINGS_EDIT,
     )
     .await?;
     let db = conn
@@ -304,7 +304,7 @@ fn run_update_tax_rate(
             args.is_inclusive,
         )?;
         let mut dto = to_dto(rate);
-        dto.scope = Some(scope_dto(&oz_core::db::tax::TaxRateScope::Global));
+        dto.scope = Some(scope_dto(&kasirmu_core::db::tax::TaxRateScope::Global));
         dto.window = Some(window_dto(&TaxRateWindow {
             effective_from: None,
             effective_to: None,
@@ -338,7 +338,7 @@ pub async fn delete_tax_rate_scoped(
     require_tax_permission(
         &state,
         &session.user_id,
-        oz_core::permissions::SETTINGS_EDIT,
+        kasirmu_core::permissions::SETTINGS_EDIT,
     )
     .await?;
     let db = conn
@@ -373,7 +373,7 @@ pub async fn get_tax_rate_dependency_counts_scoped(
     require_tax_permission(
         &state,
         &session.user_id,
-        oz_core::permissions::SETTINGS_READ,
+        kasirmu_core::permissions::SETTINGS_READ,
     )
     .await?;
     let db = conn
@@ -402,7 +402,7 @@ pub async fn list_category_tax_rates_scoped(
     require_tax_permission(
         &state,
         &session.user_id,
-        oz_core::permissions::SETTINGS_READ,
+        kasirmu_core::permissions::SETTINGS_READ,
     )
     .await?;
     let db = conn
@@ -445,7 +445,7 @@ pub async fn set_category_tax_rates_scoped(
     require_tax_permission(
         &state,
         &session.user_id,
-        oz_core::permissions::SETTINGS_EDIT,
+        kasirmu_core::permissions::SETTINGS_EDIT,
     )
     .await?;
     let db = conn
@@ -482,7 +482,7 @@ pub async fn list_tax_rate_rounding_modes_scoped(
     require_tax_permission(
         &state,
         &session.user_id,
-        oz_core::permissions::SETTINGS_READ,
+        kasirmu_core::permissions::SETTINGS_READ,
     )
     .await?;
     let conn = state.resolve_store(&session_token)?;

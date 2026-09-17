@@ -1,7 +1,7 @@
 //! Location-profile commands (Wave E / E7) — the tauri-free half of
 //! `apps/desktop-client/src/commands/locations.rs`.
 //!
-//! Every operation talks to the [`oz_core::Store`] facade over the session's
+//! Every operation talks to the [`kasirmu_core::Store`] facade over the session's
 //! store-scoped connection, exactly as the shell did: the store DB is opened
 //! through [`BridgeCtx::resolve_scope`] and wrapped with `Store::new`
 //! (cache-free), so location-row cache invalidation and location-scoped store
@@ -25,18 +25,18 @@
 
 use serde::{Deserialize, Serialize};
 
-use oz_core::LocationProfile;
-use oz_core::availability::UsageCounts;
-use oz_core::db::Store;
-use oz_core::db::assignments::ScopeType;
-use oz_core::entitlements::Entitlements;
-use oz_core::permissions;
-use oz_core::subscription::TenantSubscription;
+use kasirmu_core::LocationProfile;
+use kasirmu_core::availability::UsageCounts;
+use kasirmu_core::db::Store;
+use kasirmu_core::db::assignments::ScopeType;
+use kasirmu_core::entitlements::Entitlements;
+use kasirmu_core::permissions;
+use kasirmu_core::subscription::TenantSubscription;
 // The debug-only Free->Premium shim below (`#[cfg(debug_assertions)]`) is the only
 // consumer of `SubscriptionTier` in this file, so the name is imported only where
 // it is used; release would otherwise see an unused import under `-D warnings`.
 #[cfg(debug_assertions)]
-use oz_core::subscription::SubscriptionTier;
+use kasirmu_core::subscription::SubscriptionTier;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -311,7 +311,7 @@ pub async fn update_location_profile_scoped(
     // unparseable timezone. UTC is the column default for un-migrated rows and
     // is allowed through so an unrelated field edit still saves; the editor UI
     // never offers it, so every new write carries a real zone.
-    if !oz_core::regional::is_preset_location_timezone(&args.timezone)
+    if !kasirmu_core::regional::is_preset_location_timezone(&args.timezone)
         && !args.timezone.eq_ignore_ascii_case("UTC")
     {
         return Err(BridgeError::Invalid(format!(

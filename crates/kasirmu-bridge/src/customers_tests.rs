@@ -1,7 +1,7 @@
 use super::*;
 use crate::testing::TestBridge;
 use foundation::{Email, Phone};
-use oz_core::session::SessionContext;
+use kasirmu_core::session::SessionContext;
 
 // ── Scoped-command permission + isolation (CUST-01) ─────────────
 
@@ -309,28 +309,28 @@ fn phone_optional_when_none_is_ok() {
 #[test]
 fn dto_maps_email_to_string() {
     let customer =
-        oz_core::Customer::new("Test").with_email(Email::new("alice@example.com").unwrap());
+        kasirmu_core::Customer::new("Test").with_email(Email::new("alice@example.com").unwrap());
     let dto = CustomerDto::from(customer);
     assert_eq!(dto.email, Some("alice@example.com".into()));
 }
 
 #[test]
 fn dto_maps_phone_to_string() {
-    let customer = oz_core::Customer::new("Test").with_phone(Phone::new("+1-555-0102").unwrap());
+    let customer = kasirmu_core::Customer::new("Test").with_phone(Phone::new("+1-555-0102").unwrap());
     let dto = CustomerDto::from(customer);
     assert_eq!(dto.phone, Some("+1-555-0102".into()));
 }
 
 #[test]
 fn dto_maps_none_email() {
-    let customer = oz_core::Customer::new("Test");
+    let customer = kasirmu_core::Customer::new("Test");
     let dto = CustomerDto::from(customer);
     assert!(dto.email.is_none());
 }
 
 #[test]
 fn dto_maps_none_phone() {
-    let customer = oz_core::Customer::new("Test");
+    let customer = kasirmu_core::Customer::new("Test");
     let dto = CustomerDto::from(customer);
     assert!(dto.phone.is_none());
 }

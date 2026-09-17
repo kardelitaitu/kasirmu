@@ -10,16 +10,16 @@ next: none | perf: fine
 
 use tauri::{State, command};
 
-use oz_core::auth::hash_pin;
-use oz_core::db::Store;
-use oz_core::db::audit_security::{
+use kasirmu_core::auth::hash_pin;
+use kasirmu_core::db::Store;
+use kasirmu_core::db::audit_security::{
     SECURITY_ACTION_USER_UPDATE, SECURITY_REASON_PIN_ROTATED, SECURITY_REASON_PROFILE_CHANGED,
     SecurityEvent,
 };
-use oz_core::permissions;
+use kasirmu_core::permissions;
 
 #[cfg(test)]
-use oz_core::Role;
+use kasirmu_core::Role;
 
 use foundation::validate_min_length;
 

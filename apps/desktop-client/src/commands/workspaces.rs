@@ -20,8 +20,8 @@
 //! tests.
 
 #[allow(unused_imports)] // sibling workspaces_tests.rs depends on it
-use oz_core::db::Store;
-use oz_core::db::workspaces::WorkspaceDto;
+use kasirmu_core::db::Store;
+use kasirmu_core::db::workspaces::WorkspaceDto;
 
 use tauri::State;
 

@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 use tower::ServiceExt;
 
 fn test_app() -> axum::Router {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let state = AppState {
         db: Arc::new(Mutex::new(conn)),
         pg: None,
@@ -180,7 +180,7 @@ async fn set_plan_rejects_invalid_tenant_id() {
 
 #[tokio::test]
 async fn set_plan_requires_admin_key_when_configured() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let state = AppState {
         db: Arc::new(Mutex::new(conn)),
         pg: None,

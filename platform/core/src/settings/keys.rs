@@ -197,7 +197,7 @@ pub const EDC_DEFAULT_TERMINAL: &str = "edc.default_terminal";
 // ── Regional defaults ─────────────────────────────────────
 /// Organization-default BCP-47 locale, written by the Settings → General
 /// language selector. Named here because the literal previously had no reader
-/// anywhere in the repo; `oz_core::regional` now consumes it as the
+/// anywhere in the repo; `kasirmu_core::regional` now consumes it as the
 /// organization layer of the locale chain.
 pub const UI_LOCALE: &str = "ui.locale";
 

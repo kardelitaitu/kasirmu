@@ -14,14 +14,14 @@
 
 use tauri::{State, command};
 
-use oz_core::db::popularity::{CategoryForecastRow, CategoryPopularityRow, CategoryTrendPoint};
-use oz_core::db::reports::{
+use kasirmu_core::db::popularity::{CategoryForecastRow, CategoryPopularityRow, CategoryTrendPoint};
+use kasirmu_core::db::reports::{
     BasketSizeRow, BasketTrendRow, CategoryBreakdownRow, CustomerSplitRow, DailyRevenueRow,
     DiscountsSummaryRow, HourlyHeatmapRow, HourlyOccupancyRow, InventoryTrendRow,
     InventoryTurnoverRow, LowStockAlert, MonthlyRevenueRow, PaymentMethodRow, TableTurnoverRow,
     TopProductRow, VoidedItemRow, VoidedSummaryRow, WeeklyRevenueRow,
 };
-use oz_core::export::{CustomReportRequest, CustomReportResponse};
+use kasirmu_core::export::{CustomReportRequest, CustomReportResponse};
 
 use crate::error::AppError;
 use crate::state::AppState;

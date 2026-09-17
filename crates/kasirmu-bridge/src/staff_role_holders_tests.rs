@@ -97,7 +97,7 @@ fn app_for(caller: &str, caller_role: &str, store_id: &str, holders: &[&str]) ->
     let bridge = TestBridge::new().with_conn(conn);
     bridge.sessions().write().unwrap().insert(
         "tok".into(),
-        oz_core::session::SessionContext::new(
+        kasirmu_core::session::SessionContext::new(
             caller.into(),
             caller_role.into(),
             "terminal-1".into(),

@@ -19,14 +19,14 @@
 // Retained for the sibling test module, which reaches these through
 // `use super::*`; the command bodies themselves no longer name them.
 #[allow(unused_imports)]
-use oz_core::Store;
+use kasirmu_core::Store;
 #[allow(unused_imports)]
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 #[allow(unused_imports)]
 // sibling categories_tests.rs reaches `permissions` via `use super::*`
-use oz_core::permissions;
+use kasirmu_core::permissions;
 
 use crate::error::AppError;
 use crate::state::AppState;

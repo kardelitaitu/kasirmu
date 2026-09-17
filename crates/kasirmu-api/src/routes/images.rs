@@ -34,7 +34,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::path::{Path as FsPath, PathBuf};
 
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 
 use crate::AppState;
 use crate::auth::ApiTokenClaims;

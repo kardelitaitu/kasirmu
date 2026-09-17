@@ -14,10 +14,10 @@
 use serde::{Deserialize, Serialize};
 use tauri::{State, command};
 
-use oz_core::db::Store;
-use oz_core::permissions;
-use oz_core::settings::Settings;
-use oz_core::sync_client::{self, PullResult, SyncAttemptResult, SyncConfig};
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
+use kasirmu_core::settings::Settings;
+use kasirmu_core::sync_client::{self, PullResult, SyncAttemptResult, SyncConfig};
 use rusqlite::Connection;
 
 use crate::commands::authz::require_permission_for_session;

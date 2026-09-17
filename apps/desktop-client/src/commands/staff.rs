@@ -21,13 +21,13 @@ next: STAFF_DELETE has no desktop/tablet IPC consumer (registered + sensitive; d
 
 use tauri::State;
 
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 // Retained for the sibling test modules, which reach these through their
 // `use super::*`; the shims no longer name them.
 #[allow(unused_imports)]
-use oz_core::db::assignments::{Assignment, ScopeMode, ScopeType};
+use kasirmu_core::db::assignments::{Assignment, ScopeMode, ScopeType};
 #[allow(unused_imports)]
-use oz_core::{Role, User};
+use kasirmu_core::{Role, User};
 
 use crate::error::AppError;
 use crate::state::AppState;

@@ -10,7 +10,7 @@
 //!   `{key}:{tenant}` keys with bare-key fallback (see §11.5 of
 //!   `docs/archived/2026-08-15-unify-auth-and-sync.md`)
 //! - the analytics bundle (`export_analytics_bundle_pg`) — the ten report
-//!   queries ported from `oz_core::db::reports` / `oz_core::db::popularity`,
+//!   queries ported from `kasirmu_core::db::reports` / `kasirmu_core::db::popularity`,
 //!   every one tenant-filtered (`AND s.tenant_id = $n` / `AND p.tenant_id = $n`)
 //!
 //! The loop walks the active tenants (union of `tenant_plans` /
@@ -19,7 +19,7 @@
 //! session advisory lock keyed on the tenant id.
 //!
 //! The pure-Rust scheduling / filtering / formatting logic is reused from
-//! `oz_core` (`should_send_scheduled_with_last_sent`,
+//! `kasirmu_core` (`should_send_scheduled_with_last_sent`,
 //! `filter_analytics_bundle`, `ReportEmailBuilder::build`) so the SQLite and
 //! Postgres loops can never drift apart in cadence, dedup, or layout.
 //!
@@ -64,10 +64,10 @@ pub(crate) use settings_store::{
 #[cfg(test)]
 pub(crate) use {
     chrono::Utc,
-    oz_core::export::REPORT_SCHEDULE_SETTINGS_KEY,
-    oz_core::export::email_report::SmtpConfig,
-    oz_core::export::email_sender::{LAST_SENT_KEY, resolve_now_in_timezone},
-    oz_core::export::{ExportConfig, ReportScheduleConfig},
+    kasirmu_core::export::REPORT_SCHEDULE_SETTINGS_KEY,
+    kasirmu_core::export::email_report::SmtpConfig,
+    kasirmu_core::export::email_sender::{LAST_SENT_KEY, resolve_now_in_timezone},
+    kasirmu_core::export::{ExportConfig, ReportScheduleConfig},
 };
 
 #[cfg(test)]

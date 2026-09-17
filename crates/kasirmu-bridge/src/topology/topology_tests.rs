@@ -69,7 +69,7 @@ fn semantic_save_persists_version_and_fields() {
     )
     .unwrap();
 
-    let raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let value: Value = serde_json::from_str(&raw).unwrap();
@@ -102,7 +102,7 @@ fn semantic_save_persists_and_clears_resolved_issue_keys() {
         None,
     )
     .unwrap();
-    let raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let value: Value = serde_json::from_str(&raw).unwrap();
@@ -120,7 +120,7 @@ fn semantic_save_persists_and_clears_resolved_issue_keys() {
         None,
     )
     .unwrap();
-    let raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let value: Value = serde_json::from_str(&raw).unwrap();
@@ -206,7 +206,7 @@ fn semantic_save_compiles_operational_wires_to_branch_runtime_plan() {
     )
     .unwrap();
 
-    let runtime_json = oz_core::Settings::get(&conn, "oz-pos/topology-runtime/default")
+    let runtime_json = kasirmu_core::Settings::get(&conn, "oz-pos/topology-runtime/default")
         .unwrap()
         .expect("semantic save must compile a runtime plan");
     let runtime: Value = serde_json::from_str(&runtime_json).unwrap();
@@ -235,7 +235,7 @@ fn semantic_save_compiles_operational_wires_to_branch_runtime_plan() {
     )
     .unwrap();
     let cleared: Value = serde_json::from_str(
-        &oz_core::Settings::get(&conn, "oz-pos/topology-runtime/default")
+        &kasirmu_core::Settings::get(&conn, "oz-pos/topology-runtime/default")
             .unwrap()
             .unwrap(),
     )
@@ -286,10 +286,10 @@ fn branch_topology_settings_are_isolated() {
     )
     .unwrap();
 
-    let a = oz_core::Settings::get(&conn, &branch_a_key)
+    let a = kasirmu_core::Settings::get(&conn, &branch_a_key)
         .unwrap()
         .unwrap();
-    let b = oz_core::Settings::get(&conn, &branch_b_key)
+    let b = kasirmu_core::Settings::get(&conn, &branch_b_key)
         .unwrap()
         .unwrap();
     assert!(a.contains("branch-a"));
@@ -297,13 +297,13 @@ fn branch_topology_settings_are_isolated() {
     assert!(b.contains("branch-b"));
     assert!(!b.contains("branch-a"));
     let runtime_a: Value = serde_json::from_str(
-        &oz_core::Settings::get(&conn, "oz-pos/topology-runtime/branch-a")
+        &kasirmu_core::Settings::get(&conn, "oz-pos/topology-runtime/branch-a")
             .unwrap()
             .unwrap(),
     )
     .unwrap();
     let runtime_b: Value = serde_json::from_str(
-        &oz_core::Settings::get(&conn, "oz-pos/topology-runtime/branch-b")
+        &kasirmu_core::Settings::get(&conn, "oz-pos/topology-runtime/branch-b")
             .unwrap()
             .unwrap(),
     )
@@ -311,7 +311,7 @@ fn branch_topology_settings_are_isolated() {
     assert_eq!(runtime_a["branch_id"], "branch-a");
     assert_eq!(runtime_b["branch_id"], "branch-b");
     assert!(
-        oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+        kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
             .unwrap()
             .is_none()
     );
@@ -364,7 +364,7 @@ fn semantic_save_preserves_bend_points() {
     )
     .unwrap();
 
-    let raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let value: Value = serde_json::from_str(&raw).unwrap();
@@ -400,7 +400,7 @@ fn semantic_save_accepts_two_way_location_wire() {
     )
     .unwrap();
 
-    let raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let value: Value = serde_json::from_str(&raw).unwrap();
@@ -431,7 +431,7 @@ fn semantic_save_accepts_reverse_location_wire() {
     )
     .unwrap();
 
-    let raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
+    let raw = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
         .unwrap()
         .unwrap();
     let value: Value = serde_json::from_str(&raw).unwrap();
@@ -1291,9 +1291,9 @@ fn node_type_variants() {
 #[test]
 fn load_corrupt_json_returns_error() {
     let conn = fresh_conn();
-    oz_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, "not valid json at all").unwrap();
+    kasirmu_core::Settings::set(&conn, TOPOLOGY_SETTING_KEY, "not valid json at all").unwrap();
 
-    let result = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY).unwrap();
+    let result = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY).unwrap();
     assert!(result.is_some());
 
     // Deserialisation should fail.

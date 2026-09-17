@@ -1,6 +1,6 @@
 use super::*;
-use oz_core::migrations;
-use oz_core::{Cart, CartLine, Currency, Money, Sale, SaleStatus, Sku};
+use kasirmu_core::migrations;
+use kasirmu_core::{Cart, CartLine, Currency, Money, Sale, SaleStatus, Sku};
 use rusqlite::Connection;
 
 fn fresh() -> Connection {
@@ -19,7 +19,7 @@ fn price(minor: i64) -> Money {
 }
 
 fn seed_product(conn: &Connection, sku: &str, price_minor: i64, cost_minor: i64) -> String {
-    let store = oz_core::db::Store::new(conn);
+    let store = kasirmu_core::db::Store::new(conn);
     let money = Money {
         minor_units: price_minor,
         currency: usd(),
@@ -45,7 +45,7 @@ fn seed_product(conn: &Connection, sku: &str, price_minor: i64, cost_minor: i64)
 }
 
 fn complete_sale(conn: &Connection, sku: &str, qty: i64, unit_minor: i64) -> String {
-    let store = oz_core::db::Store::new(conn);
+    let store = kasirmu_core::db::Store::new(conn);
     let mut cart = Cart::new(usd());
     cart.add_line(CartLine::new(Sku::new(sku), qty, price(unit_minor)))
         .unwrap();

@@ -11,7 +11,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::{State, command};
 
-use oz_core::{Feature, Store, Terminal};
+use kasirmu_core::{Feature, Store, Terminal};
 
 use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
@@ -67,11 +67,11 @@ fn run_list_all_features(db: &rusqlite::Connection) -> Result<ListAllFeaturesRes
     let features = all_feature_metadata()
         .into_iter()
         .map(|(feat, name, desc, group)| {
-            let key = oz_core::features::feature_key(feat).to_string();
+            let key = kasirmu_core::features::feature_key(feat).to_string();
             let deps: Vec<String> = feat
                 .dependencies()
                 .iter()
-                .map(|d| oz_core::features::feature_key(*d).to_string())
+                .map(|d| kasirmu_core::features::feature_key(*d).to_string())
                 .collect();
             FeatureDto {
                 key,
@@ -137,8 +137,8 @@ pub async fn set_feature(
     state: State<'_, AppState>,
 ) -> Result<SetFeatureResult, AppError> {
     let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SETTINGS_EDIT).await?;
-    let feature = oz_core::features::feature_from_key(&args.key)
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SETTINGS_EDIT).await?;
+    let feature = kasirmu_core::features::feature_from_key(&args.key)
         .ok_or_else(|| AppError::Invalid(format!("unknown feature key: {}", args.key)))?;
 
     // ── DB-scoped block: load, mutate, persist features ──────────
@@ -169,7 +169,7 @@ pub async fn set_feature(
             // Figure out what was newly auto-enabled.
             for f in reg.enabled_features() {
                 if !before_enable.contains(&f) && f != feature {
-                    auto_enabled.push(oz_core::features::feature_key(f).to_string());
+                    auto_enabled.push(kasirmu_core::features::feature_key(f).to_string());
                 }
             }
         } else {
@@ -217,11 +217,11 @@ pub async fn set_feature(
     let features = all_feature_metadata()
         .into_iter()
         .map(|(feat, name, desc, group)| {
-            let key = oz_core::features::feature_key(feat).to_string();
+            let key = kasirmu_core::features::feature_key(feat).to_string();
             let deps: Vec<String> = feat
                 .dependencies()
                 .iter()
-                .map(|d| oz_core::features::feature_key(*d).to_string())
+                .map(|d| kasirmu_core::features::feature_key(*d).to_string())
                 .collect();
             FeatureDto {
                 key,
@@ -271,7 +271,7 @@ pub async fn set_features_bulk(
     state: State<'_, AppState>,
 ) -> Result<ListAllFeaturesResult, AppError> {
     let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SETTINGS_EDIT).await?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SETTINGS_EDIT).await?;
     let mut db = state.db.lock().await;
 
     // Start a SQLite transaction for atomicity.
@@ -285,7 +285,7 @@ pub async fn set_features_bulk(
 
     // Parse and apply each key.
     for key in &args.keys {
-        let feature = oz_core::features::feature_from_key(key)
+        let feature = kasirmu_core::features::feature_from_key(key)
             .ok_or_else(|| AppError::Invalid(format!("unknown feature key: {key}")))?;
 
         if args.enabled {
@@ -306,11 +306,11 @@ pub async fn set_features_bulk(
     let features = all_feature_metadata()
         .into_iter()
         .map(|(feat, name, desc, group)| {
-            let key = oz_core::features::feature_key(feat).to_string();
+            let key = kasirmu_core::features::feature_key(feat).to_string();
             let deps: Vec<String> = feat
                 .dependencies()
                 .iter()
-                .map(|d| oz_core::features::feature_key(*d).to_string())
+                .map(|d| kasirmu_core::features::feature_key(*d).to_string())
                 .collect();
             FeatureDto {
                 key,

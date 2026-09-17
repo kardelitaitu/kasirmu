@@ -14,9 +14,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use oz_core::db::Store;
-use oz_core::permissions;
-use oz_core::{Money, ProductVariant};
+use kasirmu_core::db::Store;
+use kasirmu_core::permissions;
+use kasirmu_core::{Money, ProductVariant};
 
 use foundation::validate_not_empty;
 
@@ -275,7 +275,7 @@ pub async fn create_scoped(
 
     let price = match (args.price_minor, args.currency.as_deref()) {
         (Some(minor), Some(cur_str)) => {
-            let currency: oz_core::Currency = cur_str
+            let currency: kasirmu_core::Currency = cur_str
                 .parse()
                 .map_err(|_| BridgeError::Invalid(format!("invalid currency '{cur_str}'")))?;
             Some(Money {
@@ -355,7 +355,7 @@ pub async fn update_scoped(
         variant.name = name.clone();
     }
     if let (Some(minor), Some(cur_str)) = (args.price_minor, args.currency.as_deref()) {
-        let currency: oz_core::Currency = cur_str
+        let currency: kasirmu_core::Currency = cur_str
             .parse()
             .map_err(|_| BridgeError::Invalid(format!("invalid currency '{cur_str}'")))?;
         variant.price = Some(Money {

@@ -13,11 +13,11 @@
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum BridgeError {
-    /// Wraps any `oz_core::CoreError` (mirrors `AppError::Core`).
+    /// Wraps any `kasirmu_core::CoreError` (mirrors `AppError::Core`).
     #[error("core error: {message}")]
     Core {
         /// Typed sub-discriminator mirroring the `CoreError` variant.
-        sub_kind: oz_core::CoreErrorKind,
+        sub_kind: kasirmu_core::CoreErrorKind,
         /// Human-readable message.
         message: String,
     },
@@ -59,8 +59,8 @@ pub enum BridgeError {
     Internal(String),
 }
 
-impl From<oz_core::CoreError> for BridgeError {
-    fn from(e: oz_core::CoreError) -> Self {
+impl From<kasirmu_core::CoreError> for BridgeError {
+    fn from(e: kasirmu_core::CoreError) -> Self {
         Self::Core {
             sub_kind: e.kind(),
             message: e.to_string(),
@@ -70,7 +70,7 @@ impl From<oz_core::CoreError> for BridgeError {
 
 impl From<modules_currency::CurrencyError> for BridgeError {
     fn from(e: modules_currency::CurrencyError) -> Self {
-        let core: oz_core::CoreError = e.into();
+        let core: kasirmu_core::CoreError = e.into();
         core.into()
     }
 }
@@ -78,7 +78,7 @@ impl From<modules_currency::CurrencyError> for BridgeError {
 impl From<rusqlite::Error> for BridgeError {
     fn from(e: rusqlite::Error) -> Self {
         Self::Core {
-            sub_kind: oz_core::CoreErrorKind::Db,
+            sub_kind: kasirmu_core::CoreErrorKind::Db,
             message: format!("sqlite: {e}"),
         }
     }

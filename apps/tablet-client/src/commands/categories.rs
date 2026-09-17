@@ -53,8 +53,8 @@
 use serde::{Deserialize, Serialize};
 use tauri::{State, command};
 
-use oz_core::Store;
-use oz_core::permissions;
+use kasirmu_core::Store;
+use kasirmu_core::permissions;
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;

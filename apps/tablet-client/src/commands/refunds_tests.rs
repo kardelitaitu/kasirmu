@@ -1,5 +1,5 @@
 use super::*;
-use oz_core::migrations;
+use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
@@ -47,7 +47,7 @@ fn process_full_refund() {
     let refund_lines: Vec<RefundLine> = lines
         .iter()
         .map(|l| {
-            let currency: oz_core::Currency = l.currency.parse().unwrap();
+            let currency: kasirmu_core::Currency = l.currency.parse().unwrap();
             RefundLine::new(
                 &l.sale_line_id,
                 &l.sku,

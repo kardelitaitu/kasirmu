@@ -16,8 +16,8 @@ next: none | perf: 64KB priority-sorted batches
 //! # Usage
 //! ```ignore
 //! # use platform_sync::{SyncEngine, SyncConfig};
-//! # use oz_core::db::Store;
-//! # use oz_core::migrations;
+//! # use kasirmu_core::db::Store;
+//! # use kasirmu_core::migrations;
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! # let conn = migrations::fresh_db();
 //! # let store = Store::new(&conn);
@@ -46,8 +46,8 @@ pub mod transport;
 #[cfg(test)]
 pub(crate) mod test_helpers;
 
-use oz_core::db::Store;
-use oz_core::sync_client::SyncConfig;
+use kasirmu_core::db::Store;
+use kasirmu_core::sync_client::SyncConfig;
 
 use crate::queue::SyncQueue;
 use crate::replication::ReplicationResult;
@@ -120,7 +120,7 @@ pub enum SyncError {
 
     /// Database error from the underlying oz-core store.
     #[error("database error: {0}")]
-    Database(#[from] oz_core::error::CoreError),
+    Database(#[from] kasirmu_core::error::CoreError),
 }
 
 impl From<reqwest::Error> for SyncError {
@@ -148,16 +148,16 @@ pub const MAX_BATCH_BYTES: usize = 64 * 1024;
 /// transmit before any Normal item, which transmit before Low items.
 /// Within each priority tier, original arrival order is preserved.
 pub fn build_batches(
-    items: &[oz_core::offline::OfflineQueueItem],
+    items: &[kasirmu_core::offline::OfflineQueueItem],
     max_bytes: usize,
-) -> Vec<Vec<oz_core::offline::OfflineQueueItem>> {
+) -> Vec<Vec<kasirmu_core::offline::OfflineQueueItem>> {
     // Sort by priority (Critical=0, Normal=1, Low=2) — stable sort
     // preserves arrival order within each tier.
-    let mut sorted: Vec<oz_core::offline::OfflineQueueItem> = items.to_vec();
+    let mut sorted: Vec<kasirmu_core::offline::OfflineQueueItem> = items.to_vec();
     sorted.sort_by_key(|item| item.priority);
 
-    let mut batches: Vec<Vec<oz_core::offline::OfflineQueueItem>> = Vec::new();
-    let mut current: Vec<oz_core::offline::OfflineQueueItem> = Vec::new();
+    let mut batches: Vec<Vec<kasirmu_core::offline::OfflineQueueItem>> = Vec::new();
+    let mut current: Vec<kasirmu_core::offline::OfflineQueueItem> = Vec::new();
     let mut current_bytes = 0usize;
 
     for item in &sorted {
@@ -194,7 +194,7 @@ pub fn build_batches(
 ///   location;
 /// * the row is scoped to BOTH, which is ambiguous rather than narrower
 ///   (one-or-the-other-or-neither — the same rule
-///   `oz_core::db::tax::TaxRateScope` encodes in its variants).
+///   `kasirmu_core::db::tax::TaxRateScope` encodes in its variants).
 ///
 /// Refusing degrades safely: with no scoped row present, the resolver falls
 /// back to the tenant-global rate, which is what the branch used before the
@@ -427,7 +427,7 @@ pub(crate) fn import_snapshot(
             stmt.execute(rusqlite::params![
                 u.id,
                 u.username,
-                oz_core::sync_client::SNAPSHOT_PIN_HASH_PLACEHOLDER,
+                kasirmu_core::sync_client::SNAPSHOT_PIN_HASH_PLACEHOLDER,
                 u.display_name,
                 u.role_id,
                 u.is_active as i64,
@@ -497,7 +497,7 @@ impl SyncEngine {
     /// The pull phase is replay-safe (SYNC-01 parity with the daemon): remote
     /// items are applied atomically with a durable `sync_applied_items` receipt,
     /// poison items are dead-lettered after their retry budget, and the durable
-    /// [`oz_core::db::offline::SyncPullState`] anchor advances only after a page
+    /// [`kasirmu_core::db::offline::SyncPullState`] anchor advances only after a page
     /// applied successfully — so a server replay or lost anchor never applies a
     /// mutation twice.
     ///

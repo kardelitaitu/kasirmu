@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use tower::ServiceExt;
 
 fn fresh_db() -> Connection {
-    oz_core::migrations::fresh_db()
+    kasirmu_core::migrations::fresh_db()
 }
 
 /// Create a test JWT token scoped to the given tenant.
@@ -90,13 +90,13 @@ async fn test_router_with_plan(tenant: &str, plan: &str, enforce: bool) -> Route
     };
     {
         let conn = state.db.lock().await;
-        oz_core::Store::new(&conn)
+        kasirmu_core::Store::new(&conn)
             .set_tenant_plan(
                 tenant,
                 if plan == "pro" {
-                    oz_core::TenantPlan::Pro
+                    kasirmu_core::TenantPlan::Pro
                 } else {
-                    oz_core::TenantPlan::Free
+                    kasirmu_core::TenantPlan::Free
                 },
             )
             .unwrap();

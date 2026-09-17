@@ -38,7 +38,7 @@ next: none | perf: N/A
 use std::sync::Arc;
 
 use foundation::contracts::{EventHandler, ModuleResult};
-use oz_core::events::{SaleCompleted, StockAdjusted};
+use kasirmu_core::events::{SaleCompleted, StockAdjusted};
 use tracing::{error, info, warn};
 
 use crate::{NotificationClient, TemplateParameter};

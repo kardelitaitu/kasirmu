@@ -21,8 +21,8 @@
 //! (ADR #47) still has **no tablet helper**: adopting it is a gating change, so it
 //! must land in its own commit rather than inside an extraction.
 
-use oz_core::db::receipt_formats::{EffectiveReceiptFormat, ReceiptContent, ReceiptLayout};
-use oz_core::{Store, permissions};
+use kasirmu_core::db::receipt_formats::{EffectiveReceiptFormat, ReceiptContent, ReceiptLayout};
+use kasirmu_core::{Store, permissions};
 use tauri::State;
 
 use crate::commands::authz::require_permission_for_session;

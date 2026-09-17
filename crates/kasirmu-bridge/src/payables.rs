@@ -15,9 +15,9 @@
 //! [`BridgeError`] back to `AppError` so the wire shape never moves.
 
 use chrono::Utc;
-use oz_core::money::Currency;
-use oz_core::payable::{NewPayable, Payable, PayableStatus};
-use oz_core::{Money, Store, permissions};
+use kasirmu_core::money::Currency;
+use kasirmu_core::payable::{NewPayable, Payable, PayableStatus};
+use kasirmu_core::{Money, Store, permissions};
 use serde::{Deserialize, Serialize};
 
 use crate::ctx::BridgeCtx;

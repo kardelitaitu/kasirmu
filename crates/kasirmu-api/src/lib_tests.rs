@@ -9,7 +9,7 @@ use tower::ServiceExt;
 
 /// Helper: open an in-memory connection with all migrations pre-applied.
 fn fresh_conn() -> Connection {
-    oz_core::migrations::fresh_db()
+    kasirmu_core::migrations::fresh_db()
 }
 
 /// Helper: build a router backed by an empty in-memory database.
@@ -678,7 +678,7 @@ async fn create_tax_rate_requires_auth() {
 /// Helper: build a router with seeded roles (required for user creation).
 fn test_app_with_roles() -> Router {
     let conn = fresh_conn();
-    oz_core::db::Store::new(&conn).seed_default_roles().unwrap();
+    kasirmu_core::db::Store::new(&conn).seed_default_roles().unwrap();
     let state = AppState {
         db: Arc::new(Mutex::new(conn)),
         pg: None,
