@@ -531,7 +531,7 @@ async fn api_writes_land_in_the_audit_log_of_the_served_store() {
 /// `local_api.*` keys this manager actually writes are spelled HERE and are
 /// named nowhere below — only [`SETTINGS_SECRET`] has a declared mirror
 /// (`platform_core::settings::keys::LOCAL_API_SECRET`, "mirrors
-/// `oz_local_api::SETTINGS_SECRET`", keys.rs:215-218). [`SETTINGS_ENABLED`],
+/// `kasirmu_local_api::SETTINGS_SECRET`", keys.rs:215-218). [`SETTINGS_ENABLED`],
 /// [`SETTINGS_PORT`] and [`SETTINGS_STORE`] have no name at all down there.
 ///
 /// So if a spelling here moves and the literal does not, the live key of the

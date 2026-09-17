@@ -1,11 +1,11 @@
 [package]
-name = "oz-local-api"
+name = "kasirmu-local-api"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Headless loopback REST API server for the register: embeds the oz-api router on 127.0.0.1 with settings-driven enable/port/secret and per-store audit sink."
+description = "Headless loopback REST API server for the register: embeds the kasirmu-api router on 127.0.0.1 with settings-driven enable/port/secret and per-store audit sink."
 
 [lints]
 workspace = true
