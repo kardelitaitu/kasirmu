@@ -1352,7 +1352,7 @@ describe('font-reference portability', () => {
 
   // WHY HTML_SOURCES IS EXACTLY TWO DOCUMENTS, and why widening it is a regression.
   // Six other tracked files still name these hosts and every one of them is correct:
-  //   dev/design-language.html, dev/kds-prototype.html -- dev-only pages whose whole
+  //   prototypes/design-language.html, prototypes/kds-prototype.html -- dev-only pages whose whole
   //     job is to show the typefaces; they are never shipped and no CSP governs them.
   //   website/public/admin/index.html, website/public/admin/login.html -- the
   //     deployed console, standalone pages whose face can only come from a CDN

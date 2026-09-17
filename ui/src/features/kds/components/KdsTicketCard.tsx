@@ -142,7 +142,7 @@ export function nextActionKey(status: string): string | null {
 
 /**
  * KdsTicketCard renders a single KDS ticket with the design-language
- * prototype anatomy (dev/kds-prototype.html):
+ * prototype anatomy (see docs/specs/_active/tauri-ux-design-language-plan.md):
  *
  *   header (icon + order# + SLA time + status)  → collapses the card
  *   body: category headers (n/M Course + check) → collapse per course,
