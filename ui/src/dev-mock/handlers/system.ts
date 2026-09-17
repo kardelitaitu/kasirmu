@@ -513,7 +513,7 @@ export const systemHandlers: Record<string, MockHandler> = {
 
   'get_backup_status': () => ({ lastBackup: null, lastBackupSize: null }),
   'create_backup': () => ({ path: '/backups/backup.db', sizeBytes: 1024 }),
-  'export_data': () => ({ path: '/exports/data.ozpkg', sizeBytes: 512, types: ['products'] }),
+  'export_data': () => ({ path: '/exports/data.kasirpkg', sizeBytes: 512, types: ['products'] }),
   'import_preview': () => ({ storeName: 'Test Store', appVersion: pkg.version, exportedAt: new Date().toISOString(), types: ['products'], productCount: 10, categoryCount: 2, saleCount: null, customerCount: null, userCount: null, settingCount: null }),
   'import_data': () => ({ productsImported: 10, categoriesImported: 2, salesImported: 0, customersImported: 0, usersImported: 0, settingsImported: 0 }),
 

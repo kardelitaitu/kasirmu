@@ -99,7 +99,7 @@ vi.mock('@/components/Spinner', () => ({
 // ── Default API responses ────────────────────────────────────────
 
 const defaultBackupStatus = { lastBackup: null, lastBackupSize: null };
-const defaultExportResult = { path: '/exports/export_2026.ozpkg', sizeBytes: 524_288, types: ['products', 'categories'] };
+const defaultExportResult = { path: '/exports/export_2026.kasirpkg', sizeBytes: 524_288, types: ['products', 'categories'] };
 
 beforeEach(() => {
   mockGetBackupStatus.mockResolvedValue(defaultBackupStatus);
@@ -116,8 +116,8 @@ beforeEach(() => {
     productsImported: 120, categoriesImported: 12, salesImported: 500,
     customersImported: 50, usersImported: 5, settingsImported: 8,
   });
-  mockPickExportPath.mockResolvedValue('/exports/test.ozpkg');
-  mockPickImportFile.mockResolvedValue('/imports/test.ozpkg');
+  mockPickExportPath.mockResolvedValue('/exports/test.kasirpkg');
+  mockPickImportFile.mockResolvedValue('/imports/test.kasirpkg');
   mockAddToast.mockReturnValue(undefined);
 });
 
@@ -363,7 +363,7 @@ describe('DataManagement — Export', () => {
     await waitFor(() => {
       expect(screen.getByText('Export complete')).toBeInTheDocument();
     });
-    expect(screen.getByText('/exports/export_2026.ozpkg')).toBeInTheDocument();
+    expect(screen.getByText('/exports/export_2026.kasirpkg')).toBeInTheDocument();
   });
 
   it('shows export success toast on completion', async () => {

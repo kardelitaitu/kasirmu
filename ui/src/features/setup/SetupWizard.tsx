@@ -170,7 +170,7 @@ const STEP_FEATURES: { sectionId: string; title: string; features: FeatureDef[] 
     features: [
       { key: 'reporting', label: 'Reporting', description: 'Sales, inventory, and shift reports' },
       { key: 'analytics', label: 'Analytics', description: 'Charts, top products, hourly heatmap, CSV exports' },
-      { key: 'export-import', label: 'Export & Import', description: 'Encrypted data export and import (.ozpkg)' },
+      { key: 'export-import', label: 'Export & Import', description: 'Encrypted data export and import (.kasirpkg)' },
       { key: 'cloud-sync', label: 'Cloud Sync', description: 'Sync data to cloud PostgreSQL with backup' },
       { key: 'multi-store', label: 'Multi-Store', description: 'Manage multiple store locations' },
       { key: 'multi-terminal', label: 'Multi-Terminal', description: 'Multiple POS terminals per store' },

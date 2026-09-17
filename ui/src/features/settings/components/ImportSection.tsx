@@ -1,5 +1,5 @@
 /**
- * ImportSection — the "Import" tab panel of the Data management screen: the .ozpkg file
+ * ImportSection — the "Import" tab panel of the Data management screen: the .kasirpkg file
  * picker, the decryption-password step, the metadata preview, the importing / dry-run card
  * and the completion card.
  *
@@ -59,7 +59,7 @@ export function ImportSection({ importState, flashRows, showImportPw, onFileSele
                 <Localized id="data-mgmt-import-desc">
                   <p className="data-mgmt-section-desc">
                     Choose an encrypted .kasirpkg file to import. The file must have been
-                    created by kasir.mu export. Legacy .ozpkg files are also accepted.
+                    created by kasir.mu export. Legacy .kasirpkg files are also accepted.
                   </p>
                 </Localized>
 

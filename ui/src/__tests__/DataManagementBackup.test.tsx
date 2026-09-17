@@ -97,7 +97,7 @@ beforeEach(() => {
   // have quietly defeated the point of asserting which command ran.
   mockGetBackupStatusScoped.mockResolvedValue(defaultBackupStatus);
   mockCreateBackupScoped.mockResolvedValue({ path: '/backups/backup_2026.db', sizeBytes: 12_582_912 });
-  mockExportData.mockResolvedValue({ path: '/exports/export_2026.ozpkg', sizeBytes: 524_288, types: [] });
+  mockExportData.mockResolvedValue({ path: '/exports/export_2026.kasirpkg', sizeBytes: 524_288, types: [] });
   mockImportPreview.mockResolvedValue({
     storeName: 'Test Store', appVersion: '0.0.4',
     createdAt: new Date('2026-01-15').toISOString(),
@@ -108,8 +108,8 @@ beforeEach(() => {
     productsImported: 0, categoriesImported: 0, salesImported: 0,
     customersImported: 0, usersImported: 0, settingsImported: 0,
   });
-  mockPickExportPath.mockResolvedValue('/exports/test.ozpkg');
-  mockPickImportFile.mockResolvedValue('/imports/test.ozpkg');
+  mockPickExportPath.mockResolvedValue('/exports/test.kasirpkg');
+  mockPickImportFile.mockResolvedValue('/imports/test.kasirpkg');
   mockAddToast.mockReturnValue(undefined);
 });
 

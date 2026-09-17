@@ -79,7 +79,7 @@ vi.mock('@/components/Spinner', () => ({
 
 const defaultBackupStatus = { lastBackup: null, lastBackupSize: null };
 const defaultBackupResult = { path: '/backups/backup_2026.db', sizeBytes: 12_582_912 };
-const defaultExportResult = { path: '/exports/export_2026.ozpkg', sizeBytes: 524_288, types: ['products', 'categories'] };
+const defaultExportResult = { path: '/exports/export_2026.kasirpkg', sizeBytes: 524_288, types: ['products', 'categories'] };
 const defaultImportPreviewResult = {
   storeName: 'Test Store', appVersion: '0.0.4',
   createdAt: new Date('2026-01-15').toISOString(),
@@ -115,8 +115,8 @@ describe('DataManagementScreen', () => {
     mockExportData.mockResolvedValue(defaultExportResult);
     mockImportPreview.mockResolvedValue(defaultImportPreviewResult);
     mockImportData.mockResolvedValue(defaultImportDataResult);
-    mockPickExportPath.mockResolvedValue('/exports/test.ozpkg');
-    mockPickImportFile.mockResolvedValue('/imports/test.ozpkg');
+    mockPickExportPath.mockResolvedValue('/exports/test.kasirpkg');
+    mockPickImportFile.mockResolvedValue('/imports/test.kasirpkg');
     mockAddToast.mockReturnValue(undefined);
   });
 
