@@ -618,8 +618,8 @@
     "bundleCta": "Plus + KDS — Restaurant Starter bundle",
     "kafe": {
       "label": "Coffee shops",
-      "title": "A POS that keeps your coffee shop flowing",
-      "tagline": "KDS, analytics, and multi-terminal — working fully offline.",
+      "title": "Cafe POS App: Orders, Kitchen & QRIS in Flow",
+      "tagline": "KDS, peak-hour analytics, and multi-terminal for your cafe — working fully offline.",
       "tierAnchor": "pro",
       "ctaPrimary": "See the Pro plan",
       "leadWithTrial": true,
