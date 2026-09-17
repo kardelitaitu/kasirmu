@@ -70,7 +70,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 UI_SCAN_DIRS = [
     "ui/src/api",
     "ui/src/hooks",
-    "ui/src/frontend",
+    "ui/src/app",
     "ui/src/components",
     "ui/src/contexts",
     "ui/src/features",
