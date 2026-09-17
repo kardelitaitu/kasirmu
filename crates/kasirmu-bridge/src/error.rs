@@ -1,6 +1,6 @@
 //! `BridgeError` — the error type returned by every headless bridge operation.
 //!
-//! This is the tauri-free mirror of `apps/desktop-client/src/error.rs::AppError`.
+//! This is the tauri-free mirror of `apps/desktop-tauri/src/error.rs::AppError`.
 //! The bridge crate never names a UI shell type, so command bodies extracted
 //! here compile and run without tauri; each shim converts a `BridgeError`
 //! back into `AppError` variant-for-variant, which keeps the on-the-wire

@@ -1,5 +1,5 @@
 //! Fiscal command bodies (Wave A / S6) — the tauri-free half of
-//! `apps/desktop-client/src/commands/fiscal.rs`.
+//! `apps/desktop-tauri/src/commands/fiscal.rs`.
 //!
 //! Key functions: [`run_upsert`] (the pure `&Connection` body of the upsert)
 //! and the five session-scoped operations

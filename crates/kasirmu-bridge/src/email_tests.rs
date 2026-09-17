@@ -1,5 +1,5 @@
 //! Relocated email-command tests (Wave-F test relocation: moved out of
-//! `apps/desktop-client/src/commands/email_tests.rs`).
+//! `apps/desktop-tauri/src/commands/email_tests.rs`).
 //!
 //! Mounted at the foot of `email.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the bridge email fns exactly as the desktop

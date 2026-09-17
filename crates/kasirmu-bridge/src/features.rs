@@ -1,5 +1,5 @@
 //! Feature-flag command bodies (Wave F) — the tauri-free half of
-//! `apps/desktop-client/src/commands/features.rs`.
+//! `apps/desktop-tauri/src/commands/features.rs`.
 //!
 //! Key items: the four feature commands, the feature DTOs, the feature metadata
 //! table, the feature-to-kernel-module mapping, and `device_hostname`.
