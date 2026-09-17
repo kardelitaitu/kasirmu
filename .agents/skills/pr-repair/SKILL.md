@@ -173,7 +173,7 @@ npm run e2e:ui
 
 #### 7. Localization & Fluent Bundle Parity
 ```powershell
-# Verify Fluent key parity between the English .ftl and .id.ftl bundles under ui/src/locales/
+# Verify Fluent key parity between the English .ftl and .id.ftl bundles under shared-ui/locales/
 bash scripts/lint-i18n.sh
 
 # Check duplicate FTL keys
@@ -214,7 +214,7 @@ Classify the root cause and apply the appropriate repair:
 - **Repair:** Execute `bash scripts/reset-dev-pg.sh` and ensure migrations in `20260813_init.pg.sql` or subsequent migration files match test expectations.
 
 #### Scenario D: Missing or Unsynced Fluent Localization
-- **Symptom:** a `<Localized>` key added in React JSX is missing from the matching `ui/src/locales/<feature>.ftl` (English) or `<feature>.id.ftl` (Indonesian) bundle — e.g. `sales.ftl` for a sales-surface key.
+- **Symptom:** a `<Localized>` key added in React JSX is missing from the matching `shared-ui/locales/<feature>.ftl` (English) or `<feature>.id.ftl` (Indonesian) bundle — e.g. `sales.ftl` for a sales-surface key.
 - **Repair:** Add the key and corresponding translated string to **both** the English and the `.id.ftl` bundle.
 
 #### Scenario E: UI Accessibility (`aria-*`) or Touch Target Failure

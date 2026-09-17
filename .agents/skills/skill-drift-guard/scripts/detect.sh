@@ -415,14 +415,14 @@ fi
 # no skill has documented yet.
 # ---------------------------------------------------------------------------
 if should_run fluent; then
-  if [ -d "ui/src/locales" ]; then
+  if [ -d "shared-ui/locales" ]; then
     while read -r skill; do
       [ -z "$skill" ] && continue
       # Permissive pattern: any non-empty id. Trust the FTL to define the format.
       # `< <(…)` not `grep | while`: see the subshell note in Check 1.
       while read -r ftl_id; do
-        if ! grep -rqE "^${ftl_id}\s*=" ui/src/locales/ 2>/dev/null; then
-          FINDINGS[fluent]+="${skill}: Fluent id '${ftl_id}' not found in ui/src/locales/"$'\n'
+        if ! grep -rqE "^${ftl_id}\s*=" shared-ui/locales/ 2>/dev/null; then
+          FINDINGS[fluent]+="${skill}: Fluent id '${ftl_id}' not found in shared-ui/locales/"$'\n'
         fi
       done < <(grep -hoE 'id="[^"]+"' "$skill" 2>/dev/null | sort -u | \
         sed 's/id="//;s/"$//')

@@ -59,7 +59,7 @@ It is a self-contained, tabbed reference with a worked example and a "Fallback &
 
 ## I18n with `@fluent/react`
 
-Every user-visible string lives in a per-feature Fluent bundle under `ui/src/locales/`: `<feature>.ftl` is English, `<feature>.id.ftl` is Indonesian (currently the only additional locale — the `LocaleCode` union is `'en' | 'id'`). `shared.ftl` and `bundles.ftl` hold cross-feature strings. The component uses `<Localized>` or `useLocalization()` — never a string literal.
+Every user-visible string lives in a per-feature Fluent bundle under `shared-ui/locales/`: `<feature>.ftl` is English, `<feature>.id.ftl` is Indonesian (currently the only additional locale — the `LocaleCode` union is `'en' | 'id'`). `shared.ftl` and `bundles.ftl` hold cross-feature strings. The component uses `<Localized>` or `useLocalization()` — never a string literal.
 
 ```tsx
 import { Localized } from '@fluent/react';
@@ -76,7 +76,7 @@ export function PayButton({ onPay, disabled }: { onPay: () => void; disabled: bo
 ```
 
 ```fluent
-# ui/src/locales/sales.ftl
+# shared-ui/locales/sales.ftl
 sale-pay-button = Pay
 ```
 

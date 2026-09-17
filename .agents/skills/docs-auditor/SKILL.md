@@ -210,7 +210,7 @@ Before starting any verification:
 | `git diff <stamp> -- <path>` | See changes since last audit |
 | `cargo test -p <crate>` | Run tests for the affected crate |
 | `npm run typecheck` (from `ui/`) | Verify TS/React claims in UI docs |
-| `rg` over `ui/src/locales/*.ftl` | Verify Fluent IDs referenced by docs |
+| `rg` over `shared-ui/locales/*.ftl` | Verify Fluent IDs referenced by docs |
 | `scripts/check.sh` | Full local validation mirroring CI |
 | `python3 .agents/skills/docs-auditor/scripts/check-orphans.py` | Shallow-mode structural pass: unversioned wrappers, heading orphans, stale version headers (§4b) |
 | `python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py` | Compare every stamp date against its footer date across all `*.md`; flags the under-reporting direction and impossible footer dates (`detect.sh` accepts `31-13-26` on shape). Exit 1 on drift. |

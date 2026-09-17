@@ -40,7 +40,7 @@ Eleven concrete kinds. Each has a detection strategy and a patch strategy.
 | 4 | **Public API signature changed** | `cargo doc` + AST diff vs the skill's code example | Manual (need to rewrite the example) |
 | 5 | **Dependency version outdated** | Parse `Cargo.toml` for actual versions; grep skill for quoted versions | Auto: replace the version string |
 | 6 | **Golden rule changed in `AGENTS.md`** | Diff key phrases (`Money is always i64`, `use thiserror`, …) | Manual (judgment call on impact) |
-| 7 | **Fluent ID drift** | Every `<Localized>` id reference in a skill must exist in `ui/src/locales/*.ftl` (one-way) | Manual (decide whether to add the id or remove the reference) |
+| 7 | **Fluent ID drift** | Every `<Localized>` id reference in a skill must exist in `shared-ui/locales/*.ftl` (one-way) | Manual (decide whether to add the id or remove the reference) |
 | 8 | **Cross-reference broken** | For every `\`<skill-name>\`` mention, verify the skill directory exists | Auto: remove the reference or rename |
 | 9 | **`last audited` date stale (>30 days)** | Grep the footer line | Auto: bump the date and the auditor name |
 | 10 | **`last audited` format violated** (wrong format like `YYYY-MM-DD`, or missing `by <auditor>` clause) | Grep every `> last audited` line; assert exact regex match `^> last audited [0-9]{2}-[0-9]{2}-[0-9]{2} by [^\s]+$` | Manual (format may not be safely auto-derivable when the original line is broken in subtle ways) |
@@ -54,7 +54,7 @@ If a change is **not** in this list, the drift guard does not auto-patch it. Fil
 
 Run these checks in order. Each is a fast, mechanical pass. Stop after each pass to triage the output before running the next. (Checks 1–10 are implemented in `.agents/skills/skill-drift-guard/scripts/detect.sh`. Inline Check 2 covers taxonomy kinds 2 and 3 — the "removed" and "added" cases are both detected from the same `members` diff.)**Pre-code state:** when the corresponding code does not yet exist, each check silently no-ops:
 - Checks 2–4 (crates, API, dep versions) skip if `Cargo.toml` is missing.
-- Check 7 (Fluent) skips if `ui/src/locales/` is missing.
+- Check 7 (Fluent) skips if `shared-ui/locales/` is missing.
 - Checks 1, 5, 6, 8, 9, 10 (paths, golden rules, refs, audit date + format + project-doc audit-footers) always run.
 
 Once the Rust workspace and UI scaffold land, all checks become active without any change to the script.
@@ -205,15 +205,15 @@ done < <(grep -oE '`[a-z][a-z-]+`' "$og" | sort -u | tr -d '`')
 for skill in .agents/skills/*/SKILL.md; do
   # `< <(…)` not `grep | while` — see pitfall #9.
   while read -r ftl_id; do
-    if ! grep -rqE "^${ftl_id}\s*=" ui/src/locales/ 2>/dev/null; then
-      echo "MISSING: $skill references Fluent id '$ftl_id' (not in ui/src/locales/)"
+    if ! grep -rqE "^${ftl_id}\s*=" shared-ui/locales/ 2>/dev/null; then
+      echo "MISSING: $skill references Fluent id '$ftl_id' (not in shared-ui/locales/)"
     fi
   done < <(grep -hoE 'id=["][^"]+["]' "$skill" | sort -u | \
              sed 's/^id=["]//;s/["]$//')
 done
 ```
 
-**Output:** a list of `Localized id` references in skills that have no matching entry in any `.ftl` file. *One-way check (skill → FTL): the reverse is not checked so FTL files can legitimately contain ids that no skill has documented yet.* Skip silently if `ui/src/locales/` does not exist (pre-UI state).
+**Output:** a list of `Localized id` references in skills that have no matching entry in any `.ftl` file. *One-way check (skill → FTL): the reverse is not checked so FTL files can legitimately contain ids that no skill has documented yet.* Skip silently if `shared-ui/locales/` does not exist (pre-UI state).
 
 ### Check 8 — Audit-date freshness
 

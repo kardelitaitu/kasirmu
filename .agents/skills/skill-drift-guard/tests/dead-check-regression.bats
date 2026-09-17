@@ -96,7 +96,7 @@ PROBE_EOF
   [[ "$output" == *"9.9.9"* ]]
 }
 
-@test "dead-check: Check 7 (fluent) reports an id absent from ui/src/locales" {
+@test "dead-check: Check 7 (fluent) reports an id absent from shared-ui/locales" {
   write_probe
   run bash "$PROJECT_ROOT/.agents/skills/skill-drift-guard/scripts/detect.sh" \
       --check=fluent
