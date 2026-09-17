@@ -143,7 +143,7 @@ export interface Product {
   readonly popularityScore?: number;
 }
 
-/** Mirrors `AppError` in `apps/desktop-client/src/error.rs`. */
+/** Mirrors `AppError` in `apps/desktop-tauri/src/error.rs`. */
 export type AppError =
   | { kind: 'core'; subKind: string; message: string }
   | { kind: 'hardware'; subKind: string; message: string }
