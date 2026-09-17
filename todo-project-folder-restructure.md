@@ -272,7 +272,7 @@ an allowlist (§5 Pile A + the four entry points), plus the empty-directory swee
 **Acceptance:** `node_modules` gone · `git status --porcelain --ignored=matching | grep -c '^!![^/]*$'` lower than 9 ·
 the new gate exits 0 on a clean root and non-zero when a stray file is added
 
-### [ ] P9 — Lift the toolkit-neutral assets out of `ui/`
+### [/] P9 — Lift the toolkit-neutral assets out of `ui/`
 
 **Commit:** `refactor(ui): move the Fluent corpus out of ui/ into shared-ui/locales`
 
@@ -296,6 +296,51 @@ five CSS walker suites (`docs/frontend/css-verification.md`), `scripts/scan-css-
 the intent is not lost; not scheduled.
 **Acceptance (P9a):** `test ! -d ui/src/locales` · `bash scripts/lint-i18n.sh` exits 0 ·
 `python scripts/verify-ftl-orphans.py` exits 0 · `cd ui && npm run typecheck && npm run test`
+
+**P9a completed 2026-09-18** (commit `8a2aecec7`, 155 files). All four acceptance lines re-measured:
+`test ! -d ui/src/locales` passes · `lint-i18n.sh` → "no issues detected" · `verify-ftl-orphans.py` →
+OK · `typecheck` exit 0 · `npm run test` → **584 files / 10059 passed, 0 failed**. Also
+`verify-bundle-parity.py` (0 missing keys), `dedupe-ftl.py --dry-run` (no duplicates),
+`verify-ci-docs-drift.py` (0 drift), `verify-architecture-boundaries.py` and `verify-root-policy.py`
+(clean — its allowlist governs root *files*, not directories) all pass.
+
+**Shape.** The 54 `.ftl` files moved to `shared-ui/locales/`, which now holds **only** `.ftl` — the
+toolkit-neutral data §2 describes. The two files in the old directory that were **not** corpus —
+`index.ts` (builds a `ReactLocalization`) and `test-utils.tsx` (wraps components with Fluent) — both
+import `@fluent/react`, so they moved into `ui/src/i18n/`, the directory §2 says "STAYS: it is the
+`@fluent/react` binding, which is React-specific". `index.ts` landed as `createEnUsLocalization.ts`.
+The 165 `@/locales/*.ftl?raw` importers were left **unchanged** by re-pointing the `@/locales/` alias
+in both `vite.config.ts` and `vite.mobile.config.ts`; 54 test files that imported `@/locales/test-utils`
+were updated to `@/i18n/test-utils`.
+
+**The plan's "~12 files" counts only the repo-level half.** Measured: 101 files reference the path —
+12 repo-level (the plan's list, verified one by one), 37 under `ui/src`, 34 prose.
+
+**Four traps, all one class: a path that is *computed* rather than written.**
+
+1. **`import.meta.glob('../locales/*.ftl')`** in `ui/src/i18n/barePlaceholderScan.ts` — a glob relative
+   to the importing file, so a literal-path sweep cannot see it. The `../../..` form returns **nothing**
+   (Vite will not glob outside the package root); the `@/locales/` alias form works.
+2. **`path.resolve(process.cwd(), 'src/locales/shared.ftl')`** in `auditCatalog.test.ts` and
+   **`path.resolve(__dirname, '../locales')`** in `emptyStateCompliance.test.tsx` — both read the corpus
+   off disk.
+3. **`ROOT / "ui" / "src" / "locales"`** — the same path assembled from segments in **five** scripts
+   (`scan-locale-crossings.py`, `verify-fluent-dynamic-families.py`, `verify-ftl-orphans.py`,
+   `convert-safe-attr-ftl.py`, `dedupe-ftl.py`) plus `check-nav-paths.py`. `dedupe-ftl.py` is run by the
+   **pre-commit hook**, so this one blocked the commit rather than failing quietly — the hook earned its
+   keep.
+4. **A negative glob keeps pointing at the old directory.** `loadEnSources()` used
+   `['../locales/*.ftl', '!../locales/*.id.ftl']`; the positive pattern was re-pointed but the `!` one
+   was not, so the EN contract map silently gained id-only keys. Caught by the existing
+   `customers-add` pin, which exists for exactly this. The exclusion is now a code filter, which cannot
+   rot the same way.
+
+**Vite refuses to serve files outside the package.** With the corpus at `shared-ui/`, Vitest failed with
+`Denied ID …/shared.ftl?raw` — `server.fs.allow` defaults to the package root. Both configs now name
+`ui/` **and** `../shared-ui` explicitly, because naming an entry replaces the default.
+
+**P9b (token values) remains deferred** per its own staging note, which is why this phase is marked in
+progress rather than complete.
 
 ### [/] P10 — Make the platform tier reusable by a non-Tauri shell
 
