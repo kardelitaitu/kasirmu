@@ -5,7 +5,7 @@
 //! products, and the refresh_picker_ticket flow.
 //!
 //! Relocated from `apps/desktop-client/src/commands/security_scoped_integration_tests.rs`
-//! and mounted inside `oz_bridge::auth`; every assertion is preserved verbatim,
+//! and mounted inside `kasirmu_bridge::auth`; every assertion is preserved verbatim,
 //! with the mechanical desktop-to-bridge mapping applied:
 //! `app.state()` -> `&ctx()`, `State`-last args -> `ctx`-first,
 //! `String` args -> `&str`, the sync `refresh_picker_ticket` loses its `.await`,

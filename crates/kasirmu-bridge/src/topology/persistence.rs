@@ -6,7 +6,7 @@
 //!
 //! Ported verbatim from
 //! `apps/desktop-client/src/commands/topology/persistence.rs` (Wave E step d)
-//! as the fifth leaf of the `oz_bridge::topology` mirror, after model,
+//! as the fifth leaf of the `kasirmu_bridge::topology` mirror, after model,
 //! semantics and revisions, so its three `super::` device lines all resolve
 //! here. The four helpers that took `&AppState` take exactly the parts their
 //! bodies reach - db, db_manager, apply_lock - following the precedent this

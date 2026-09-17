@@ -30,7 +30,7 @@ type HmacSha256 = Hmac<Sha256>;
 ///
 /// Bridge-local mirror of `commands::terminals::DEVICE_BINDING_KEYRING_NAME`
 /// (same literal): the terminals module is not extracted yet, so this const
-/// will collapse onto `oz_bridge::terminals` when that slice lands.
+/// will collapse onto `kasirmu_bridge::terminals` when that slice lands.
 const DEVICE_BINDING_KEYRING_NAME: &str = "oz-pos/device-binding-hmac-key";
 
 /// Legacy workspace DTO (pre-ADR #4).

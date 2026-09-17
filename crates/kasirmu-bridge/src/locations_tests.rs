@@ -5,7 +5,7 @@
 // canonical names only.
 //! Location command tests relocated from the desktop
 //! `commands/locations_tests.rs` (EW8). The scoped flows target
-//! `oz_bridge::locations` through the headless `TestBridge` harness;
+//! `kasirmu_bridge::locations` through the headless `TestBridge` harness;
 //! serde shapes, seeding, and every assertion are unchanged from the
 //! desktop originals (error variants map AppError -> BridgeError 1:1,
 //! call args flip to (ctx, token, &args)).

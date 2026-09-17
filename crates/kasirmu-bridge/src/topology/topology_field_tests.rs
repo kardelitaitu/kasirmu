@@ -2,7 +2,7 @@
 //! ids and names, coordinate extremes, null/absent optional fields, and
 //! wire/port/direction combinations.
 //!
-//! Mounted as `topology_field_tests` beside `model.rs` in `oz_bridge::topology`
+//! Mounted as `topology_field_tests` beside `model.rs` in `kasirmu_bridge::topology`
 //! via `#[path]`; the flat namespace resolves through `use super::*`.
 use super::*;
 

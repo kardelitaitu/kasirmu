@@ -5,7 +5,7 @@
 //! integrity, and revision-race publication.
 //!
 //! Moved subset of the desktop `topology_stress_tests` module. Mounted as
-//! `topology_stress_tests` beside `model.rs` in `oz_bridge::topology` via
+//! `topology_stress_tests` beside `model.rs` in `kasirmu_bridge::topology` via
 //! `#[path]`; the flat namespace resolves through `use super::*`. The
 //! former `super::topology_tests::*` helpers are embedded test-locally
 //! (`fresh_conn` delegates to the shared headless harness, the payload

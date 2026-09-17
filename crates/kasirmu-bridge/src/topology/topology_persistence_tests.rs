@@ -3,7 +3,7 @@
 //! incremental save patterns.
 //!
 //! Mounted as `topology_persistence_tests` beside `persistence.rs` in
-//! `oz_bridge::topology` via `#[path]`; the flat namespace resolves through
+//! `kasirmu_bridge::topology` via `#[path]`; the flat namespace resolves through
 //! `use super::*`. The former `super::topology_tests::*` helpers are
 //! embedded test-locally: `fresh_conn` delegates to the shared headless
 //! harness (`crate::testing::temp_conn`), the payload builders are copied

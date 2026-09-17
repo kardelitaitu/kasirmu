@@ -1,7 +1,7 @@
 //! ADR #46 Phase 1: topology revision history write path.
 //!
 //! Mounted as `topology_revision_tests` beside `revisions.rs` in
-//! `oz_bridge::topology` via `#[path]`; the flat namespace resolves through
+//! `kasirmu_bridge::topology` via `#[path]`; the flat namespace resolves through
 //! `use super::*`. `fresh_conn` delegates to the shared headless harness
 //! (`crate::testing::temp_conn`). The load-bearing test here is
 //! [`a_rejected_save_writes_no_revision_row`]: a save that aborts must

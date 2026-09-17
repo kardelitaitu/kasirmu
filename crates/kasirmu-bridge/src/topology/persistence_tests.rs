@@ -3,7 +3,7 @@
 //! diagram-payload validation gate.
 //!
 //! Mounted as `persistence_tests` beside `persistence.rs` in
-//! `oz_bridge::topology` via `#[path]`; the flat namespace resolves
+//! `kasirmu_bridge::topology` via `#[path]`; the flat namespace resolves
 //! through `use super::*`.
 use super::*;
 use crate::topology::model::TOPOLOGY_RUNTIME_SETTING_KEY;

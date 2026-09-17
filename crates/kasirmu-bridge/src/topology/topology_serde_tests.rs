@@ -4,7 +4,7 @@
 //! roundtrips through `TopologyData`.
 //!
 //! Moved subset of the desktop `topology_serde_tests` module. Mounted as
-//! `topology_serde_tests` beside `model.rs` in `oz_bridge::topology` via
+//! `topology_serde_tests` beside `model.rs` in `kasirmu_bridge::topology` via
 //! `#[path]`; the flat namespace resolves through `use super::*`. The
 //! save-path rejection tests stay desktop-side: they drive the
 //! `#[cfg(test)]` `save_topology_data` helper, which is desktop-only.

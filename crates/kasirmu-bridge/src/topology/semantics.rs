@@ -8,7 +8,7 @@
 //!
 //! Ported verbatim from
 //! `apps/desktop-client/src/commands/topology/semantics.rs` (Wave E step E9c) as
-//! the second leaf of the `oz_bridge::topology` mirror: `super::model::*` and
+//! the second leaf of the `kasirmu_bridge::topology` mirror: `super::model::*` and
 //! every relative path stay exactly as written. The desktop module re-exports
 //! this surface and keeps the `oz_core::topology` re-export blocks locally,
 //! because their consumers are sibling desktop modules (two call sites pass

@@ -46,7 +46,7 @@ use crate::error::BridgeError;
 
 /// The credential deny list — the ONE shared source of truth, owned by
 /// `platform_core::settings::keys` and re-exported here so the desktop lane
-/// keeps its historical `oz_bridge::settings::SECRET_KEY_DENY_LIST` path.
+/// keeps its historical `kasirmu_bridge::settings::SECRET_KEY_DENY_LIST` path.
 ///
 /// It holds every key that must never be returned via the raw get_setting IPC
 /// command nor travel in a portable package: credentials, API keys, passwords

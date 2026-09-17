@@ -34,7 +34,7 @@
 //! envelope and never increments `revision`, so no row is expected.//!
 //! Ported verbatim from
 //! `apps/desktop-client/src/commands/topology/revisions.rs` (Wave E step d-pre)
-//! as the fourth leaf of the `oz_bridge::topology` mirror, so that persistence
+//! as the fourth leaf of the `kasirmu_bridge::topology` mirror, so that persistence
 //! can resolve its `use super::revisions::*` device line after its own move.
 //! The two listing-limit constants stay crate-private: nothing outside this
 //! file names them, so widening them would only enlarge the bridge surface.

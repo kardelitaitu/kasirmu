@@ -1,4 +1,4 @@
-//! Unit tests for the `oz_bridge::sync` module (relocated from the desktop
+//! Unit tests for the `kasirmu_bridge::sync` module (relocated from the desktop
 //! `commands/sync_tests.rs` mount): DTO wire shapes, the settings/consent
 //! contracts, and the `sync_client` loopback wire test. Pure helpers and
 //! `&Connection` free functions only — no `BridgeCtx` needed.
