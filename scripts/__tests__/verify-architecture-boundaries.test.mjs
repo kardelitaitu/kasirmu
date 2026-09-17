@@ -288,6 +288,35 @@ describe('verify-architecture-boundaries.py', () => {
     assert.match(result.output, /lib\.rs:2/);
   });
 
+  it('reports a UI toolkit dependency outside kasirmu-bridge but below the application layer', () => {
+    // The rule originally inspected crates/kasirmu-bridge alone, which left
+    // platform/startup's unconditional toolkit dependency invisible to it. This
+    // case is what keeps the widening from being a no-op: it plants the offence
+    // in a different renderer-agnostic root.
+    const dir = fixture({
+      uiFiles: {
+        'modules/tax/Cargo.toml': '[package]\nname = "modules-tax"\n\n[dependencies]\ntauri = { workspace = true }\n',
+      },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 1, result.output);
+    assert.match(result.output, /bridge-toolkit-purity/);
+    assert.match(result.output, /modules\/tax\/Cargo\.toml:5/);
+  });
+
+  it('accepts toolkit-free platform and foundation roots', () => {
+    // The clean direction for the two roots the widened rule newly covers.
+    const dir = fixture({
+      uiFiles: {
+        'platform/startup/Cargo.toml': '[package]\nname = "platform-startup"\n\n[dependencies]\ntokio = "1"\n',
+        'platform/startup/src/lib.rs': '// spawns daemons without naming a toolkit\npub fn spawn() {}\n',
+        'foundation/Cargo.toml': '[package]\nname = "foundation"\n',
+      },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 0, result.output);
+  });
+
   it('reports renderer vocabulary in an application-layer doc comment', () => {
     const dir = fixture({
       uiFiles: {
