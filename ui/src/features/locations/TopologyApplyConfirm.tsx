@@ -71,7 +71,7 @@ export interface TopologyApplyConfirmProps {
 const FOCUS_DELAY_MS = 50;
 
 /** Mirrors `TOPOLOGY_CHANGE_NOTE_MAX_CHARS` in
- *  apps/desktop-client/src/commands/topology/revisions.rs. Truncating here is
+ *  apps/desktop-tauri/src/commands/topology/revisions.rs. Truncating here is
  *  a courtesy; the backend REJECTS a longer note with
  *  `topology-change-note-too-long`, and it counts CHARACTERS, not bytes — so
  *  maxLength on the textarea (which also counts UTF-16 code units) is the

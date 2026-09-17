@@ -89,7 +89,7 @@ export const MOCK_TERMINAL = {
 /** Seed Legal Entity mirroring migration `20260908_legal_entities.sql`, which
  *  auto-creates one deterministic "Default Legal Entity" per existing tenant.
  *  `tenantId: 'default'` matches DEFAULT_TENANT_ID in
- *  apps/desktop-client/src/commands/legal_entities.rs, and the field names are
+ *  apps/desktop-tauri/src/commands/legal_entities.rs, and the field names are
  *  camelCase because the Rust DTO uses `#[serde(rename_all = "camelCase")]`. */
 export const MOCK_LEGAL_ENTITY = {
   id: 'le-default',

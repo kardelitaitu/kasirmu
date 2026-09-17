@@ -476,7 +476,7 @@ export const systemHandlers: Record<string, MockHandler> = {
   // `ui/src/__tests__/api-security-contract.test.ts:38-44`), but this file still
   // carried a handler for it, which the scoped-alias rule then copied onto
   // `rotate_encryption_key_scoped` -- the name the desktop actually registers
-  // (`apps/desktop-client/src/lib.rs:1151`). Answering the dead name is what kept
+  // (`apps/desktop-tauri/src/lib.rs:1151`). Answering the dead name is what kept
   // the live one working in dev, so the handler moves here instead of being dropped:
   // a mock that fakes success for a command deleted as a bypass is a resurrection
   // hazard, and a mock that goes silent on the surviving gated command is the T5-5
