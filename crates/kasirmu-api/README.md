@@ -8,10 +8,10 @@ REST API server for kasir.mu. An axum HTTP API for third-party scripts, kitchen 
 
 ```rust
 // Standalone (binds 0.0.0.0, env-configured):
-oz_api::serve().await?;
+kasirmu_api::serve().await?;
 
 // Embedded on loopback (what the desktop app does — never serve()):
-let app = oz_api::router(app_state); // AppState carries db + api_secret
+let app = kasirmu_api::router(app_state); // AppState carries db + api_secret
 let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
 axum::serve(listener, app).await?;
 ```
