@@ -1,5 +1,5 @@
 //! Regional-configuration command bodies (Wave A / S6) — the tauri-free half
-//! of `apps/desktop-client/src/commands/regional.rs`.
+//! of `apps/desktop-tauri/src/commands/regional.rs`.
 //!
 //! Key functions: [`get_scoped`] (the slice-2 read model) and [`set_scoped`]
 //! (the slice-3 write counterpart), each consuming a [`BridgeCtx`], plus the

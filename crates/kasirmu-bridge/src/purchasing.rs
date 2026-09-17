@@ -1,5 +1,5 @@
 //! Purchasing command bodies (Wave C / C4) — the tauri-free half of
-//! `apps/desktop-client/src/commands/purchasing.rs`.
+//! `apps/desktop-tauri/src/commands/purchasing.rs`.
 //!
 //! Key functions: the global-database supplier and purchase-order operations
 //! ([`list_suppliers`], [`get_supplier`], [`create_supplier`],

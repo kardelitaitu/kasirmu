@@ -1,5 +1,5 @@
 //! Refund command bodies (Wave D / D4a) — the tauri-free half of
-//! `apps/desktop-client/src/commands/refunds.rs`.
+//! `apps/desktop-tauri/src/commands/refunds.rs`.
 //!
 //! Process refunds against completed sales, receipt-barcode lookup, and
 //! per-sale refund listings, each consuming a [`BridgeCtx`]. The shell's

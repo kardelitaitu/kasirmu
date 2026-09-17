@@ -1,5 +1,5 @@
 //! Unit tests for the refund command bodies (Wave-D test relocation:
-//! moved out of `apps/desktop-client/src/commands/refunds_tests.rs`).
+//! moved out of `apps/desktop-tauri/src/commands/refunds_tests.rs`).
 //!
 //! Mounted at the foot of `refunds.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the DTOs, args and the `kasirmu_core` store types

@@ -12,7 +12,7 @@
 //! primary location id).
 //!
 //! Wave D / D4b: the bodies moved here from
-//! `apps/desktop-client/src/commands/receipt_format.rs`; shims keep the
+//! `apps/desktop-tauri/src/commands/receipt_format.rs`; shims keep the
 //! exact `#[tauri::command]` names/signatures/`Result<_, AppError>`
 //! wire contract.
 
