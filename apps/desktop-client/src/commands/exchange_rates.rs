@@ -9,7 +9,7 @@ findings: closed C-1 (Epic X-3, see audit doc §11); no remaining findings in th
 //! R2 Phase 2: DTO types moved to [`modules_currency::commands`].
 //!
 //! Wave A / S4: the handler bodies now live in the headless
-//! `oz_bridge::currency` module. Each `#[tauri::command]` below keeps its
+//! `kasirmu_bridge::currency` module. Each `#[tauri::command]` below keeps its
 //! exact name, parameter list and `Result<_, AppError>` return so the
 //! registered IPC surface and the serialized error shape never move; it
 //! borrows a `BridgeCtx` from `AppState`, calls the bridge, and maps
@@ -33,11 +33,11 @@ use crate::state::AppState;
 /// Shared validation for exchange-rate creation (CUR-05), used by both
 /// the legacy and scoped command paths so the two cannot drift.
 ///
-/// The rules live in `oz_bridge::currency::validate_create_rate_args`; this
+/// The rules live in `kasirmu_bridge::currency::validate_create_rate_args`; this
 /// adapter exists so both the shell and its tests keep seeing `AppError`.
 #[allow(dead_code)] // retained for exchange_rates_tests.rs, which calls it directly
 fn validate_create_rate_args(args: &CreateExchangeRateArgs) -> Result<(), AppError> {
-    oz_bridge::currency::validate_create_rate_args(args).map_err(AppError::from)
+    kasirmu_bridge::currency::validate_create_rate_args(args).map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -55,7 +55,7 @@ pub async fn create_exchange_rate(
     state: State<'_, AppState>,
 ) -> Result<ExchangeRateDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::currency::create_exchange_rate(&ctx, &args)
+    kasirmu_bridge::currency::create_exchange_rate(&ctx, &args)
         .await
         .map_err(Into::into)
 }
@@ -79,7 +79,7 @@ pub async fn list_exchange_rates_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<ExchangeRateDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::currency::list_exchange_rates_scoped(&ctx, &session_token)
+    kasirmu_bridge::currency::list_exchange_rates_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -96,7 +96,7 @@ pub async fn list_latest_exchange_rates_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<ExchangeRateDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::currency::list_latest_exchange_rates_scoped(&ctx, &session_token)
+    kasirmu_bridge::currency::list_latest_exchange_rates_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -113,7 +113,7 @@ pub async fn create_exchange_rate_scoped(
     state: State<'_, AppState>,
 ) -> Result<ExchangeRateDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::currency::create_exchange_rate_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::currency::create_exchange_rate_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -129,7 +129,7 @@ pub async fn delete_exchange_rate_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::currency::delete_exchange_rate_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::currency::delete_exchange_rate_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -149,7 +149,7 @@ pub async fn get_latest_exchange_rate_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<ExchangeRateDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::currency::get_latest_exchange_rate_scoped(
+    kasirmu_bridge::currency::get_latest_exchange_rate_scoped(
         &ctx,
         &session_token,
         &from_currency,

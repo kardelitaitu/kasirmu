@@ -501,7 +501,7 @@ fn set_device_binding_args_debug() {
 // ── Scoped-command permission gates (F-017 parity) ────────────────────
 //
 // Added with `50b2fd14e`, which gave nine of this module's scoped commands the
-// gate their `oz_bridge::terminals` twins already enforced under a comment
+// gate their `kasirmu_bridge::terminals` twins already enforced under a comment
 // naming the work item. Nothing above reaches a scoped command: every case in
 // this file drives `run_*` or the store helpers directly, which is precisely
 // why four of the reads could resolve a session, bind it to a store, and then

@@ -250,7 +250,7 @@ async fn security_events_list_command_passes_the_tier_gate_without_panicking() {
     // The two security-event shims were the only doors the audit port left
     // without a tier-gate case here: the tablet-side coverage for them lived in
     // `audit_security_events_tests.rs`, whose subject was the tablet bodies that
-    // moved to `oz_bridge::audit`. Its replacement covers the bridge; this is
+    // moved to `kasirmu_bridge::audit`. Its replacement covers the bridge; this is
     // the shim's own fourth move, which the bridge cannot test.
     let app = app_for("premium");
     let page = list_security_events_scoped("tok".into(), security_page_args(), app.state()).await;
@@ -279,7 +279,7 @@ async fn security_events_page_denies_a_free_tier_session() {
     // The read side of the same per-client invariant the list case above pins,
     // on the security page specifically: the bridge has no below-premium case
     // for this page (its only one is on the export), so this is the case the
-    // tablet's own suite was carrying when the bodies moved to oz_bridge::audit.
+    // tablet's own suite was carrying when the bodies moved to kasirmu_bridge::audit.
     let app = app_for("free");
     let err = list_security_events_scoped("tok".into(), security_page_args(), app.state())
         .await

@@ -7,7 +7,7 @@
 //! (global-db, non-scoped — matches the tablet's other product commands).
 //!
 //! Phase 3.3 T2: the URL-building half moved to the shared
-//! `oz_bridge::browser` module (Agent 2's Wave F extraction); the helpers
+//! `kasirmu_bridge::browser` module (Agent 2's Wave F extraction); the helpers
 //! are re-exported so the sibling `browser_tests.rs` keeps exercising
 //! them by name. The body stays tablet-native this slice (global-db
 //! `Store` read, no BridgeCtx) because the tablet `AppState` cannot yet
@@ -22,7 +22,7 @@ use tauri::{State, command};
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::browser::{build_image_query, urlencoding};
+pub use kasirmu_bridge::browser::{build_image_query, urlencoding};
 
 /// Open a Google Images search for a product in the default browser.
 ///

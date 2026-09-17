@@ -7,7 +7,7 @@
 //! scoped member only sees analytics for branches they are assigned to
 //! (an out-of-scope session is denied fail-closed).
 //!
-//! Wave E slice E8: command bodies live in `oz_bridge::analytics`; these
+//! Wave E slice E8: command bodies live in `kasirmu_bridge::analytics`; these
 //! are thin shims that build a `BridgeCtx` and map `BridgeError` back to
 //! `AppError` (wire shape unchanged).
 
@@ -19,7 +19,7 @@ use oz_core::db::Store;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::analytics::{StaffAnalyticsDailyDto, StaffAnalyticsDto};
+pub use kasirmu_bridge::analytics::{StaffAnalyticsDailyDto, StaffAnalyticsDto};
 
 /// Per-staff shift + sales summary for the session's store over `[from, to]`.
 #[tauri::command]
@@ -30,7 +30,7 @@ pub async fn get_staff_analytics_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<StaffAnalyticsDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::analytics::get_staff_analytics_scoped(&ctx, &session_token, from, to)
+    kasirmu_bridge::analytics::get_staff_analytics_scoped(&ctx, &session_token, from, to)
         .await
         .map_err(Into::into)
 }
@@ -45,7 +45,7 @@ pub async fn get_staff_analytics_daily_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<StaffAnalyticsDailyDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::analytics::get_staff_analytics_daily_scoped(&ctx, &session_token, user_id, from, to)
+    kasirmu_bridge::analytics::get_staff_analytics_daily_scoped(&ctx, &session_token, user_id, from, to)
         .await
         .map_err(Into::into)
 }

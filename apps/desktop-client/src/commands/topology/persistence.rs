@@ -4,7 +4,7 @@
 //! Extracted from commands/topology.rs. Depends on the semantic engine
 //! (`super::semantics`) for the save/Apply-time gates.
 //!
-//! Wave E (step d): the bodies moved to `oz_bridge::topology::persistence`;
+//! Wave E (step d): the bodies moved to `kasirmu_bridge::topology::persistence`;
 //! this module re-exports them and keeps three kinds of item of its own. The
 //! four `&AppState` adapters exist because `lib.rs` startup and the mounted
 //! tests call those helpers through a shared state handle the bridge never
@@ -34,12 +34,12 @@ use super::revisions::*;
 #[cfg(test)]
 use super::semantics::*;
 
-pub use oz_bridge::topology::persistence::*;
+pub use kasirmu_bridge::topology::persistence::*;
 
 /// Adapter over the bridge startup recovery. The bridge side still drops its
 /// global guard before acquiring the apply lock, exactly as before the move.
 pub async fn recover_pending_topology_apply_at_startup(state: &AppState) -> Result<(), AppError> {
-    oz_bridge::topology::persistence::recover_pending_topology_apply_at_startup(
+    kasirmu_bridge::topology::persistence::recover_pending_topology_apply_at_startup(
         &state.db,
         &state.db_manager,
         &state.topology_apply_lock,
@@ -48,13 +48,13 @@ pub async fn recover_pending_topology_apply_at_startup(state: &AppState) -> Resu
     .map_err(Into::into)
 }
 
-/// Adapter over [`oz_bridge::topology::persistence::recover_pending_topology_apply`].
+/// Adapter over [`kasirmu_bridge::topology::persistence::recover_pending_topology_apply`].
 #[allow(dead_code)]
 pub(crate) async fn recover_pending_topology_apply(
     state: &AppState,
     expected_store_id: &str,
 ) -> Result<(), AppError> {
-    oz_bridge::topology::persistence::recover_pending_topology_apply(
+    kasirmu_bridge::topology::persistence::recover_pending_topology_apply(
         &state.db,
         &state.db_manager,
         expected_store_id,
@@ -63,7 +63,7 @@ pub(crate) async fn recover_pending_topology_apply(
     .map_err(Into::into)
 }
 
-/// Adapter over [`oz_bridge::topology::persistence::snapshot_workspace_rows`].
+/// Adapter over [`kasirmu_bridge::topology::persistence::snapshot_workspace_rows`].
 #[allow(dead_code)]
 pub(crate) async fn snapshot_workspace_rows(
     state: &AppState,
@@ -71,7 +71,7 @@ pub(crate) async fn snapshot_workspace_rows(
     updates: &[UpdateInstanceRequest],
     archives: &[String],
 ) -> Result<Vec<WorkspaceApplySnapshot>, AppError> {
-    oz_bridge::topology::persistence::snapshot_workspace_rows(
+    kasirmu_bridge::topology::persistence::snapshot_workspace_rows(
         &state.db_manager,
         store_id,
         updates,
@@ -81,7 +81,7 @@ pub(crate) async fn snapshot_workspace_rows(
     .map_err(Into::into)
 }
 
-/// Adapter over [`oz_bridge::topology::persistence::compensate_workspace_diff`].
+/// Adapter over [`kasirmu_bridge::topology::persistence::compensate_workspace_diff`].
 #[allow(dead_code)]
 pub(crate) async fn compensate_workspace_diff(
     state: &AppState,
@@ -89,7 +89,7 @@ pub(crate) async fn compensate_workspace_diff(
     creations: &[CreateInstanceRequest],
     snapshots: &[WorkspaceApplySnapshot],
 ) -> Result<(), AppError> {
-    oz_bridge::topology::persistence::compensate_workspace_diff(
+    kasirmu_bridge::topology::persistence::compensate_workspace_diff(
         &state.db_manager,
         store_id,
         creations,
@@ -99,13 +99,13 @@ pub(crate) async fn compensate_workspace_diff(
     .map_err(Into::into)
 }
 
-/// Adapter over [`oz_bridge::topology::persistence::topology_setting_key`].
+/// Adapter over [`kasirmu_bridge::topology::persistence::topology_setting_key`].
 #[allow(dead_code)]
 pub(crate) fn topology_setting_key(branch_id: Option<&str>) -> Result<String, AppError> {
-    oz_bridge::topology::persistence::topology_setting_key(branch_id).map_err(Into::into)
+    kasirmu_bridge::topology::persistence::topology_setting_key(branch_id).map_err(Into::into)
 }
 
-/// Adapter over [`oz_bridge::topology::persistence::template_save`].
+/// Adapter over [`kasirmu_bridge::topology::persistence::template_save`].
 #[allow(dead_code)]
 pub(crate) fn template_save(
     conn: &Connection,
@@ -113,42 +113,42 @@ pub(crate) fn template_save(
     raw_name: &str,
     payload: &Value,
 ) -> Result<(), AppError> {
-    oz_bridge::topology::persistence::template_save(conn, topology_key, raw_name, payload)
+    kasirmu_bridge::topology::persistence::template_save(conn, topology_key, raw_name, payload)
         .map_err(Into::into)
 }
 
-/// Adapter over [`oz_bridge::topology::persistence::template_load`].
+/// Adapter over [`kasirmu_bridge::topology::persistence::template_load`].
 #[allow(dead_code)]
 pub(crate) fn template_load(
     conn: &Connection,
     topology_key: &str,
     raw_name: &str,
 ) -> Result<Option<Value>, AppError> {
-    oz_bridge::topology::persistence::template_load(conn, topology_key, raw_name)
+    kasirmu_bridge::topology::persistence::template_load(conn, topology_key, raw_name)
         .map_err(Into::into)
 }
 
-/// Adapter over [`oz_bridge::topology::persistence::template_list`].
+/// Adapter over [`kasirmu_bridge::topology::persistence::template_list`].
 #[allow(dead_code)]
 pub(crate) fn template_list(
     conn: &Connection,
     topology_key: &str,
 ) -> Result<Vec<String>, AppError> {
-    oz_bridge::topology::persistence::template_list(conn, topology_key).map_err(Into::into)
+    kasirmu_bridge::topology::persistence::template_list(conn, topology_key).map_err(Into::into)
 }
 
-/// Adapter over [`oz_bridge::topology::persistence::template_delete`].
+/// Adapter over [`kasirmu_bridge::topology::persistence::template_delete`].
 #[allow(dead_code)]
 pub(crate) fn template_delete(
     conn: &Connection,
     topology_key: &str,
     raw_name: &str,
 ) -> Result<bool, AppError> {
-    oz_bridge::topology::persistence::template_delete(conn, topology_key, raw_name)
+    kasirmu_bridge::topology::persistence::template_delete(conn, topology_key, raw_name)
         .map_err(Into::into)
 }
 
-/// Adapter over [`oz_bridge::topology::persistence::save_topology_json_at_key_with_revision`].
+/// Adapter over [`kasirmu_bridge::topology::persistence::save_topology_json_at_key_with_revision`].
 #[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn save_topology_json_at_key_with_revision(
@@ -162,7 +162,7 @@ pub(crate) fn save_topology_json_at_key_with_revision(
     branch_registry: Option<&Connection>,
     revision_ctx: Option<&TopologyRevisionContext<'_>>,
 ) -> Result<u64, AppError> {
-    oz_bridge::topology::persistence::save_topology_json_at_key_with_revision(
+    kasirmu_bridge::topology::persistence::save_topology_json_at_key_with_revision(
         conn,
         nodes,
         wires,
@@ -176,7 +176,7 @@ pub(crate) fn save_topology_json_at_key_with_revision(
     .map_err(Into::into)
 }
 
-/// Adapter over [`oz_bridge::topology::persistence::validate_semantic_ownership`].
+/// Adapter over [`kasirmu_bridge::topology::persistence::validate_semantic_ownership`].
 /// Caller set collapsed when the desktop topology unit tests relocated to
 /// oz-bridge: production calls the `_in` variant directly and no mounted test
 /// reaches this wrapper in either build.
@@ -186,11 +186,11 @@ pub(crate) fn validate_semantic_ownership(
     nodes: &[Value],
     wires: &[Value],
 ) -> Result<(), AppError> {
-    oz_bridge::topology::persistence::validate_semantic_ownership(conn, nodes, wires)
+    kasirmu_bridge::topology::persistence::validate_semantic_ownership(conn, nodes, wires)
         .map_err(Into::into)
 }
 
-/// Adapter over [`oz_bridge::topology::persistence::validate_warehouse_capacity`].
+/// Adapter over [`kasirmu_bridge::topology::persistence::validate_warehouse_capacity`].
 #[allow(dead_code)]
 pub(crate) fn validate_warehouse_capacity(
     nodes: &[Value],
@@ -198,7 +198,7 @@ pub(crate) fn validate_warehouse_capacity(
     tier: &oz_core::subscription::SubscriptionTier,
     resolved_issue_keys: &[String],
 ) -> Result<(), AppError> {
-    oz_bridge::topology::persistence::validate_warehouse_capacity(
+    kasirmu_bridge::topology::persistence::validate_warehouse_capacity(
         nodes,
         wires,
         tier,

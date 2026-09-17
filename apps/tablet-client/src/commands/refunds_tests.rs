@@ -392,7 +392,7 @@ fn refund_wire_types_are_bridge_reexports_graded_on_values() {
 #[test]
 fn process_refund_args_deserialize_exact_ui_payload() {
     // The pin for the re-export: `ProcessRefundArgs` is no longer a tablet
-    // copy, it IS `oz_bridge::refunds::ProcessRefundArgs`. A struct-vs-struct
+    // copy, it IS `kasirmu_bridge::refunds::ProcessRefundArgs`. A struct-vs-struct
     // pair assertion would now be vacuous — the two are one type — so this
     // asserts what the payload RESOLVES TO, not that two declarations agree.
     // Key for key out of `ui/src/api/sales.ts` (`ProcessRefundArgs`:

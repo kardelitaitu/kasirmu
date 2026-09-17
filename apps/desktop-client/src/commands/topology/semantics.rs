@@ -6,7 +6,7 @@
 //! value-level and deliberately Tauri-free. Extracted from
 //! commands/topology.rs.
 //!
-//! Wave E (E9c): the bodies moved to `oz_bridge::topology::semantics`; this
+//! Wave E (E9c): the bodies moved to `kasirmu_bridge::topology::semantics`; this
 //! module is the re-export shim. Both `oz_core::topology` blocks stay here
 //! because they are a re-export device, not an import: sibling desktop
 //! modules call `value_string` and friends through this namespace, and the
@@ -33,4 +33,4 @@ pub(crate) use oz_core::topology::{
 };
 
 #[allow(unused_imports)]
-pub use oz_bridge::topology::semantics::*;
+pub use kasirmu_bridge::topology::semantics::*;

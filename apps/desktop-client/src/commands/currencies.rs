@@ -9,7 +9,7 @@
 //! registered in neither shell, unnamed by UI code and uncalled by any Rust here, so the
 //! only reader left with that name is the dev-mock alias that seeds `list_currencies_scoped`.
 //!
-//! Wave A / S4: the bodies now live in the headless `oz_bridge::currency`
+//! Wave A / S4: the bodies now live in the headless `kasirmu_bridge::currency`
 //! module. Each `#[tauri::command]` below keeps its exact name, parameter list
 //! and `Result<_, AppError>` return so the registered IPC surface and the
 //! serialized error shape never move; it borrows a `BridgeCtx` from
@@ -30,12 +30,12 @@ use modules_currency::commands::CurrencyDto;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::currency::{CurrencyInfo, SetDefaultCurrencyArgs};
+pub use kasirmu_bridge::currency::{CurrencyInfo, SetDefaultCurrencyArgs};
 
 #[tauri::command]
 /// Currency info.
 pub async fn currency_info(code: String) -> Result<CurrencyInfo, AppError> {
-    oz_bridge::currency::currency_info(&code).map_err(Into::into)
+    kasirmu_bridge::currency::currency_info(&code).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -45,7 +45,7 @@ pub async fn list_currencies_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<CurrencyDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::currency::list_currencies_scoped(&ctx, &session_token)
+    kasirmu_bridge::currency::list_currencies_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -54,7 +54,7 @@ pub async fn list_currencies_scoped(
 /// Get default currency.
 pub async fn get_default_currency(state: State<'_, AppState>) -> Result<Option<String>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::currency::get_default_currency(&ctx)
+    kasirmu_bridge::currency::get_default_currency(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -66,7 +66,7 @@ pub async fn set_default_currency(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::currency::set_default_currency(&ctx, &args.code)
+    kasirmu_bridge::currency::set_default_currency(&ctx, &args.code)
         .await
         .map_err(Into::into)
 }
@@ -90,7 +90,7 @@ pub async fn get_default_currency_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<String>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::currency::get_default_currency_scoped(&ctx, &session_token)
+    kasirmu_bridge::currency::get_default_currency_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -107,7 +107,7 @@ pub async fn set_default_currency_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::currency::set_default_currency_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::currency::set_default_currency_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -120,7 +120,7 @@ pub async fn currency_info_scoped(
     state: State<'_, AppState>,
 ) -> Result<CurrencyInfo, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::currency::currency_info_scoped(&ctx, &session_token, &code)
+    kasirmu_bridge::currency::currency_info_scoped(&ctx, &session_token, &code)
         .await
         .map_err(Into::into)
 }

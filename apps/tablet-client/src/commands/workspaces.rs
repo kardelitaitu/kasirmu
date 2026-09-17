@@ -26,7 +26,7 @@ type HmacSha256 = Hmac<Sha256>;
 // comments, and **no `rename_all` on either**, so the wire stays snake_case and
 // the renderer sees no change at all. Keeping a second copy here is the
 // duplication ADR #49 exists to end.
-pub use oz_bridge::workspaces::WorkspaceScreenDto;
+pub use kasirmu_bridge::workspaces::WorkspaceScreenDto;
 
 /// List workspace instances for the pre-session workspace picker.
 ///
@@ -43,7 +43,7 @@ pub async fn list_workspaces(
     store_id: String,
 ) -> Result<Vec<WorkspaceDto>, AppError> {
     // ADR #49: the body is the bridge's, and this delegation is a pure identity.
-    // `oz_bridge::workspaces::list_workspaces` verifies the same ticket against
+    // `kasirmu_bridge::workspaces::list_workspaces` verifies the same ticket against
     // `ctx.picker_ticket_secret`, locks the global db through `ctx.lock_global()`
     // (the same `state.db` — see `AppState::bridge_ctx`), opens the store through
     // `ctx.db_manager` and drops the guard in the same order, and carries the
@@ -52,11 +52,11 @@ pub async fn list_workspaces(
     // Ledger-neutral, measured rather than assumed: this door resolves no
     // session (it presents a picker TICKET, which matches none of the sweep's
     // markers), so `run_sweep`'s `gated` leg is false with or without an
-    // `oz_bridge::` call, and the ledger's own entry for it —
+    // `kasirmu_bridge::` call, and the ledger's own entry for it —
     // `("workspaces::list_workspaces", "no_session_resolution")` — stays true.
     // The ratchet is green before and after.
     let ctx = state.bridge_ctx();
-    oz_bridge::workspaces::list_workspaces(&ctx, ticket, store_id)
+    kasirmu_bridge::workspaces::list_workspaces(&ctx, ticket, store_id)
         .await
         .map_err(Into::into)
 }
@@ -84,7 +84,7 @@ pub async fn list_workspace_screens(
     // leg cannot turn true, and the ledger's own entry —
     // `("workspaces::list_workspace_screens", "no_session_resolution")` — holds.
     let ctx = state.bridge_ctx();
-    oz_bridge::workspaces::list_workspace_screens(&ctx, ticket, type_key, store_id)
+    kasirmu_bridge::workspaces::list_workspace_screens(&ctx, ticket, type_key, store_id)
         .await
         .map_err(Into::into)
 }

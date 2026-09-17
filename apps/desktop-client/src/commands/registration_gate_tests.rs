@@ -6,7 +6,7 @@
 //! ../lib.rs is the whole renderer-reachable surface of this shell: 455 registered
 //! names as measured 16-09-26, two more than the 453 this floor was last written
 //! against, because `b07e8c3ac` registered `pos::set_line_course_scoped` and
-//! `pos::publish_course_fired_scoped`, both arriving already gated through `oz_bridge::pos`.
+//! `pos::publish_course_fired_scoped`, both arriving already gated through `kasirmu_bridge::pos`.
 //! Every registered name is parsed out of this crate's own
 //! source at test time and placed in exactly one of three states:
 //!
@@ -428,7 +428,7 @@ fn run_sweep() -> Sweep {
         let gated = hits.iter().any(|text| {
             resolves_session(text)
                 && (names_permission(text)
-                    || (text.contains("oz_bridge::") && stems.contains(&module)))
+                    || (text.contains("kasirmu_bridge::") && stems.contains(&module)))
         });
         let state = if gated {
             State::Gated

@@ -13,7 +13,7 @@ next: none | perf: N/A
 //! Carts are persisted in the SQLite `active_carts` table so they
 //! survive application restarts.
 
-// Wave F: the bodies moved to oz_bridge::history. The DTOs are re-exported
+// Wave F: the bodies moved to kasirmu_bridge::history. The DTOs are re-exported
 // so the sibling history_tests.rs (which opens use super::*;) keeps
 // resolving them from this module unchanged.
 use oz_core::db::{DailySummaryRow, SalesByHourRow};
@@ -22,7 +22,7 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::history::{
+pub use kasirmu_bridge::history::{
     EodReport, PaymentBreakdown, SaleDetail, SaleListItem, SaleListResponse,
 };
 
@@ -37,7 +37,7 @@ pub async fn list_sales_scoped(
     state: State<'_, AppState>,
 ) -> Result<SaleListResponse, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::history::list_sales_scoped(&ctx, &session_token)
+    kasirmu_bridge::history::list_sales_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -54,7 +54,7 @@ pub async fn get_sale_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<SaleDetail>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::history::get_sale_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::history::get_sale_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -68,7 +68,7 @@ pub async fn export_daily_summary_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<DailySummaryRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::history::export_daily_summary_scoped(&ctx, &session_token)
+    kasirmu_bridge::history::export_daily_summary_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -82,7 +82,7 @@ pub async fn export_sales_by_hour_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<SalesByHourRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::history::export_sales_by_hour_scoped(&ctx, &session_token)
+    kasirmu_bridge::history::export_sales_by_hour_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -97,7 +97,7 @@ pub async fn export_eod_report_scoped(
     state: State<'_, AppState>,
 ) -> Result<EodReport, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::history::export_eod_report_scoped(&ctx, &session_token)
+    kasirmu_bridge::history::export_eod_report_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }

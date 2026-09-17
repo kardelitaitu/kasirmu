@@ -5,7 +5,7 @@
 //! The front-end uses this to populate the product grid.
 //!
 //! Wave A / S9a + S9b: the bodies now live in the headless
-//! `oz_bridge::products` module (reads landed in S9a, the write bodies with
+//! `kasirmu_bridge::products` module (reads landed in S9a, the write bodies with
 //! their transactions and `StockAdjusted`/`ProductCreated` domain events
 //! in S9b). Each `#[tauri::command]` below keeps its exact name, parameter
 //! list and `Result<_, AppError>` return so the registered IPC surface and
@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::products::{
+pub use kasirmu_bridge::products::{
     AdjustStockArgs, CreateProductArgs, CreateProductResult, CreateProductScopedArgs,
     DeleteProductArgs, DeleteProductScopedArgs, MoneyDto, ProductDto, SerialTrackRow,
     UpdateProductArgs, UpdateProductResult, UpdateProductScopedArgs,
@@ -49,7 +49,7 @@ pub async fn adjust_stock_scoped(
     state: State<'_, AppState>,
 ) -> Result<i64, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::products::adjust_stock_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::products::adjust_stock_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -70,19 +70,19 @@ pub async fn list_products_scoped(
     session_token: String,
 ) -> Result<Vec<ProductDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::products::list_scoped(&ctx, &session_token)
+    kasirmu_bridge::products::list_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
 
 /// Business logic for listing products (extracted for testing).
 ///
-/// Thin adapter over `oz_bridge::products::run_list_products`: the name,
+/// Thin adapter over `kasirmu_bridge::products::run_list_products`: the name,
 /// parameter list and `Result<_, AppError>` type are unchanged so the
 /// sibling test module keeps matching on `AppError::Core`.
 #[allow(dead_code)] // retained by the Wave-A extraction contract for sibling tests
 fn run_list_products(conn: &rusqlite::Connection) -> Result<Vec<ProductDto>, AppError> {
-    oz_bridge::products::run_list_products(conn).map_err(AppError::from)
+    kasirmu_bridge::products::run_list_products(conn).map_err(AppError::from)
 }
 
 /// Fetch inventory-tracked products with stock at a specific location.
@@ -97,7 +97,7 @@ pub async fn list_warehouse_products_at_location(
     location_id: String,
 ) -> Result<Vec<ProductDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::products::list_warehouse_products_at_location(&ctx, &session_token, &location_id)
+    kasirmu_bridge::products::list_warehouse_products_at_location(&ctx, &session_token, &location_id)
         .await
         .map_err(Into::into)
 }
@@ -113,14 +113,14 @@ pub async fn lookup_by_barcode_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<ProductDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::products::lookup_by_barcode(&ctx, &session_token, &barcode)
+    kasirmu_bridge::products::lookup_by_barcode(&ctx, &session_token, &barcode)
         .await
         .map_err(Into::into)
 }
 
 /// Business logic for barcode lookup (extracted for testing).
 ///
-/// Thin adapter over `oz_bridge::products::run_lookup_by_barcode`: the
+/// Thin adapter over `kasirmu_bridge::products::run_lookup_by_barcode`: the
 /// name, parameter list and `Result<_, AppError>` type are unchanged so
 /// the sibling test module keeps matching on `AppError::Core`.
 #[allow(dead_code)] // retained by the Wave-A extraction contract for sibling tests
@@ -128,7 +128,7 @@ fn run_lookup_by_barcode(
     conn: &rusqlite::Connection,
     barcode: &str,
 ) -> Result<Option<ProductDto>, AppError> {
-    oz_bridge::products::run_lookup_by_barcode(conn, barcode).map_err(AppError::from)
+    kasirmu_bridge::products::run_lookup_by_barcode(conn, barcode).map_err(AppError::from)
 }
 
 /// Look up a product by SKU for the store resolved from a
@@ -140,14 +140,14 @@ pub async fn lookup_product_by_sku_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<ProductDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::products::lookup_product_by_sku(&ctx, &session_token, &sku)
+    kasirmu_bridge::products::lookup_product_by_sku(&ctx, &session_token, &sku)
         .await
         .map_err(Into::into)
 }
 
 /// Business logic for SKU lookup (extracted for testing).
 ///
-/// Thin adapter over `oz_bridge::products::run_lookup_product_by_sku`:
+/// Thin adapter over `kasirmu_bridge::products::run_lookup_product_by_sku`:
 /// the name, parameter list and `Result<_, AppError>` type are unchanged
 /// so the sibling test module keeps matching on `AppError::Core`.
 #[allow(dead_code)] // retained by the Wave-A extraction contract for sibling tests
@@ -155,7 +155,7 @@ fn run_lookup_product_by_sku(
     conn: &rusqlite::Connection,
     sku: &str,
 ) -> Result<Option<ProductDto>, AppError> {
-    oz_bridge::products::run_lookup_product_by_sku(conn, sku).map_err(AppError::from)
+    kasirmu_bridge::products::run_lookup_product_by_sku(conn, sku).map_err(AppError::from)
 }
 
 // ── Create product ──────────────────────────────────────────────────
@@ -174,7 +174,7 @@ pub async fn create_product_scoped(
     state: State<'_, AppState>,
 ) -> Result<CreateProductResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::products::create_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::products::create_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -192,7 +192,7 @@ pub async fn update_product_scoped(
     state: State<'_, AppState>,
 ) -> Result<UpdateProductResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::products::update_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::products::update_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -205,7 +205,7 @@ pub async fn get_product_track_serial_scoped(
     state: State<'_, AppState>,
 ) -> Result<bool, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::products::get_product_track_serial(&ctx, &session_token, &sku)
+    kasirmu_bridge::products::get_product_track_serial(&ctx, &session_token, &sku)
         .await
         .map_err(Into::into)
 }
@@ -218,19 +218,19 @@ pub async fn get_product_track_serial_batch_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<SerialTrackRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::products::get_product_track_serial_batch(&ctx, &session_token, &skus)
+    kasirmu_bridge::products::get_product_track_serial_batch(&ctx, &session_token, &skus)
         .await
         .map_err(Into::into)
 }
 
 /// Business logic for the batch serial-tracking lookup (extracted for testing).
 ///
-/// Thin adapter over `oz_bridge::products::run_get_product_track_serial_batch`:
+/// Thin adapter over `kasirmu_bridge::products::run_get_product_track_serial_batch`:
 /// the name, parameter list and `Vec<SerialTrackRow>` return are unchanged
 /// so the sibling test module keeps its assertions.
 #[allow(dead_code)] // retained by the Wave-A extraction contract for sibling tests
 fn run_get_product_track_serial_batch(store: &Store<'_>, skus: &[String]) -> Vec<SerialTrackRow> {
-    oz_bridge::products::run_get_product_track_serial_batch(store, skus)
+    kasirmu_bridge::products::run_get_product_track_serial_batch(store, skus)
 }
 
 // ── Popularity search signal (ADR #37) ──────────────────────────────
@@ -250,7 +250,7 @@ pub async fn record_product_search_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::products::record_product_search(&ctx, &session_token, &sku)
+    kasirmu_bridge::products::record_product_search(&ctx, &session_token, &sku)
         .await
         .map_err(Into::into)
 }
@@ -268,7 +268,7 @@ pub async fn delete_product_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::products::delete_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::products::delete_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }

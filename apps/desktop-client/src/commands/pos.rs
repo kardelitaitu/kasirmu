@@ -27,10 +27,10 @@ use crate::error::AppError;
 use crate::state::AppState;
 
 // Wave D / D1a: the cart, held-bill and open-bill bodies moved to
-// oz_bridge::pos. The DTOs and the pure helpers still named here are
+// kasirmu_bridge::pos. The DTOs and the pure helpers still named here are
 // re-exported so the sibling pos_tests.rs (which opens use super::*;) and the
 // checkout bodies below keep resolving them from this module unchanged.
-pub use oz_bridge::pos::{
+pub use kasirmu_bridge::pos::{
     AddLineArgs, AddLineResult, CartLineData, CompleteSaleArgs, CompleteSaleResult,
     CompleteSaleScopedArgs, CompleteSaleWithResolvedShortfallsArgs, DeductionLocationInfo,
     HoldCartArgs, HoldCartResult, OverrideLinePriceArgs, OverrideLinePriceScopedArgs, PaymentKind,
@@ -43,14 +43,14 @@ pub use oz_bridge::pos::{
 };
 
 /// Resolve the unit price for an add_line request (FRONTEND-03) with the
-/// shell's error type - the body lives in oz_bridge::pos::line_unit_price.
+/// shell's error type - the body lives in kasirmu_bridge::pos::line_unit_price.
 #[allow(dead_code)] // sibling pos_tests.rs calls the shell-shaped helper
 fn line_unit_price(args: &AddLineArgs, cart_currency: Currency) -> Result<Money, AppError> {
-    oz_bridge::pos::line_unit_price(args, cart_currency).map_err(Into::into)
+    kasirmu_bridge::pos::line_unit_price(args, cart_currency).map_err(Into::into)
 }
 
 /// The cart/line mutation behind override_line_price_scoped, shell error type -
-/// the body lives in oz_bridge::pos::run_override_line_price_unchecked.
+/// the body lives in kasirmu_bridge::pos::run_override_line_price_unchecked.
 #[allow(dead_code)] // kept for the shell-shaped helper contract
 fn run_override_line_price_unchecked(
     db: &rusqlite::Connection,
@@ -58,7 +58,7 @@ fn run_override_line_price_unchecked(
     line_id: &LineId,
     new_price_minor: i64,
 ) -> Result<(), AppError> {
-    oz_bridge::pos::run_override_line_price_unchecked(db, cart_id, line_id, new_price_minor)
+    kasirmu_bridge::pos::run_override_line_price_unchecked(db, cart_id, line_id, new_price_minor)
         .map_err(Into::into)
 }
 
@@ -70,7 +70,7 @@ pub async fn set_cart_discount_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::set_cart_discount_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::pos::set_cart_discount_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -84,7 +84,7 @@ pub async fn start_sale_scoped(
     state: State<'_, AppState>,
 ) -> Result<StartSaleResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::start_sale_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::pos::start_sale_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -98,7 +98,7 @@ pub async fn add_line_scoped(
     state: State<'_, AppState>,
 ) -> Result<AddLineResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::add_line_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::pos::add_line_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -111,7 +111,7 @@ pub async fn override_line_price_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::override_line_price_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::pos::override_line_price_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -125,7 +125,7 @@ pub async fn set_line_course_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::set_line_course_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::pos::set_line_course_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -140,7 +140,7 @@ pub async fn publish_course_fired_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::publish_course_fired_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::pos::publish_course_fired_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -154,7 +154,7 @@ pub async fn override_cart_deduction_location_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::override_cart_deduction_location_scoped(&ctx, &session_token, cart_id)
+    kasirmu_bridge::pos::override_cart_deduction_location_scoped(&ctx, &session_token, cart_id)
         .await
         .map_err(Into::into)
 }
@@ -168,7 +168,7 @@ pub async fn compute_cart_tax_scoped(
     state: State<'_, AppState>,
 ) -> Result<oz_core::db::CartTaxResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::compute_cart_tax_scoped(&ctx, &session_token, lines, currency)
+    kasirmu_bridge::pos::compute_cart_tax_scoped(&ctx, &session_token, lines, currency)
         .await
         .map_err(Into::into)
 }
@@ -181,7 +181,7 @@ pub async fn hold_cart_scoped(
     state: State<'_, AppState>,
 ) -> Result<HoldCartResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::hold_cart_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::pos::hold_cart_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -193,7 +193,7 @@ pub async fn list_held_carts_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<oz_core::db::HeldCartRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::list_held_carts_scoped(&ctx, &session_token)
+    kasirmu_bridge::pos::list_held_carts_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -205,7 +205,7 @@ pub async fn list_open_bills_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<oz_core::db::HeldCartRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::list_open_bills_scoped(&ctx, &session_token)
+    kasirmu_bridge::pos::list_open_bills_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -218,7 +218,7 @@ pub async fn get_held_cart_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<oz_core::db::HeldCartFull>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::get_held_cart_scoped(&ctx, &session_token, id)
+    kasirmu_bridge::pos::get_held_cart_scoped(&ctx, &session_token, id)
         .await
         .map_err(Into::into)
 }
@@ -231,7 +231,7 @@ pub async fn delete_held_cart_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::delete_held_cart_scoped(&ctx, &session_token, id)
+    kasirmu_bridge::pos::delete_held_cart_scoped(&ctx, &session_token, id)
         .await
         .map_err(Into::into)
 }
@@ -244,7 +244,7 @@ pub async fn get_cart_deduction_location_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<DeductionLocationInfo>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::get_cart_deduction_location_scoped(&ctx, cart_id, &session_token)
+    kasirmu_bridge::pos::get_cart_deduction_location_scoped(&ctx, cart_id, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -265,7 +265,7 @@ pub async fn preview_promoted_total_scoped(
     state: State<'_, AppState>,
 ) -> Result<PreviewPromotedTotalResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::preview_promoted_total_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::pos::preview_promoted_total_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -287,7 +287,7 @@ pub async fn preview_promoted_total_from_lines_scoped(
     state: State<'_, AppState>,
 ) -> Result<PreviewPromotedTotalResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::preview_promoted_total_from_lines_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::pos::preview_promoted_total_from_lines_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -308,7 +308,7 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     state: State<'_, AppState>,
 ) -> Result<CompleteSaleResult, AppError> {
     let ctx = state.bridge_ctx();
-    let result = oz_bridge::pos::complete_sale_with_resolved_shortfalls_scoped(
+    let result = kasirmu_bridge::pos::complete_sale_with_resolved_shortfalls_scoped(
         &ctx,
         &session_token,
         args,
@@ -342,7 +342,7 @@ pub async fn complete_sale_scoped(
     state: State<'_, AppState>,
 ) -> Result<CompleteSaleResult, AppError> {
     let ctx = state.bridge_ctx();
-    let result = oz_bridge::pos::complete_sale_scoped(&ctx, &session_token, args)
+    let result = kasirmu_bridge::pos::complete_sale_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into);
 

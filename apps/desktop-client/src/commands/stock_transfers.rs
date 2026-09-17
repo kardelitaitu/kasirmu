@@ -3,7 +3,7 @@
 //! Exposes CRUD + send/receive lifecycle operations to the front-end.
 //!
 //! Wave C / C3: the bodies now live in the headless
-//! `oz_bridge::stock_transfers` module. Each `#[tauri::command]` below
+//! `kasirmu_bridge::stock_transfers` module. Each `#[tauri::command]` below
 //! keeps its exact name, parameter list, attributes and `Result<_, AppError>`
 //! wire contract; it builds a `BridgeCtx` from `AppState` and delegates.
 //! The global-identity gate (`inventory:transfer`) and the store-local
@@ -23,7 +23,7 @@ use oz_core::db::Store;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::stock_transfers::{ReceivedLineInput, TransferWithLines};
+pub use kasirmu_bridge::stock_transfers::{ReceivedLineInput, TransferWithLines};
 
 /// Create a stock transfer in the store resolved from the session token.
 #[tauri::command]
@@ -39,7 +39,7 @@ pub async fn create_stock_transfer_scoped(
     state: State<'_, AppState>,
 ) -> Result<StockTransfer, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::stock_transfers::create_stock_transfer_scoped(
+    kasirmu_bridge::stock_transfers::create_stock_transfer_scoped(
         &ctx,
         &session_token,
         source_location.as_deref(),
@@ -61,7 +61,7 @@ pub async fn get_stock_transfer_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<TransferWithLines>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::stock_transfers::get_stock_transfer_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::stock_transfers::get_stock_transfer_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -73,7 +73,7 @@ pub async fn list_stock_transfers_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<StockTransfer>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::stock_transfers::list_stock_transfers_scoped(&ctx, &session_token)
+    kasirmu_bridge::stock_transfers::list_stock_transfers_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -93,7 +93,7 @@ pub async fn list_in_transit_transfers_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<TransferWithLines>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::stock_transfers::list_in_transit_transfers_scoped(&ctx, &session_token)
+    kasirmu_bridge::stock_transfers::list_in_transit_transfers_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -106,7 +106,7 @@ pub async fn get_stock_transfer_lines_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<StockTransferLine>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::stock_transfers::get_stock_transfer_lines_scoped(&ctx, &session_token, &transfer_id)
+    kasirmu_bridge::stock_transfers::get_stock_transfer_lines_scoped(&ctx, &session_token, &transfer_id)
         .await
         .map_err(Into::into)
 }
@@ -122,7 +122,7 @@ pub async fn add_stock_transfer_line_scoped(
     state: State<'_, AppState>,
 ) -> Result<StockTransferLine, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::stock_transfers::add_stock_transfer_line_scoped(
+    kasirmu_bridge::stock_transfers::add_stock_transfer_line_scoped(
         &ctx,
         &session_token,
         &transfer_id,
@@ -142,7 +142,7 @@ pub async fn remove_stock_transfer_line_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::stock_transfers::remove_stock_transfer_line_scoped(&ctx, &session_token, &line_id)
+    kasirmu_bridge::stock_transfers::remove_stock_transfer_line_scoped(&ctx, &session_token, &line_id)
         .await
         .map_err(Into::into)
 }
@@ -155,7 +155,7 @@ pub async fn send_stock_transfer_scoped(
     state: State<'_, AppState>,
 ) -> Result<StockTransfer, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::stock_transfers::send_stock_transfer_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::stock_transfers::send_stock_transfer_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -169,7 +169,7 @@ pub async fn receive_stock_transfer_scoped(
     state: State<'_, AppState>,
 ) -> Result<StockTransfer, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::stock_transfers::receive_stock_transfer_scoped(
+    kasirmu_bridge::stock_transfers::receive_stock_transfer_scoped(
         &ctx,
         &session_token,
         &id,
@@ -187,7 +187,7 @@ pub async fn cancel_stock_transfer_scoped(
     state: State<'_, AppState>,
 ) -> Result<StockTransfer, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::stock_transfers::cancel_stock_transfer_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::stock_transfers::cancel_stock_transfer_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }

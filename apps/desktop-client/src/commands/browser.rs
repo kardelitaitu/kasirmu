@@ -6,7 +6,7 @@
 //! through `tauri-plugin-opener` with an https-only, percent-encoded
 //! URL built server-side.
 //!
-//! Wave F: the URL construction moved to `oz_bridge::browser` so the query
+//! Wave F: the URL construction moved to `kasirmu_bridge::browser` so the query
 //! builder and the percent-encoder are callable headlessly. `open_in_browser`
 //! deliberately STAYS here, body byte-identical, because it hands the finished URL
 //! to `tauri-plugin-opener::open_url` — a Tauri plugin the bridge must never
@@ -19,7 +19,7 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::browser::urlencoding;
+pub use kasirmu_bridge::browser::urlencoding;
 
 /// Open a Google Images search for a product in the default browser.
 ///
@@ -35,7 +35,7 @@ pub async fn open_product_images_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    let url = oz_bridge::browser::product_image_search_url(&ctx, &session_token, &sku).await?;
+    let url = kasirmu_bridge::browser::product_image_search_url(&ctx, &session_token, &sku).await?;
 
     open_in_browser(&url).await
 }

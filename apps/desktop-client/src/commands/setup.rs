@@ -5,7 +5,7 @@
 //! `get_setup_status` lets the front-end decide whether to show the
 //! wizard or go straight to the main app.
 //!
-//! Wave E slice E8: command bodies live in `oz_bridge::setup`; these are
+//! Wave E slice E8: command bodies live in `kasirmu_bridge::setup`; these are
 //! thin shims that build a `BridgeCtx` and map `BridgeError` back to
 //! `AppError` (wire shape unchanged).
 
@@ -16,7 +16,7 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::setup::{CompleteSetupArgs, EnabledFeaturesResult, SetupStatus};
+pub use kasirmu_bridge::setup::{CompleteSetupArgs, EnabledFeaturesResult, SetupStatus};
 
 // ── Commands ─────────────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ pub async fn get_enabled_features(
     state: State<'_, AppState>,
 ) -> Result<EnabledFeaturesResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::setup::get_enabled_features(&ctx)
+    kasirmu_bridge::setup::get_enabled_features(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -44,7 +44,7 @@ pub async fn complete_setup(
     args: CompleteSetupArgs,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::setup::complete_setup(&ctx, args)
+    kasirmu_bridge::setup::complete_setup(&ctx, args)
         .await
         .map_err(Into::into)
 }
@@ -56,7 +56,7 @@ pub async fn complete_setup(
 #[tauri::command]
 pub async fn get_setup_status(state: State<'_, AppState>) -> Result<SetupStatus, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::setup::get_setup_status(&ctx)
+    kasirmu_bridge::setup::get_setup_status(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -68,7 +68,7 @@ pub async fn seed_default_roles_scoped(
     state: State<'_, AppState>,
 ) -> Result<usize, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::setup::seed_default_roles_scoped(&ctx, &session_token)
+    kasirmu_bridge::setup::seed_default_roles_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -80,7 +80,7 @@ pub async fn seed_default_roles_scoped(
 #[tauri::command]
 pub async fn dismiss_setup_wizard(state: State<'_, AppState>) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::setup::dismiss_setup_wizard(&ctx)
+    kasirmu_bridge::setup::dismiss_setup_wizard(&ctx)
         .await
         .map_err(Into::into)
 }

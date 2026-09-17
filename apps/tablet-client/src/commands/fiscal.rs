@@ -31,7 +31,7 @@ use crate::state::AppState;
 // The two definitions were identical apart from the derive path
 // (`serde::Deserialize` vs `Deserialize`) — same five fields, same doc comments,
 // same `rename_all = "camelCase"` — so the wire is unchanged.
-pub use oz_bridge::fiscal::UpsertDocumentNumberSequenceArgs;
+pub use kasirmu_bridge::fiscal::UpsertDocumentNumberSequenceArgs;
 
 /// Read the statutory number series for one legal entity and document kind,
 /// in the store resolved from a session token. ADR #7. Tablet mirror of the
@@ -50,7 +50,7 @@ pub async fn get_document_number_sequence_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<DocumentNumberSequence>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::fiscal::get_document_number_sequence_scoped(
+    kasirmu_bridge::fiscal::get_document_number_sequence_scoped(
         &ctx,
         &session_token,
         &legal_entity_id,
@@ -80,7 +80,7 @@ pub async fn upsert_document_number_sequence_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::fiscal::upsert_document_number_sequence_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::fiscal::upsert_document_number_sequence_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -100,7 +100,7 @@ pub async fn list_document_number_sequences_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<DocumentNumberSequence>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::fiscal::list_document_number_sequences_scoped(&ctx, &session_token)
+    kasirmu_bridge::fiscal::list_document_number_sequences_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -119,7 +119,7 @@ pub async fn list_document_number_sequences_for_entity_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<DocumentNumberSequence>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::fiscal::list_document_number_sequences_for_entity_scoped(
+    kasirmu_bridge::fiscal::list_document_number_sequences_for_entity_scoped(
         &ctx,
         &session_token,
         &legal_entity_id,
@@ -144,7 +144,7 @@ pub async fn list_fiscal_schemes_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<FiscalScheme>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::fiscal::list_fiscal_schemes_scoped(&ctx, &session_token)
+    kasirmu_bridge::fiscal::list_fiscal_schemes_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }

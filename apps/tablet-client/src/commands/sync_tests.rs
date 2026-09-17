@@ -64,7 +64,7 @@ fn update_sync_settings_deserialize_no_key() {
 #[test]
 fn update_sync_settings_wire_keys_match_bridge_twin() {
     // The drift guard. One JSON object — the bytes the UI sends — must land in
-    // the tablet struct AND in `oz_bridge::sync::UpdateSyncSettingsArgs` (the
+    // the tablet struct AND in `kasirmu_bridge::sync::UpdateSyncSettingsArgs` (the
     // type the desktop shell re-exports at
     // apps/desktop-client/src/commands/sync.rs) with equal effective values.
     // Both divergent fields are Option, so a casing mismatch on ONE side used
@@ -85,7 +85,7 @@ fn update_sync_settings_wire_keys_match_bridge_twin() {
     for json in PAYLOADS {
         let tablet: UpdateSyncSettingsArgs =
             serde_json::from_str(json).unwrap_or_else(|e| panic!("tablet must accept {json}: {e}"));
-        let bridge: oz_bridge::sync::UpdateSyncSettingsArgs =
+        let bridge: kasirmu_bridge::sync::UpdateSyncSettingsArgs =
             serde_json::from_str(json).unwrap_or_else(|e| panic!("bridge must accept {json}: {e}"));
         assert_eq!(
             tablet.server_url, bridge.server_url,
@@ -122,7 +122,7 @@ fn sync_settings_dto_wire_keys_match_bridge_twin() {
         enabled: true,
     };
     let tablet = serde_json::to_value(&tablet_dto).unwrap();
-    let bridge = serde_json::to_value(oz_bridge::sync::SyncSettingsDto {
+    let bridge = serde_json::to_value(kasirmu_bridge::sync::SyncSettingsDto {
         server_url: tablet_dto.server_url.clone(),
         has_api_key: tablet_dto.has_api_key,
         enabled: tablet_dto.enabled,

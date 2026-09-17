@@ -414,7 +414,7 @@ fn run_sweep() -> Sweep {
         let gated = hits.iter().any(|text| {
             resolves_session(text)
                 && (names_permission(text)
-                    || (text.contains("oz_bridge::") && stems.contains(&module)))
+                    || (text.contains("kasirmu_bridge::") && stems.contains(&module)))
         });
         let state = if gated {
             State::Gated

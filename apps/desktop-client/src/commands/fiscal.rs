@@ -10,7 +10,7 @@
 //! `settings:read` for the read, `settings:edit` for the upsert — these
 //! are entity-scope resources, so no location-resource gate applies.
 //!
-//! Wave A / S6: the bodies now live in the headless `oz_bridge::fiscal`
+//! Wave A / S6: the bodies now live in the headless `kasirmu_bridge::fiscal`
 //! module. Each `#[tauri::command]` below keeps its exact name, parameter
 //! list and `Result<_, AppError>` return so the registered IPC surface and
 //! the serialized error shape are unchanged; it borrows a `BridgeCtx` from
@@ -19,7 +19,7 @@
 //! re-exported so `use super::*` in `fiscal_tests.rs` still resolves it.
 //!
 //! The bridge owns the clock: the core upsert's RFC-3339 millisecond stamp
-//! is computed inside `oz_bridge::fiscal`. The permission gate (F-017) and
+//! is computed inside `kasirmu_bridge::fiscal`. The permission gate (F-017) and
 //! store resolution run inside the bridge, in the same order as before.
 
 use tauri::State;
@@ -36,7 +36,7 @@ use oz_core::db::Store;
 #[allow(unused_imports)]
 use oz_core::db::fiscal::ResetPeriod;
 
-pub use oz_bridge::fiscal::UpsertDocumentNumberSequenceArgs;
+pub use kasirmu_bridge::fiscal::UpsertDocumentNumberSequenceArgs;
 
 /// Read the statutory number series for one legal entity and document kind,
 /// in the store resolved from a session token. ADR #7.
@@ -52,7 +52,7 @@ pub async fn get_document_number_sequence_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<DocumentNumberSequence>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::fiscal::get_document_number_sequence_scoped(
+    kasirmu_bridge::fiscal::get_document_number_sequence_scoped(
         &ctx,
         &session_token,
         &legal_entity_id,
@@ -76,7 +76,7 @@ pub async fn upsert_document_number_sequence_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::fiscal::upsert_document_number_sequence_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::fiscal::upsert_document_number_sequence_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -95,7 +95,7 @@ pub async fn list_document_number_sequences_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<DocumentNumberSequence>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::fiscal::list_document_number_sequences_scoped(&ctx, &session_token)
+    kasirmu_bridge::fiscal::list_document_number_sequences_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -111,7 +111,7 @@ pub async fn list_document_number_sequences_for_entity_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<DocumentNumberSequence>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::fiscal::list_document_number_sequences_for_entity_scoped(
+    kasirmu_bridge::fiscal::list_document_number_sequences_for_entity_scoped(
         &ctx,
         &session_token,
         &legal_entity_id,
@@ -133,7 +133,7 @@ pub async fn list_fiscal_schemes_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<FiscalScheme>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::fiscal::list_fiscal_schemes_scoped(&ctx, &session_token)
+    kasirmu_bridge::fiscal::list_fiscal_schemes_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }

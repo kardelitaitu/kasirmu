@@ -4,7 +4,7 @@
 //! `delete_category` to the front-end so the Category Management UI can
 //! display and manipulate product categories.
 //!
-//! Wave A / S3: the bodies now live in the headless `oz_bridge::categories`
+//! Wave A / S3: the bodies now live in the headless `kasirmu_bridge::categories`
 //! module. Each `#[tauri::command]` below keeps its exact name, parameter
 //! list and `Result<_, AppError>` return so the registered IPC surface and
 //! the serialized error shape are unchanged; it borrows a `BridgeCtx` from
@@ -31,7 +31,7 @@ use oz_core::permissions;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::categories::{
+pub use kasirmu_bridge::categories::{
     CategoryDto, CreateCategoryArgs, CreateCategoryResult, DeleteCategoryArgs,
     DeleteCategoryResult, UpdateCategoryArgs, UpdateCategoryResult,
 };
@@ -44,19 +44,19 @@ pub async fn list_categories_scoped(
 ) -> Result<Vec<CategoryDto>, AppError> {
     // F-017: enforce per-domain permission on this scoped command.
     let ctx = state.bridge_ctx();
-    oz_bridge::categories::list_scoped(&ctx, &session_token)
+    kasirmu_bridge::categories::list_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
 
 /// Business logic for listing categories (extracted for testing).
 ///
-/// Thin adapter over `oz_bridge::categories::run_list_categories`: the name,
+/// Thin adapter over `kasirmu_bridge::categories::run_list_categories`: the name,
 /// parameter list and `Result<_, AppError>` type are unchanged so the sibling
 /// test module keeps matching on `AppError::Core`.
 #[allow(dead_code)] // retained by the Wave-A extraction contract for sibling tests
 fn run_list_categories(conn: &rusqlite::Connection) -> Result<Vec<CategoryDto>, AppError> {
-    oz_bridge::categories::run_list_categories(conn).map_err(AppError::from)
+    kasirmu_bridge::categories::run_list_categories(conn).map_err(AppError::from)
 }
 
 // ── Create category ──────────────────────────────────────────────────
@@ -73,7 +73,7 @@ pub async fn create_category_scoped(
     state: State<'_, AppState>,
 ) -> Result<CreateCategoryResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::categories::create_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::categories::create_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -90,7 +90,7 @@ pub async fn update_category_scoped(
     state: State<'_, AppState>,
 ) -> Result<UpdateCategoryResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::categories::update_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::categories::update_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -110,7 +110,7 @@ pub async fn delete_category_scoped(
     state: State<'_, AppState>,
 ) -> Result<DeleteCategoryResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::categories::delete_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::categories::delete_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }

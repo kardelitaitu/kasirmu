@@ -4,14 +4,14 @@
 //! `browser.rs`/`health.rs`/`scale.rs`), so this follows the tablet's own
 //! current sync-command shape: resolve the scope inline, brief DB lock for
 //! the sync config, drop the guard before the HTTP await. The DTO types are
-//! imported from [`oz_bridge::qris_auto`] so the IPC wire shape is identical
+//! imported from [`kasirmu_bridge::qris_auto`] so the IPC wire shape is identical
 //! on both clients (one TS surface, ipc-parity); when the tablet gains the
 //! ctx plumbing this module becomes the desktop's delegate verbatim.
 
 use serde::Deserialize;
 use tauri::State;
 
-use oz_bridge::qris_auto::{QrisAutoChargeDto, QrisAutoStatusDto};
+use kasirmu_bridge::qris_auto::{QrisAutoChargeDto, QrisAutoStatusDto};
 use oz_core::db::Store;
 use oz_core::permissions;
 use oz_core::sync_client::{self, SyncConfig};

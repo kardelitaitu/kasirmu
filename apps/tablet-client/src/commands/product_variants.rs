@@ -46,10 +46,10 @@ use crate::error::AppError;
 use crate::state::AppState;
 
 // Phase 3.3 T6: the variant wire DTOs and their `From<ProductVariant>` impl
-// moved to the shared `oz_bridge::product_variants` module and are
+// moved to the shared `kasirmu_bridge::product_variants` module and are
 // re-exported here, same as the desktop shell. Command bodies stay
 // tablet-native.
-pub use oz_bridge::product_variants::{
+pub use kasirmu_bridge::product_variants::{
     CreateProductVariantArgs, CreateProductVariantResult, MoneyDto, ProductVariantDto,
     UpdateProductVariantArgs, UpdateProductVariantResult,
 };
@@ -68,7 +68,7 @@ pub use oz_bridge::product_variants::{
 ///
 /// # ADR #49 — ported 2026-09-16
 ///
-/// Delegates to [`oz_bridge::product_variants::list_scoped`]. The body was
+/// Delegates to [`kasirmu_bridge::product_variants::list_scoped`]. The body was
 /// statement-identical and the gate is `PRODUCTS_READ` on both sides, so the
 /// move is ledger-neutral. Argument order follows the twin: payload first,
 /// `session_token` last.
@@ -79,7 +79,7 @@ pub async fn list_product_variants_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<ProductVariantDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::product_variants::list_scoped(&ctx, &parent_sku, &session_token)
+    kasirmu_bridge::product_variants::list_scoped(&ctx, &parent_sku, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -88,7 +88,7 @@ pub async fn list_product_variants_scoped(
 ///
 /// # ADR #49 — ported 2026-09-16
 ///
-/// Delegates to [`oz_bridge::product_variants::get_scoped`]; the body was
+/// Delegates to [`kasirmu_bridge::product_variants::get_scoped`]; the body was
 /// statement-identical and the gate is `PRODUCTS_READ` on both sides, so the
 /// move is ledger-neutral.
 #[command]
@@ -98,7 +98,7 @@ pub async fn get_product_variant_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<ProductVariantDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::product_variants::get_scoped(&ctx, &sku, &session_token)
+    kasirmu_bridge::product_variants::get_scoped(&ctx, &sku, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -109,7 +109,7 @@ pub async fn get_product_variant_scoped(
 ///
 /// Refused 2026-09-16. The gate matches (`PRODUCTS_CREATE`, same kind, same
 /// order) and the body is otherwise statement-identical to
-/// [`oz_bridge::product_variants::create_scoped`] — same three
+/// [`kasirmu_bridge::product_variants::create_scoped`] — same three
 /// `validate_not_empty` calls, same `Money` parse, same barcode handling, same
 /// store call. The single delta is the log text: this shell logs
 /// `"product variant created"` (`:133`) where the bridge logs
@@ -240,7 +240,7 @@ pub async fn update_product_variant_scoped(
 ///
 /// # ADR #49 — ported 2026-09-16
 ///
-/// Delegates to [`oz_bridge::product_variants::delete_scoped`]. The body was
+/// Delegates to [`kasirmu_bridge::product_variants::delete_scoped`]. The body was
 /// statement-identical — including the log line, `"product variant deleted"`,
 /// which is what distinguishes this door from its two refused siblings — and the
 /// gate is `PRODUCTS_DELETE` on both sides, so the move is ledger-neutral.
@@ -251,7 +251,7 @@ pub async fn delete_product_variant_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::product_variants::delete_scoped(&ctx, &sku, &session_token)
+    kasirmu_bridge::product_variants::delete_scoped(&ctx, &sku, &session_token)
         .await
         .map_err(Into::into)
 }

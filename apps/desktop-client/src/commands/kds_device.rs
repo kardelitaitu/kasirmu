@@ -6,7 +6,7 @@
 //! All commands require `kds:manage` permission for writes and
 //! `kds:view` for reads.
 //!
-//! Wave D / D2b: every body lives in `oz_bridge::kds_device`; each command here
+//! Wave D / D2b: every body lives in `kasirmu_bridge::kds_device`; each command here
 //! is a thin adapter that resolves the bridge context and maps `BridgeError`
 //! onto `AppError` variant-for-variant.
 
@@ -29,7 +29,7 @@ pub async fn register_kds_device_scoped(
     state: State<'_, AppState>,
 ) -> Result<KdsDevice, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds_device::register_kds_device(&ctx, &session_token, input)
+    kasirmu_bridge::kds_device::register_kds_device(&ctx, &session_token, input)
         .await
         .map_err(Into::into)
 }
@@ -41,7 +41,7 @@ pub async fn list_kds_devices_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<KdsDevice>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds_device::list_kds_devices(&ctx, &session_token)
+    kasirmu_bridge::kds_device::list_kds_devices(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -54,7 +54,7 @@ pub async fn get_kds_device_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<KdsDevice>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds_device::get_kds_device(&ctx, &session_token, &device_id)
+    kasirmu_bridge::kds_device::get_kds_device(&ctx, &session_token, &device_id)
         .await
         .map_err(Into::into)
 }
@@ -71,7 +71,7 @@ pub async fn update_kds_device_status_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds_device::update_kds_device_status(&ctx, &session_token, &device_id, status)
+    kasirmu_bridge::kds_device::update_kds_device_status(&ctx, &session_token, &device_id, status)
         .await
         .map_err(Into::into)
 }
@@ -87,7 +87,7 @@ pub async fn deactivate_kds_device_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds_device::deactivate_kds_device(&ctx, &session_token, &device_id)
+    kasirmu_bridge::kds_device::deactivate_kds_device(&ctx, &session_token, &device_id)
         .await
         .map_err(Into::into)
 }
@@ -105,7 +105,7 @@ pub async fn ack_kds_order_scoped(
     state: State<'_, AppState>,
 ) -> Result<bool, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds_device::ack_kds_order(&ctx, &session_token, &order_id, &device_id)
+    kasirmu_bridge::kds_device::ack_kds_order(&ctx, &session_token, &order_id, &device_id)
         .await
         .map_err(Into::into)
 }

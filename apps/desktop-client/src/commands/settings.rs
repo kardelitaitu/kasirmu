@@ -17,10 +17,10 @@ use std::collections::HashMap;
 use crate::error::AppError;
 use crate::state::AppState;
 
-// The settings DTOs are defined in oz_bridge::settings (Wave E) and re-exported
+// The settings DTOs are defined in kasirmu_bridge::settings (Wave E) and re-exported
 // here because they name the types in the command signatures below, which are
 // the IPC wire surface the renderer invokes.
-pub use oz_bridge::settings::{
+pub use kasirmu_bridge::settings::{
     CreditSaleDto, CreditSettingsDto, DeploymentInfo, GatewayStatusEntry, HardwareSettingsDto,
     ReceiptSettingsDto, StoreSettingsDto, UserPrefEntry,
 };
@@ -34,7 +34,7 @@ pub async fn get_receipt_settings_scoped(
     state: State<'_, AppState>,
 ) -> Result<ReceiptSettingsDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::get_receipt_settings_scoped(&ctx, &session_token)
+    kasirmu_bridge::settings::get_receipt_settings_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -49,7 +49,7 @@ pub async fn set_receipt_settings_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::set_receipt_settings_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::settings::set_receipt_settings_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -63,7 +63,7 @@ pub async fn get_store_settings_scoped(
     state: State<'_, AppState>,
 ) -> Result<StoreSettingsDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::get_store_settings_scoped(&ctx, &session_token)
+    kasirmu_bridge::settings::get_store_settings_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -78,7 +78,7 @@ pub async fn set_store_settings_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::set_store_settings_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::settings::set_store_settings_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -93,7 +93,7 @@ pub async fn set_credit_settings_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::set_credit_settings_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::settings::set_credit_settings_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -107,7 +107,7 @@ pub async fn list_credit_sales_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<CreditSaleDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::list_credit_sales_scoped(&ctx, &session_token)
+    kasirmu_bridge::settings::list_credit_sales_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -120,7 +120,7 @@ pub async fn settle_credit_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::settle_credit_scoped(&ctx, &session_token, &sale_id)
+    kasirmu_bridge::settings::settle_credit_scoped(&ctx, &session_token, &sale_id)
         .await
         .map_err(Into::into)
 }
@@ -149,7 +149,7 @@ pub async fn get_hardware_settings(
 ) -> Result<HardwareSettingsDto, AppError> {
     let base_dir = app_data_dir(&state)?;
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::get_hardware_settings(&ctx, &base_dir)
+    kasirmu_bridge::settings::get_hardware_settings(&ctx, &base_dir)
         .await
         .map_err(Into::into)
 }
@@ -169,7 +169,7 @@ pub async fn set_hardware_settings_scoped(
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
     let base_dir = app_data_dir(&state)?;
-    oz_bridge::settings::set_hardware_settings_scoped(&ctx, &session_token, args, &base_dir)
+    kasirmu_bridge::settings::set_hardware_settings_scoped(&ctx, &session_token, args, &base_dir)
         .await
         .map_err(Into::into)
 }
@@ -184,7 +184,7 @@ pub async fn get_user_preferences_scoped(
     state: State<'_, AppState>,
 ) -> Result<HashMap<String, String>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::get_user_preferences_scoped(&ctx, &session_token)
+    kasirmu_bridge::settings::get_user_preferences_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -198,7 +198,7 @@ pub async fn set_user_preferences_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::set_user_preferences_scoped(&ctx, &session_token, prefs)
+    kasirmu_bridge::settings::set_user_preferences_scoped(&ctx, &session_token, prefs)
         .await
         .map_err(Into::into)
 }
@@ -214,7 +214,7 @@ pub async fn get_setting(
     state: State<'_, AppState>,
 ) -> Result<Option<String>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::get_setting(&ctx, &key)
+    kasirmu_bridge::settings::get_setting(&ctx, &key)
         .await
         .map_err(Into::into)
 }
@@ -229,7 +229,7 @@ pub async fn gateway_status(
     state: State<'_, AppState>,
 ) -> Result<Vec<GatewayStatusEntry>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::gateway_status(&ctx)
+    kasirmu_bridge::settings::gateway_status(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -247,7 +247,7 @@ pub async fn set_setting(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::set_setting(&ctx, &key, &value, &user_id)
+    kasirmu_bridge::settings::set_setting(&ctx, &key, &value, &user_id)
         .await
         .map_err(Into::into)
 }
@@ -264,7 +264,7 @@ pub async fn set_setting_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::set_setting_scoped(&ctx, &session_token, &key, &value)
+    kasirmu_bridge::settings::set_setting_scoped(&ctx, &session_token, &key, &value)
         .await
         .map_err(Into::into)
 }
@@ -283,7 +283,7 @@ pub async fn set_settings_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::set_settings_scoped(&ctx, &session_token, entries)
+    kasirmu_bridge::settings::set_settings_scoped(&ctx, &session_token, entries)
         .await
         .map_err(Into::into)
 }
@@ -297,7 +297,7 @@ pub async fn get_credit_settings_scoped(
     state: State<'_, AppState>,
 ) -> Result<CreditSettingsDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::get_credit_settings_scoped(&ctx, &session_token)
+    kasirmu_bridge::settings::get_credit_settings_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -310,7 +310,7 @@ pub async fn get_setting_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<String>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::get_setting_scoped(&ctx, &key, &session_token)
+    kasirmu_bridge::settings::get_setting_scoped(&ctx, &key, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -323,7 +323,7 @@ pub async fn get_hardware_settings_scoped(
 ) -> Result<HardwareSettingsDto, AppError> {
     let base_dir = app_data_dir(&state)?;
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::get_hardware_settings_scoped(&ctx, &session_token, &base_dir)
+    kasirmu_bridge::settings::get_hardware_settings_scoped(&ctx, &session_token, &base_dir)
         .await
         .map_err(Into::into)
 }
@@ -338,7 +338,7 @@ pub async fn get_deployment_info(
     state: State<'_, AppState>,
 ) -> Result<DeploymentInfo, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::get_deployment_info(&ctx, &session_token)
+    kasirmu_bridge::settings::get_deployment_info(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }

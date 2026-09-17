@@ -30,13 +30,13 @@ use crate::commands::picker_ticket;
 use crate::error::AppError;
 use crate::state::AppState;
 
-// Phase 3.3 T5: the auth wire DTOs moved to the shared `oz_bridge::auth`
+// Phase 3.3 T5: the auth wire DTOs moved to the shared `kasirmu_bridge::auth`
 // module and are re-exported here, same as the desktop shell. The wire
 // contract is one definition across shells — including `CreateSessionArgs`,
 // whose `picker_ticket` the tablet copy had silently dropped (UI always sent
 // it; the H-3 gate now runs here, restored field-for-field from the bridge).
 // Command bodies stay tablet-native.
-pub use oz_bridge::auth::{
+pub use kasirmu_bridge::auth::{
     CheckUsernameArgs, CheckUsernameResult, CreateSessionArgs, CreateSessionResult,
     OrganizationSummary, SessionContextDto, SessionKeepaliveResult, StaffLoginArgs,
     StaffLoginResult,
@@ -1047,7 +1047,7 @@ pub async fn session_keepalive(
 /// caller authenticated, and the ticket minted is bound to `session.user_id`, not to
 /// anything the caller sent.
 ///
-/// A pure shim over `oz_bridge::auth::refresh_picker_ticket`, which is verbatim the
+/// A pure shim over `kasirmu_bridge::auth::refresh_picker_ticket`, which is verbatim the
 /// body the desktop registers (`apps/desktop-client/src/commands/auth.rs:294`). Before
 /// this existed the name was in `scripts/ipc-parity-allowlist.json` **twice** in the
 /// tablet's own array (:154 and :233) with no implementation behind either copy, so
@@ -1060,9 +1060,9 @@ pub async fn session_keepalive(
 pub async fn refresh_picker_ticket(
     session_token: String,
     state: State<'_, AppState>,
-) -> Result<oz_bridge::auth::RefreshPickerTicketResult, AppError> {
+) -> Result<kasirmu_bridge::auth::RefreshPickerTicketResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::auth::refresh_picker_ticket(&ctx, &session_token).map_err(Into::into)
+    kasirmu_bridge::auth::refresh_picker_ticket(&ctx, &session_token).map_err(Into::into)
 }
 #[cfg(test)]
 #[path = "auth_tests.rs"]

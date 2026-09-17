@@ -43,14 +43,14 @@ use crate::commands::picker_ticket;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::auth::{
+pub use kasirmu_bridge::auth::{
     CheckUsernameArgs, CheckUsernameResult, CreateSessionArgs, CreateSessionResult, HasUsersResult,
     IMPERSONATION_SESSION_TTL_SECONDS, OrganizationSummary, RefreshPickerTicketResult,
     SessionContextDto, SessionKeepaliveResult, StaffLoginArgs, StaffLoginResult,
 };
 
 // Where the desktop's security-event sink lives, kept as a plain comment.
-// The sink is `oz_bridge::auth::record_security_event` (backed by
+// The sink is `kasirmu_bridge::auth::record_security_event` (backed by
 // `Store::record_security_event`). This module no longer re-exports it, and no
 // desktop command imports it from here. As a `///` block it attached to
 // whatever item followed, which is what clippy's
@@ -70,7 +70,7 @@ pub async fn staff_check_username(
     state: State<'_, AppState>,
 ) -> Result<CheckUsernameResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::auth::check_username(&ctx, &args)
+    kasirmu_bridge::auth::check_username(&ctx, &args)
         .await
         .map_err(Into::into)
 }
@@ -101,7 +101,7 @@ pub async fn staff_login(
     state: State<'_, AppState>,
 ) -> Result<StaffLoginResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::auth::staff_login(&ctx, &args)
+    kasirmu_bridge::auth::staff_login(&ctx, &args)
         .await
         .map_err(Into::into)
 }
@@ -123,7 +123,7 @@ pub async fn create_session(
     state: State<'_, AppState>,
 ) -> Result<CreateSessionResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::auth::create_session(&ctx, &args)
+    kasirmu_bridge::auth::create_session(&ctx, &args)
         .await
         .map_err(Into::into)
 }
@@ -141,7 +141,7 @@ pub async fn list_organizations(
     state: State<'_, AppState>,
 ) -> Result<Vec<OrganizationSummary>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::auth::list_organizations(&ctx)
+    kasirmu_bridge::auth::list_organizations(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -175,7 +175,7 @@ pub async fn switch_organization(
     state: State<'_, AppState>,
 ) -> Result<CreateSessionResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::auth::switch_organization(&ctx, &session_token, &org_id, &pin)
+    kasirmu_bridge::auth::switch_organization(&ctx, &session_token, &org_id, &pin)
         .await
         .map_err(Into::into)
 }
@@ -203,7 +203,7 @@ pub async fn impersonate_user_scoped(
     state: State<'_, AppState>,
 ) -> Result<CreateSessionResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::auth::impersonate_user_scoped(&ctx, &session_token, &target_user_id)
+    kasirmu_bridge::auth::impersonate_user_scoped(&ctx, &session_token, &target_user_id)
         .await
         .map_err(Into::into)
 }
@@ -217,7 +217,7 @@ pub async fn impersonate_user_scoped(
 #[tauri::command]
 pub async fn has_users(state: State<'_, AppState>) -> Result<HasUsersResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::auth::has_users(&ctx).await.map_err(Into::into)
+    kasirmu_bridge::auth::has_users(&ctx).await.map_err(Into::into)
 }
 
 /// Destroy an active session, invalidating the token.
@@ -236,7 +236,7 @@ pub async fn destroy_session(
     session_token: String,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::auth::destroy_session(&ctx, &session_token)
+    kasirmu_bridge::auth::destroy_session(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -257,7 +257,7 @@ pub async fn session_keepalive(
     session_token: String,
 ) -> Result<SessionKeepaliveResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::auth::session_keepalive(&ctx, &session_token).map_err(Into::into)
+    kasirmu_bridge::auth::session_keepalive(&ctx, &session_token).map_err(Into::into)
 }
 
 /// Verify the current session user's PIN.
@@ -280,7 +280,7 @@ pub async fn verify_pin(
     pin: String,
 ) -> Result<bool, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::auth::verify_pin(&ctx, &session_token, &pin)
+    kasirmu_bridge::auth::verify_pin(&ctx, &session_token, &pin)
         .await
         .map_err(Into::into)
 }
@@ -289,12 +289,12 @@ pub async fn verify_pin(
 ///
 /// Used when the UI returns to the workspace picker (e.g. Back button from KDS)
 /// and needs to re-call `create_session` without going through `staff_login`
-/// again. The body is the bridge's — see [`oz_bridge::auth::refresh_picker_ticket`].
+/// again. The body is the bridge's — see [`kasirmu_bridge::auth::refresh_picker_ticket`].
 #[tauri::command]
 pub async fn refresh_picker_ticket(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<RefreshPickerTicketResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::auth::refresh_picker_ticket(&ctx, &session_token).map_err(Into::into)
+    kasirmu_bridge::auth::refresh_picker_ticket(&ctx, &session_token).map_err(Into::into)
 }

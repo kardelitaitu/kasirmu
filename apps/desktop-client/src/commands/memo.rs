@@ -18,7 +18,7 @@
 //!   grant, not a rank map — the rank-based `may_stop` helper was deleted
 //!   with its tests when this ruling landed.
 //!
-//! Wave F: every body lives in the headless `oz_bridge::memo` module. Each
+//! Wave F: every body lives in the headless `kasirmu_bridge::memo` module. Each
 //! `#[tauri::command]` below keeps its exact name, parameter list and
 //! `Result<_, AppError>` return, so the registered IPC surface and the
 //! serialized error shape are unchanged; it borrows a `BridgeCtx` from
@@ -42,7 +42,7 @@ use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::memo::{
+pub use kasirmu_bridge::memo::{
     ActiveMemoDto, CreateMemoArgs, DEFAULT_TENANT_ID, MemoCadenceDto, MemoDisplayDto, MemoDto,
     ReviseMemoArgs,
 };
@@ -55,7 +55,7 @@ pub async fn create_memo_scoped(
     state: State<'_, AppState>,
 ) -> Result<MemoDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::memo::create_memo_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::memo::create_memo_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -68,7 +68,7 @@ pub async fn publish_memo_scoped(
     state: State<'_, AppState>,
 ) -> Result<MemoDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::memo::publish_memo_scoped(&ctx, &session_token, &memo_id)
+    kasirmu_bridge::memo::publish_memo_scoped(&ctx, &session_token, &memo_id)
         .await
         .map_err(Into::into)
 }
@@ -82,7 +82,7 @@ pub async fn list_active_memos_scoped(
     state: State<'_, AppState>,
 ) -> Result<MemoDisplayDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::memo::list_active_memos_scoped(&ctx, &session_token)
+    kasirmu_bridge::memo::list_active_memos_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -95,7 +95,7 @@ pub async fn acknowledge_memo_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::memo::acknowledge_memo_scoped(&ctx, &session_token, &memo_id)
+    kasirmu_bridge::memo::acknowledge_memo_scoped(&ctx, &session_token, &memo_id)
         .await
         .map_err(Into::into)
 }
@@ -110,7 +110,7 @@ pub async fn list_authored_memos_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<MemoDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::memo::list_authored_memos_scoped(&ctx, &session_token)
+    kasirmu_bridge::memo::list_authored_memos_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -128,7 +128,7 @@ pub async fn stop_memo_scoped(
     state: State<'_, AppState>,
 ) -> Result<MemoDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::memo::stop_memo_scoped(&ctx, &session_token, &memo_id)
+    kasirmu_bridge::memo::stop_memo_scoped(&ctx, &session_token, &memo_id)
         .await
         .map_err(Into::into)
 }
@@ -142,7 +142,7 @@ pub async fn revise_memo_scoped(
     state: State<'_, AppState>,
 ) -> Result<MemoDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::memo::revise_memo_scoped(&ctx, &session_token, &memo_id, args)
+    kasirmu_bridge::memo::revise_memo_scoped(&ctx, &session_token, &memo_id, args)
         .await
         .map_err(Into::into)
 }

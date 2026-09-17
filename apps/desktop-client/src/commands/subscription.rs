@@ -11,7 +11,7 @@
 //! Free entitlements + `unavailable` instead of an IPC error, because the
 //! UI's error path renders gates open.
 //!
-//! Wave E (E4): every command body moved to `oz_bridge::subscription` and
+//! Wave E (E4): every command body moved to `kasirmu_bridge::subscription` and
 //! this file is the tauri shim layer. The private `load_*` / `push_dim_row`
 //! helpers below stay as `AppError` adapters because the mounted test file
 //! exercises the production path and matches on `AppError` variants.
@@ -34,7 +34,7 @@ use oz_core::downgrade::OverQuotaSeverity;
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
 use oz_core::permissions;
 
-pub use oz_bridge::subscription::SubscriptionCapabilitiesDto;
+pub use kasirmu_bridge::subscription::SubscriptionCapabilitiesDto;
 
 /// Read the tenant's subscription capabilities and current usage.
 ///
@@ -46,7 +46,7 @@ pub async fn get_subscription_capabilities(
     state: State<'_, AppState>,
 ) -> Result<SubscriptionCapabilitiesDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::subscription::get_subscription_capabilities(&ctx)
+    kasirmu_bridge::subscription::get_subscription_capabilities(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -67,7 +67,7 @@ pub async fn explain_feature_availability_scoped(
     state: State<'_, AppState>,
 ) -> Result<FeatureVerdict, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::subscription::explain_feature_availability_scoped(&ctx, &session_token, &feature)
+    kasirmu_bridge::subscription::explain_feature_availability_scoped(&ctx, &session_token, &feature)
         .await
         .map_err(Into::into)
 }
@@ -88,7 +88,7 @@ pub async fn get_over_quota_report(
     state: State<'_, AppState>,
 ) -> Result<OverQuotaReport, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::subscription::get_over_quota_report(&ctx, &session_token)
+    kasirmu_bridge::subscription::get_over_quota_report(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -109,20 +109,20 @@ pub async fn get_over_quota_report_scoped(
     state: State<'_, AppState>,
 ) -> Result<OverQuotaReport, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::subscription::get_over_quota_report_scoped(&ctx, &session_token)
+    kasirmu_bridge::subscription::get_over_quota_report_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
 
 // ── AppError adapters over the moved production bodies ──────────────
 
-/// Adapter over [`oz_bridge::subscription::load_capabilities`].
+/// Adapter over [`kasirmu_bridge::subscription::load_capabilities`].
 #[allow(dead_code)] // sibling *_tests.rs is its only caller
 fn load_capabilities(db: &rusqlite::Connection) -> Result<SubscriptionCapabilitiesDto, AppError> {
-    oz_bridge::subscription::load_capabilities(db).map_err(Into::into)
+    kasirmu_bridge::subscription::load_capabilities(db).map_err(Into::into)
 }
 
-/// Adapter over [`oz_bridge::subscription::load_feature_verdict`].
+/// Adapter over [`kasirmu_bridge::subscription::load_feature_verdict`].
 #[allow(dead_code)] // sibling *_tests.rs is its only caller
 fn load_feature_verdict(
     db: &rusqlite::Connection,
@@ -131,30 +131,30 @@ fn load_feature_verdict(
     branch: &str,
     workspace: &str,
 ) -> Result<FeatureVerdict, AppError> {
-    oz_bridge::subscription::load_feature_verdict(db, user_id, feature_key, branch, workspace)
+    kasirmu_bridge::subscription::load_feature_verdict(db, user_id, feature_key, branch, workspace)
         .map_err(Into::into)
 }
 
-/// Adapter over [`oz_bridge::subscription::load_over_quota_report`].
+/// Adapter over [`kasirmu_bridge::subscription::load_over_quota_report`].
 #[allow(dead_code)] // sibling *_tests.rs is its only caller
 fn load_over_quota_report(
     db: &rusqlite::Connection,
 ) -> Result<(OverQuotaReport, SubscriptionTier), AppError> {
-    oz_bridge::subscription::load_over_quota_report(db).map_err(Into::into)
+    kasirmu_bridge::subscription::load_over_quota_report(db).map_err(Into::into)
 }
 
-/// Adapter over [`oz_bridge::subscription::per_location_over_quota_rows`].
+/// Adapter over [`kasirmu_bridge::subscription::per_location_over_quota_rows`].
 #[allow(dead_code)] // sibling *_tests.rs is its only caller
 fn per_location_over_quota_rows(
     locations: &[(String, String)],
     manager: &StoreDatabaseManager,
     tier: &SubscriptionTier,
 ) -> Result<Vec<OverQuotaMarker>, AppError> {
-    oz_bridge::subscription::per_location_over_quota_rows(locations, manager, tier)
+    kasirmu_bridge::subscription::per_location_over_quota_rows(locations, manager, tier)
         .map_err(Into::into)
 }
 
-/// Adapter over [`oz_bridge::subscription::push_dim_row`].
+/// Adapter over [`kasirmu_bridge::subscription::push_dim_row`].
 #[allow(clippy::too_many_arguments)]
 #[allow(dead_code)] // sibling *_tests.rs is its only caller
 fn push_dim_row(
@@ -167,7 +167,7 @@ fn push_dim_row(
     current: i64,
     suspended: i64,
 ) {
-    oz_bridge::subscription::push_dim_row(
+    kasirmu_bridge::subscription::push_dim_row(
         rows,
         now,
         store_id,

@@ -205,7 +205,7 @@ pub const UI_LOCALE: &str = "ui.locale";
 //
 // The two deny lists at the foot of this module are the ONE shared source of
 // truth for both shells: the desktop lane re-exports them through
-// `oz_bridge::settings` and `apps/tablet-client` imports them directly. They
+// `kasirmu_bridge::settings` and `apps/tablet-client` imports them directly. They
 // are built FROM the constants declared here — never from retyped literals —
 // so renaming a key value moves the guard with it instead of silently
 // dropping coverage (the original `sync.terminal_secret` typo left the

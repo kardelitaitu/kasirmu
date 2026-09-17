@@ -1,5 +1,5 @@
 //! QRIS Auto dynamic-charge IPC — thin wrappers over
-//! [`oz_bridge::qris_auto`] (ADR-49: business logic lives in the bridge;
+//! [`kasirmu_bridge::qris_auto`] (ADR-49: business logic lives in the bridge;
 //! the command layer only lifts `State` and maps errors).
 //!
 //! The charge returns when the QR EXISTS (`status: "qr_issued"`, PAY-6 two
@@ -9,7 +9,7 @@
 use serde::Deserialize;
 use tauri::State;
 
-use oz_bridge::qris_auto::{QrisAutoChargeDto, QrisAutoStatusDto};
+use kasirmu_bridge::qris_auto::{QrisAutoChargeDto, QrisAutoStatusDto};
 
 use crate::error::AppError;
 use crate::state::AppState;
@@ -44,7 +44,7 @@ pub async fn qris_auto_charge_scoped(
     state: State<'_, AppState>,
 ) -> Result<QrisAutoChargeDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::qris_auto::qris_auto_charge_scoped(
+    kasirmu_bridge::qris_auto::qris_auto_charge_scoped(
         &ctx,
         &session_token,
         &args.sale_id,
@@ -63,7 +63,7 @@ pub async fn qris_auto_status_scoped(
     state: State<'_, AppState>,
 ) -> Result<QrisAutoStatusDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::qris_auto::qris_auto_status_scoped(&ctx, &session_token, &args.order_id)
+    kasirmu_bridge::qris_auto::qris_auto_status_scoped(&ctx, &session_token, &args.order_id)
         .await
         .map_err(Into::into)
 }

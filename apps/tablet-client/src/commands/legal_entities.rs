@@ -5,7 +5,7 @@
 //! current staged tenant sentinel is `default`; future tenant claims can supply
 //! the resolved tenant without changing the command DTOs.
 //!
-//! Every body delegates to `oz_bridge::legal_entities` (ADR #49), and so do the
+//! Every body delegates to `kasirmu_bridge::legal_entities` (ADR #49), and so do the
 //! three DTOs and the tenant sentinel: all re-exported from the bridge rather
 //! than defined twice, after checking each field against the copies this shell
 //! used to own. The gate is the scope-aware `require_permission_for_session`;
@@ -15,7 +15,7 @@
 
 use tauri::State;
 
-pub use oz_bridge::legal_entities::{
+pub use kasirmu_bridge::legal_entities::{
     CreateLegalEntityArgs, DEFAULT_TENANT_ID, LegalEntityDto, UpdateLegalEntityArgs,
 };
 
@@ -29,7 +29,7 @@ pub async fn list_legal_entities_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<LegalEntityDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::legal_entities::list_legal_entities_scoped(&ctx, &session_token)
+    kasirmu_bridge::legal_entities::list_legal_entities_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -42,7 +42,7 @@ pub async fn get_legal_entity_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<LegalEntityDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::legal_entities::get_legal_entity_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::legal_entities::get_legal_entity_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -55,7 +55,7 @@ pub async fn create_legal_entity_scoped(
     state: State<'_, AppState>,
 ) -> Result<LegalEntityDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::legal_entities::create_legal_entity_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::legal_entities::create_legal_entity_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -68,7 +68,7 @@ pub async fn update_legal_entity_scoped(
     state: State<'_, AppState>,
 ) -> Result<LegalEntityDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::legal_entities::update_legal_entity_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::legal_entities::update_legal_entity_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }

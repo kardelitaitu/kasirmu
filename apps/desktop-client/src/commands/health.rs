@@ -1,7 +1,7 @@
 //! Health-check commands used by the front-end's startup smoke test and
 //! the About dialog. No state required.
 
-// Wave F: the bodies moved to oz_bridge::health. The compile-time identity
+// Wave F: the bodies moved to kasirmu_bridge::health. The compile-time identity
 // constants (env!/option_env!) are resolved HERE — they are per-crate, and
 // threading them keeps the About dialog answering with the desktop shell's
 // values. The runtime host probes live in the bridge verbatim.
@@ -11,18 +11,18 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::health::VersionInfo;
+pub use kasirmu_bridge::health::VersionInfo;
 
 /// Liveness probe. Returns `Ok("pong")` if the Tauri runtime is alive.
 #[tauri::command]
 pub async fn ping() -> Result<String, AppError> {
-    oz_bridge::health::ping().await.map_err(Into::into)
+    kasirmu_bridge::health::ping().await.map_err(Into::into)
 }
 
 #[tauri::command]
 /// Version.
 pub async fn version() -> Result<VersionInfo, AppError> {
-    oz_bridge::health::version(
+    kasirmu_bridge::health::version(
         env!("CARGO_PKG_NAME"),
         env!("CARGO_PKG_VERSION"),
         env!("CARGO_PKG_RUST_VERSION"),
@@ -40,7 +40,7 @@ pub async fn version_scoped(
     state: State<'_, AppState>,
 ) -> Result<VersionInfo, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::health::version_scoped(
+    kasirmu_bridge::health::version_scoped(
         &ctx,
         &session_token,
         env!("CARGO_PKG_NAME"),
@@ -59,13 +59,13 @@ pub async fn version_scoped(
 /// the `terminal_id` field when creating session tokens (ADR #7).
 #[tauri::command]
 pub async fn get_device_id() -> Result<String, AppError> {
-    oz_bridge::health::get_device_id().await.map_err(Into::into)
+    kasirmu_bridge::health::get_device_id().await.map_err(Into::into)
 }
 
 /// Get the local IP address of the machine.
 #[tauri::command]
 pub async fn get_local_ip() -> Result<String, AppError> {
-    oz_bridge::health::get_local_ip().await.map_err(Into::into)
+    kasirmu_bridge::health::get_local_ip().await.map_err(Into::into)
 }
 
 /// Session-scoped variant of [`ping`].
@@ -75,7 +75,7 @@ pub async fn ping_scoped(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::health::ping_scoped(&ctx, &session_token)
+    kasirmu_bridge::health::ping_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -87,7 +87,7 @@ pub async fn get_device_id_scoped(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::health::get_device_id_scoped(&ctx, &session_token)
+    kasirmu_bridge::health::get_device_id_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -99,7 +99,7 @@ pub async fn get_local_ip_scoped(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::health::get_local_ip_scoped(&ctx, &session_token)
+    kasirmu_bridge::health::get_local_ip_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }

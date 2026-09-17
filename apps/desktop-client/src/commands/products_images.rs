@@ -1,7 +1,7 @@
 //! Product/Menu image ingest commands (spec 0046b §3.3).
 //!
 //! Wave A / S8: the ingest pipeline lives in the headless
-//! `oz_bridge::products_images` module. Each `#[tauri::command]` below keeps
+//! `kasirmu_bridge::products_images` module. Each `#[tauri::command]` below keeps
 //! its exact name, parameter list (including the injected `app_handle`) and
 //! `Result<_, AppError>` return so the registered IPC surface and the
 //! serialized error shape are unchanged; the shim borrows a `BridgeCtx`,
@@ -38,9 +38,9 @@ use std::path::PathBuf;
 // helpers and size caps through `use super::*`; the command bodies
 // themselves delegate to the bridge.
 #[allow(unused_imports)] // sibling products_images_tests.rs depends on it
-use oz_bridge::products_images::{MAX_DIMENSION, SIZE_HARD_REJECT};
+use kasirmu_bridge::products_images::{MAX_DIMENSION, SIZE_HARD_REJECT};
 #[allow(unused_imports)] // sibling products_images_tests.rs depends on it
-use oz_bridge::products_images::{sha256_hex16, sniff_format};
+use kasirmu_bridge::products_images::{sha256_hex16, sniff_format};
 
 use tauri::Manager;
 use tauri::State;
@@ -48,7 +48,7 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::products_images::ProductImageDto;
+pub use kasirmu_bridge::products_images::ProductImageDto;
 
 // ── Command: set image ─────────────────────────────────────────────────
 
@@ -56,7 +56,7 @@ pub use oz_bridge::products_images::ProductImageDto;
 ///
 /// The ingest pipeline runs entirely in Rust: `source_path` is the file
 /// chosen via the front-end dialog plugin, so zero image bytes cross the
-/// IPC bridge. The pipeline itself lives in `oz_bridge::products_images`;
+/// IPC bridge. The pipeline itself lives in `kasirmu_bridge::products_images`;
 /// this shim injects the media root and maps the error back.
 ///
 /// Returns the 16-hex-char content hash of the transcoded image.
@@ -79,7 +79,7 @@ pub async fn products_set_image_scoped(
         // error text the original pipeline reported.
         AppError::Internal("resolving app cache dir: media root unavailable".into())
     })?;
-    oz_bridge::products_images::set_image_scoped(
+    kasirmu_bridge::products_images::set_image_scoped(
         &ctx,
         &session_token,
         &product_id,
@@ -106,7 +106,7 @@ pub async fn products_clear_image_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::products_images::clear_image_scoped(&ctx, &session_token, &product_id, slot)
+    kasirmu_bridge::products_images::clear_image_scoped(&ctx, &session_token, &product_id, slot)
         .await
         .map_err(Into::into)
 }
@@ -123,7 +123,7 @@ pub async fn products_list_images_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<ProductImageDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::products_images::list_images_scoped(&ctx, &session_token, &product_id)
+    kasirmu_bridge::products_images::list_images_scoped(&ctx, &session_token, &product_id)
         .await
         .map_err(Into::into)
 }
@@ -132,12 +132,12 @@ pub async fn products_list_images_scoped(
 
 /// Transcode `input_bytes` to 512 px WebP at quality 40 with adaptive fallback.
 ///
-/// Thin adapter over `oz_bridge::products_images::transcode_to_webp`: the
+/// Thin adapter over `kasirmu_bridge::products_images::transcode_to_webp`: the
 /// name, parameter list and `Result<_, AppError>` type are unchanged so the
 /// sibling test module keeps matching on `AppError::Invalid`.
 #[allow(dead_code)] // retained by the Wave-A S8 extraction contract for sibling tests
 fn transcode_to_webp(input_bytes: &[u8]) -> Result<Vec<u8>, AppError> {
-    oz_bridge::products_images::transcode_to_webp(input_bytes).map_err(AppError::from)
+    kasirmu_bridge::products_images::transcode_to_webp(input_bytes).map_err(AppError::from)
 }
 
 /// Resolve the filesystem path for the content-addressed image file.

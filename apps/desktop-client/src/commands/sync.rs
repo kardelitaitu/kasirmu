@@ -7,7 +7,7 @@
 //! server URL and API key.
 //!
 //! Wave F: thirteen of the sixteen commands live in the headless
-//! `oz_bridge::sync` module. Each `#[tauri::command]` below keeps its exact
+//! `kasirmu_bridge::sync` module. Each `#[tauri::command]` below keeps its exact
 //! name, parameter list and `Result<_, AppError>` return, so the registered
 //! IPC surface and the serialized error shape are unchanged; a shim borrows a
 //! `BridgeCtx` from `AppState`, calls the bridge and maps `BridgeError` back
@@ -36,7 +36,7 @@ use crate::error::AppError;
 use crate::state::AppState;
 use oz_core::permissions;
 
-pub use oz_bridge::sync::{
+pub use kasirmu_bridge::sync::{
     PgSyncSettingsDto, SyncPullArgs, SyncSettingsDto, UpdatePgSyncSettingsArgs,
     UpdateSyncSettingsArgs,
 };
@@ -48,7 +48,7 @@ pub async fn get_sync_settings_scoped(
     state: State<'_, AppState>,
 ) -> Result<SyncSettingsDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::sync::get_sync_settings_scoped(&ctx, &session_token)
+    kasirmu_bridge::sync::get_sync_settings_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -62,7 +62,7 @@ pub async fn get_sync_settings_scoped(
 /// row-presence contract is what `sync_bootstrap::should_auto_provision`
 /// relies on to distinguish a cleared+disabled install from a fresh one.
 ///
-/// Adapter over `oz_bridge::sync::update_sync_settings_data`: the name,
+/// Adapter over `kasirmu_bridge::sync::update_sync_settings_data`: the name,
 /// parameter list and `AppError` return are unchanged so `sync_tests.rs`
 /// keeps exercising the atomicity + clearing contract without a Tauri runtime.
 #[allow(dead_code)] // retained by the Wave-F extraction contract for sibling sync_tests.rs
@@ -70,18 +70,18 @@ pub fn update_sync_settings_data(
     conn: &Connection,
     args: &UpdateSyncSettingsArgs,
 ) -> Result<(), AppError> {
-    oz_bridge::sync::update_sync_settings_data(conn, args).map_err(Into::into)
+    kasirmu_bridge::sync::update_sync_settings_data(conn, args).map_err(Into::into)
 }
 
 // ── PostgreSQL sync settings & daemon commands ──────────────────
 
 /// Business logic for `get_pg_sync_settings` (extracted for testing).
 ///
-/// Adapter over `oz_bridge::sync::run_get_pg_sync_settings`, kept
+/// Adapter over `kasirmu_bridge::sync::run_get_pg_sync_settings`, kept
 /// `AppError`-returning for `sync_tests.rs`.
 #[allow(dead_code)] // retained by the Wave-F extraction contract for sibling sync_tests.rs
 fn run_get_pg_sync_settings(conn: &Connection) -> Result<PgSyncSettingsDto, AppError> {
-    oz_bridge::sync::run_get_pg_sync_settings(conn).map_err(Into::into)
+    kasirmu_bridge::sync::run_get_pg_sync_settings(conn).map_err(Into::into)
 }
 
 /// Persist PG sync settings atomically in a single transaction.
@@ -94,7 +94,7 @@ pub fn update_pg_sync_settings_data(
     conn: &Connection,
     args: &UpdatePgSyncSettingsArgs,
 ) -> Result<(), AppError> {
-    oz_bridge::sync::update_pg_sync_settings_data(conn, args).map_err(Into::into)
+    kasirmu_bridge::sync::update_pg_sync_settings_data(conn, args).map_err(Into::into)
 }
 
 /// SYNC-10 settings sink shared by the SQLite and PG daemons: a settings
@@ -125,7 +125,7 @@ fn resolve_sync_probe_url(
     saved: Option<String>,
     allow_local_fallback: bool,
 ) -> Option<String> {
-    oz_bridge::sync::resolve_sync_probe_url(candidate, saved, allow_local_fallback)
+    kasirmu_bridge::sync::resolve_sync_probe_url(candidate, saved, allow_local_fallback)
 }
 
 /// Reject a pull that lacks explicit destructive consent (H-2).
@@ -134,7 +134,7 @@ fn resolve_sync_probe_url(
 /// without a Tauri runtime.
 #[allow(dead_code)] // retained by the Wave-F extraction contract for sibling sync_tests.rs
 fn validate_pull_consent(args: &SyncPullArgs) -> Result<(), AppError> {
-    oz_bridge::sync::validate_pull_consent(args).map_err(Into::into)
+    kasirmu_bridge::sync::validate_pull_consent(args).map_err(Into::into)
 }
 
 // ── Scoped variants (ADR #7) ────────────────────────────────────
@@ -147,7 +147,7 @@ pub async fn update_sync_settings_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::sync::update_sync_settings_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::sync::update_sync_settings_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -159,7 +159,7 @@ pub async fn get_pg_sync_settings_scoped(
     state: State<'_, AppState>,
 ) -> Result<PgSyncSettingsDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::sync::get_pg_sync_settings_scoped(&ctx, &session_token)
+    kasirmu_bridge::sync::get_pg_sync_settings_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -172,7 +172,7 @@ pub async fn update_pg_sync_settings_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::sync::update_pg_sync_settings_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::sync::update_pg_sync_settings_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -239,7 +239,7 @@ pub async fn pending_sync_count_scoped(
     state: State<'_, AppState>,
 ) -> Result<i64, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::sync::pending_sync_count_scoped(&ctx, &session_token)
+    kasirmu_bridge::sync::pending_sync_count_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -251,7 +251,7 @@ pub async fn request_sync_token_scoped(
     state: State<'_, AppState>,
 ) -> Result<sync_client::TokenResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::sync::request_sync_token_scoped(&ctx, &session_token)
+    kasirmu_bridge::sync::request_sync_token_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -263,7 +263,7 @@ pub async fn get_sync_plan_scoped(
     state: State<'_, AppState>,
 ) -> Result<sync_client::TenantPlanResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::sync::get_sync_plan_scoped(&ctx, &session_token)
+    kasirmu_bridge::sync::get_sync_plan_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -277,7 +277,7 @@ pub async fn test_sync_connection(
     state: State<'_, AppState>,
 ) -> Result<sync_client::PingResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::sync::test_sync_connection(&ctx)
+    kasirmu_bridge::sync::test_sync_connection(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -289,7 +289,7 @@ pub async fn test_sync_connection_scoped(
     state: State<'_, AppState>,
 ) -> Result<sync_client::PingResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::sync::test_sync_connection_scoped(&ctx, &session_token)
+    kasirmu_bridge::sync::test_sync_connection_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -301,7 +301,7 @@ pub async fn sync_run_scoped(
     state: State<'_, AppState>,
 ) -> Result<SyncAttemptResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::sync::sync_run_scoped(&ctx, &session_token)
+    kasirmu_bridge::sync::sync_run_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -314,7 +314,7 @@ pub async fn sync_run_scoped(
 /// pull takes now is named after the store database it clones
 /// (`store-<id>.sync-pull-<ts>.backup.db`, derived by the bridge from
 /// `StoreDatabaseManager::store_db_path`) and is deleted on success or
-/// retained one-per-store on failure — see `oz_bridge::sync::dispose_pre_pull_backup`.
+/// retained one-per-store on failure — see `kasirmu_bridge::sync::dispose_pre_pull_backup`.
 #[tauri::command]
 pub async fn sync_pull_scoped(
     args: SyncPullArgs,
@@ -323,7 +323,7 @@ pub async fn sync_pull_scoped(
 ) -> Result<PullResult, AppError> {
     let ctx = state.bridge_ctx();
     let db_path = state.db_path.clone();
-    oz_bridge::sync::sync_pull_scoped(&ctx, &session_token, args, &db_path)
+    kasirmu_bridge::sync::sync_pull_scoped(&ctx, &session_token, args, &db_path)
         .await
         .map_err(Into::into)
 }
@@ -508,7 +508,7 @@ pub async fn settings_changed_sink_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::sync::settings_changed_sink_scoped(&ctx, &session_token, &_key, _value)
+    kasirmu_bridge::sync::settings_changed_sink_scoped(&ctx, &session_token, &_key, _value)
         .await
         .map_err(Into::into)
 }

@@ -12,7 +12,7 @@
 //! primary location id).
 //!
 //! Wave D / D4b: the bodies now live in the headless
-//! `oz_bridge::receipt_format` module. Each `#[tauri::command]` below
+//! `kasirmu_bridge::receipt_format` module. Each `#[tauri::command]` below
 //! keeps its exact name, parameter list, attributes and
 //! `Result<_, AppError>` wire contract; it builds a `BridgeCtx` from
 //! `AppState` and delegates, preserving gate order and the ADR #47
@@ -27,7 +27,7 @@ use oz_core::db::receipt_formats::EffectiveReceiptFormat;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::receipt_format::{ReceiptContentArgs, ReceiptLayoutArgs};
+pub use kasirmu_bridge::receipt_format::{ReceiptContentArgs, ReceiptLayoutArgs};
 
 /// Read the effective receipt format for the session's terminal (or the
 /// store default when no terminal is bound): statutory content from the
@@ -41,7 +41,7 @@ pub async fn get_receipt_format_scoped(
     state: State<'_, AppState>,
 ) -> Result<EffectiveReceiptFormat, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::receipt_format::get_receipt_format_scoped(
+    kasirmu_bridge::receipt_format::get_receipt_format_scoped(
         &ctx,
         terminal_id,
         workspace_id,
@@ -69,7 +69,7 @@ pub async fn set_receipt_layout_scoped(
     state: State<'_, AppState>,
 ) -> Result<EffectiveReceiptFormat, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::receipt_format::set_receipt_layout_scoped(
+    kasirmu_bridge::receipt_format::set_receipt_layout_scoped(
         &ctx,
         &layout,
         &workspace_id,
@@ -96,7 +96,7 @@ pub async fn set_receipt_content_scoped(
     state: State<'_, AppState>,
 ) -> Result<EffectiveReceiptFormat, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::receipt_format::set_receipt_content_scoped(&ctx, &content, &session_token)
+    kasirmu_bridge::receipt_format::set_receipt_content_scoped(&ctx, &content, &session_token)
         .await
         .map_err(Into::into)
 }

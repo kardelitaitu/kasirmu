@@ -1,7 +1,7 @@
 //! Tauri commands for physical inventory / stock counting.
 //!
 //! Wave C / C2: the bodies live in the headless
-//! `oz_bridge::inventory_counts` module. Each `#[tauri::command]` below
+//! `kasirmu_bridge::inventory_counts` module. Each `#[tauri::command]` below
 //! keeps its exact name, parameter list and `Result<_, AppError>` return so
 //! the registered IPC surface and the serialized error shape are unchanged;
 //! it borrows a `BridgeCtx` from `AppState`, calls the bridge, and maps
@@ -22,19 +22,19 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::inventory_counts::{
+pub use kasirmu_bridge::inventory_counts::{
     AddCountLineArgs, CompleteStockCountArgs, CreateStockCountArgs, RemoveCountLineArgs,
     StockAdjustmentDto, StockCountDto, StockCountLineDto, UpdateCountLineArgs,
 };
 
 /// Validate a physical quantity and reject negative values at the command boundary.
 ///
-/// Thin adapter over `oz_bridge::inventory_counts::validate_quantity`: the
+/// Thin adapter over `kasirmu_bridge::inventory_counts::validate_quantity`: the
 /// name, parameter list and `Result<_, AppError>` type are unchanged so the
 /// sibling test module keeps matching on `AppError::Invalid`.
 #[allow(dead_code)] // retained by the Wave-C C2 extraction contract for sibling tests
 fn validate_quantity(field: &'static str, quantity: i64) -> Result<(), AppError> {
-    oz_bridge::inventory_counts::validate_quantity(field, quantity).map_err(AppError::from)
+    kasirmu_bridge::inventory_counts::validate_quantity(field, quantity).map_err(AppError::from)
 }
 
 /// Create a stock count in the session's store and attribute it to the session user.
@@ -45,7 +45,7 @@ pub async fn create_stock_count_scoped(
     state: State<'_, AppState>,
 ) -> Result<StockCountDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory_counts::create_stock_count_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::inventory_counts::create_stock_count_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -58,7 +58,7 @@ pub async fn get_stock_count_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<StockCountDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory_counts::get_stock_count_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::inventory_counts::get_stock_count_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -70,7 +70,7 @@ pub async fn list_stock_counts_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<StockCountDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory_counts::list_stock_counts_scoped(&ctx, &session_token)
+    kasirmu_bridge::inventory_counts::list_stock_counts_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -83,7 +83,7 @@ pub async fn get_count_lines_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<StockCountLineDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory_counts::get_count_lines_scoped(&ctx, &session_token, &count_id)
+    kasirmu_bridge::inventory_counts::get_count_lines_scoped(&ctx, &session_token, &count_id)
         .await
         .map_err(Into::into)
 }
@@ -96,7 +96,7 @@ pub async fn add_count_line_scoped(
     state: State<'_, AppState>,
 ) -> Result<StockCountLineDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory_counts::add_count_line_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::inventory_counts::add_count_line_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -109,7 +109,7 @@ pub async fn update_count_line_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory_counts::update_count_line_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::inventory_counts::update_count_line_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -122,7 +122,7 @@ pub async fn remove_count_line_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory_counts::remove_count_line_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::inventory_counts::remove_count_line_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -135,7 +135,7 @@ pub async fn complete_stock_count_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<StockAdjustmentDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory_counts::complete_stock_count_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::inventory_counts::complete_stock_count_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -149,7 +149,7 @@ pub async fn update_stock_count_status_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory_counts::update_stock_count_status_scoped(
+    kasirmu_bridge::inventory_counts::update_stock_count_status_scoped(
         &ctx,
         &session_token,
         &id,
@@ -166,7 +166,7 @@ pub async fn list_stock_adjustments_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<StockAdjustmentDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory_counts::list_stock_adjustments_scoped(&ctx, &session_token)
+    kasirmu_bridge::inventory_counts::list_stock_adjustments_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }

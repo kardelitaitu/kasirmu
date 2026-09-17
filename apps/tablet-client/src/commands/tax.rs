@@ -32,7 +32,7 @@ async fn require_tax_permission(
 // ── DTOs ──────────────────────────────────────────────────────────────
 //
 // One wire definition, not two. Every type these commands speak is re-exported
-// from `oz_bridge::tax` — which the desktop shell already re-exports — so the
+// from `kasirmu_bridge::tax` — which the desktop shell already re-exports — so the
 // two shells can no longer disagree about a key name. All eight field sets and
 // their serde attributes were diffed item by item before the local copies were
 // deleted; every one was identical, so the swap is wire-neutral by
@@ -48,7 +48,7 @@ async fn require_tax_permission(
 // lines reference was offered for deletion with no warning — the backend
 // refused it anyway, so the bug cost the operator the warning, not the rows.
 // Sharing the type makes the bridge's corrected wire the only wire.
-pub use oz_bridge::tax::{
+pub use kasirmu_bridge::tax::{
     CategoryTaxRateRow, CreateTaxRateArgs, SetCategoryTaxRatesArgs, TaxRateDependencyCountsDto,
     TaxRateDto, TaxRateScopeDto, TaxRateWindowDto, UpdateTaxRateArgs,
 };

@@ -23,7 +23,7 @@
 //! front-end must not either.
 //!
 //! Phase 3.3 T3: `SetRegionalConfig` is re-exported from the shared
-//! `oz_bridge::regional` module (Agent 2's Wave A extraction), same as the
+//! `kasirmu_bridge::regional` module (Agent 2's Wave A extraction), same as the
 //! desktop shell — single wire definition. Casing already agreed
 //! (snake_case both sides, matching the UI caller's
 //! `SetRegionalConfigArgs`), so this is pure dedup, no behavior change.
@@ -39,7 +39,7 @@ use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::regional::SetRegionalConfig;
+pub use kasirmu_bridge::regional::SetRegionalConfig;
 
 /// Read the effective regional configuration for one location of the
 /// session's store (regional slice 2, saas-2 design slice queue #2).
@@ -83,7 +83,7 @@ pub async fn get_regional_config_scoped(
 /// read command: field names are the axis names in `locations`/
 /// `legal_entities` (snake_case on the wire), and an empty string on any axis
 /// means "clear it, inherit from the scope above". The type itself lives in
-/// the shared bridge module (`oz_bridge::regional::SetRegionalConfig`).
+/// the shared bridge module (`kasirmu_bridge::regional::SetRegionalConfig`).
 ///
 /// Returns the freshly resolved effective config (read-after-write on the
 /// same connection) so the card can re-render provenance without a second

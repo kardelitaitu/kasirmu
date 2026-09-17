@@ -2,7 +2,7 @@
 //! desktop surface.
 //!
 //! Phase 3.3 T3: `LocalPaymentRailArgs` is re-exported from the shared
-//! `oz_bridge::local_payment` module (Agent 2's Wave F extraction), same
+//! `kasirmu_bridge::local_payment` module (Agent 2's Wave F extraction), same
 //! as the desktop shell — single wire definition, and it inherits the
 //! 2026-09-13 casing repair: the UI has always sent snake_case
 //! (`rail_code`, `is_enabled` — LocalPaymentSettingsCard.tsx handleSave,
@@ -12,7 +12,7 @@
 //! # ADR #49 status — measured 2026-09-16, `verify-body-parity.py` → **1 / 2**
 //!
 //! **One door is ported.** [`get_local_payment_methods_scoped`] delegates to
-//! [`oz_bridge::local_payment::get_local_payment_methods_scoped`]: the bodies
+//! [`kasirmu_bridge::local_payment::get_local_payment_methods_scoped`]: the bodies
 //! were statement-identical, and the door names a permission
 //! (`SETTINGS_READ`), so the move is ledger-neutral. The twin's argument order
 //! is payload-first, `session_token` last.
@@ -39,13 +39,13 @@ use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::local_payment::LocalPaymentRailArgs;
+pub use kasirmu_bridge::local_payment::LocalPaymentRailArgs;
 
 /// Read the effective payment-rail surface for one location (slice 6).
 ///
 /// # ADR #49 — ported 2026-09-16
 ///
-/// Delegates to [`oz_bridge::local_payment::get_local_payment_methods_scoped`].
+/// Delegates to [`kasirmu_bridge::local_payment::get_local_payment_methods_scoped`].
 /// The body was statement-identical and the gate is `SETTINGS_READ` on both
 /// sides, so the move is ledger-neutral. Argument order follows the twin:
 /// `location_id` first, `session_token` last.
@@ -56,7 +56,7 @@ pub async fn get_local_payment_methods_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<EffectivePaymentRail>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::local_payment::get_local_payment_methods_scoped(&ctx, &location_id, &session_token)
+    kasirmu_bridge::local_payment::get_local_payment_methods_scoped(&ctx, &location_id, &session_token)
         .await
         .map_err(Into::into)
 }

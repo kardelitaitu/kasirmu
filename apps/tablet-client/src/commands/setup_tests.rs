@@ -541,7 +541,7 @@ fn enabled_features_result_serialize() {
 // the key AND the value.
 //
 //   1. TYPE IDENTITY, asserted by assignment: `let bridge:
-//      oz_bridge::setup::SetupStatus = status;` compiles only while the tablet
+//      kasirmu_bridge::setup::SetupStatus = status;` compiles only while the tablet
 //      path is a re-export. A future local re-declaration stops compiling
 //      instead of quietly becoming a second opinion on the same wire.
 //   2. THE KEY THE UI READS, WITH ITS VALUE: `ui/src/api/settings.ts:155`
@@ -570,7 +570,7 @@ fn setup_status_wire_is_the_shared_bridge_type_with_the_ui_keys() {
         preset: Some("simple-retail".into()),
     };
     // Type identity: fails to compile if the tablet re-declares the struct.
-    let bridge: oz_bridge::setup::SetupStatus = status;
+    let bridge: kasirmu_bridge::setup::SetupStatus = status;
     assert_eq!(
         wire_keys(&bridge),
         ["completed", "preset"],
@@ -586,7 +586,7 @@ fn enabled_features_result_wire_is_the_shared_bridge_type_with_the_ui_key() {
     let result = EnabledFeaturesResult {
         features: vec!["cash-payment".into(), "barcode-scanning".into()],
     };
-    let bridge: oz_bridge::setup::EnabledFeaturesResult = result;
+    let bridge: kasirmu_bridge::setup::EnabledFeaturesResult = result;
     assert_eq!(
         wire_keys(&bridge),
         ["features"],

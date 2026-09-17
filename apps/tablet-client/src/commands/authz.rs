@@ -18,12 +18,12 @@ use crate::state::AppState;
 
 use std::sync::Arc;
 
-use oz_bridge::ctx::EventSink;
+use kasirmu_bridge::ctx::EventSink;
 use tauri::{AppHandle, Emitter};
 
 /// [`EventSink`] over the tablet shell's `AppHandle`.
 ///
-/// [`BridgeCtx::emitter`](oz_bridge::ctx::BridgeCtx::emitter) is the
+/// [`BridgeCtx::emitter`](kasirmu_bridge::ctx::BridgeCtx::emitter) is the
 /// tauri-free stand-in for `tauri::Emitter`, so building the sink is the
 /// shell's job: Wave D bridge bodies emit UI events through it instead of
 /// holding a handle, which keeps `oz-bridge` headless. Mirrors the desktop
@@ -114,7 +114,7 @@ pub async fn require_permission_for_session(
 
 // ── Phase 3.3 T1: the bridge error seam ────────────────────────────
 //
-// oz_bridge command bodies return `BridgeError`; the tablet shell's Tauri
+// kasirmu_bridge command bodies return `BridgeError`; the tablet shell's Tauri
 // commands return `AppError`. This variant-for-variant conversion is the
 // only place the two meet, mirroring the desktop seam in
 // apps/desktop-client/src/commands/authz.rs. `BridgeError` is
@@ -127,20 +127,20 @@ pub async fn require_permission_for_session(
 // wildcard as `Internal` — the same degradation the desktop seam promises
 // for unknown variants.
 
-impl From<oz_bridge::error::BridgeError> for AppError {
+impl From<kasirmu_bridge::error::BridgeError> for AppError {
     /// Variant-for-variant conversion back to the command error type.
-    fn from(e: oz_bridge::error::BridgeError) -> Self {
+    fn from(e: kasirmu_bridge::error::BridgeError) -> Self {
         match e {
-            oz_bridge::error::BridgeError::Core { sub_kind, message } => {
+            kasirmu_bridge::error::BridgeError::Core { sub_kind, message } => {
                 Self::Core { sub_kind, message }
             }
-            oz_bridge::error::BridgeError::Invalid(message) => Self::Invalid(message),
-            oz_bridge::error::BridgeError::PermissionDenied(message) => {
+            kasirmu_bridge::error::BridgeError::Invalid(message) => Self::Invalid(message),
+            kasirmu_bridge::error::BridgeError::PermissionDenied(message) => {
                 Self::PermissionDenied(message)
             }
-            oz_bridge::error::BridgeError::InvalidSession => Self::InvalidSession,
-            oz_bridge::error::BridgeError::Internal(message) => Self::Internal(message),
-            oz_bridge::error::BridgeError::Hardware { sub_kind, message } => {
+            kasirmu_bridge::error::BridgeError::InvalidSession => Self::InvalidSession,
+            kasirmu_bridge::error::BridgeError::Internal(message) => Self::Internal(message),
+            kasirmu_bridge::error::BridgeError::Hardware { sub_kind, message } => {
                 Self::Hardware { sub_kind, message }
             }
             other => Self::Internal(other.to_string()),

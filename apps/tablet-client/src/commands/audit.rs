@@ -3,7 +3,7 @@
 //! The live read surface is `list_audit_log_scoped`, which exposes the
 //! append-only audit log entries stored in SQLite via
 //! `oz_core::db::Store::list_audit_entries`. Every scoped body
-//! lives in the headless `oz_bridge::audit` module (ADR #49 Slice 1): each
+//! lives in the headless `kasirmu_bridge::audit` module (ADR #49 Slice 1): each
 //! `#[command]` below keeps its exact name, parameter list and
 //! `Result<_, AppError>` return, so the registered IPC surface and the
 //! serialized error shape are unchanged - it borrows a `BridgeCtx` from
@@ -38,7 +38,7 @@ use oz_core::subscription::SubscriptionTier;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::audit::{
+pub use kasirmu_bridge::audit::{
     AuditEntryDto, AuditExportDto, AuditLogPageDto, AuditReviewStatusDto, ExportAuditLogArgs,
     ExportSecurityEventsArgs, ListAuditLogArgs, ListAuditLogScopedArgs,
     ListSecurityEventsScopedArgs, MarkAuditReviewedArgs, ReviewCheckpointDto,
@@ -94,12 +94,12 @@ async fn require_audit_tier(state: &AppState) -> Result<(), AppError> {
 
 /// Build an RFC-4180 CSV row from the given fields (quotes embedded quotes).
 ///
-/// Thin adapter over `oz_bridge::audit::csv_row`: the name, parameter list
+/// Thin adapter over `kasirmu_bridge::audit::csv_row`: the name, parameter list
 /// and return type are unchanged so the sibling test module keeps calling it,
 /// while the export bodies use the bridge's copy.
 #[allow(dead_code)] // retained for the sibling test module's CSV contract cases
 fn csv_row(fields: &[&str]) -> String {
-    oz_bridge::audit::csv_row(fields)
+    kasirmu_bridge::audit::csv_row(fields)
 }
 
 // -- Store-scoped audit log (AUD-01/AUD-02/AUD-03) --------------------
@@ -121,14 +121,14 @@ pub async fn list_audit_log_scoped(
     // (wider) copy. See require_audit_tier.
     require_audit_tier(&state).await?;
     let ctx = state.bridge_ctx();
-    oz_bridge::audit::list_audit_log_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::audit::list_audit_log_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
 
 /// Read the ORGANIZATION-level security trail - logins, logouts and staff
 /// account changes - from the GLOBAL identity database; see
-/// `oz_bridge::audit::list_security_events_scoped` for why this reads a
+/// `kasirmu_bridge::audit::list_security_events_scoped` for why this reads a
 /// different database than its sibling and why that is not a cross-store
 /// leak. Gates unchanged: Premium+ tier, then `audit:view`.
 #[command]
@@ -140,7 +140,7 @@ pub async fn list_security_events_scoped(
     // Fourth move: see require_audit_tier.
     require_audit_tier(&state).await?;
     let ctx = state.bridge_ctx();
-    oz_bridge::audit::list_security_events_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::audit::list_security_events_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -155,7 +155,7 @@ pub async fn get_audit_review_status_scoped(
     // Fourth move: see require_audit_tier.
     require_audit_tier(&state).await?;
     let ctx = state.bridge_ctx();
-    oz_bridge::audit::get_audit_review_status_scoped(&ctx, &session_token)
+    kasirmu_bridge::audit::get_audit_review_status_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -174,7 +174,7 @@ pub async fn mark_audit_reviewed_scoped(
     // Fourth move: see require_audit_tier.
     require_audit_tier(&state).await?;
     let ctx = state.bridge_ctx();
-    oz_bridge::audit::mark_audit_reviewed_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::audit::mark_audit_reviewed_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -195,7 +195,7 @@ pub async fn export_audit_log_scoped(
     // Fourth move: see require_audit_tier.
     require_audit_tier(&state).await?;
     let ctx = state.bridge_ctx();
-    oz_bridge::audit::export_audit_log_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::audit::export_audit_log_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -215,7 +215,7 @@ pub async fn export_security_events_scoped(
     // Fourth move: see require_audit_tier.
     require_audit_tier(&state).await?;
     let ctx = state.bridge_ctx();
-    oz_bridge::audit::export_security_events_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::audit::export_security_events_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }

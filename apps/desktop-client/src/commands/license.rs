@@ -1,6 +1,6 @@
 //! License Activation Tauri commands.
 //!
-//! Wave E / E3: the bodies now live in the headless `oz_bridge::license` module. Each
+//! Wave E / E3: the bodies now live in the headless `kasirmu_bridge::license` module. Each
 //! `#[tauri::command]` below keeps its exact name, parameter list and
 //! `Result<_, AppError>` return so the registered IPC surface and the serialized error
 //! shape never move; it borrows a `BridgeCtx` from `AppState`, calls the bridge, and
@@ -16,7 +16,7 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::license::{
+pub use kasirmu_bridge::license::{
     AuthPingResult, LicenseStatusDto, LicenseVerificationStatus, PauseResumeDto,
     ServerLicenseStatusDto,
 };
@@ -50,7 +50,7 @@ pub async fn activate_license(
     hardware_fingerprint: Option<String>,
 ) -> Result<bool, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::license::activate_license(
+    kasirmu_bridge::license::activate_license(
         &ctx,
         key,
         email,
@@ -68,7 +68,7 @@ pub async fn activate_license(
 #[tauri::command]
 pub async fn get_machine_id(state: State<'_, AppState>) -> Result<String, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::license::get_machine_id(&ctx)
+    kasirmu_bridge::license::get_machine_id(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -87,7 +87,7 @@ pub async fn get_machine_id(state: State<'_, AppState>) -> Result<String, AppErr
 #[tauri::command]
 pub async fn get_hardware_fingerprint(state: State<'_, AppState>) -> Result<String, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::license::get_hardware_fingerprint(&ctx)
+    kasirmu_bridge::license::get_hardware_fingerprint(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -101,7 +101,7 @@ pub async fn get_hardware_fingerprint(state: State<'_, AppState>) -> Result<Stri
 #[tauri::command]
 pub async fn renew_license(state: State<'_, AppState>, new_key: String) -> Result<bool, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::license::renew_license(&ctx, new_key)
+    kasirmu_bridge::license::renew_license(&ctx, new_key)
         .await
         .map_err(Into::into)
 }
@@ -120,7 +120,7 @@ pub async fn check_license_status(
     state: State<'_, AppState>,
 ) -> Result<ServerLicenseStatusDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::license::check_license_status(&ctx)
+    kasirmu_bridge::license::check_license_status(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -136,7 +136,7 @@ pub async fn check_license_status(
 /// is what used to make "up, database down" render identically to "no server".
 #[tauri::command]
 pub async fn test_auth_connection() -> Result<AuthPingResult, AppError> {
-    oz_bridge::license::test_auth_connection()
+    kasirmu_bridge::license::test_auth_connection()
         .await
         .map_err(Into::into)
 }
@@ -145,7 +145,7 @@ pub async fn test_auth_connection() -> Result<AuthPingResult, AppError> {
 #[tauri::command]
 pub async fn get_license_status(state: State<'_, AppState>) -> Result<LicenseStatusDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::license::get_license_status(&ctx)
+    kasirmu_bridge::license::get_license_status(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -160,7 +160,7 @@ pub async fn pause_subscription(
     pause_months: u8,
 ) -> Result<PauseResumeDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::license::pause_subscription(&ctx, pause_months)
+    kasirmu_bridge::license::pause_subscription(&ctx, pause_months)
         .await
         .map_err(Into::into)
 }
@@ -171,7 +171,7 @@ pub async fn pause_subscription(
 #[tauri::command]
 pub async fn resume_subscription(state: State<'_, AppState>) -> Result<PauseResumeDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::license::resume_subscription(&ctx)
+    kasirmu_bridge::license::resume_subscription(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -183,7 +183,7 @@ pub async fn get_machine_id_scoped(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::license::get_machine_id_scoped(&ctx, &session_token)
+    kasirmu_bridge::license::get_machine_id_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -195,7 +195,7 @@ pub async fn get_hardware_fingerprint_scoped(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::license::get_hardware_fingerprint_scoped(&ctx, &session_token)
+    kasirmu_bridge::license::get_hardware_fingerprint_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -208,7 +208,7 @@ pub async fn renew_license_scoped(
     new_key: String,
 ) -> Result<bool, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::license::renew_license_scoped(&ctx, &session_token, new_key)
+    kasirmu_bridge::license::renew_license_scoped(&ctx, &session_token, new_key)
         .await
         .map_err(Into::into)
 }
@@ -220,7 +220,7 @@ pub async fn check_license_status_scoped(
     state: State<'_, AppState>,
 ) -> Result<ServerLicenseStatusDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::license::check_license_status_scoped(&ctx, &session_token)
+    kasirmu_bridge::license::check_license_status_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -232,7 +232,7 @@ pub async fn test_auth_connection_scoped(
     state: State<'_, AppState>,
 ) -> Result<AuthPingResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::license::test_auth_connection_scoped(&ctx, &session_token)
+    kasirmu_bridge::license::test_auth_connection_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -244,7 +244,7 @@ pub async fn get_license_status_scoped(
     state: State<'_, AppState>,
 ) -> Result<LicenseStatusDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::license::get_license_status_scoped(&ctx, &session_token)
+    kasirmu_bridge::license::get_license_status_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -257,7 +257,7 @@ pub async fn pause_subscription_scoped(
     pause_months: u8,
 ) -> Result<PauseResumeDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::license::pause_subscription_scoped(&ctx, &session_token, pause_months)
+    kasirmu_bridge::license::pause_subscription_scoped(&ctx, &session_token, pause_months)
         .await
         .map_err(Into::into)
 }
@@ -269,7 +269,7 @@ pub async fn resume_subscription_scoped(
     state: State<'_, AppState>,
 ) -> Result<PauseResumeDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::license::resume_subscription_scoped(&ctx, &session_token)
+    kasirmu_bridge::license::resume_subscription_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }

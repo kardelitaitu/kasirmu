@@ -1,6 +1,6 @@
 //! Refund commands — process refund against a completed sale.
 //!
-//! Wave D / D4a: the bodies now live in the headless `oz_bridge::refunds`
+//! Wave D / D4a: the bodies now live in the headless `kasirmu_bridge::refunds`
 //! module. Each `#[tauri::command]` below keeps its exact name, parameter
 //! list, attributes and `Result<_, AppError>` wire contract; it builds a
 //! `BridgeCtx` from `AppState` and delegates, preserving gate order and
@@ -20,7 +20,7 @@ use oz_core::{Refund, Sale};
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::refunds::{
+pub use kasirmu_bridge::refunds::{
     ProcessRefundArgs, ProcessRefundResult, ProcessRefundScopedArgs, RefundLineArg,
 };
 
@@ -36,7 +36,7 @@ pub async fn process_refund_scoped(
     state: State<'_, AppState>,
 ) -> Result<ProcessRefundResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::refunds::process_refund_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::refunds::process_refund_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -53,7 +53,7 @@ fn run_process_refund_unchecked(
     user_id: &str,
     lines: &[RefundLineArg],
 ) -> Result<ProcessRefundResult, AppError> {
-    oz_bridge::refunds::process_refund_unchecked(db, sale_id, reason, note, user_id, lines)
+    kasirmu_bridge::refunds::process_refund_unchecked(db, sale_id, reason, note, user_id, lines)
         .map_err(AppError::from)
 }
 
@@ -69,7 +69,7 @@ pub async fn lookup_sale_by_receipt_barcode_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<Sale>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::refunds::lookup_sale_by_receipt_barcode_scoped(&ctx, &session_token, &barcode)
+    kasirmu_bridge::refunds::lookup_sale_by_receipt_barcode_scoped(&ctx, &session_token, &barcode)
         .await
         .map_err(Into::into)
 }
@@ -86,7 +86,7 @@ pub async fn list_refunds_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<Refund>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::refunds::list_refunds_scoped(&ctx, &session_token, &sale_id)
+    kasirmu_bridge::refunds::list_refunds_scoped(&ctx, &session_token, &sale_id)
         .await
         .map_err(Into::into)
 }

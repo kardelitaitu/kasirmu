@@ -1,6 +1,6 @@
 //! Tauri commands for multi-location inventory, shifts, transactions, thresholds, and pending sale checkout.
 //!
-//! The bodies live in `oz_bridge::inventory` (Wave C / C1); every command here
+//! The bodies live in `kasirmu_bridge::inventory` (Wave C / C1); every command here
 //! is a thin shim that builds the per-call [`BridgeCtx`] and maps `BridgeError`
 //! back onto `AppError` variant-for-variant. The global-DB gate adapter below
 //! stays because the sibling test module exercises it directly.
@@ -57,7 +57,7 @@ pub async fn create_inventory_location(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::create_inventory_location(
+    kasirmu_bridge::inventory::create_inventory_location(
         &ctx,
         &session_token,
         name,
@@ -78,7 +78,7 @@ pub async fn list_inventory_locations(
     state: State<'_, AppState>,
 ) -> Result<Vec<InventoryLocation>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::list_inventory_locations(&ctx, &session_token)
+    kasirmu_bridge::inventory::list_inventory_locations(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -96,7 +96,7 @@ pub async fn update_inventory_location(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::update_inventory_location(
+    kasirmu_bridge::inventory::update_inventory_location(
         &ctx,
         &session_token,
         id,
@@ -118,7 +118,7 @@ pub async fn deactivate_inventory_location(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::deactivate_inventory_location(&ctx, &session_token, id)
+    kasirmu_bridge::inventory::deactivate_inventory_location(&ctx, &session_token, id)
         .await
         .map_err(Into::into)
 }
@@ -135,7 +135,7 @@ pub async fn get_workspace_locations_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<WorkspaceLocationBinding>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::get_workspace_locations_scoped(
+    kasirmu_bridge::inventory::get_workspace_locations_scoped(
         &ctx,
         &session_token,
         instance_id,
@@ -155,7 +155,7 @@ pub async fn invalidate_location_cache_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::invalidate_location_cache_scoped(&ctx, &session_token)
+    kasirmu_bridge::inventory::invalidate_location_cache_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -174,7 +174,7 @@ pub async fn set_workspace_inventory_locations(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::set_workspace_inventory_locations(
+    kasirmu_bridge::inventory::set_workspace_inventory_locations(
         &ctx,
         &session_token,
         instance_id,
@@ -194,7 +194,7 @@ pub async fn get_workspace_inventory_locations(
     state: State<'_, AppState>,
 ) -> Result<Vec<WorkspaceInventoryLocation>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::get_workspace_inventory_locations(&ctx, &session_token, instance_id)
+    kasirmu_bridge::inventory::get_workspace_inventory_locations(&ctx, &session_token, instance_id)
         .await
         .map_err(Into::into)
 }
@@ -212,7 +212,7 @@ pub async fn start_inventory_shift(
     state: State<'_, AppState>,
 ) -> Result<InventoryShift, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::start_inventory_shift(&ctx, &session_token, location_id, notes)
+    kasirmu_bridge::inventory::start_inventory_shift(&ctx, &session_token, location_id, notes)
         .await
         .map_err(Into::into)
 }
@@ -227,7 +227,7 @@ pub async fn end_inventory_shift(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::end_inventory_shift(&ctx, &session_token, shift_id)
+    kasirmu_bridge::inventory::end_inventory_shift(&ctx, &session_token, shift_id)
         .await
         .map_err(Into::into)
 }
@@ -241,7 +241,7 @@ pub async fn get_active_inventory_shift(
     state: State<'_, AppState>,
 ) -> Result<Option<InventoryShift>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::get_active_inventory_shift(&ctx, &session_token)
+    kasirmu_bridge::inventory::get_active_inventory_shift(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -255,7 +255,7 @@ pub async fn list_inventory_shifts(
     state: State<'_, AppState>,
 ) -> Result<Vec<InventoryShift>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::list_inventory_shifts(&ctx, &session_token)
+    kasirmu_bridge::inventory::list_inventory_shifts(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -275,7 +275,7 @@ pub async fn create_inventory_transaction(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::create_inventory_transaction(
+    kasirmu_bridge::inventory::create_inventory_transaction(
         &ctx,
         &session_token,
         type_str,
@@ -296,7 +296,7 @@ pub async fn list_inventory_transactions(
     state: State<'_, AppState>,
 ) -> Result<Vec<InventoryTransaction>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::list_inventory_transactions(&ctx, &session_token)
+    kasirmu_bridge::inventory::list_inventory_transactions(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -313,7 +313,7 @@ pub async fn list_inventory_transactions_for_shift(
     state: State<'_, AppState>,
 ) -> Result<Vec<InventoryTransaction>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::list_inventory_transactions_for_shift(
+    kasirmu_bridge::inventory::list_inventory_transactions_for_shift(
         &ctx,
         &session_token,
         location_id,
@@ -333,7 +333,7 @@ pub async fn get_inventory_transaction(
     state: State<'_, AppState>,
 ) -> Result<Option<(InventoryTransaction, Vec<InventoryTransactionLine>)>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::get_inventory_transaction(&ctx, &session_token, id)
+    kasirmu_bridge::inventory::get_inventory_transaction(&ctx, &session_token, id)
         .await
         .map_err(Into::into)
 }
@@ -353,7 +353,7 @@ pub async fn set_stock_threshold(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::set_stock_threshold(
+    kasirmu_bridge::inventory::set_stock_threshold(
         &ctx,
         &session_token,
         product_id,
@@ -375,7 +375,7 @@ pub async fn get_stock_thresholds(
     state: State<'_, AppState>,
 ) -> Result<Vec<StockThreshold>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::get_stock_thresholds(&ctx, &session_token, location_id)
+    kasirmu_bridge::inventory::get_stock_thresholds(&ctx, &session_token, location_id)
         .await
         .map_err(Into::into)
 }
@@ -390,7 +390,7 @@ pub async fn delete_stock_threshold(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::delete_stock_threshold(&ctx, &session_token, id)
+    kasirmu_bridge::inventory::delete_stock_threshold(&ctx, &session_token, id)
         .await
         .map_err(Into::into)
 }
@@ -406,7 +406,7 @@ pub async fn get_low_stock_alerts_at_location_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<oz_core::db::reports::LowStockAlert>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::get_low_stock_alerts_at_location_scoped(
+    kasirmu_bridge::inventory::get_low_stock_alerts_at_location_scoped(
         &ctx,
         &session_token,
         location_id,
@@ -428,7 +428,7 @@ pub async fn active_stock_alerts_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<oz_core::db::reports::StockAlertEvent>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::active_stock_alerts_scoped(&ctx, &session_token, location_id)
+    kasirmu_bridge::inventory::active_stock_alerts_scoped(&ctx, &session_token, location_id)
         .await
         .map_err(Into::into)
 }
@@ -443,7 +443,7 @@ pub async fn acknowledge_stock_alert_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::acknowledge_stock_alert_scoped(&ctx, &session_token, alert_id)
+    kasirmu_bridge::inventory::acknowledge_stock_alert_scoped(&ctx, &session_token, alert_id)
         .await
         .map_err(Into::into)
 }
@@ -460,7 +460,7 @@ pub async fn finalize_sale(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::finalize_sale(&ctx, &session_token, sale_id)
+    kasirmu_bridge::inventory::finalize_sale(&ctx, &session_token, sale_id)
         .await
         .map_err(Into::into)
 }
@@ -475,7 +475,7 @@ pub async fn void_pending_sale(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::inventory::void_pending_sale(&ctx, &session_token, sale_id)
+    kasirmu_bridge::inventory::void_pending_sale(&ctx, &session_token, sale_id)
         .await
         .map_err(Into::into)
 }

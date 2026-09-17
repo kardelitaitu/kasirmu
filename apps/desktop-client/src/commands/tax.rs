@@ -4,7 +4,7 @@
 //! category-level tax rate assignments for the TaxConfigurationScreen
 //! front-end.
 //!
-//! Wave A / S5: the bodies now live in the headless `oz_bridge::tax` module.
+//! Wave A / S5: the bodies now live in the headless `kasirmu_bridge::tax` module.
 //! Each `#[tauri::command]` below keeps its exact name, parameter list and
 //! `Result<_, AppError>` return so the registered IPC surface and the
 //! serialized error shape are unchanged; it borrows a `BridgeCtx` from
@@ -32,14 +32,14 @@ use oz_core::tax_rate::RoundingMode;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::tax::{
+pub use kasirmu_bridge::tax::{
     CategoryTaxRateRow, CreateTaxRateArgs, SetCategoryTaxRatesArgs, TaxRateDependencyCountsDto,
     TaxRateDto, TaxRateScopeDto, TaxRateWindowDto, UpdateTaxRateArgs,
 };
 
 /// Verify a tax permission against the global identity database.
 ///
-/// Thin adapter over `oz_bridge::tax::require_tax_permission`: the name,
+/// Thin adapter over `kasirmu_bridge::tax::require_tax_permission`: the name,
 /// parameter list and `Result<_, AppError>` type are unchanged so the sibling
 /// test module keeps exercising the global-identity-DB gate (ADR #4 / ADR #7)
 /// through `AppState`.
@@ -50,7 +50,7 @@ async fn require_tax_permission(
     permission: &str,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tax::require_tax_permission(&ctx, user_id, permission)
+    kasirmu_bridge::tax::require_tax_permission(&ctx, user_id, permission)
         .await
         .map_err(AppError::from)
 }
@@ -66,14 +66,14 @@ pub async fn list_tax_rates_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<TaxRateDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tax::list_rates_scoped(&ctx, &session_token)
+    kasirmu_bridge::tax::list_rates_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
 
 /// Business logic for listing tax rates (extracted for testing).
 ///
-/// Thin adapter over `oz_bridge::tax::run_list_tax_rates` — unchanged name,
+/// Thin adapter over `kasirmu_bridge::tax::run_list_tax_rates` — unchanged name,
 /// parameter list and `Result<_, AppError>` type so the sibling test module
 /// keeps matching on `AppError::Core`. The bridge joins
 /// `list_tax_rate_scopes()` so each row carries its authoring scope and
@@ -81,7 +81,7 @@ pub async fn list_tax_rates_scoped(
 /// struct is not widened and the sync snapshot wire is untouched).
 #[allow(dead_code)] // retained by the Wave-A extraction contract for sibling tests
 fn run_list_tax_rates(conn: &rusqlite::Connection) -> Result<Vec<TaxRateDto>, AppError> {
-    oz_bridge::tax::run_list_tax_rates(conn).map_err(AppError::from)
+    kasirmu_bridge::tax::run_list_tax_rates(conn).map_err(AppError::from)
 }
 
 /// Create a tax rate in the store resolved from a session token. ADR #7.
@@ -95,14 +95,14 @@ pub async fn create_tax_rate_scoped(
     state: State<'_, AppState>,
 ) -> Result<TaxRateDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tax::create_rate_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::tax::create_rate_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
 
 /// Business logic for creating a tax rate (extracted for testing).
 ///
-/// Thin adapter over `oz_bridge::tax::run_create_tax_rate`, which routes on
+/// Thin adapter over `kasirmu_bridge::tax::run_create_tax_rate`, which routes on
 /// the optional scope/window args: any of them present sends the write to the
 /// tier-scoped core fn; all absent keeps the legacy global-arm write so
 /// existing callers behave byte-identically. Both-set entity+location is
@@ -112,7 +112,7 @@ fn run_create_tax_rate(
     conn: &rusqlite::Connection,
     args: &CreateTaxRateArgs,
 ) -> Result<TaxRateDto, AppError> {
-    oz_bridge::tax::run_create_tax_rate(conn, args).map_err(AppError::from)
+    kasirmu_bridge::tax::run_create_tax_rate(conn, args).map_err(AppError::from)
 }
 
 /// Update a tax rate in the store resolved from a session token. ADR #7.
@@ -126,14 +126,14 @@ pub async fn update_tax_rate_scoped(
     state: State<'_, AppState>,
 ) -> Result<TaxRateDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tax::update_rate_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::tax::update_rate_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
 
 /// Business logic for updating a tax rate (extracted for testing).
 ///
-/// Thin adapter over `oz_bridge::tax::run_update_tax_rate` — same routing
+/// Thin adapter over `kasirmu_bridge::tax::run_update_tax_rate` — same routing
 /// rule as [`run_create_tax_rate`]. F1 SURFACING DEBT: a tier change (new
 /// legal_entity_id or location_id) silently empties the vacated tier's
 /// default — the UI must warn before saving, because nothing re-fills it.
@@ -142,7 +142,7 @@ fn run_update_tax_rate(
     conn: &rusqlite::Connection,
     args: &UpdateTaxRateArgs,
 ) -> Result<TaxRateDto, AppError> {
-    oz_bridge::tax::run_update_tax_rate(conn, args).map_err(AppError::from)
+    kasirmu_bridge::tax::run_update_tax_rate(conn, args).map_err(AppError::from)
 }
 
 /// Delete (archive) a tax rate in the store resolved from a session token.
@@ -166,7 +166,7 @@ pub async fn delete_tax_rate_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tax::delete_rate_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::tax::delete_rate_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -188,7 +188,7 @@ pub async fn get_tax_rate_dependency_counts_scoped(
     state: State<'_, AppState>,
 ) -> Result<TaxRateDependencyCountsDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tax::dependency_counts_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::tax::dependency_counts_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -203,20 +203,20 @@ pub async fn list_category_tax_rates_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<CategoryTaxRateRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tax::list_category_rates_scoped(&ctx, &session_token)
+    kasirmu_bridge::tax::list_category_rates_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
 
 /// Business logic for listing category tax rates (extracted for testing).
 ///
-/// Thin adapter over `oz_bridge::tax::run_list_category_tax_rates`:
+/// Thin adapter over `kasirmu_bridge::tax::run_list_category_tax_rates`:
 /// unchanged name, parameter list and `Result<_, AppError>` type.
 #[allow(dead_code)] // retained by the Wave-A extraction contract for sibling tests
 fn run_list_category_tax_rates(
     db: &rusqlite::Connection,
 ) -> Result<Vec<CategoryTaxRateRow>, AppError> {
-    oz_bridge::tax::run_list_category_tax_rates(db).map_err(AppError::from)
+    kasirmu_bridge::tax::run_list_category_tax_rates(db).map_err(AppError::from)
 }
 
 /// Set (replace) the tax rates assigned to a category in the store resolved
@@ -228,7 +228,7 @@ pub async fn set_category_tax_rates_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tax::set_category_rates_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::tax::set_category_rates_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -254,7 +254,7 @@ pub async fn list_tax_rate_rounding_modes_scoped(
     state: State<'_, AppState>,
 ) -> Result<std::collections::HashMap<String, Option<RoundingMode>>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tax::rounding_modes_scoped(&ctx, &session_token, &rate_ids)
+    kasirmu_bridge::tax::rounding_modes_scoped(&ctx, &session_token, &rate_ids)
         .await
         .map_err(Into::into)
 }

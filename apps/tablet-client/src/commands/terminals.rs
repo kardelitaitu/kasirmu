@@ -250,7 +250,7 @@ fn run_list_terminals(conn: &rusqlite::Connection) -> Result<Vec<TerminalDto>, A
 
 /// List all registered terminals resolved from a session token. ADR #7.
 ///
-/// F-017 parity: the gate now matches `oz_bridge::terminals::list_terminals_scoped`,
+/// F-017 parity: the gate now matches `kasirmu_bridge::terminals::list_terminals_scoped`,
 /// which this shell's command mirrors. The tablet's copy of this surface never
 /// picked the per-domain check up, so any authenticated session on a tablet —
 /// including a cashier with no terminals role — could enumerate every terminal
@@ -328,7 +328,7 @@ pub async fn register_terminal_scoped(
     sub.verify_signature()?;
 
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    // F-017 parity with `oz_bridge::terminals::register_terminal_scoped`, and
+    // F-017 parity with `kasirmu_bridge::terminals::register_terminal_scoped`, and
     // the settings T4-1 fix in shape: this command used to take
     // `user_id: String` and check `require_permission_for_user(&store, &user_id,
     // …)`. The shared wrapper (`ui/src/api/terminals.ts:55`) sends only
@@ -362,7 +362,7 @@ pub async fn update_terminal_scoped(
     validate_not_empty("id", &args.id).map_err(|e| AppError::Invalid(e.to_string()))?;
 
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    // F-017 parity with `oz_bridge::terminals::update_terminal_scoped`, and the
+    // F-017 parity with `kasirmu_bridge::terminals::update_terminal_scoped`, and the
     // T4-1 shape again: `user_id: String` was a required argument the wrapper at
     // `ui/src/api/terminals.ts:63` never sends, so the call was rejected before
     // its body ran. Gating on the session also moves the check ahead of the
@@ -416,7 +416,7 @@ pub async fn ping_terminal_scoped(
     validate_not_empty("id", &id).map_err(|e| AppError::Invalid(e.to_string()))?;
 
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    // F-017 parity with `oz_bridge::terminals::ping_terminal_scoped`: a ping
+    // F-017 parity with `kasirmu_bridge::terminals::ping_terminal_scoped`: a ping
     // touches the device, so it is gated at the read tier the bridge chose.
     require_permission_for_session(&state, &session, permissions::TERMINALS_READ).await?;
     let db_guard = conn_arc
@@ -442,7 +442,7 @@ pub async fn delete_terminal_scoped(
     validate_not_empty("id", &id).map_err(|e| AppError::Invalid(e.to_string()))?;
 
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    // F-017 parity with `oz_bridge::terminals::delete_terminal_scoped`. This is
+    // F-017 parity with `kasirmu_bridge::terminals::delete_terminal_scoped`. This is
     // the most destructive command on the surface, and it carried both halves of
     // the settings T4-1 defect at once: `user_id: String` was required while
     // `ui/src/api/terminals.ts:79` sends only `{ sessionToken, id }`, so the
@@ -473,7 +473,7 @@ pub async fn list_terminal_overrides_scoped(
         .map_err(|e| AppError::Invalid(e.to_string()))?;
 
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    // F-017 parity with `oz_bridge::terminals::list_terminal_overrides_scoped`.
+    // F-017 parity with `kasirmu_bridge::terminals::list_terminal_overrides_scoped`.
     require_permission_for_session(&state, &session, permissions::TERMINALS_READ).await?;
     let db_guard = conn_arc
         .lock()
@@ -501,7 +501,7 @@ pub async fn set_terminal_override_scoped(
     validate_not_empty("feature", &feature).map_err(|e| AppError::Invalid(e.to_string()))?;
 
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    // F-017 parity with `oz_bridge::terminals::set_terminal_override_scoped`;
+    // F-017 parity with `kasirmu_bridge::terminals::set_terminal_override_scoped`;
     // `ui/src/api/terminals.ts` sends `{ sessionToken, terminalId, feature,
     // enabled }`, so the dropped `user_id` was never supplied and the write was
     // rejected before it ran.
@@ -537,7 +537,7 @@ pub async fn delete_terminal_override_scoped(
     validate_not_empty("feature", &feature).map_err(|e| AppError::Invalid(e.to_string()))?;
 
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    // F-017 parity with `oz_bridge::terminals::delete_terminal_override_scoped`.
+    // F-017 parity with `kasirmu_bridge::terminals::delete_terminal_override_scoped`.
     require_permission_for_session(&state, &session, permissions::TERMINALS_EDIT).await?;
     let db_guard = conn_arc
         .lock()

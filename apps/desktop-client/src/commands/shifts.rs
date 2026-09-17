@@ -2,7 +2,7 @@
 //!
 //! Open/close cashier shifts with cash balance reconciliation.
 //!
-//! Wave D / D4a: the bodies now live in the headless `oz_bridge::shifts`
+//! Wave D / D4a: the bodies now live in the headless `kasirmu_bridge::shifts`
 //! module. Each `#[tauri::command]` below keeps its exact name, parameter
 //! list, attributes and `Result<_, AppError>` wire contract; it builds a
 //! `BridgeCtx` from `AppState` and delegates, preserving gate order and
@@ -15,7 +15,7 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::shifts::{
+pub use kasirmu_bridge::shifts::{
     CashPayoutDto, CloseShiftArgs, CloseShiftScopedArgs, CreateCashPayoutArgs, OpenShiftArgs,
     OpenShiftScopedArgs, ShiftDto, ShiftPaymentBreakdownDto, ShiftReportDto, ShiftSalesByHourDto,
 };
@@ -28,7 +28,7 @@ pub async fn open_shift_scoped(
     state: State<'_, AppState>,
 ) -> Result<ShiftDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::shifts::open_shift_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::shifts::open_shift_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -41,7 +41,7 @@ pub async fn close_shift_scoped(
     state: State<'_, AppState>,
 ) -> Result<ShiftDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::shifts::close_shift_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::shifts::close_shift_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -53,7 +53,7 @@ pub async fn get_active_shift_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<ShiftDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::shifts::get_active_shift_scoped(&ctx, &session_token)
+    kasirmu_bridge::shifts::get_active_shift_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -65,7 +65,7 @@ pub async fn list_shifts_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<ShiftDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::shifts::list_shifts_scoped(&ctx, &session_token)
+    kasirmu_bridge::shifts::list_shifts_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -78,7 +78,7 @@ pub async fn get_shift_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<ShiftDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::shifts::get_shift_scoped(&ctx, &id, &session_token)
+    kasirmu_bridge::shifts::get_shift_scoped(&ctx, &id, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -91,7 +91,7 @@ pub async fn create_cash_payout_scoped(
     state: State<'_, AppState>,
 ) -> Result<CashPayoutDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::shifts::create_cash_payout_scoped(&ctx, &args, &session_token)
+    kasirmu_bridge::shifts::create_cash_payout_scoped(&ctx, &args, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -104,7 +104,7 @@ pub async fn get_shift_report_scoped(
     state: State<'_, AppState>,
 ) -> Result<ShiftReportDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::shifts::get_shift_report_scoped(&ctx, &shift_id, &session_token)
+    kasirmu_bridge::shifts::get_shift_report_scoped(&ctx, &shift_id, &session_token)
         .await
         .map_err(Into::into)
 }

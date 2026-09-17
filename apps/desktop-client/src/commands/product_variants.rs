@@ -5,7 +5,7 @@
 //! its own SKU, optional price override, and barcode.
 //!
 //! Wave A / S7: the bodies now live in the headless
-//! `oz_bridge::product_variants` module. Each `#[tauri::command]` below
+//! `kasirmu_bridge::product_variants` module. Each `#[tauri::command]` below
 //! keeps its exact name, parameter list and `Result<_, AppError>` return so
 //! the registered IPC surface and the serialized error shape are unchanged;
 //! it borrows a `BridgeCtx` from `AppState`, calls the bridge, and maps
@@ -22,7 +22,7 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::product_variants::{
+pub use kasirmu_bridge::product_variants::{
     CreateProductVariantArgs, CreateProductVariantResult, MoneyDto, ProductVariantDto,
     UpdateProductVariantArgs, UpdateProductVariantResult,
 };
@@ -35,7 +35,7 @@ pub async fn list_product_variants_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<ProductVariantDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::product_variants::list_scoped(&ctx, &parent_sku, &session_token)
+    kasirmu_bridge::product_variants::list_scoped(&ctx, &parent_sku, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -48,7 +48,7 @@ pub async fn get_product_variant_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<ProductVariantDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::product_variants::get_scoped(&ctx, &sku, &session_token)
+    kasirmu_bridge::product_variants::get_scoped(&ctx, &sku, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -61,7 +61,7 @@ pub async fn delete_product_variant_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::product_variants::delete_scoped(&ctx, &sku, &session_token)
+    kasirmu_bridge::product_variants::delete_scoped(&ctx, &sku, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -74,7 +74,7 @@ pub async fn create_product_variant_scoped(
     state: State<'_, AppState>,
 ) -> Result<CreateProductVariantResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::product_variants::create_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::product_variants::create_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -87,7 +87,7 @@ pub async fn update_product_variant_scoped(
     state: State<'_, AppState>,
 ) -> Result<UpdateProductVariantResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::product_variants::update_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::product_variants::update_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }

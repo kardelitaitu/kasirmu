@@ -11,7 +11,7 @@
 //! The staged tenant sentinel is `default` (same as the memo commands); a
 //! future tenant claim resolves through the session without changing DTOs.
 //!
-//! Wave C / C5: the bodies now live in the headless `oz_bridge::payables`
+//! Wave C / C5: the bodies now live in the headless `kasirmu_bridge::payables`
 //! module. Each `#[tauri::command]` below keeps its exact name, parameter
 //! list, attributes and `Result<_, AppError>` wire contract; it builds a
 //! `BridgeCtx` from `AppState` and delegates. The session-scoped `payables:*`
@@ -43,14 +43,14 @@ use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::payables::{CreatePayableArgs, MoneyDto, PayableDto, RecordPayablePaymentArgs};
+pub use kasirmu_bridge::payables::{CreatePayableArgs, MoneyDto, PayableDto, RecordPayablePaymentArgs};
 
 /// Parse the optional status filter for `list_payables_scoped`. Unknown
 /// values are rejected (unlike the store's lenient read-back) so a typo in a
 /// filter never silently returns the wrong slice.
 #[allow(dead_code)] // retained for payables_tests.rs, which calls it directly
 fn parse_status_filter(raw: Option<&str>) -> Result<Option<PayableStatus>, AppError> {
-    oz_bridge::payables::parse_status_filter(raw).map_err(AppError::from)
+    kasirmu_bridge::payables::parse_status_filter(raw).map_err(AppError::from)
 }
 
 /// List payables, newest first. `status` optionally filters to one lifecycle
@@ -62,7 +62,7 @@ pub async fn list_payables_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<PayableDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::payables::list_payables_scoped(&ctx, status, &session_token)
+    kasirmu_bridge::payables::list_payables_scoped(&ctx, status, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -75,7 +75,7 @@ pub async fn create_payable_scoped(
     state: State<'_, AppState>,
 ) -> Result<PayableDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::payables::create_payable_scoped(&ctx, args, &session_token)
+    kasirmu_bridge::payables::create_payable_scoped(&ctx, args, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -90,7 +90,7 @@ pub async fn record_payable_payment_scoped(
     state: State<'_, AppState>,
 ) -> Result<PayableDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::payables::record_payable_payment_scoped(&ctx, args, &session_token)
+    kasirmu_bridge::payables::record_payable_payment_scoped(&ctx, args, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -104,7 +104,7 @@ pub async fn write_off_payable_scoped(
     state: State<'_, AppState>,
 ) -> Result<PayableDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::payables::write_off_payable_scoped(&ctx, &payable_id, &session_token)
+    kasirmu_bridge::payables::write_off_payable_scoped(&ctx, &payable_id, &session_token)
         .await
         .map_err(Into::into)
 }

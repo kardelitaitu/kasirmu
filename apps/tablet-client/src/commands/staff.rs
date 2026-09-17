@@ -29,7 +29,7 @@ use crate::error::AppError;
 use crate::state::AppState;
 
 // Phase 3.3 T5: the staff wire DTOs and their helpers moved to the shared
-// `oz_bridge::staff` module and are re-exported here, same as the desktop
+// `kasirmu_bridge::staff` module and are re-exported here, same as the desktop
 // shell — one wire definition, ending the fork. `to_staff_dto`,
 // `assignment_dto`, `parse_scope_mode`, `assignment_spec` and
 // `enforce_role_assignment_policy` re-export as-is (their error type is the
@@ -37,7 +37,7 @@ use crate::state::AppState;
 // seam); the shell keeps two thin `AppError` adapters that the sibling test
 // modules call directly.
 //
-// ADR #49: every door in this module now delegates to `oz_bridge::staff`, and
+// ADR #49: every door in this module now delegates to `kasirmu_bridge::staff`, and
 // each body is statement-identical to its bridge twin. Five of them the parity
 // instrument flags anyway, and each flag is spelling, not behaviour:
 // `bootstrap_owner` qualifies `SystemTime`/`sign_picker_ticket` where the
@@ -49,7 +49,7 @@ use crate::state::AppState;
 // ADR #49 §Decision 2's own pattern (the bridge module doc names it as the one
 // exception: encoding needs `serde_json`, which is not an oz-bridge
 // dependency).
-pub use oz_bridge::staff::{
+pub use kasirmu_bridge::staff::{
     AssignmentArgs, AssignmentDto, BootstrapOwnerArgs, BootstrapOwnerResult, CreateRoleArgs,
     CreateStaffScopedArgs, PermissionKeyDto, ProfileArgs, ProfileViewDto, RoleDto, RoleHolderDto,
     RoleHoldersDto, StaffMemberDto, UpdateRoleArgs, UpdateStaffScopedArgs, assignment_dto,
@@ -68,12 +68,12 @@ fn grants_json(keys: &[String]) -> Result<String, AppError> {
 /// Build the authoring DTO from a domain role, adding the two facts the
 /// surface needs in order to decide what it may offer.
 ///
-/// Thin adapter over `oz_bridge::staff::role_dto`: same name, parameters
+/// Thin adapter over `kasirmu_bridge::staff::role_dto`: same name, parameters
 /// and `Result<_, AppError>` so the sibling test modules keep building DTOs
 /// from a shell-held `Store` (mirrors the desktop staff.rs adapter).
 #[cfg(test)]
 fn role_dto(store: &Store<'_>, role: Role) -> Result<RoleDto, AppError> {
-    oz_bridge::staff::role_dto(store, role).map_err(AppError::from)
+    kasirmu_bridge::staff::role_dto(store, role).map_err(AppError::from)
 }
 
 // ── Session-scoped staff commands (ADR #7 · audit-open-findings STAFF-01) ────────
@@ -91,7 +91,7 @@ pub async fn list_staff_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<StaffMemberDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::staff::list_staff_scoped(&ctx, &session_token)
+    kasirmu_bridge::staff::list_staff_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -107,7 +107,7 @@ pub async fn get_staff_profile_scoped(
     state: State<'_, AppState>,
 ) -> Result<ProfileViewDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::staff::get_staff_profile_scoped(&ctx, &session_token, &user_id)
+    kasirmu_bridge::staff::get_staff_profile_scoped(&ctx, &session_token, &user_id)
         .await
         .map_err(Into::into)
 }
@@ -119,7 +119,7 @@ pub async fn list_roles_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<RoleDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::staff::list_roles_scoped(&ctx, &session_token)
+    kasirmu_bridge::staff::list_roles_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -139,7 +139,7 @@ pub async fn list_permission_keys_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<PermissionKeyDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::staff::list_permission_keys_scoped(&ctx, &session_token)
+    kasirmu_bridge::staff::list_permission_keys_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -163,7 +163,7 @@ pub async fn create_role_scoped(
     // bridge module doc names this as its one exception.
     let grants = grants_json(&args.permissions)?;
     let ctx = state.bridge_ctx();
-    oz_bridge::staff::create_role_scoped(&ctx, &session_token, &args, &grants)
+    kasirmu_bridge::staff::create_role_scoped(&ctx, &session_token, &args, &grants)
         .await
         .map_err(Into::into)
 }
@@ -182,7 +182,7 @@ pub async fn update_role_scoped(
     // ADR #49 §Decision 2 — see `create_role_scoped` above.
     let grants = grants_json(&args.permissions)?;
     let ctx = state.bridge_ctx();
-    oz_bridge::staff::update_role_scoped(&ctx, &session_token, &args, &grants)
+    kasirmu_bridge::staff::update_role_scoped(&ctx, &session_token, &args, &grants)
         .await
         .map_err(Into::into)
 }
@@ -200,7 +200,7 @@ pub async fn delete_role_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::staff::delete_role_scoped(&ctx, &id, &session_token)
+    kasirmu_bridge::staff::delete_role_scoped(&ctx, &id, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -227,7 +227,7 @@ pub async fn list_role_holders_scoped(
     state: State<'_, AppState>,
 ) -> Result<RoleHoldersDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::staff::list_role_holders_scoped(&ctx, &id, &session_token)
+    kasirmu_bridge::staff::list_role_holders_scoped(&ctx, &id, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -243,7 +243,7 @@ pub async fn create_staff_scoped(
     state: State<'_, AppState>,
 ) -> Result<StaffMemberDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::staff::create_staff_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::staff::create_staff_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -446,7 +446,7 @@ pub async fn bootstrap_owner(
     state: State<'_, AppState>,
 ) -> Result<BootstrapOwnerResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::staff::bootstrap_owner(&ctx, &args)
+    kasirmu_bridge::staff::bootstrap_owner(&ctx, &args)
         .await
         .map_err(Into::into)
 }
@@ -454,7 +454,7 @@ pub async fn bootstrap_owner(
 /// Business logic for `bootstrap_owner` (extracted for testing).
 ///
 /// A forwarder, not a copy. The body now lives once in
-/// `oz_bridge::staff::run_bootstrap_owner`, which this shell's eight
+/// `kasirmu_bridge::staff::run_bootstrap_owner`, which this shell's eight
 /// `run_bootstrap_owner_*` tests drive through this name and which the desktop
 /// shell reaches the same way. The two copies were line-for-line identical
 /// (same trim/lowercase, the same three validations in the same order, the same
@@ -468,7 +468,7 @@ fn run_bootstrap_owner(
     conn: &rusqlite::Connection,
     args: &BootstrapOwnerArgs,
 ) -> Result<BootstrapOwnerResult, AppError> {
-    Ok(oz_bridge::staff::run_bootstrap_owner(conn, args)?)
+    Ok(kasirmu_bridge::staff::run_bootstrap_owner(conn, args)?)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────

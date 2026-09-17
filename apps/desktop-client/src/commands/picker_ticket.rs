@@ -1,6 +1,6 @@
 //! Picker-ticket commands — thin re-export shim (Wave B / B4a).
 //!
-//! The HMAC implementation moved verbatim to `oz_bridge::picker`, which is
+//! The HMAC implementation moved verbatim to `kasirmu_bridge::picker`, which is
 //! tauri-free and shared with the bridge auth bodies. This module keeps the
 //! `crate::commands::picker_ticket` path that `workspaces.rs`, `staff.rs`,
 //! `auth.rs` and the sibling test files already import, so extracting the
@@ -11,4 +11,4 @@
 //! the 5-minute TTL and the uniform `None` denial for forged/expired/malformed
 //! tickets are defined exactly once, in the bridge.
 
-pub use oz_bridge::picker::{PICKER_TICKET_TTL_SECS, sign_picker_ticket, verify_picker_ticket};
+pub use kasirmu_bridge::picker::{PICKER_TICKET_TTL_SECS, sign_picker_ticket, verify_picker_ticket};

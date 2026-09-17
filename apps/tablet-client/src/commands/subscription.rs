@@ -45,7 +45,7 @@ use chrono;
 use serde::Serialize;
 use tauri::{State, command};
 
-use oz_bridge::subscription::load_over_quota_report;
+use kasirmu_bridge::subscription::load_over_quota_report;
 use oz_core::availability::{AvailabilityFeature, FeatureVerdict, UsageCounts};
 use oz_core::db::Store;
 use oz_core::db::assignments::ScopeType;
@@ -514,7 +514,7 @@ pub async fn get_over_quota_report_scoped(
 }
 
 // The synchronous body of both tablet over-quota commands is the bridge's
-// `oz_bridge::subscription::load_over_quota_report`, imported above rather
+// `kasirmu_bridge::subscription::load_over_quota_report`, imported above rather
 // than re-implemented here (§1b.9): the two bodies were statement-identical
 // apart from the error type, and `From<BridgeError> for AppError` maps
 // `Core { sub_kind, message }` field-for-field, so the error shape is

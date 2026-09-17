@@ -3,7 +3,7 @@
 //! # ADR #49 status — measured 2026-09-16, `verify-body-parity.py` → **1 / 3**
 //!
 //! **One door is ported.** [`get_receipt_format_scoped`] delegates to
-//! [`oz_bridge::receipt_format::get_receipt_format_scoped`]: the bodies were
+//! [`kasirmu_bridge::receipt_format::get_receipt_format_scoped`]: the bodies were
 //! statement-identical, and the door names a permission (`SETTINGS_READ`), so
 //! the move is ledger-neutral. The twin takes `session_token` **last**.
 //!
@@ -33,7 +33,7 @@ use crate::state::AppState;
 ///
 /// # ADR #49 — ported 2026-09-16
 ///
-/// Delegates to [`oz_bridge::receipt_format::get_receipt_format_scoped`]. The
+/// Delegates to [`kasirmu_bridge::receipt_format::get_receipt_format_scoped`]. The
 /// body was statement-identical and the gate is `SETTINGS_READ` on both sides, so
 /// the move is ledger-neutral. Argument order follows the twin: `terminal_id`,
 /// `workspace_id`, then `session_token`.
@@ -45,7 +45,7 @@ pub async fn get_receipt_format_scoped(
     state: State<'_, AppState>,
 ) -> Result<EffectiveReceiptFormat, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::receipt_format::get_receipt_format_scoped(
+    kasirmu_bridge::receipt_format::get_receipt_format_scoped(
         &ctx,
         terminal_id,
         workspace_id,

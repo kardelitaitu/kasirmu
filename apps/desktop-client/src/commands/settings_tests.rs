@@ -1,8 +1,8 @@
 //! Desktop-lane settings command tests — the READ door.
 //!
-//! Every command in `settings.rs` is a shim over `oz_bridge::settings`, so the
+//! Every command in `settings.rs` is a shim over `kasirmu_bridge::settings`, so the
 //! desktop lane performs no read of its own: `get_setting` reaches
-//! `oz_bridge::settings::get_setting`, which calls `run_get_setting`
+//! `kasirmu_bridge::settings::get_setting`, which calls `run_get_setting`
 //! (`crates/kasirmu-bridge/src/settings.rs`). These tests pin that door for the one
 //! key a renderer actually asks for, and pin that the shim adds no bypass.
 //!
@@ -15,7 +15,7 @@
 // No `use super::*` on purpose: this shell's `settings.rs` holds only
 // `#[tauri::command]` shims and re-exported wire DTOs, and every item asserted
 // here is named by its owner instead — `oz_core::Settings`,
-// `platform_core::settings::keys`, `oz_bridge::settings`.
+// `platform_core::settings::keys`, `kasirmu_bridge::settings`.
 use oz_core::Settings;
 use oz_core::migrations;
 use rusqlite::Connection;
@@ -66,7 +66,7 @@ fn fn_body(src: &str, signature: &str) -> String {
 /// through the ungated `get_setting` command because the credential refusal
 /// sits on the WRITE path (`set_tracked`) and on the egress and ingest
 /// policies: it does not. The refusal is ALSO on the read path.
-/// `oz_bridge::settings::run_get_setting` asks `is_secret_key(key)` before it
+/// `kasirmu_bridge::settings::run_get_setting` asks `is_secret_key(key)` before it
 /// reads anything and answers `Ok(None)` for a deny-listed name, and this
 /// shell's `get_setting` command is a shim over exactly that function. The
 /// predicate chain is `is_secret_setting_key` -> `credential_base` ->
@@ -112,7 +112,7 @@ fn decision_pin_get_setting_refuses_stripe_api_key_at_the_read_door() {
     // The door the hook actually calls: Ok(None), not the value and not an
     // error — the renderer sees "never written".
     assert_eq!(
-        oz_bridge::settings::run_get_setting(&conn, STRIPE_API_KEY).unwrap(),
+        kasirmu_bridge::settings::run_get_setting(&conn, STRIPE_API_KEY).unwrap(),
         None,
         "`{STRIPE_API_KEY}` is deny-listed and must never reach the renderer          through `get_setting` — this is a refusal, not a value"
     );
@@ -120,7 +120,7 @@ fn decision_pin_get_setting_refuses_stripe_api_key_at_the_read_door() {
     // collation, so a case- or whitespace-exact match would admit a near-miss
     // spelling as its own readable row.
     assert_eq!(
-        oz_bridge::settings::run_get_setting(&conn, " Stripe.API_KEY ").unwrap(),
+        kasirmu_bridge::settings::run_get_setting(&conn, " Stripe.API_KEY ").unwrap(),
         None,
         "the fold in `credential_base` must cover the caller's sloppiest spelling"
     );
@@ -128,7 +128,7 @@ fn decision_pin_get_setting_refuses_stripe_api_key_at_the_read_door() {
     // above is the name test and not a broken read.
     Settings::set(&conn, "store.name", "Counter Store").unwrap();
     assert_eq!(
-        oz_bridge::settings::run_get_setting(&conn, "store.name")
+        kasirmu_bridge::settings::run_get_setting(&conn, "store.name")
             .unwrap()
             .as_deref(),
         Some("Counter Store"),
@@ -152,7 +152,7 @@ fn decision_pin_desktop_shims_reach_the_one_refused_door() {
     ] {
         let body = fn_body(src, signature);
         assert!(
-            body.contains("oz_bridge::settings::get_setting"),
+            body.contains("kasirmu_bridge::settings::get_setting"),
             "`{signature}` must delegate to the bridge door, found: {body}"
         );
         assert!(

@@ -262,11 +262,11 @@ pub const REGISTERED_TOTAL: usize = 319;
 /// (`get_terminal_scoped`, `list_terminal_overrides_scoped`,
 /// `list_terminals_scoped`, `ping_terminal_scoped`) stopped being
 /// authenticate-then-assume when each gained the session-derived
-/// `TERMINALS_READ` gate its `oz_bridge` twin already enforced.
+/// `TERMINALS_READ` gate its `kasirmu_bridge` twin already enforced.
 ///
 /// Lowered from 90 by the hardware F-017 pass: `hardware::open_cash_drawer_scoped`
 /// stopped being authenticate-then-assume when it gained the `PAYMENTS_CASH`
-/// gate its `oz_bridge::hardware` twin already enforced under the same finding
+/// gate its `kasirmu_bridge::hardware` twin already enforced under the same finding
 /// number. It is the only one of the seven `hardware::*` rows with a gate to
 /// copy — the other six are ungated in the bridge too, so they stay as debt
 /// until an owner rules on what permission they should carry.

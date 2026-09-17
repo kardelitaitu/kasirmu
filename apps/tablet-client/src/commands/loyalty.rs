@@ -1,6 +1,6 @@
 //! Loyalty commands: accounts, points and tiers.
 //!
-//! Every body delegates to `oz_bridge::loyalty` (ADR #49), and so does the
+//! Every body delegates to `kasirmu_bridge::loyalty` (ADR #49), and so does the
 //! `RedeemResult` DTO: it is re-exported from the bridge rather than defined
 //! twice, after checking both fields against the copy this shell used to own.
 //!
@@ -18,7 +18,7 @@ use oz_core::loyalty::{
     LoyaltyAccount, LoyaltyAccountWithDetails, LoyaltyTier, LoyaltyTransaction,
 };
 
-pub use oz_bridge::loyalty::RedeemResult;
+pub use kasirmu_bridge::loyalty::RedeemResult;
 
 use crate::error::AppError;
 use crate::state::AppState;
@@ -31,7 +31,7 @@ pub async fn get_loyalty_account_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<LoyaltyAccountWithDetails>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::loyalty::get_loyalty_account_scoped(&ctx, &session_token, &customer_id)
+    kasirmu_bridge::loyalty::get_loyalty_account_scoped(&ctx, &session_token, &customer_id)
         .await
         .map_err(Into::into)
 }
@@ -43,7 +43,7 @@ pub async fn list_loyalty_accounts_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<LoyaltyAccountWithDetails>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::loyalty::list_loyalty_accounts_scoped(&ctx, &session_token)
+    kasirmu_bridge::loyalty::list_loyalty_accounts_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -58,7 +58,7 @@ pub async fn earn_loyalty_points_scoped(
     state: State<'_, AppState>,
 ) -> Result<LoyaltyTransaction, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::loyalty::earn_loyalty_points_scoped(
+    kasirmu_bridge::loyalty::earn_loyalty_points_scoped(
         &ctx,
         &session_token,
         &customer_id,
@@ -79,7 +79,7 @@ pub async fn redeem_loyalty_points_scoped(
     state: State<'_, AppState>,
 ) -> Result<RedeemResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::loyalty::redeem_loyalty_points_scoped(
+    kasirmu_bridge::loyalty::redeem_loyalty_points_scoped(
         &ctx,
         &session_token,
         &customer_id,
@@ -97,7 +97,7 @@ pub async fn list_loyalty_tiers_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<LoyaltyTier>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::loyalty::list_loyalty_tiers_scoped(&ctx, &session_token)
+    kasirmu_bridge::loyalty::list_loyalty_tiers_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -110,7 +110,7 @@ pub async fn update_loyalty_tier_scoped(
     state: State<'_, AppState>,
 ) -> Result<LoyaltyTier, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::loyalty::update_loyalty_tier_scoped(&ctx, &session_token, &tier)
+    kasirmu_bridge::loyalty::update_loyalty_tier_scoped(&ctx, &session_token, &tier)
         .await
         .map_err(Into::into)
 }
@@ -123,7 +123,7 @@ pub async fn get_points_value_scoped(
     state: State<'_, AppState>,
 ) -> Result<i64, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::loyalty::get_points_value_scoped(&ctx, &session_token, points)
+    kasirmu_bridge::loyalty::get_points_value_scoped(&ctx, &session_token, points)
         .await
         .map_err(Into::into)
 }
@@ -136,7 +136,7 @@ pub async fn get_or_create_loyalty_account_scoped(
     state: State<'_, AppState>,
 ) -> Result<LoyaltyAccount, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::loyalty::get_or_create_loyalty_account_scoped(&ctx, &session_token, &customer_id)
+    kasirmu_bridge::loyalty::get_or_create_loyalty_account_scoped(&ctx, &session_token, &customer_id)
         .await
         .map_err(Into::into)
 }
@@ -159,7 +159,7 @@ async fn require_loyalty_permission(
     permission: &str,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::loyalty::require_loyalty_permission(&ctx, user_id, permission)
+    kasirmu_bridge::loyalty::require_loyalty_permission(&ctx, user_id, permission)
         .await
         .map_err(Into::into)
 }

@@ -3,7 +3,7 @@
 //! Delegates to `Store::void_sale` which handles the status transition,
 //! stock restoration, and audit logging inside a single transaction.
 //!
-//! Phase 3.3 T2: the args DTOs moved to the shared `oz_bridge::void`
+//! Phase 3.3 T2: the args DTOs moved to the shared `kasirmu_bridge::void`
 //! module (Agent 2's Wave D extraction) and are re-exported here, same
 //! as the desktop shell. The bodies stay tablet-native this slice: the
 //! tablet `AppState` cannot yet build a full `BridgeCtx` (its `db` is a
@@ -27,7 +27,7 @@ use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::void::{VoidSaleArgs, VoidSaleScopedArgs};
+pub use kasirmu_bridge::void::{VoidSaleArgs, VoidSaleScopedArgs};
 
 /// Void a completed sale within the session scope. ADR #7.
 ///

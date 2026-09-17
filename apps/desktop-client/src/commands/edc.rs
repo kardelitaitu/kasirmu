@@ -6,7 +6,7 @@ next: accept a terminal_id argument once more than one terminal can be configure
 */
 //! EDC card-terminal commands.
 //!
-//! Wave D / D3b: the bodies live in the headless `oz_bridge::edc` module.
+//! Wave D / D3b: the bodies live in the headless `kasirmu_bridge::edc` module.
 //! Each `#[tauri::command]` below keeps its exact name, parameter list
 //! and `Result<_, AppError>` return so the registered IPC surface and the
 //! serialized error shape are unchanged; it borrows a `BridgeCtx` from
@@ -24,13 +24,13 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::edc::{DEFAULT_TERMINAL_ID, EdcResultDto, EdcStatusDto};
+pub use kasirmu_bridge::edc::{DEFAULT_TERMINAL_ID, EdcResultDto, EdcStatusDto};
 
 /// Query the EDC terminal's current status.
 #[tauri::command]
 pub async fn edc_terminal_status(state: State<'_, AppState>) -> Result<EdcStatusDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::edc::edc_terminal_status(&ctx)
+    kasirmu_bridge::edc::edc_terminal_status(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -47,7 +47,7 @@ pub async fn edc_sale(
     currency: String,
 ) -> Result<EdcResultDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::edc::edc_sale(&ctx, &session_token, amount_minor, &currency)
+    kasirmu_bridge::edc::edc_sale(&ctx, &session_token, amount_minor, &currency)
         .await
         .map_err(Into::into)
 }
@@ -62,7 +62,7 @@ pub async fn edc_refund(
     currency: String,
 ) -> Result<EdcResultDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::edc::edc_refund(
+    kasirmu_bridge::edc::edc_refund(
         &ctx,
         &session_token,
         &transaction_id,
@@ -81,7 +81,7 @@ pub async fn edc_void(
     transaction_id: String,
 ) -> Result<EdcResultDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::edc::edc_void(&ctx, &session_token, &transaction_id)
+    kasirmu_bridge::edc::edc_void(&ctx, &session_token, &transaction_id)
         .await
         .map_err(Into::into)
 }
@@ -93,7 +93,7 @@ pub async fn edc_terminal_status_scoped(
     state: State<'_, AppState>,
 ) -> Result<EdcStatusDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::edc::edc_terminal_status_scoped(&ctx, &session_token)
+    kasirmu_bridge::edc::edc_terminal_status_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }

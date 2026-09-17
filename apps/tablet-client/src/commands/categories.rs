@@ -24,12 +24,12 @@
 //! The bridge twin is `crates/kasirmu-bridge/src/categories.rs`, which documents
 //! itself as the tauri-free half of the **desktop** module — and the desktop
 //! has already delegated it (`apps/desktop-client/src/commands/categories.rs`
-//! is a shim, 8 `oz_bridge::` references and no local `list_categories`). So
+//! is a shim, 8 `kasirmu_bridge::` references and no local `list_categories`). So
 //! the bridge's shape *is* the desktop's original body, and this shell is the
 //! divergent side of a two-shell fork.
 //!
 //! **One door is ported.** [`list_categories`] shares
-//! [`oz_bridge::categories::run_list_categories`] — §1b.9's "port the query,
+//! [`kasirmu_bridge::categories::run_list_categories`] — §1b.9's "port the query,
 //! keep the door": this door resolves no session, so it is ledger-neutral, and
 //! only the statement moves. The instrument still prints this pair as
 //! DIVERGENT, and that is a gap in its normaliser rather than a fork: a `run_*`
@@ -66,7 +66,7 @@ use crate::state::AppState;
 /// were field-for-field identical (`id` / `name` / `colour` / `icon`, all
 /// `String`) and **neither side carried `#[serde(rename_all)]`**, so the wire
 /// spelling is unchanged. Nothing outside this module names the type.
-pub use oz_bridge::categories::CategoryDto;
+pub use kasirmu_bridge::categories::CategoryDto;
 
 /// Fetch all categories, ordered by name.
 ///
@@ -79,7 +79,7 @@ pub use oz_bridge::categories::CategoryDto;
 #[command]
 pub async fn list_categories(state: State<'_, AppState>) -> Result<Vec<CategoryDto>, AppError> {
     let db = state.db.lock().await;
-    oz_bridge::categories::run_list_categories(&db).map_err(AppError::from)
+    kasirmu_bridge::categories::run_list_categories(&db).map_err(AppError::from)
 }
 
 // ── Create category ──────────────────────────────────────────────────

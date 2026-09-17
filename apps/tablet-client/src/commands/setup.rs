@@ -6,7 +6,7 @@
 //! the wizard or go straight to the main app.
 //!
 //! `CompleteSetupArgs`, `SetupStatus` and `EnabledFeaturesResult` are all
-//! re-exported from `oz_bridge::setup`: the wire shape is one type shared
+//! re-exported from `kasirmu_bridge::setup`: the wire shape is one type shared
 //! with the desktop shell, so a key the wizard sends — or a key the wizard
 //! reads back — cannot exist on only one side.
 //!
@@ -37,7 +37,7 @@
 //!
 //! The absent leg is **not** a defect here: `bootstrap_owner` seeds the default
 //! roles before creating the first owner
-//! (`apps/tablet-client/src/commands/staff.rs:444` → `oz_bridge::staff::
+//! (`apps/tablet-client/src/commands/staff.rs:444` → `kasirmu_bridge::staff::
 //! bootstrap_owner` → `run_bootstrap_owner`), so a tablet-provisioned store
 //! holds its role rows by the time the wizard runs. That is why the divergence
 //! is recorded in [`write_setup`] as deliberate rather than owed.
@@ -53,19 +53,19 @@ use crate::state::AppState;
 
 /// Completesetupargs — the payload the setup wizard sends.
 ///
-/// Re-exported from `oz_bridge::setup` instead of copied locally. The local
+/// Re-exported from `kasirmu_bridge::setup` instead of copied locally. The local
 /// copy of this struct carried only `preset` and `features`; serde ignores
 /// unknown keys, so the `default_currency` the wizard collects was dropped
 /// on tablet with no error on either side. A field list duplicated across
 /// two crates drifts again the next time the bridge gains a key — sharing
 /// the one type makes that class of loss impossible rather than unlikely.
-pub use oz_bridge::setup::CompleteSetupArgs;
+pub use kasirmu_bridge::setup::CompleteSetupArgs;
 
 // ── Response types ───────────────────────────────────────────────────
 
 /// Outbound wire shapes for `get_setup_status` and `get_enabled_features`.
 ///
-/// Re-exported from `oz_bridge::setup` for the same reason
+/// Re-exported from `kasirmu_bridge::setup` for the same reason
 /// [`CompleteSetupArgs`] is: both copies declared `completed` + `preset` and
 /// `features` with no `#[serde(rename_all)]`, so they had not drifted yet —
 /// which is only because each side is a single-word field list, the casing
@@ -75,7 +75,7 @@ pub use oz_bridge::setup::CompleteSetupArgs;
 /// The desktop shell already re-exports both
 /// (`apps/desktop-client/src/commands/setup.rs:19`); the keys are pinned here
 /// against what `ui/src/api/settings.ts:155` and `:179` read.
-pub use oz_bridge::setup::{EnabledFeaturesResult, SetupStatus};
+pub use kasirmu_bridge::setup::{EnabledFeaturesResult, SetupStatus};
 
 // ── Commands ─────────────────────────────────────────────────────────
 
@@ -86,7 +86,7 @@ pub use oz_bridge::setup::{EnabledFeaturesResult, SetupStatus};
 ///
 /// # ADR #49 — ported 2026-09-16
 ///
-/// Delegates to [`oz_bridge::setup::get_enabled_features`]. The two bodies were
+/// Delegates to [`kasirmu_bridge::setup::get_enabled_features`]. The two bodies were
 /// statement-identical, so this is a whole-body move rather than a rewrite; the
 /// door resolves no session, which makes the delegation ledger-neutral.
 #[command]
@@ -94,7 +94,7 @@ pub async fn get_enabled_features(
     state: State<'_, AppState>,
 ) -> Result<EnabledFeaturesResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::setup::get_enabled_features(&ctx)
+    kasirmu_bridge::setup::get_enabled_features(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -104,7 +104,7 @@ pub async fn get_enabled_features(
 /// Split out of the `#[command]` so tests drive the real statement list
 /// with a plain `&Connection` instead of a mirrored copy of it — a copy is
 /// how "the body writes it" and "the test checks it" came to disagree.
-/// Legs and their order mirror `oz_bridge::setup::complete_setup`; the
+/// Legs and their order mirror `kasirmu_bridge::setup::complete_setup`; the
 /// bridge's leading `seed_default_roles` is deliberately not mirrored here
 /// (that seeding is not this command's behaviour to take on today).
 fn write_setup(conn: &Connection, args: &CompleteSetupArgs) -> Result<(), AppError> {
@@ -195,12 +195,12 @@ pub async fn complete_setup(
 ///
 /// # ADR #49 — ported 2026-09-16
 ///
-/// Delegates to [`oz_bridge::setup::dismiss_setup_wizard`]; the bodies were
+/// Delegates to [`kasirmu_bridge::setup::dismiss_setup_wizard`]; the bodies were
 /// statement-identical. Resolves no session, so the move is ledger-neutral.
 #[command]
 pub async fn dismiss_setup_wizard(state: State<'_, AppState>) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::setup::dismiss_setup_wizard(&ctx)
+    kasirmu_bridge::setup::dismiss_setup_wizard(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -212,12 +212,12 @@ pub async fn dismiss_setup_wizard(state: State<'_, AppState>) -> Result<(), AppE
 ///
 /// # ADR #49 — ported 2026-09-16
 ///
-/// Delegates to [`oz_bridge::setup::get_setup_status`]; the bodies were
+/// Delegates to [`kasirmu_bridge::setup::get_setup_status`]; the bodies were
 /// statement-identical. Resolves no session, so the move is ledger-neutral.
 #[command]
 pub async fn get_setup_status(state: State<'_, AppState>) -> Result<SetupStatus, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::setup::get_setup_status(&ctx)
+    kasirmu_bridge::setup::get_setup_status(&ctx)
         .await
         .map_err(Into::into)
 }

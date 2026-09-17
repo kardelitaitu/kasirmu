@@ -1,5 +1,5 @@
 use super::*;
-use oz_bridge::reports::MAX_TOP_PRODUCTS;
+use kasirmu_bridge::reports::MAX_TOP_PRODUCTS;
 use oz_core::db::Store;
 use oz_core::permissions;
 use oz_core::session::SessionContext;

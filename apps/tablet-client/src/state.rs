@@ -441,7 +441,7 @@ impl AppState {
     /// headless default. It is `None` only where `app` is `None`
     /// (`for_test*`), matching the bridge's documented headless no-op.
     #[allow(dead_code)] // consumed by the Slice 1+ shims (audit.rs, sync.rs)
-    pub(crate) fn bridge_ctx(&self) -> oz_bridge::ctx::BridgeCtx<'_> {
+    pub(crate) fn bridge_ctx(&self) -> kasirmu_bridge::ctx::BridgeCtx<'_> {
         // The media root is a shell concern: `AppHandle`/`Manager` never
         // enter oz-bridge, so `app_cache_dir()` is resolved here and
         // injected as a plain PathBuf. `None` when this shell holds no
@@ -457,7 +457,7 @@ impl AppState {
                 }
             });
 
-        oz_bridge::ctx::BridgeCtx {
+        kasirmu_bridge::ctx::BridgeCtx {
             db: &self.db,
             db_manager: &self.db_manager,
             sessions: &self.session_store,

@@ -1,8 +1,8 @@
 //! Tauri commands for the node topology: capability probe, diagram
 //! templates, load, revisions, and the atomic Apply diff.
 //!
-//! Wave E (e): the bodies moved to oz_bridge::topology::commands, the last
-//! leaf of the oz_bridge::topology mirror; this module keeps every
+//! Wave E (e): the bodies moved to kasirmu_bridge::topology::commands, the last
+//! leaf of the kasirmu_bridge::topology mirror; this module keeps every
 //! #[tauri::command] with its byte-identical signature and delegates through
 //! the bridge_ctx seam. authorize_topology_write stays as an AppError-typed
 //! adapter because the mounted tests call it through the root glob, and the
@@ -19,10 +19,10 @@ use crate::state::AppState;
 use super::model::UpdateInstanceRequest;
 use super::revisions::{TopologyRevisionPinResult, TopologyRevisionSummary};
 
-pub use oz_bridge::topology::commands::{TopologyApplyResult, TopologyRevisionGraphResult};
+pub use kasirmu_bridge::topology::commands::{TopologyApplyResult, TopologyRevisionGraphResult};
 
 // Only the cfg(test) save_topology helper below reaches persistence names (the
-// library half delegates through oz_bridge directly); an ungated glob here
+// library half delegates through kasirmu_bridge directly); an ungated glob here
 // would be a library-build unused-import warning.
 #[cfg(test)]
 use super::persistence::*;
@@ -40,7 +40,7 @@ pub async fn can_save_topology(
     state: State<'_, AppState>,
 ) -> Result<bool, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::topology::commands::can_save_topology(&ctx, session_token, branch_id)
+    kasirmu_bridge::topology::commands::can_save_topology(&ctx, session_token, branch_id)
         .await
         .map_err(Into::into)
 }
@@ -49,7 +49,7 @@ pub async fn can_save_topology(
 
 /// Author a topology write and resolve the branch's topology key.
 ///
-/// Desktop adapter over [oz_bridge::topology::commands::authorize_topology_write]:
+/// Desktop adapter over [kasirmu_bridge::topology::commands::authorize_topology_write]:
 /// the mounted tests call it through the root glob, so it stays AppError-typed.
 #[allow(dead_code)] // AppError-typed adapter retained for the mounted tests
 pub(crate) async fn authorize_topology_write(
@@ -58,7 +58,7 @@ pub(crate) async fn authorize_topology_write(
     branch_id: Option<&str>,
 ) -> Result<String, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::topology::commands::authorize_topology_write(&ctx, session_token, branch_id)
+    kasirmu_bridge::topology::commands::authorize_topology_write(&ctx, session_token, branch_id)
         .await
         .map_err(Into::into)
 }
@@ -73,7 +73,7 @@ pub async fn save_topology_template(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::topology::commands::save_topology_template(
+    kasirmu_bridge::topology::commands::save_topology_template(
         &ctx,
         session_token,
         name,
@@ -93,7 +93,7 @@ pub async fn load_topology_template(
     state: State<'_, AppState>,
 ) -> Result<Option<Value>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::topology::commands::load_topology_template(&ctx, session_token, name, branch_id)
+    kasirmu_bridge::topology::commands::load_topology_template(&ctx, session_token, name, branch_id)
         .await
         .map_err(Into::into)
 }
@@ -106,7 +106,7 @@ pub async fn list_topology_templates(
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::topology::commands::list_topology_templates(&ctx, session_token, branch_id)
+    kasirmu_bridge::topology::commands::list_topology_templates(&ctx, session_token, branch_id)
         .await
         .map_err(Into::into)
 }
@@ -120,7 +120,7 @@ pub async fn delete_topology_template(
     state: State<'_, AppState>,
 ) -> Result<bool, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::topology::commands::delete_topology_template(&ctx, session_token, name, branch_id)
+    kasirmu_bridge::topology::commands::delete_topology_template(&ctx, session_token, name, branch_id)
         .await
         .map_err(Into::into)
 }
@@ -136,7 +136,7 @@ pub async fn load_topology(
     state: State<'_, AppState>,
 ) -> Result<Option<Value>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::topology::commands::load_topology(&ctx, session_token, branch_id)
+    kasirmu_bridge::topology::commands::load_topology(&ctx, session_token, branch_id)
         .await
         .map_err(Into::into)
 }
@@ -151,7 +151,7 @@ pub async fn pin_topology_revision(
     state: State<'_, AppState>,
 ) -> Result<TopologyRevisionPinResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::topology::commands::pin_topology_revision(
+    kasirmu_bridge::topology::commands::pin_topology_revision(
         &ctx,
         session_token,
         branch_id,
@@ -171,7 +171,7 @@ pub async fn list_topology_revisions(
     state: State<'_, AppState>,
 ) -> Result<Vec<TopologyRevisionSummary>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::topology::commands::list_topology_revisions(&ctx, session_token, branch_id, limit)
+    kasirmu_bridge::topology::commands::list_topology_revisions(&ctx, session_token, branch_id, limit)
         .await
         .map_err(Into::into)
 }
@@ -186,7 +186,7 @@ pub async fn load_topology_revision(
     state: State<'_, AppState>,
 ) -> Result<TopologyRevisionGraphResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::topology::commands::load_topology_revision(&ctx, session_token, branch_id, revision)
+    kasirmu_bridge::topology::commands::load_topology_revision(&ctx, session_token, branch_id, revision)
         .await
         .map_err(Into::into)
 }
@@ -209,7 +209,7 @@ pub async fn apply_topology_diff(
     state: State<'_, AppState>,
 ) -> Result<TopologyApplyResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::topology::commands::apply_topology_diff(
+    kasirmu_bridge::topology::commands::apply_topology_diff(
         &ctx,
         session_token,
         workspace_creations,

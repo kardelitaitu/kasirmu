@@ -51,7 +51,7 @@ use crate::error::AppError;
 use crate::state::AppState;
 
 /// Phase 3.3 T4: these settings wire types are re-exported from
-/// `oz_bridge::settings` — the same move T3 made for `LocalPaymentRailArgs`
+/// `kasirmu_bridge::settings` — the same move T3 made for `LocalPaymentRailArgs`
 /// and the regional DTOs — so a field rename or a `rename_all` edit lands once
 /// instead of having to be made twice and noticed a third time. Until this
 /// slice each was a byte-identical second definition in this file, and the
@@ -70,14 +70,14 @@ use crate::state::AppState;
 /// repair is a storage-source decision plus the `AppState` → `BridgeCtx` seam
 /// T2 deferred — not a `pub use`. Measured and recorded in the 2026-09-15 T4
 /// entry of `todo-refactor-oz-pos-app-agents-3.md`.
-pub use oz_bridge::settings::{
+pub use kasirmu_bridge::settings::{
     CreditSaleDto, CreditSettingsDto, DeploymentInfo, GatewayStatusEntry, ReceiptSettingsDto,
     StoreSettingsDto, UserPrefEntry,
 };
 
 // ── Receipt settings DTO ─────────────────────────────────
 //
-// `ReceiptSettingsDto` comes from `oz_bridge::settings` (see the re-export
+// `ReceiptSettingsDto` comes from `kasirmu_bridge::settings` (see the re-export
 // above); the eleven camelCase keys it carries are pinned against
 // `ui/src/api/settings.ts` by
 // `wire_pin_receipt_settings_carries_every_key_the_renderer_declares`.
@@ -91,7 +91,7 @@ pub use oz_bridge::settings::{
 /// Get receipt settings.
 ///
 /// ADR #49: the body is the bridge's, and this delegation is a pure identity
-/// rather than a merge. `oz_bridge::settings::get_receipt_settings` locks
+/// rather than a merge. `kasirmu_bridge::settings::get_receipt_settings` locks
 /// `ctx.db` — which `AppState::bridge_ctx` binds to this same `state.db` — and
 /// calls the same `run_get_receipt_settings` in the same order, and the bridge
 /// documents its twin as "gate-free exactly as in the shell". So delegating adds
@@ -102,7 +102,7 @@ pub async fn get_receipt_settings(
     state: State<'_, AppState>,
 ) -> Result<ReceiptSettingsDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::get_receipt_settings(&ctx)
+    kasirmu_bridge::settings::get_receipt_settings(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -111,7 +111,7 @@ pub async fn get_receipt_settings(
 /// is the bridge's; what is tablet-specific is the error type, converted by the
 /// `From<BridgeError> for AppError` seam in `authz.rs` that landed with T1.
 fn run_get_receipt_settings(conn: &rusqlite::Connection) -> Result<ReceiptSettingsDto, AppError> {
-    Ok(oz_bridge::settings::run_get_receipt_settings(conn)?)
+    Ok(kasirmu_bridge::settings::run_get_receipt_settings(conn)?)
 }
 
 // ── Set receipt settings ──────────────────────────────────
@@ -122,12 +122,12 @@ fn run_set_receipt_settings(
     conn: &rusqlite::Connection,
     args: &ReceiptSettingsDto,
 ) -> Result<(), AppError> {
-    Ok(oz_bridge::settings::run_set_receipt_settings(conn, args)?)
+    Ok(kasirmu_bridge::settings::run_set_receipt_settings(conn, args)?)
 }
 
 // ── Store info DTO ────────────────────────────────────────────
 //
-// `StoreSettingsDto` comes from `oz_bridge::settings`; its six camelCase keys
+// `StoreSettingsDto` comes from `kasirmu_bridge::settings`; its six camelCase keys
 // are pinned by `wire_pin_store_settings_carries_every_key_the_renderer_declares`.
 
 // ── Get store settings ────────────────────────────────────────
@@ -141,14 +141,14 @@ fn run_set_receipt_settings(
 /// documented "gate-free exactly as in the shell".
 pub async fn get_store_settings(state: State<'_, AppState>) -> Result<StoreSettingsDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::get_store_settings(&ctx)
+    kasirmu_bridge::settings::get_store_settings(&ctx)
         .await
         .map_err(Into::into)
 }
 
 /// Business logic for `get_store_settings` (extracted for testing).
 fn run_get_store_settings(conn: &rusqlite::Connection) -> Result<StoreSettingsDto, AppError> {
-    Ok(oz_bridge::settings::run_get_store_settings(conn)?)
+    Ok(kasirmu_bridge::settings::run_get_store_settings(conn)?)
 }
 
 // ── Set store settings ────────────────────────────────────────
@@ -158,32 +158,32 @@ fn run_set_store_settings(
     conn: &rusqlite::Connection,
     args: &StoreSettingsDto,
 ) -> Result<(), AppError> {
-    Ok(oz_bridge::settings::run_set_store_settings(conn, args)?)
+    Ok(kasirmu_bridge::settings::run_set_store_settings(conn, args)?)
 }
 
 // ── Credit Settings DTO ─────────────────────────────────────────
 //
-// `CreditSettingsDto` comes from `oz_bridge::settings`.
+// `CreditSettingsDto` comes from `kasirmu_bridge::settings`.
 
 #[command]
 /// Get credit settings.
 ///
 /// ADR #49: the body is the bridge's. Its twin
-/// `oz_bridge::settings::get_credit_settings` is documented there as
+/// `kasirmu_bridge::settings::get_credit_settings` is documented there as
 /// "gate-free exactly as in the shell", so delegating adds no gate and removes
 /// none — what stood here was a byte-identical second copy of that body.
 pub async fn get_credit_settings(
     state: State<'_, AppState>,
 ) -> Result<CreditSettingsDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::get_credit_settings(&ctx)
+    kasirmu_bridge::settings::get_credit_settings(&ctx)
         .await
         .map_err(Into::into)
 }
 
 // ── Credit sale DTO ──────────────────────────────────────────────
 //
-// `CreditSaleDto` comes from `oz_bridge::settings`. Its wire keys are camelCase
+// `CreditSaleDto` comes from `kasirmu_bridge::settings`. Its wire keys are camelCase
 // as of the 2026-09-15 T4 repair, because the retail credit list reads
 // `saleId`/`customerName`/`totalMinor`/`createdAt`/`settledAt`; the pin lives in
 // `settings_tests.rs::wire_pin_credit_sale_carries_every_key_the_renderer_declares`.
@@ -223,7 +223,7 @@ pub async fn get_hardware_settings(
 
 // ── User preferences ───────────────────────────────────────────
 //
-// `UserPrefEntry` comes from `oz_bridge::settings` (two single-word keys; the
+// `UserPrefEntry` comes from `kasirmu_bridge::settings` (two single-word keys; the
 // pin is `wire_pin_user_pref_entry_carries_every_key_the_renderer_declares`).
 //
 // The unscoped `get_user_preferences` / `set_user_preferences` pair used to sit
@@ -245,9 +245,9 @@ pub async fn get_hardware_settings(
 /// client writes.
 ///
 /// ADR #49 NOT APPLIED, deliberately. The body is still the shell's, even
-/// though `oz_bridge::settings::get_user_preferences_scoped` is byte-identical
+/// though `kasirmu_bridge::settings::get_user_preferences_scoped` is byte-identical
 /// to it. Delegating would make this shell's registration-gate sweep read the
-/// `oz_bridge::` call as evidence that the shared funnel owns the RBAC — and
+/// `kasirmu_bridge::` call as evidence that the shared funnel owns the RBAC — and
 /// for this pair it does not: the bridge twin is ungated beyond the session,
 /// by design, because a caller's own UI preferences need no `settings:read`.
 /// So the delegation would flip `settings::get_user_preferences_scoped` from
@@ -315,7 +315,7 @@ pub async fn get_setting(
     state: State<'_, AppState>,
 ) -> Result<Option<String>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::get_setting(&ctx, &key)
+    kasirmu_bridge::settings::get_setting(&ctx, &key)
         .await
         .map_err(Into::into)
 }
@@ -327,7 +327,7 @@ pub async fn get_setting(
 /// and the local `is_secret_key` wrapper that fed it goes with it, because
 /// `platform_core::settings::keys` is the one list both shells read.
 fn run_get_setting(conn: &rusqlite::Connection, key: &str) -> Result<Option<String>, AppError> {
-    Ok(oz_bridge::settings::run_get_setting(conn, key)?)
+    Ok(kasirmu_bridge::settings::run_get_setting(conn, key)?)
 }
 
 // The hand copy of SECRET_KEY_DENY_LIST that used to sit here is deleted. The
@@ -339,7 +339,7 @@ fn run_get_setting(conn: &rusqlite::Connection, key: &str) -> Result<Option<Stri
 // entirely - so both credentials were readable through this shell's
 // get_setting while the tests that named them stayed green.
 
-// `GatewayStatusEntry` is re-exported from `oz_bridge::settings`. The three
+// `GatewayStatusEntry` is re-exported from `kasirmu_bridge::settings`. The three
 // emitted keys are the whole contract, and they are pinned in
 // `settings_tests.rs` because a fourth key here would put a credential on the
 // wire that UI-1 exists to keep off it.
@@ -352,14 +352,14 @@ fn run_get_setting(conn: &rusqlite::Connection, key: &str) -> Result<Option<Stri
 /// renderer only ever sees booleans.
 ///
 /// ADR #49: the body is the bridge's. This one was byte-identical to
-/// `oz_bridge::settings::gateway_status` — same closure, same three entries,
+/// `kasirmu_bridge::settings::gateway_status` — same closure, same three entries,
 /// same order — so the credential contract does not move with it.
 #[tauri::command]
 pub async fn gateway_status(
     state: State<'_, AppState>,
 ) -> Result<Vec<GatewayStatusEntry>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::settings::gateway_status(&ctx)
+    kasirmu_bridge::settings::gateway_status(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -399,7 +399,7 @@ pub async fn set_setting(
 /// Uses `set_tracked` so every settings change writes a delta record
 /// (ADR #22) — the basis for version-LWW when the change syncs.
 ///
-/// Twin of `oz_bridge::settings::run_set_setting`: this shell has its own
+/// Twin of `kasirmu_bridge::settings::run_set_setting`: this shell has its own
 /// write funnel, not the bridge's, so the `smtp_config` exception has to be
 /// made here too or the same save destroys the stored password on tablet.
 /// `smtp_config` is deny-listed against [`run_get_setting`], so the
@@ -465,7 +465,7 @@ fn enqueue_settings_update(
     value: &str,
     terminal_id: &str,
 ) -> Result<(), AppError> {
-    // Egress gate — symmetric with the bridge funnel (`oz_bridge::settings`):
+    // Egress gate — symmetric with the bridge funnel (`kasirmu_bridge::settings`):
     // a key the ingest side would refuse must not be OFFERED to the network
     // either. Both tablet call sites (global and scoped set_setting) funnel
     // through THIS function, so this is the one boundary to keep in sync.
@@ -489,7 +489,7 @@ pub async fn get_receipt_settings_scoped(
     state: State<'_, AppState>,
 ) -> Result<ReceiptSettingsDto, AppError> {
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // F-017/T10: the `kasirmu_bridge::settings` twin gates this command and this shell
     // resolved the session, bound it to a store, then ignored it. Gated here before
     // the store lock is taken, so no await sits inside a held lock.
     require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
@@ -525,7 +525,7 @@ pub async fn get_store_settings_scoped(
     state: State<'_, AppState>,
 ) -> Result<StoreSettingsDto, AppError> {
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // F-017/T10: the `kasirmu_bridge::settings` twin gates this command and this shell
     // resolved the session, bound it to a store, then ignored it. Gated here before
     // the store lock is taken, so no await sits inside a held lock.
     require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
@@ -557,7 +557,7 @@ pub async fn get_credit_settings_scoped(
     state: State<'_, AppState>,
 ) -> Result<CreditSettingsDto, AppError> {
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // F-017/T10: the `kasirmu_bridge::settings` twin gates this command and this shell
     // resolved the session, bound it to a store, then ignored it. Gated here before
     // the store lock is taken, so no await sits inside a held lock.
     require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
@@ -599,7 +599,7 @@ pub async fn set_credit_settings_scoped(
 /// name — so collapsing them removes a duplicate without touching behaviour.
 ///
 /// The door itself deliberately keeps its own gate and lock order rather than
-/// delegating to `oz_bridge::settings::list_credit_sales_scoped`. That twin opens
+/// delegating to `kasirmu_bridge::settings::list_credit_sales_scoped`. That twin opens
 /// the store *after* its gate (`resolve_session` → gate → `resolve_store`), while
 /// this shell's `resolve_scope` opens it *before* the gate, so whole-door
 /// delegation would change which side effects a **denied** request performs. §4
@@ -618,14 +618,14 @@ pub async fn list_credit_sales_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<CreditSaleDto>, AppError> {
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // F-017/T10: the `kasirmu_bridge::settings` twin gates this command and this shell
     // resolved the session, bound it to a store, then ignored it. Gated here before
     // the store lock is taken, so no await sits inside a held lock.
     require_permission_for_session(&state, &session, permissions::SALES_VIEW).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    Ok(oz_bridge::settings::run_list_credit_sales(&db_guard)?)
+    Ok(kasirmu_bridge::settings::run_list_credit_sales(&db_guard)?)
 }
 
 /// Session-scoped variant of `settle_credit`.
@@ -657,7 +657,7 @@ pub async fn get_hardware_settings_scoped(
     state: State<'_, AppState>,
 ) -> Result<HardwareSettingsDto, AppError> {
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // F-017/T10: the `kasirmu_bridge::settings` twin gates this command and this shell
     // resolved the session, bound it to a store, then ignored it. Gated here before
     // the store lock is taken, so no await sits inside a held lock.
     require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
@@ -705,7 +705,7 @@ pub async fn get_setting_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<String>, AppError> {
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // F-017/T10: the `kasirmu_bridge::settings` twin gates this command and this shell
     // resolved the session, bound it to a store, then ignored it. Gated here before
     // the store lock is taken, so no await sits inside a held lock.
     require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
@@ -800,7 +800,7 @@ pub async fn set_settings_scoped(
     // key before it writes any, so one refused key aborts the whole batch.
     let written = {
         let tx = db_guard.unchecked_transaction()?;
-        let written = oz_bridge::settings::run_set_settings_batch(&tx, &entries, &terminal_id)?;
+        let written = kasirmu_bridge::settings::run_set_settings_batch(&tx, &entries, &terminal_id)?;
         tx.commit()?;
         written
     };
@@ -809,7 +809,7 @@ pub async fn set_settings_scoped(
     // internally, so `entries` is not what replication is offered.
     // Warn-and-continue: the local write already committed. SYNC-10.
     if let Err(e) =
-        oz_bridge::settings::enqueue_settings_updates(&store, &written, &terminal_id, "default")
+        kasirmu_bridge::settings::enqueue_settings_updates(&store, &written, &terminal_id, "default")
     {
         tracing::warn!(
             key_count = written.len(),
@@ -822,7 +822,7 @@ pub async fn set_settings_scoped(
 
 // ── Deployment / version read (operator tooling, saas-3 L162) ─────
 
-// `DeploymentInfo` is re-exported from `oz_bridge::settings`; the value is
+// `DeploymentInfo` is re-exported from `kasirmu_bridge::settings`; the value is
 // built HERE, on purpose, because `CARGO_PKG_VERSION` expands against the crate
 // that writes it — a tablet terminal reports the tablet build, exactly as the
 // About identity constants resolve in the tablet shim (T1's decision).

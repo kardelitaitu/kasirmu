@@ -49,19 +49,19 @@ pub async fn get_brand_settings(state: State<'_, AppState>) -> Result<BrandSetti
 /// Set the primary brand colour.
 ///
 /// ADR #49: the body is the bridge's, and this delegation is a pure identity.
-/// `oz_bridge::branding::set_brand_primary_colour` locks `ctx.lock_global()`,
+/// `kasirmu_bridge::branding::set_brand_primary_colour` locks `ctx.lock_global()`,
 /// which `AppState::bridge_ctx` binds to this same `state.db` — the same lock on
 /// the same connection — and calls the same `Settings::set_brand_primary_colour`.
 /// Ledger-neutral by construction: this door resolves no session (it presents no
 /// `session_token`), so the sweep's `resolves_session` arm is false for it
-/// whatever the `oz_bridge::` call says.
+/// whatever the `kasirmu_bridge::` call says.
 #[command]
 pub async fn set_brand_primary_colour(
     colour: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::branding::set_brand_primary_colour(&ctx, &colour)
+    kasirmu_bridge::branding::set_brand_primary_colour(&ctx, &colour)
         .await
         .map_err(Into::into)
 }
@@ -95,7 +95,7 @@ pub async fn set_brand_store_name(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::branding::set_brand_store_name(&ctx, &name)
+    kasirmu_bridge::branding::set_brand_store_name(&ctx, &name)
         .await
         .map_err(Into::into)
 }
@@ -109,7 +109,7 @@ pub async fn set_brand_store_name(
 // the bridge's twins **do** gate: `get_brand_settings_scoped` on `settings:read`
 // and the three setters on `settings:edit`
 // (`crates/kasirmu-bridge/src/branding.rs:106, 212, 229, 247`). Delegating any of them
-// would therefore make the sweep read the `oz_bridge::` call as proof the shared
+// would therefore make the sweep read the `kasirmu_bridge::` call as proof the shared
 // funnel owns the RBAC, flipping four real ledger entries to "gated" without a
 // permission being added — erasing debt rather than paying it, which §4 forbids.
 // **Gating them is an owner ruling, not part of an extraction.**

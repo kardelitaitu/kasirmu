@@ -3,7 +3,7 @@
 //! CRUD for promotion rules and recording promotion applications against sales.
 //!
 //! Wave D / D4b: the bodies now live in the headless
-//! `oz_bridge::promotions` module. Each `#[tauri::command]` below keeps
+//! `kasirmu_bridge::promotions` module. Each `#[tauri::command]` below keeps
 //! its exact name, parameter list, attributes and `Result<_, AppError>`
 //! wire contract; it builds a `BridgeCtx` from `AppState` and
 //! delegates, preserving the shell's deliberate gate asymmetry
@@ -19,7 +19,7 @@ use oz_core::{Promotion, PromotionApplication};
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::promotions::CreatePromotionArgs;
+pub use kasirmu_bridge::promotions::CreatePromotionArgs;
 
 /// List promotions for the store resolved from a session token. ADR #7.
 #[tauri::command]
@@ -28,7 +28,7 @@ pub async fn list_promotions_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<Promotion>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::promotions::list_promotions_scoped(&ctx, &session_token)
+    kasirmu_bridge::promotions::list_promotions_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -41,7 +41,7 @@ pub async fn get_promotion_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<Promotion>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::promotions::get_promotion_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::promotions::get_promotion_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -54,7 +54,7 @@ pub async fn create_promotion_scoped(
     state: State<'_, AppState>,
 ) -> Result<Promotion, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::promotions::create_promotion_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::promotions::create_promotion_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -67,7 +67,7 @@ pub async fn update_promotion_scoped(
     state: State<'_, AppState>,
 ) -> Result<Promotion, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::promotions::update_promotion_scoped(&ctx, &session_token, promotion)
+    kasirmu_bridge::promotions::update_promotion_scoped(&ctx, &session_token, promotion)
         .await
         .map_err(Into::into)
 }
@@ -80,7 +80,7 @@ pub async fn delete_promotion_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::promotions::delete_promotion_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::promotions::delete_promotion_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -94,7 +94,7 @@ pub async fn apply_promotion_scoped(
     state: State<'_, AppState>,
 ) -> Result<PromotionApplication, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::promotions::apply_promotion_scoped(&ctx, &session_token, &sale_id, &promotion_id)
+    kasirmu_bridge::promotions::apply_promotion_scoped(&ctx, &session_token, &sale_id, &promotion_id)
         .await
         .map_err(Into::into)
 }
@@ -108,7 +108,7 @@ fn run_apply_promotion_unchecked(
     sale_id: &str,
     promotion_id: &str,
 ) -> Result<PromotionApplication, AppError> {
-    oz_bridge::promotions::apply_promotion_unchecked(db, sale_id, promotion_id)
+    kasirmu_bridge::promotions::apply_promotion_unchecked(db, sale_id, promotion_id)
         .map_err(AppError::from)
 }
 
@@ -120,7 +120,7 @@ pub async fn get_sale_promotions_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<PromotionApplication>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::promotions::get_sale_promotions_scoped(&ctx, &session_token, &sale_id)
+    kasirmu_bridge::promotions::get_sale_promotions_scoped(&ctx, &session_token, &sale_id)
         .await
         .map_err(Into::into)
 }

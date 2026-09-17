@@ -3,7 +3,7 @@
 //! These commands allow the settings UI to validate SMTP connectivity
 //! by sending a test report email immediately.
 
-// Wave F: the bodies moved to oz_bridge::email. get_report_schedule stays
+// Wave F: the bodies moved to kasirmu_bridge::email. get_report_schedule stays
 // gate-free on both sides; its scoped sibling gates first and then delegates
 // inside the bridge module (two distinct bridge fns, no shared entry point).
 use tauri::State;
@@ -27,7 +27,7 @@ pub async fn send_test_report(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::email::send_test_report(&ctx, &session_token)
+    kasirmu_bridge::email::send_test_report(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -41,7 +41,7 @@ pub async fn get_report_schedule(
     state: State<'_, AppState>,
 ) -> Result<oz_core::export::ReportScheduleConfig, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::email::get_report_schedule(&ctx)
+    kasirmu_bridge::email::get_report_schedule(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -54,7 +54,7 @@ pub async fn save_report_schedule(
     config: oz_core::export::ReportScheduleConfig,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::email::save_report_schedule(&ctx, &session_token, config)
+    kasirmu_bridge::email::save_report_schedule(&ctx, &session_token, config)
         .await
         .map_err(Into::into)
 }
@@ -66,7 +66,7 @@ pub async fn get_report_schedule_scoped(
     state: State<'_, AppState>,
 ) -> Result<oz_core::export::ReportScheduleConfig, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::email::get_report_schedule_scoped(&ctx, &session_token)
+    kasirmu_bridge::email::get_report_schedule_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }

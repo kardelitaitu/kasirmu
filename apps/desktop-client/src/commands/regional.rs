@@ -19,7 +19,7 @@
 //! re-derives or formats an offset on this side of the boundary, and the
 //! front-end must not either.
 //!
-//! Wave A / S6: the bodies now live in the headless `oz_bridge::regional`
+//! Wave A / S6: the bodies now live in the headless `kasirmu_bridge::regional`
 //! module. Each `#[tauri::command]` below keeps its exact name, parameter
 //! list and `Result<_, AppError>` return so the registered IPC surface and
 //! the serialized error shape are unchanged; it borrows a `BridgeCtx` from
@@ -40,7 +40,7 @@ use crate::state::AppState;
 #[allow(unused_imports)]
 use oz_core::Store;
 
-pub use oz_bridge::regional::SetRegionalConfig;
+pub use kasirmu_bridge::regional::SetRegionalConfig;
 
 /// Read the effective regional configuration for one location of the
 /// session's store (regional slice 2, saas-2 design slice queue #2).
@@ -60,7 +60,7 @@ pub async fn get_regional_config_scoped(
     state: State<'_, AppState>,
 ) -> Result<oz_core::RegionalConfig, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::regional::get_scoped(&ctx, &session_token, &location_id)
+    kasirmu_bridge::regional::get_scoped(&ctx, &session_token, &location_id)
         .await
         .map_err(Into::into)
 }
@@ -90,7 +90,7 @@ pub async fn set_regional_config_scoped(
     state: State<'_, AppState>,
 ) -> Result<oz_core::RegionalConfig, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::regional::set_scoped(&ctx, &session_token, &location_id, &config)
+    kasirmu_bridge::regional::set_scoped(&ctx, &session_token, &location_id, &config)
         .await
         .map_err(Into::into)
 }

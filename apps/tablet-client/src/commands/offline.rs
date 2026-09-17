@@ -65,38 +65,38 @@ use crate::state::AppState;
 
 /// Offline queue item DTO for the front-end.
 ///
-/// Re-exported from `oz_bridge::offline` rather than declared here. The two
+/// Re-exported from `kasirmu_bridge::offline` rather than declared here. The two
 /// definitions were field-for-field identical, `#[serde(rename_all =
 /// "camelCase")]` included, and `From<OfflineQueueItem>` crossed the boundary
 /// with the struct — the orphan rule forbids a shell-side impl for a type this
 /// crate does not own, so the conversion could not have stayed behind. Nothing
 /// outside this module names the type.
-pub use oz_bridge::offline::OfflineQueueItemDto;
+pub use kasirmu_bridge::offline::OfflineQueueItemDto;
 
 /// Retained remote-application failure DTO for the front-end.
 ///
-/// Re-exported from `oz_bridge::offline` for the same reason
+/// Re-exported from `kasirmu_bridge::offline` for the same reason
 /// [`OfflineQueueItemDto`] is: the definitions were identical, and
 /// `From<RemoteSyncFailure>` is an impl this crate cannot write for a type it
 /// does not own. It exposes everything an operator needs to decide whether to
 /// requeue a dead-lettered item (via `requeue_remote_failure_scoped`): the
 /// remote item id, action, retained payload for inspection, attempt count, the
 /// latest error, and the dead-letter flag.
-pub use oz_bridge::offline::RemoteSyncFailureDto;
+pub use kasirmu_bridge::offline::RemoteSyncFailureDto;
 
 /// Result of a sync retry attempt.
 ///
-/// Re-exported from `oz_bridge::offline`: the two definitions were identical,
+/// Re-exported from `kasirmu_bridge::offline`: the two definitions were identical,
 /// and [`retry_offline_sync_scoped`] is refused, so this type is shared purely
 /// to keep one field list rather than two.
-pub use oz_bridge::offline::SyncResult;
+pub use kasirmu_bridge::offline::SyncResult;
 
 /// Arguments for enqueuing an offline transaction.
 ///
-/// Re-exported from `oz_bridge::offline`: the field lists were identical,
+/// Re-exported from `kasirmu_bridge::offline`: the field lists were identical,
 /// `#[serde(default)]` on `tenant_id` and `priority` included, so the
 /// wire shape cannot drift between the shells.
-pub use oz_bridge::offline::EnqueueOfflineArgs;
+pub use kasirmu_bridge::offline::EnqueueOfflineArgs;
 
 // ── Commands ──────────────────────────────────────────────────────────
 
@@ -111,9 +111,9 @@ fn run_list_pending_offline(
 
 /// Arguments for `requeue_remote_failure_scoped`.
 ///
-/// Re-exported from `oz_bridge::offline`; the single-field definition was
+/// Re-exported from `kasirmu_bridge::offline`; the single-field definition was
 /// identical on both sides.
-pub use oz_bridge::offline::RequeueRemoteFailureArgs;
+pub use kasirmu_bridge::offline::RequeueRemoteFailureArgs;
 
 /// Execute the requeue against a connection, extracted so the command
 /// boundary is unit-testable without a Tauri runtime.
@@ -199,7 +199,7 @@ pub async fn enqueue_offline_scoped(
 /// # ADR #49 NOT APPLIED, deliberately
 ///
 /// Refused 2026-09-16 — **case 2**. The body is already statement-identical to
-/// [`oz_bridge::offline::list_pending_offline_scoped`], so this looks portable
+/// [`kasirmu_bridge::offline::list_pending_offline_scoped`], so this looks portable
 /// and is not: the door resolves a session via `resolve_scope` and names **no**
 /// permission, so it sits on the debt ledger
 /// (`registration_gate_debt.generated.rs:174`). Delegating would flip the row to
@@ -225,7 +225,7 @@ pub async fn list_pending_offline_scoped(
 ///
 /// # ADR #49 — ported 2026-09-16
 ///
-/// Delegates to [`oz_bridge::offline::list_all_offline_scoped`]. The bodies were
+/// Delegates to [`kasirmu_bridge::offline::list_all_offline_scoped`]. The bodies were
 /// statement-identical and the gate matches in kind and order (`resolve_scope` →
 /// `SYNC_MANAGE` → store lock), so this is a whole-body move. Because the door
 /// names a permission it is already `Gated`, which is what makes the delegation
@@ -236,7 +236,7 @@ pub async fn list_all_offline_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<OfflineQueueItemDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::offline::list_all_offline_scoped(&ctx, &session_token)
+    kasirmu_bridge::offline::list_all_offline_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -375,7 +375,7 @@ pub async fn retry_offline_sync_scoped(
 /// # ADR #49 NOT APPLIED, deliberately — the log line is the only obstacle
 ///
 /// Refused 2026-09-16. The body is otherwise statement-identical to
-/// [`oz_bridge::offline::delete_offline_item_scoped`]: same gate
+/// [`kasirmu_bridge::offline::delete_offline_item_scoped`]: same gate
 /// (`SYNC_MANAGE`), same order, same SQL. The one delta is the log text — this
 /// shell logs `"offline queue item deleted"` (`:359`) where the bridge logs
 /// `"offline queue item deleted (scoped)"`

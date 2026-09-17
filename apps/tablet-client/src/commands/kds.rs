@@ -15,7 +15,7 @@
 //! tablet-originated status change).
 //!
 //! ADR #49: four of the five doors below are thin adapters over
-//! `oz_bridge::kds::*`, so this shell and the desktop call one
+//! `kasirmu_bridge::kds::*`, so this shell and the desktop call one
 //! implementation. `create_kds_order_from_sale_scoped` is deliberately
 //! **not** delegated — see its own doc comment for the measured reason.
 
@@ -32,7 +32,7 @@ use crate::state::AppState;
 /// Push a real-time update to all KDS displays (desktop event parity).
 ///
 /// Retained for `create_kds_order_from_sale_scoped`, the one door not
-/// delegated to `oz_bridge::kds`; the four delegated doors emit the same
+/// delegated to `kasirmu_bridge::kds`; the four delegated doors emit the same
 /// event through `BridgeCtx::emitter` instead.
 ///
 /// Called only after the store-DB guard has been released and the core
@@ -47,7 +47,7 @@ fn emit_orders_changed(app: Option<&tauri::AppHandle>) {
 /// Session-scoped list of KDS orders visible to the session's instance.
 ///
 /// ADR #49: the body is the bridge's, and the delegation is a pure identity.
-/// `oz_bridge::kds::list_kds_orders_scoped` resolves the session, applies the
+/// `kasirmu_bridge::kds::list_kds_orders_scoped` resolves the session, applies the
 /// same `permissions::KDS_VIEW` gate through the same scope-aware check
 /// (`require_session_permission` -> `require_user_permission_scoped` over
 /// `session.store_id` and `session.type_key`, which is what
@@ -61,7 +61,7 @@ pub async fn list_kds_orders_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<KdsOrder>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds::list_kds_orders_scoped(&ctx, &session_token, status)
+    kasirmu_bridge::kds::list_kds_orders_scoped(&ctx, &session_token, status)
         .await
         .map_err(Into::into)
 }
@@ -78,7 +78,7 @@ pub async fn get_kds_queue_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<KdsOrder>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds::get_kds_queue_scoped(&ctx, &session_token, kds_zone)
+    kasirmu_bridge::kds::get_kds_queue_scoped(&ctx, &session_token, kds_zone)
         .await
         .map_err(Into::into)
 }
@@ -102,7 +102,7 @@ pub async fn update_kds_status_scoped(
     state: State<'_, AppState>,
 ) -> Result<KdsOrder, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds::update_kds_status_scoped(&ctx, &session_token, &id, &status)
+    kasirmu_bridge::kds::update_kds_status_scoped(&ctx, &session_token, &id, &status)
         .await
         .map_err(Into::into)
 }
@@ -166,7 +166,7 @@ pub async fn get_kds_order_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<KdsOrder>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds::get_kds_order_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::kds::get_kds_order_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }

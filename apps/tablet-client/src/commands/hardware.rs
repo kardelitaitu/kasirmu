@@ -33,7 +33,7 @@ use crate::state::AppState;
 // omits `device_id` entirely would have deserialised before and error now.
 // `hardware_tests.rs::open_cash_drawer_args_default_device` deserialises `{}`
 // and asserts `None`, so it is the pin: it passes today and must still pass.
-pub use oz_bridge::hardware::{OpenCashDrawerArgs, OpenCashDrawerResult};
+pub use kasirmu_bridge::hardware::{OpenCashDrawerArgs, OpenCashDrawerResult};
 
 // ── Raw text receipt (legacy) ───────────────────────────
 
@@ -173,7 +173,7 @@ pub async fn open_cash_drawer_scoped(
     state: State<'_, AppState>,
 ) -> Result<OpenCashDrawerResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::hardware::open_cash_drawer_scoped(&ctx, args, &session_token)
+    kasirmu_bridge::hardware::open_cash_drawer_scoped(&ctx, args, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -367,7 +367,7 @@ pub async fn list_scanners_scoped(
 /// Start a background polling task for the named scanner resolved from a session token. ADR #7.
 ///
 /// ADR #49: the body is the bridge's. This was a byte-identical second copy of
-/// `oz_bridge::hardware::start_scanner_scoped` — same cancel-then-take, same
+/// `kasirmu_bridge::hardware::start_scanner_scoped` — same cancel-then-take, same
 /// `"no scanner registered as '{}'"` text, same `AppHandle unavailable` error
 /// for the headless case, same `poll(300)`, same 500 ms backoff, and the same
 /// four log strings and two `barcode:*` payloads. The only deltas are the ones
@@ -395,7 +395,7 @@ pub async fn start_scanner_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::hardware::start_scanner_scoped(&ctx, &scanner_id, &session_token)
+    kasirmu_bridge::hardware::start_scanner_scoped(&ctx, &scanner_id, &session_token)
         .await
         .map_err(Into::into)
 }

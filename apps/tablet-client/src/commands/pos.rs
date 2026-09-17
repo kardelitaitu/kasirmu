@@ -34,7 +34,7 @@ use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
-// Phase 3.3 T4: the wire DTOs below moved to the shared `oz_bridge::pos`
+// Phase 3.3 T4: the wire DTOs below moved to the shared `kasirmu_bridge::pos`
 // module (Agent 2's Wave D extraction) and are re-exported here, same as
 // the desktop shell — one wire definition across both shells, ending the
 // "keep the two in step" fork burden this header used to carry. The
@@ -46,7 +46,7 @@ use crate::state::AppState;
 // unscoped command is not registered on this shell, so the wire is
 // unwitnessed either way. The command bodies stay tablet-native (no
 // BridgeCtx yet — see the T2 seam notes in void.rs).
-pub use oz_bridge::pos::{
+pub use kasirmu_bridge::pos::{
     AddLineArgs, AddLineResult, BILL_TYPE_OPEN_BILL, CartLineData, CompleteSaleArgs,
     CompleteSaleResult, CompleteSaleScopedArgs, CompleteSaleWithResolvedShortfallsArgs,
     DeductionLocationInfo, HoldCartArgs, HoldCartResult, OverrideLinePriceArgs,
@@ -344,7 +344,7 @@ pub async fn override_line_price_scoped(
 
 /// Assign (or clear) the restaurant course on an active cart line. ADR #7.
 ///
-/// Delegated to `oz_bridge::pos::run_set_line_course_unchecked` so the
+/// Delegated to `kasirmu_bridge::pos::run_set_line_course_unchecked` so the
 /// cart mutation stays in one place; the `SALES_PROCESS` gate runs here,
 /// ahead of the bridge body (same order as the price-override command).
 #[command]
@@ -361,7 +361,7 @@ pub async fn set_line_course_scoped(
         &session.user_id,
         oz_core::permissions::SALES_PROCESS,
     )?;
-    oz_bridge::pos::run_set_line_course_unchecked(
+    kasirmu_bridge::pos::run_set_line_course_unchecked(
         &db,
         &args.cart_id,
         &args.line_id,
@@ -374,7 +374,7 @@ pub async fn set_line_course_scoped(
 
 /// Publish one fired course for a completed sale. ADR #7.
 ///
-/// Thin shell over `oz_bridge::pos::publish_course_fired_scoped`, which
+/// Thin shell over `kasirmu_bridge::pos::publish_course_fired_scoped`, which
 /// resolves the session, gates on `SALES_PROCESS`, and publishes
 /// `order.course_fired`. The tablet kernel carries the bus, so the publish
 /// lands there; the LAN forward remains desktop-only (no oz-lan dep here).
@@ -385,7 +385,7 @@ pub async fn publish_course_fired_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::publish_course_fired_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::pos::publish_course_fired_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -1398,7 +1398,7 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
 ///
 /// `bill_type` is checked against the caller's workspace type rather than
 /// trusted: `open_bill` is a Restaurant POS concept, so any other terminal is
-/// refused fail-closed. Mirrors `oz_bridge::pos::hold_cart_scoped` — this shell
+/// refused fail-closed. Mirrors `kasirmu_bridge::pos::hold_cart_scoped` — this shell
 /// forked the body, so the check has to exist on both sides of the fork.
 #[command]
 pub async fn hold_cart_scoped(
@@ -1461,7 +1461,7 @@ pub async fn list_held_carts_scoped(
 /// session whose `type_key` is not [`oz_core::workspace_type::RESTAURANT_POS`] is refused
 /// rather than served an empty list, which would read as "there are none"
 /// instead of "this is not your terminal". Mirrors
-/// `oz_bridge::pos::list_open_bills_scoped`; this shell forked the body, so the
+/// `kasirmu_bridge::pos::list_open_bills_scoped`; this shell forked the body, so the
 /// check has to exist on both sides of the fork.
 #[command]
 pub async fn list_open_bills_scoped(

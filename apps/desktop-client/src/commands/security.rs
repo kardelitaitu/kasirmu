@@ -5,7 +5,7 @@
 //! front-end so users can rotate encryption keys and monitor key age
 //! from the Settings page.
 //!
-//! Wave B / B3: the bodies live in the headless `oz_bridge::security`
+//! Wave B / B3: the bodies live in the headless `kasirmu_bridge::security`
 //! module — including the `std::thread::spawn` keyring isolation, which must
 //! never be nested inside an async runtime. The two session-free commands
 //! stay context-free (they take no `State` at all, exactly as before); the
@@ -21,13 +21,13 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::security::{ENCRYPTION_KEY_NAME, KeyRotationStatus};
+pub use kasirmu_bridge::security::{ENCRYPTION_KEY_NAME, KeyRotationStatus};
 
 // ── Keyring pipeline adapters (test-compat) ────────────────────────────
 
 /// Run a keyring operation outside the Tokio runtime context.
 ///
-/// Thin adapter over `oz_bridge::security::with_keyring`: the name, generic
+/// Thin adapter over `kasirmu_bridge::security::with_keyring`: the name, generic
 /// shape and `Result<_, AppError>` semantics are unchanged so the sibling
 /// test module keeps exercising the thread-isolated pipeline; the thread
 /// isolation itself now lives in the bridge.
@@ -38,33 +38,33 @@ where
     C: FnOnce() -> Result<Box<dyn Keyring>, AppError> + Send + 'static,
     F: FnOnce(&dyn Keyring) -> Result<T, AppError> + Send + 'static,
 {
-    oz_bridge::security::with_keyring(create, operation).await
+    kasirmu_bridge::security::with_keyring(create, operation).await
 }
 
 /// Build the key-rotation status from a caller-supplied keyring factory.
 ///
 /// Thin adapter over the bridge pipeline: unchanged name and shape for the
 /// sibling test module; the status logic itself lives in
-/// `oz_bridge::security::key_rotation_status`.
+/// `kasirmu_bridge::security::key_rotation_status`.
 #[allow(dead_code)] // retained by the Wave-B B3 extraction contract for sibling tests
 async fn key_rotation_info_with<C>(create: C) -> Result<KeyRotationStatus, AppError>
 where
     C: FnOnce() -> Result<Box<dyn Keyring>, AppError> + Send + 'static,
 {
     with_keyring(create, |keyring| {
-        oz_bridge::security::key_rotation_status(keyring).map_err(AppError::from)
+        kasirmu_bridge::security::key_rotation_status(keyring).map_err(AppError::from)
     })
     .await
 }
 
 /// Read the key-rotation status off an open keyring.
 ///
-/// Thin adapter over `oz_bridge::security::key_rotation_status`: unchanged
+/// Thin adapter over `kasirmu_bridge::security::key_rotation_status`: unchanged
 /// name, parameter list and `Result<_, AppError>` type for the sibling test
 /// module.
 #[allow(dead_code)] // retained by the Wave-B B3 extraction contract for sibling tests
 fn key_rotation_status(keyring: &dyn Keyring) -> Result<KeyRotationStatus, AppError> {
-    oz_bridge::security::key_rotation_status(keyring).map_err(AppError::from)
+    kasirmu_bridge::security::key_rotation_status(keyring).map_err(AppError::from)
 }
 
 // ── Commands ───────────────────────────────────────────────────────────
@@ -74,7 +74,7 @@ fn key_rotation_status(keyring: &dyn Keyring) -> Result<KeyRotationStatus, AppEr
 /// Returns the status without exposing the key material itself.
 #[tauri::command]
 pub async fn get_key_rotation_info() -> Result<KeyRotationStatus, AppError> {
-    oz_bridge::security::get_key_rotation_info()
+    kasirmu_bridge::security::get_key_rotation_info()
         .await
         .map_err(Into::into)
 }
@@ -86,7 +86,7 @@ pub async fn get_key_rotation_info_scoped(
     state: State<'_, AppState>,
 ) -> Result<KeyRotationStatus, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::security::get_key_rotation_info_scoped(&ctx, &session_token)
+    kasirmu_bridge::security::get_key_rotation_info_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -98,7 +98,7 @@ pub async fn get_key_rotation_info_scoped(
 /// than scoped: it took no session and checked no permission, so any renderer
 /// code could regenerate the 256-bit at-rest key and archive the previous one at
 /// will — a key-loss denial of service against the local database, with no
-/// caller to protect. [`oz_bridge::security::rotate_encryption_key_scoped`]
+/// caller to protect. [`kasirmu_bridge::security::rotate_encryption_key_scoped`]
 /// resolves the session and enforces `security:manage` scope-aware before it
 /// delegates.
 #[tauri::command]
@@ -107,7 +107,7 @@ pub async fn rotate_encryption_key_scoped(
     state: State<'_, AppState>,
 ) -> Result<RotationInfo, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::security::rotate_encryption_key_scoped(&ctx, &session_token)
+    kasirmu_bridge::security::rotate_encryption_key_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }

@@ -10,7 +10,7 @@
 //! - Freeze/unfreeze cards (e.g., for fraud prevention)
 //!
 //! Wave D / D4b: the bodies now live in the headless
-//! `oz_bridge::gift_cards` module. Each `#[tauri::command]` below keeps
+//! `kasirmu_bridge::gift_cards` module. Each `#[tauri::command]` below keeps
 //! its exact name, parameter list, attributes and `Result<_, AppError>`
 //! wire contract; it builds a `BridgeCtx` from `AppState` and
 //! delegates, preserving the F-017 comments and gate constants. The
@@ -26,7 +26,7 @@ use oz_core::gift_card::{
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::gift_cards::BalanceResult;
+pub use kasirmu_bridge::gift_cards::BalanceResult;
 
 // ── Scoped variants (ADR #7) ────────────────────────────────────────
 
@@ -38,7 +38,7 @@ pub async fn issue_gift_card_scoped(
     state: State<'_, AppState>,
 ) -> Result<GiftCardWithTransactions, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::gift_cards::issue_gift_card_scoped(&ctx, input, &session_token)
+    kasirmu_bridge::gift_cards::issue_gift_card_scoped(&ctx, input, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -51,7 +51,7 @@ pub async fn get_gift_card_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<GiftCardWithTransactions>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::gift_cards::get_gift_card_scoped(&ctx, &card_number_or_id, &session_token)
+    kasirmu_bridge::gift_cards::get_gift_card_scoped(&ctx, &card_number_or_id, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -64,7 +64,7 @@ pub async fn list_gift_cards_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<GiftCardWithTransactions>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::gift_cards::list_gift_cards_scoped(&ctx, filter, &session_token)
+    kasirmu_bridge::gift_cards::list_gift_cards_scoped(&ctx, filter, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -77,7 +77,7 @@ pub async fn get_gift_card_balance_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<BalanceResult>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::gift_cards::get_gift_card_balance_scoped(&ctx, &card_number_or_id, &session_token)
+    kasirmu_bridge::gift_cards::get_gift_card_balance_scoped(&ctx, &card_number_or_id, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -92,7 +92,7 @@ pub async fn redeem_gift_card_scoped(
     state: State<'_, AppState>,
 ) -> Result<RedeemGiftCardResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::gift_cards::redeem_gift_card_scoped(
+    kasirmu_bridge::gift_cards::redeem_gift_card_scoped(
         &ctx,
         &card_number_or_id,
         amount_minor,
@@ -112,7 +112,7 @@ pub async fn top_up_gift_card_scoped(
     state: State<'_, AppState>,
 ) -> Result<GiftCardWithTransactions, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::gift_cards::top_up_gift_card_scoped(
+    kasirmu_bridge::gift_cards::top_up_gift_card_scoped(
         &ctx,
         &card_number_or_id,
         amount_minor,
@@ -130,7 +130,7 @@ pub async fn freeze_gift_card_scoped(
     state: State<'_, AppState>,
 ) -> Result<GiftCard, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::gift_cards::freeze_gift_card_scoped(&ctx, &card_number_or_id, &session_token)
+    kasirmu_bridge::gift_cards::freeze_gift_card_scoped(&ctx, &card_number_or_id, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -143,7 +143,7 @@ pub async fn unfreeze_gift_card_scoped(
     state: State<'_, AppState>,
 ) -> Result<GiftCard, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::gift_cards::unfreeze_gift_card_scoped(&ctx, &card_number_or_id, &session_token)
+    kasirmu_bridge::gift_cards::unfreeze_gift_card_scoped(&ctx, &card_number_or_id, &session_token)
         .await
         .map_err(Into::into)
 }

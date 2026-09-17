@@ -5,7 +5,7 @@
 //! were retired once every client migrated to the canonical commands
 //! (todo-global-saas-1.md, rename slice 1c/1d).
 //!
-//! Wave E / E7: the bodies now live in the headless `oz_bridge::locations` module.
+//! Wave E / E7: the bodies now live in the headless `kasirmu_bridge::locations` module.
 //! Each `#[tauri::command]` below keeps its exact name, parameter list, attributes
 //! and `Result<_, AppError>` wire contract; it builds a `BridgeCtx` from `AppState` and
 //! delegates, preserving resolve/gate order, the ADR #47 location-resource
@@ -18,7 +18,7 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::locations::{CreateLocationArgs, LocationProfileDto, UpdateLocationArgs};
+pub use kasirmu_bridge::locations::{CreateLocationArgs, LocationProfileDto, UpdateLocationArgs};
 
 /// List location profiles for the session's tenant (ADR #7).
 #[tauri::command]
@@ -27,7 +27,7 @@ pub async fn list_locations_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<LocationProfileDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::locations::list_locations_scoped(&ctx, &session_token)
+    kasirmu_bridge::locations::list_locations_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -40,7 +40,7 @@ pub async fn get_location_profile_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<LocationProfileDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::locations::get_location_profile_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::locations::get_location_profile_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -52,7 +52,7 @@ pub async fn get_primary_location_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<LocationProfileDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::locations::get_primary_location_scoped(&ctx, &session_token)
+    kasirmu_bridge::locations::get_primary_location_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -65,7 +65,7 @@ pub async fn create_location_profile_scoped(
     state: State<'_, AppState>,
 ) -> Result<LocationProfileDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::locations::create_location_profile_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::locations::create_location_profile_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -78,7 +78,7 @@ pub async fn update_location_profile_scoped(
     state: State<'_, AppState>,
 ) -> Result<LocationProfileDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::locations::update_location_profile_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::locations::update_location_profile_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -91,7 +91,7 @@ pub async fn set_primary_location_scoped(
     state: State<'_, AppState>,
 ) -> Result<LocationProfileDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::locations::set_primary_location_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::locations::set_primary_location_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -104,7 +104,7 @@ pub async fn delete_location_profile_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::locations::delete_location_profile_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::locations::delete_location_profile_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -129,7 +129,7 @@ pub async fn get_location_ticket_prefix_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<String>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::locations::get_location_ticket_prefix_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::locations::get_location_ticket_prefix_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -150,7 +150,7 @@ pub async fn set_location_ticket_prefix_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<String>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::locations::set_location_ticket_prefix_scoped(&ctx, &session_token, &id, &prefix)
+    kasirmu_bridge::locations::set_location_ticket_prefix_scoped(&ctx, &session_token, &id, &prefix)
         .await
         .map_err(Into::into)
 }

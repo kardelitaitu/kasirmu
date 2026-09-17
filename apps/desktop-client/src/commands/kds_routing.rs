@@ -5,7 +5,7 @@
 //! station bindings; `get`/`save` manage the rule set of the session's
 //! restaurant.
 //!
-//! Wave D / D2b: every body lives in `oz_bridge::kds_routing`; each command
+//! Wave D / D2b: every body lives in `kasirmu_bridge::kds_routing`; each command
 //! here is a thin adapter that maps `BridgeError` onto `AppError`.
 
 use tauri::State;
@@ -33,7 +33,7 @@ pub async fn resolve_kds_targets_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds_routing::resolve_kds_targets(&ctx, &session_token, &order_id)
+    kasirmu_bridge::kds_routing::resolve_kds_targets(&ctx, &session_token, &order_id)
         .await
         .map_err(Into::into)
 }
@@ -46,7 +46,7 @@ pub async fn get_kds_routing_rules_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<KdsRoutingRule>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds_routing::get_kds_routing_rules(&ctx, &session_token)
+    kasirmu_bridge::kds_routing::get_kds_routing_rules(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -62,7 +62,7 @@ pub async fn save_kds_routing_rules_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<KdsRoutingRule>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds_routing::save_kds_routing_rules(&ctx, &session_token, rules)
+    kasirmu_bridge::kds_routing::save_kds_routing_rules(&ctx, &session_token, rules)
         .await
         .map_err(Into::into)
 }

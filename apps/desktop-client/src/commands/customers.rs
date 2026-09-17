@@ -1,6 +1,6 @@
 //! Customer management commands — list, get, create, update, delete.
 //!
-//! Wave B / B1: the bodies now live in the headless `oz_bridge::customers`
+//! Wave B / B1: the bodies now live in the headless `kasirmu_bridge::customers`
 //! module (backed by `oz_core::db::Store`). Each `#[tauri::command]` below
 //! keeps its exact name, parameter list and `Result<_, AppError>` return so
 //! the registered IPC surface and the serialized error shape are unchanged; it
@@ -34,7 +34,7 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::customers::{
+pub use kasirmu_bridge::customers::{
     CreateCustomerArgs, CreateCustomerScopedArgs, CustomerDto, CustomerHistoryDto,
     CustomerLoyaltySummaryDto, CustomerSaleSummaryDto, CustomerSearchPage, DeleteCustomerArgs,
     UpdateCustomerArgs, UpdateCustomerScopedArgs,
@@ -42,7 +42,7 @@ pub use oz_bridge::customers::{
 
 /// Verify a customer permission against the global identity database.
 ///
-/// Thin adapter over `oz_bridge::customers::require_customer_permission`: the
+/// Thin adapter over `kasirmu_bridge::customers::require_customer_permission`: the
 /// name, parameter list and `Result<_, AppError>` type are unchanged so the
 /// gate stays reachable through `AppState`.
 #[allow(dead_code)] // retained by the Wave-B extraction contract for sibling tests
@@ -52,21 +52,21 @@ async fn require_customer_permission(
     permission: &str,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::customers::require_customer_permission(&ctx, user_id, permission)
+    kasirmu_bridge::customers::require_customer_permission(&ctx, user_id, permission)
         .await
         .map_err(AppError::from)
 }
 
 /// Validate fields shared by customer create and update commands.
 ///
-/// Thin adapter over `oz_bridge::customers::validate_customer_fields`.
+/// Thin adapter over `kasirmu_bridge::customers::validate_customer_fields`.
 #[allow(dead_code)] // retained by the Wave-B extraction contract for sibling tests
 fn validate_customer_fields(
     name: &str,
     email: Option<&str>,
     phone: Option<&str>,
 ) -> Result<(), AppError> {
-    oz_bridge::customers::validate_customer_fields(name, email, phone).map_err(AppError::from)
+    kasirmu_bridge::customers::validate_customer_fields(name, email, phone).map_err(AppError::from)
 }
 
 // ── List customers ──────────────────────────────────────────────────
@@ -83,7 +83,7 @@ pub async fn list_customers_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<CustomerDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::customers::list_scoped(&ctx, &session_token)
+    kasirmu_bridge::customers::list_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -109,7 +109,7 @@ pub async fn create_customer_scoped(
     state: State<'_, AppState>,
 ) -> Result<CustomerDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::customers::create_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::customers::create_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -122,7 +122,7 @@ pub async fn update_customer_scoped(
     state: State<'_, AppState>,
 ) -> Result<CustomerDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::customers::update_scoped(&ctx, &session_token, &args)
+    kasirmu_bridge::customers::update_scoped(&ctx, &session_token, &args)
         .await
         .map_err(Into::into)
 }
@@ -135,7 +135,7 @@ pub async fn delete_customer_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::customers::delete_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::customers::delete_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -155,7 +155,7 @@ pub async fn search_customers_scoped(
     state: State<'_, AppState>,
 ) -> Result<CustomerSearchPage, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::customers::search_scoped(&ctx, &session_token, &query, limit, offset)
+    kasirmu_bridge::customers::search_scoped(&ctx, &session_token, &query, limit, offset)
         .await
         .map_err(Into::into)
 }
@@ -176,7 +176,7 @@ pub async fn get_customer_history_scoped(
     state: State<'_, AppState>,
 ) -> Result<CustomerHistoryDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::customers::history_scoped(&ctx, &session_token, &customer_id, limit, offset)
+    kasirmu_bridge::customers::history_scoped(&ctx, &session_token, &customer_id, limit, offset)
         .await
         .map_err(Into::into)
 }
@@ -192,7 +192,7 @@ pub async fn get_customer_scoped(
 ) -> Result<Option<CustomerDto>, AppError> {
     // F-017: enforce per-domain permission on this scoped command.
     let ctx = state.bridge_ctx();
-    oz_bridge::customers::get_scoped(&ctx, &id, &session_token)
+    kasirmu_bridge::customers::get_scoped(&ctx, &id, &session_token)
         .await
         .map_err(Into::into)
 }

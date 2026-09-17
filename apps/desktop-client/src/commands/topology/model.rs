@@ -5,7 +5,7 @@
 //! tests reach through the topology root's re-exports.
 //!
 //! Wave E (E9a-a): the items themselves moved to
-//! `oz_bridge::topology::model`; this module is the re-export shim that keeps
+//! `kasirmu_bridge::topology::model`; this module is the re-export shim that keeps
 //! `commands::topology::model::*` and the mounted test file resolving.
 
-pub use oz_bridge::topology::model::*;
+pub use kasirmu_bridge::topology::model::*;

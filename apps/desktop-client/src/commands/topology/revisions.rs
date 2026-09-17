@@ -34,7 +34,7 @@
 //! envelope and never increments `revision`, so no row is expected.
 //!
 //! Wave E (step d-pre): the bodies moved to
-//! `oz_bridge::topology::revisions`; this module is the re-export shim. It has
+//! `kasirmu_bridge::topology::revisions`; this module is the re-export shim. It has
 //! no imports of its own: the `use super::semantics::topology_validation` line
 //! was a private import feeding this file bodies, so it moved with them, and
 //! the two listing-limit constants are not exported because they are not
@@ -44,7 +44,7 @@ use rusqlite::Connection;
 
 use crate::error::AppError;
 
-pub use oz_bridge::topology::revisions::*;
+pub use kasirmu_bridge::topology::revisions::*;
 
 // Four adapters below. The moved fns answer to the same names through the
 // glob above, but three desktop command bodies and one mounted test consume
@@ -54,24 +54,24 @@ pub use oz_bridge::topology::revisions::*;
 // shadows a glob-imported one, which is what makes this legal rather than
 // ambiguous. Visibility is unchanged from before the move.
 
-/// Adapter over ['oz_bridge::topology::revisions::normalize_topology_change_note'].
+/// Adapter over ['kasirmu_bridge::topology::revisions::normalize_topology_change_note'].
 #[allow(dead_code)]
 pub(crate) fn normalize_topology_change_note(raw: Option<&str>) -> Result<String, AppError> {
-    oz_bridge::topology::revisions::normalize_topology_change_note(raw).map_err(Into::into)
+    kasirmu_bridge::topology::revisions::normalize_topology_change_note(raw).map_err(Into::into)
 }
 
-/// Adapter over ['oz_bridge::topology::revisions::list_topology_revision_summaries'].
+/// Adapter over ['kasirmu_bridge::topology::revisions::list_topology_revision_summaries'].
 #[allow(dead_code)]
 pub(crate) fn list_topology_revision_summaries(
     conn: &Connection,
     branch_id: &str,
     limit: u32,
 ) -> Result<Vec<TopologyRevisionSummary>, AppError> {
-    oz_bridge::topology::revisions::list_topology_revision_summaries(conn, branch_id, limit)
+    kasirmu_bridge::topology::revisions::list_topology_revision_summaries(conn, branch_id, limit)
         .map_err(Into::into)
 }
 
-/// Adapter over ['oz_bridge::topology::revisions::set_topology_revision_pinned'].
+/// Adapter over ['kasirmu_bridge::topology::revisions::set_topology_revision_pinned'].
 #[allow(dead_code)]
 pub(crate) fn set_topology_revision_pinned(
     conn: &Connection,
@@ -79,11 +79,11 @@ pub(crate) fn set_topology_revision_pinned(
     revision: i64,
     pinned: bool,
 ) -> Result<TopologyRevisionPinResult, AppError> {
-    oz_bridge::topology::revisions::set_topology_revision_pinned(conn, branch_id, revision, pinned)
+    kasirmu_bridge::topology::revisions::set_topology_revision_pinned(conn, branch_id, revision, pinned)
         .map_err(Into::into)
 }
 
-/// Adapter over ['oz_bridge::topology::revisions::audit_topology_apply'].
+/// Adapter over ['kasirmu_bridge::topology::revisions::audit_topology_apply'].
 #[allow(dead_code)]
 pub(crate) fn audit_topology_apply(
     store_conn: &Connection,
@@ -93,7 +93,7 @@ pub(crate) fn audit_topology_apply(
     wire_count: usize,
     ctx: &TopologyRevisionContext<'_>,
 ) -> Result<(), AppError> {
-    oz_bridge::topology::revisions::audit_topology_apply(
+    kasirmu_bridge::topology::revisions::audit_topology_apply(
         store_conn, branch_id, revision, node_count, wire_count, ctx,
     )
     .map_err(Into::into)

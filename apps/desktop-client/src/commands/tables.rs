@@ -5,7 +5,7 @@
 //! All commands have scoped variants (ADR #7) that use the session token
 //! pattern. Old commands are preserved with deprecation notices.
 
-// Wave F: the bodies moved to oz_bridge::tables. The three read commands
+// Wave F: the bodies moved to kasirmu_bridge::tables. The three read commands
 // stay GATE-FREE (no permission check by design — resolve_store alone);
 // the six write commands keep their TABLES_* gates in the bridge fn.
 
@@ -27,7 +27,7 @@ pub async fn list_tables_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<Table>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tables::list_tables_scoped(&ctx, &session_token, section)
+    kasirmu_bridge::tables::list_tables_scoped(&ctx, &session_token, section)
         .await
         .map_err(Into::into)
 }
@@ -40,7 +40,7 @@ pub async fn get_table_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<Table>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tables::get_table_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::tables::get_table_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -52,7 +52,7 @@ pub async fn list_sections_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tables::list_sections_scoped(&ctx, &session_token)
+    kasirmu_bridge::tables::list_sections_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -67,7 +67,7 @@ pub async fn create_table_scoped(
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tables::create_table_scoped(&ctx, &session_token, table)
+    kasirmu_bridge::tables::create_table_scoped(&ctx, &session_token, table)
         .await
         .map_err(Into::into)
 }
@@ -80,7 +80,7 @@ pub async fn update_table_scoped(
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tables::update_table_scoped(&ctx, &session_token, table)
+    kasirmu_bridge::tables::update_table_scoped(&ctx, &session_token, table)
         .await
         .map_err(Into::into)
 }
@@ -93,7 +93,7 @@ pub async fn delete_table_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tables::delete_table_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::tables::delete_table_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -107,7 +107,7 @@ pub async fn update_table_status_scoped(
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tables::update_table_status_scoped(&ctx, &session_token, &id, &status)
+    kasirmu_bridge::tables::update_table_status_scoped(&ctx, &session_token, &id, &status)
         .await
         .map_err(Into::into)
 }
@@ -121,7 +121,7 @@ pub async fn assign_table_order_scoped(
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tables::assign_table_order_scoped(&ctx, &session_token, &table_id, &sale_id)
+    kasirmu_bridge::tables::assign_table_order_scoped(&ctx, &session_token, &table_id, &sale_id)
         .await
         .map_err(Into::into)
 }
@@ -134,7 +134,7 @@ pub async fn release_table_scoped(
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::tables::release_table_scoped(&ctx, &session_token, &table_id)
+    kasirmu_bridge::tables::release_table_scoped(&ctx, &session_token, &table_id)
         .await
         .map_err(Into::into)
 }

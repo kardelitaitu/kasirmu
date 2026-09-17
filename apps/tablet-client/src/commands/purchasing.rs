@@ -1,6 +1,6 @@
 //! Purchasing commands: suppliers and purchase orders.
 //!
-//! Every body delegates to `oz_bridge::purchasing` (ADR #49), and so do the
+//! Every body delegates to `kasirmu_bridge::purchasing` (ADR #49), and so do the
 //! IPC DTOs: the eight structs and their three `From` impls are re-exported
 //! from the bridge rather than defined twice, so the wire shape has exactly
 //! one definition. All ten were checked field-for-field against the copies
@@ -15,7 +15,7 @@
 
 use tauri::{State, command};
 
-pub use oz_bridge::purchasing::{
+pub use kasirmu_bridge::purchasing::{
     CreatePurchaseOrderArgs, CreateSupplierArgs, PoLineInput, PurchaseOrderDto,
     PurchaseOrderLineDto, ReceivePoLineDto, SupplierDto, UpdatePoStatusArgs, UpdateSupplierArgs,
 };
@@ -32,7 +32,7 @@ pub async fn list_suppliers_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<SupplierDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::list_suppliers_scoped(&ctx, &session_token)
+    kasirmu_bridge::purchasing::list_suppliers_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -45,7 +45,7 @@ pub async fn get_supplier_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<SupplierDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::get_supplier_scoped(&ctx, &id, &session_token)
+    kasirmu_bridge::purchasing::get_supplier_scoped(&ctx, &id, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -58,7 +58,7 @@ pub async fn create_supplier_scoped(
     state: State<'_, AppState>,
 ) -> Result<SupplierDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::create_supplier_scoped(&ctx, &args, &session_token)
+    kasirmu_bridge::purchasing::create_supplier_scoped(&ctx, &args, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -71,7 +71,7 @@ pub async fn update_supplier_scoped(
     state: State<'_, AppState>,
 ) -> Result<SupplierDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::update_supplier_scoped(&ctx, &args, &session_token)
+    kasirmu_bridge::purchasing::update_supplier_scoped(&ctx, &args, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -83,7 +83,7 @@ pub async fn list_purchase_orders_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<PurchaseOrderDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::list_purchase_orders_scoped(&ctx, &session_token)
+    kasirmu_bridge::purchasing::list_purchase_orders_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -96,7 +96,7 @@ pub async fn get_purchase_order_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<PurchaseOrderDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::get_purchase_order_scoped(&ctx, &id, &session_token)
+    kasirmu_bridge::purchasing::get_purchase_order_scoped(&ctx, &id, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -109,7 +109,7 @@ pub async fn create_purchase_order_scoped(
     state: State<'_, AppState>,
 ) -> Result<PurchaseOrderDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::create_purchase_order_scoped(&ctx, &args, &session_token)
+    kasirmu_bridge::purchasing::create_purchase_order_scoped(&ctx, &args, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -122,7 +122,7 @@ pub async fn update_po_status_scoped(
     state: State<'_, AppState>,
 ) -> Result<PurchaseOrderDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::update_po_status_scoped(&ctx, &args, &session_token)
+    kasirmu_bridge::purchasing::update_po_status_scoped(&ctx, &args, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -135,7 +135,7 @@ pub async fn receive_purchase_order_scoped(
     state: State<'_, AppState>,
 ) -> Result<PurchaseOrderDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::receive_purchase_order_scoped(&ctx, &id, &session_token)
+    kasirmu_bridge::purchasing::receive_purchase_order_scoped(&ctx, &id, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -149,7 +149,7 @@ pub async fn receive_purchase_order_with_lines_scoped(
     state: State<'_, AppState>,
 ) -> Result<PurchaseOrderDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::receive_purchase_order_with_lines_scoped(
+    kasirmu_bridge::purchasing::receive_purchase_order_with_lines_scoped(
         &ctx,
         &id,
         &lines,

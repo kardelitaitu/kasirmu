@@ -4,7 +4,7 @@
 //! reading store data. The session supplies both the store database and the
 //! authenticated user used for permission checks.
 //!
-//! Every body delegates to `oz_bridge::reports` (ADR #49). The gate stays
+//! Every body delegates to `kasirmu_bridge::reports` (ADR #49). The gate stays
 //! NON-scope-aware exactly where it was: the permission check runs against the
 //! global identity DB through a plain `Store::new` (NOT a cache-attached
 //! store), in the original order — resolve the session, take the global lock,
@@ -35,7 +35,7 @@ pub async fn get_menu_engineering_scoped(
     state: State<'_, AppState>,
 ) -> Result<kasirmu_reporting::menu_engineering::MenuEngineeringResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_menu_engineering_scoped(&ctx, &session_token, &start_date, &end_date)
+    kasirmu_bridge::reports::get_menu_engineering_scoped(&ctx, &session_token, &start_date, &end_date)
         .await
         .map_err(Into::into)
 }
@@ -51,7 +51,7 @@ pub async fn get_sale_line_margins_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<kasirmu_reporting::margin::SaleLineMargin>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_sale_line_margins_scoped(&ctx, &session_token, &sale_id)
+    kasirmu_bridge::reports::get_sale_line_margins_scoped(&ctx, &session_token, &sale_id)
         .await
         .map_err(Into::into)
 }
@@ -65,7 +65,7 @@ pub async fn get_daily_revenue_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<DailyRevenueRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_daily_revenue_scoped(&ctx, &session_token, &start_date, &end_date)
+    kasirmu_bridge::reports::get_daily_revenue_scoped(&ctx, &session_token, &start_date, &end_date)
         .await
         .map_err(Into::into)
 }
@@ -79,7 +79,7 @@ pub async fn get_weekly_revenue_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<WeeklyRevenueRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_weekly_revenue_scoped(&ctx, &session_token, &start_date, &end_date)
+    kasirmu_bridge::reports::get_weekly_revenue_scoped(&ctx, &session_token, &start_date, &end_date)
         .await
         .map_err(Into::into)
 }
@@ -93,7 +93,7 @@ pub async fn get_monthly_revenue_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<MonthlyRevenueRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_monthly_revenue_scoped(&ctx, &session_token, &start_date, &end_date)
+    kasirmu_bridge::reports::get_monthly_revenue_scoped(&ctx, &session_token, &start_date, &end_date)
         .await
         .map_err(Into::into)
 }
@@ -109,7 +109,7 @@ pub async fn get_top_products_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<TopProductRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_top_products_scoped(
+    kasirmu_bridge::reports::get_top_products_scoped(
         &ctx,
         &session_token,
         &start_date,
@@ -131,7 +131,7 @@ pub async fn get_category_popularity_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<CategoryPopularityRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_category_popularity_scoped(&ctx, &session_token, top_per_category)
+    kasirmu_bridge::reports::get_category_popularity_scoped(&ctx, &session_token, top_per_category)
         .await
         .map_err(Into::into)
 }
@@ -150,7 +150,7 @@ pub async fn get_category_popularity_trend_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<CategoryTrendPoint>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_category_popularity_trend_scoped(
+    kasirmu_bridge::reports::get_category_popularity_trend_scoped(
         &ctx,
         &session_token,
         &start_date,
@@ -174,7 +174,7 @@ pub async fn get_category_forecast_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<CategoryForecastRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_category_forecast_scoped(
+    kasirmu_bridge::reports::get_category_forecast_scoped(
         &ctx,
         &session_token,
         &start_date,
@@ -195,7 +195,7 @@ pub async fn get_hourly_heatmap_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<HourlyHeatmapRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_hourly_heatmap_scoped(&ctx, &session_token, &start_date, &end_date)
+    kasirmu_bridge::reports::get_hourly_heatmap_scoped(&ctx, &session_token, &start_date, &end_date)
         .await
         .map_err(Into::into)
 }
@@ -208,7 +208,7 @@ pub async fn get_low_stock_alerts_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<LowStockAlert>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_low_stock_alerts_scoped(&ctx, &session_token, threshold)
+    kasirmu_bridge::reports::get_low_stock_alerts_scoped(&ctx, &session_token, threshold)
         .await
         .map_err(Into::into)
 }
@@ -222,7 +222,7 @@ pub async fn get_category_breakdown_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<CategoryBreakdownRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_category_breakdown_scoped(&ctx, &session_token, &start_date, &end_date)
+    kasirmu_bridge::reports::get_category_breakdown_scoped(&ctx, &session_token, &start_date, &end_date)
         .await
         .map_err(Into::into)
 }
@@ -236,7 +236,7 @@ pub async fn get_payment_method_breakdown_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<PaymentMethodRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_payment_method_breakdown_scoped(
+    kasirmu_bridge::reports::get_payment_method_breakdown_scoped(
         &ctx,
         &session_token,
         &start_date,
@@ -255,7 +255,7 @@ pub async fn get_voided_sales_summary_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<VoidedSummaryRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_voided_sales_summary_scoped(
+    kasirmu_bridge::reports::get_voided_sales_summary_scoped(
         &ctx,
         &session_token,
         &start_date,
@@ -275,7 +275,7 @@ pub async fn get_voided_items_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<VoidedItemRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_voided_items_scoped(&ctx, &session_token, &start_date, &end_date, limit)
+    kasirmu_bridge::reports::get_voided_items_scoped(&ctx, &session_token, &start_date, &end_date, limit)
         .await
         .map_err(Into::into)
 }
@@ -289,7 +289,7 @@ pub async fn get_basket_size_scoped(
     state: State<'_, AppState>,
 ) -> Result<BasketSizeRow, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_basket_size_scoped(&ctx, &session_token, &start_date, &end_date)
+    kasirmu_bridge::reports::get_basket_size_scoped(&ctx, &session_token, &start_date, &end_date)
         .await
         .map_err(Into::into)
 }
@@ -303,7 +303,7 @@ pub async fn get_basket_size_trend_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<BasketTrendRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_basket_size_trend_scoped(&ctx, &session_token, &start_date, &end_date)
+    kasirmu_bridge::reports::get_basket_size_trend_scoped(&ctx, &session_token, &start_date, &end_date)
         .await
         .map_err(Into::into)
 }
@@ -317,7 +317,7 @@ pub async fn get_customer_split_scoped(
     state: State<'_, AppState>,
 ) -> Result<CustomerSplitRow, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_customer_split_scoped(&ctx, &session_token, &start_date, &end_date)
+    kasirmu_bridge::reports::get_customer_split_scoped(&ctx, &session_token, &start_date, &end_date)
         .await
         .map_err(Into::into)
 }
@@ -331,7 +331,7 @@ pub async fn get_discounts_summary_scoped(
     state: State<'_, AppState>,
 ) -> Result<DiscountsSummaryRow, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_discounts_summary_scoped(&ctx, &session_token, &start_date, &end_date)
+    kasirmu_bridge::reports::get_discounts_summary_scoped(&ctx, &session_token, &start_date, &end_date)
         .await
         .map_err(Into::into)
 }
@@ -346,7 +346,7 @@ pub async fn get_inventory_turnover_scoped(
     state: State<'_, AppState>,
 ) -> Result<InventoryTurnoverRow, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_inventory_turnover_scoped(
+    kasirmu_bridge::reports::get_inventory_turnover_scoped(
         &ctx,
         &session_token,
         &start_date,
@@ -366,7 +366,7 @@ pub async fn get_inventory_trend_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<InventoryTrendRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_inventory_trend_scoped(&ctx, &session_token, &start_date, &end_date)
+    kasirmu_bridge::reports::get_inventory_trend_scoped(&ctx, &session_token, &start_date, &end_date)
         .await
         .map_err(Into::into)
 }
@@ -380,7 +380,7 @@ pub async fn get_table_turnover_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<TableTurnoverRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_table_turnover_scoped(&ctx, &session_token, &start_date, &end_date)
+    kasirmu_bridge::reports::get_table_turnover_scoped(&ctx, &session_token, &start_date, &end_date)
         .await
         .map_err(Into::into)
 }
@@ -394,7 +394,7 @@ pub async fn get_hourly_occupancy_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<HourlyOccupancyRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_hourly_occupancy_scoped(&ctx, &session_token, &start_date, &end_date)
+    kasirmu_bridge::reports::get_hourly_occupancy_scoped(&ctx, &session_token, &start_date, &end_date)
         .await
         .map_err(Into::into)
 }
@@ -410,14 +410,14 @@ pub async fn build_custom_report_scoped(
     state: State<'_, AppState>,
 ) -> Result<CustomReportResponse, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::build_custom_report_scoped(&ctx, &session_token, request)
+    kasirmu_bridge::reports::build_custom_report_scoped(&ctx, &session_token, request)
         .await
         .map_err(Into::into)
 }
 
 // ── Test seam ─────────────────────────────────────────────────────────────
 //
-// The bodies now live in `oz_bridge::reports`; `reports_tests.rs` drives the
+// The bodies now live in `kasirmu_bridge::reports`; `reports_tests.rs` drives the
 // scope helper and the top-products bound directly. These forwarders keep that
 // coverage pointed at the production implementation — including the
 // `From<BridgeError> for AppError` seam, which is what the two error
@@ -432,14 +432,14 @@ async fn resolve_report_scope(
     permission: &str,
 ) -> Result<std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::resolve_report_scope(&ctx, session_token, permission)
+    kasirmu_bridge::reports::resolve_report_scope(&ctx, session_token, permission)
         .await
         .map_err(Into::into)
 }
 
 #[cfg(test)]
 fn validate_top_product_limit(limit: i64) -> Result<(), AppError> {
-    Ok(oz_bridge::reports::validate_top_product_limit(limit)?)
+    Ok(kasirmu_bridge::reports::validate_top_product_limit(limit)?)
 }
 
 #[cfg(test)]

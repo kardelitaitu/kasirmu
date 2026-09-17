@@ -6,7 +6,7 @@
 //! All commands have scoped variants (ADR #7) that use the session token
 //! pattern. Old commands are preserved with deprecation notices.
 //!
-//! Wave F: every command body lives in `oz_bridge::terminals`. What remains here
+//! Wave F: every command body lives in `kasirmu_bridge::terminals`. What remains here
 //! is the tauri-facing half — the `#[tauri::command]` shims (names, attributes,
 //! params and return types unchanged), the DTO re-exports, and the one `run_*`
 //! adapter that `terminals_tests.rs` still calls directly.
@@ -21,7 +21,7 @@ use oz_core::{Store, Terminal, TerminalFeatureOverride, TerminalProfile};
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::terminals::{
+pub use kasirmu_bridge::terminals::{
     DEVICE_BINDING_KEYRING_NAME, DeviceBindingDto, RegisterTerminalArgs, RegisterTerminalResult,
     SetDeviceBindingArgs, SetTerminalProfileArgs, TerminalDto, TerminalProfileDto,
     UpdateTerminalArgs, UpdateTerminalResult,
@@ -34,7 +34,7 @@ pub async fn list_terminals_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<TerminalDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::terminals::list_terminals_scoped(&ctx, &session_token)
+    kasirmu_bridge::terminals::list_terminals_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -47,7 +47,7 @@ pub async fn get_terminal_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<TerminalDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::terminals::get_terminal_scoped(&ctx, &session_token, id)
+    kasirmu_bridge::terminals::get_terminal_scoped(&ctx, &session_token, id)
         .await
         .map_err(Into::into)
 }
@@ -60,7 +60,7 @@ pub async fn ping_terminal_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::terminals::ping_terminal_scoped(&ctx, &session_token, id)
+    kasirmu_bridge::terminals::ping_terminal_scoped(&ctx, &session_token, id)
         .await
         .map_err(Into::into)
 }
@@ -73,7 +73,7 @@ pub async fn list_terminal_overrides_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<TerminalFeatureOverride>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::terminals::list_terminal_overrides_scoped(&ctx, &session_token, terminal_id)
+    kasirmu_bridge::terminals::list_terminal_overrides_scoped(&ctx, &session_token, terminal_id)
         .await
         .map_err(Into::into)
 }
@@ -85,7 +85,7 @@ pub async fn list_terminal_profiles_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<TerminalProfileDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::terminals::list_terminal_profiles_scoped(&ctx, &session_token)
+    kasirmu_bridge::terminals::list_terminal_profiles_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -98,7 +98,7 @@ pub async fn get_terminal_profile_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<TerminalProfileDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::terminals::get_terminal_profile_scoped(&ctx, &session_token, terminal_id)
+    kasirmu_bridge::terminals::get_terminal_profile_scoped(&ctx, &session_token, terminal_id)
         .await
         .map_err(Into::into)
 }
@@ -111,7 +111,7 @@ pub async fn get_device_binding_scoped(
     state: State<'_, AppState>,
 ) -> Result<DeviceBindingDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::terminals::get_device_binding_scoped(&ctx, &session_token, terminal_id)
+    kasirmu_bridge::terminals::get_device_binding_scoped(&ctx, &session_token, terminal_id)
         .await
         .map_err(Into::into)
 }
@@ -126,7 +126,7 @@ pub async fn register_terminal(
     state: State<'_, AppState>,
 ) -> Result<RegisterTerminalResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::terminals::register_terminal(&ctx, user_id, args)
+    kasirmu_bridge::terminals::register_terminal(&ctx, user_id, args)
         .await
         .map_err(Into::into)
 }
@@ -139,7 +139,7 @@ pub async fn register_terminal_scoped(
     state: State<'_, AppState>,
 ) -> Result<RegisterTerminalResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::terminals::register_terminal_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::terminals::register_terminal_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -152,7 +152,7 @@ pub async fn update_terminal_scoped(
     state: State<'_, AppState>,
 ) -> Result<UpdateTerminalResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::terminals::update_terminal_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::terminals::update_terminal_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -165,7 +165,7 @@ pub async fn delete_terminal_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::terminals::delete_terminal_scoped(&ctx, &session_token, id)
+    kasirmu_bridge::terminals::delete_terminal_scoped(&ctx, &session_token, id)
         .await
         .map_err(Into::into)
 }
@@ -180,7 +180,7 @@ pub async fn set_terminal_override_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::terminals::set_terminal_override_scoped(
+    kasirmu_bridge::terminals::set_terminal_override_scoped(
         &ctx,
         &session_token,
         terminal_id,
@@ -200,7 +200,7 @@ pub async fn delete_terminal_override_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::terminals::delete_terminal_override_scoped(
+    kasirmu_bridge::terminals::delete_terminal_override_scoped(
         &ctx,
         &session_token,
         terminal_id,
@@ -218,7 +218,7 @@ pub async fn set_terminal_profile_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::terminals::set_terminal_profile_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::terminals::set_terminal_profile_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -231,7 +231,7 @@ pub async fn delete_terminal_profile_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::terminals::delete_terminal_profile_scoped(&ctx, &session_token, terminal_id)
+    kasirmu_bridge::terminals::delete_terminal_profile_scoped(&ctx, &session_token, terminal_id)
         .await
         .map_err(Into::into)
 }
@@ -244,7 +244,7 @@ pub async fn set_device_binding_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::terminals::set_device_binding_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::terminals::set_device_binding_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -257,7 +257,7 @@ pub async fn clear_device_binding_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::terminals::clear_device_binding_scoped(&ctx, &session_token, terminal_id)
+    kasirmu_bridge::terminals::clear_device_binding_scoped(&ctx, &session_token, terminal_id)
         .await
         .map_err(Into::into)
 }
@@ -268,5 +268,5 @@ pub async fn clear_device_binding_scoped(
 // now go through the bridge, so nothing in this module calls it.
 #[allow(dead_code)]
 fn run_list_terminals(conn: &rusqlite::Connection) -> Result<Vec<TerminalDto>, AppError> {
-    oz_bridge::terminals::run_list_terminals(conn).map_err(Into::into)
+    kasirmu_bridge::terminals::run_list_terminals(conn).map_err(Into::into)
 }

@@ -3,7 +3,7 @@
 //! the HAL via `state.registry` — they never construct a concrete driver.
 //!
 //! Wave D / D3a: the bodies now live in the headless
-//! `oz_bridge::hardware` module. Each `#[tauri::command]` below keeps its
+//! `kasirmu_bridge::hardware` module. Each `#[tauri::command]` below keeps its
 //! exact name, parameter list, attributes and `Result<_, AppError>` wire
 //! contract; it builds a `BridgeCtx` from `AppState` and delegates. UI
 //! events ride the bridge's injected `EventSink` and the scanner poll task
@@ -19,7 +19,7 @@ use kasirmu_hal::transport::usb::UsbDeviceInfo;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::hardware::{
+pub use kasirmu_bridge::hardware::{
     DisplayShowArgs, LineItemDto, MoneyDto, OpenCashDrawerArgs, OpenCashDrawerResult, PaymentDto,
     PrintReceiptArgs, PrintReceiptResult, PrintSalesReceiptArgs, PrintSalesReceiptResult,
     ScannerInfo,
@@ -36,14 +36,14 @@ pub async fn print_sales_receipt_scoped(
     state: State<'_, AppState>,
 ) -> Result<PrintSalesReceiptResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::hardware::print_sales_receipt_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::hardware::print_sales_receipt_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
 
 /// Async inner: format and print receipt (no DB reference — all config
 /// already loaded). Retained as a shim adapter under the keep-every-`run_*`
-/// rule; the body lives in `oz_bridge::hardware::run_print_receipt_inner`.
+/// rule; the body lives in `kasirmu_bridge::hardware::run_print_receipt_inner`.
 pub async fn run_print_receipt_inner(
     args: PrintSalesReceiptArgs,
     config: kasirmu_hal::drivers::receipt::ReceiptConfig,
@@ -51,7 +51,7 @@ pub async fn run_print_receipt_inner(
     state: State<'_, AppState>,
 ) -> Result<PrintSalesReceiptResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::hardware::run_print_receipt_inner(&ctx, args, config, store_info)
+    kasirmu_bridge::hardware::run_print_receipt_inner(&ctx, args, config, store_info)
         .await
         .map_err(Into::into)
 }
@@ -64,7 +64,7 @@ pub async fn open_cash_drawer_scoped(
     state: State<'_, AppState>,
 ) -> Result<OpenCashDrawerResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::hardware::open_cash_drawer_scoped(&ctx, args, &session_token)
+    kasirmu_bridge::hardware::open_cash_drawer_scoped(&ctx, args, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -77,7 +77,7 @@ pub async fn print_receipt_scoped(
     state: State<'_, AppState>,
 ) -> Result<PrintReceiptResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::hardware::print_receipt_scoped(&ctx, args, &session_token)
+    kasirmu_bridge::hardware::print_receipt_scoped(&ctx, args, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -87,7 +87,7 @@ pub async fn print_receipt_scoped(
 /// calls the bridge's copy.
 #[allow(dead_code)] // sibling hardware_tests.rs depends on it
 fn prefer_first(scanners: Vec<ScannerInfo>, preferred: &str) -> Vec<ScannerInfo> {
-    oz_bridge::hardware::prefer_first(scanners, preferred)
+    kasirmu_bridge::hardware::prefer_first(scanners, preferred)
 }
 
 /// List all registered barcode scanners (scoped), preference-ordered.
@@ -102,7 +102,7 @@ pub async fn list_scanners_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<ScannerInfo>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::hardware::list_scanners_scoped(&ctx, &session_token)
+    kasirmu_bridge::hardware::list_scanners_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -115,7 +115,7 @@ pub async fn start_scanner_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::hardware::start_scanner_scoped(&ctx, &scanner_id, &session_token)
+    kasirmu_bridge::hardware::start_scanner_scoped(&ctx, &scanner_id, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -127,7 +127,7 @@ pub async fn stop_scanner_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::hardware::stop_scanner_scoped(&ctx, &session_token)
+    kasirmu_bridge::hardware::stop_scanner_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -139,7 +139,7 @@ pub async fn list_displays_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::hardware::list_displays_scoped(&ctx, &session_token)
+    kasirmu_bridge::hardware::list_displays_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -152,7 +152,7 @@ pub async fn display_show_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::hardware::display_show_scoped(&ctx, args, &session_token)
+    kasirmu_bridge::hardware::display_show_scoped(&ctx, args, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -164,7 +164,7 @@ pub async fn discover_hardware_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<UsbDeviceInfo>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::hardware::discover_hardware_scoped(&ctx, &session_token)
+    kasirmu_bridge::hardware::discover_hardware_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -177,7 +177,7 @@ pub async fn display_clear_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::hardware::display_clear_scoped(&ctx, &display_id, &session_token)
+    kasirmu_bridge::hardware::display_clear_scoped(&ctx, &display_id, &session_token)
         .await
         .map_err(Into::into)
 }

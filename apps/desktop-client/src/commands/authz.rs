@@ -20,7 +20,7 @@ use crate::state::AppState;
 
 use std::sync::Arc;
 
-use oz_bridge::ctx::EventSink;
+use kasirmu_bridge::ctx::EventSink;
 use tauri::{AppHandle, Emitter};
 
 /// [`EventSink`] over the shell's `AppHandle`.
@@ -176,8 +176,8 @@ pub async fn require_permission_for_session_resource(
 
 use tauri::Manager as _;
 
-use oz_bridge::ctx::BridgeCtx;
-use oz_bridge::error::BridgeError;
+use kasirmu_bridge::ctx::BridgeCtx;
+use kasirmu_bridge::error::BridgeError;
 
 impl crate::state::AppState {
     /// Borrow a headless bridge context for command shims. Cheap: refs + one PathBuf clone.

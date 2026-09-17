@@ -1480,10 +1480,10 @@ fn decision_pin_both_read_doors_on_both_shells_reach_the_refused_function() {
             //
             // The trailing `(` is load-bearing: without it the `_scoped`
             // spelling would satisfy the unscoped case, because
-            // `oz_bridge::settings::get_setting_scoped(` contains
-            // `oz_bridge::settings::get_setting` as a prefix.
+            // `kasirmu_bridge::settings::get_setting_scoped(` contains
+            // `kasirmu_bridge::settings::get_setting` as a prefix.
             let reaches_the_refusal = body.contains("run_get_setting")
-                || body.contains("oz_bridge::settings::get_setting(");
+                || body.contains("kasirmu_bridge::settings::get_setting(");
             assert!(
                 reaches_the_refusal,
                 "{label}: `{signature}` no longer reaches the refused door —                  it either reads the table itself or the door was renamed. Body: {body}"
@@ -1936,7 +1936,7 @@ async fn set_settings_scoped_denies_a_session_without_settings_edit() {
 // `get_setting_scoped` and `list_credit_sales_scoped` each did
 // `let (_session, …) = state.resolve_scope(&session_token)?` — the underscore is
 // the finding — and went to the database. Every one of their
-// `oz_bridge::settings` twins gates: five on `settings:read`, and
+// `kasirmu_bridge::settings` twins gates: five on `settings:read`, and
 // `list_credit_sales_scoped` on `sales:view` (`crates/kasirmu-bridge/src/settings.rs:779`,
 // under an "F-017" comment that even records the exception: "This one keeps
 // sales:view, not settings:read — verbatim from the shell"). All six were already
@@ -2112,7 +2112,7 @@ async fn scoped_settings_reads_reach_their_bodies_for_an_owner() {
 // no migration, no constant.
 //
 // And the command is not decorative about its `user_id`.
-// `oz_bridge::settings::set_setting` runs
+// `kasirmu_bridge::settings::set_setting` runs
 // `ctx.require_permission_for_user(&store, user_id, SETTINGS_EDIT)?` at
 // `crates/kasirmu-bridge/src/settings.rs:1259`, which reaches
 // `Store::require_permission` → `assignment_for_user(user_id)?`

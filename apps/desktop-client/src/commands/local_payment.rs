@@ -14,7 +14,7 @@
 //! managed through the same command with the entity scope resolved by
 //! later management surfaces.
 
-// Wave F: the bodies moved to oz_bridge::local_payment. The gate pair keeps
+// Wave F: the bodies moved to kasirmu_bridge::local_payment. The gate pair keeps
 // its original order (session gate then the ADR #47 location-resource gate)
 // inside the bridge fn.
 
@@ -28,7 +28,7 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::local_payment::LocalPaymentRailArgs;
+pub use kasirmu_bridge::local_payment::LocalPaymentRailArgs;
 
 /// Read the effective payment-rail surface for one location of the
 /// session's store (regional slice 6).
@@ -44,7 +44,7 @@ pub async fn get_local_payment_methods_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<EffectivePaymentRail>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::local_payment::get_local_payment_methods_scoped(&ctx, &location_id, &session_token)
+    kasirmu_bridge::local_payment::get_local_payment_methods_scoped(&ctx, &location_id, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -66,7 +66,7 @@ pub async fn set_local_payment_methods_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<EffectivePaymentRail>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::local_payment::set_local_payment_methods_scoped(
+    kasirmu_bridge::local_payment::set_local_payment_methods_scoped(
         &ctx,
         &location_id,
         rails,

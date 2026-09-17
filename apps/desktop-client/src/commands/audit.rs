@@ -3,7 +3,7 @@
 //! `list_audit_log` exposes the append-only audit log entries
 //! stored in SQLite via `oz_core::db::Store::list_audit_entries`.
 //!
-//! Wave E / E5: every body lives in the headless `oz_bridge::audit` module.
+//! Wave E / E5: every body lives in the headless `kasirmu_bridge::audit` module.
 //! Each `#[tauri::command]` below keeps its exact name, parameter list and
 //! `Result<_, AppError>` return, so the registered IPC surface and the
 //! serialized error shape are unchanged; it borrows a `BridgeCtx` from
@@ -26,7 +26,7 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::audit::{
+pub use kasirmu_bridge::audit::{
     AuditEntryDto, AuditExportDto, AuditLogPageDto, AuditReviewStatusDto, ExportAuditLogArgs,
     ExportSecurityEventsArgs, ListAuditLogArgs, ListAuditLogScopedArgs,
     ListSecurityEventsScopedArgs, MarkAuditReviewedArgs, ReviewCheckpointDto,
@@ -40,13 +40,13 @@ pub async fn list_audit_log_scoped(
     state: State<'_, AppState>,
 ) -> Result<AuditLogPageDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::audit::list_audit_log_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::audit::list_audit_log_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
 
 /// Read the ORGANIZATION-level security trail from the GLOBAL identity
-/// database (see `oz_bridge::audit::list_security_events_scoped`).
+/// database (see `kasirmu_bridge::audit::list_security_events_scoped`).
 #[tauri::command]
 pub async fn list_security_events_scoped(
     session_token: String,
@@ -54,7 +54,7 @@ pub async fn list_security_events_scoped(
     state: State<'_, AppState>,
 ) -> Result<AuditLogPageDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::audit::list_security_events_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::audit::list_security_events_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -67,7 +67,7 @@ pub async fn get_audit_review_status_scoped(
     state: State<'_, AppState>,
 ) -> Result<AuditReviewStatusDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::audit::get_audit_review_status_scoped(&ctx, &session_token)
+    kasirmu_bridge::audit::get_audit_review_status_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -80,7 +80,7 @@ pub async fn mark_audit_reviewed_scoped(
     state: State<'_, AppState>,
 ) -> Result<ReviewCheckpointDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::audit::mark_audit_reviewed_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::audit::mark_audit_reviewed_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -93,13 +93,13 @@ pub async fn export_audit_log_scoped(
     state: State<'_, AppState>,
 ) -> Result<AuditExportDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::audit::export_audit_log_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::audit::export_audit_log_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
 
 /// Export the ORGANIZATION-level security trail to CSV (owner ruling
-/// D61-7, D84) — see `oz_bridge::audit::export_security_events_scoped`.
+/// D61-7, D84) — see `kasirmu_bridge::audit::export_security_events_scoped`.
 #[tauri::command]
 pub async fn export_security_events_scoped(
     session_token: String,
@@ -107,7 +107,7 @@ pub async fn export_security_events_scoped(
     state: State<'_, AppState>,
 ) -> Result<AuditExportDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::audit::export_security_events_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::audit::export_security_events_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }

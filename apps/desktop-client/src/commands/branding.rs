@@ -3,7 +3,7 @@
 //! Exposes brand settings (primary colour, logo path, location name) to the
 //! front-end and provides a file-picker for the logo image.
 
-// Wave F: eight bodies moved to oz_bridge::branding. pick_logo_file and
+// Wave F: eight bodies moved to kasirmu_bridge::branding. pick_logo_file and
 // pick_logo_file_scoped keep their full bodies here, byte-identical: the
 // tauri_plugin_dialog blocking pick takes a Rust closure callback and
 // BridgeCtx carries no dialog seam — inventing one is a parked owner
@@ -24,7 +24,7 @@ use crate::error::AppError;
 use crate::state::AppState;
 use oz_core::permissions;
 
-pub use oz_bridge::branding::{ALLOWED_LOGO_EXTENSIONS, BrandSettingsDto};
+pub use kasirmu_bridge::branding::{ALLOWED_LOGO_EXTENSIONS, BrandSettingsDto};
 
 /// Load all brand settings resolved from a session token. ADR #7.
 #[tauri::command]
@@ -33,7 +33,7 @@ pub async fn get_brand_settings_scoped(
     state: State<'_, AppState>,
 ) -> Result<BrandSettingsDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::branding::get_brand_settings_scoped(&ctx, &session_token)
+    kasirmu_bridge::branding::get_brand_settings_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -47,7 +47,7 @@ pub async fn get_brand_settings_scoped(
 #[tauri::command]
 pub async fn get_brand_settings(state: State<'_, AppState>) -> Result<BrandSettingsDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::branding::get_brand_settings(&ctx)
+    kasirmu_bridge::branding::get_brand_settings(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -80,7 +80,7 @@ pub async fn set_brand_primary_colour_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::branding::set_brand_primary_colour_scoped(&ctx, &colour, &session_token)
+    kasirmu_bridge::branding::set_brand_primary_colour_scoped(&ctx, &colour, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -93,7 +93,7 @@ pub async fn set_brand_store_name_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::branding::set_brand_store_name_scoped(&ctx, &name, &session_token)
+    kasirmu_bridge::branding::set_brand_store_name_scoped(&ctx, &name, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -110,7 +110,7 @@ pub async fn set_brand_logo_path_scoped(
         .app
         .as_ref()
         .map(|app_handle| app_handle.path().app_data_dir().map_err(|e| e.to_string()));
-    oz_bridge::branding::set_brand_logo_path_scoped(&ctx, &path, &session_token, app_data)
+    kasirmu_bridge::branding::set_brand_logo_path_scoped(&ctx, &path, &session_token, app_data)
         .await
         .map_err(Into::into)
 }

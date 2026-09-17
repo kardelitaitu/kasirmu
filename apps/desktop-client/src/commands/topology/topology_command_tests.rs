@@ -1998,7 +1998,7 @@ async fn char_apply(
     token: &str,
     diagram_store: &str,
     request_id: &str,
-) -> Result<oz_bridge::topology::commands::TopologyApplyResult, crate::error::AppError> {
+) -> Result<kasirmu_bridge::topology::commands::TopologyApplyResult, crate::error::AppError> {
     let nodes = vec![serde_json::json!({
         "id": "branch-char",
         "type": "branch-location",
@@ -2611,7 +2611,7 @@ async fn replay_apply(
     instance_id: &str,
     request_id: &str,
     base_revision: u64,
-) -> Result<oz_bridge::topology::commands::TopologyApplyResult, AppError> {
+) -> Result<kasirmu_bridge::topology::commands::TopologyApplyResult, AppError> {
     let creations = vec![CreateInstanceRequest {
         id: instance_id.into(),
         type_key: "store-pos".into(),

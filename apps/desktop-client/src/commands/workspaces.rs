@@ -9,7 +9,7 @@
 //! commands; legacy mutation and user-targeted assignment commands are not
 //! registered with Tauri.
 //!
-//! Wave E / E2: the bodies now live in the headless `oz_bridge::workspaces`
+//! Wave E / E2: the bodies now live in the headless `kasirmu_bridge::workspaces`
 //! module. Each `#[tauri::command]` below keeps its exact name, parameter
 //! list, attributes and `Result<_, AppError>` wire contract; it builds a
 //! `BridgeCtx` from `AppState` and delegates. The session-scoped gates run
@@ -28,21 +28,21 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::workspaces::{
+pub use kasirmu_bridge::workspaces::{
     BootResolution, CreateInstanceRequest, WorkspaceScreenDto, WorkspaceTypeDto,
 };
 
 /// Resolve which store a §J quota-remediation command will act on.
 ///
 /// Desktop adapter: `workspaces_tests.rs` calls this validator directly;
-/// the behaviour lives in `oz_bridge::workspaces::remediation_target`.
+/// the behaviour lives in `kasirmu_bridge::workspaces::remediation_target`.
 #[allow(dead_code)] // retained for workspaces_tests.rs, which calls it directly
 fn remediation_target(
     global: &rusqlite::Connection,
     session_store_id: &str,
     requested: Option<String>,
 ) -> Result<String, AppError> {
-    oz_bridge::workspaces::remediation_target(global, session_store_id, requested)
+    kasirmu_bridge::workspaces::remediation_target(global, session_store_id, requested)
         .map_err(AppError::from)
 }
 
@@ -60,7 +60,7 @@ pub async fn list_workspaces(
     store_id: String,
 ) -> Result<Vec<WorkspaceDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::workspaces::list_workspaces(&ctx, ticket, store_id)
+    kasirmu_bridge::workspaces::list_workspaces(&ctx, ticket, store_id)
         .await
         .map_err(Into::into)
 }
@@ -76,7 +76,7 @@ pub async fn list_workspace_screens(
     store_id: String,
 ) -> Result<Vec<WorkspaceScreenDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::workspaces::list_workspace_screens(&ctx, ticket, type_key, store_id)
+    kasirmu_bridge::workspaces::list_workspace_screens(&ctx, ticket, type_key, store_id)
         .await
         .map_err(Into::into)
 }
@@ -90,7 +90,7 @@ pub async fn list_workspaces_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<WorkspaceDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::workspaces::list_workspaces_scoped(&ctx, &session_token)
+    kasirmu_bridge::workspaces::list_workspaces_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -103,7 +103,7 @@ pub async fn get_workspace_instance_scoped(
     state: State<'_, AppState>,
 ) -> Result<WorkspaceDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::workspaces::get_workspace_instance_scoped(&ctx, &session_token, instance_id)
+    kasirmu_bridge::workspaces::get_workspace_instance_scoped(&ctx, &session_token, instance_id)
         .await
         .map_err(Into::into)
 }
@@ -118,7 +118,7 @@ pub async fn create_workspace_instance_scoped(
     state: State<'_, AppState>,
 ) -> Result<WorkspaceDto, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::workspaces::create_workspace_instance_scoped(&ctx, &session_token, req)
+    kasirmu_bridge::workspaces::create_workspace_instance_scoped(&ctx, &session_token, req)
         .await
         .map_err(Into::into)
 }
@@ -138,7 +138,7 @@ pub async fn update_workspace_instance_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::workspaces::update_workspace_instance_scoped(
+    kasirmu_bridge::workspaces::update_workspace_instance_scoped(
         &ctx,
         &session_token,
         instance_id,
@@ -161,7 +161,7 @@ pub async fn archive_workspace_instance_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::workspaces::archive_workspace_instance_scoped(&ctx, &session_token, instance_id)
+    kasirmu_bridge::workspaces::archive_workspace_instance_scoped(&ctx, &session_token, instance_id)
         .await
         .map_err(Into::into)
 }
@@ -177,7 +177,7 @@ pub async fn recover_workspace_instances_scoped(
     state: State<'_, AppState>,
 ) -> Result<u32, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::workspaces::recover_workspace_instances_scoped(&ctx, &session_token, store_id)
+    kasirmu_bridge::workspaces::recover_workspace_instances_scoped(&ctx, &session_token, store_id)
         .await
         .map_err(Into::into)
 }
@@ -194,7 +194,7 @@ pub async fn suspend_surplus_workspace_instances_scoped(
     state: State<'_, AppState>,
 ) -> Result<u32, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::workspaces::suspend_surplus_workspace_instances_scoped(
+    kasirmu_bridge::workspaces::suspend_surplus_workspace_instances_scoped(
         &ctx,
         &session_token,
         store_id,
@@ -211,7 +211,7 @@ pub async fn list_workspace_screens_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<WorkspaceScreenDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::workspaces::list_workspace_screens_scoped(&ctx, &session_token, type_key)
+    kasirmu_bridge::workspaces::list_workspace_screens_scoped(&ctx, &session_token, type_key)
         .await
         .map_err(Into::into)
 }
@@ -226,7 +226,7 @@ pub async fn set_user_workspace_instances_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::workspaces::set_user_workspace_instances_scoped(
+    kasirmu_bridge::workspaces::set_user_workspace_instances_scoped(
         &ctx,
         &session_token,
         user_id,
@@ -245,7 +245,7 @@ pub async fn get_user_workspace_instances_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::workspaces::get_user_workspace_instances_scoped(&ctx, &session_token, user_id)
+    kasirmu_bridge::workspaces::get_user_workspace_instances_scoped(&ctx, &session_token, user_id)
         .await
         .map_err(Into::into)
 }
@@ -264,7 +264,7 @@ pub async fn list_workspaces_for_store_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<WorkspaceDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::workspaces::list_workspaces_for_store_scoped(&ctx, &session_token, store_id)
+    kasirmu_bridge::workspaces::list_workspaces_for_store_scoped(&ctx, &session_token, store_id)
         .await
         .map_err(Into::into)
 }
@@ -276,7 +276,7 @@ pub async fn list_all_workspaces_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<WorkspaceTypeDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::workspaces::list_all_workspaces_scoped(&ctx, &session_token)
+    kasirmu_bridge::workspaces::list_all_workspaces_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -327,7 +327,7 @@ pub async fn resolve_boot_store(
     device_id: Option<String>,
 ) -> Result<BootResolution, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::workspaces::resolve_boot_store(&ctx, device_id)
+    kasirmu_bridge::workspaces::resolve_boot_store(&ctx, device_id)
         .await
         .map_err(Into::into)
 }

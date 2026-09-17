@@ -20,13 +20,13 @@ use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
-// Phase 3.3 T6: the product wire DTOs moved to the shared `oz_bridge::products`
+// Phase 3.3 T6: the product wire DTOs moved to the shared `kasirmu_bridge::products`
 // module and are re-exported here, same as the desktop shell. `ProductDto`
 // arrives with the three spec-0046b image fields the fork had dropped
 // (`id`, `image_hash`, `images`) — the shared UI reads all three, and
 // without `id` its image commands had no product id to pass. Both mapper
 // sites below now populate them. Command bodies stay tablet-native.
-pub use oz_bridge::products::{
+pub use kasirmu_bridge::products::{
     AdjustStockArgs, CreateProductArgs, CreateProductResult, DeleteProductArgs, MoneyDto,
     ProductDto, SerialTrackRow, UpdateProductArgs, UpdateProductResult,
 };
@@ -34,10 +34,10 @@ pub use oz_bridge::products::{
 /// Project the store's image assignments into the wire DTO shape (spec 0046b).
 fn image_dtos(
     images: &[oz_core::db::products::ProductImage],
-) -> Vec<oz_bridge::products::ProductImageDto> {
+) -> Vec<kasirmu_bridge::products::ProductImageDto> {
     images
         .iter()
-        .map(|img| oz_bridge::products::ProductImageDto {
+        .map(|img| kasirmu_bridge::products::ProductImageDto {
             slot: img.slot,
             hash: img.hash.clone(),
             position: img.position,
@@ -240,7 +240,7 @@ fn map_pwd_to_dto(
 /// Map the PATCH-style attribute fields onto the core update struct.
 ///
 /// Free function rather than an inherent impl: `UpdateProductArgs` is
-/// re-exported from `oz_bridge::products` (Phase 3.3 T6), and Rust does not
+/// re-exported from `kasirmu_bridge::products` (Phase 3.3 T6), and Rust does not
 /// permit an inherent impl for a type defined in another crate.
 fn to_update_attributes(args: &UpdateProductArgs) -> oz_core::db::UpdateProductAttributes {
     oz_core::db::UpdateProductAttributes {

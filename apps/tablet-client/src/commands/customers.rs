@@ -43,7 +43,7 @@ use crate::state::AppState;
 // All ten definitions are byte-identical (verified block-by-block) and the
 // orphan rule forbids a shell-side `impl From<Customer> for CustomerDto`, so
 // they are re-exported rather than duplicated.
-pub use oz_bridge::customers::{
+pub use kasirmu_bridge::customers::{
     CreateCustomerArgs, CreateCustomerScopedArgs, CustomerDto, CustomerHistoryDto,
     CustomerLoyaltySummaryDto, CustomerSaleSummaryDto, CustomerSearchPage, DeleteCustomerArgs,
     UpdateCustomerArgs, UpdateCustomerScopedArgs,
@@ -63,7 +63,7 @@ pub async fn list_customers_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<CustomerDto>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::customers::list_scoped(&ctx, &session_token)
+    kasirmu_bridge::customers::list_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -77,7 +77,7 @@ pub async fn list_customers_scoped(
 /// had already moved to this shape). Gated on `customers:view` like
 /// every other customer read.
 ///
-/// ADR #49 §4: **not delegated.** `oz_bridge::customers::get_scoped` gates
+/// ADR #49 §4: **not delegated.** `kasirmu_bridge::customers::get_scoped` gates
 /// with the scope-aware `require_session_permission`; this body gates with
 /// the non-scope-aware `require_customer_permission`. Delegating would widen
 /// the gate, which §4 forbids outright.
@@ -104,7 +104,7 @@ pub async fn get_customer_scoped(
 /// Create a customer in the store resolved from a session token. ADR #7.
 ///
 /// ADR #49 §4: **not delegated.** This body opens the store database before
-/// the gate; `oz_bridge::customers::create_scoped` gates first.
+/// the gate; `kasirmu_bridge::customers::create_scoped` gates first.
 #[command]
 pub async fn create_customer_scoped(
     session_token: String,
@@ -130,7 +130,7 @@ pub async fn create_customer_scoped(
 /// Update a customer in the store resolved from a session token. ADR #7.
 ///
 /// ADR #49 §4: **not delegated.** This body opens the store database before
-/// the gate; `oz_bridge::customers::update_scoped` gates first.
+/// the gate; `kasirmu_bridge::customers::update_scoped` gates first.
 #[command]
 pub async fn update_customer_scoped(
     session_token: String,
@@ -157,7 +157,7 @@ pub async fn update_customer_scoped(
 /// Delete a customer from the store resolved from a session token. ADR #7.
 ///
 /// ADR #49 §4: **not delegated.** This body opens the store database before
-/// the gate; `oz_bridge::customers::delete_scoped` gates first.
+/// the gate; `kasirmu_bridge::customers::delete_scoped` gates first.
 #[command]
 pub async fn delete_customer_scoped(
     session_token: String,
@@ -182,7 +182,7 @@ pub async fn delete_customer_scoped(
 /// bounded page size so the renderer never holds the full customer list.
 ///
 /// ADR #49 §4: **not delegated.** This body opens the store database before
-/// the gate; `oz_bridge::customers::search_scoped` gates first.
+/// the gate; `kasirmu_bridge::customers::search_scoped` gates first.
 #[command]
 pub async fn search_customers_scoped(
     session_token: String,
@@ -214,7 +214,7 @@ pub async fn search_customers_scoped(
 /// renderer.
 ///
 /// ADR #49 §4: **not delegated.** This body opens the store database before
-/// the gate; `oz_bridge::customers::history_scoped` gates first.
+/// the gate; `kasirmu_bridge::customers::history_scoped` gates first.
 #[command]
 pub async fn get_customer_history_scoped(
     session_token: String,

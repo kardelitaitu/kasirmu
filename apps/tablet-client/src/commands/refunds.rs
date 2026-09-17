@@ -52,7 +52,7 @@ use crate::state::AppState;
 /// field-for-field identical, so nothing on the wire moves. The scoped and
 /// result structs WERE local copies too; they are re-exported on the same line now, so
 /// the tablet shell has exactly one declaration of every refund wire contract it serves.
-pub use oz_bridge::refunds::{
+pub use kasirmu_bridge::refunds::{
     ProcessRefundArgs, ProcessRefundResult, ProcessRefundScopedArgs, RefundLineArg,
 };
 

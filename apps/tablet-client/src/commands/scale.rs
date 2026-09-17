@@ -1,6 +1,6 @@
 //! Weight scale commands.
 //!
-//! Phase 3.3 T2: `ScaleDeviceInfo` moved to the shared `oz_bridge::scale`
+//! Phase 3.3 T2: `ScaleDeviceInfo` moved to the shared `kasirmu_bridge::scale`
 //! module (Agent 2's Wave D extraction) and is re-exported here, same as
 //! the desktop shell. The bodies stay tablet-native this slice: the
 //! scoped twins on the bridge take a `BridgeCtx` the tablet `AppState`
@@ -16,7 +16,7 @@ use kasirmu_hal::WeightReading;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::scale::ScaleDeviceInfo;
+pub use kasirmu_bridge::scale::ScaleDeviceInfo;
 
 /// Read the current weight from the registered weight scale.
 ///

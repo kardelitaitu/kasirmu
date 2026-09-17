@@ -32,7 +32,7 @@ oz-core = { workspace = true }
 # Phase 3.3 T1: tablet command bodies begin their move to the shared bridge.
 # health.rs is the first repoint (ctx-free commands only); later slices build
 # the tablet BridgeCtx seam and repoint the scoped bodies.
-oz-bridge = { workspace = true }
+kasirmu-bridge = { workspace = true }
 reqwest = { workspace = true }
 rand = { workspace = true }
 kasirmu-hal = { workspace = true }

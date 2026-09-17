@@ -5,7 +5,7 @@
 //!
 //! All KDS commands require `kds:view` or `kds:update` permission.
 //!
-//! Bodies live in [`oz_bridge::kds`]; each shim borrows a [`BridgeCtx`] from
+//! Bodies live in [`kasirmu_bridge::kds`]; each shim borrows a [`BridgeCtx`] from
 //! `AppState` and maps `BridgeError` back to `AppError` variant-for-variant so
 //! the wire shape is untouched. The pure topology helpers and the chit printers
 //! stay reachable from here (and from the sibling test mount) through `pub use`.
@@ -34,8 +34,8 @@ use crate::commands::topology::TOPOLOGY_RUNTIME_SETTING_KEY;
 #[allow(unused_imports)] // sibling kds_tests.rs depends on it
 use oz_core::db::Store;
 
-use oz_bridge::ctx::{BridgeCtx, EventSink};
-pub use oz_bridge::kds::{
+use kasirmu_bridge::ctx::{BridgeCtx, EventSink};
+pub use kasirmu_bridge::kds::{
     KdsChitJob, build_kds_chit_jobs, resolve_runtime_kds_plan, runtime_kds_hardware_targets,
     runtime_kds_target_instances, should_create_kds_tickets, try_auto_print_kds_chit_jobs,
 };
@@ -102,7 +102,7 @@ async fn refresh_kds_queue_cache(
     session_token: &str,
     cache: &Arc<std::sync::RwLock<KdsQueueSnapshot>>,
 ) {
-    let orders = match oz_bridge::kds::get_kds_queue_scoped(ctx, session_token, None).await {
+    let orders = match kasirmu_bridge::kds::get_kds_queue_scoped(ctx, session_token, None).await {
         Ok(orders) => orders,
         Err(e) => {
             tracing::warn!(error = %e, "kds-sync cache refresh: active-queue query failed");
@@ -111,13 +111,13 @@ async fn refresh_kds_queue_cache(
     };
     let mut tickets = Vec::with_capacity(orders.len());
     for order in orders {
-        let line_items = oz_bridge::kds::get_kds_order_lines_scoped(ctx, session_token, &order.id)
+        let line_items = kasirmu_bridge::kds::get_kds_order_lines_scoped(ctx, session_token, &order.id)
             .await
             .unwrap_or_default();
         // Station routing comes from the frozen engine; an empty vec is
         // the broadcast fallback (Expo semantics), so a resolve failure
         // degrades to broadcast rather than hiding the ticket.
-        let stations = oz_bridge::kds_routing::resolve_kds_targets(ctx, session_token, &order.id)
+        let stations = kasirmu_bridge::kds_routing::resolve_kds_targets(ctx, session_token, &order.id)
             .await
             .unwrap_or_default();
         tickets.push(KdsQueueTicket {
@@ -144,7 +144,7 @@ pub async fn list_kds_orders_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<KdsOrder>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds::list_kds_orders_scoped(&ctx, &session_token, status)
+    kasirmu_bridge::kds::list_kds_orders_scoped(&ctx, &session_token, status)
         .await
         .map_err(Into::into)
 }
@@ -157,7 +157,7 @@ pub async fn get_kds_queue_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<KdsOrder>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds::get_kds_queue_scoped(&ctx, &session_token, kds_zone)
+    kasirmu_bridge::kds::get_kds_queue_scoped(&ctx, &session_token, kds_zone)
         .await
         .map_err(Into::into)
 }
@@ -170,7 +170,7 @@ pub async fn update_kds_order_items_scoped(
     state: State<'_, AppState>,
 ) -> Result<KdsOrder, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds::update_kds_order_items_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::kds::update_kds_order_items_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -192,10 +192,10 @@ pub async fn update_kds_status_scoped(
     let cache = state.kds_queue_cache.clone();
     let ctx = state.bridge_ctx();
     let order =
-        oz_bridge::kds::update_kds_status_scoped(&ctx, &session_token, &id, &status).await?;
+        kasirmu_bridge::kds::update_kds_status_scoped(&ctx, &session_token, &id, &status).await?;
     if matches!(order.status.as_str(), "ready" | "preparing" | "pending") {
         // All bridge awaits complete before the kernel lock is taken.
-        let stations = oz_bridge::kds_routing::resolve_kds_targets(&ctx, &session_token, &order.id)
+        let stations = kasirmu_bridge::kds_routing::resolve_kds_targets(&ctx, &session_token, &order.id)
             .await
             .unwrap_or_default();
         let bumped_by = ctx.terminal_id().await;
@@ -246,14 +246,14 @@ pub async fn create_kds_order_from_sale_scoped(
     let cache = state.kds_queue_cache.clone();
     let ctx = state.bridge_ctx();
     let orders =
-        oz_bridge::kds::create_kds_order_from_sale_scoped(&ctx, &session_token, &sale_id).await?;
+        kasirmu_bridge::kds::create_kds_order_from_sale_scoped(&ctx, &session_token, &sale_id).await?;
     if !orders.is_empty() {
         for order in &orders {
             let stations =
-                oz_bridge::kds_routing::resolve_kds_targets(&ctx, &session_token, &order.id)
+                kasirmu_bridge::kds_routing::resolve_kds_targets(&ctx, &session_token, &order.id)
                     .await
                     .unwrap_or_default();
-            let items = oz_bridge::kds::get_kds_order_lines_scoped(&ctx, &session_token, &order.id)
+            let items = kasirmu_bridge::kds::get_kds_order_lines_scoped(&ctx, &session_token, &order.id)
                 .await
                 .unwrap_or_default();
             let event = KdsSyncEvent::OrderPlaced(KdsOrderPlaced {
@@ -284,7 +284,7 @@ pub async fn get_kds_order_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<KdsOrder>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds::get_kds_order_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::kds::get_kds_order_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -302,7 +302,7 @@ pub async fn print_kds_chit_for_order(
     app: Option<&tauri::AppHandle>,
 ) -> bool {
     let sink = sink_for(app);
-    oz_bridge::kds::print_kds_chit_for_order(order, registry, sink.as_ref()).await
+    kasirmu_bridge::kds::print_kds_chit_for_order(order, registry, sink.as_ref()).await
 }
 
 /// Print a kitchen chit for a specific KDS order by ID (scoped - ADR #7).
@@ -317,7 +317,7 @@ pub async fn print_kds_chit_scoped(
     state: State<'_, AppState>,
 ) -> Result<bool, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds::print_kds_chit_scoped(&ctx, &session_token, &order_id)
+    kasirmu_bridge::kds::print_kds_chit_scoped(&ctx, &session_token, &order_id)
         .await
         .map_err(Into::into)
 }
@@ -335,7 +335,7 @@ pub async fn get_kds_order_lines_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<oz_core::KdsLineItem>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::kds::get_kds_order_lines_scoped(&ctx, &session_token, &order_id)
+    kasirmu_bridge::kds::get_kds_order_lines_scoped(&ctx, &session_token, &order_id)
         .await
         .map_err(Into::into)
 }
@@ -360,13 +360,13 @@ pub async fn update_kds_line_item_status_scoped(
     let cache = state.kds_queue_cache.clone();
     let ctx = state.bridge_ctx();
     let item =
-        oz_bridge::kds::update_kds_line_item_status_scoped(&ctx, &session_token, &item_id, &status)
+        kasirmu_bridge::kds::update_kds_line_item_status_scoped(&ctx, &session_token, &item_id, &status)
             .await?;
     let stations =
-        oz_bridge::kds_routing::resolve_kds_targets(&ctx, &session_token, &item.kds_order_id)
+        kasirmu_bridge::kds_routing::resolve_kds_targets(&ctx, &session_token, &item.kds_order_id)
             .await
             .unwrap_or_default();
-    match oz_bridge::kds::get_kds_order_scoped(&ctx, &session_token, &item.kds_order_id).await {
+    match kasirmu_bridge::kds::get_kds_order_scoped(&ctx, &session_token, &item.kds_order_id).await {
         Ok(Some(parent)) => {
             let event = KdsSyncEvent::LineItemBumped(KdsLineItemBumped {
                 kds_order_id: item.kds_order_id.clone(),
@@ -406,7 +406,7 @@ pub async fn try_auto_print_kds_chits(
     app: Option<&tauri::AppHandle>,
 ) {
     let sink = sink_for(app);
-    oz_bridge::kds::try_auto_print_kds_chits(orders, registry, sink.as_ref()).await;
+    kasirmu_bridge::kds::try_auto_print_kds_chits(orders, registry, sink.as_ref()).await;
 }
 
 #[cfg(test)]

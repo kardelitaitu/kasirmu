@@ -14,7 +14,7 @@ findings: unsafe env::set_var removed from async command path; terminal_id writt
 //! (Settings → Features) so users can enable/disable capabilities
 //! after the initial Setup Wizard.
 //!
-//! Wave F: the command bodies live in `oz_bridge::features`. Kept here are the
+//! Wave F: the command bodies live in `kasirmu_bridge::features`. Kept here are the
 //! tauri-facing shims (headers byte-identical), the DTO re-exports and the two
 //! helpers that `features_tests.rs` calls directly.
 
@@ -25,18 +25,18 @@ use oz_core::Feature;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use oz_bridge::features::{
+pub use kasirmu_bridge::features::{
     FeatureDto, ListAllFeaturesResult, SetFeatureArgs, SetFeatureResult, SetFeaturesBulkArgs,
 };
 
 #[allow(dead_code)] // features_tests.rs calls this helper directly
 fn feature_to_module_id(feature: Feature) -> Option<&'static str> {
-    oz_bridge::features::feature_to_module_id(feature)
+    kasirmu_bridge::features::feature_to_module_id(feature)
 }
 
 #[allow(dead_code)] // features_tests.rs calls this helper directly
 fn all_feature_metadata() -> Vec<(Feature, &'static str, &'static str, &'static str)> {
-    oz_bridge::features::all_feature_metadata()
+    kasirmu_bridge::features::all_feature_metadata()
 }
 
 /// Fetch every known feature with its current enabled status, metadata,
@@ -48,7 +48,7 @@ pub async fn list_all_features(
     state: State<'_, AppState>,
 ) -> Result<ListAllFeaturesResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::features::list_all_features(&ctx)
+    kasirmu_bridge::features::list_all_features(&ctx)
         .await
         .map_err(Into::into)
 }
@@ -74,7 +74,7 @@ pub async fn set_features_bulk(
     state: State<'_, AppState>,
 ) -> Result<ListAllFeaturesResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::features::set_features_bulk(&ctx, &session_token, args)
+    kasirmu_bridge::features::set_features_bulk(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -97,7 +97,7 @@ pub async fn set_feature(
     state: State<'_, AppState>,
 ) -> Result<SetFeatureResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::features::set_feature(&ctx, &session_token, args)
+    kasirmu_bridge::features::set_feature(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -109,7 +109,7 @@ pub async fn list_all_features_scoped(
     state: State<'_, AppState>,
 ) -> Result<ListAllFeaturesResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::features::list_all_features_scoped(&ctx, &session_token)
+    kasirmu_bridge::features::list_all_features_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }

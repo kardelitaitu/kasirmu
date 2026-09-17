@@ -24,7 +24,7 @@ use crate::state::AppState;
 // `rename_all` on either — so the wire is unchanged. `bundles_tests.rs` reaches
 // `CreateBundleArgs` through `use super::*`, which is why it is re-exported here
 // rather than dropped.
-pub use oz_bridge::bundles::{CreateBundleArgs, CreateBundleItemArg};
+pub use kasirmu_bridge::bundles::{CreateBundleArgs, CreateBundleItemArg};
 
 /// List bundles resolved from a session token. ADR #7.
 ///
@@ -35,7 +35,7 @@ pub async fn list_bundles_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<BundleWithItems>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::bundles::list_bundles_scoped(&ctx, &session_token)
+    kasirmu_bridge::bundles::list_bundles_scoped(&ctx, &session_token)
         .await
         .map_err(Into::into)
 }
@@ -50,7 +50,7 @@ pub async fn get_bundle_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<BundleWithItems>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::bundles::get_bundle_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::bundles::get_bundle_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -66,7 +66,7 @@ pub async fn create_bundle_scoped(
     state: State<'_, AppState>,
 ) -> Result<BundleWithItems, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::bundles::create_bundle_scoped(&ctx, &session_token, args)
+    kasirmu_bridge::bundles::create_bundle_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
@@ -81,7 +81,7 @@ pub async fn update_bundle_scoped(
     state: State<'_, AppState>,
 ) -> Result<BundleWithItems, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::bundles::update_bundle_scoped(&ctx, &session_token, bundle)
+    kasirmu_bridge::bundles::update_bundle_scoped(&ctx, &session_token, bundle)
         .await
         .map_err(Into::into)
 }
@@ -96,7 +96,7 @@ pub async fn delete_bundle_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::bundles::delete_bundle_scoped(&ctx, &session_token, &id)
+    kasirmu_bridge::bundles::delete_bundle_scoped(&ctx, &session_token, &id)
         .await
         .map_err(Into::into)
 }
@@ -111,7 +111,7 @@ pub async fn lookup_bundle_by_sku_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<BundleWithItems>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::bundles::lookup_bundle_by_sku_scoped(&ctx, &session_token, &sku)
+    kasirmu_bridge::bundles::lookup_bundle_by_sku_scoped(&ctx, &session_token, &sku)
         .await
         .map_err(Into::into)
 }
