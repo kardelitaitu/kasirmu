@@ -17,7 +17,7 @@ next: none | perf: N/A
 //! and frontend still live in their original locations:
 //!
 //! - Backend: `crates/kasirmu-core/src/terminal.rs` + `crates/kasirmu-core/src/db/terminals.rs`
-//! - Commands: `apps/desktop-client/src/commands/terminals.rs`
+//! - Commands: `apps/desktop-tauri/src/commands/terminals.rs`
 //! - Frontend: `ui/src/features/terminals/`
 //! - API: `ui/src/api/terminals.ts`
 //!

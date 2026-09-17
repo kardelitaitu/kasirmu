@@ -19,7 +19,7 @@ next: none | perf: N/A
 //! (`crates/kasirmu-core/src/tax_rate.rs`), and the concrete implementation
 //! remains in its original locations:
 //!
-//! - Backend: `crates/kasirmu-core/src/db/tax.rs` + `apps/desktop-client/src/commands/tax.rs`
+//! - Backend: `crates/kasirmu-core/src/db/tax.rs` + `apps/desktop-tauri/src/commands/tax.rs`
 //! - Frontend: `ui/src/features/tax/`
 //! - API: `ui/src/api/tax.ts`
 //! - Locale: `shared-ui/locales/{en,fr,es,de,zh,ja}/tax.ftl`

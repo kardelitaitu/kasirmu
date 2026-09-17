@@ -18,7 +18,7 @@ next: none | perf: N/A
 //! Fluent locale) still live in their original locations:
 //!
 //! - Backend: `crates/kasirmu-core/src/user.rs` + `crates/kasirmu-core/src/db/staff.rs`
-//! - Commands: `apps/desktop-client/src/commands/staff.rs` + `apps/desktop-client/src/commands/auth.rs`
+//! - Commands: `apps/desktop-tauri/src/commands/staff.rs` + `apps/desktop-tauri/src/commands/auth.rs`
 //! - Frontend: `ui/src/features/staff/` + `ui/src/features/auth/`
 //! - API: `ui/src/api/staff.ts`
 //! - Locale: `shared-ui/locales/*/staff.ftl`

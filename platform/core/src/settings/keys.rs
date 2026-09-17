@@ -332,7 +332,7 @@ pub const NON_EXPORTABLE_DEVICE_KEYS: &[&str] =
 /// Each name here is refused at the door AND is never a queue producer, so
 /// refusing it drops no working traffic. The four writers of `sync_server_url`
 /// are crates/kasirmu-bridge/src/sync.rs:71, apps/mobile-tauri/src/commands/sync.rs:87,
-/// apps/desktop-client/src/sync_bootstrap.rs:83 and
+/// apps/desktop-tauri/src/sync_bootstrap.rs:83 and
 /// platform/sync/src/daemon_tick.rs:83 - none calls
 /// `Store::enqueue_settings_update_superseding`
 /// (crates/kasirmu-core/src/db/offline.rs:194). Note that last one writes this row
