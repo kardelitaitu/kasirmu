@@ -447,7 +447,7 @@ async fn console_subscriber_inits_without_panic() {
     // This test verifies that the console subscriber can be
     // initialised without panicking. In CI it's a no-op since the
     // `console` feature is not enabled; run locally with:
-    //   RUSTFLAGS="--cfg tokio_unstable" cargo test --features console -p oz-cloud-server
+    //   RUSTFLAGS="--cfg tokio_unstable" cargo test --features console -p kasirmu-cloud
     console_subscriber::init();
     // If we get here, init succeeded (no double-init panic).
     tracing::info!("tokio-console smoke test passed");

@@ -3,11 +3,11 @@
 
 //! Tablet shell binary entry point.
 //!
-//! Delegates immediately to `oz_pos_tablet_lib::run`, which owns Tauri
+//! Delegates immediately to `kasirmu_tablet_lib::run`, which owns Tauri
 //! setup, `AppState` construction, and command registration. On Android and
 //! iOS the platform loads the `cdylib` instead, so this binary exists for
 //! desktop-hosted development and testing of the tablet UI.
 
 fn main() {
-    oz_pos_tablet_lib::run();
+    kasirmu_tablet_lib::run();
 }

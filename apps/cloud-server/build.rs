@@ -4,7 +4,7 @@
 // ── OZ-POS Cloud Server — Windows application manifest (build script) ──
 //
 // Embeds `app.manifest` (a `<requestedExecutionLevel level="asInvoker"/>`
-// assembly manifest) into the Windows `oz-cloud-server.exe`. Without an
+// assembly manifest) into the Windows `kasirmu-cloud.exe`. Without an
 // embedded manifest, Windows applies unknown-app/installer-detection
 // heuristics to this unsigned binary, raising a UAC consent prompt on every
 // launch (seen empirically on the updater-compat harness — see the `.rc`

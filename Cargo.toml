@@ -204,12 +204,12 @@ codegen-units = 8
 strip = "symbols"
 overflow-checks = true
 
-# oz-pos-app (Tauri shell) — optimized for the Tauri binary.
+# kasirmu-app (Tauri shell) — optimized for the Tauri binary.
 # Cargo only allows opt-level, codegen-units, debug, strip,
 # debug-assertions, and overflow-checks in package profiles.
 # lto and panic must be set at the workspace level when we're
 # closer to release.
-[profile.release.package.oz-pos-app]
+[profile.release.package.kasirmu-app]
 codegen-units = 1
 opt-level = "s"
 strip = true

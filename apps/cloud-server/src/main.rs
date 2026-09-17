@@ -6,7 +6,7 @@
 //! # Usage
 //!
 //! ```bash
-//! OZ_DB_PATH=/data/kasir.db OZ_API_PORT=3099 oz-cloud-server
+//! OZ_DB_PATH=/data/kasir.db OZ_API_PORT=3099 kasirmu-cloud
 //! ```
 //!
 //! # Environment variables

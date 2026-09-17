@@ -1,18 +1,18 @@
 [package]
-name = "oz-pos-tablet"
+name = "kasirmu-tablet"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "OZ-POS tablet-optimised shell (Tauri v2 mobile). Touch-optimised UI for Android/iOS."
+description = "kasir.mu tablet-optimised shell (Tauri v2 mobile). Touch-optimised UI for Android/iOS."
 
 [lib]
-name = "oz_pos_tablet_lib"
+name = "kasirmu_tablet_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]
-name = "oz-pos-tablet"
+name = "kasirmu-tablet"
 path = "src/main.rs"
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).

@@ -1,19 +1,19 @@
 [package]
-name = "oz-pos-app"
+name = "kasirmu-app"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "OZ-POS desktop and mobile shell (Tauri v2). Bridges oz-core + oz-hal to the React/TypeScript front-end."
-default-run = "oz-pos-app"
+description = "kasir.mu desktop and mobile shell (Tauri v2). Bridges kasirmu-core + kasirmu-hal to the React/TypeScript front-end."
+default-run = "kasirmu-app"
 
 [lib]
-name = "oz_pos_app_lib"
+name = "kasirmu_app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]
-name = "oz-pos-app"
+name = "kasirmu-app"
 path = "src/main.rs"
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
@@ -87,7 +87,7 @@ webp = { workspace = true }
 custom-protocol = ["tauri/custom-protocol"]
 
 # Release profile is at the workspace root (Cargo.toml).
-# oz-pos-app-specific overrides live there under
-# [profile.release.package.oz-pos-app].
+# kasirmu-app-specific overrides live there under
+# [profile.release.package.kasirmu-app].
 # Per-package [profile.*] sections outside the workspace root
 # are ignored and produce warnings.

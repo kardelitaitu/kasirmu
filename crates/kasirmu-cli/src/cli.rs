@@ -22,7 +22,7 @@ use clap::{Args, Parser, Subcommand};
 
 /// OZ-POS command-line tool.
 #[derive(Debug, Parser)]
-#[command(name = "oz", version, about = "kasir.mu maintenance and migration CLI")]
+#[command(name = "kasir", version, about = "kasir.mu maintenance and migration CLI")]
 pub struct Cli {
     /// Path to the SQLite database (default: ./kasir.db).
     #[arg(short, long, global = true, default_value = "kasir.db")]

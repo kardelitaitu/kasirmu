@@ -34,7 +34,7 @@
 //! # Usage
 //!
 //! ```text
-//! cargo run -p oz-cloud-server --bin migrate_sqlite_to_pg \
+//! cargo run -p kasirmu-cloud --bin migrate_sqlite_to_pg \
 //!     --sqlite kasir.db --pg postgres://postgres:postgres@localhost:5432/postgres
 //! ```
 //!
