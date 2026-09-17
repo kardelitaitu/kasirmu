@@ -1,5 +1,5 @@
 //! Unit tests for the report command bodies (Wave-A test relocation: moved
-//! out of `apps/desktop-client/src/commands/reports_tests.rs`).
+//! out of `apps/desktop-tauri/src/commands/reports_tests.rs`).
 //!
 //! Mounted at the foot of `reports.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the scoped report operations, the pure validators

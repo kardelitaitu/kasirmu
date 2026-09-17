@@ -1,5 +1,5 @@
 //! Reporting / intelligence command bodies (Wave E / E6) — the tauri-free half
-//! of apps/desktop-client/src/commands/reports.rs.
+//! of apps/desktop-tauri/src/commands/reports.rs.
 //!
 //! Key items: resolve_report_scope, the ONE session gate 24 of the 32 report
 //! commands route through, plus the command bodies themselves — revenue

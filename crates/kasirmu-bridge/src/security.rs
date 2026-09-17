@@ -1,5 +1,5 @@
 //! Security command bodies (Wave B / B3) — the tauri-free half of
-//! `apps/desktop-client/src/commands/security.rs`.
+//! `apps/desktop-tauri/src/commands/security.rs`.
 //!
 //! Key functions: the thread-isolated keyring pipeline ([`with_keyring`],
 //! kept on `std::thread::spawn` so the platform Secret Service backends'
