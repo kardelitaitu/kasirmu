@@ -457,7 +457,7 @@ adb logcat -b events | grep "am_proc_start"
 adb logcat -v time -s "oz-pos-tablet" "Tauri" "Rust" "chromium" "WebView"
 
 # Filter to only errors — match `ozpos` (the process is `mu.kasir.mobile`,
-# the Rust lib is `oz_pos_tablet_lib`; neither contains "oz-pos")
+# the Rust lib is `kasirmu_mobile_lib`; neither contains "oz-pos")
 adb logcat -v time *:E | grep -i "ozpos\|oz_pos\|rust\|panic"
 
 # Save to file
