@@ -484,7 +484,7 @@
       "id": "eol-guard",
       "label": "EOL guard",
       "status": "required",
-      "_note": "Added in 0.0.36 (R36-15). The pre-commit line-ending step filtered on 'git check-attr text' alone, which is wrong twice: it ignored '.gitattributes *.bat text eol=crlf' and stripped CRLF from the working tree (producing a phantom-dirty git status with zero content diff), and because '* text=auto' reports 'auto' for every path including binaries, a staged PNG had the 0D 0A in its signature deleted and the mangled blob re-staged -- verified on apps/desktop-client/icons/32x32.png, 1515 to 1507 bytes. Both are silent corruption behind a green hook. The test extracts the live guard from .githooks/pre-commit rather than copying it, so it cannot drift from what it polices, and it fails loudly if either guard disappears.",
+      "_note": "Added in 0.0.36 (R36-15). The pre-commit line-ending step filtered on 'git check-attr text' alone, which is wrong twice: it ignored '.gitattributes *.bat text eol=crlf' and stripped CRLF from the working tree (producing a phantom-dirty git status with zero content diff), and because '* text=auto' reports 'auto' for every path including binaries, a staged PNG had the 0D 0A in its signature deleted and the mangled blob re-staged -- verified on apps/desktop-tauri/icons/32x32.png, 1515 to 1507 bytes. Both are silent corruption behind a green hook. The test extracts the live guard from .githooks/pre-commit rather than copying it, so it cannot drift from what it polices, and it fails loudly if either guard disappears.",
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["eol guard"] }
     },

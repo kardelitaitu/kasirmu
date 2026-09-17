@@ -1507,7 +1507,7 @@ fn remote_settings_update_applies_a_key_the_exclusion_list_misses() {
 /// None of the six is ever a queue producer on the paths that matter, so refusing
 /// them at the ingest door drops no working traffic: sync_server_url's four writers
 /// are crates/kasirmu-bridge/src/sync.rs:71, apps/mobile-tauri/src/commands/sync.rs:87,
-/// apps/desktop-client/src/sync_bootstrap.rs:83 and platform/sync/src/daemon_tick.rs:83,
+/// apps/desktop-tauri/src/sync_bootstrap.rs:83 and platform/sync/src/daemon_tick.rs:83,
 /// none of which calls Store::enqueue_settings_update_superseding
 /// (crates/kasirmu-core/src/db/offline.rs:194). That is what makes this set safe to
 /// refuse while the wider allow-list is not.
