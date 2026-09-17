@@ -47,7 +47,7 @@ readme = "README.md"
 [workspace.dependencies]
 # all crates import from here: oz-core = { workspace = true }
 oz-api = { package = "kasirmu-api", path = "crates/kasirmu-api" }
-oz-core = { path = "crates/oz-core" }
+oz-core = { package = "kasirmu-core", path = "crates/kasirmu-core" }
 oz-bridge = { package = "kasirmu-bridge", path = "crates/kasirmu-bridge" }
 oz-crypto = { package = "kasirmu-crypto", path = "crates/kasirmu-crypto" }
 oz-lan = { package = "kasirmu-lan", path = "crates/kasirmu-lan" }
