@@ -1,6 +1,6 @@
 /*
 last audited 31-08-26 by DSH-Agent (stub corrected)
-crate: oz-hal | status: SAFE | lint: CLEAN
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: the driver is a stub and used to say otherwise. The struct doc claimed it "communicates with the scale over the HID POS usage page" while read_weight unconditionally returned an error and _vendor_id/_product_id were placeholders. It also reported NotFound, the same kind an unplugged device reports, so an operator was told to check a cable on a feature that was never written. Now Unsupported. Deliberately NOT wired into bootstrap::apply_config: read_scale_weight_scoped maps a missing scale to Ok(None) — the UI shows no weight — but a registered stub would make the same command return Err on every poll, turning a silent absence into a recurring error. Wiring is blocked on this driver, not on the config schema.
 next: implement HID POS reads (rusb is already a dependency; a HID interrupt-endpoint read path is what usb_scanner.rs does) and only then add scale entries to HardwareConfig | perf: N/A
 */

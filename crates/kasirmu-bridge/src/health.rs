@@ -6,7 +6,7 @@
 //! The compile-time identity fields are the one deliberate restructure:
 //! `env!`/`option_env!` resolve per-crate, so they stay evaluated in the
 //! desktop shim and are threaded here as extra parameters — a byte-identical
-//! wire shape (`name` would otherwise answer `"oz-bridge"` post-move).
+//! wire shape (`name` would otherwise answer `"kasirmu-bridge"` post-move).
 //! The scoped variants keep the resolve-then-delegate shape (no permission
 //! gate on any health command).
 

@@ -2,7 +2,7 @@ use super::*;
 use std::path::PathBuf;
 
 fn temp_image_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("oz-local-api-{tag}-{}", uuid::Uuid::new_v4()));
+    let dir = std::env::temp_dir().join(format!("kasirmu-local-api-{tag}-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -314,7 +314,7 @@ fn primary_store_id_resolves_and_falls_back() {
 
 #[tokio::test]
 async fn serves_the_primary_store_database_not_the_global_one() {
-    let tmp = std::env::temp_dir().join(format!("oz-local-api-store-{}", uuid::Uuid::new_v4()));
+    let tmp = std::env::temp_dir().join(format!("kasirmu-local-api-store-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).unwrap();
     let global = kasirmu_core::migrations::fresh_db();
     global
@@ -431,7 +431,7 @@ fn resolve_store_id_prefers_configured_and_degrades() {
 
 #[tokio::test]
 async fn api_writes_land_in_the_audit_log_of_the_served_store() {
-    let tmp = std::env::temp_dir().join(format!("oz-local-api-audit-{}", uuid::Uuid::new_v4()));
+    let tmp = std::env::temp_dir().join(format!("kasirmu-local-api-audit-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).unwrap();
     let global = kasirmu_core::migrations::fresh_db();
     global
@@ -542,10 +542,10 @@ async fn api_writes_land_in_the_audit_log_of_the_served_store() {
 /// other way as well — retype the literal and these four stop matching it.
 ///
 /// Landed in this crate rather than in platform-core because it is the one
-/// that already sees both sides: `oz-local-api` depends on `platform-core
+/// that already sees both sides: `kasirmu-local-api` depends on `platform-core
 /// (`crates/kasirmu-local-api/Cargo.toml`), and `platform-core` must NOT depend on
 /// it. `crates/kasirmu-bridge` and `crates/kasirmu-core` can neither: neither has an
-/// `oz-local-api` dependency, and no edge was added to force one.
+/// `kasirmu-local-api` dependency, and no edge was added to force one.
 #[test]
 fn drift_pin_local_api_settings_keys_stay_manager_owned() {
     use platform_core::settings::is_manager_owned_key;

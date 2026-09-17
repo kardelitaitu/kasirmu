@@ -2,7 +2,7 @@
 //! objects that exist only on the cloud deployment, as plain data.
 //!
 //! Both builders moved out of `openapi.rs` unchanged; `openapi_spec` is their
-//! only caller, and it merges their output into the shared `oz-api` document
+//! only caller, and it merges their output into the shared `kasirmu-api` document
 //! and stamps the cloud scope (`kasirmu_api::spec::annotate_scope`) itself, so
 //! nothing here knows about scopes, tags, or the base spec.
 //!

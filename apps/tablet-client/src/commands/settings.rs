@@ -457,7 +457,7 @@ fn run_set_setting(
 
 /// Enqueue a `settings.update` sync item for a tablet settings save,
 /// scoped to the "default" tenant on the global queue (SYNC-10).
-/// Supersede semantics live in oz-core's
+/// Supersede semantics live in kasirmu-core's
 /// [`Store::enqueue_settings_update_superseding`].
 fn enqueue_settings_update(
     store: &Store,

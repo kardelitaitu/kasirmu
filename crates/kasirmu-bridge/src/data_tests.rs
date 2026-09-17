@@ -15,7 +15,7 @@ use super::*;
 // ── The bypass is LOUD: backup_ungated_no_session ─────────────────────────
 
 /*
- * A thread-scoped capturing subscriber, hand-rolled because oz-bridge depends on
+ * A thread-scoped capturing subscriber, hand-rolled because kasirmu-bridge depends on
  * tracing only. set_default installs on the CURRENT thread and restores on drop,
  * and every test builds its own Capture, so two tests in this file cannot steal
  * each other records: there is no global to install, no try_init, and no
@@ -121,7 +121,7 @@ fn temp_store_path(tag: &str) -> std::path::PathBuf {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     let dir = std::env::temp_dir().join(format!(
-        "oz-bridge-{}-{}-{}",
+        "kasirmu-bridge-{}-{}-{}",
         tag,
         std::process::id(),
         nanos

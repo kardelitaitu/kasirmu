@@ -17,7 +17,7 @@
 //! verbatim ports: a shim builds the context, calls one function here, and maps
 //! [`BridgeError`] back to `AppError` so the wire shape never moves. The one
 //! exception is `grants_json`: roles.permissions is stored as a JSON array and
-//! `serde_json` is not an `oz-bridge` dependency, so the shell still encodes it
+//! `serde_json` is not an `kasirmu-bridge` dependency, so the shell still encodes it
 //! and passes the string in (the encoder cannot fail for a `Vec<String>`).
 
 use serde::{Deserialize, Serialize};
@@ -191,7 +191,7 @@ impl ProfileArgs {
 
 /// A staff profile as seen by the caller (ADR #35 D6): full sensitive
 /// values only when the explicit grants are held, national id always
-/// last-4 masked, reads audited by oz-core.
+/// last-4 masked, reads audited by kasirmu-core.
 #[derive(Debug, Serialize)]
 pub struct ProfileViewDto {
     /// Target user id.
@@ -628,7 +628,7 @@ pub fn parse_scope_mode(s: &str) -> Result<ScopeMode, BridgeError> {
     ScopeMode::parse(s).ok_or_else(|| BridgeError::Invalid(format!("invalid scope_mode: {s}")))
 }
 
-/// Map the wire args to an oz-core assignment spec.
+/// Map the wire args to an kasirmu-core assignment spec.
 pub fn assignment_spec(args: &AssignmentArgs) -> Result<AssignmentSpec, BridgeError> {
     // ADR #47 resource axis: absent/empty is the org-wide default so
     // pre-ADR-47 callers are unchanged; anything else must parse and carry
@@ -918,7 +918,7 @@ pub async fn list_permission_keys_scoped(
 ///
 /// `grants_json` is the caller-encoded JSON array of permission keys (see the
 /// module header: the encoder stays in the shell because `serde_json` is not
-/// an `oz-bridge` dependency).
+/// an `kasirmu-bridge` dependency).
 ///
 /// # Errors
 ///
@@ -1198,7 +1198,7 @@ pub async fn update_staff_scoped(
             args.is_active,
         )?;
         // ADR #35 D6: the profile columns (validated, encrypted at rest by
-        // oz-core) follow the same atomic update. Single-statement write,
+        // kasirmu-core) follow the same atomic update. Single-statement write,
         // safe inside this transaction.
         if let Some(profile) = &args.profile {
             store.write_user_profile(&args.id, &profile.clone().into_profile())?;

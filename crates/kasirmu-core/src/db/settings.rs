@@ -1,7 +1,7 @@
 //! Settings delegation — store settings, currencies, exchange rates.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5 part 6)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 6)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: pure delegation to modules_currency::CurrencyRepository (11 deprecated shims documented) + validated store-name/address/tax setters; no logic of its own; currency repo's own gaps tracked under the parallel review's F-findings
 next: none | perf: N/A
 */

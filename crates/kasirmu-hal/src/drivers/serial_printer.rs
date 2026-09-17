@@ -1,6 +1,6 @@
 /*
 last audited 31-08-26 by DSH-Agent (moved from bt_printer.rs; the driver was always serial)
-crate: oz-hal | status: SAFE | lint: CLEAN
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: renamed rather than duplicated. bootstrap.rs used to report a serial printer as rejected because drivers/ had no serial printer, but BtReceiptPrinter contained nothing Bluetooth-specific — it is open_port(name, baud) plus ESC/POS, and registry.rs constructs it from an ordinary serial port enumeration, not from a Bluetooth API. Writing a second 121-line copy would have produced two drivers to keep in step, which is the drift this crate keeps paying for. BtReceiptPrinter survives as a re-export so discovery, tests and the README keep naming the transport they found.
 next: none | perf: lazy connect, one spawn_blocking per write; port stays open for the driver's lifetime
 */

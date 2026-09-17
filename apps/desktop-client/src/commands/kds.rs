@@ -12,7 +12,7 @@
 //!
 //! kds-sync: the kitchen-transition shims are also the publish seam for the
 //! [`kasirmu_lan`] `KdsSyncEvent` LAN protocol (bridge/core must not depend on
-//! oz-lan, so the events are published here) and keep
+//! kasirmu-lan, so the events are published here) and keep
 //! [`AppState::kds_queue_cache`] fresh for reconnecting peers.
 
 use std::sync::Arc;
@@ -59,11 +59,11 @@ fn sink_for(app: Option<&tauri::AppHandle>) -> Option<Arc<dyn EventSink>> {
 
 // ── kds-sync (LAN multi-terminal state sync) ───────────────────────
 //
-// `KdsSyncEvent` lives in `oz-lan`, not `oz-core::events`, and neither
-// `oz-bridge` nor `oz-core` may depend on `oz-lan` (dependency
+// `KdsSyncEvent` lives in `kasirmu-lan`, not `kasirmu-core::events`, and neither
+// `kasirmu-bridge` nor `kasirmu-core` may depend on `kasirmu-lan` (dependency
 // inversion). These shims are the only place both worlds are in scope,
 // so publishing is this module's job — this is what the
-// `INTEGRATION(oz-lan kds-sync)` notes in `crates/kasirmu-lan/src/lib.rs`
+// `INTEGRATION(kasirmu-lan kds-sync)` notes in `crates/kasirmu-lan/src/lib.rs`
 // ask desktop-client to do.
 
 /// Publish one KDS sync event on the kernel bus, best-effort.

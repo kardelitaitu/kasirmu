@@ -191,7 +191,7 @@ static L1_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 #[test]
 fn l1_guard_retained_after_text_file_init() {
     let _l1 = L1_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let dir = std::env::temp_dir().join(format!("oz-logging-l1a-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kasirmu-logging-l1a-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let before = crate::retained_file_log_guards();
     // A second subscriber in the same process would fail try_init; the
@@ -223,7 +223,7 @@ fn l1_guard_retained_after_text_file_init() {
 #[test]
 fn l1_guard_retained_after_json_file_init() {
     let _l1 = L1_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let dir = std::env::temp_dir().join(format!("oz-logging-l1b-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kasirmu-logging-l1b-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let before = crate::retained_file_log_guards();
     let result = crate::try_init_json_with_file(dir.to_str().unwrap(), "l1b", 0);
@@ -252,7 +252,7 @@ fn l1_file_writer_writes_after_init_returns() {
     // The behavioural regression test: log an event AFTER init returns and
     // verify it reaches the file (pre-fix, the writer was shut down at init
     // exit so nothing was written).
-    let dir = std::env::temp_dir().join(format!("oz-logging-l1c-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kasirmu-logging-l1c-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let result = crate::try_init_json_with_file(dir.to_str().unwrap(), "l1c", 0);
     if result.is_err() {

@@ -1,7 +1,7 @@
 //! Settings store — key-value operations and feature flag integration.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice C3: settings deep read)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice C3: settings deep read)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: clean typed delegation facade over platform_core::settings::Settings (get/set/remove/batch + delta ledger per ADR #22); rounding-mode parse: unknown -> HalfUp default (documented TAX-05) but the str setter rejects garbage explicitly — good; set_batch single tx; prune_stale_features loops removes without a tx (RUST-08 advisory, INFO); secrets (sync API key, terminal secret, PG password, Redis URL, rate-sync key) stored plaintext in the unencrypted settings table — same local-threat-model note as COR-17/30, revisit for cloud sync
 next: none here | perf: N/A
 */
@@ -789,7 +789,7 @@ impl Settings {
     }
 }
 
-// ── Feature flags (oz-core specific) ─────────────────────────────────
+// ── Feature flags (kasirmu-core specific) ─────────────────────────────────
 
 impl Settings {
     /// Load the feature flag registry from the `settings` table.

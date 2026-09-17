@@ -1,13 +1,13 @@
 /*
 last audited DD-MM-YY by DSH-Agent (verify + delta)
-crate: oz-core | status: SAFE | lint: CLEAN
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: zero unsafe verified (#![deny(unsafe_code)] holds); baseline claims re-verified. COR-1 FIXED DD-MM-YY — UUID-v7 field docs updated across 13 production files (swept audit/ cash_payout/ kds/ offline/ payment/ product_bundle/ product_variant/ promotion/ purchase_order/ shift/ supplier/ sync_pull/ table). COR-3 FIXED DD-MM-YY — config_validator redacts userinfo from DATABASE_URL and REDIS_URL before logging (redact_url helper, tested). COR-6 FIXED DD-MM-YY — mislabeled SAFETY comments reworded to plain comments in db/profile.rs (the COR-6 pattern). Delta files (edc_terminals, loyalty, profile, staff, migrations) reviewed: no new unsafe or production unwrap/expect concerns.
 next: none — all open COR findings from the closed campaign resolved | perf: N/A
 */
 
 //! Domain types for OZ-POS.
 //!
-//! `oz-core` is the foundation crate of the framework. It contains the
+//! `kasirmu-core` is the foundation crate of the framework. It contains the
 //! types every other crate builds on: [`Money`] and [`Currency`] for
 //! pricing, [`Cart`] and [`CartLine`] for the sale pipeline, [`Sku`] and
 //! [`LineId`] identifiers, the SQL [`migrations`] runner, and the

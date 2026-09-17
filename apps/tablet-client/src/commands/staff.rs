@@ -47,7 +47,7 @@ use crate::state::AppState;
 // a free fn. `create_role_scoped` and `update_role_scoped` take the bridge's
 // `grants_json` parameter — the shell computes it and passes it in, which is
 // ADR #49 §Decision 2's own pattern (the bridge module doc names it as the one
-// exception: encoding needs `serde_json`, which is not an oz-bridge
+// exception: encoding needs `serde_json`, which is not an kasirmu-bridge
 // dependency).
 pub use kasirmu_bridge::staff::{
     AssignmentArgs, AssignmentDto, BootstrapOwnerArgs, BootstrapOwnerResult, CreateRoleArgs,
@@ -59,7 +59,7 @@ pub use kasirmu_bridge::staff::{
 /// Serialize a grant set into the JSON array roles.permissions stores.
 ///
 /// Stays in the shell and is passed into the bridge as a `&str`: encoding
-/// needs `serde_json`, which is not an `oz-bridge` dependency (mirrors the
+/// needs `serde_json`, which is not an `kasirmu-bridge` dependency (mirrors the
 /// desktop staff.rs adapter exactly).
 fn grants_json(keys: &[String]) -> Result<String, AppError> {
     serde_json::to_string(keys).map_err(|e| AppError::Internal(format!("encoding grants: {e}")))
@@ -159,7 +159,7 @@ pub async fn create_role_scoped(
     state: State<'_, AppState>,
 ) -> Result<RoleDto, AppError> {
     // ADR #49 §Decision 2: `grants_json` needs `serde_json`, which is not an
-    // `oz-bridge` dependency, so the shim computes it and passes it in. The
+    // `kasirmu-bridge` dependency, so the shim computes it and passes it in. The
     // bridge module doc names this as its one exception.
     let grants = grants_json(&args.permissions)?;
     let ctx = state.bridge_ctx();
@@ -333,7 +333,7 @@ pub async fn update_staff_scoped(
             args.is_active,
         )?;
         // ADR #35 D6: the profile columns (validated, encrypted at rest by
-        // oz-core) follow the same atomic update.
+        // kasirmu-core) follow the same atomic update.
         if let Some(profile) = &args.profile {
             store.write_user_profile(&args.id, &profile.clone().into_profile())?;
         }

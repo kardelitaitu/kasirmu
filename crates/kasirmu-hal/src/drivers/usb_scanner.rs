@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-hal slice C: usb_scanner deep read)
-crate: oz-hal | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-hal slice C: usb_scanner deep read)
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: exemplary — const-evaluated HID keyboard table with Shift-modifier mapping; deadline-bounded poll loop (50ms slices, no unbounded block); spurious-enter and key-up reports handled; inter-key timeout returns the partial barcode (documented scanners-without-terminator heuristic); connect idempotent via shared handle; not-connected fails with NotFound
 next: none | perf: blocking reads in spawn_blocking
 */

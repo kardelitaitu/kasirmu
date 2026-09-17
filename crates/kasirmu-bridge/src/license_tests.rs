@@ -214,7 +214,7 @@ fn store_subscription_updates_tenant_subscription_default() {
     // Simulate a Pro activation — store_subscription should
     // replace the bootstrap row with the activated tier. This payload
     // uses the NEW 1g wire name (max_locations); the alias path for
-    // pre-rename payloads (max_locations) is covered by the oz-core tests.
+    // pre-rename payloads (max_locations) is covered by the kasirmu-core tests.
     let payload = r#"{
         "tenant_id": "default",
         "tier_key": "pro",
@@ -390,21 +390,21 @@ fn subscription_store_leaves_the_cleartext_column_empty_and_the_sealed_row_intac
 // definition (license.rs:572), a scoped wrapper, two desktop IPC shims,
 // generate_handler! registrations, a gate table, doc comments — and ZERO times
 // in any *_tests.rs in either crate or in apps/.
-// cargo test -p oz-bridge --release --lib license reported 18/18 green, and
+// cargo test -p kasirmu-bridge --release --lib license reported 18/18 green, and
 // that green was the absence of any call, not coverage.
 //
 // Both hazards are cfg-split in production, so every case below asserts BOTH
 // build profiles in ONE body, in the repo's two established forms:
-// oz-core/src/db/audit_security_tests.rs:418
+// kasirmu-core/src/db/audit_security_tests.rs:418
 // (assert_eq!(recorded, cfg!(debug_assertions))) and
-// oz-bridge/src/subscription_tests.rs:26-48 (an explicit debug arm plus a
+// kasirmu-bridge/src/subscription_tests.rs:26-48 (an explicit debug arm plus a
 // #[cfg(not(debug_assertions))] arm). Asserting only the debug value would go
 // red in release and get "fixed" by weakening it — the mechanism that kept
 // this gap invisible.
 //
 // THE TRAP, named so a release failure is never misread as a bad assertion:
 // the only signature a test can seed is the BOOTSTRAP_FREE sentinel, and
-// oz-core/src/license_verification.rs:391-393 accepts it under
+// kasirmu-core/src/license_verification.rs:391-393 accepts it under
 // #[cfg(debug_assertions)] ONLY. So every payload-seeded case forks for that
 // reason alone: debug verifies and falls through to the date logic; release
 // rejects at license.rs:594 and returns InvalidSignature before a single date

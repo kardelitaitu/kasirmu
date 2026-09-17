@@ -132,7 +132,7 @@ fn apply_stock_adjustment_delta_in_tx(
 /// Whether the product behind sku already has any per-location
 /// stock_summary row (i.e. the install tracks per-location stock for it).
 ///
-/// Delegates to `Store::product_has_location_rows` in oz-core — the ONE
+/// Delegates to `Store::product_has_location_rows` in kasirmu-core — the ONE
 /// item_id-scoped existence predicate, shared with the Layer-1 pre-check, the
 /// batch Phase-1 pre-read and the legacy bridge gate. This lane keeps only the
 /// sku-to-id resolution, because the sync payload carries a sku and the

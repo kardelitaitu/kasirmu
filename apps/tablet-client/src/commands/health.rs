@@ -5,7 +5,7 @@
 // kasirmu_bridge::health, same Wave-F shape the desktop shell landed. The
 // compile-time identity constants (env!/option_env!) still resolve HERE —
 // they are per-crate, and threading them keeps the About dialog answering
-// with the tablet shell's values (name would otherwise read "oz-bridge").
+// with the tablet shell's values (name would otherwise read "kasirmu-bridge").
 // The tablet registers no scoped health commands today, so this slice
 // needs no BridgeCtx; the scoped twins arrive with a later slice that
 // also builds the tablet seam.

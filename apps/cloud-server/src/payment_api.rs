@@ -8,7 +8,7 @@ next: none | perf: N/A
 //!
 //! `POST /api/payment/midtrans/qris` — JWT-authenticated (same
 //! `auth_middleware` + per-tenant rate-limit stack as `sync_api`), raises a
-//! QR through the EXISTING `oz-payment` Midtrans driver (do not fork it: the
+//! QR through the EXISTING `kasirmu-payment` Midtrans driver (do not fork it: the
 //! repair stamp records why), and records the issuance in
 //! [`crate::midtrans_ledger`] so the settlement webhook can resolve the sale
 //! even before the device syncs.

@@ -33,7 +33,7 @@ next: none | perf: N/A
 
 //! # Re-exports
 //!
-//! This module re-exports key settings domain types from `oz-core` so that
+//! This module re-exports key settings domain types from `kasirmu-core` so that
 //! consumers can access all settings-related types through a single crate:
 //!
 //! ```

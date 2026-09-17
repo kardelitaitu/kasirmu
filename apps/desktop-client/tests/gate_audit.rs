@@ -453,7 +453,7 @@ fn strip_test_blocks(src: &str) -> String {
 /// Is this line *defining* a gate wrapper rather than calling one?
 ///
 /// A client shell keeps its wrappers in `authz.rs` (skipped wholesale), but
-/// `oz-bridge` defines its thin wrappers inside the same module that calls
+/// `kasirmu-bridge` defines its thin wrappers inside the same module that calls
 /// them, so the definition line has to be told apart from a call site.
 fn is_wrapper_definition(line: &str) -> bool {
     let mut rest = line;
@@ -757,7 +757,7 @@ fn desktop_command_census_matches_pin() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     // The desktop path is the shell *plus* the crate the shell delegates to:
     // Wave A-E moved the command bodies (and their gate calls) into
-    // `oz-bridge`, so the shell alone no longer measures anything.
+    // `kasirmu-bridge`, so the shell alone no longer measures anything.
     assert_pin(
         &[
             Root {

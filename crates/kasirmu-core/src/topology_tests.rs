@@ -1,4 +1,4 @@
-//! Unit tests for the oz-core semantic topology validation engine:
+//! Unit tests for the kasirmu-core semantic topology validation engine:
 //! the vendored contract parity check, semantic ownership gates,
 //! typed-connection gates, and cycle detection.
 //!
@@ -8,7 +8,7 @@
 use super::*;
 use serde_json::json;
 
-/// The semantic contract is vendored into oz-core so server builds never
+/// The semantic contract is vendored into kasirmu-core so server builds never
 /// depend on the UI tree (the `include_str!` above resolves to the local
 /// copy). The UI file remains the TypeScript side's source, and this test is
 /// the in-suite twin of `scripts/verify-topology-parity.py`: it requires the UI
@@ -714,7 +714,7 @@ fn contract_gate_still_admits_both_declared_operation_feeds() {
 // pressing Apply.
 //
 // Regenerate with:
-//   TOPOLOGY_MATRIX_UPDATE=1 cargo test -p oz-core --lib topology_matrix
+//   TOPOLOGY_MATRIX_UPDATE=1 cargo test -p kasirmu-core --lib topology_matrix
 //
 // The golden is Rust-generated on purpose: the backend is the persistence
 // authority, so it defines what a wire that survives means. The TypeScript side
@@ -799,7 +799,7 @@ fn topology_matrix_golden_matches_the_rust_evaluator() {
     assert!(
         path.exists(),
         "topology matrix golden missing at {} — regenerate with \
-         TOPOLOGY_MATRIX_UPDATE=1 cargo test -p oz-core --lib topology_matrix",
+         TOPOLOGY_MATRIX_UPDATE=1 cargo test -p kasirmu-core --lib topology_matrix",
         path.display()
     );
     let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));

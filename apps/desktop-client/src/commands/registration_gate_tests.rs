@@ -382,7 +382,7 @@ fn names_permission(text: &str) -> bool {
 const DOUBLE_QUOTE: char = 34 as char;
 const SINGLE_QUOTE: char = 39 as char;
 
-/// Module stems whose oz-bridge module names a permission — the merge that makes a shim
+/// Module stems whose kasirmu-bridge module names a permission — the merge that makes a shim
 /// judgeable at all.
 fn gated_bridge_stems() -> BTreeSet<String> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/kasirmu-bridge/src");
@@ -2122,7 +2122,7 @@ fn drift_pin_the_shell_router_registers_commands_and_defines_none() {
         .collect();
     assert!(
         defined.is_empty(),
-        "apps/desktop-client/src/lib.rs defines {} command(s) of its own: {defined:?} — after Wave E every handler body lives in oz-bridge and the shell only lists paths; a command defined here is invisible to the parity checker's handler-list parse and to the bridge tests alike",
+        "apps/desktop-client/src/lib.rs defines {} command(s) of its own: {defined:?} — after Wave E every handler body lives in kasirmu-bridge and the shell only lists paths; a command defined here is invisible to the parity checker's handler-list parse and to the bridge tests alike",
         defined.len()
     );
 

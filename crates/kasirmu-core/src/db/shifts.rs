@@ -1,7 +1,7 @@
 //! Shift management — open/close shifts, cash reconciliation.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5 part 5)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 5)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: close_shift exemplary — all aggregation reads + final write in one tx, cash refunds subtracted from expected cash (documented false-positive fix), safe-drop payouts included, gross profit matches reporting-layer cost semantics; COR-27 LOW: open_shift COUNT-then-INSERT duplicate guard has NO partial unique index behind it (verified init.sql:1259-1263 — only plain indexes; inventory_shifts HAS idx_inv_shifts_active_per_user_location) — advisory-only, race-safe under single-connection mutex; hour labels in get_shift_report are UTC (COR-21 family, totals unaffected)
 next: partial unique index on shifts(user_id) WHERE status='open' (COR-27) | perf: N/A
 */

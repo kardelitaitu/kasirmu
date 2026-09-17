@@ -1,8 +1,8 @@
 //! User profile data contract (ADR #35 D6 / spec 0049).
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5 part 3: profile/PII deep read)
-crate: oz-core | status: SAFE | lint: CLEAN
-findings: model PII implementation — national_id + monthly pay encrypted at rest (encrypt_profile_field), uniqueness via SHA-256 hash (plaintext never stored), last-4 masking everywhere, sensitive reads permission-gated (staff:read_identity / staff:read_payroll) AND audited (access recorded, never values), decrypt fails closed, incomplete-profile blocks sensitive-role assignment. CROSS-CRATE: ciphertext keys derive from oz-crypto static key (CRY-1) — the at-rest guarantee for PII is only as strong as CRY-1's remediation; elevate CRY-1 fix priority. COR-24 INFO: decrypt_sensitive returns None silently on decrypt failure (fail-closed direction, but corrupt ciphertext reads as missing field with no signal)
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 3: profile/PII deep read)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
+findings: model PII implementation — national_id + monthly pay encrypted at rest (encrypt_profile_field), uniqueness via SHA-256 hash (plaintext never stored), last-4 masking everywhere, sensitive reads permission-gated (staff:read_identity / staff:read_payroll) AND audited (access recorded, never values), decrypt fails closed, incomplete-profile blocks sensitive-role assignment. CROSS-CRATE: ciphertext keys derive from kasirmu-crypto static key (CRY-1) — the at-rest guarantee for PII is only as strong as CRY-1's remediation; elevate CRY-1 fix priority. COR-24 INFO: decrypt_sensitive returns None silently on decrypt failure (fail-closed direction, but corrupt ciphertext reads as missing field with no signal)
 next: none here; CRY-1 remediation covers the encryption gap | perf: single-row queries, indexed
 */
 //!

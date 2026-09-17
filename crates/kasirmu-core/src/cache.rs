@@ -1,7 +1,7 @@
 //! Caching layer for frequently-accessed POS data.
 /*
-last audited 31-08-26 by Antigravity (oz-core: pub/sub filtering, connect path, lock policy)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 31-08-26 by Antigravity (kasirmu-core: pub/sub filtering, connect path, lock policy)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: 3 fixed — B48 a subscriber whose terminal_id was unknown compared ""
 against "" and classified EVERY notification as its own write, ignoring all
 invalidations (rule extracted to inventory_invalidation_target, outside the

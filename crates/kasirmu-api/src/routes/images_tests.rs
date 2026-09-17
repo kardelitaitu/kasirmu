@@ -17,7 +17,7 @@ use tower::ServiceExt;
 /// Create a unique temp directory for image storage (no `tempfile` dep).
 fn temp_image_dir() -> (AppState, std::path::PathBuf) {
     let base = std::env::temp_dir();
-    let dir = base.join(format!("oz-api-img-test-{}", uuid::Uuid::new_v4()));
+    let dir = base.join(format!("kasirmu-api-img-test-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     let state = AppState {
         db: Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db())),

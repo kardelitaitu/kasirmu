@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B1)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B1)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: idempotency-key dedup (check-then-return) runs inside the transaction and UNIQUE idx_payments_idempotency_key (init.sql:1204) closes the concurrent-insert race — the db layer is idempotency-correct; PAY-2 remains driver-side only; cosmetic: ToSqlConversionFailure reused for read-side currency parse errors
 next: none | perf: per-split dedup query is indexed
 */

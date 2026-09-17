@@ -143,7 +143,7 @@ pub fn export_ozpkg(
     // Argon2id(password, salt) and the salt is written into the plaintext
     // header, so anyone holding the file can derive the same empty-password
     // key without guessing anything. The desktop UI already refuses this
-    // (the data-management screen requires >= 8 chars) but `oz-cli
+    // (the data-management screen requires >= 8 chars) but `kasirmu-cli
     // export-ozpkg --password ""` passes clap — the arg must be present,
     // not non-empty — and reached here unchecked, as would any future
     // caller. A crypto-critical precondition belongs at the choke point

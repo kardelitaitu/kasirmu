@@ -1,7 +1,7 @@
 //! Feature flag system — toggleable POS capabilities.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice C4: features deep read)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice C4: features deep read)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: production logic (1-685) clean — dependency DAG with recursive enable, kebab-case settings keys, FeatureGuard veto registry (KDS tickets / open shifts), format! interpolates an internal constant only; COR-33 CONVENTION: ~660 lines of inline #[test]/proptest (691-1349) live in this production file despite the declared sibling features_tests.rs — violates AGENTS.md ("never tests in production files", 1,000-line rule); guard COUNT queries use .unwrap_or(0) -> DB error = veto passes (fail-open on a safety guard, COR-11/25 family, INFO)
 next: move inline tests to features_tests.rs (COR-33); propagate guard query errors | perf: N/A
 */

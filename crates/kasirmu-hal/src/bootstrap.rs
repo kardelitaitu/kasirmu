@@ -1,6 +1,6 @@
 /*
 last audited 31-08-26 by DSH-Agent (bootstrap module, new)
-crate: oz-hal | status: SAFE | lint: CLEAN
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: exists because the registry had a complete read side and no write side — DriverRegistry::discover() had exactly one caller (registry_tests.rs:213) and no app ever called register_*, so every hardware command resolved None at runtime while the setup wizard could still list devices via probe_all(). Second, independent defect found here: discover() mints hardware-derived ids ("printer:vendor:model") while the app looks up "default"/"kitchen", so calling discover() alone would not have fixed anything — apply_config binds the operator's id to the device. Addressed transports are constructed without I/O; Connection::Usb is the one branch that enumerates the bus, since it names no address. Scales are absent because HidWeightScale is a stub: registering one would turn read_scale_weight_scoped's clean Ok(None) into an Err on every poll, so wiring waits on the driver, not on the config schema.
 next: implement HID POS reads in drivers/scale.rs, then add vid/pid to TerminalProfile and scale entries here | perf: USB enumeration is synchronous and blocks the runtime thread briefly at startup
 */

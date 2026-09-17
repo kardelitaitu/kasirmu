@@ -15,7 +15,7 @@ next: none | perf: N/A
 //! The TaxModule implements the [`Module`] trait and is registered
 //! with the kernel during application startup. This crate is the
 //! **contractual layer** for the tax vertical: it owns the canonical
-//! domain types (`TaxRate`, `RoundingMode`), which `oz-core` re-exports
+//! domain types (`TaxRate`, `RoundingMode`), which `kasirmu-core` re-exports
 //! (`crates/kasirmu-core/src/tax_rate.rs`), and the concrete implementation
 //! remains in its original locations:
 //!
@@ -37,7 +37,7 @@ next: none | perf: N/A
 
 //! # Re-exports
 //!
-//! This module re-exports key tax domain types from `oz-core` so that
+//! This module re-exports key tax domain types from `kasirmu-core` so that
 //! consumers can access all tax-related types through a single crate:
 //!
 //! ```

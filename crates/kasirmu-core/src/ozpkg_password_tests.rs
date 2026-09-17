@@ -39,7 +39,7 @@ fn export_refuses_an_empty_password() {
     // (the data-management screen requires >= 8 chars, plus a confirm
     // field), so an operator clicking through Export cannot produce such
     // a file. What is missing is the same rule one layer down:
-    // `oz-cli export-ozpkg --password ""` passes clap (the arg is
+    // `kasirmu-cli export-ozpkg --password ""` passes clap (the arg is
     // required to be PRESENT, not non-empty) and reaches export_ozpkg
     // unchanged, and any future caller inherits the trap. A
     // crypto-critical precondition enforced only in one screen's validation

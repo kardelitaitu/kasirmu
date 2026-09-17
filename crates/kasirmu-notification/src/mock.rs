@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-notification slice A: verified)
-crate: oz-notification | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-notification slice A: verified)
+crate: kasirmu-notification | status: SAFE | lint: CLEAN
 findings: clean — mock unwraps are test-support locks only
 next: none | perf: N/A
 */

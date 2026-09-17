@@ -1,6 +1,6 @@
 /*
-last audited 31-08-26 by DSH-Agent (moved in from oz-payment during the HAL unification)
-crate: oz-hal | status: SAFE | lint: CLEAN
+last audited 31-08-26 by DSH-Agent (moved in from kasirmu-payment during the HAL unification)
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: ProtocolCodec isolates wire format from transport — sound seam, unchanged by the move except the error type. The 25-07-26 audit already called this isolation correct; the only defect was that it returned PaymentError, which lives in the crate that depends on this one. stub_error keeps stub messages consistent.
 next: real vendor framing | perf: N/A — all codecs are stubs
 */

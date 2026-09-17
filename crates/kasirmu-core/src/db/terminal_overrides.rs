@@ -1,7 +1,7 @@
 //! Per-terminal feature override store methods.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5 part 6)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 6)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: set_terminal_override UPDATE-then-INSERT without tx (advisory TOCTOU, single-connection safe — upsert ON CONFLICT would be simpler)
 next: none | perf: N/A
 */

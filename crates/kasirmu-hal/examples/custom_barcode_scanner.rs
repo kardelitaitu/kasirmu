@@ -3,7 +3,7 @@
 //! This is a minimal, complete example of implementing a custom HAL driver
 //! for OZ-POS. It shows how to:
 //!
-//! 1. Implement the `BarcodeScanner` trait from `oz-hal`
+//! 1. Implement the `BarcodeScanner` trait from `kasirmu-hal`
 //! 2. Use `DeviceInfo` for driver identity
 //! 3. Handle connection lifecycle (connect, poll, cancel)
 //! 4. Follow the mock-testable pattern
@@ -11,13 +11,13 @@
 //! ## How to use this example
 //!
 //! 1. Copy this file into your own crate
-//! 2. Add `oz-hal` as a dependency: `oz-hal = { path = "../oz-pos/crates/kasirmu-hal" }`
+//! 2. Add `kasirmu-hal` as a dependency: `kasirmu-hal = { path = "../oz-pos/crates/kasirmu-hal" }`
 //! 3. Implement your actual hardware communication (USB, serial, etc.)
 //! 4. Register your driver via `DriverRegistry`
 //!
 //! ## Testing your driver
 //!
-//! The mock in `oz-hal/src/drivers/mock.rs` shows the test pattern.
+//! The mock in `kasirmu-hal/src/drivers/mock.rs` shows the test pattern.
 //! Your driver should follow the same trait so tests can swap it in:
 //!
 //! ```rust,ignore
@@ -119,7 +119,7 @@ impl BarcodeScanner for CustomBarcodeScanner {
 fn main() {
     println!("Custom Barcode Scanner — example HAL driver for OZ-POS");
     println!("This example demonstrates the BarcodeScanner trait pattern.");
-    println!("Run `cargo test -p oz-hal --example custom_barcode_scanner` to run the tests.");
+    println!("Run `cargo test -p kasirmu-hal --example custom_barcode_scanner` to run the tests.");
 }
 
 // ── Tests ──────────────────────────────────────────────────────────

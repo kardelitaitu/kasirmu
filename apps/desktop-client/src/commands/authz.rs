@@ -26,7 +26,7 @@ use tauri::{AppHandle, Emitter};
 /// [`EventSink`] over the shell's `AppHandle`.
 ///
 /// Wave D bridge bodies emit UI events through the injected sink instead of a
-/// tauri handle, which keeps `oz-bridge` headless. Built only when
+/// tauri handle, which keeps `kasirmu-bridge` headless. Built only when
 /// `AppState::app` holds a handle (`None` in headless/test contexts).
 struct TauriEventSink {
     handle: AppHandle,
@@ -169,7 +169,7 @@ pub async fn require_permission_for_session_resource(
 // Wave 2.0 bridge seam (ADDITIVE). No existing code above is modified.
 //
 // `bridge_ctx` is the single borrow point between the Tauri shell's
-// `AppState` and the tauri-free `oz-bridge` crate: a shim builds one per
+// `AppState` and the tauri-free `kasirmu-bridge` crate: a shim builds one per
 // call, runs the extracted command body, and maps `BridgeError` back to
 // `AppError` variant-for-variant so the wire shape is untouched.
 // ---------------------------------------------------------------------------
@@ -185,7 +185,7 @@ impl crate::state::AppState {
     #[allow(dead_code)] // consumed by Wave A command shims
     pub(crate) fn bridge_ctx(&self) -> BridgeCtx<'_> {
         // The media root is a shell concern: `AppHandle` / `Manager` never
-        // enter oz-bridge, so `app_cache_dir()` is resolved here and injected
+        // enter kasirmu-bridge, so `app_cache_dir()` is resolved here and injected
         // as a plain PathBuf. `None` in headless/test contexts (no handle),
         // which is also how a failed resolution degrades — the same
         // `resolving app cache dir` text the command paths report.

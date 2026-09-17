@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-plugin slice A: package verified)
-crate: oz-plugin | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-plugin slice A: package verified)
+crate: kasirmu-plugin | status: SAFE | lint: CLEAN
 findings: clean — PLG-01 entry-name sanitization (rejects absolute, drive/UNC prefixes, empty/dot/dotdot components), PLG-06 zip-bomb defenses (entry count 512, per-entry compressed 8 MiB and uncompressed 16 MiB caps, 64 MiB total, 100x compression-ratio cap)
 next: none | perf: N/A
 */

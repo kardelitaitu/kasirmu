@@ -1,6 +1,6 @@
 /*
-last audited 31-08-26 by DSH-Agent (moved in from oz-payment during the HAL unification)
-crate: oz-hal | status: SAFE | lint: CLEAN
+last audited 31-08-26 by DSH-Agent (moved in from kasirmu-payment during the HAL unification)
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: PLANNED stub — all codec methods fail closed via stub_error
 next: none until a Verix handler | perf: N/A
 */

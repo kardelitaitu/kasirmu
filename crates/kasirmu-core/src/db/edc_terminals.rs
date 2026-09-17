@@ -1,6 +1,6 @@
 /*
 last audited 31-08-26 by DSH-Agent (four PLANNED stubs replaced with real CRUD)
-crate: oz-core | status: SAFE | lint: CLEAN
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: the stubs were the reason card terminals could never be configured — the HAL registry category (459f852c) and the fail-closed commands (ad908e96) had no source of truth to read. Signatures were free functions taking a &Store and nothing else, which cannot express a create; they are now Store methods. Adds a cross-field rule the CHECK constraints do not: connection_type must agree with transport, so 'wired' + 'tcp' is rejected rather than stored and then silently unregistrable. Writes go through unchecked_transaction per the crate idiom; every statement is parameterized. tenant_id is left to the column DEFAULT — no caller threads a tenant yet, and writing 'default' explicitly would read as multi-tenancy that does not exist.
 next: commands should take a terminal_id once more than one terminal is configured | perf: idx_edc_terminals_tenant covers the active list
 */

@@ -552,7 +552,7 @@ fn deactivation_preserves_profile() {
 // ── An unreadable seal is never erased (view-then-save) ─────────────
 //
 // Trigger in production: the at-rest key material moves (the restore-to-
-// different-hardware path in oz-bridge mints a RANDOM machine_id when the
+// different-hardware path in kasirmu-bridge mints a RANDOM machine_id when the
 // hardware anchor query fails), so every stored profile ciphertext that was
 // sealed under the old value becomes undecryptable at exactly the same time.
 // The read path then reports those fields as absent; a form that displays the

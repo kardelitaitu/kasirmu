@@ -25,7 +25,7 @@ next: none (promote KDS ticket state when built) | perf: N/A
 //! Note the existing runtime coupling: `kasirmu_core::features` enforces a
 //! disable guard that refuses to turn `kitchen-display` off while KDS
 //! tickets are open. When this stub is promoted, that guard should consult
-//! this module rather than reaching into `oz-core` tables directly.
+//! this module rather than reaching into `kasirmu-core` tables directly.
 //!
 //! Promotion path — see `modules/README.md`:
 //! 1. Move ticket tables and queries into `repository.rs`.

@@ -3,7 +3,7 @@
 //!
 //! Owns the settings-driven enable/port/secret resolution, the dedicated
 //! per-store WAL connection and the `axum::serve` lifecycle on top of the
-//! shared `oz-api` router. No Tauri, windowing or GUI dependency, so a
+//! shared `kasirmu-api` router. No Tauri, windowing or GUI dependency, so a
 //! headless binary can drive it directly.
 //!
 //! Entry points: `start` / `start_with_audit` (yield a `LocalApiHandle`
@@ -11,7 +11,7 @@
 //! (`mint_token`, `rotate_secret`, `load_or_create_secret`), and
 //! `StoreAuditSink` for write auditing into the served store's `audit_log`.
 //!
-//! Local REST API server — embeds the `oz-api` router on loopback so
+//! Local REST API server — embeds the `kasirmu-api` router on loopback so
 //! merchants can run their own scripts against the register.
 //!
 //! Mirrors the `lan_server` precedent: settings-driven, default-off,
@@ -249,7 +249,7 @@ pub fn mint_token(
         .map_err(|e| format!("minting local API token: {e}"))
 }
 
-/// Binds `127.0.0.1:port` and serve the `oz-api` router until the
+/// Binds `127.0.0.1:port` and serve the `kasirmu-api` router until the
 /// returned handle is stopped.
 ///
 /// `port` 0 lets the OS choose (tests); the actual port is reported on

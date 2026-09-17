@@ -1,7 +1,7 @@
 //! Payment gateway configuration CRUD — PLANNED (stubs).
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5: trivial stub file)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5: trivial stub file)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: honest fail-fast stubs + schema-mirroring struct; note config_json will hold gateway API keys — when implemented, ensure at-rest encryption (ties to CRY-1 static-key remediation)
 next: none | perf: N/A
 */

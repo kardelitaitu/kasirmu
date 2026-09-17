@@ -1,6 +1,6 @@
 //! OZ-POS Cloud Sync Server — headless binary (no Tauri, no WebView).
 //!
-//! Serves both the REST API (`oz-api` routes) and sync-push/pull endpoints
+//! Serves both the REST API (`kasirmu-api` routes) and sync-push/pull endpoints
 //! on the same HTTP port. Run in production behind a reverse proxy.
 //!
 //! # Usage
@@ -343,7 +343,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
         db::DbPool::Postgres(pg_pool) => {
             info!("running with PostgreSQL backend");
-            // The oz-api REST handlers dispatch on `state.pg` (Some →
+            // The kasirmu-api REST handlers dispatch on `state.pg` (Some →
             // Postgres data layer, None → the SQLite `Store` path), so the
             // API layer reads/writes Postgres here. The in-memory SQLite is
             // only a never-touched fallback for handlers that were never
@@ -648,13 +648,13 @@ pub fn build_router(
     config: &config::CloudServerConfig,
     pg: Option<deadpool_postgres::Pool>,
 ) -> Router {
-    // CORS allowlist shared with the oz-api router
+    // CORS allowlist shared with the kasirmu-api router
     // (docs/archived/2026-08-15-unify-auth-and-sync.md
     // §11): documented defaults, overridable via OZ_CORS_ORIGINS.
     let cors_origins = kasirmu_api::cors_origins_from_env();
     let cors = kasirmu_api::build_cors(&cors_origins);
 
-    // Build the oz-api router (products, categories, sales, health, tokens).
+    // Build the kasirmu-api router (products, categories, sales, health, tokens).
     let api_state = kasirmu_api::AppState {
         db: state.db.clone(),
         // Phase 1.2: the REST handlers read/write Postgres on the cloud

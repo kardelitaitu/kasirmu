@@ -1,6 +1,6 @@
 /*
-last audited 31-08-26 by DSH-Agent (moved in from oz-payment during the HAL unification)
-crate: oz-hal | status: SAFE | lint: CLEAN
+last audited 31-08-26 by DSH-Agent (moved in from kasirmu-payment during the HAL unification)
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: every driver here is a PLANNED stub — construction records configuration and every operation fails closed with HalError::Unsupported, so there is no I/O path to review yet. Correcting a claim carried in the source module's docs: the wired and wireless drivers were described as having "their own transport" duplicating HAL. They do not — port_name, baud_rate and target are all dead fields behind #[allow(dead_code)], and nothing was ever opened. The mock lives in super::mock per the mandatory-mock rule, not in a per-driver mock.rs.
 next: real vendor protocol handlers, then registry-driven registration from the edc_terminals table | perf: N/A
 */

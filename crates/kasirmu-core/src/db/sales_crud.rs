@@ -223,7 +223,7 @@ impl Store<'_> {
     /// permanently and invisibly.
     pub fn create_sale(&self, sale: &Sale) -> Result<(), CoreError> {
         // MONEY-07: this legacy global-db door deserializes a Sale straight from
-        // import/CLI JSON (oz-cli) — CartLine::new's qty > 0 assert never runs.
+        // import/CLI JSON (kasirmu-cli) — CartLine::new's qty > 0 assert never runs.
         // Reject the same negative money/qty class MONEY-06 guards on the
         // complete_sale* entry points, or a hostile import writes negative
         // ledger rows. Zero-total (free) sales with empty lines stay legal.

@@ -4,7 +4,7 @@
 //!
 //! # ADR #49 status — 1 of 7 doors extracted, 6 refused
 //!
-//! Only [`list_customers_scoped`] delegates to `oz-bridge`. The other six are
+//! Only [`list_customers_scoped`] delegates to `kasirmu-bridge`. The other six are
 //! **refused** under ADR #49 §4 — not merely unported — and each carries a
 //! note saying which parity rule it breaks:
 //!
@@ -39,7 +39,7 @@ use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
-// The wire DTOs and the create/update argument sets now live in `oz-bridge`.
+// The wire DTOs and the create/update argument sets now live in `kasirmu-bridge`.
 // All ten definitions are byte-identical (verified block-by-block) and the
 // orphan rule forbids a shell-side `impl From<Customer> for CustomerDto`, so
 // they are re-exported rather than duplicated.

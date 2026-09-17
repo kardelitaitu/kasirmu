@@ -403,7 +403,7 @@ pub enum DbError {
     #[error("SQLite error: {0}")]
     Sqlite(#[from] rusqlite::Error),
 
-    /// An error from the `oz-core` crate.
+    /// An error from the `kasirmu-core` crate.
     #[error("Core error: {0}")]
     Core(#[from] kasirmu_core::error::CoreError),
 

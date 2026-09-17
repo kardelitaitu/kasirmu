@@ -11,8 +11,8 @@
 //! tickets are normalized via kds_order_targets (no duplicates).
 
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B final: kds deep read)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B final: kds deep read)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: clean — both format!-SQL sites interpolate only match-derived internal timestamp columns (verified injection-safe, closes B5-part-6 flag); line-item transitions enforced by an explicit allowed() state machine (order-level updates lack the same machine — INFO, frontend-driven fixed set); pairing tokens stored hashed; prep_time clamped >=0; fanout normalized via kds_order_targets (no duplicate tickets); stale devices auto-deactivated with logging
 next: consider order-level transition validation | perf: queue filter in Rust post-query, fine at KDS scale
 */

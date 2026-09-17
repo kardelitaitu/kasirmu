@@ -28,7 +28,7 @@
 //! until GC — content-addressed dedup means it may be referenced elsewhere).
 //!
 //! Per decision §5.6, the `image` + `webp` crates are now linked in
-//! `oz-bridge` (which hosts the pipeline headlessly) and stay linked here for
+//! `kasirmu-bridge` (which hosts the pipeline headlessly) and stay linked here for
 //! the sibling test module. Tablet renders + downloads; cloud re-verifies
 //! magic + sha-256 only.
 

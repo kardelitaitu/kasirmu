@@ -48,7 +48,7 @@ pub use kasirmu_bridge::staff::{
 /// Serialize a grant set into the JSON array roles.permissions stores.
 ///
 /// Stays in the shell and is passed into the bridge as a `&str`: encoding needs
-/// `serde_json`, which is not an `oz-bridge` dependency. The encoder cannot fail
+/// `serde_json`, which is not an `kasirmu-bridge` dependency. The encoder cannot fail
 /// for a `Vec<String>`, so running it before the session gate moves no observable
 /// order.
 fn grants_json(keys: &[String]) -> Result<String, AppError> {

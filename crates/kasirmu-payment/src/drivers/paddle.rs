@@ -1,6 +1,6 @@
 /*
 last audited 25-07-26 by RSA-Agent
-crate: oz-payment | status: SAFE | lint: CLEAN
+crate: kasirmu-payment | status: SAFE | lint: CLEAN
 findings: PLANNED stub — every op returns Unsupported, fails closed
 next: none until Paddle integration | perf: N/A
 */

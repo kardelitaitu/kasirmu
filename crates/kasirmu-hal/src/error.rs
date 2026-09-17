@@ -1,12 +1,12 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-hal slice A: verified)
-crate: oz-hal | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-hal slice A: verified)
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: clean
 next: none | perf: N/A
 */
 //! Error type for the Hardware Abstraction Layer.
 //!
-//! Every trait method in `oz-hal` returns `Result<T, HalError>`. The enum
+//! Every trait method in `kasirmu-hal` returns `Result<T, HalError>`. The enum
 //! is `#[non_exhaustive]` so new failure modes can be added without
 //! breaking semver. Drivers convert third-party errors with
 //! `.map_err(|e| HalError::Usb(e.to_string()))` at the trait boundary

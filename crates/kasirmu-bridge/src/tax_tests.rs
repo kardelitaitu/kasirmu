@@ -397,7 +397,7 @@ fn store_dir() -> std::path::PathBuf {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     std::env::temp_dir().join(format!(
-        "oz-bridge-tax-tests-{}-{}-{}",
+        "kasirmu-bridge-tax-tests-{}-{}-{}",
         std::process::id(),
         nanos,
         NEXT.fetch_add(1, Ordering::Relaxed)

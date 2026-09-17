@@ -11,7 +11,7 @@
 //! # Running
 //!
 //! ```bash
-//! cargo test --package oz-payment --test mock_integration
+//! cargo test --package kasirmu-payment --test mock_integration
 //! ```
 
 use foundation::{Currency, Money};

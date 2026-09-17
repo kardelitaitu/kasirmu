@@ -2,7 +2,7 @@
 //! per-user instance assignments, role-to-type access, and session resolution.
 /*
 last audited DD-MM-YY by DSH-Agent
-crate: oz-core (workspaces) | status: SAFE | lint: CLEAN
+crate: kasirmu-core (workspaces) | status: SAFE | lint: CLEAN
 findings: ADR #4 resolution chain well built (role-owner bypass -> explicit user instances -> role types), quota enforcement checks the signed entitlement's allowed_types (C3.2), no-nesting caveat documented per RUST-08 with a pinned test; dynamic SQL interpolates only internal param markers (injection-safe); COR-30 FIXED DD-MM-YY — all access-resolution .unwrap_or(false) sites (workspaces_instances.rs + workspaces_lifecycle.rs) now propagate DB errors via ? — the access gate fails closed instead of failing toward the MORE PERMISSIVE tier on a read error (same family as COR-11/25). hardcoded role-id allowlist (8 variants) is fragile if presets change.
 next: none | perf: indexed resolution queries
 */

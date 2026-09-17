@@ -1,4 +1,4 @@
-//! Desktop re-export shim for the `oz-lan` LAN event forwarder.
+//! Desktop re-export shim for the `kasirmu-lan` LAN event forwarder.
 //!
 //! The implementation moved verbatim to `crates/kasirmu-lan` (Agent 1,
 //! Phase 1.1) so the forwarder can be driven from a headless binary

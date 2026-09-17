@@ -11,8 +11,8 @@
 //! lives here. Behaviour unchanged; `crate::db::tax::<Name>` paths did
 //! not move.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5 part 4)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 4)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: exemplary — TAX-02 default-flag swap atomic in tx; TAX-03 archive-not-delete with sale-line reference guard + junction cleanup + archived-rate immutability + active-rate validation on assignment; TAX-04 bounded bps with overflow rationale (MAX_TAX_RATE_BPS); PROD-12 batch junction query with documented SQLITE_MAX_VARIABLE_NUMBER bound
 next: none | perf: batch query documented
 */

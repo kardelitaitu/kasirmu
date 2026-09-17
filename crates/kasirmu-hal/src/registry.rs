@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-hal slice A: registry deep read)
-crate: oz-hal | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-hal slice A: registry deep read)
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: clean — per-category RwLock maps with documented overwrite semantics; discovery fail-open per driver (one failure never aborts the rest); deterministic device-id scheme with serial/model fallback; companion cash-drawer registration for every printer. Six categories as of 31-08-26: the EDC terminal slot arrived with the HAL unification, closing the bypass where a card terminal was reachable only through a hardcoded AppState field rather than the registry. EDC is registered by configuration (register_wired_terminal / register_wireless_terminal, the same shape register_tcp_printer uses) and is deliberately absent from discover() — auto-probing and silently binding a money device would let an unconfigured terminal show up in the tender list. That decision is pinned by discover_never_registers_a_card_terminal. GAP (open, Phase 2): discover() also never registers a WeightScale, but for the opposite reason — no discovery path exists for it yet (drivers/scale.rs HidWeightScale has no discover_all(), and no caller invokes register_scale()), so read_scale_weight_scoped always resolves to None in production even though both clients expose the command and Feature::UsbScale is declarable. register_mock_scale() was removed 31-08-26: zero callers, it injected a mock into the production registry, and it was the crate's only library-side panic path (try_write().expect())
 next: scale discovery + TCP printer discovery (Phase 2) | perf: short-lived read locks on lookup
 */

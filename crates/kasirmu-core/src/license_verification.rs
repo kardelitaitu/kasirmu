@@ -1,7 +1,7 @@
 //! License server verification and activation client for ADR #9.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice C5: license_verification deep read)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice C5: license_verification deep read)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: exemplary — RSA-2048 PKCS1v15/SHA-256 with build-embedded key; BOOTSTRAP_FREE sentinel accepted ONLY in debug builds (release requires a real signature); every server response signature-verified BEFORE trust; credentials travel only in Authorization headers (documented body-log-leak rationale); timeouts on all 5 HTTP clients (10/30/15/15s); api_key persisted plaintext in tenant_subscription (local threat model, COR-17/30 family)
 next: none | perf: N/A
 */

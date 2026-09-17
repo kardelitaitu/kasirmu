@@ -1,6 +1,6 @@
 // No crate-level lint allow lives here any more. There used to be one: an
 // allow for the undeclared-cfg lint, justified as making
-// `cfg(feature = "metrics")` legal because `oz-reporting` enabled it. That
+// `cfg(feature = "metrics")` legal because `kasirmu-reporting` enabled it. That
 // premise was false — a dependency's features do not enter this crate's cfg
 // space — and the gate it excused was real but dead: `metrics` was never
 // declared in this crate's Cargo.toml, so the `pub mod server` in

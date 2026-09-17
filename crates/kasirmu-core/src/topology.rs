@@ -1,7 +1,7 @@
 //! Semantic validation for the topology graph.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice C2: topology deep read)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice C2: topology deep read)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: exemplary pure validation engine — vendored contract with fail-closed init (documented INVARIANT), every frontend-parity gate carries a rationale comment (direction deliberately ungated, zero-vs-multiple branch codes split), O(N+W) single indexing pass, closed semantic pairing matrix mirrored at the IPC boundary, purpose/type matrix, Kahn cycle detection, structured TopologyValidation error codes; zero findings
 next: none | perf: single index pass per validation
 */
@@ -28,7 +28,7 @@ use crate::error::CoreError;
 
 /// Shared semantic pairing contract consumed by the validation engine.
 ///
-/// Vendored into oz-core (see the module doc) so compiling the server never
+/// Vendored into kasirmu-core (see the module doc) so compiling the server never
 /// touches the UI tree; `topology.rs` sits next to the file it embeds. The
 /// UI copy stays canonical for the TypeScript side, and
 /// `tests::vendored_contract_matches_ui_canonical` plus

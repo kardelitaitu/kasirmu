@@ -12,8 +12,8 @@
 //! resolve through it — `kasirmu_core::db::reports::<Name>` paths did not
 //! move. Behaviour unchanged.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5 part 2: reports deep read)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 2: reports deep read)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: COR-21 MEDIUM RESOLVED (REP-03, 2026-08-31): all date/hour bucketing now applies the primary store's fixed UTC offset — locations.timezone holds '+HH:MM'/'-HH:MM'/'UTC' (IANA names fall back to UTC; no tzdata dep), threaded through reports/analytics/popularity-trend/sales-today/shift-hours, and date boundaries are validated as strict YYYY-MM-DD. Remaining from the original finding: top_products limit still unclamped (voided_items clamps — inconsistent, low impact); COGS uses current product cost by documented reporting-layer semantics
 next: none for COR-21 (cloud email parity for tz recorded as follow-up in audit-open-findings) | perf: correlated COGS subqueries are deliberate anti-multiplication design, documented
 */

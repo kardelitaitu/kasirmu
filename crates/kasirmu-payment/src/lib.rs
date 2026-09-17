@@ -1,19 +1,19 @@
 /*
 last audited DD-MM-YY by DSH-Agent (re-review)
-crate: oz-payment | status: SAFE | lint: CLEAN
-findings: 0 unsafe blocks (#![deny(unsafe_code)] at crate root). mock.rs lock().unwrap() calls are documented test-double pattern (same as oz-hal). Re-review confirms the 31-08-26 stamp's findings: PAY-2 refund idempotency open, PAY-3 partial refund, PAY-4 stripe decline classification — all pre-existing, unchanged. No new findings.
+crate: kasirmu-payment | status: SAFE | lint: CLEAN
+findings: 0 unsafe blocks (#![deny(unsafe_code)] at crate root). mock.rs lock().unwrap() calls are documented test-double pattern (same as kasirmu-hal). Re-review confirms the 31-08-26 stamp's findings: PAY-2 refund idempotency open, PAY-3 partial refund, PAY-4 stripe decline classification — all pre-existing, unchanged. No new findings.
 next: give refund an idempotency key (PAY-2), partial refund (PAY-3), Stripe decline classification (PAY-4) | perf: HTTP async/tokio; mock in-memory atomics
 */
 #![deny(unsafe_code)]
 
 //! Payment processor abstraction for OZ-POS.
 //!
-//! `oz-payment` provides a single trait, [`PaymentProcessor`], with
+//! `kasirmu-payment` provides a single trait, [`PaymentProcessor`], with
 //! vendor-specific implementations for Stripe, Square, Paddle and QRIS.
 //! Switching processors is a config change, not a code change.
 //!
 //! Card-present terminals are not part of this crate. An EDC terminal is a
-//! device, so its trait and drivers live in `oz-hal` beside every other
+//! device, so its trait and drivers live in `kasirmu-hal` beside every other
 //! device class — `kasirmu_hal::EdcTerminal`, `kasirmu_hal::drivers::edc`, and a
 //! registry category to hold them. This crate keeps the layer above: the
 //! acquirers and gateways.

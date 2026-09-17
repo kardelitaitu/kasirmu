@@ -1,6 +1,6 @@
 /*
 last audited 25-07-26 by RSA-Agent
-crate: oz-security | status: SAFE | lint: N/A (platform-gated, source-reviewed on Windows host)
+crate: kasirmu-security | status: SAFE | lint: N/A (platform-gated, source-reviewed on Windows host)
 findings: SEC-1 not-found detection matches debug-string substrings ("-25300"/"-128") — any error code containing "-128" (e.g. -12800) is misclassified as item-not-found, masking real failures as Ok(None); switch to numeric e.code() comparison
 next: replace string matching with numeric code compare (SEC-1) | perf: N/A
 */

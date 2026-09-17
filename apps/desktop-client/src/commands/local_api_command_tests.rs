@@ -32,7 +32,7 @@ async fn build_status_reflects_settings_and_slot() {
 #[tokio::test]
 async fn build_status_reports_running_handle() {
     let state = AppState::for_test_with_conn(kasirmu_core::migrations::fresh_db());
-    let dir = std::env::temp_dir().join(format!("oz-local-api-cmd-{}", uuid::Uuid::new_v4()));
+    let dir = std::env::temp_dir().join(format!("kasirmu-local-api-cmd-{}", uuid::Uuid::new_v4()));
     let handle = local_api::start(
         state.db.clone(),
         state.db_path.clone(),
@@ -94,7 +94,7 @@ async fn mint_uses_persisted_secret_stably() {
 /// `blocking_lock` would panic inside the test runtime), isolated store
 /// dir, and a probe-bound free port.
 fn lifecycle_state() -> (AppState, std::path::PathBuf, u16) {
-    let tmp = std::env::temp_dir().join(format!("oz-local-api-life-{}", uuid::Uuid::new_v4()));
+    let tmp = std::env::temp_dir().join(format!("kasirmu-local-api-life-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).unwrap();
     let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = probe.local_addr().unwrap().port();

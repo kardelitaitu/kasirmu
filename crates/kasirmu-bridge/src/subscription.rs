@@ -7,7 +7,7 @@
 //! its mounted `subscription_tests.rs` exercises.
 //!
 //! Exposes the tenant subscription's quotas and feature flags — straight
-//! from `SubscriptionTier` in oz-core — plus the tenant's current usage
+//! from `SubscriptionTier` in kasirmu-core — plus the tenant's current usage
 //! counts (stores, staff, terminals). The UI uses this single read to
 //! render tier gates: analytics/loyalty locks, QRIS gate, second-store
 //! gate, terminal-limit banner, and the approaching-limit banners.

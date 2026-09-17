@@ -14,7 +14,7 @@
 //!
 //! What is proven here is the WIRING, not the query. Which accounts resolve to
 //! a role — the assignment-first precedence, the orphan cascade, the scope
-//! columns — is pinned in `oz-core`. These tests assert the three things only
+//! columns — is pinned in `kasirmu-core`. These tests assert the three things only
 //! the command layer can get wrong: that the gate is the one the doc claims,
 //! that the org-wide ruling survives the trip through the session, and that
 //! the cap and the uncapped total arrive as separate numbers rather than being

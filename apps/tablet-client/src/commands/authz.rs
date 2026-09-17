@@ -26,7 +26,7 @@ use tauri::{AppHandle, Emitter};
 /// [`BridgeCtx::emitter`](kasirmu_bridge::ctx::BridgeCtx::emitter) is the
 /// tauri-free stand-in for `tauri::Emitter`, so building the sink is the
 /// shell's job: Wave D bridge bodies emit UI events through it instead of
-/// holding a handle, which keeps `oz-bridge` headless. Mirrors the desktop
+/// holding a handle, which keeps `kasirmu-bridge` headless. Mirrors the desktop
 /// sink at `apps/desktop-client/src/commands/authz.rs`.
 ///
 /// Built only from a live handle. A shell that holds one must hand out a

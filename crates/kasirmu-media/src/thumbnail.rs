@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-media slice A: verified)
-crate: oz-media | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-media slice A: verified)
+crate: kasirmu-media | status: SAFE | lint: CLEAN
 findings: clean — no unwrap/panic/unsafe; sibling tests per convention
 next: none | perf: M-2 support 25-07-26 — added the DynamicImage-taking variant (thumbnail_img / auto_crop_img) so the pipeline runs a single decode; byte-level API and behavior unchanged
 */

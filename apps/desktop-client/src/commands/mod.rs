@@ -59,7 +59,7 @@ pub mod kds_routing;
 pub mod legal_entities;
 /// License commands.
 pub mod license;
-/// Local REST API server commands (loopback `oz-api` embed).
+/// Local REST API server commands (loopback `kasirmu-api` embed).
 pub mod local_api;
 /// Local payment method commands (slice 6).
 pub mod local_payment;

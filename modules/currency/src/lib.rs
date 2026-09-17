@@ -3,7 +3,7 @@ last audited 25-07-26 by RSA-Agent
 crate: modules-currency | status: SAFE | lint: CLEAN
 findings: Implements Module trait, exchange-rate domain model, repository, and error type.
   Re-exports Currency from foundation and ExchangeRateRow from models. No unsafe code.
-next: Migrate currency/exchange-rate callers from oz-core Store to CurrencyRepository.
+next: Migrate currency/exchange-rate callers from kasirmu-core Store to CurrencyRepository.
 fixed 2026-07-25 (glm-5.3 review P2 pass): F-022 — repository write paths (create/upsert/delete
   exchange rate) now run inside transactions (INSERT + read-back SELECT share one consistent
   commit; delete wrapped per the never-write-outside-a-transaction rule); all five production

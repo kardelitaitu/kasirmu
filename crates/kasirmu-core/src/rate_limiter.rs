@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice A)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice A)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: sliding-window logic correct (prune -> lockout check -> record -> recheck; max_attempts=0 guarded); poison-recovery on hot path good; COR-2: per-username HashMap unbounded — login-form spam grows memory without cap
 next: cap entries or evict idle usernames (COR-2) | perf: pruning bounds per-key vec
 */

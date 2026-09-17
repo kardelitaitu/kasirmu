@@ -95,7 +95,7 @@ pub struct KdsOrderPlaced {
     /// Frozen ticket prefix for the location (rendered as `#{prefix}{n}`).
     #[serde(default)]
     pub ticket_prefix: String,
-    /// Structured line items on the ticket (frozen `oz-core` type).
+    /// Structured line items on the ticket (frozen `kasirmu-core` type).
     #[serde(default)]
     pub items: Vec<KdsLineItem>,
     /// Special notes from the POS (e.g. "no onions").
@@ -353,9 +353,9 @@ pub fn should_deliver(subscription: Option<&PeerSubscription>, line: &str) -> bo
 
 /// One active ticket inside a [`KdsQueueSnapshot`].
 ///
-/// Reuses the frozen `oz-core::kds` row types verbatim; `stations` is the
+/// Reuses the frozen `kasirmu-core::kds` row types verbatim; `stations` is the
 /// per-ticket routing computed by the producer (via `resolve_kds_targets`)
-/// because `oz-lan` must not re-implement routing.
+/// because `kasirmu-lan` must not re-implement routing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KdsQueueTicket {
     /// The ticket header row.

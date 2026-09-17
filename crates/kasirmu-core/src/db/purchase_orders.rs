@@ -1,7 +1,7 @@
 //! Purchase order CRUD — list, get, create, update status, receive.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5 finale)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 finale)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: exemplary — MONEY-05 checked arithmetic at IPC boundary with documented dev-build rationale (subtotal pass + per-line recompute); atomic create AND receive; canonical stock API in-tx; damage accounting with short-qty surfacing; COR-29 LOW: line 452 uses plain received+damaged (the one unchecked add in an otherwise checked file) — i64 overflow wraps negative in release and bypasses the ordered-qty cap (stock itself still guarded by checked_add inside adjust); receipts land at CANONICAL_DEFAULT_LOCATION (COR-19 family note); list POs reuses a prepared statement per order (acceptable N+1)
 next: checked_add for received+damaged (COR-29) | perf: statement reuse mitigates the per-order line query
 */

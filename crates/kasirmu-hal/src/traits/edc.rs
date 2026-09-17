@@ -1,7 +1,7 @@
 /*
-last audited 31-08-26 by DSH-Agent (moved in from oz-payment during the HAL unification)
-crate: oz-hal | status: SAFE | lint: CLEAN
-findings: trait is the hardware counterpart of oz-payment's PaymentProcessor; moved so card terminals share the registry, discovery and mandatory-mock convention like every other device class. De-leaked on arrival: the oz-payment version returned PaymentError and a domain PaymentReceipt, which HAL cannot depend on without a cycle. print_receipt now returns raw device bytes, matching ReceiptPrinter::print_raw. NOTE: the module this came from claimed the trait "supports settlement/batch-close operations that online processors don't need" but exposed no such method — the move is faithful, so no settle() was invented here; add it when a real driver needs it.
+last audited 31-08-26 by DSH-Agent (moved in from kasirmu-payment during the HAL unification)
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
+findings: trait is the hardware counterpart of kasirmu-payment's PaymentProcessor; moved so card terminals share the registry, discovery and mandatory-mock convention like every other device class. De-leaked on arrival: the kasirmu-payment version returned PaymentError and a domain PaymentReceipt, which HAL cannot depend on without a cycle. print_receipt now returns raw device bytes, matching ReceiptPrinter::print_raw. NOTE: the module this came from claimed the trait "supports settlement/batch-close operations that online processors don't need" but exposed no such method — the move is faithful, so no settle() was invented here; add it when a real driver needs it.
 next: real vendor protocol in drivers/edc | perf: N/A — all methods are stubs returning Unsupported
 */
 //! `EdcTerminal` — the trait every card-payment terminal driver implements.
@@ -11,11 +11,11 @@ next: real vendor protocol in drivers/edc | perf: N/A — all methods are stubs 
 //! or swipe and talks to the acquirer over a vendor binary protocol. The
 //! trait models the *device*: status, authorize/capture/refund/void, and
 //! the receipt from its built-in printer. Online gateways (Midtrans,
-//! Paddle) are a different thing and stay in `oz-payment`.
+//! Paddle) are a different thing and stay in `kasirmu-payment`.
 //!
 //! Every method returns [`HalError`]. Drivers that are not yet implemented
 //! must fail closed with [`HalError::Unsupported`] rather than report
-//! success — the convention inherited from the `oz-payment` stubs.
+//! success — the convention inherited from the `kasirmu-payment` stubs.
 
 use async_trait::async_trait;
 use kasirmu_core::Money;
@@ -111,7 +111,7 @@ pub trait EdcTerminal: Send + Sync {
     ///
     /// Raw bytes rather than a domain receipt object: the terminal's
     /// printer speaks its own protocol, and shaping a customer-facing
-    /// receipt is `oz-payment`'s job, not the driver's.
+    /// receipt is `kasirmu-payment`'s job, not the driver's.
     async fn print_receipt(&self, transaction_id: &str) -> Result<Vec<u8>, HalError>;
 
     /// Static device identity (vendor, model, serial) for logs and setup.

@@ -520,7 +520,7 @@ fn cli3_phc_validation_rejects_non_argon2_algorithm() {
 #[test]
 fn restore_removes_wal_sidecars_and_replaces_database() {
     let dir = std::env::temp_dir().join(format!(
-        "oz-cli-restore-{}-{}",
+        "kasirmu-cli-restore-{}-{}",
         std::process::id(),
         uuid::Uuid::new_v4()
     ));

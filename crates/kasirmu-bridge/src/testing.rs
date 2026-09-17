@@ -13,7 +13,7 @@
 //! dependency of this crate and this file's fence forbids manifest edits,
 //! so a file-backed temp database cannot be built here. In-memory test
 //! connections are the established pattern (`AppState::for_test` and every
-//! `oz-core` test module use them).
+//! `kasirmu-core` test module use them).
 //!
 //! Licence fixtures fork on build profile and this module is the shared
 //! vocabulary for that fork: [`seeded_row_loads`] answers what a freshly seeded
@@ -63,7 +63,7 @@ fn unique_store_dir() -> PathBuf {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     std::env::temp_dir().join(format!(
-        "oz-bridge-test-{}-{}-{}",
+        "kasirmu-bridge-test-{}-{}-{}",
         std::process::id(),
         nanos,
         NEXT_BRIDGE_ID.fetch_add(1, Ordering::Relaxed)
@@ -490,7 +490,7 @@ impl TestBridge {
                 ],
             )
             // SAFETY: `mod testing` is `#[cfg(test)]`-gated at its declaration in
-            // `lib.rs`, so this file compiles only into the oz-bridge test binary and into
+            // `lib.rs`, so this file compiles only into the kasirmu-bridge test binary and into
             // no shipped process. This seed fails only if the column list above stops
             // matching the migrated `roles` schema — a harness programming error, which is
             // the state ADR #33 lets panic: the abort lands in the test that asked for the

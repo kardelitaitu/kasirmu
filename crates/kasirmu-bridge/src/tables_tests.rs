@@ -52,7 +52,7 @@ fn unique_store_dir() -> std::path::PathBuf {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     std::env::temp_dir().join(format!(
-        "oz-bridge-tables-{}-{}-{}",
+        "kasirmu-bridge-tables-{}-{}-{}",
         std::process::id(),
         nanos,
         STORE_DIR_SEQ.fetch_add(1, Ordering::Relaxed)

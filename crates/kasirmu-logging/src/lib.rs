@@ -1,12 +1,12 @@
 /*
 last audited DD-MM-YY by DSH-Agent
-crate: oz-logging | status: SAFE | lint: CLEAN
+crate: kasirmu-logging | status: SAFE | lint: CLEAN
 findings: 3 actual unsafe blocks verified (syslog: openlog + syslog; eventlog: OutputDebugStringW) — all with SAFETY comments and valid CString/wide-string guards. .expect() calls only in documented-panic wrapper functions (init/init_json/init_with_file/init_json_with_file — mirrored by try_* non-panicking variants). Error type #[non_exhaustive]. File logger guard retention fix (L-1) verified. No defects found.
 next: none | perf: N/A
 */
 //! Structured logging facade for OZ-POS.
 //!
-//! `oz-logging` wraps the `tracing` ecosystem with context-tagged
+//! `kasirmu-logging` wraps the `tracing` ecosystem with context-tagged
 //! record format, file + stdout writers, log rotation, and platform-
 //! specific outputs (syslog on Linux, Event Log on Windows).
 //!
@@ -91,7 +91,7 @@ fn filter_for(raw: Option<&str>) -> (EnvFilter, Option<String>) {
         Err(e) => (
             EnvFilter::new("info"),
             Some(format!(
-                "[oz-logging] RUST_LOG={raw:?} could not be parsed ({e}); falling back to info"
+                "[kasirmu-logging] RUST_LOG={raw:?} could not be parsed ({e}); falling back to info"
             )),
         ),
     }

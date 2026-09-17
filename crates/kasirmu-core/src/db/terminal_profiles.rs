@@ -1,7 +1,7 @@
 //! Terminal profile CRUD — kiosk/kds lockdown per terminal.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5 part 6)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 6)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: exists-check then ON CONFLICT upsert; clean
 next: none | perf: N/A
 */

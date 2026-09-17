@@ -16,7 +16,7 @@
 //! commands — that an account creation and a profile edit actually land audit
 //! rows naming the ACTOR and the SUBJECT separately, and that a rejected
 //! mutation leaves no phantom event. The recorder's own semantics (tier gate,
-//! fail-open, payload shape) are covered in `oz-core`.
+//! fail-open, payload shape) are covered in `kasirmu-core`.
 
 use super::*;
 

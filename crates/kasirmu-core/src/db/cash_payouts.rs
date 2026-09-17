@@ -1,7 +1,7 @@
 //! Cash payout (safe drop) database operations.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5 part 6)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 6)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: validates amount>0 and open shift; COR-28 INFO: open-shift check is outside the insert (TOCTOU — a concurrently closed shift can still receive a payout; advisory class, low stakes)
 next: none | perf: N/A
 */

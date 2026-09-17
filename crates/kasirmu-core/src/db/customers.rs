@@ -1,7 +1,7 @@
 //! Customer CRUD — list, get, create, update, delete.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5 part 3)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 3)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: clean CRUD; PII-bounded search per CUST-06 (server-side LIKE with ESCAPE, clamped page [1,100], count for pagination); store soft-scoping documented (migration 069/117); COR-23 INFO: delete_customer hard-deletes regardless of sales history / loyalty account — dangling references possible; single-statement writes rely on SQLite statement atomicity (crate-wide RUST-08 convention)
 next: consider soft-delete or referential guard on delete_customer (COR-23) | perf: N/A
 */

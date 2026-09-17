@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice A)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice A)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: collect-all-failures design, testable inner function; COR-3 MEDIUM: error messages embed DATABASE_URL prefix (may contain user:password) and full REDIS_URL (may embed credentials) — leaks into retained logs on misconfiguration
 next: redact userinfo before embedding URLs in messages (COR-3) | perf: N/A
 */

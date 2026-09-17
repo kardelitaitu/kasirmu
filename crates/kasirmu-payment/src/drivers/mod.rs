@@ -1,6 +1,6 @@
 /*
 last audited 25-07-26 by RSA-Agent
-crate: oz-payment | status: SAFE | lint: CLEAN
+crate: kasirmu-payment | status: SAFE | lint: CLEAN
 findings: feature gates paddle/edc honest; live drivers mock/stripe/square/qris always compiled
 next: none | perf: N/A
 */
@@ -13,7 +13,7 @@ next: none | perf: N/A
 //! - `paddle` — Paddle Billing integration (PLANNED — stub)
 //!
 //! Card-present terminals are not here. An EDC terminal is a device, so its
-//! trait and drivers live in `oz-hal` alongside every other device class;
+//! trait and drivers live in `kasirmu-hal` alongside every other device class;
 //! see `crates/kasirmu-hal/src/traits/edc.rs`. What stays in this crate is the
 //! processor layer — the acquirers and gateways above.
 

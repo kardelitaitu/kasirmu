@@ -1,7 +1,7 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-hal slice A: verified)
-crate: oz-hal | status: SAFE | lint: CLEAN
-findings: clean — 15 driver modules, all declared, none orphaned. (The dead drivers/scanner.rs that sat here uncompiled was deleted 31-08-26.) drivers/edc/ arrived the same day from oz-payment as part of the HAL unification; its drivers are stubs, so nothing here opens a device that the trait does not model. bt_printer.rs is now an alias for serial_printer.rs rather than a second implementation — see its header for why.
+last audited 25-07-26 by RSA-Agent (kasirmu-hal slice A: verified)
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
+findings: clean — 15 driver modules, all declared, none orphaned. (The dead drivers/scanner.rs that sat here uncompiled was deleted 31-08-26.) drivers/edc/ arrived the same day from kasirmu-payment as part of the HAL unification; its drivers are stubs, so nothing here opens a device that the trait does not model. bt_printer.rs is now an alias for serial_printer.rs rather than a second implementation — see its header for why.
 next: none | perf: N/A
 */
 //! Hardware drivers.

@@ -1,12 +1,12 @@
 /*
 last audited DD-MM-YY by DSH-Agent
-crate: oz-reporting | status: SAFE | lint: CLEAN
+crate: kasirmu-reporting | status: SAFE | lint: CLEAN
 findings: 0 unsafe blocks. 12 production .expect() calls in metrics.rs — all prometheus metric registration with literal static opts (documented-invariant: fresh construction + registration cannot fail at runtime; standard prometheus pattern). Parameterized SQL queries, integer minor units throughout. No defects found.
 next: none | perf: N/A
 */
 //! Analytics and CSV export engine for OZ-POS.
 //!
-//! `oz-reporting` aggregates data from the local SQLite store and
+//! `kasirmu-reporting` aggregates data from the local SQLite store and
 //! produces daily summaries, sales-by-hour, inventory movement, and
 //! CSV exports. Reports are computed on the device to keep the
 //! offline-first guarantee; cloud sync of pre-aggregated reports is

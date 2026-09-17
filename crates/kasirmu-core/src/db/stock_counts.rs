@@ -1,7 +1,7 @@
 //! Physical inventory / stock counting database operations.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5 finale)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 finale)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: exemplary completion flow — BEGIN IMMEDIATE number allocation in-SQL (with dangling-tx rollback discipline), claim-first conditional completion, checked arithmetic throughout, NoRows-vs-error discipline, snapshot-consistent reads via tx; writes legacy inventory table (COR-19 family, already tracked); enum fallbacks to Draft/Full (COR-13 family)
 next: none here | perf: N/A
 */

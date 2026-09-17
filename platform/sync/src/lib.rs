@@ -118,7 +118,7 @@ pub enum SyncError {
     #[error("cloud sync requires a paid plan (HTTP 403 plan_required)")]
     PlanRequired,
 
-    /// Database error from the underlying oz-core store.
+    /// Database error from the underlying kasirmu-core store.
     #[error("database error: {0}")]
     Database(#[from] kasirmu_core::error::CoreError),
 }
@@ -198,7 +198,7 @@ pub fn build_batches(
 ///
 /// Refusing degrades safely: with no scoped row present, the resolver falls
 /// back to the tenant-global rate, which is what the branch used before the
-/// pull. Mirrored in `crate::sync_pull` (oz-core), the other end of this
+/// pull. Mirrored in `crate::sync_pull` (kasirmu-core), the other end of this
 /// contract.
 fn snapshot_tax_rate_scope_is_applicable(
     tx: &rusqlite::Transaction<'_>,
@@ -336,7 +336,7 @@ pub(crate) fn import_snapshot(
     // The four columns must travel or the pull is a money bug: a rate scoped
     // to one location that lands with NULL scope reads as the TENANT-GLOBAL
     // answer at the branch, so every location starts pricing with it. Kept
-    // column-for-column with oz-core's own pull path (crate::sync_pull), which
+    // column-for-column with kasirmu-core's own pull path (crate::sync_pull), which
     // is the other end of this contract.
     {
         let mut stmt = tx

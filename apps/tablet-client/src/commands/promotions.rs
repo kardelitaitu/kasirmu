@@ -49,7 +49,7 @@ fn default_true() -> bool {
 
 /// Shared promotion-application pipeline: engine-computed discount, dedup
 /// guard, application row, and the sale-total reduction — one transaction
-/// in oz-core (single source of truth, PROMO-3/4/7).
+/// in kasirmu-core (single source of truth, PROMO-3/4/7).
 fn run_apply_promotion_unchecked(
     db: &rusqlite::Connection,
     sale_id: &str,

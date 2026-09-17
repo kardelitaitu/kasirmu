@@ -1,6 +1,6 @@
 /*
 last audited 31-08-26 by DSH-Agent (implementation moved to serial_printer.rs)
-crate: oz-hal | status: SAFE | lint: CLEAN
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: this file is now a transport-named alias, not a driver. Nothing Bluetooth-specific ever lived in it — open_port(name, baud) plus ESC/POS — and registry.rs builds it from a plain serial-port enumeration, so keeping a second implementation would have meant two drivers to keep in step. The alias stays because discovery, the setup wizard and the README all describe what was found, not how it is wired.
 next: none | perf: N/A
 */

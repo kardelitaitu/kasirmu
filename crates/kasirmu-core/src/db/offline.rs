@@ -1,7 +1,7 @@
 //! Offline Queue — enqueue, list, mark, delete offline sync items.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5: offline queue deep read)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5: offline queue deep read)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: sync plumbing production-grade — tenant-scoped variants throughout (SYNC-07: cross-tenant reads as NotFound/no-op), sync_applied_items idempotency ledger (INSERT OR IGNORE + in-tx variant co-located with the domain mutation), durable pull anchor with crash-safe write-after-apply ordering, atomic dead-letter requeue (predicate inside the DELETE) with anchor rewind; COR-20 CLOSED 2026-09-06: the dedup EXISTS check and the observability summary still degrade to their benign defaults (duplicate enqueue is replay-safe; dashboards show zeros), but every degradation now logs op + underlying error via log_degraded, and query_or_none separates the normal QueryReturnedNoRows empty case from real DB errors that .ok() previously conflated
 next: none | perf: status summary is 4 small queries, fine at desktop scale
 */

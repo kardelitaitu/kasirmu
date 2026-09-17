@@ -368,7 +368,7 @@ fn names_permission(text: &str) -> bool {
 const DOUBLE_QUOTE: char = 34 as char;
 const SINGLE_QUOTE: char = 39 as char;
 
-/// Module stems whose oz-bridge module names a permission — the merge that makes a shim
+/// Module stems whose kasirmu-bridge module names a permission — the merge that makes a shim
 /// judgeable at all.
 fn gated_bridge_stems() -> BTreeSet<String> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/kasirmu-bridge/src");

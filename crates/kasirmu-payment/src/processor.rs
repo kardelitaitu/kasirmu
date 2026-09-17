@@ -1,6 +1,6 @@
 /*
 last audited 25-07-26 by RSA-Agent; PAY-2 refund key added 09-09-26 (agent-2-cargo)
-crate: oz-payment | status: SAFE | lint: CLEAN
+crate: kasirmu-payment | status: SAFE | lint: CLEAN
 findings: async_trait Send+Sync; default sale() composes authorize->capture correctly (returns declined result, propagates infra errors); lifecycle doc sound. PAY-2 CLOSED for refunds 09-09-26: refund() now takes idempotency_key: Option<&str>, giving callers a dedup handle on retries (all drivers honor it when present; fresh fallback when absent).
 next: none | perf: N/A
 */

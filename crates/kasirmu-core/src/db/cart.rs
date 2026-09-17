@@ -1,7 +1,7 @@
 //! Active cart persistence — load, save, delete, and list active carts.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5 part 6)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 6)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: ADR-19 §5.1 location lock preserved via COALESCE upsert (never silently cleared); typed NoDeductionLocationLock error; ensure lock uses .unwrap_or(false) (fail-closed direction — missing lock denies mutation)
 next: none | perf: N/A
 */

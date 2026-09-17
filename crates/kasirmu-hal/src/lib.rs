@@ -1,6 +1,6 @@
 /*
 last audited DD-MM-YY by DSH-Agent
-crate: oz-hal | status: SAFE | lint: CLEAN
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: 0 actual unsafe blocks. #![deny(unsafe_code)] at crate root (RUST-06). Mock driver's .expect("poisoned") calls on Mutex locks are documented as test-double convention (mock always compiled per AGENTS.md). No other production unwrap/expect. Registry uses per-category RwLock with fail-open discovery; all 6 hardware traits have mock implementations. The EDC terminal slot was unified 31-08-26 (closing the bypass). WeightScale discovery gap documented in registry stamp.
 next: WeightScale discovery path still open; otherwise stable | perf: N/A
 */
@@ -10,7 +10,7 @@ next: WeightScale discovery path still open; otherwise stable | perf: N/A
 
 //! Hardware Abstraction Layer for OZ-POS.
 //!
-//! `oz-hal` is the seam between business logic and physical devices.
+//! `kasirmu-hal` is the seam between business logic and physical devices.
 //! Business code only ever sees the trait (`BarcodeScanner`,
 //! `ReceiptPrinter`, `CashDrawer`, `CustomerDisplay`, `WeightScale`) — it
 //! never imports a specific driver.

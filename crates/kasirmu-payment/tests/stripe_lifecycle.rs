@@ -16,7 +16,7 @@
 //! # Running
 //!
 //! ```bash
-//! cargo test --package oz-payment --test stripe_lifecycle
+//! cargo test --package kasirmu-payment --test stripe_lifecycle
 //! ```
 
 use foundation::{Currency, Money};

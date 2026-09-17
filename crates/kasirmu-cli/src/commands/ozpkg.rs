@@ -36,7 +36,7 @@ use kasirmu_core::settings::{IngestPolicy, IngestPolicyKind};
 /// `lan_server.*` — that last group is what the bare predicate this lane used
 /// to call did NOT cover.
 ///
-/// WHY THE POLICY AND NOT `Settings::set_with_policy`: `oz-cli` has no
+/// WHY THE POLICY AND NOT `Settings::set_with_policy`: `kasirmu-cli` has no
 /// `platform-core` dependency edge and `kasirmu_core::Settings` does not yet
 /// delegate `load_exportable` / `set_with_policy` / `set_batch_with_policy`,
 /// so the funnelled accessors are unreachable from this crate. This boundary
@@ -180,7 +180,7 @@ pub(crate) fn run_export_ozpkg(
         // `load_all` is UNFILTERED on purpose (`load_features` /
         // `prune_stale_features` read through it), so the filtering has to
         // happen HERE: this is `Settings::load_exportable`'s job, and the line
-        // below is where it moves once `oz-core` delegates that accessor.
+        // below is where it moves once `kasirmu-core` delegates that accessor.
         let rows = kasirmu_core::Settings::load_all(conn)?;
         let total = rows.len();
         let kept = portable_settings_rows(rows);

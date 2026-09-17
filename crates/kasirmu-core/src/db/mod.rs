@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B1: db facade)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B1: db facade)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: RUST-08 transaction contract verified in the field (22 files, ~70 unchecked_transaction sites; no nesting violations surfaced by the 2,536-test suite); all format!-built SQL verified injection-safe (whitelist columns + bound ?N params, escaped LIKE); backup uses online Backup API not VACUUM INTO (RUST-02/03); tenant integrity check fails loud; UNIQUE idx_payments_idempotency_key closes the create_payments dedup race
 next: B2 aggregate stores (sales/products/inventory deep read) | perf: backup chunking 512 pages/10ms documented and reasoned
 */

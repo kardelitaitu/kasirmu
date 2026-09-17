@@ -400,7 +400,7 @@ pub struct TopologyApplyResult {
 /// `unchecked_transaction` (`BEGIN`), which SQLite rejects with "cannot
 /// start a transaction within a transaction" when nested (see the
 /// `create_workspace_instance_cannot_nest_in_open_transaction` test in
-/// oz-core). The update and archive steps delegate to
+/// kasirmu-core). The update and archive steps delegate to
 /// `Store::{update_workspace_instance,archive_instance}`, which use
 /// `Connection::execute` directly and therefore compose safely inside
 /// the outer transaction.
@@ -902,7 +902,7 @@ pub async fn apply_topology_diff(
         // `BEGIN` that SQLite rejects ("cannot start a transaction within
         // a transaction") when an outer transaction is already open. See
         // `create_workspace_instance_cannot_nest_in_open_transaction` in
-        // oz-core. Running the INSERT/UPDATE SQL directly preserves the
+        // kasirmu-core. Running the INSERT/UPDATE SQL directly preserves the
         // single-transaction atomicity: if any step fails, the whole
         // batch rolls back.
         let tx = db

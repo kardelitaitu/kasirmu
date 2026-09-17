@@ -1,7 +1,7 @@
 //! Cloud sync client — pushes pending offline queue items to a remote server.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice C1: sync_client deep read) | 2026-09-06 DSH assist pass: stamp corrected only, no code change (COR-31 finding was stale)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice C1: sync_client deep read) | 2026-09-06 DSH assist pass: stamp corrected only, no code change (COR-31 finding was stale)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: sync-auth-hardening P1-P4 exemplary — typed 401 classification (refresh-once-on-expiry vs invalid-as-config-problem), terminal PlanRequired state (no retry/quarantine), admin-key gating (P2), client-credentials path (P3); SYNC-06 credential hygiene exemplary — snapshot users upsert with SNAPSHOT_PIN_HASH_PLACEHOLDER (never a real verifier), pin_hash omitted from UPDATE, deny_unknown_fields makes a misbehaving server fail loudly; pull applies in one tx; COR-31 CLOSED 2026-09-06 (assist pass) — the clause here previously read "COR-31 LOW: fetch_snapshot_from_server (1138) uses Client::new() with NO timeout", which was wrong twice over: the line number pointed past end of file (this file is 492 lines), and the function actually lives in sync_pull.rs:165, where it has been bounded since the COR-31 sweep (10s connect / 120s total, sync_pull.rs:180-182 — that comment even notes it overrode the 60s this stamp suggested, without ever correcting this stamp). Both clients still in this file are bounded as well (382 and 438, 30s each). No unbounded request remains in either file.
 next: perf: batch push per-item outcomes, no N+1 (the former "add a 60s timeout to the snapshot fetch (COR-31)" item was already done, in another file — see findings above)
 */

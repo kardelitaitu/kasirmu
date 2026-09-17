@@ -1,12 +1,12 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice A)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice A)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: CourseFired/SettingsUpdated implement DomainEvent; published post-commit per docs; no findings
 next: none | perf: N/A
 */
 //! Domain events published on the kernel event bus.
 //!
-//! These events are defined in `oz-core` so that all modules can
+//! These events are defined in `kasirmu-core` so that all modules can
 //! reference them without circular dependencies. Each event
 //! implements `foundation::contracts::DomainEvent` for use with
 //! the kernel's `EventBus`.

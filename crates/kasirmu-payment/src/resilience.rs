@@ -1,6 +1,6 @@
 /*
 last audited 15-09-26 by DSH-Agent
-crate: oz-payment | status: SAFE | lint: CLEAN
+crate: kasirmu-payment | status: SAFE | lint: CLEAN
 findings: ResilientProcessor decorator wrapping Arc<dyn PaymentProcessor>; 3-state CircuitBreaker (Closed/Open/HalfOpen); bounded exponential backoff on Transient errors; fails fast on Open breaker
 next: none | perf: Async in-memory atomics / RwLock
 */

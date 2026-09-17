@@ -1,4 +1,4 @@
-//! Shared test fixtures for oz-payment integration tests.
+//! Shared test fixtures for kasirmu-payment integration tests.
 //!
 //! # Fixture recording/replay (P5-4)
 //!

@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-notification slice A: whatsapp deep read; N-1 + N-2 FIXED 25-07-26)
-crate: oz-notification | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-notification slice A: whatsapp deep read; N-1 + N-2 FIXED 25-07-26)
+crate: kasirmu-notification | status: SAFE | lint: CLEAN
 findings: N-1 FIXED — the currency template arm now maps the real code and amount_1000 carried on TemplateParameter (new currency_code/amount_1000 fields; currency() converts minor units to the API 1/1000 scale) instead of the hardcoded IDR/0 stub. N-2 FIXED — 429 handling honours the Retry-After header (captured before the body consumes the response; falls back to 60s) and validate_phone's doc now matches the 7-digit minimum. Mock client and handler call sites unchanged (currency constructor keeps its signature)
 next: none | perf: N/A
 */

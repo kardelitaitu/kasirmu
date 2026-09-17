@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-logging slice A: verified)
-crate: oz-logging | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-logging slice A: verified)
+crate: kasirmu-logging | status: SAFE | lint: CLEAN
 findings: clean — sibling tests per convention
 next: none | perf: N/A
 */

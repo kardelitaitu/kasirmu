@@ -1,6 +1,6 @@
 /*
 last audited 25-07-26 by RSA-Agent
-crate: oz-payment | status: SAFE | lint: CLEAN
+crate: kasirmu-payment | status: SAFE | lint: CLEAN
 findings: Money (i64 minor units) throughout per house policy; idempotency_key contract ("processor generates fallback if None") ignored by all live drivers — PAY-2
 next: none in this file | perf: N/A
 */

@@ -65,10 +65,10 @@ pub struct AppState {
     ///
     /// Also the source of the two legs `BridgeCtx` takes from the shell:
     /// `media_cache_dir` (resolved here, since no tauri type may enter
-    /// `oz-bridge`) and `emitter` (boxed `TauriEventSink`).
+    /// `kasirmu-bridge`) and `emitter` (boxed `TauriEventSink`).
     pub app: Option<AppHandle>,
 
-    /// Path to the SQLite database file (for diagnostics + `oz-cli` reuse).
+    /// Path to the SQLite database file (for diagnostics + `kasirmu-cli` reuse).
     pub db_path: PathBuf,
 
     /// Cancel-sender for the active barcode scanner background task.
@@ -105,7 +105,7 @@ pub struct AppState {
 
     /// Cache layer handed to bridge bodies that build `Store::with_cache`.
     ///
-    /// **The tablet runs uncached.** `cache-redis` is not in `oz-core`'s
+    /// **The tablet runs uncached.** `cache-redis` is not in `kasirmu-core`'s
     /// default feature set and this shell does not enable it, so
     /// `create_cache` always reaches its documented fallback: a `NoopCache`
     /// that "always misses" and reports `is_healthy() == false`
@@ -409,7 +409,7 @@ fn resolve_db_path(app: &AppHandle) -> Result<PathBuf, AppError> {
 // ADR #49 Slice 0 — the ctx seam.
 //
 // `bridge_ctx` is the single borrow point between the tablet shell's
-// `AppState` and the tauri-free `oz-bridge` crate: a shim builds one per
+// `AppState` and the tauri-free `kasirmu-bridge` crate: a shim builds one per
 // call, runs the extracted command body, and maps `BridgeError` back to
 // `AppError` at `commands/authz.rs` so the wire shape is untouched. The
 // error seam already existed; this is the half that was missing.
@@ -443,7 +443,7 @@ impl AppState {
     #[allow(dead_code)] // consumed by the Slice 1+ shims (audit.rs, sync.rs)
     pub(crate) fn bridge_ctx(&self) -> kasirmu_bridge::ctx::BridgeCtx<'_> {
         // The media root is a shell concern: `AppHandle`/`Manager` never
-        // enter oz-bridge, so `app_cache_dir()` is resolved here and
+        // enter kasirmu-bridge, so `app_cache_dir()` is resolved here and
         // injected as a plain PathBuf. `None` when this shell holds no
         // handle, and a failed resolution degrades the same way.
         let media_cache_dir = self

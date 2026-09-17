@@ -1,7 +1,7 @@
 //! Inventory management DB methods — locations CRUD, shifts, transaction logs, thresholds.
 /*
 last audited DD-MM-YY by DSH-Agent
-crate: oz-core (inventory) | status: SAFE | lint: CLEAN
+crate: kasirmu-core (inventory) | status: SAFE | lint: CLEAN
 findings: COR-11 FIXED DD-MM-YY — deactivate_inventory_location + shift-start guard queries now propagate DB errors (?) instead of unwrap_or(0), so a read error fails closed instead of satisfying the zero-stock/zero-transfer constraint. COR-13 INFO: read mappers coerce unknown stored enum values via from_stored_str().unwrap_or(ManualAdjustment) at 3 sites — misclassification risk for reports; positives: create_inventory_transaction writes header+lines+adjustments in ONE tx via the canonical adjust_stock_at_location_with_reason; set_stock_threshold distinguishes NoRows from real DB errors
 next: none | perf: N/A
 */

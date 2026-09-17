@@ -1,7 +1,7 @@
 //! Token management endpoint.
 /*
-last audited 25-07-26 by RSA-Agent (oz-api slice A: tokens deep read; API-2 FIXED 25-07-26)
-crate: oz-api | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-api slice A: tokens deep read; API-2 FIXED 25-07-26)
+crate: kasirmu-api | status: SAFE | lint: CLEAN
 findings: API-2 FIXED — admin_key_authorised now compares via HMAC-SHA256 digests under a fixed context key with subtle-backed verify_slice (constant-time; plain == short-circuited on the first differing byte), 4 new unit tests (exact match, wrong/prefix/suffix probes, dev-open, missing header); dev-open mode remains documented and unreachable behind OZ_PRODUCTION=1 via the API-1 production-secrets gate. Clean structure otherwise — P2 admin-gated label mint, P3 terminal client-credentials path takes tenant from the registration (never the body)
 next: none | perf: N/A
 */
@@ -95,7 +95,7 @@ pub fn admin_key_authorised(headers: &HeaderMap, configured: Option<&str>) -> bo
 
     type HmacSha256 = Hmac<Sha256>;
     let digest = |value: &str| {
-        let mut mac = HmacSha256::new_from_slice(b"oz-api-admin-key-compare")
+        let mut mac = HmacSha256::new_from_slice(b"kasirmu-api-admin-key-compare")
             // INVARIANT: HMAC accepts keys of any length (RFC 2104), so a fixed
             // literal domain-separation key cannot fail.
             .expect("HMAC accepts any key length");
@@ -104,7 +104,7 @@ pub fn admin_key_authorised(headers: &HeaderMap, configured: Option<&str>) -> bo
     };
 
     let provided = digest(supplied);
-    let mut mac = HmacSha256::new_from_slice(b"oz-api-admin-key-compare")
+    let mut mac = HmacSha256::new_from_slice(b"kasirmu-api-admin-key-compare")
         // INVARIANT: HMAC accepts keys of any length (RFC 2104), so a fixed
         // literal domain-separation key cannot fail.
         .expect("HMAC accepts any key length");
@@ -327,7 +327,7 @@ fn warn_terminal_read_tier_escape_once() {
     static WARNED: std::sync::Once = std::sync::Once::new();
     WARNED.call_once(|| {
         eprintln!(
-            "[oz-api] WARNING: OZ_TERMINAL_READ_TIER=full — terminal tokens keep \
+            "[kasirmu-api] WARNING: OZ_TERMINAL_READ_TIER=full — terminal tokens keep \
              legacy full read access. This escape hatch is slated for removal after \
              one release cycle; see spec 0047 decision 1."
         );

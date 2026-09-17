@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-plugin slice A: manifest deep read)
-crate: oz-plugin | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-plugin slice A: manifest deep read)
+crate: kasirmu-plugin | status: SAFE | lint: CLEAN
 findings: exemplary — PLG-08 deny_unknown_fields on every manifest section (typos fail loudly); typed kebab-case Permission enum with fail-closed permission_from_str; kebab-case name charset/length validation; strict SemVer version check
 next: none | perf: N/A
 */

@@ -1,7 +1,7 @@
 //! Loyalty program CRUD — points, tiers, redemption.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B1: loyalty deep read; MSL-4 projection fix 25-07-26)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B1: loyalty deep read; MSL-4 projection fix 25-07-26)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: MSL-4 FIXED here — earn_points and redeem_points now maintain customers.loyalty_points as a projection of the authoritative loyalty_accounts balance inside their transactions (single writer; tier-multiplied; redemption-mirrored), so the CRM counter can no longer diverge. Prior verified positives: earn/redeem idempotency via unique projection index + pre-check, tier multiplier math, server-side sale binding, tx-wrapped balance guards
 next: none | perf: projection UPDATE is one indexed row per mutation
 */

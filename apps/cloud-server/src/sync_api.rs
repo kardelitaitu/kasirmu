@@ -481,7 +481,7 @@ fn json_snapshot_response(bytes: Vec<u8>, if_none_match: Option<&str>) -> axum::
 ///
 /// Both `POST /api/v1/tax-rates` and `POST /api/v1/users` now stamp
 /// `tenant_id` from JWT claims (same pattern as `create_product` in
-/// `oz-api/src/routes/products.rs`). New tax rates and users are
+/// `kasirmu-api/src/routes/products.rs`). New tax rates and users are
 /// correctly scoped per-tenant for snapshot isolation.
 #[tracing::instrument(skip(state, headers), fields(tenant_id = claims.tenant_id.as_deref().unwrap_or("default")))]
 async fn snapshot_handler(

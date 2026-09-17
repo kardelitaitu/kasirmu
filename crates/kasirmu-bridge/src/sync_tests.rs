@@ -444,7 +444,7 @@ fn unique_backup_dir() -> std::path::PathBuf {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     let dir = std::env::temp_dir().join(format!(
-        "oz-bridge-sync-backup-{}-{}-{}",
+        "kasirmu-bridge-sync-backup-{}-{}-{}",
         std::process::id(),
         nanos,
         NEXT.fetch_add(1, Ordering::Relaxed)
@@ -775,7 +775,7 @@ fn disposal_survives_a_missing_or_unlistable_directory() {
     let gone = pre_pull_backup_path(&store, "20260101000000");
     dispose_pre_pull_backup(&main_db, &store, &gone, true);
     dispose_pre_pull_backup(&main_db, &store, &gone, false);
-    let nowhere = std::path::Path::new("/nonexistent-oz-bridge-dir/store-7.sqlite");
+    let nowhere = std::path::Path::new("/nonexistent-kasirmu-bridge-dir/store-7.sqlite");
     dispose_pre_pull_backup(
         nowhere,
         nowhere,

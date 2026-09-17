@@ -1,6 +1,6 @@
 /*
-last audited 31-08-26 by DSH-Agent (moved in from oz-payment during the HAL unification)
-crate: oz-hal | status: SAFE | lint: CLEAN
+last audited 31-08-26 by DSH-Agent (moved in from kasirmu-payment during the HAL unification)
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: PLANNED stub — construction records the target and connects nothing; all ops fail closed with HalError::Unsupported. Changed on the move: `target` was a #[allow(dead_code)] write-only field, now reachable via target()/address() so the configured link is observable and the dead_code allowance is gone. Note WirelessTarget::Network duplicates what drivers/tcp_printer.rs already does for printers — when this driver is implemented it should reuse crate::transport::tcp rather than grow a second socket path.
 next: Bluetooth/WiFi protocol handler | perf: N/A
 */

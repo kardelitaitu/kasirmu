@@ -42,7 +42,7 @@ use serde::Serialize;
 
 /// The closed receipt element-code enum (supervisor addition 2): the only
 /// element codes `required_fields` may name. Mirrors the sections the
-/// receipt renderer actually consumes (oz-hal `SalesReceipt` /
+/// receipt renderer actually consumes (kasirmu-hal `SalesReceipt` /
 /// `ReceiptConfig`): store identity, tax registration, date, number,
 /// items, money lines, payments. Writes are validated against this list;
 /// unknown codes are rejected at the write boundary.

@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-reporting slice A: verified)
-crate: oz-reporting | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-reporting slice A: verified)
+crate: kasirmu-reporting | status: SAFE | lint: CLEAN
 findings: clean — parameterized queries, integer minor units, sibling tests per convention
 next: none | perf: N/A
 */

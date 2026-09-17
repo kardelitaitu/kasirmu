@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-hal slice A: transport/usb deep read)
-crate: oz-hal | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-hal slice A: transport/usb deep read)
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: clean — rusb enumeration with per-device continue on descriptor errors and fail-open string reads; KNOWN allowlist tables (scanners/printers/P6-1 scales) documented by model; vendor-specific class second pass deduped; no unsafe
 next: none | perf: N/A
 */

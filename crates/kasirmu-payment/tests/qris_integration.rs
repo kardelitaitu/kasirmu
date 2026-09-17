@@ -8,7 +8,7 @@
 //! # Running
 //!
 //! ```bash
-//! cargo test --package oz-payment --test qris_integration
+//! cargo test --package kasirmu-payment --test qris_integration
 //! ```
 
 use foundation::{Currency, Money};

@@ -1,4 +1,4 @@
-//! Shared OpenAPI 3.1 document for the `oz-api` surface.
+//! Shared OpenAPI 3.1 document for the `kasirmu-api` surface.
 //!
 //! Single source of truth for the contract served by BOTH the cloud
 //! server (`apps/cloud-server`, which merges its own sync/webhook/docs

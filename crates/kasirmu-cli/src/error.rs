@@ -1,10 +1,10 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-cli slice B: verified)
-crate: oz-cli | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-cli slice B: verified)
+crate: kasirmu-cli | status: SAFE | lint: CLEAN
 findings: clean — clap definitions / error taxonomy / deny(unsafe_code) crate root
 next: none | perf: N/A
 */
-//! Error type for the `oz-cli` binary.
+//! Error type for the `kasirmu-cli` binary.
 
 use thiserror::Error;
 

@@ -1,10 +1,10 @@
 /*
 last audited 25-07-26 by RSA-Agent
-crate: oz-payment | status: SAFE | lint: CLEAN
+crate: kasirmu-payment | status: SAFE | lint: CLEAN
 findings: 7 variants, non_exhaustive, sound taxonomy; Timeout carries ms; Declined vs Ok(success=false) convention not pinned in trait docs
 next: none | perf: N/A
 */
-//! Error type for `oz-payment`.
+//! Error type for `kasirmu-payment`.
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

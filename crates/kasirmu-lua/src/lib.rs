@@ -1,13 +1,13 @@
 /*
 last audited DD-MM-YY by DSH-Agent
-crate: oz-lua | status: SAFE | lint: CLEAN
+crate: kasirmu-lua | status: SAFE | lint: CLEAN
 findings: 2 actual unsafe blocks verified — both `unsafe impl Send/Sync for LuaRuntime` with item-scoped #[allow(unsafe_code)] + documented SAFETY rationale (mlua is Send+Sync; LuaRuntime holds an Arc<Mutex<...>>) — crate root #![deny(unsafe_code)] holds. LUA-3 RESOLVED — removed detect_overwrites(): dead code (never called anywhere) whose overwrite detection was a no-op (counted duplicates in the input list, not VM overwrites). LUA-2 already fixed (percent range at parse site). Sandbox hardening verified: io/loadfile/dofile/require/package/debug removed, os reduced, 10 MiB memory cap, 100K instruction hook, MONEY-05 float hand-off documented. Default::default() .expect() is documented-infallible (LuaRuntime::new cannot fail).
 next: none — crate stable | perf: N/A
 */
 
 //! Embedded Lua scripting runtime for OZ-POS.
 //!
-//! `oz-lua` lets merchants customize business rules, promotions, and
+//! `kasirmu-lua` lets merchants customize business rules, promotions, and
 //! order validation at runtime without recompiling the Rust core.
 //! The runtime is built on [`mlua`] and exposes a curated surface of
 //! cart / line / product data to Lua scripts.
@@ -407,7 +407,7 @@ fn parse_discount_result(val: mlua::Value) -> Option<DiscountResult> {
             let percent: i64 = tbl.get("percent").ok()?;
             // LUA-2 fix: validate the 0–100 range at the parse site so
             // every caller (legacy global hook, per-env hook) shares the
-            // contract the oz-plugin manager already enforced (P0-5).
+            // contract the kasirmu-plugin manager already enforced (P0-5).
             // Out-of-range results are treated as "no discount" (None),
             // matching how a nil return is handled.
             if !(0..=100).contains(&percent) {

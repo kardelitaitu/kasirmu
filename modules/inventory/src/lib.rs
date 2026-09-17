@@ -32,7 +32,7 @@ next: none | perf: N/A
 
 //! # Re-exports
 //!
-//! This module re-exports key inventory domain types from `oz-core` so that
+//! This module re-exports key inventory domain types from `kasirmu-core` so that
 //! consumers can access all inventory-related types through a single crate:
 //!
 //! ```

@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice A)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice A)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: append-only audit entry type sound; COR-1 FIXED DD-MM-YY (DSH-Agent) — id field doc updated to UUID v7, matching the constructor's ADR #6 generation
 next: fix field doc | perf: N/A
 */
@@ -12,7 +12,7 @@ next: fix field doc | perf: N/A
 //!   and success/failure.
 //! - **10.3.1**: Audit logs cannot be modified (no UPDATE/DELETE).
 //! - **10.3.2**: Audit logs are retained for at least 12 months
-//!   (enforced by log rotation policy in `oz-logging`).
+//!   (enforced by log rotation policy in `kasirmu-logging`).
 
 use serde::{Deserialize, Serialize};
 

@@ -1,6 +1,6 @@
 /*
 last audited DD-MM-YY by DSH-Agent
-crate: oz-security (windows) | status: SAFE | lint: CLEAN
+crate: kasirmu-security (windows) | status: SAFE | lint: CLEAN
 findings: 8 unsafe blocks (not 6 — prior stamp miscount) — all with SAFETY comments (CredReadW, GetLastError×3, from_raw_parts+CredFree, zeroed FILETIME, CredWriteW, CredDeleteW). SEC-3 FIXED — zero-size CredentialBlob no longer passes a potentially-null pointer to from_raw_parts (uses &[] instead). CredFree called on every path. Module-level #[allow(unsafe_code)] is necessary for Win32 FFI; crate root #[deny(unsafe_code)] holds for all other files.
 next: none — SEC-3 closed | perf: FFI overhead negligible
 */

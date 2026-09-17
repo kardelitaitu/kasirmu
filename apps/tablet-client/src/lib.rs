@@ -11,7 +11,7 @@ next: none | perf: N/A
 //! gestures, mobile plugins).
 //!
 //! The heavy lifting (DB, commands, event handlers) is delegated to
-//! the shared crates (`oz-core`, `platform-kernel`, `modules-*`).
+//! the shared crates (`kasirmu-core`, `platform-kernel`, `modules-*`).
 //! This file wires them into a Tauri v2 mobile app.
 
 /// All `#[tauri::command]` handlers.

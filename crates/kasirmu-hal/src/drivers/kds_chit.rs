@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-hal slice B: verified)
-crate: oz-hal | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-hal slice B: verified)
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: HAL-1 instance found here 31-08-26 and fixed — center_text() padded by byte .len(), so a multi-byte item name shifted the chit's centering. The 25-07-26 slice-B pass recorded this file as "clean"; it was verified structurally only, and the byte-vs-char defect is invisible without reading the padding arithmetic. Now uses escpos::cell_width. Otherwise clean: no unwrap/panic/unsafe, sibling tests per convention
 next: none | perf: N/A
 */

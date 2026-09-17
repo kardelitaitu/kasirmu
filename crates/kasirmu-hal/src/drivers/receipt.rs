@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-hal slice B: receipt deep read)
-crate: oz-hal | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-hal slice B: receipt deep read)
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: HAL-1 FIXED 31-08-26 — layout padding/centering counted UTF-8 bytes (str::len()) where the column formatter counts characters, so multi-byte text stole padding from its own column. The original INFO severity understated this: currency_symbol returns € £ ¥ ₱ ฿ ₩ (2-3 bytes each), so EVERY price column shifted on EUR/GBP/JPY/PHP/THB/KRW receipts — not just Unicode store/product names as first recorded. All 8 sites now route through escpos::cell_width, and truncate() takes max-1 chars (inherently boundary-safe, replacing the old char_indices byte-slicing). East-Asian double-width remains unmodelled — needs a unicode-width dep, out of scope for Latin-script receipts. Otherwise exemplary: Money/format_minor delegation, documented PaperWidth/DecimalSeparator, per-store ReceiptConfig from settings, Indonesian NPWP/tax-id footer support, payment-link QR config hook
 next: none | perf: N/A
 */

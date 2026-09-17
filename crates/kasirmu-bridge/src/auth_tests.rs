@@ -706,7 +706,7 @@ async fn staff_login_accepts_exactly_4_digit_pin() {
 //
 // The audit baseline promises paid tiers keep basic security events. These
 // pin that staff_login and destroy_session actually WRITE them — the core
-// recorder has its own suite in oz-core; what is proven here is the wiring,
+// recorder has its own suite in kasirmu-core; what is proven here is the wiring,
 // including the desktop debug_upgrade divergence, which is the one place the
 // two clients are allowed to disagree.
 

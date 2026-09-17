@@ -1,6 +1,6 @@
 /*
 last audited 25-07-26 by RSA-Agent
-crate: oz-security | status: SAFE | lint: CLEAN
+crate: kasirmu-security | status: SAFE | lint: CLEAN
 findings: PCI-DSS masking verified; digit-only filtering makes byte slicing panic-free (no multibyte hazard); mask_name byte-vs-char length caveat already pinned by mask_name_byte_vs_char_caveat test (SEC-8)
 next: none | perf: N/A
 */

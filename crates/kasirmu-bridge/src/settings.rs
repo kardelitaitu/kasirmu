@@ -633,7 +633,7 @@ pub fn run_set_settings_batch(
 
 /// Enqueue one settings.update sync item per changed key (SYNC-10).
 ///
-/// Delegates to Store::enqueue_settings_update_superseding (oz-core), which owns the
+/// Delegates to Store::enqueue_settings_update_superseding (kasirmu-core), which owns the
 /// settings.update wire contract: payload shape, Low priority, and
 /// supersede-any-pending-same-key semantics. Callers enqueue on the GLOBAL db (the
 /// sync daemon only watches the global queue), never the store db the value was written to.

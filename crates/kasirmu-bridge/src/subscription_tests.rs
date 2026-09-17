@@ -1057,7 +1057,7 @@ fn verdict_absent_features_block_leaves_the_tier_answer() {
         // Release: with no readable payload there is no tier answer either.
         // Both legs collapse onto the same fail-closed projection - the
         // precedence table this case is really about stays pinned in
-        // oz-core/availability_tests.rs, where no sentinel row is involved.
+        // kasirmu-core/availability_tests.rs, where no sentinel row is involved.
         let v = verdict_with_owner(&conn, "supports_analytics");
         assert_seeded_row(&conn, "premium");
         assert_verdict_fail_closed(&v);

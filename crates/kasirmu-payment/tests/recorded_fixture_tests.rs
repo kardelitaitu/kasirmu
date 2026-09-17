@@ -12,7 +12,7 @@
 //! # Running
 //!
 //! ```bash
-//! cargo test --package oz-payment --test recorded_fixture_tests
+//! cargo test --package kasirmu-payment --test recorded_fixture_tests
 //! ```
 
 use foundation::{Currency, Money};

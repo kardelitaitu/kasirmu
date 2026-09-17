@@ -1,10 +1,10 @@
 /*
 last audited 25-07-26 by RSA-Agent
-crate: oz-security | status: SAFE | lint: CLEAN
-findings: 4 variants, non_exhaustive, stable Display; SEC-7: DecryptionFailed unused in-crate (no decrypt path here) — verify consumer mapping during oz-core pass
+crate: kasirmu-security | status: SAFE | lint: CLEAN
+findings: 4 variants, non_exhaustive, stable Display; SEC-7: DecryptionFailed unused in-crate (no decrypt path here) — verify consumer mapping during kasirmu-core pass
 next: none | perf: N/A
 */
-//! Error type for `oz-security`.
+//! Error type for `kasirmu-security`.
 
 use thiserror::Error;
 

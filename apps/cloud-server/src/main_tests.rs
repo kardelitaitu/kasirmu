@@ -235,7 +235,7 @@ async fn metrics_render_rate_limit_and_webhook_counters() {
 #[tokio::test]
 async fn health_returns_ok() {
     let app = test_app();
-    // oz-api health endpoint
+    // kasirmu-api health endpoint
     let req = Request::builder()
         .uri("/api/v1/health")
         .body(Body::empty())

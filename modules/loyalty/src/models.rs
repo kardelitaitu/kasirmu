@@ -1,7 +1,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (modules-loyalty slice A: models deep read)
 crate: modules-loyalty | status: SAFE | lint: CLEAN
-findings: MSL-10 FIXED — pin is skip_serializing+default (JSON responses omit it) and Debug is a manual impl redacting it: any JSON serialization of a GiftCard (Tauri command response, log dump) emits the PIN, and Debug prints it; consistent with COR-17 plaintext-at-rest but adds wire/log exposure. Proposed: serde(skip_serializing) on pin plus a redacted Debug or manual impl. LoyaltyTier.earn_multiplier_millionths is fixed-point i64 (LOYALTY-01: was f64, migrated to millionths — points math never touches a float); earn/redeem service logic lives in oz-core db/loyalty.rs (audited exemplary: idempotent per account+sale+txn, redeem validates server-side)
+findings: MSL-10 FIXED — pin is skip_serializing+default (JSON responses omit it) and Debug is a manual impl redacting it: any JSON serialization of a GiftCard (Tauri command response, log dump) emits the PIN, and Debug prints it; consistent with COR-17 plaintext-at-rest but adds wire/log exposure. Proposed: serde(skip_serializing) on pin plus a redacted Debug or manual impl. LoyaltyTier.earn_multiplier_millionths is fixed-point i64 (LOYALTY-01: was f64, migrated to millionths — points math never touches a float); earn/redeem service logic lives in kasirmu-core db/loyalty.rs (audited exemplary: idempotent per account+sale+txn, redeem validates server-side)
 next: redact GiftCard pin in fix-order phase | perf: N/A
 */
 //! Loyalty & Gift Card domain models.

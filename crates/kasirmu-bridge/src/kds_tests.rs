@@ -1175,7 +1175,7 @@ async fn integration_device_isolation_between_restaurants() {
 //
 // The scoped commands below route through session → store → instance
 // scoping and KDS permissions, yet had zero command-layer coverage
-// (grep evidence: no test referenced them). The oz-core layer beneath
+// (grep evidence: no test referenced them). The kasirmu-core layer beneath
 // is pinned in crates/kasirmu-core; these pin the wiring.
 
 /// Seeds a restaurant product (BURGER) into the store DB so the fanout

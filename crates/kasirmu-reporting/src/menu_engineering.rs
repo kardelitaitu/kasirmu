@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-reporting slice A: deep read)
-crate: oz-reporting | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-reporting slice A: deep read)
+crate: kasirmu-reporting | status: SAFE | lint: CLEAN
 findings: R-1 INFO (menu_engineering merge_same_product_rows keeps the first-seen unit price/cost — the revenue-descending SQL order's first row, not the mode — so merged margin_per_unit can misrepresent; proposed: derive unit price as total_revenue/total_volume or document) | R-2 INFO (all reporting queries wrap DATE(s.created_at) in WHERE predicates — non-sargable, full table scans on large sales tables; fine today, propose sargable range predicates when volume grows)
 next: cosmetic analytics polish in fix-order | perf: DATE() non-sargable
 */

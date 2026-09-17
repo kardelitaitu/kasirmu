@@ -1,6 +1,6 @@
 /*
 last audited DD-MM-YY by DSH-Agent
-crate: oz-media | status: SAFE | lint: CLEAN
+crate: kasirmu-media | status: SAFE | lint: CLEAN
 findings: 0 unsafe blocks (earlier risk sweep counted comment text "no unsafe" — corrected); transforms guarded: decompression-bomb caps (max_pixels/max_side/max_input_bytes) enforced via header-only probe before decode, zero-size sources rejected, crop math saturating with solid-colour trim guard, single-decode pipeline (M-2). Storage backends documented PLANNED stubs returning NotImplemented. No defects found.
 next: none — storage persistence still planned | perf: decode-once pipeline; N/A elsewhere
 *//*
@@ -23,7 +23,7 @@ Depends on the `image` crate (0.25) for pixel-level operations.
 
 //! Image processing utilities for OZ-POS.
 //!
-//! `oz-media` provides image thumbnail generation, compression, and
+//! `kasirmu-media` provides image thumbnail generation, compression, and
 //! auto-crop operations for product photos, category icons, and
 //! store logos, plus a pipeline orchestrator and metrics.
 //!

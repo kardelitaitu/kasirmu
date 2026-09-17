@@ -1,4 +1,4 @@
-//! Desktop re-export shim for the `oz-local-api` loopback REST API server.
+//! Desktop re-export shim for the `kasirmu-local-api` loopback REST API server.
 //!
 //! The implementation moved verbatim to `crates/kasirmu-local-api` (Agent 1,
 //! Phase 1.2) so the server can be started from a headless binary without

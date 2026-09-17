@@ -742,7 +742,7 @@ fn sandbox_contract_survives_the_fuzz_crash_input() {
 }
 
 /// LUA-2 fix: the parse-site contract treats out-of-range percent values
-/// as "no discount" (None) — the same range the oz-plugin manager
+/// as "no discount" (None) — the same range the kasirmu-plugin manager
 /// enforced (P0-5), now shared by the legacy global-hook and per-env
 /// hook paths.
 #[test]

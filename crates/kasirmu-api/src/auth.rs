@@ -1,7 +1,7 @@
 //! JSON Web Token generation and validation for the OZ-POS OpenAPI.
 /*
-last audited 25-07-26 by RSA-Agent (oz-api slice A: auth deep read; API-1 FIXED 25-07-26)
-crate: oz-api | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-api slice A: auth deep read; API-1 FIXED 25-07-26)
+crate: kasirmu-api | status: SAFE | lint: CLEAN
 findings: API-1 FIXED — serve() now refuses to boot when OZ_PRODUCTION=1 and OZ_API_SECRET (or OZ_ADMIN_KEY) is missing (validate_production_secrets, mirroring the cloud-server boot gate), so the hard-coded dev JWT signing secret is unreachable in production; the dev fallback itself remains for zero-config dev startup with a one-time loud eprintln warning (warn_dev_fallback_once); signing_secret_for_tests() exposes the resolved secret for tests. API-2 INFO unchanged — 60s JWT validation cache means an expired token passes up to 60s past exp (documented tradeoff, bounded cache); structured 401 taxonomy per P4 with WWW-Authenticate; exp validated, HS256-only validation default (no alg confusion)
 next: API-2 INFO — constant-time admin-key compare, decrypted-GET documentation | perf: N/A
 */
@@ -106,7 +106,7 @@ fn warn_dev_fallback_once() {
     static DEV_FALLBACK_WARNED: std::sync::Once = std::sync::Once::new();
     DEV_FALLBACK_WARNED.call_once(|| {
         eprintln!(
-            "[oz-api] WARNING: OZ_API_SECRET is not set — using the hard-coded \
+            "[kasirmu-api] WARNING: OZ_API_SECRET is not set — using the hard-coded \
              dev signing secret. Tokens are forgeable by anyone who knows the \
              constant. Set OZ_API_SECRET (required when OZ_PRODUCTION=1)."
         );

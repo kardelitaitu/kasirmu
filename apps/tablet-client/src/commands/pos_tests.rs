@@ -904,7 +904,7 @@ fn shortfall_collision_on_one_attempt_returns_first_sale_id() {
     assert_eq!(keyed_payment_rows(&conn), 1, "no extra keyed payment rows");
     // Cart decision (recorded): the shortfall basket lives in the request
     // body, so there is no cart row to lose, and folding the cart-path
-    // delete_active_cart into the settlement tx would need a new oz-core
+    // delete_active_cart into the settlement tx would need a new kasirmu-core
     // settlement API outside this fence — the deletion deliberately stays
     // where it is, and the shared lock keeps a same-process loser from ever
     // reaching it.

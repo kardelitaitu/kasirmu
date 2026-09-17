@@ -1,7 +1,7 @@
 //! Per-tenant sync plans (ADR sync-plan-gating).
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5 part 6)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 6)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: fail-closed plan parsing (unknown -> Free), clean upsert; documented missing-row semantics
 next: none | perf: N/A
 */

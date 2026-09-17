@@ -1,7 +1,7 @@
 /*
 last audited DD-MM-YY by DSH-Agent
-crate: oz-api | status: SAFE | lint: CLEAN
-findings: 0 unsafe blocks. 2 production panic-on-invariant calls in tokens.rs — both "HMAC accepts any key length" with fixed-size key input (documented-invariant, same pattern as oz-crypto). Doc-comment example in lib.rs also uses a panic-on-invariant call in a //! block (not production code). Security headers, CORS fail-closed, production-secret validation (API-1). Clean server scaffold.
+crate: kasirmu-api | status: SAFE | lint: CLEAN
+findings: 0 unsafe blocks. 2 production panic-on-invariant calls in tokens.rs — both "HMAC accepts any key length" with fixed-size key input (documented-invariant, same pattern as kasirmu-crypto). Doc-comment example in lib.rs also uses a panic-on-invariant call in a //! block (not production code). Security headers, CORS fail-closed, production-secret validation (API-1). Clean server scaffold.
 next: none | perf: N/A
 */
 

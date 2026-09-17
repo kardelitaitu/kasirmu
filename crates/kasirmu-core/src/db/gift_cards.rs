@@ -1,7 +1,7 @@
 //! Gift cards CRUD — issue, redeem, top-up, freeze, balance checks.
 /*
 last audited DD-MM-YY by DSH-Agent
-crate: oz-core (gift_cards) | status: SAFE | lint: CLEAN
+crate: kasirmu-core (gift_cards) | status: SAFE | lint: CLEAN
 findings: stored-value paths sound (PA-01 atomic conditional UPDATE both directions with i64::MAX overflow guard on top-up; in-tx balance re-read keeps ledger rows accurate under concurrency; expiry parse-fail treats card as expired — fail-safe; RUST-07 recoverable lookups documented). COR-15 FIXED DD-MM-YY — partial UNIQUE index uq_gift_card_redeem_sale (migration 20260901) closes the redeem idempotency gap under sync replay. COR-16 FIXED DD-MM-YY — list_gift_cards search + issued_to now escape LIKE wildcards (ESCAPE '\', same as customers/audit). COR-17 INFO: card PIN stored plaintext (acceptable local-POS threat model; revisit before cloud sync).
 next: none | perf: N+1 txn fetch in list_gift_cards is bounded at 5/card
 */

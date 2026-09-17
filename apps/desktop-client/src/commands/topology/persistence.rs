@@ -178,7 +178,7 @@ pub(crate) fn save_topology_json_at_key_with_revision(
 
 /// Adapter over [`kasirmu_bridge::topology::persistence::validate_semantic_ownership`].
 /// Caller set collapsed when the desktop topology unit tests relocated to
-/// oz-bridge: production calls the `_in` variant directly and no mounted test
+/// kasirmu-bridge: production calls the `_in` variant directly and no mounted test
 /// reaches this wrapper in either build.
 #[allow(dead_code)]
 pub(crate) fn validate_semantic_ownership(

@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-media slice A: verified)
-crate: oz-media | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-media slice A: verified)
+crate: kasirmu-media | status: SAFE | lint: CLEAN
 findings: clean — no unwrap/panic/unsafe; sibling tests per convention
 next: none | perf: N/A
 */

@@ -1,6 +1,6 @@
 /*
 last audited 25-07-26 by RSA-Agent
-crate: oz-payment | status: SAFE | lint: CLEAN
+crate: kasirmu-payment | status: SAFE | lint: CLEAN
 findings: UnverifiedWebhookGuard fails closed — correct default for a stub; per-gateway verifiers PLANNED
 next: implement verifiers before webhook endpoints go live | perf: N/A
 */

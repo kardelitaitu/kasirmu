@@ -1,6 +1,6 @@
 /*
 last audited 25-07-26 by RSA-Agent
-crate: oz-security | status: SAFE | lint: CLEAN
+crate: kasirmu-security | status: SAFE | lint: CLEAN
 findings: validate() cert/key pairing + path existence sound; SEC-5: insecure_skip_verify is serde-visible with no guard, log, or debug gate — consumer gating must be verified (platform/sync pass); module doc mentions connector building that lives elsewhere
 next: warn or gate insecure_skip_verify in release builds (SEC-5) | perf: N/A
 */

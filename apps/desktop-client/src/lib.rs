@@ -17,7 +17,7 @@ next: none | perf: N/A
 //!    `commands` module re-exports.
 //! 3. Document the command in the `tauri-ipc` skill.
 //!
-//! After the Wave E/F extraction, `oz-bridge` carries the command logic; this
+//! After the Wave E/F extraction, `kasirmu-bridge` carries the command logic; this
 //! shell keeps the daemon-residue modules (local_api, pg_sync) and the 453-entry
 //! `tauri::generate_handler` list (measured 2026-09-14) — re-measure it with
 //! `python scripts/verify-ipc-parity.py` instead of trusting the number here.
@@ -38,7 +38,7 @@ mod image_push;
 /// to all connected terminals in the same store. Terminal identification
 /// happens at startup via device_id lookup (see state.rs).
 pub mod lan_server;
-/// Loopback local REST API server (embedded `oz-api` router) — lets
+/// Loopback local REST API server (embedded `kasirmu-api` router) — lets
 /// merchants run their own scripts against this register. Off by
 /// default; enabled via Settings → Local API.
 pub mod local_api;

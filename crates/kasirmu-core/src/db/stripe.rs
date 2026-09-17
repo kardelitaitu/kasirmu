@@ -1,7 +1,7 @@
 //! Stripe customer → tenant mapping (ADR sync-plan-gating follow-up).
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: upsert with ON CONFLICT + NoRows-aware lookup; correct and minimal
 next: none | perf: N/A
 */

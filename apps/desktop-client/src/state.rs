@@ -84,7 +84,7 @@ pub struct AppState {
     /// `None` in test or headless contexts where no UI is attached.
     pub app: Option<AppHandle>,
 
-    /// Path to the SQLite database file (for diagnostics + `oz-cli` reuse).
+    /// Path to the SQLite database file (for diagnostics + `kasirmu-cli` reuse).
     pub db_path: PathBuf,
 
     /// Cancel-sender for the active barcode scanner background task.

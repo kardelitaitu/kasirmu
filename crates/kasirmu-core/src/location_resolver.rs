@@ -1,7 +1,7 @@
 //! Workspace-binding resolution layer (ADR-19 §4).
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice C2: location_resolver deep read)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice C2: location_resolver deep read)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: strict ADR-19 priority tree with split-brain detection in both paths; COR-32 LOW-MED: the 30s TTL LOCATION_CACHE has NO production invalidation caller (invalidate_location_cache is test-only) — a workspace rebind can keep deducting from the OLD location for up to 30s; chain resolver stock read .unwrap_or(0) is fail-closed for display (excludes empty locations); multi_count .unwrap_or(0) degrades to canonical default on DB error (COR-25 family); poisoned-mutex silent miss degrades safely to a DB read
 next: call invalidate_location_cache() from binding mutators (COR-32) | perf: cache avoids per-cart-open SELECT
 */

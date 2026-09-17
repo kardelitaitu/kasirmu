@@ -1347,7 +1347,7 @@ fn import_snapshot_preserves_store_scoping() {
 fn import_snapshot_unknown_store_id_fails_closed_and_rolls_back() {
     // Phase B: a snapshot row tagged with a store the local DB does not
     // know must fail the FK and roll back the WHOLE import (no partial
-    // products) — the same fail-closed contract as the oz-core path.
+    // products) — the same fail-closed contract as the kasirmu-core path.
     let conn = kasirmu_core::migrations::fresh_db();
     conn.execute(
         "INSERT INTO locations (id, name) VALUES ('store-a', 'Store A')",

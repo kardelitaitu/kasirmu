@@ -860,7 +860,7 @@ pub(crate) fn window_covers(
 /// One candidate row, deliberately kept out of [`TaxRate`].
 ///
 /// Folding the four new columns into `TaxRate` would rewrite ten literal
-/// constructions across `oz-api`, `modules/tax` and `platform/sync` for a slice
+/// constructions across `kasirmu-api`, `modules/tax` and `platform/sync` for a slice
 /// that changes no wire shape — and `TaxRate` is serialized straight into both
 /// clients' tax screens. Scope and window are resolution inputs, not part of a
 /// rate's published identity.

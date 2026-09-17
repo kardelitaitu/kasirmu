@@ -1,7 +1,7 @@
 //! Terminal Management — register, list, update, ping, delete terminals.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5 part 6)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 6)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: clean CRUD + HMAC binding signature for tamper detection; terminal_secret stored plaintext (acceptable local-POS threat model, same note as COR-17 — revisit for cloud sync)
 next: none | perf: N/A
 */

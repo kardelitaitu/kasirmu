@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-hal slice C: verified)
-crate: oz-hal | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-hal slice C: verified)
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: clean driver — no unsafe. Covers all 6 HAL traits as of the EDC move (31-08-26): barcode, printer, drawer, display, scale, edc, so the mandatory-mock rule in AGENTS.md still holds crate-wide. MockEdcTerminal fails closed until set_success(): an unarmed mock cannot exercise an approved-payment path, which is the property worth having on a money device. The lock().expect("mock poisoned") calls are the only panic paths and are confined to test doubles, matching the pre-existing style here.
 next: none | perf: N/A — test doubles only
 */

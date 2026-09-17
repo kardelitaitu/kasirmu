@@ -1,7 +1,7 @@
 //! Refund CRUD — create, list, and query refunds.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5 part 4: refunds deep read)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 4: refunds deep read)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: refund stock restoration per ADR-19 §5.3 is well built (FIFO full / reverse partial crediting via deduction_locations JSON, qty<=deducted guard, legacy fallback with warn audit, audit row inside the same tx); COR-25 MEDIUM: FIXED 30-08-26 — the over-refund guard now runs inside the transaction and propagates cumulative-SUM read errors (was: outside the tx with .unwrap_or(0), fail-open on a money guard); COR-26 LOW: FIXED 30-08-26 — create_refund now rejects a refund currency that differs from the sale currency (was: sale_currency read then discarded, trusting callers)
 next: none for the guard path | perf: N/A
 */
@@ -310,7 +310,7 @@ impl Store<'_> {
             // the IPC line total with checked_mul (db/sales_tax.rs:352-362);
             // F2-5 has the client supply only a boolean claim
             // (db/sales_checkout.rs:464-477). It is NOT the case that this
-            // codebase always recomputes - hold_cart (oz-bridge/src/pos.rs
+            // codebase always recomputes - hold_cart (kasirmu-bridge/src/pos.rs
             // :621-630) and base_total_minor (:1446) still trust caller money.
             let claimed = claimed_value[sale_line_id];
             let numerator = i128::from(line_minor)

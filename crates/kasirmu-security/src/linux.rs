@@ -1,6 +1,6 @@
 /*
 last audited 25-07-26 by RSA-Agent
-crate: oz-security | status: SAFE | lint: N/A (platform-gated, source-reviewed on Windows host)
+crate: kasirmu-security | status: SAFE | lint: N/A (platform-gated, source-reviewed on Windows host)
 findings: SEC-2 embeds a private tokio Runtime and block_on per op — panics if invoked from an async context; SEC-9 set_secret is delete-then-create (non-atomic, crash loses secret), Delete errors swallowed via `let _ =`, "plain" OpenSession sends secrets unencrypted over D-Bus
 next: reentrancy strategy for Runtime; atomic set; numeric error matching | perf: per-instance runtime + D-Bus connection is heavy for short-lived use
 */

@@ -2,8 +2,8 @@
 //! enforcement, clock rollback detection, and offline grace period
 //! for ADR #5 (Subscription Tier & Entitlement Architecture).
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice C5: subscription deep read)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice C5: subscription deep read)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: exemplary — RSA verification delegated to license_verification; 30s clock-skew tolerance (tightened from M1 audit finding, documented); ledger-based rollback detection (MAX over sales+audit_log); canceled never in grace, entitlement reverts to Free out-of-grace; from_db unknown -> Free (fail-closed for entitlements); typed QuotaError with actionable upgrade messaging; signature field verified before use by callers
 next: none | perf: N/A
 */

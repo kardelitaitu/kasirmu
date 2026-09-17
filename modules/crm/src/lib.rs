@@ -7,7 +7,7 @@ next: none | perf: N/A
 last audited 19-07-26 by RSA-Agent
 crate: modules-crm | status: SAFE | lint: CLEAN
 findings: Transitional module implementing Module trait. No unsafe code. Re-exports Customer from
-  oz-core. 7 unit tests pass covering lifecycle and kernel registration.
+  kasirmu-core. 7 unit tests pass covering lifecycle and kernel registration.
 next: Migrate DB CRUD + Tauri commands into this module | perf: N/A — no hot paths yet.
 */
 
@@ -37,7 +37,7 @@ next: Migrate DB CRUD + Tauri commands into this module | perf: N/A — no hot p
 
 //! # Re-exports
 //!
-//! This module re-exports key CRM domain types from `oz-core` so that
+//! This module re-exports key CRM domain types from `kasirmu-core` so that
 //! consumers can access all customer-related types through a single crate:
 //!
 //! ```

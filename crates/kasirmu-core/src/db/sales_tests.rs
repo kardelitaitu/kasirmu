@@ -230,7 +230,7 @@ fn create_sale_empty_cart() {
     assert_eq!(loaded.total.minor_units, 0);
 }
 
-// MONEY-07: create_sale is the legacy global-db import door (oz-cli
+// MONEY-07: create_sale is the legacy global-db import door (kasirmu-cli
 // deserializes a Sale straight from JSON payloads, bypassing CartLine's
 // qty > 0 assert). Every money/qty field must be validated the same way
 // the complete_sale* entry points were in MONEY-06, or a hostile import

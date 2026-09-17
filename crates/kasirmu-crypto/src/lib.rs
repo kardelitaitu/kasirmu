@@ -1,6 +1,6 @@
 /*
 last audited DD-MM-YY by DSH-Agent
-crate: oz-crypto | status: SAFE | lint: CLEAN
+crate: kasirmu-crypto | status: SAFE | lint: CLEAN
 findings: CryptoError marked #[non_exhaustive] per house convention; one .expect() in hmac_key documented as INVARIANT (32-byte HMAC key never empty, safe by construction); 0 unsafe blocks verified by source sweep; portable derivation is documented obfuscation (not confidentiality), master-key opt-in available via OZ_MASTER_KEY env; 196-line test suite covers all paths. No new defects found.
 next: none — crate is stable and well-tested | perf: N/A
 */

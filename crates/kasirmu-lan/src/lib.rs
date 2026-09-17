@@ -1,6 +1,6 @@
 /*
 last audited 25-07-26 by RSA-Agent (desktop-client slice A: lan_server deep read; DC-1 FIXED 25-07-26; DC-1 FULL FIX 30-08-26)
-crate: oz-lan | status: SAFE | lint: CLEAN
+crate: kasirmu-lan | status: SAFE | lint: CLEAN
 findings: DC-1 FIXED (mitigation) — the PSK handshake compare is now constant-time (psk_matches hashes both inputs with HMAC-SHA256 and compares digests via verify_slice; string == short-circuited on the first differing byte). Threat-model note added to the helper doc: the PSK still travels in cleartext in the hello JSON, so this handshake remains LAN discovery-filtering, not transport security. DC-1 FULL FIX 30-08-26 — noise-psk-v1 transport implemented: Noise_XXpsk3_25519_ChaChaPoly_SHA256 via `snow`, PSK mixed into message 3 so it never crosses the wire; first-byte transport selection (0x01 noise / '{' legacy) keeps old KDS clients working; static key derived deterministically from the PSK (domain-separated SHA-256). 5 new tests: handshake+encrypted-event roundtrip, wrong-PSK drop, unknown-selector drop, legacy hello accept, legacy hello reject. DC-2 FIXED — per-peer offline buffer pushes now route through buffer_event_for_peer with a drop-oldest cap of 1,024 events/peer (2 new tests: cap + per-peer isolation; 27 lan_server tests pass). DEVICE-KEYED REPLAY 13-09-26 (agent 5) — the offline buffer moved into the `replay` module and is now keyed by the hello/discover `device_id` when the peer presents one: a reconnecting tablet dials from a NEW ephemeral port, so address keying could never find its queue in production (stamped by agent 4's live validation); device-less peers keep `peer_addr` keying. The drain moved from the accept loop into `handle_peer` phase 2 (the device_id is only known after the handshake), replay still obeys the station filter, and retention is bounded twice (1,024/queue + 8,192 total, drop-oldest, tracing::warn!). Wire format untouched. Otherwise solid: handshake inside the spawned task (accept-loop DoS-safe), bounded broadcast with lagged-peer handling, safe 127.0.0.1 default with PSK required for external bind, heartbeat/replay design documented
 next: deprecate legacy-psk-v1 once all KDS clients speak noise-psk-v1 | perf: N/A
 */
@@ -142,12 +142,12 @@ const PSK_HANDSHAKE_TIMEOUT_SECS: u64 = 5;
 fn psk_matches(provided: &str, expected: &str) -> bool {
     use hmac::{Hmac, Mac};
     type HmacSha256 = Hmac<sha2::Sha256>;
-    let mut mac_provided = HmacSha256::new_from_slice(b"oz-lan-psk-compare")
+    let mut mac_provided = HmacSha256::new_from_slice(b"kasirmu-lan-psk-compare")
         // INVARIANT: HMAC accepts keys of any length (RFC 2104), so a fixed
         // literal domain-separation key cannot fail.
         .expect("fixed key length is valid");
     mac_provided.update(provided.as_bytes());
-    let mut mac_expected = HmacSha256::new_from_slice(b"oz-lan-psk-compare")
+    let mut mac_expected = HmacSha256::new_from_slice(b"kasirmu-lan-psk-compare")
         // INVARIANT: HMAC accepts keys of any length (RFC 2104), so a fixed
         // literal domain-separation key cannot fail.
         .expect("fixed key length is valid");
@@ -270,7 +270,7 @@ impl LanEventForwarder {
     /// keep it cheap (serve from an in-memory cache; never block on a
     /// long SQLite read from inside the tokio task).
     //
-    // INTEGRATION(oz-lan kds-sync): desktop-client owns the provider
+    // INTEGRATION(kasirmu-lan kds-sync): desktop-client owns the provider
     // wiring — build the KdsQueueProvider at startup in lib.rs next to
     // `LanEventForwarder::new(...)` (chain `.with_kds_queue(...)` after
     // `.with_discovery(...)`), sourcing tickets from the kds_orders /
@@ -857,7 +857,7 @@ impl LanForwarderHandle {
     /// to connected LAN peers, subject to per-peer station filtering
     /// (see [`should_deliver`] and the `kds_sync` module docs).
     //
-    // INTEGRATION(oz-lan kds-sync): desktop-client registers this next
+    // INTEGRATION(kasirmu-lan kds-sync): desktop-client registers this next
     // to the existing two in apps/desktop-client/src/lib.rs `setup`:
     //     bus.subscribe("kds.sync", Box::new(handle.kds_sync_handler()));
     // Commands in apps/desktop-client/src/commands/kds.rs then publish

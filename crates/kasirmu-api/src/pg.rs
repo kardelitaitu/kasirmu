@@ -1,8 +1,8 @@
-//! Postgres data layer for the oz-api REST handlers (Phase 1.2 of
+//! Postgres data layer for the kasirmu-api REST handlers (Phase 1.2 of
 //! `docs/archived/2026-08-15-unify-auth-and-sync.md`).
 /*
-last audited 25-07-26 by RSA-Agent (oz-api slice B: pg deep read)
-crate: oz-api | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-api slice B: pg deep read)
+crate: kasirmu-api | status: SAFE | lint: CLEAN
 findings: RLS contract exemplary — every tenant-scoped function opens a tx and sets oz.tenant_id LOCAL (12 sites verified; LOCAL scope auto-resets so pooled connections never leak scope); verify_terminal_credentials is a documented pre-tenant read via a scoped discovery role (SET LOCAL ROLE inside read-only tx) with digest comparison in SQL; all SQL parameterized ($n), format! only builds error strings and static SELECT prefixes; API-3 INFO: sale reads unwrap_or(0) tip_minor/service_charge_minor (1211-1212) and enum fallbacks product_type/status (610/1149) silently zero/default on drift (COR-13/25 family)
 next: propagate sale money-column read errors (API-3) | perf: PRODUCT_SELECT reuses stock_summary aggregate
 */

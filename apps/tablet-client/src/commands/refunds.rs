@@ -10,7 +10,7 @@ use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
-/// The refund wire contracts are owned by `oz-bridge`; the tablet re-exports
+/// The refund wire contracts are owned by `kasirmu-bridge`; the tablet re-exports
 /// them instead of declaring a copy.
 ///
 /// The tablet's own `ProcessRefundArgs` was one of the three structs the

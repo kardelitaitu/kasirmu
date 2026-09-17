@@ -1670,7 +1670,7 @@ const SHAPED_UNDECRYPTABLE: &str =
 #[test]
 fn pinned_probe_values_are_the_two_shapes_this_path_cannot_tell_apart() {
     // The referee is the crate's OWN format gate, reached through the public
-    // smtp reader — the one family (oz-crypto lib.rs:216-223) that separates
+    // smtp reader — the one family (kasirmu-crypto lib.rs:216-223) that separates
     // "never encrypted" from "tampered". Used as a shape oracle only; the
     // smtp key has nothing to do with the five columns below.
     assert_eq!(
@@ -1778,7 +1778,7 @@ fn legacy_plaintext_lan_server_psk_reads_back_unchanged() {
 // silently and cannot be tightened wrongly either — a guard that turns every
 // decrypt failure into an error BREAKS half one, because on this path "never
 // encrypted" and "tampered" look the same. Landing the fix therefore needs
-// the shape gate the smtp family already uses (oz-crypto lib.rs:216-223),
+// the shape gate the smtp family already uses (kasirmu-crypto lib.rs:216-223),
 // not a bare `.unwrap_or` removed.
 
 #[test]

@@ -13,8 +13,8 @@
 //! stays i64 minor units.
 
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B2: products deep read)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B2: products deep read)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: money/stock paths sound (update_product has REAL version CAS -> Conflict; create_product idempotent-with-payload-compare for sync replay, ON CONFLICT(tenant_id,sku) backstop; adjust_stock_batch precheck-then-execute with checked_add + typed InsufficientStockAtLocation; allow_negative lookup fails safe to deny); COR-12 LOW: name-length asymmetry — create_product enforces <=255 chars but update_product only checks non-empty; COR-14 INFO: variant mapper silently drops invalid stored barcode via .ok(); deprecated adjust_stock_with_reason self-documents its ADR-19 §3.4 stale-source foot-gun (tracked, no new finding)
 next: add 255-char check to update_product (COR-12) | perf: batch SKU lookups; upsert_stock_summary_in_tx canonical per ADR-19 §3
 */

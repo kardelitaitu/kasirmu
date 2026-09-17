@@ -64,7 +64,7 @@ fn identity<T>(t: T) -> T {
 
 #[test]
 fn oz_core_reexports_exact_module_types() {
-    // These assignments compile ONLY if the oz-core re-exports are
+    // These assignments compile ONLY if the kasirmu-core re-exports are
     // literally the same types as the modules_sales ones. If someone
     // forks a type in either crate, this fails to build.
     let _sale: fn(CoreSale) -> CoreSale = identity::<ModuleSale>;

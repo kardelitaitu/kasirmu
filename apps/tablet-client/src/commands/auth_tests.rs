@@ -381,7 +381,7 @@ async fn create_session_rejects_tampered_subscription_signature() {
 // ── Basic security events on the auth paths (todo-global-saas-2.md P1) ─
 //
 // Pins that staff_login and destroy_session actually WRITE audit rows. The
-// core recorder has its own suite in oz-core; what matters here is the
+// core recorder has its own suite in kasirmu-core; what matters here is the
 // wiring and the tablet half of the per-client divergence: the tablet passes
 // debug_upgrade: false, so unlike the desktop it records NOTHING on a Free
 // row even in a debug build.

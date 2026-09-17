@@ -1,7 +1,7 @@
 //! Recipe / BOM queries — composite product ingredient lookups.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice B5)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: single parameterized query; correct
 next: none | perf: N/A
 */

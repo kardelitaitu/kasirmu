@@ -6,7 +6,7 @@
 //! the resolved primary location). The cashier UI uses these discriminators
 //! to render either a success toast or the Stock Shortfall panel.
 //!
-//! These types belong in `oz-core` because both the desktop-client and
+//! These types belong in `kasirmu-core` because both the desktop-client and
 //! tablet-client Tauri command layers deserialize and forward them to the
 //! front-end without further transformation.
 

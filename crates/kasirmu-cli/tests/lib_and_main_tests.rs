@@ -1,4 +1,4 @@
-//! Integration tests for oz-cli library exports — compile-time checks that
+//! Integration tests for kasirmu-cli library exports — compile-time checks that
 //! key types, modules, and re-exports resolve without errors.
 
 #[test]

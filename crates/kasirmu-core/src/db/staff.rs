@@ -16,7 +16,7 @@
 //! refused before any write.
 /*
 last audited 31-08-26 by RSA-Agent (user-role campaign, FINAL verification pass)
-crate: oz-core | status: SAFE | lint: CLEAN
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: exemplary core, F-1 and G-2 CLOSED — create_user/update_user now wrap the users + assignments writes in unchecked_transaction (established idiom) and validate role_id existence with a typed Validation error before any write (all five callers inherit: desktop/tablet staff.rs, cloud users.rs, CLI user.rs, profile helper; unseeded paths fail closed instead of stranding a zombie); parameterized SQL throughout; authorize_with is registry-aware deny-by-default and still enforces registered-grants + sensitive-keys-never-family-wildcard + Owner-only global * (db/staff.rs:122-125); STAFF-07 rate limiter intact; assignments FK CASCADE armed at migrations.rs:139; role seeding precedes user creation on interactive paths (setup.rs:102, desktop/tablet staff.rs seed call); evidence: 74 staff tests green incl. the two G-2 guards
 next: none — campaign closed for this file | perf: indexed lookups, fine
 currency 09-09-26: the counts and line pointers above are AS OF 31-08-26 and no

@@ -1,6 +1,6 @@
 /*
 last audited 31-08-26 by RSA-Agent (user-role campaign, Section G)
-crate: oz-cli | status: SAFE | lint: CLEAN
+crate: kasirmu-cli | status: SAFE | lint: CLEAN
 findings: clean local-operator surface — list/get/create only, no delete; CLI-3 PHC envelope validation fails closed before store (a typo'd hash would otherwise yield a 201 + permanently locked-out user); typed CoreError mapping; local trust domain by design (no RBAC gate — the CLI holder already owns the DB file); no quota check consistent with the owner-tool role, unlike the cloud API (see users.rs G-1)
 next: none | perf: N/A
 */

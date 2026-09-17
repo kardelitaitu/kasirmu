@@ -1,24 +1,24 @@
 /*
 last audited DD-MM-YY by DSH-Agent
-crate: oz-security | status: SAFE | lint: CLEAN
+crate: kasirmu-security | status: SAFE | lint: CLEAN
 findings: 0 unsafe blocks, 0 production unwrap/expect. Keyring trait + InMemoryKeyring + platform dispatch verified; SEC-4 rotate_key atomic (park -> archive -> promote); SEC-6 partially addressed (raw entropy zeroized, hex key in Zeroizing; SecretString for get/set deferred — OS credential stores copy internally). SSL/TLS helpers, mask, error taxonomy verified. 88 tests pass.
 next: SEC-6 residual — SecretString for the Keyring get/set surface | perf: N/A
 */
 
 //! TLS configuration, PAN masking, and OS credential-store helpers.
 //!
-//! `oz-security` owns TLS configuration ([`tls`]), sensitive-data masking
+//! `kasirmu-security` owns TLS configuration ([`tls`]), sensitive-data masking
 //! including the masked-PAN display the cashier flow renders ([`mask`]), and
 //! platform keychain storage behind the [`Keyring`] trait (with
 //! [`Keyring::rotate_key`] staging the SEC-4 rotation). It is **not** the crate
 //! that encrypts stored values: at-rest encryption of settings and profile
-//! credentials is the `encrypt_*` / `decrypt_*` surface in the `oz-crypto`
+//! credentials is the `encrypt_*` / `decrypt_*` surface in the `kasirmu-crypto`
 //! crate, applied by the typed accessors in
 //! `platform/core/src/settings/typed.rs`.
 //!
 //! Those are two different mechanisms and must not be read as one story about
 //! "secrets": a keychain entry is an OS credential store addressed by name,
-//! while the settings columns are encoded by `oz-crypto` under a derived key.
+//! while the settings columns are encoded by `kasirmu-crypto` under a derived key.
 //! They are not wired to each other — the entry this crate rotates is read
 //! back only to report rotation status (three functions in
 //! `crates/kasirmu-bridge/src/security.rs`), and it is NOT the key that any

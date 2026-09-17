@@ -377,7 +377,7 @@ pub async fn set_line_course_scoped(
 /// Thin shell over `kasirmu_bridge::pos::publish_course_fired_scoped`, which
 /// resolves the session, gates on `SALES_PROCESS`, and publishes
 /// `order.course_fired`. The tablet kernel carries the bus, so the publish
-/// lands there; the LAN forward remains desktop-only (no oz-lan dep here).
+/// lands there; the LAN forward remains desktop-only (no kasirmu-lan dep here).
 #[command]
 pub async fn publish_course_fired_scoped(
     session_token: String,

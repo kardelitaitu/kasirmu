@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-media slice A: crop deep read)
-crate: oz-media | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-media slice A: crop deep read)
+crate: kasirmu-media | status: SAFE | lint: CLEAN
 findings: exemplary — decode errors surfaced, zero-size source rejected, saturating/clamped crop math, solid-colour trim guard returns the original frame, Smart bias documented as heuristic fallback
 next: none | perf: M-2 support 25-07-26 — added the DynamicImage-taking variant (thumbnail_img / auto_crop_img) so the pipeline runs a single decode; byte-level API and behavior unchanged
 */

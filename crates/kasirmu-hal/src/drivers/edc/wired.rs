@@ -1,6 +1,6 @@
 /*
-last audited 31-08-26 by DSH-Agent (moved in from oz-payment during the HAL unification)
-crate: oz-hal | status: SAFE | lint: CLEAN
+last audited 31-08-26 by DSH-Agent (moved in from kasirmu-payment during the HAL unification)
+crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: PLANNED stub — construction validates nothing and opens nothing; all ops fail closed with HalError::Unsupported. Changed on the move: the port_name/baud_rate fields were #[allow(dead_code)] write-only configuration, so nothing could ever observe what a terminal was pointed at. They now have accessors, which drops the dead_code allowance honestly and lets a setup wizard echo the configured link.
 next: serial/USB protocol handler | perf: N/A
 */

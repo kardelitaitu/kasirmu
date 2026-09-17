@@ -1,10 +1,10 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice A)
-crate: oz-core | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-core slice A)
+crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: typed error surface with serializable CoreErrorKind discriminator — sound; COR-4: TopologyValidation folds into Validation kind so the front-end subKind cannot distinguish it (structured code field mitigates)
 next: none | perf: N/A
 */
-//! Domain error type for `oz-core`.
+//! Domain error type for `kasirmu-core`.
 //!
 //! Library crates in OZ-POS use `thiserror` to define a typed error enum
 //! so consumers can match on variants. The enum is `#[non_exhaustive]`
@@ -53,7 +53,7 @@ pub enum CoreErrorKind {
     InsufficientStockAtLocation,
 }
 
-/// Errors that can originate in `oz-core` domain logic.
+/// Errors that can originate in `kasirmu-core` domain logic.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum CoreError {

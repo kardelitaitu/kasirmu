@@ -1463,7 +1463,7 @@ fn decision_pin_run_get_setting_refuses_the_key_the_status_bar_hook_asks_for() {
 fn decision_pin_both_read_doors_on_both_shells_reach_the_refused_function() {
     for (label, src) in [
         ("tablet settings.rs", TABLET_SETTINGS_RS),
-        ("oz-bridge settings.rs", BRIDGE_SETTINGS_RS),
+        ("kasirmu-bridge settings.rs", BRIDGE_SETTINGS_RS),
     ] {
         for signature in [
             "pub async fn get_setting(",
@@ -1521,7 +1521,7 @@ fn wire_pin_credit_sale_carries_every_key_the_renderer_declares() {
     // and :1286 (`!c.settledAt`, `c.saleId !== saleId`).
     //
     // The struct carried no `rename_all` in ANY of its three definitions
-    // (oz-bridge, the desktop re-export of it, and this shell's own copy), so it
+    // (kasirmu-bridge, the desktop re-export of it, and this shell's own copy), so it
     // emitted snake_case and every one of those reads was `undefined`: the list
     // showed an em-dash for the customer, NaN for the amount and "Invalid Date"
     // for the date; Settle sent `sale_id: undefined`; and the quiet one — the

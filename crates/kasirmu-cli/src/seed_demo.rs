@@ -1,6 +1,6 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-cli slice B: seed_demo deep read)
-crate: oz-cli | status: SAFE | lint: CLEAN
+last audited 25-07-26 by RSA-Agent (kasirmu-cli slice B: seed_demo deep read)
+crate: kasirmu-cli | status: SAFE | lint: CLEAN
 findings: clean demo seeder — fixed table allowlist in copy_reference_data (no injection), schema columns from PRAGMA table_info, parameterized inserts; FK pragma toggled off/on per connection with documented rationale; chrono unwraps on bounded ranges carry SAFETY comments (RUST-07 impossible-invariant policy); per-store db seeding matches store-*.sqlite excluding WAL/SHM siblings; autocommit bulk inserts acceptable for a dev seeder
 next: none | perf: autocommit inserts fine for ~10k demo rows
 */

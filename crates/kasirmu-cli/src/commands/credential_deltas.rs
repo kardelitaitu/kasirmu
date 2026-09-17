@@ -10,7 +10,7 @@
 //! 44-character base64 plaintext decoy is indistinguishable from real
 //! ciphertext without the key — so anything that decided by looking at a
 //! value would get it wrong on real data. The deny list is imported from
-//! platform-core (through the `oz-core` re-export, so this lane adds no new
+//! platform-core (through the `kasirmu-core` re-export, so this lane adds no new
 //! dependency edge and no third copy of the list).
 //!
 //! Bounded operator command by design: it runs only when a person invokes
@@ -458,7 +458,7 @@ impl StoredForm {
 /// value without knowing its plaintext.
 type FamilyDecrypt = fn(&str) -> Result<String, kasirmu_core::crypto::CryptoError>;
 
-/// Every family oz-crypto exposes, enumerated because the blind spot this closes
+/// Every family kasirmu-crypto exposes, enumerated because the blind spot this closes
 /// is a mislabelled family: license.api_key used to read CLEARTEXT, no family can
 /// seal this key, while crates/kasirmu-bridge/src/license.rs:151 encrypts it with the
 /// installation machine id. A label that is not evidence is the same defect as a

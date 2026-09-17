@@ -30,8 +30,8 @@
 //!
 //! These keys are a wire contract with the licence server's `allowed_types`
 //! (`apps/license-server`) and with the topology canvas. They were previously
-//! spelled as bare literals at a dozen call sites across `oz-core` and
-//! `oz-bridge`, where a typo would fail closed in one place and silently widen
+//! spelled as bare literals at a dozen call sites across `kasirmu-core` and
+//! `kasirmu-bridge`, where a typo would fail closed in one place and silently widen
 //! a quota in another. Spelling them once makes a rename a compile error rather
 //! than a hunt.
 

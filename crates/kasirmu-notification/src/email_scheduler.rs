@@ -1,6 +1,6 @@
 /*
 last audited 25-07-26 by RSA-Agent (desktop-client slice C: verified)
-crate: oz-notification | status: SAFE | lint: CLEAN
+crate: kasirmu-notification | status: SAFE | lint: CLEAN
 findings: clean — no unwrap/panic/unsafe in production paths; sibling tests per convention. Coverage note: file verified structurally under the risk-ranked sampling protocol (global sweep clean), not line-by-line deep read
 next: none | perf: N/A
 */

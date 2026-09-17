@@ -1,7 +1,7 @@
 /*
-last audited 25-07-26 by RSA-Agent (oz-plugin slice B: db.rs deep read; PLG-11 FIXED 25-07-26)
-crate: oz-plugin | status: SAFE | lint: CLEAN
-findings: PLG-11 FIXED — validate_sql now fail-closes on any quote/bracket character outside a single-quoted string literal (ensure_no_quoted_identifiers lexical scan), so the SQLite-legal quoting dialects ("sales", `sales`, [sales]) can no longer bypass the bare-identifier namespace regexes; unterminated string literals are also rejected; 7 new tests cover the bypass shapes and the string-literal escape case (all 180+2 oz-plugin tests pass). Prior verified positives: PLG-01/02/06/08 hardening intact; exec/query/execute all funnel through validate_sql
+last audited 25-07-26 by RSA-Agent (kasirmu-plugin slice B: db.rs deep read; PLG-11 FIXED 25-07-26)
+crate: kasirmu-plugin | status: SAFE | lint: CLEAN
+findings: PLG-11 FIXED — validate_sql now fail-closes on any quote/bracket character outside a single-quoted string literal (ensure_no_quoted_identifiers lexical scan), so the SQLite-legal quoting dialects ("sales", `sales`, [sales]) can no longer bypass the bare-identifier namespace regexes; unterminated string literals are also rejected; 7 new tests cover the bypass shapes and the string-literal escape case (all 180+2 kasirmu-plugin tests pass). Prior verified positives: PLG-01/02/06/08 hardening intact; exec/query/execute all funnel through validate_sql
 next: consider sqlite3_set_authorizer as the long-term replacement for the regex layer | perf: scan is O(n) over ASCII bytes
 */
 //! Isolated database namespace for plugins.
