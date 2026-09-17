@@ -1,6 +1,6 @@
 //! Command-layer unit tests for the topology bridge (relocated subset).
 //!
-//! From apps/desktop-client/src/commands/topology/topology_command_tests.rs:
+//! From apps/desktop-tauri/src/commands/topology/topology_command_tests.rs:
 //! the enum-contract, wire-serde, revision/TOCTOU, apply-ledger, envelope-
 //! version, fingerprint, and warehouse quota/capacity subsets. The desktop
 //! original retains the tauri mock-app integration tests, the

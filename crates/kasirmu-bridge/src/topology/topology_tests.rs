@@ -1,6 +1,6 @@
 //! Tests for the node-topology core semantics (topology.rs subset).
 //!
-//! Relocated from apps/desktop-client/src/commands/topology/topology_tests.rs:
+//! Relocated from apps/desktop-tauri/src/commands/topology/topology_tests.rs:
 //! the semantic save/validation/ownership, apply-gate, legacy-migration,
 //! setting-key, and pure-model roundtrip subsets. The desktop original
 //! retains the tests pinned to its own low-level save_topology_data /

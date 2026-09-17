@@ -7,7 +7,7 @@
 //! commands/topology.rs.
 //!
 //! Ported verbatim from
-//! `apps/desktop-client/src/commands/topology/semantics.rs` (Wave E step E9c) as
+//! `apps/desktop-tauri/src/commands/topology/semantics.rs` (Wave E step E9c) as
 //! the second leaf of the `kasirmu_bridge::topology` mirror: `super::model::*` and
 //! every relative path stay exactly as written. The desktop module re-exports
 //! this surface and keeps the `kasirmu_core::topology` re-export blocks locally,

@@ -5,7 +5,7 @@
 //! (`super::semantics`) for the save/Apply-time gates.
 //!
 //! Ported verbatim from
-//! `apps/desktop-client/src/commands/topology/persistence.rs` (Wave E step d)
+//! `apps/desktop-tauri/src/commands/topology/persistence.rs` (Wave E step d)
 //! as the fifth leaf of the `kasirmu_bridge::topology` mirror, after model,
 //! semantics and revisions, so its three `super::` device lines all resolve
 //! here. The four helpers that took `&AppState` take exactly the parts their
@@ -262,7 +262,7 @@ pub fn sort_template_names(mut names: Vec<String>) -> Vec<String> {
 ///
 /// STAYS `pub`, and the reason is a LIVE caller, not a shim: the desktop
 /// test build reaches it through a three-link chain —
-/// `apps/desktop-client/src/commands/topology/topology_command_tests.rs:55`,
+/// `apps/desktop-tauri/src/commands/topology/topology_command_tests.rs:55`,
 /// `:84`, `:92` call the `#[cfg(test)]` command harness
 /// `commands.rs:236 save_topology`, which calls
 /// `persistence.rs:221 save_topology_json_at_key` (also `#[cfg(test)]`), which
