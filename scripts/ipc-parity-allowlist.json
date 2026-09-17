@@ -238,7 +238,7 @@
     },
     {
       "name": "products_set_image_scoped",
-      "reason": "Full ingest pipeline on the authoring (desktop) device: reads the source file chosen through the native dialog plugin, sniffs magic bytes, enforces size/dimension caps, decodes, resizes to 512 px, encodes lossy WebP, SHA-256s it and atomically writes images/{hash16}.webp under app_cache_dir (apps/desktop-client/src/commands/products_images.rs::products_set_image_scoped -> oz_bridge::products_images::set_image_scoped with BridgeCtx::media_cache_dir). ACCEPTED: filesystem- and media-bound by design -- zero image bytes cross IPC, so the preview supplies neither the path's bytes nor the media root. Tablet registers no ingest surface at all."
+      "reason": "Full ingest pipeline on the authoring (desktop) device: reads the source file chosen through the native dialog plugin, sniffs magic bytes, enforces size/dimension caps, decodes, resizes to 512 px, encodes lossy WebP, SHA-256s it and atomically writes images/{hash16}.webp under app_cache_dir (apps/desktop-client/src/commands/products_images.rs::products_set_image_scoped -> kasirmu_bridge::products_images::set_image_scoped with BridgeCtx::media_cache_dir). ACCEPTED: filesystem- and media-bound by design -- zero image bytes cross IPC, so the preview supplies neither the path's bytes nor the media root. Tablet registers no ingest surface at all."
     },
     {
       "name": "save_topology_template",

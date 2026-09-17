@@ -359,13 +359,18 @@ FN_DEFINITION_BEFORE_RE = re.compile(r"\bfn\s+$")
 TYPE_QUALIFIER_RE = re.compile(r"[A-Z]|^Self$")
 # Path prefixes that name somebody else's function. This is the shape the whole sharing
 # programme produces, so it is not an edge case: a desktop shim whose own body reads
-#     oz_bridge::settings::get_receipt_settings(&ctx)
+#     kasirmu_bridge::settings::get_receipt_settings(&ctx)
 # inside `pub async fn get_receipt_settings`. A name search sees a call to
 # `get_receipt_settings` and grades the command as load-bearing, when what it found is the
 # shim reaching the bridge's version of the same name. `crate::` is deliberately absent -- a
 # same-crate path call really is this shell's function.
 FOREIGN_PATH_ROOTS = {
-    "oz_bridge", "oz_core", "oz_lan", "oz_local_api", "tauri", "std", "core", "alloc",
+    # Both spellings while the crate rename is in flight (todo-rebrand-2.md T3-3); the `oz_`
+    # entries go once no `oz_x::` site remains. Missing one of these silently grades a
+    # delegation shim as a load-bearing command, so the list is deliberately wide here.
+    "oz_bridge", "oz_core", "oz_lan", "oz_local_api",
+    "kasirmu_bridge", "kasirmu_core", "kasirmu_lan", "kasirmu_local_api",
+    "tauri", "std", "core", "alloc",
 }
 
 
@@ -1873,7 +1878,10 @@ def _bridge_fn_body(fn_name: str, cache={}) -> str:
     return cache.get(fn_name, "")
 
 
-DELEGATION_RE = re.compile(r"\boz_bridge::[a-z_0-9]+::([a-z_0-9]+)\s*\(")
+# Accepts both the pre-rename (`oz_bridge`) and post-rename (`kasirmu_bridge`) spelling so this
+# gate keeps seeing delegation across the crate rename; the old branch is dropped once no
+# `oz_bridge::` site remains (todo-rebrand-2.md T3-3).
+DELEGATION_RE = re.compile(r"\b(?:oz|kasirmu)_bridge::[a-z_0-9]+::([a-z_0-9]+)\s*\(")
 
 
 def orphan_permission(command: str) -> str | None:
@@ -3249,7 +3257,7 @@ def self_test() -> int:
             "/// see create_bundle(&x) above",
             "pub async fn create_bundle(",
             "    .create_bundle;",
-            "    oz_bridge::bundles::create_bundle(&ctx);",
+            "    kasirmu_bridge::bundles::create_bundle(&ctx);",
             "    crate::commands::bundles::create_bundle(&x);",
             "fn create_bundle() {",
             "async fn create_bundle() -> Result<(), E> {",
@@ -3275,8 +3283,8 @@ def self_test() -> int:
     # The delegation blind spot, found 2026-09-16 by the red this leg gave the coursing lane:
     # `set_line_course_scoped` was reported as an ungated redundant twin whose caller should be
     # allowlisted as "host-only", while `crates/kasirmu-bridge/src/pos.rs:505` gates it on
-    # SALES_PROCESS one line below the shell's `oz_bridge::pos::set_line_course_scoped(&ctx, ...)`.
-    thin = "pub async fn x_scoped(t: String) -> R {\n    oz_bridge::pos::x_scoped(&ctx, &t, a).await\n}"
+    # SALES_PROCESS one line below the shell's `kasirmu_bridge::pos::set_line_course_scoped(&ctx, ...)`.
+    thin = "pub async fn x_scoped(t: String) -> R {\n    kasirmu_bridge::pos::x_scoped(&ctx, &t, a).await\n}"
     ungated = "pub async fn y_scoped(t: String) -> R {\n    load(&t)\n}"
     case("gate   a shell body that delegates is not judged by its own text alone",
          gate_in_body(thin) is None and DELEGATION_RE.findall(thin) == ["x_scoped"])
