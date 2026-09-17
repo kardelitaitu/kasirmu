@@ -48,7 +48,7 @@ SECRETKEYBYTES = 64
 BYTES = 32  # BLAKE2b-256 digest size
 STREAM_LEN = BYTES + SECRETKEYBYTES + KEYNUMBYTES  # 104
 
-KEY_FILE_DEFAULT = "oz-pos-updater.key"
+KEY_FILE_DEFAULT = "kasirmu-updater.key"
 TAURI_CONF = "apps/desktop-tauri/tauri.conf.json"
 
 

@@ -48,7 +48,7 @@ ROOT_FILE_ALLOWLIST = frozenset({
     "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "deny.toml",
     ".gitignore", ".gitattributes", ".dockerignore", ".editorconfig",
     ".gitleaks.toml", ".trivyignore", ".cbmignore", ".mcp.json",
-    ".tarpaulin.toml", ".env.example", ".lighthouserc.json",
+    ".tarpaulin.toml", ".env.example",
     # Human entry points.
     "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE", "AGENTS.md",
     # Owner working files (P5 withdrawal) + the agent-harness contract.
@@ -59,7 +59,7 @@ ROOT_FILE_ALLOWLIST = frozenset({
     # scripts/stats.ps1 and scripts/check.ps1 read this name.
     "stats.json",
     # Tracked Tauri updater public key (Pile D: rename pending with its owner).
-    "oz-pos-updater.key.pub",
+    "kasirmu-updater.key.pub",
     # Gitignored local secrets — sanctioned, not scratch.
     ".env",
 })

@@ -40,7 +40,7 @@ target
 # Environment / secrets
 .env
 *.env
-oz-pos-updater.key.pub
+kasirmu-updater.key.pub
 
 # Temporary / generated files
 *.log
