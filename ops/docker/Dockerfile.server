@@ -105,7 +105,7 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
              modules/currency/src modules/loyalty/src \
              modules/giftcards/src modules/kitchen/src \
              modules/promotions/src modules/purchasing/src \
-             apps/cloud-server/src apps/desktop-client/src apps/tablet-client/src \
+             apps/cloud-server/src apps/desktop-tauri/src apps/mobile-tauri/src \
     && echo "// dummy" > crates/kasirmu-core/src/lib.rs \
     && echo "// dummy" > crates/kasirmu-api/src/lib.rs \
     && echo "// dummy" > crates/kasirmu-logging/src/lib.rs \
@@ -143,10 +143,10 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
     && echo "// dummy" > modules/promotions/src/lib.rs \
     && echo "// dummy" > modules/purchasing/src/lib.rs \
     && echo "// dummy" > apps/cloud-server/src/main.rs \
-    && echo "// dummy" > apps/desktop-client/src/main.rs \
-    && printf '[package]\nname = "kasirmu-app"\nversion = "0.0.39"\nedition = "2024"\n' > apps/desktop-client/Cargo.toml \
-    && echo "// dummy" > apps/tablet-client/src/main.rs \
-    && printf '[package]\nname = "kasirmu-tablet"\nversion = "0.0.39"\nedition = "2024"\n' > apps/tablet-client/Cargo.toml \
+    && echo "// dummy" > apps/desktop-tauri/src/main.rs \
+    && printf '[package]\nname = "kasirmu-app"\nversion = "0.0.39"\nedition = "2024"\n' > apps/desktop-tauri/Cargo.toml \
+    && echo "// dummy" > apps/mobile-tauri/src/main.rs \
+    && printf '[package]\nname = "kasirmu-tablet"\nversion = "0.0.39"\nedition = "2024"\n' > apps/mobile-tauri/Cargo.toml \
     && (cargo build --package kasirmu-cloud --release > /tmp/prime.log 2>&1 \
         || { echo "WARN: dependency cache-priming build did not complete (best-effort; see /tmp/prime.log)"; }) \
     && true
@@ -166,8 +166,8 @@ COPY apps/ apps/
 RUN cargo build --package kasirmu-cloud --release
 
 # ── Stage 2: Runtime ────────────────────────────────────────────────
-# debian:bookworm-slim tag — multi-arch index digest (refreshed 2026-08-17).
-FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 AS runtime
+# debian:bookworm-slim tag — multi-arch index digest (refreshed 2026-09-17).
+FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS runtime
 
 # Install CA certificates for outbound HTTPS and gosu for dropping privileges.
 # libudev1 is the runtime half of the builder's libudev-dev: the cloud

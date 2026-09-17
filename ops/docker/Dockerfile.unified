@@ -22,9 +22,9 @@
 # PocketBase's pb_data live under the single /data volume (DOCKER-11).
 
 # ── Stage 1: Go license server (static build) ────────────────────────
-# DOCKER-02: base images pinned to immutable digests (refreshed 2026-08-17 to
+# DOCKER-02: base images pinned to immutable digests (re-pinned 2026-09-17, digest-only; was refreshed 2026-08-17 to
 # Go 1.25.13 — clears the stdlib CVE set fixed in 1.25.13).
-FROM golang:1.25-alpine@sha256:1e0126852075c9c60731c8ba49088448b91f63e2aed97ca9d1a9791622a05946 AS gobuilder
+FROM golang:1.25-alpine@sha256:1ae0735f00daffa3aaf1363a5184c0d2dc55c78e3db4ec70241cdac97bf84b59 AS gobuilder
 
 WORKDIR /src
 
@@ -110,7 +110,7 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
              modules/currency/src modules/loyalty/src \
              modules/giftcards/src modules/kitchen/src \
              modules/promotions/src modules/purchasing/src \
-             apps/cloud-server/src apps/desktop-client/src apps/tablet-client/src \
+             apps/cloud-server/src apps/desktop-tauri/src apps/mobile-tauri/src \
     && echo "// dummy" > crates/kasirmu-core/src/lib.rs \
     && echo "// dummy" > crates/kasirmu-api/src/lib.rs \
     && echo "// dummy" > crates/kasirmu-logging/src/lib.rs \
@@ -148,10 +148,10 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
     && echo "// dummy" > modules/promotions/src/lib.rs \
     && echo "// dummy" > modules/purchasing/src/lib.rs \
     && echo "// dummy" > apps/cloud-server/src/main.rs \
-    && echo "// dummy" > apps/desktop-client/src/main.rs \
-    && printf '[package]\nname = "kasirmu-app"\nversion = "0.0.39"\nedition = "2024"\n' > apps/desktop-client/Cargo.toml \
-    && echo "// dummy" > apps/tablet-client/src/main.rs \
-    && printf '[package]\nname = "kasirmu-tablet"\nversion = "0.0.39"\nedition = "2024"\n' > apps/tablet-client/Cargo.toml \
+    && echo "// dummy" > apps/desktop-tauri/src/main.rs \
+    && printf '[package]\nname = "kasirmu-app"\nversion = "0.0.39"\nedition = "2024"\n' > apps/desktop-tauri/Cargo.toml \
+    && echo "// dummy" > apps/mobile-tauri/src/main.rs \
+    && printf '[package]\nname = "kasirmu-tablet"\nversion = "0.0.39"\nedition = "2024"\n' > apps/mobile-tauri/Cargo.toml \
     && (cargo build --package kasirmu-cloud --release > /tmp/prime.log 2>&1 \
         || { echo "WARN: dependency cache-priming build did not complete (best-effort; see /tmp/prime.log)"; }) \
     && true
@@ -173,7 +173,7 @@ FROM caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95a
 
 # ── Stage 4: Runtime (both functions + caddy + supervisor) ───────────
 # DOCKER-02: base images pinned to immutable digests (refreshed 2026-08-17).
-FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 AS runtime
+FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS runtime
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
