@@ -137,7 +137,7 @@ kasir.mu/
 
 ## 3. Work items
 
-### [ ] P1 — Merge the two shared component libraries
+### [x] P1 — Merge the two shared component libraries
 
 **Commit:** `refactor(ui): merge frontend/shared into components`
 **Pathspec:** `ui/src/components ui/src/frontend/shared` + the rewritten importers
@@ -163,7 +163,7 @@ wrong under this plan and is corrected in P7.)
 **Acceptance:** `git grep -lF "from '@/frontend/shared"` → 0 · `test ! -d ui/src/frontend/shared` ·
 `cd ui && npm run typecheck && npm run test`
 
-### [ ] P2 — Fold `frontend/` and `platform/` out of `ui/src`
+### [x] P2 — Fold `frontend/` and `platform/` out of `ui/src`
 
 **Commit:** `refactor(ui): replace frontend/ and platform/ with app/, theme/, registries/`
 
