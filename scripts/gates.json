@@ -114,6 +114,18 @@
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
     },
     {
+      "id": "root-policy",
+      "label": "Root policy (P8)",
+      "status": "required",
+      "_note": "Added in 0.0.39 (P8 of todo-project-folder-restructure.md). scripts/verify-root-policy.py fails when the repo root gains a file outside the section-5 allowlist (tool contracts + owner entry files + .env) and sweeps empty directories, the one junk class no git-based check can see. Cleared pr_body.md, skill-drift-report.md, scripts/__pycache__ and .agents/__pycache__ (Pile C); cleared the empty ui/scripts directory. Local-only by design: it inspects the working tree, so a runner checkout may legitimately carry ephemera this repo does not own; therefore no ci key, and pre-commit is deliberately not lengthened - scripts/check.sh is its only runner.",
+      "runners": {
+       "check.sh": [
+        "root policy",
+        "root policy self-test"
+       ]
+      }
+    },
+    {
       "id": "no-raw-params",
       "label": "No raw params (ADR #7 Phase 4)",
       "status": "required",

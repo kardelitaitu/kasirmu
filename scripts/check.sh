@@ -44,6 +44,12 @@ step() {
 
 total_start=$(date +%s)
 
+# Root policy gate (P8): the repo root holds only name-resolved tool contracts
+# and the owner entry files; this also sweeps empty directories, the one junk
+# class no git-based check can see. Local-only by design (see the gate header).
+step "root policy" "python3 scripts/verify-root-policy.py" python3 scripts/verify-root-policy.py
+step "root policy self-test" "python3 scripts/verify-root-policy.py --self-test" python3 scripts/verify-root-policy.py --self-test
+
 # ── Rust (mirrors CI `rust` job) ──────────────────────────────────────────
 step "cargo fmt" "cargo fmt --all -- --check" cargo fmt --all -- --check
 
