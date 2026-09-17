@@ -1,6 +1,6 @@
 //! Data-management command bodies (Wave F): backup, restore, .kasirpkg export
 //! and .kasirpkg import — the tauri-free half of
-//! apps/desktop-client/src/commands/data.rs.
+//! apps/desktop-tauri/src/commands/data.rs.
 //!
 //! Key items: the eight wire DTOs, the two quota batch gates
 //! (gate_import_product_batch, gate_import_user_batch), the settings redaction

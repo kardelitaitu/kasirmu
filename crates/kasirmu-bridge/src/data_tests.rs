@@ -1,5 +1,5 @@
 //! Relocated data-command tests (Wave-F test relocation: moved out of
-//! `apps/desktop-client/src/commands/data_tests.rs`).
+//! `apps/desktop-tauri/src/commands/data_tests.rs`).
 //!
 //! Mounted at the foot of `data.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the eight wire DTOs, `exportable_settings_rows`

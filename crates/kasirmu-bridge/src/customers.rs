@@ -1,5 +1,5 @@
 //! Customer command bodies (Wave B / B1) — the tauri-free half of
-//! `apps/desktop-client/src/commands/customers.rs`.
+//! `apps/desktop-tauri/src/commands/customers.rs`.
 //!
 //! Key types: [`CustomerDto`] plus the create/update/delete argument sets, the
 //! bounded search page (CUST-06) and the read-only history aggregate (CUST-05).

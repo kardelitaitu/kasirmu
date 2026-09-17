@@ -1,7 +1,7 @@
 //! Email command bodies (SMTP settings and test-report sending).
 //!
 //! Wave F: extracted byte-for-byte from
-//! `apps/desktop-client/src/commands/email.rs`. Only the mechanical
+//! `apps/desktop-tauri/src/commands/email.rs`. Only the mechanical
 //! `state.*` → `ctx.*` receiver swaps and `AppError::` → `BridgeError::`
 //! renames were applied; lock scopes, message building and error strings
 //! are unchanged.

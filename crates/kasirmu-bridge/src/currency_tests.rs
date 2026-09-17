@@ -1,11 +1,11 @@
 //! Unit tests for the currency command bodies (Wave-A test relocation: moved
-//! out of `apps/desktop-client/src/commands/currencies_tests.rs`).
+//! out of `apps/desktop-tauri/src/commands/currencies_tests.rs`).
 //!
 //! Mounted at the foot of `currency.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the DTOs and the pure lookup exactly as the desktop
 //! sibling module did. The `currency_info` and DTO conformance cases need no
 //! harness; the exchange-rate section appended from
-//! `apps/desktop-client/src/commands/exchange_rates_tests.rs` drives the
+//! `apps/desktop-tauri/src/commands/exchange_rates_tests.rs` drives the
 //! global-database rate path through the crate's headless `TestBridge`.
 //! The bridge's `currency_info` is a synchronous `&str` function (the
 //! `String` + `async` form is the desktop `#[tauri::command]` wrapper), so the
@@ -95,7 +95,7 @@ fn set_default_currency_args_debug() {
 // ── exchange-rate coverage (CUR-05 / CUR-03) ────────────────────────
 //
 // Wave-A test relocation: the cases below moved out of
-// `apps/desktop-client/src/commands/exchange_rates_tests.rs`. The pure
+// `apps/desktop-tauri/src/commands/exchange_rates_tests.rs`. The pure
 // validation cases call the bridge's `validate_create_rate_args` directly —
 // the desktop shim keeps an `AppError`-returning adapter over this function,
 // so its `AppError::Invalid` assertions map 1:1 onto `BridgeError::Invalid`.
