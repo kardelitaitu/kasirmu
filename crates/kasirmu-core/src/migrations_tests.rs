@@ -256,6 +256,66 @@ fn cosmetic_edit_to_any_migration_re_applies_cleanly() {
     );
 }
 
+/// An **earlier** migration must still re-apply after **later** ones have moved
+/// the schema on.
+///
+/// The sweep above applies a *prefix* and edits only its last entry, so it can
+/// only ever re-apply a migration against the schema that existed when that
+/// migration first ran. It cannot express the case where a migration is
+/// re-applied long after later migrations changed the tables it touches —
+/// which is what drift on an already-applied old migration actually does.
+///
+/// `20260909_memos.sql` was that case and it panicked startup. It created
+/// `idx_memos_location ON memos(location_id)`; `20260913_memo_locations.sql`
+/// later drops that column, moving targeting to the `memo_locations` join
+/// table. Re-running 20260909 once 20260913 was applied failed with
+/// `no such column: location_id` — and because that is not a *duplicate-object*
+/// error, DB-02's statement-level fallback never engaged, so the failure was
+/// fatal rather than skipped. The index is now created by
+/// `20260911_memo_fk_restrict.sql` instead.
+#[test]
+fn earlier_migration_re_applies_after_later_ones_move_the_schema() {
+    const EARLIER: &str = "20260909_memos.sql";
+    assert!(
+        ALL.iter().any(|mig| mig.id == EARLIER),
+        "{EARLIER} is no longer in the registry — update this test's subject"
+    );
+
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, ALL)
+        .unwrap_or_else(|err| panic!("applying the full registry failed: {err}"));
+
+    // Only the earlier entry is edited. Every later one keeps the SQL whose
+    // checksum the full apply stored, so the re-apply is the only thing that
+    // runs — and it runs against the *current* schema, not the historical one.
+    let drifted: Vec<platform_core::database::Migration> = ALL
+        .iter()
+        .map(|mig| platform_core::database::Migration {
+            id: mig.id,
+            sql: if mig.id == EARLIER {
+                Box::leak(format!("{}\n-- cosmetic drift probe\n", mig.sql).into_boxed_str())
+                    as &'static str
+            } else {
+                mig.sql
+            },
+        })
+        .collect();
+
+    let before = stored_checksum(&conn, EARLIER);
+    platform_core::database::run(&mut conn, &drifted).unwrap_or_else(|err| {
+        panic!(
+            "re-applying {EARLIER} after the whole registry had been applied failed: {err}. \
+             An earlier migration must stay re-appliable once later ones have moved the schema."
+        )
+    });
+    assert_ne!(
+        before,
+        stored_checksum(&conn, EARLIER),
+        "the edit to {EARLIER} was not detected as drift — the re-apply path was skipped, \
+         so this case proves nothing"
+    );
+}
+
 #[test]
 fn migrations_create_expected_tables() {
     let mut conn = fresh();
