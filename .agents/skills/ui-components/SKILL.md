@@ -1,13 +1,13 @@
 ---
 name: ui-components
-description: React + TypeScript UI conventions for the OZ-POS front-end — @fluent/react for all user-visible strings, ARIA labels, eslint-plugin-jsx-a11y, strict TypeScript, and dev/design-language.html as the visual reference. Use when adding or reviewing React components, hooks, or screens.
+description: React + TypeScript UI conventions for the kasir.mu front-end — @fluent/react for all user-visible strings, ARIA labels, eslint-plugin-jsx-a11y, strict TypeScript, and dev/design-language.html as the visual reference. Use when adding or reviewing React components, hooks, or screens.
 ---
 
 <!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2) · fixes over rev 1: F1 locale paths (per-feature bundles, en|id), F2 token path (ui/src/frontend/themes/tokens.css), F3 state libs (no TanStack/Zustand — removed), F4 ci.yml act-gate reference removed (file does not exist; renderInAct guidance kept on its own merits) · added: design-language reference section, real token families, motion & feedback rules, real test render helpers, data-testid convention · verified this pass: per-feature .ftl/.id.ftl bundles + shared.ftl/bundles.ftl + locales/index.ts, LocaleCode 'en'|'id' in ui/src/i18n/index.ts, dark-default tokens.css (:root dark / [data-theme="light"]), --color-*/--space-*/--radius-*/--shadow-*/--duration-*/--ease-*/--z-*/--font-* token families, api/tauri.ts sole @tauri-apps re-export + utils/logged-invoke.ts, ~40 per-domain ui/src/api/ modules (pos.ts is one of many), formatMoney in types/domain.ts (id-ID default), flat ui/src/__tests__/ with renderWithFluentSync/renderWithFluent/renderWithProviders(Sync)/rerenderWithProviders + renderInAct + withFluent, React 18.3.1, @fluent/react, strict tsconfig, no external state library in package.json, all FTL ids used in examples exist in sales.ftl -->
 
 # React UI & Front-end Conventions
 
-The OZ-POS front-end is a Tauri v2 webview running React 18 + TypeScript. The UI must be **accessible** (a cashier with a screen reader is a real user), **internationalized** (we ship in many locales), and **strictly typed** (a missing `prop` should be a compile error, not a runtime crash). Visually, it must follow one design language — see the next section.
+The kasir.mu front-end is a Tauri v2 webview running React 18 + TypeScript. The UI must be **accessible** (a cashier with a screen reader is a real user), **internationalized** (we ship in many locales), and **strictly typed** (a missing `prop` should be a compile error, not a runtime crash). Visually, it must follow one design language — see the next section.
 
 ---
 
@@ -99,7 +99,7 @@ payment-tendered-input =
 
 ## Accessibility (ARIA + a11y)
 
-OZ-POS passes `eslint-plugin-jsx-a11y` in CI. The plugin catches the most common mistakes; the rest is up to you.
+kasir.mu passes `eslint-plugin-jsx-a11y` in CI. The plugin catches the most common mistakes; the rest is up to you.
 
 ### Forms & inputs
 

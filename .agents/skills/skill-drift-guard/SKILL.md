@@ -1,6 +1,6 @@
 ---
 name: skill-drift-guard
-description: Meta-skill that detects and patches drift in the other OZ-POS skills. Use when a code change is made that touches a path, type, trait, or convention referenced in a skill; when onboarding a new contributor who might have added a crate or module; or as a periodic CI check. Always run before merging a change that touches `oz-*` crates, `apps/desktop-client/`, or `ui/`.
+description: Meta-skill that detects and patches drift in the other kasir.mu skills. Use when a code change is made that touches a path, type, trait, or convention referenced in a skill; when onboarding a new contributor who might have added a crate or module; or as a periodic CI check. Always run before merging a change that touches `oz-*` crates, `apps/desktop-client/`, or `ui/`.
 ---
 
 <!-- Superseded audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE at audit time (1 noted finding, doc-staleness) · its F1 claimed crates/oz-hal did not exist — obsolete since the HAL crate landed (see rev-2 stamp above) -->

@@ -1,13 +1,13 @@
 ---
 name: pr-repair
-description: Systematic workflow for diagnosing, reproducing, repairing, and verifying failed tests and CI checks on a GitHub pull request in OZ-POS. Covers gh CLI diagnosis, scoped reproduction (Rust, UI, E2E, gates, drift scripts), repair patterns, and verification protocols.
+description: Systematic workflow for diagnosing, reproducing, repairing, and verifying failed tests and CI checks on a GitHub pull request in kasir.mu. Covers gh CLI diagnosis, scoped reproduction (Rust, UI, E2E, gates, drift scripts), repair patterns, and verification protocols.
 ---
 
 <!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — version lock corrected 0.0.31 → 0.0.35; poll-pr-checks.ps1 corrected to the real scripts/poll-pr-checks.sh (no .ps1 exists); the Fluent bundle-path wording corrected to the per-feature English/.id.ftl layout; touch-target rule aligned with the design language 48px floor; illustrative Fluent ids reworded so the drift-guard Fluent check stays clean; reset-dev-pg.ps1 mention removed — only the .sh exists; vitest repro switched to npm run test -- filter) · verified this pass: scripts/poll-pr-checks.sh, scripts/reset-dev-pg.sh, scripts/diagnose-pr.py, scripts/verify-ci-docs-drift.py, scripts/verify-architecture-boundaries.py, scripts/verify-no-hardcoded-money-format.py, scripts/test-tdd.sh, crates/oz-api/src/pg_tests.rs, apps/cloud-server/src/db_tests.rs exist; ui npm scripts e2e:api / e2e:ui / typecheck / lint / test confirmed in ui/package.json -->
 
 # PR Repair — Fixing Failed Tests and CI Checks on Pull Requests
 
-This skill defines the standardized, disciplined workflow for diagnosing, reproducing, fixing, and verifying failed tests or failing CI checks on a GitHub pull request in the OZ-POS repository.
+This skill defines the standardized, disciplined workflow for diagnosing, reproducing, fixing, and verifying failed tests or failing CI checks on a GitHub pull request in the kasir.mu repository.
 
 ---
 
@@ -77,7 +77,7 @@ git pull origin $(git branch --show-current)
 
 > [!IMPORTANT]
 > **Never run bare `gh pr checks --watch` to wait for all checks to finish.**
-> In OZ-POS, `dev-ci.yml` runs **11 jobs**, all on `ubuntu-latest` — there is **no OS matrix**, so "waiting for the matrix" is not a thing here. Typical wall time is a few minutes, dominated by `cargo-nextest` and `ui-test`. (This line previously claimed "38+ jobs across multiple OS matrices taking 15–25 minutes", which overstates the count ~3.5x and invents a dimension that does not exist; `release.yml` adds 5 more, but only on `v*` tags.) The fail-fast advice below stands regardless, and is if anything more valuable here: with 11 jobs and no matrix, a green run arrives quickly, so a slow poll wastes the whole window in which you could already be fixing the first failure.
+> In kasir.mu, `dev-ci.yml` runs **11 jobs**, all on `ubuntu-latest` — there is **no OS matrix**, so "waiting for the matrix" is not a thing here. Typical wall time is a few minutes, dominated by `cargo-nextest` and `ui-test`. (This line previously claimed "38+ jobs across multiple OS matrices taking 15–25 minutes", which overstates the count ~3.5x and invents a dimension that does not exist; `release.yml` adds 5 more, but only on `v*` tags.) The fail-fast advice below stands regardless, and is if anything more valuable here: with 11 jobs and no matrix, a green run arrives quickly, so a slow poll wastes the whole window in which you could already be fixing the first failure.
 
 ```powershell
 # Option A: Native gh CLI with 30s interval and fail-fast (exits on the first failed check!):

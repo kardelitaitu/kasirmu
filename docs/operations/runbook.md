@@ -1035,7 +1035,7 @@ dashboard and simply names which account the token acts on.
   once** — copy it straight into wherever the deploy reads it from, which today is
   the environment, not GitHub: `scripts/wrangler-deploy.sh:42` fails when
   `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` are unset, and AGENTS.md feeds those
-  from `.env` / the `OZPOS_CLOUDFLARE_*` user variables. A GitHub Actions secret of the
+  from `.env` / the `KASIRMU_CLOUDFLARE_*` user variables. A GitHub Actions secret of the
   same name is harmless to keep (it is what the retired website pipeline expected) but
   `git grep -l CLOUDFLARE_API_TOKEN -- .github/workflows` matches only `website.yml.bak`
   and `scripts/wrangler-deploy.sh`, so no live workflow reads it.
@@ -1111,7 +1111,7 @@ hand, and probe #3 is the only ground truth for what actually shipped.
 2. **Verify before touching GitHub:** run the §9.3 probe #2 with the new token →
    `"status": "active"`.
 3. **Update wherever the deploy actually reads the token:** the `.env` entry and the
-   `OZPOS_CLOUDFLARE_API_TOKEN` user variable that feed `scripts/wrangler-deploy.sh`.
+   `KASIRMU_CLOUDFLARE_API_TOKEN` user variable that feed `scripts/wrangler-deploy.sh`.
    Updating only the GitHub secret (Settings → Secrets and variables → Actions →
    `CLOUDFLARE_API_TOKEN`) rotates a credential nothing live consumes, and the manual
    deploy would keep using the revoked token.

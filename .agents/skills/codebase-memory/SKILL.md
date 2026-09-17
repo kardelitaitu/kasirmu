@@ -1,11 +1,11 @@
 ---
 name: codebase-memory
-description: "Query the OZ-POS code knowledge graph from run_code via the codebase-memory-mcp server. Use for structural discovery instead of grep/read: explore the codebase, understand the architecture, what functions exist, show me the structure, who calls this function, what does X call, trace the call chain, find callers of, show dependencies, impact analysis, blast radius, dead code, unused functions, high fan-in, high fan-out, refactor candidates, code quality audit, hot paths, Cypher query examples, edge types, graph query syntax, how to use search_graph."
+description: "Query the kasir.mu code knowledge graph from run_code via the codebase-memory-mcp server. Use for structural discovery instead of grep/read: explore the codebase, understand the architecture, what functions exist, show me the structure, who calls this function, what does X call, trace the call chain, find callers of, show dependencies, impact analysis, blast radius, dead code, unused functions, high fan-in, high fan-out, refactor candidates, code quality audit, hot paths, Cypher query examples, edge types, graph query syntax, how to use search_graph."
 ---
 
 <!-- Audit stamp: 2026-09-08 · DSH · status: NEW, then RE-MEASURED twice the same day as the graph advanced (generation 2026-09-04T18:32Z → 05:07Z → 05:23Z). Every number, shape, error string and latency below was produced by executing the tool against the live oz-pos graph — nothing is copied from the upstream docs. The re-measurements are themselves a lesson: 44,213 nodes became 47,002, a tld-7 hot path became tld-4, an unlabeled-source Cypher that returned 42 rows on one generation returned 0 on the next, and this file shipped one false causal claim ("index_repository lies about failing") that a later controlled retry disproved — the real cause was a reserved-name ghost file, and the refresh it credited itself to was the post-commit hook. Numbers here are dated, and so is every inference. -->
 
-# Codebase Memory — OZ-POS knowledge graph
+# Codebase Memory — kasir.mu knowledge graph
 
 AGENTS.md makes graph-first discovery a **MUST FOLLOW** rule ("ALWAYS use
 `codebase-memory-mcp` first for code exploration"). This skill is how that rule is

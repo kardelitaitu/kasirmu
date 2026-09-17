@@ -1,11 +1,11 @@
 ---
 name: tdd
-description: Test-driven development workflow for OZ-POS — the 7-phase loop (Analyze → Find Weaknesses → Red/Green/Refactor → Verify → Journal → Update Docs → Commit), the fast TDD loop tooling (scripts/test-tdd.sh, [profile.tdd], nextest), and per-layer testing conventions. Use when fixing a bug, adding a feature test-first, or running a TDD cycle in any oz-* crate, platform/*, modules/*, app, or ui/.
+description: Test-driven development workflow for kasir.mu — the 7-phase loop (Analyze → Find Weaknesses → Red/Green/Refactor → Verify → Journal → Update Docs → Commit), the fast TDD loop tooling (scripts/test-tdd.sh, [profile.tdd], nextest), and per-layer testing conventions. Use when fixing a bug, adding a feature test-first, or running a TDD cycle in any oz-* crate, platform/*, modules/*, app, or ui/.
 ---
 
 <!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — Rust test convention corrected in Phase 3 and the per-layer table: unit tests live in sibling *_tests.rs files wired via #[cfg(test)] #[path = ...] mod tests (never inline in the production file — AGENTS.md rule); UI bundle names corrected en.ftl/id.ftl → per-feature <feature>.ftl/<feature>.id.ftl; push rule softened to match AGENTS.md (never push without an explicit direct user order — not "refuse even then"); 'audit/ numbered findings' reference removed (no such dir); pre-commit gate list updated to the six core gates + Go gate) · verified this pass: [profile.tdd] in workspace Cargo.toml, scripts/{test-tdd,test-changed,test-ui-changed,wtree-guard}.sh + scan-unwrap-panic.py, docs/guides/{api-reference,user-guide}.md, JOURNAL.md all exist -->
 
-# TDD Workflow — Test-Driven Development for OZ-POS
+# TDD Workflow — Test-Driven Development for kasir.mu
 
 TDD is the default way to change code in this repo: it makes bugs reproducible before they are fixed, keeps every fix attached to a regression test, and produces small, reviewable, well-documented commits.
 

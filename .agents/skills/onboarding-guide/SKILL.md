@@ -1,14 +1,14 @@
 ---
 name: onboarding-guide
-description: Meta-skill that routes tasks to the right OZ-POS skill. Use when starting a new task and unsure which specialized skill applies. Read this first when joining the project or picking up an unfamiliar area.
+description: Meta-skill that routes tasks to the right kasir.mu skill. Use when starting a new task and unsure which specialized skill applies. Read this first when joining the project or picking up an unfamiliar area.
 ---
 
 <!-- Audit stamp: 2026-09-15 · Budak-Korporat · status: PARTIAL — router only. Added the `database` row to the skill router, pointing at the new `.agents/skills/database/SKILL.md`. Verified this pass: `.agents/skills/database/SKILL.md` exists and declares `name: database`; `bash .agents/skills/skill-drift-guard/scripts/detect.sh --check=paths` reports no drift with the new skill present, and that check was confirmed live first by injecting a probe skill holding a nonexistent crates path (it fired) and then removing it (it went clean). Nothing else in this file was re-audited this pass; the 08-09-26 stamp below still stands for the rest. -->
 
 <!-- Audit stamp: 2026-09-08 · DSH · status: PARTIAL — router only. Added the `codebase-memory` row and the standing graph-first-discovery note under the router table; verified `.agents/skills/codebase-memory/` exists and that `AGENTS.md` really does mandate graph-first discovery. Nothing else in this file was re-audited this pass; the 03-09-26 rev-2 stamp below still stands for the rest. · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-09-03] · DSH · status: ACCURATE (rev 2 — pre-commit gate count corrected: the hook now runs six gates (cargo fmt, i18n lint, bundle parity, FTL dedupe, migration column-type lint, PG schema drift guard) plus LF normalization and a conditional Go gate for apps/license-server; verified against .githooks/pre-commit itself) · verified this pass: the oz-lua, oz-payment, oz-security and oz-reporting crate READMEs, crates/oz-core/src/db/reports.rs, platform/sync, apps/cloud-server, scripts/test-tdd.sh, .agents/skills/skill-drift-guard/scripts/detect.sh all exist · prior: 2026-08-31 docs-auditor rev (obsolete-defer section rewritten; EdcTerminal/mlua/per-domain api fixes; embedded-hal removed)  ·· [2026-08-31] · docs-auditor · status: ACCURATE (obsolete-defer + convention refs repaired) · FIXED 31-08: 'Skills to defer (no code yet)' was obsolete — oz-lua/oz-payment/oz-security/cloud-sync/oz-reporting all ship code now; rewritten to 'Areas with code but no dedicated skill yet' pointing at each crate README; nonexistent PaymentTerminal trait -> EdcTerminal (hal-drivers); rlua -> mlua; pos.ts -> per-domain ui/src/api/<feature>.ts (router + workflow); device list NFC -> real (customer display, weight scale, EDC); embedded-hal -> async-trait · verified accurate: exit-animation-pattern skill exists, scripts verify-bundle-parity.py + dedupe-ftl.py + lint-i18n.sh + check.sh exist, .githooks/pre-commit 4-gate description matches -->
-# OZ-POS Onboarding Guide
+# kasir.mu Onboarding Guide
 
-OZ-POS is a Rust + Tauri v2 POS framework. The codebase is organized into clear layers, and each layer has a dedicated skill. This guide routes you to the right skill for the work you want to do.
+kasir.mu is a Rust + Tauri v2 POS framework. The codebase is organized into clear layers, and each layer has a dedicated skill. This guide routes you to the right skill for the work you want to do.
 
 > *"Pay no attention to the man behind the curtain."* — The Wizard of Oz
 >
@@ -125,13 +125,13 @@ When one of these grows a dedicated skill, add it to the router table above.
 
 ## When NOT to use these skills
 
-These skills are scoped to the OZ-POS codebase. They do **not** apply if you are working on:
+These skills are scoped to the kasir.mu codebase. They do **not** apply if you are working on:
 
 - A different project (the skills reference `oz-core`, `oz-hal`, etc. by name).
 - A feature that has nothing to do with a POS (a CLI for a totally different domain, a web app, a game).
-- An LLM-driven workflow (OZ-POS does not use LLMs at the framework level).
-- A browser-automation workflow (OZ-POS does not drive browsers; it is a desktop app).
-- A social-media automation workflow (OZ-POS is not a Twitter/X bot; it runs cash registers).
+- An LLM-driven workflow (kasir.mu does not use LLMs at the framework level).
+- A browser-automation workflow (kasir.mu does not drive browsers; it is a desktop app).
+- A social-media automation workflow (kasir.mu is not a Twitter/X bot; it runs cash registers).
 
 If any of those describe the task, the right move is to ask the user which codebase they meant, or to spawn a skill-discovery workflow rather than applying these skills.
 
@@ -142,9 +142,9 @@ If any of those describe the task, the right move is to ask the user which codeb
 | Question | Where to ask |
 |---|---|
 | "What does this Rust trait do?" | Read the `///` docs on the trait itself. The skills are guides, not the source of truth — the code is. |
-| "How should this work in OZ-POS?" | Read the matching skill. If the skill doesn't cover it, ask Buffy (the AI agent) to extend the skill. |
-| "How should this work in general?" | The relevant upstream docs (`async-trait`, `rusqlite`, Tauri, React, Fluent). The skills assume familiarity with these. |
-| "Is this a security concern?" | Read `AGENTS.md` first. If still unclear, spawn a security review — OZ-POS handles money and (eventually) card data. |
+| "How should this work in kasir.mu?" | Read the matching skill. If the skill doesn't cover it, ask Buffy (the AI agent) to extend the skill. |
+| "How should this work in general?" | The relevant upstream docs (async-trait, rusqlite, Tauri, React, Fluent). The skills assume familiarity with these. |
+| "Is this a security concern?" | Read `AGENTS.md` first. If still unclear, spawn a security review — kasir.mu handles money and (eventually) card data. |
 
 ---
 

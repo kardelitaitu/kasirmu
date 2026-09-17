@@ -231,7 +231,7 @@ manual UDID registration.
    - **Platform:** iOS
    - **Name:** kasir.mu Tablet
    - **Bundle ID:** `mu.kasir.tablet` (must match Xcode)
-   - **SKU:** `OZPOS_TABLET_001`
+    - **SKU:** `KASIRMU_TABLET_001`
 4. Submit (app does not need to be "complete" for TestFlight)
 
 **Upload build to TestFlight:**

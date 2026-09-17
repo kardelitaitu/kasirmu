@@ -1,13 +1,13 @@
 ---
 name: database
-description: The OZ-POS database system — SQLite via rusqlite, the migration runner, the PostgreSQL replica, backup/restore, and the DB-NN invariants. Use when adding or changing a migration, editing anything under crates/oz-core/migrations/, touching connection setup or PRAGMAs, writing SQL that reads or writes money columns, regenerating the PG schema, or debugging a startup failure that mentions migrations, checksums, or drift.
+description: The kasir.mu database system — SQLite via rusqlite, the migration runner, the PostgreSQL replica, backup/restore, and the DB-NN invariants. Use when adding or changing a migration, editing anything under crates/oz-core/migrations/, touching connection setup or PRAGMAs, writing SQL that reads or writes money columns, regenerating the PG schema, or debugging a startup failure that mentions migrations, checksums, or drift.
 ---
 
 <!-- Audit stamp: 2026-09-15 · Budak-Korporat · status: ACCURATE (new skill, rev 1 — no predecessor) · verified this pass, by direct measurement rather than by reading another doc: registry entry count 58 (`grep -c 'Migration {'` in crates/oz-core/src/migrations.rs) against 58 non-`.pg.sql` files and 59 total `*.sql` in crates/oz-core/migrations/; `pub const ALL` opens at crates/oz-core/src/migrations.rs:43; the PRAGMA block is crates/oz-core/src/migrations.rs:352-362 (WAL, busy_timeout 5000, synchronous NORMAL, foreign_keys ON); `fresh_db` at crates/oz-core/src/migrations.rs:377-423 (LazyLock snapshot cloned via rusqlite::backup::Backup); `schema_migrations` DDL at platform/core/src/database/migrations.rs:174-178 (id/applied_at/checksum); `resolve_db_path` at apps/desktop-client/src/state.rs:757-763; the column-type rules and the 12-entry whitelist at scripts/verify-migration-column-types.py:109-170; the generator's single DST at scripts/generate-pg-migration.py:66 and its `--check` branch at :611; the footer convention across all 13 pre-existing skills. Every connection-opener row in the PRAGMA table below was read out of a repo-wide `PRAGMA|journal_mode|busy_timeout|foreign_keys` grep, not inferred from one example. All 23 filesystem paths cited in this document were tested for existence before publication. · NOT verified this pass, and flagged as such: the count of `unchecked_transaction` sites and the `Store` module count in §10 come from the RUST-08 note at the top of crates/oz-core/src/db/mod.rs, which I read but did not independently recount. · DB-06, DB-07 and DB-09 are absent from the repository; see §6. -->
 
-# OZ-POS Database
+# kasir.mu Database
 
-OZ-POS is **offline-first**: the terminal's SQLite file is the system of record, and
+kasir.mu is **offline-first**: the terminal's SQLite file is the system of record, and
 everything else — the cloud, analytics, the PostgreSQL replica — is downstream of it.
 A migration that misbehaves does not degrade a feature; it stops the till from opening.
 
