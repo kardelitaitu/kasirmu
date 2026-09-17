@@ -559,7 +559,7 @@ as an invisible ghost of exactly the §5 class.
    `scripts/check-updater-compat.mjs`. That is disproportionate for an explicitly optional move that
    kills no duplicate, so it fails principle 3.
 
-### [ ] P13 — Execute the `tablet` → `mobile` rename
+### [x] P13 — Execute the `tablet` → `mobile` rename
 
 **Commit:** `refactor(mobile): rename the tablet shell to mobile`
 **Measured scope: 3,117 occurrences of `tablet` (case-insensitive) across 498 tracked files**
@@ -615,6 +615,60 @@ orphaned and needs a documented migration path.
 `git grep -li 'tablet' -- 'apps/mobile-tauri/**' 'ui/index.mobile.html' 'ui/vite.mobile.config.ts'`
 returns only form-factor hits · `python scripts/verify-ipc-parity.py` exits 0 ·
 `cd ui && npm run typecheck && npm run test` · `cargo check --workspace --all-targets`
+
+**Completed 2026-09-18** (commit `bb1e72eb3`, 96 files, 317 insertions / 307 deletions, 4 renames).
+Renamed: `kasirmu-tablet` → `kasirmu-mobile` (package, lib, `[[bin]]`), `kasirmu_tablet` →
+`kasirmu_mobile`, `ui/index.tablet.html` → `index.mobile.html`, `ui/src/main.tablet.tsx` →
+`main.mobile.tsx`, `ui/vite.tablet.config.ts` → `vite.mobile.config.ts`, `dist-tablet` → `dist-mobile`,
+`dev:tablet` / `build:tablet` / `bundle:check:tablet` → `:mobile`, the gate name `Bundle budget (tablet)`
+→ `(mobile)`, `mu.kasir.tablet` → `mu.kasir.mobile`, and the prose P11 deferred — `tablet-client` →
+`mobile-tauri`, 536 occurrences across 125 files. The Kotlin package directory moved with the namespace.
+
+**The rename is token-scoped, not word-scoped, and that is the whole design.** `tablet` survives as a
+form factor, so only shell-identity tokens were substituted. Measured survivors, all intentional:
+`TabletAppLayout` (19 files), `#tablet-main-content` (4), the tablet breakpoints and tokens, and the
+Playwright project `name: 'tablet'` — which is `devices['iPad Pro 11']` emulation, a viewport profile, not
+a shell. Renaming those would have deleted the phone/tablet mode distinction this shell exists to provide.
+Census **3066 → 2862**; every remaining identity token sits in a dated record (`docs/archived/`,
+`docs/decisions/`, `docs/plans/`, `docs/records/`, `docs/specs/_active/`, `.agents/*.md`) or in this plan,
+and **no live file names a renamed path**.
+
+**The irreversibility premise was re-verified before touching the identity, not assumed.**
+`.github/workflows/release.yml:24` still reads verbatim *"Mobile (android.yml.bak / ios.yml.bak). Never
+part of this file."*; the release matrix builds desktop targets only; both mobile workflows are `.bak`;
+and `release.yml` publishes no `apk`/`aab`/`ipa`. No mobile release has ever shipped, so `applicationId`
+could be renamed. The one condition that would flip this is an APK having reached a customer.
+
+**Two traps worth carrying forward.**
+
+1. **`scripts/check-bundle.mjs:61` derived the output directory from the config's filename** —
+   `config?.includes('tablet') ? 'dist-tablet' : 'dist'`. Renaming the config to `vite.mobile.config.ts`
+   without also fixing that predicate would have written the mobile bundle into `dist`, colliding with the
+   desktop artifact, **and the budget would still have passed**. Confirmed fixed by the build's own
+   report: entry file `index.mobile-*.js`, outDir `ui/dist-mobile`.
+2. **Renaming an ignore rule can un-ignore a stale artifact.** `ui/.gitignore`'s `dist-tablet` rule became
+   `dist-mobile`, leaving the previous build output at `ui/dist-tablet/` untracked and visible in
+   `git status`. Deleted rather than committed — the artifact name moved, so the old directory is dead
+   output.
+
+**Measured exclusions, recorded so they are not re-litigated.**
+- **The gate-internal shell-key vocabulary** — `"desktop"` / `"tablet"` as keys in the `SHELLS` maps and
+  allowlist sections of `verify-ipc-parity.py`, `verify-invoke-parity.py`, `verify-scoped-reads.py`,
+  `allowlist-schema.py`, `retire-legacy-commands.py` and `ipc-parity-allowlist.json`. A separate
+  vocabulary naming shells by form factor inside gate data; P13's buckets do not name it, and renaming it
+  would mean rewriting large allowlist payloads.
+- **`apps/mobile-tauri/gen/android/buildSrc/src/main/java/com/ozpos/tablet/`** — old-brand debris the
+  rebrand campaign missed. Its two Kotlin files carry **no `package` declaration at all**, so the
+  directory is a path shell with no binding. A rebrand follow-up, not a P13 identity item.
+
+**Gates.** `verify-ipc-parity.py` → `IPC parity: OK` · `verify-invoke-parity.py` → 473 invokes, 0
+violations · `verify-ci-docs-drift.py` → **0 drift**, so the gate-name rename landed consistently across
+`gates.json`, `dev-ci.yml` and `ci-pipeline.md` · `verify-architecture-boundaries.py` → exit 0 ·
+`verify-dockerfile-workspace.py` → 42/42 · `verify-windows-config.py` → 0 violations ·
+`cargo metadata --no-deps` → still **39** packages, now `kasirmu-mobile` ·
+`cargo check --workspace --all-targets` → exit 0 · `npm run typecheck` → exit 0 ·
+`npm run test` → **584 files / 10059 passed, 0 failed** · `npm run bundle:check:mobile` → all budgets
+satisfied.
 
 ---
 
