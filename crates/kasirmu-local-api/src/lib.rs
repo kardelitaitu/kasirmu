@@ -1,5 +1,5 @@
 //! Headless loopback REST API for OZ-POS, extracted from
-//! `apps/desktop-client/src/local_api.rs` (Agent 1, Phase 1.2).
+//! `apps/desktop-tauri/src/local_api.rs` (Agent 1, Phase 1.2).
 //!
 //! Owns the settings-driven enable/port/secret resolution, the dedicated
 //! per-store WAL connection and the `axum::serve` lifecycle on top of the

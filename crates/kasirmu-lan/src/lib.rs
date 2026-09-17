@@ -5,7 +5,7 @@ findings: DC-1 FIXED (mitigation) — the PSK handshake compare is now constant-
 next: deprecate legacy-psk-v1 once all KDS clients speak noise-psk-v1 | perf: N/A
 */
 //! Headless LAN event transport for OZ-POS, extracted from
-//! `apps/desktop-client/src/lan_server.rs` (Agent 1, Phase 1.1).
+//! `apps/desktop-tauri/src/lan_server.rs` (Agent 1, Phase 1.1).
 //!
 //! Owns the TCP listener, the per-peer offline buffers and both PSK
 //! transports; it has no dependency on Tauri, windowing or any GUI
@@ -275,7 +275,7 @@ impl LanEventForwarder {
     // `LanEventForwarder::new(...)` (chain `.with_kds_queue(...)` after
     // `.with_discovery(...)`), sourcing tickets from the kds_orders /
     // kds_line_items rows and stations from `kasirmu_core::kds::
-    // resolve_kds_targets`. Not edited here: apps/desktop-client/** is
+    // resolve_kds_targets`. Not edited here: apps/desktop-tauri/** is
     // owned by the live registration-gate session.
     pub fn with_kds_queue(mut self, provider: KdsQueueProvider) -> Self {
         self.kds_queue = Some(provider);
@@ -858,12 +858,12 @@ impl LanForwarderHandle {
     /// (see [`should_deliver`] and the `kds_sync` module docs).
     //
     // INTEGRATION(kasirmu-lan kds-sync): desktop-client registers this next
-    // to the existing two in apps/desktop-client/src/lib.rs `setup`:
+    // to the existing two in apps/desktop-tauri/src/lib.rs `setup`:
     //     bus.subscribe("kds.sync", Box::new(handle.kds_sync_handler()));
-    // Commands in apps/desktop-client/src/commands/kds.rs then publish
+    // Commands in apps/desktop-tauri/src/commands/kds.rs then publish
     // the four `kds.*` transitions as `KdsSyncEvent` values (placed /
     // bumped / ready / recalled) on the kernel event bus. Not edited
-    // here: apps/desktop-client/** is owned by the live
+    // here: apps/desktop-tauri/** is owned by the live
     // registration-gate session.
     pub fn kds_sync_handler(&self) -> KdsSyncHandler {
         KdsSyncHandler {
