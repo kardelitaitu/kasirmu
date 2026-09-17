@@ -1,5 +1,5 @@
 //! Unit tests for the stock-transfer command bodies (Wave-C test relocation:
-//! moved out of `apps/desktop-client/src/commands/stock_transfers_tests.rs`).
+//! moved out of `apps/desktop-tauri/src/commands/stock_transfers_tests.rs`).
 //!
 //! Mounted at the foot of `stock_transfers.rs` with `#[cfg(test)] #[path]`,
 //! so `use super::*` resolves the DTOs and scoped operations directly. The

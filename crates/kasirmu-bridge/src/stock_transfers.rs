@@ -1,5 +1,5 @@
 //! Stock-transfer command bodies (Wave C / C3) — the tauri-free half of
-//! `apps/desktop-client/src/commands/stock_transfers.rs`.
+//! `apps/desktop-tauri/src/commands/stock_transfers.rs`.
 //!
 //! Key functions: the session-scoped [`create_stock_transfer_scoped`],
 //! [`get_stock_transfer_scoped`], [`list_stock_transfers_scoped`],

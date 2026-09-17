@@ -1,5 +1,5 @@
 //! Cloud-sync command bodies (configure, push and pull) — the tauri-free half
-//! of `apps/desktop-client/src/commands/sync.rs`.
+//! of `apps/desktop-tauri/src/commands/sync.rs`.
 //!
 //! Wave F: thirteen commands move here. The three `pg_sync_*` commands stay in
 //! the shell because they need the `PgSyncDaemon` handle on `AppState`, which

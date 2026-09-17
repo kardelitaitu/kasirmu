@@ -1,5 +1,5 @@
 //! Staff command unit tests (Wave-B test relocation: moved out of
-//! `apps/desktop-client/src/commands/staff_tests.rs`).
+//! `apps/desktop-tauri/src/commands/staff_tests.rs`).
 //!
 //! Mounted at the foot of `staff.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the DTOs, the scoped operations and the pub

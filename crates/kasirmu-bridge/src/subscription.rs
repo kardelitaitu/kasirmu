@@ -1,6 +1,6 @@
 //! Subscription bridge module (Wave E).
 //!
-//! Ported verbatim from `apps/desktop-client/src/commands/subscription.rs`
+//! Ported verbatim from `apps/desktop-tauri/src/commands/subscription.rs`
 //! (Wave E slice E4): the capability read model, the feature-availability
 //! verdict and the over-quota report live here; the desktop command file
 //! keeps thin `#[tauri::command]` shims plus the AppError-returning adapters
