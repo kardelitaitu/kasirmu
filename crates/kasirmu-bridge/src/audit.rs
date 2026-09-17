@@ -1,5 +1,5 @@
 //! Audit command bodies (Wave E / E5) — the tauri-free half of
-//! `apps/desktop-client/src/commands/audit.rs`.
+//! `apps/desktop-tauri/src/commands/audit.rs`.
 //!
 //! Key functions: the store-scoped audit reads ([`list_audit_log_scoped`],
 //! [`get_audit_review_status_scoped`]), the organization-level security trail

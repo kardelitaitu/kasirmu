@@ -15,7 +15,7 @@ next: none | perf: N/A
 //! # Quick start
 //! ```no_run
 //! # use kasirmu_api::serve;
-//! // In apps/desktop-client/src/main.rs or a background task:
+//! // In apps/desktop-tauri/src/main.rs or a background task:
 //! let rt = tokio::runtime::Runtime::new().unwrap();
 //! rt.block_on(serve()).expect("API server failed to start");
 //! ```

@@ -3,7 +3,7 @@
 //! Single source of truth for the contract served by BOTH the cloud
 //! server (`apps/cloud-server`, which merges its own sync/webhook/docs
 //! paths on top) and the desktop local API
-//! (`apps/desktop-client/src/local_api.rs`, which serves exactly this
+//! (`apps/desktop-tauri/src/local_api.rs`, which serves exactly this
 //! base document). Every operation carries `x-oz-scope`:
 //!
 //! - `"both"` — served by the cloud server AND the desktop local API

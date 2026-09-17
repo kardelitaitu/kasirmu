@@ -1,5 +1,5 @@
 //! Unit tests for the analytics command bodies (relocated from
-//! `apps/desktop-client/src/commands/analytics_tests.rs`).
+//! `apps/desktop-tauri/src/commands/analytics_tests.rs`).
 //!
 //! Mounted at the foot of `analytics.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the analytics fns and DTOs exactly as the

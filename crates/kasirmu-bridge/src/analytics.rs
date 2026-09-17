@@ -1,7 +1,7 @@
 //! Analytics bridge module (Wave E).
 //!
 //! Bodies extracted verbatim from
-//! apps/desktop-client/src/commands/analytics.rs (Wave E slice E8). The
+//! apps/desktop-tauri/src/commands/analytics.rs (Wave E slice E8). The
 //! only rewrites are mechanical: `state.*` → `ctx.*` and `AppError::` →
 //! `BridgeError::`. Gate order (session resolve → scope-aware gate →
 //! global name-map block → store open) and SQL are byte-identical.
