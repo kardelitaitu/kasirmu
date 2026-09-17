@@ -13,7 +13,7 @@ next: none | perf: N/A
 //! # Example
 //!
 //! ```
-//! use oz_security::mask::mask_pan;
+//! use kasirmu_security::mask::mask_pan;
 //!
 //! assert_eq!(mask_pan("4111111111111111"), "411111******1111");
 //! assert_eq!(mask_pan("4111-1111-1111-1111"), "411111******1111");
@@ -75,7 +75,7 @@ pub fn mask_pan(pan: &str) -> String {
 /// # Example
 ///
 /// ```
-/// use oz_security::mask::is_valid_pan;
+/// use kasirmu_security::mask::is_valid_pan;
 ///
 /// // Visa test number
 /// assert!(is_valid_pan("4111111111111111"));
@@ -113,7 +113,7 @@ pub fn is_valid_pan(pan: &str) -> bool {
 /// # Example
 ///
 /// ```
-/// use oz_security::mask::mask_name;
+/// use kasirmu_security::mask::mask_name;
 ///
 /// assert_eq!(mask_name("John A. Doe"), "J**n A. D*e");
 /// ```
@@ -143,7 +143,7 @@ pub fn mask_name(name: &str) -> String {
 /// # Example
 ///
 /// ```
-/// use oz_security::mask::mask_cvv;
+/// use kasirmu_security::mask::mask_cvv;
 ///
 /// assert_eq!(mask_cvv("123"), "***");
 /// ```
@@ -179,7 +179,7 @@ pub fn mask_cvv(_cvv: &str) -> String {
 /// # Example
 ///
 /// ```
-/// use oz_security::mask::mask_token;
+/// use kasirmu_security::mask::mask_token;
 ///
 /// assert_eq!(mask_token("018f3b2c-7de7-7a91-9c4d-2f1b8a6e5d44"), "...8a6e5d44");
 /// assert_eq!(mask_token("abcd1234ef01"), "***");

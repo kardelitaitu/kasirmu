@@ -45,9 +45,9 @@ The `Keyring` trait, `default_keyring()` and `RotationInfo` live in the crate ro
 OS-level credential store abstraction:
 
 ```rust
-use oz_security::Keyring;
+use kasirmu_security::Keyring;
 
-let keyring = oz_security::default_keyring()?;
+let keyring = kasirmu_security::default_keyring()?;
 keyring.set_secret("api-key", "<example-value-not-a-real-key>")?;
 let secret = keyring.get_secret("api-key")?;
 keyring.delete_secret("api-key")?;

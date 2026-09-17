@@ -13,14 +13,14 @@ next: warn or gate insecure_skip_verify in release builds (SEC-5) | perf: N/A
 //! # Example
 //!
 //! ```no_run
-//! use oz_security::tls::TlsConfig;
+//! use kasirmu_security::tls::TlsConfig;
 //!
 //! let tls = TlsConfig::builder()
 //!     .cert_path("/etc/oz-pos/certs/cert.pem")
 //!     .key_path("/etc/oz-pos/certs/key.pem")
 //!     .ca_path("/etc/oz-pos/certs/ca.pem")
 //!     .build()?;
-//! # Ok::<_, oz_security::SecurityError>(())
+//! # Ok::<_, kasirmu_security::SecurityError>(())
 //! ```
 
 use std::path::{Path, PathBuf};

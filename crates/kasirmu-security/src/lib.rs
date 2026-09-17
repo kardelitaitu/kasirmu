@@ -80,9 +80,9 @@ pub struct RotationInfo {
 /// # Example
 ///
 /// ```no_run
-/// # use oz_security::Keyring;
+/// # use kasirmu_security::Keyring;
 /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let keyring = oz_security::default_keyring()?;
+/// let keyring = kasirmu_security::default_keyring()?;
 /// keyring.set_secret("api-key", "sk_live_abc123")?;
 /// let secret = keyring.get_secret("api-key")?;
 /// keyring.delete_secret("api-key")?;
