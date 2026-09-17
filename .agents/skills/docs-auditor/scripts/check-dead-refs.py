@@ -328,6 +328,18 @@ def main():
 
     targets = args.paths or sorted(f for f in files if f.endswith(".md"))
 
+    # A gitignored file is not part of the repository, so it cannot be a live document OF
+    # the repository. Grading one invents findings about a scratch artifact -- which is
+    # the class the SCRATCH list below means to skip but cannot express: SCRATCH is tested
+    # with str.startswith on the whole relative path, so "-journal.md" can never match
+    # ".agents/manager-journal-<topic>.md", the repo's actual naming. Measured 2026-09-18:
+    # five such journals held 73 of this gate's 148 findings and .workbuddy-ai/memory held
+    # another. Uses the same batched query as the unresolved-path filter, so the answer
+    # comes from .gitignore rather than a second hardcoded list.
+    ignored_docs = git_ignored(set(targets))
+    if ignored_docs:
+        targets = [t for t in targets if t not in ignored_docs]
+
     live, hist, errs, scanned = [], [], [], 0
     rows = []            # (file, line, candidate, historical) - filtered below
     for t in targets:
