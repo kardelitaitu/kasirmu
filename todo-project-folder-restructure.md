@@ -258,7 +258,7 @@ after P1–P6 land, rather than patched twice.
 **Acceptance:** `git grep -nF "35 members" ARCHITECTURE.md` → nothing · every crate named in the
 README Repository Structure exists on disk
 
-### [ ] P8 — Clear the invisible junk pile and add a root gate
+### [x] P8 — Clear the invisible junk pile and add a root gate
 
 **Commit:** `chore(repo): clear root scratch artifacts and gate the repo root`
 
