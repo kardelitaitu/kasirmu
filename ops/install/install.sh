@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# install/install.sh — kasir.mu bootstrap installer (Linux / macOS)
+# ops/install/install.sh — kasir.mu bootstrap installer (Linux / macOS)
 #
-# Thin bootstrap mirroring install/win/install.ps1:
+# Thin bootstrap mirroring ops/install/win/install.ps1:
 #   1. Detect OS + CPU and resolve the platform manifest key from the
 #      release's latest.json (stable) / beta.json (beta) — the SAME signed
 #      manifest the in-app updater trusts.

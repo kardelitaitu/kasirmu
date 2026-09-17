@@ -1,4 +1,4 @@
-# install/win/install.ps1 — kasir.mu Windows bootstrap installer
+# ops/install/win/install.ps1 — kasir.mu Windows bootstrap installer
 <#
 .SYNOPSIS
     Installs (or upgrades) kasir.mu on Windows by downloading the official

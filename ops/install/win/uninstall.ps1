@@ -1,4 +1,4 @@
-# install/win/uninstall.ps1 — kasir.mu Windows uninstaller
+# ops/install/win/uninstall.ps1 — kasir.mu Windows uninstaller
 <#
 .SYNOPSIS
     Removes kasir.mu from Windows using the uninstaller registered by the

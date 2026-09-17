@@ -394,11 +394,11 @@ jobs:
           # Windows install scripts ship as release assets so the one-liner
           # `irm .../releases/latest/download/install.ps1 | iex` resolves, and
           # they are included in SHA256SUMS.txt so install.ps1 can verify its
-          # OWN checksum when run from disk (see install/win/install.ps1).
-          cp install/win/install.ps1 install/win/uninstall.ps1 release-assets/
-          # Unix counterparts ship the same way (see install/install.sh) —
+          # OWN checksum when run from disk (see ops/install/win/install.ps1).
+          cp ops/install/win/install.ps1 ops/install/win/uninstall.ps1 release-assets/
+          # Unix counterparts ship the same way (see ops/install/install.sh) —
           # `curl -fsSL .../releases/latest/download/install.sh | bash`.
-          cp install/install.sh install/uninstall.sh release-assets/
+          cp ops/install/install.sh ops/install/uninstall.sh release-assets/
           (cd release-assets && sha256sum * > SHA256SUMS.txt)
           echo "Release asset inventory:"
           ls -la release-assets/

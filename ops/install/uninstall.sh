@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# install/uninstall.sh — kasir.mu uninstaller (Linux / macOS)
+# ops/install/uninstall.sh — kasir.mu uninstaller (Linux / macOS)
 #
-# Mirrors install/win/uninstall.ps1: removes the footprints the installers
+# Mirrors ops/install/win/uninstall.ps1: removes the footprints the installers
 # create, rather than guessing install paths:
 #
 #   Linux  per-user  ~/.local/bin/kasir.mu.AppImage + ~/.local/share/applications/kasir.mu.desktop
