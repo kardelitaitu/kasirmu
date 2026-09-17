@@ -5,7 +5,7 @@ cd /d "%~dp0"
 
 echo ============================================
 echo   KDS Prototype - local + Cloudflare tunnel
-echo   (serving the dev/ folder - single source)
+echo   (serving the prototypes/ folder - single source)
 echo ============================================
 echo.
 
