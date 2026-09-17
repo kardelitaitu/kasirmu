@@ -171,8 +171,13 @@ FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe6
 
 # Install CA certificates for outbound HTTPS and gosu for dropping privileges.
 # libudev1 is the runtime half of the builder's libudev-dev: the cloud
-# binary links libudev.so via serialport/kasirmu-hal, and bookworm-slim does
-# not ship it.
+# binary links libudev.so via serialport/kasirmu-hal. bookworm-slim already
+# ships libudev1 (as a dependency of util-linux), so this line is
+# belt-and-braces -- it pins the dependency explicitly instead of inheriting
+# it from the base image. Measured 2026-09-18 against the pinned digest:
+# `dpkg -l libudev1` reports 252.39-1~deb12u2, status `ii`, with the base
+# image untouched. The earlier claim here that bookworm-slim "does not ship
+# it" was wrong.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
