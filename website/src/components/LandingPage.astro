@@ -1,0 +1,139 @@
+---
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import { t, dict } from '../i18n';
+
+export type LandingKey = 'gratis' | 'murah' | 'android';
+
+interface LandingFaq {
+  q: string;
+  a: string;
+}
+
+interface LandingContent {
+  title: string;
+  description: string;
+  h1: string;
+  lede: string;
+  ctaPricing?: string;
+  ctaDownload?: string;
+  ctaSupport?: string;
+  points?: string[];
+  limitsTitle?: string;
+  limits?: string;
+  tiersTitle?: string;
+  tiers?: string[];
+  contrastTitle?: string;
+  contrast?: string[];
+  statusTitle?: string;
+  status?: string;
+  faq: LandingFaq[];
+}
+
+interface Props {
+  landing: LandingKey;
+}
+
+const { landing } = Astro.props;
+const locale = Astro.currentLocale ?? 'en';
+const v = (dict(locale).landing as Record<LandingKey, LandingContent>)[landing];
+const pricingHref = getRelativeLocaleUrl(locale, 'pricing');
+const downloadHref = getRelativeLocaleUrl(locale, 'download');
+const supportHref = getRelativeLocaleUrl(locale, 'support');
+---
+
+<section class="mx-auto max-w-4xl px-4 py-16">
+  <div data-reveal class="text-center">
+    <h1 class="text-4xl font-bold sm:text-5xl">{v.h1}</h1>
+    <p class="mx-auto mt-6 max-w-2xl text-lg text-muted">{v.lede}</p>
+    <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
+      {v.ctaDownload && (
+        <a href={downloadHref} class="rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-white transition-colors duration-200 hover:bg-primary-hover">
+          {v.ctaDownload}
+        </a>
+      )}
+      {v.ctaPricing && (
+        <a href={pricingHref} class="rounded-xl border border-ink/15 px-6 py-3 text-sm font-semibold transition-colors duration-200 hover:border-ink/30">
+          {v.ctaPricing}
+        </a>
+      )}
+      {v.ctaSupport && (
+        <a href={supportHref} class="rounded-xl border border-ink/15 px-6 py-3 text-sm font-semibold transition-colors duration-200 hover:border-ink/30">
+          {v.ctaSupport}
+        </a>
+      )}
+    </div>
+  </div>
+
+  {v.points && (
+    <ul data-reveal class="mx-auto mt-12 grid max-w-3xl gap-4 sm:grid-cols-2">
+      {v.points.map((p) => (
+        <li class="rounded-xl border border-ink/10 bg-surface/40 p-5 text-sm leading-relaxed">{p}</li>
+      ))}
+    </ul>
+  )}
+
+  {(v.limits || v.tiers || v.contrast || v.status) && (
+    <div data-reveal class="mx-auto mt-12 max-w-3xl space-y-8">
+      {v.limits && (
+        <div>
+          <h2 class="text-2xl font-bold">{v.limitsTitle}</h2>
+          <p class="mt-3 leading-relaxed text-muted">{v.limits}</p>
+        </div>
+      )}
+      {v.tiers && (
+        <div>
+          <h2 class="text-2xl font-bold">{v.tiersTitle}</h2>
+          <ul class="mt-4 space-y-3">
+            {v.tiers.map((tier) => (
+              <li class="rounded-xl border border-ink/10 bg-surface/40 p-5 text-sm leading-relaxed">{tier}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {v.contrast && (
+        <div>
+          <h2 class="text-2xl font-bold">{v.contrastTitle}</h2>
+          <ul class="mt-4 space-y-3">
+            {v.contrast.map((c) => (
+              <li class="rounded-xl border border-ink/10 bg-surface/40 p-5 text-sm leading-relaxed">{c}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {v.status && (
+        <div>
+          <h2 class="text-2xl font-bold">{v.statusTitle}</h2>
+          <p class="mt-3 leading-relaxed text-muted">{v.status}</p>
+        </div>
+      )}
+    </div>
+  )}
+
+  <div data-reveal class="mx-auto mt-14 max-w-3xl">
+    <h2 class="text-2xl font-bold">{t(locale, 'support.faqTitle')}</h2>
+    <div class="mt-6 space-y-3">
+      {v.faq.map((item) => (
+        <details class="faq-item group rounded-xl border border-ink/10 bg-surface/40 transition-all duration-200 hover:border-ink/20">
+          <summary class="flex cursor-pointer items-center justify-between px-5 py-4 font-medium transition-colors duration-200 hover:text-link [&::-webkit-details-marker]:hidden">
+            <span>{item.q}</span>
+            <svg class="h-5 w-5 text-muted transition-transform duration-200 group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </summary>
+          <div class="faq-answer overflow-hidden">
+            <p class="px-5 pb-4 text-sm leading-relaxed text-muted">{item.a}</p>
+          </div>
+        </details>
+      ))}
+    </div>
+  </div>
+</section>
+<script type="application/ld+json" is:inline set:html={JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": v.faq.map((item) => ({
+    "@type": "Question",
+    "name": item.q,
+    "acceptedAnswer": { "@type": "Answer", "text": item.a },
+  })),
+})} />

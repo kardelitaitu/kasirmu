@@ -475,6 +475,101 @@
     "regionIndonesia": "Indonesia",
     "regionHint": "Affects pricing and payment method"
   },
+  "landing": {
+    "gratis": {
+      "title": "Free POS App for Warung, Cafes, and Shops",
+      "description": "Free-forever POS plan: one store, one register, 30-day history. Lightweight, easy, works offline — no credit card.",
+      "h1": "Free POS, Forever",
+      "lede": "Start selling today without paying a cent. The kasir.mu Free plan gives you a lightweight, easy offline-first POS app — one store, one register, 30-day history.",
+      "points": [
+        "Rp0 forever — no credit card, no trial that suddenly ends",
+        "Lightweight: runs smoothly on phones, tablets, and old PCs",
+        "Easy: cashiers can sell in 3 steps with no training",
+        "Offline-first: keeps selling when the internet dies"
+      ],
+      "limitsTitle": "Free plan limits",
+      "limits": "One store, one register, 30-day history. Need more — multi-terminal, warehouses, scheduled reports? See Plus, Pro, and Premium.",
+      "ctaPricing": "Compare all plans",
+      "ctaDownload": "Download free",
+      "faq": [
+        {
+          "q": "Is it really free?",
+          "a": "Yes. The Free plan is Rp0 forever for one store and one register — no credit card."
+        },
+        {
+          "q": "Does the free POS work without internet?",
+          "a": "Yes. Every kasir.mu plan, including free, runs 100% offline and syncs when you're back online."
+        },
+        {
+          "q": "What happens after the 30-day history?",
+          "a": "Older data is archived; upgrade to a paid plan for longer history and scheduled reports."
+        }
+      ]
+    },
+    "murah": {
+      "title": "Cheap POS App: From Rp0, Plus at Rp49k per Month",
+      "description": "Transparent POS pricing: Free Rp0, Plus Rp49k, Pro Rp99k per month. No hidden per-feature fees — cheap for warung to restaurants.",
+      "h1": "Cheap POS With No Hidden Fees",
+      "lede": "Start free, upgrade when ready. Every kasir.mu plan includes the offline-first core, QRIS, and audit trail — only capacity differs, never locked features.",
+      "tiersTitle": "Three price steps",
+      "tiers": [
+        "Free — Rp0 forever: one store, one register",
+        "Plus — Rp49k per month: for growing warung and shops",
+        "Pro — Rp99k per month: multi-terminal, KDS, peak-hour analytics"
+      ],
+      "contrastTitle": "kasir.mu vs conventional cloud POS",
+      "contrast": [
+        "Other POS freeze when the internet dies — kasir.mu keeps selling offline",
+        "Other POS lock KDS and multi-store behind Enterprise contracts — kasir.mu includes them in regular plans",
+        "Other POS add per-feature and per-register fees — kasir.mu is transparent per plan"
+      ],
+      "ctaPricing": "Compare all plans",
+      "faq": [
+        {
+          "q": "What is the cheapest kasir.mu price?",
+          "a": "Rp0 — the Free plan, forever. The cheapest paid plan is Plus at Rp49k per month."
+        },
+        {
+          "q": "Are there hidden per-feature or per-register fees?",
+          "a": "No. Pricing is per plan and transparent — core features like offline-first, QRIS, and audit trail are in every plan."
+        },
+        {
+          "q": "Is there a yearly discount?",
+          "a": "Yes — yearly billing equals 2 months free."
+        }
+      ]
+    },
+    "android": {
+      "title": "Android & Tablet POS App: Lightweight for Cheap Phones",
+      "description": "kasir.mu is coming to Android and tablets: a lightweight, easy POS app for cheap phones that keeps selling offline. Download the Windows version today.",
+      "h1": "Android & Tablet POS, Coming Soon",
+      "lede": "Today kasir.mu runs on Windows; the native Android and tablet app is on the way. The good news: the interface is already touch-friendly — big targets, stacked portrait layouts — so your team is ready before the APK lands.",
+      "points": [
+        "Lightweight: built for cheap Android phones and tablets with little RAM",
+        "Easy: big buttons, 3-step flow, no special training",
+        "Offline-first: keeps selling in warehouses and dead zones",
+        "Tablet-optimized: responsive layout from desktop to portrait"
+      ],
+      "statusTitle": "Status today",
+      "status": "Windows is available now. Android 7.0+ and iOS are coming soon — download the Windows version to try the flow, or contact us for Android release news.",
+      "ctaDownload": "Download the Windows version",
+      "ctaSupport": "Ask about Android",
+      "faq": [
+        {
+          "q": "When does the Android POS app ship?",
+          "a": "Coming soon — minimum Android 7.0 Nougat. The Windows version is available today with the same flow."
+        },
+        {
+          "q": "Does it run on cheap tablets?",
+          "a": "Yes — kasir.mu is built lightweight for cheap Android tablets and phones, and keeps selling offline."
+        },
+        {
+          "q": "Can it be used on touchscreen cashier phones?",
+          "a": "Yes. Touch targets follow the 44px standard and the layout adapts to small screens."
+        }
+      ]
+    }
+  },
   "vertical": {
     "positioning": "kasir.mu is the QRIS-native POS with offline-first reliability — priced for the Indonesian market.",
     "whyTitle": "Why kasir.mu for your business?",

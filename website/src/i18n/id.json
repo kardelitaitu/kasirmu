@@ -479,6 +479,101 @@
     "regionIndonesia": "Indonesia",
     "regionHint": "Menentukan harga dan metode pembayaran"
   },
+  "landing": {
+    "gratis": {
+      "title": "Aplikasi Kasir Gratis untuk Warung, Kafe, dan Toko",
+      "description": "Paket kasir gratis selamanya: satu toko, satu register, riwayat 30 hari. Ringan, mudah dipakai, jalan offline — tanpa kartu kredit.",
+      "h1": "Kasir Gratis, Selamanya",
+      "lede": "Mulai jualan hari ini tanpa bayar sepeser pun. Paket Gratis kasir.mu memberi Anda aplikasi kasir offline-first yang ringan dan mudah — satu toko, satu register, riwayat 30 hari.",
+      "points": [
+        "Rp0 selamanya — tanpa kartu kredit, tanpa masa trial yang tiba-tiba berakhir",
+        "Ringan: berjalan mulus di HP, tablet, dan PC tua",
+        "Mudah: kasir bisa jualan dalam 3 langkah tanpa pelatihan",
+        "Offline-first: tetap jualan saat internet mati"
+      ],
+      "limitsTitle": "Batas paket Gratis",
+      "limits": "Satu toko, satu register, riwayat 30 hari. Butuh lebih — multi-terminal, gudang, laporan terjadwal? Lihat paket Plus, Pro, dan Premium.",
+      "ctaPricing": "Lihat semua paket",
+      "ctaDownload": "Unduh gratis",
+      "faq": [
+        {
+          "q": "Apakah benar-benar gratis?",
+          "a": "Ya. Paket Gratis Rp0 selamanya untuk satu toko dan satu register — tanpa kartu kredit."
+        },
+        {
+          "q": "Apakah kasir gratis ini jalan tanpa internet?",
+          "a": "Ya. Semua paket kasir.mu, termasuk yang gratis, berjalan 100% offline dan tersinkron saat koneksi kembali."
+        },
+        {
+          "q": "Apa yang terjadi setelah riwayat 30 hari?",
+          "a": "Data lama diarsipkan; upgrade ke paket berbayar untuk riwayat lebih panjang dan laporan terjadwal."
+        }
+      ]
+    },
+    "murah": {
+      "title": "Aplikasi Kasir Murah: Mulai Rp0, Plus Rp49rb per Bulan",
+      "description": "Harga kasir transparan: Gratis Rp0, Plus Rp49rb, Pro Rp99rb per bulan. Tanpa biaya per-fitur tersembunyi — murah untuk warung sampai restoran.",
+      "h1": "Kasir Murah Tanpa Biaya Tersembunyi",
+      "lede": "Mulai gratis, naik kelas saat siap. Setiap paket kasir.mu sudah termasuk inti offline-first, QRIS, dan audit trail — yang membedakan hanya kapasitas, bukan fitur yang dikunci.",
+      "tiersTitle": "Tiga langkah harga",
+      "tiers": [
+        "Gratis — Rp0 selamanya: satu toko, satu register",
+        "Plus — Rp49rb per bulan: untuk warung dan toko yang tumbuh",
+        "Pro — Rp99rb per bulan: multi-terminal, KDS, analitik jam sibuk"
+      ],
+      "contrastTitle": "kasir.mu vs POS cloud konvensional",
+      "contrast": [
+        "POS lain macet saat internet mati — kasir.mu tetap jualan offline",
+        "POS lain kunci KDS dan multi-toko di kontrak Enterprise — kasir.mu menyertakannya di paket reguler",
+        "POS lain tambah biaya per fitur dan per register — kasir.mu transparan per paket"
+      ],
+      "ctaPricing": "Bandingkan semua paket",
+      "faq": [
+        {
+          "q": "Berapa harga termurah kasir.mu?",
+          "a": "Rp0 — paket Gratis selamanya. Paket berbayar termurah adalah Plus Rp49rb per bulan."
+        },
+        {
+          "q": "Apakah ada biaya per-fitur atau per register tersembunyi?",
+          "a": "Tidak. Harga per paket, transparan — fitur inti seperti offline-first, QRIS, dan audit trail ada di semua paket."
+        },
+        {
+          "q": "Apakah ada diskon tahunan?",
+          "a": "Ya — bayar tahunan sama dengan 2 bulan gratis."
+        }
+      ]
+    },
+    "android": {
+      "title": "Aplikasi Kasir Android & Tablet: Ringan untuk HP Murah",
+      "description": "kasir.mu segera hadir di Android dan tablet: aplikasi kasir ringan yang mudah dipakai di HP murah, tetap jalan offline. Unduh versi Windows hari ini.",
+      "h1": "Kasir Android & Tablet, Segera Hadir",
+      "lede": "Hari ini kasir.mu berjalan di Windows; aplikasi Android dan tablet native sedang dikerjakan. Kabar baiknya: antarmukanya sudah ramah sentuhan — target sentuh besar, layout menumpuk di layar portrait — jadi tim Anda siap sebelum APK-nya tiba.",
+      "points": [
+        "Ringan: dirancang untuk HP dan tablet Android murah dengan RAM kecil",
+        "Mudah: tombol besar, alur 3 langkah, tanpa pelatihan khusus",
+        "Offline-first: tetap jualan di gudang atau area tanpa sinyal",
+        "Tablet-optimized: layout responsif dari desktop hingga portrait"
+      ],
+      "statusTitle": "Status hari ini",
+      "status": "Windows tersedia sekarang. Android 7.0+ dan iOS segera hadir — unduh versi Windows untuk mencoba alurnya, atau hubungi kami untuk kabar rilis Android.",
+      "ctaDownload": "Unduh versi Windows",
+      "ctaSupport": "Tanya soal Android",
+      "faq": [
+        {
+          "q": "Kapan aplikasi kasir Android-nya rilis?",
+          "a": "Segera hadir — minimum Android 7.0 Nougat. Versi Windows tersedia hari ini dengan alur yang sama."
+        },
+        {
+          "q": "Apakah jalan di tablet murah?",
+          "a": "Ya — kasir.mu dirancang ringan untuk tablet dan HP Android murah, dan tetap jualan offline."
+        },
+        {
+          "q": "Apakah bisa dipakai di HP kasir touchscreen?",
+          "a": "Ya. Target sentuh mengikuti standar 44px dan layout beradaptasi ke layar kecil."
+        }
+      ]
+    }
+  },
   "vertical": {
     "positioning": "kasir.mu — kasir native QRIS dengan keandalan offline-first, harga untuk pasar Indonesia.",
     "whyTitle": "Mengapa kasir.mu untuk bisnis Anda?",
