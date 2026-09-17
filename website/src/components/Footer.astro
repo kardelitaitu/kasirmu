@@ -73,16 +73,39 @@ const year = new Date().getFullYear();
       </p>
     </div>
 
-    <!-- Right: Legal Links -->
-    <nav class="flex items-center gap-6 text-xs text-muted" aria-label={t(locale, 'footer.legal')}>
-      <a href={getRelativeLocaleUrl(locale, 'legal/privacy')} class="footer-link relative transition-colors duration-200 hover:text-ink">
-        {t(locale, 'footer.privacy')}
-        <span class="footer-underline absolute -bottom-0.5 left-0 h-px w-0 bg-primary transition-all duration-200 ease-[cubic-bezier(0.2,0,0,1)]"></span>
-      </a>
-      <a href={getRelativeLocaleUrl(locale, 'legal/terms')} class="footer-link relative transition-colors duration-200 hover:text-ink">
-        {t(locale, 'footer.terms')}
-        <span class="footer-underline absolute -bottom-0.5 left-0 h-px w-0 bg-primary transition-all duration-200 ease-[cubic-bezier(0.2,0,0,1)]"></span>
-      </a>
-    </nav>
+    <!-- Right: Sitemap + Legal Links -->
+    <div class="flex flex-col items-center gap-6 sm:items-end">
+      <nav class="flex flex-wrap items-start justify-center gap-x-10 gap-y-4 text-xs" aria-label="Sitemap">
+        <div class="flex flex-col gap-2">
+          <span class="font-semibold text-ink">{t(locale, 'nav.features')}</span>
+          <a href={getRelativeLocaleUrl(locale, 'features')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Fitur</a>
+          <a href={getRelativeLocaleUrl(locale, 'pricing')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Harga</a>
+          <a href={getRelativeLocaleUrl(locale, 'download')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Unduh</a>
+        </div>
+        <div class="flex flex-col gap-2">
+          <span class="font-semibold text-ink">{locale === 'id' ? 'Bisnis' : 'Business'}</span>
+          <a href={getRelativeLocaleUrl(locale, 'warung')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Warung</a>
+          <a href={getRelativeLocaleUrl(locale, 'cafe')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Kafe</a>
+          <a href={getRelativeLocaleUrl(locale, 'restaurant')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Restoran</a>
+          <a href={getRelativeLocaleUrl(locale, 'minimarket')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Minimarket</a>
+          <a href={getRelativeLocaleUrl(locale, 'warehouse')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Gudang</a>
+        </div>
+        <div class="flex flex-col gap-2">
+          <span class="font-semibold text-ink">{locale === 'id' ? 'Bantuan' : 'Help'}</span>
+          <a href={getRelativeLocaleUrl(locale, 'docs')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Docs</a>
+          <a href={getRelativeLocaleUrl(locale, 'support')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Support</a>
+        </div>
+      </nav>
+      <nav class="flex items-center gap-6 text-xs text-muted" aria-label={t(locale, 'footer.legal')}>
+        <a href={getRelativeLocaleUrl(locale, 'legal/privacy')} class="footer-link relative transition-colors duration-200 hover:text-ink">
+          {t(locale, 'footer.privacy')}
+          <span class="footer-underline absolute -bottom-0.5 left-0 h-px w-0 bg-primary transition-all duration-200 ease-[cubic-bezier(0.2,0,0,1)]"></span>
+        </a>
+        <a href={getRelativeLocaleUrl(locale, 'legal/terms')} class="footer-link relative transition-colors duration-200 hover:text-ink">
+          {t(locale, 'footer.terms')}
+          <span class="footer-underline absolute -bottom-0.5 left-0 h-px w-0 bg-primary transition-all duration-200 ease-[cubic-bezier(0.2,0,0,1)]"></span>
+        </a>
+      </nav>
+    </div>
   </div>
 </footer>

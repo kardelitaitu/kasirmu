@@ -6,8 +6,9 @@ import { join } from 'node:path';
 /**
  * Tests for Footer.astro link integrity.
  *
- * Footer renders 4 business vertical links and 2 legal links, all driven
- * by `getRelativeLocaleUrl`. A broken href or missing i18n key sends users
+ * Footer renders sitemap columns (features/pricing/download, 5 business
+ * verticals, docs/support) plus 2 legal links, all driven by
+ * `getRelativeLocaleUrl`. A broken href or missing i18n key sends users
  * to 404s on revenue-critical pages.
  *
  * Strategy: read the raw .astro source and verify the link structure is
@@ -27,18 +28,28 @@ describe('Footer link structure', () => {
     expect(FOOTER_SRC).toContain("'legal/terms'");
   });
 
+  it('renders the sitemap columns', () => {
+    for (const slug of ['features', 'pricing', 'download', 'warung', 'cafe', 'restaurant', 'minimarket', 'warehouse', 'docs', 'support']) {
+      expect(FOOTER_SRC).toContain(`'${slug}'`);
+    }
+  });
+
   it('uses getRelativeLocaleUrl for navigation links', () => {
     const matches = FOOTER_SRC.match(/getRelativeLocaleUrl\(/g);
-    expect(matches).toHaveLength(2);
+    expect(matches).toHaveLength(12);
   });
 
   it('has aria-label on the legal nav', () => {
     expect(FOOTER_SRC).toContain("aria-label={t(locale, 'footer.legal')}");
   });
 
+  it('has aria-label on the sitemap nav', () => {
+    expect(FOOTER_SRC).toContain('aria-label="Sitemap"');
+  });
+
   it('has footer-link class on navigation links', () => {
     const footerLinkMatches = FOOTER_SRC.match(/class="footer-link/g);
-    expect(footerLinkMatches).toHaveLength(2);
+    expect(footerLinkMatches).toHaveLength(12);
   });
 });
 
@@ -65,6 +76,26 @@ describe('Footer link targets exist', () => {
 
   it('warehouse page exists', () => {
     expect(() => readFileSync(join(pagesDir, 'warehouse.astro'))).not.toThrow();
+  });
+
+  it('features page exists', () => {
+    expect(() => readFileSync(join(pagesDir, 'features.astro'))).not.toThrow();
+  });
+
+  it('pricing page exists', () => {
+    expect(() => readFileSync(join(pagesDir, 'pricing.astro'))).not.toThrow();
+  });
+
+  it('download page exists', () => {
+    expect(() => readFileSync(join(pagesDir, 'download.astro'))).not.toThrow();
+  });
+
+  it('support page exists', () => {
+    expect(() => readFileSync(join(pagesDir, 'support.astro'))).not.toThrow();
+  });
+
+  it('docs hub page exists', () => {
+    expect(() => readFileSync(join(pagesDir, 'docs', 'index.astro'))).not.toThrow();
   });
 
   it('legal/privacy page exists', () => {
