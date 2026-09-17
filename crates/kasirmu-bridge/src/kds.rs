@@ -1,6 +1,6 @@
 //! Kitchen Display System (KDS) command bodies.
 //!
-//! Extracted verbatim from `apps/desktop-client/src/commands/kds.rs` (Wave D / D2a).
+//! Extracted verbatim from `apps/desktop-tauri/src/commands/kds.rs` (Wave D / D2a).
 //! Every KDS command requires `kds:view` or `kds:update`, authorized against the
 //! global identity DB through [`BridgeCtx::require_session_permission`] (ADR #7).
 //!

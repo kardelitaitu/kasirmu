@@ -1,5 +1,5 @@
 //! KDS device command bodies (Wave D / D2b) — the tauri-free half of
-//! `apps/desktop-client/src/commands/kds_device.rs`.
+//! `apps/desktop-tauri/src/commands/kds_device.rs`.
 
 //! Registration, listing, single-device lookup, connection-status update,
 //! deactivation and order acknowledgement. Each operation is a verbatim port of

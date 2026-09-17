@@ -1,5 +1,5 @@
 //! Unit tests for the stock-count command bodies (Wave-C test relocation:
-//! moved out of `apps/desktop-client/src/commands/inventory_counts_tests.rs`).
+//! moved out of `apps/desktop-tauri/src/commands/inventory_counts_tests.rs`).
 //!
 //! Mounted at the foot of `inventory_counts.rs` with `#[cfg(test)] #[path]`,
 //! so `use super::*` resolves the DTOs, args and scoped operations directly.

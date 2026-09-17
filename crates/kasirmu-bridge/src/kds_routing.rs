@@ -1,5 +1,5 @@
 //! KDS order-routing command bodies (Wave D / D2b) — the tauri-free half of
-//! `apps/desktop-client/src/commands/kds_routing.rs`.
+//! `apps/desktop-tauri/src/commands/kds_routing.rs`.
 
 //! Resolution is read-only over the store DB and emits nothing: the caller (the
 //! Restaurant POS) pushes to the returned device ids itself, so this module has
