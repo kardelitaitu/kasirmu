@@ -13,9 +13,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 
-use oz_hal::drivers::tcp_printer::TcpReceiptPrinter;
-use oz_hal::traits::printer::ReceiptPrinter;
-use oz_hal::types::DeviceInfo;
+use kasirmu_hal::drivers::tcp_printer::TcpReceiptPrinter;
+use kasirmu_hal::traits::printer::ReceiptPrinter;
+use kasirmu_hal::types::DeviceInfo;
 
 /// A fake printer endpoint that accepts connections, reads incoming
 /// data, and can be signalled to drop its current connection (simulating

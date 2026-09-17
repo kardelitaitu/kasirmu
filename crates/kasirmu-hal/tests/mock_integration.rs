@@ -5,12 +5,12 @@
 
 use std::sync::Arc;
 
-use oz_hal::DriverRegistry;
-use oz_hal::drivers::mock::{MockBarcodeScanner, MockCashDrawer, MockReceiptPrinter};
-use oz_hal::traits::barcode::BarcodeScanner;
-use oz_hal::traits::cash_drawer::CashDrawer;
-use oz_hal::traits::printer::ReceiptPrinter;
-use oz_hal::types::{Barcode, DeviceInfo};
+use kasirmu_hal::DriverRegistry;
+use kasirmu_hal::drivers::mock::{MockBarcodeScanner, MockCashDrawer, MockReceiptPrinter};
+use kasirmu_hal::traits::barcode::BarcodeScanner;
+use kasirmu_hal::traits::cash_drawer::CashDrawer;
+use kasirmu_hal::traits::printer::ReceiptPrinter;
+use kasirmu_hal::types::{Barcode, DeviceInfo};
 
 // ── Registry + mock registration ───────────────────────────────────────
 
@@ -215,12 +215,12 @@ async fn printer_tracks_cut_calls() {
 #[tokio::test]
 async fn printer_propagates_error() {
     let mock = MockReceiptPrinter::new();
-    mock.set_next_error(oz_hal::HalError::Busy);
+    mock.set_next_error(kasirmu_hal::HalError::Busy);
 
     let result = mock.print_receipt("fail me").await;
     assert!(result.is_err());
     match result {
-        Err(oz_hal::HalError::Busy) => {} // expected
+        Err(kasirmu_hal::HalError::Busy) => {} // expected
         _ => panic!("expected Busy error"),
     }
 }
@@ -228,7 +228,7 @@ async fn printer_propagates_error() {
 #[tokio::test]
 async fn printer_error_clears_after_one_use() {
     let mock = MockReceiptPrinter::new();
-    mock.set_next_error(oz_hal::HalError::Disconnected);
+    mock.set_next_error(kasirmu_hal::HalError::Disconnected);
 
     // First call fails
     assert!(mock.print_receipt("first").await.is_err());
@@ -256,11 +256,11 @@ async fn drawer_tracks_opens() {
 #[tokio::test]
 async fn drawer_propagates_error() {
     let mock = MockCashDrawer::new();
-    mock.set_next_error(oz_hal::HalError::NotFound("drawer-1".into()));
+    mock.set_next_error(kasirmu_hal::HalError::NotFound("drawer-1".into()));
 
     let result = mock.open().await;
     match result {
-        Err(oz_hal::HalError::NotFound(_)) => {} // expected
+        Err(kasirmu_hal::HalError::NotFound(_)) => {} // expected
         _ => panic!("expected NotFound error"),
     }
 }
@@ -269,7 +269,7 @@ async fn drawer_propagates_error() {
 async fn is_open_default_returns_disconnected() {
     let mock = MockCashDrawer::new();
     match mock.is_open().await {
-        Err(oz_hal::HalError::Disconnected) => {} // expected
+        Err(kasirmu_hal::HalError::Disconnected) => {} // expected
         _ => panic!("expected Disconnected from default is_open"),
     }
 }

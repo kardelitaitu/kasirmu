@@ -65,7 +65,7 @@ All printer drivers share a single ESC/POS module at `drivers::escpos`:
 `DriverRegistry` holds `Arc<dyn Trait>` per device behind `RwLock`. In production it is populated at startup from the operator's saved config via `apply_config()` (apps map their `TerminalProfile` → `HardwareConfig` in `platform_startup::hardware`; the HAL never reads a settings table):
 
 ```rust
-use oz_hal::{apply_config, DriverRegistry, HardwareConfig};
+use kasirmu_hal::{apply_config, DriverRegistry, HardwareConfig};
 
 let registry = DriverRegistry::default();
 // Production path — register the devices the operator configured:

@@ -52,12 +52,12 @@ oz-bridge = { path = "crates/oz-bridge" }
 oz-crypto = { package = "kasirmu-crypto", path = "crates/kasirmu-crypto" }
 oz-lan = { package = "kasirmu-lan", path = "crates/kasirmu-lan" }
 oz-local-api = { package = "kasirmu-local-api", path = "crates/kasirmu-local-api" }
-oz-hal = { path = "crates/oz-hal" }
+oz-hal = { package = "kasirmu-hal", path = "crates/kasirmu-hal" }
 oz-lua = { package = "kasirmu-lua", path = "crates/kasirmu-lua" }
 oz-plugin = { package = "kasirmu-plugin", path = "crates/kasirmu-plugin" }
 oz-security = { package = "kasirmu-security", path = "crates/kasirmu-security" }
 oz-notification = { package = "kasirmu-notification", path = "crates/kasirmu-notification" }
-oz-payment = { path = "crates/oz-payment" }
+oz-payment = { package = "kasirmu-payment", path = "crates/kasirmu-payment" }
 oz-reporting = { package = "kasirmu-reporting", path = "crates/kasirmu-reporting" }
 oz-logging = { package = "kasirmu-logging", path = "crates/kasirmu-logging" }
 kasirmu-media = { path = "crates/kasirmu-media" }

@@ -1,11 +1,11 @@
 [package]
-name = "oz-hal"
+name = "kasirmu-hal"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Hardware Abstraction Layer for OZ-POS: barcode scanners, receipt printers, cash drawers, customer displays, weight scales."
+description = "Hardware Abstraction Layer for kasir.mu: barcode scanners, receipt printers, cash drawers, customer displays, weight scales."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]

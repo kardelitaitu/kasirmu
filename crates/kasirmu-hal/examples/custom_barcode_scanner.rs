@@ -29,9 +29,9 @@
 //! ```
 
 use async_trait::async_trait;
-use oz_hal::error::HalError;
-use oz_hal::traits::barcode::BarcodeScanner;
-use oz_hal::types::{Barcode, DeviceInfo};
+use kasirmu_hal::error::HalError;
+use kasirmu_hal::traits::barcode::BarcodeScanner;
+use kasirmu_hal::types::{Barcode, DeviceInfo};
 
 /// A custom barcode scanner that reads from a USB HID device.
 ///
