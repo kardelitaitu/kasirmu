@@ -1,5 +1,5 @@
 //! Product-image ingest command bodies (Wave A / S8) — the tauri-free half
-//! of `apps/desktop-client/src/commands/products_images.rs`.
+//! of `apps/desktop-tauri/src/commands/products_images.rs`.
 //!
 //! [`set_image_scoped`] is the full ingest pipeline: read the source file,
 //! sniff magic bytes, validate size/dimension caps, decode, resize to 512 px

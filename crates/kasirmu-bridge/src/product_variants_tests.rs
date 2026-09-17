@@ -1,6 +1,6 @@
 //! Unit tests for the product-variant command bodies (Wave-A test relocation:
 //! moved out of
-//! `apps/desktop-client/src/commands/product_variants_tests.rs`).
+//! `apps/desktop-tauri/src/commands/product_variants_tests.rs`).
 //!
 //! Mounted at the foot of `product_variants.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` reaches the DTOs defined there; `foundation` is a dependency

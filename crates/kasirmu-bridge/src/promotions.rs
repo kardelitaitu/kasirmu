@@ -1,5 +1,5 @@
 //! Promotion command bodies (Wave D / D4b) — the tauri-free half of
-//! `apps/desktop-client/src/commands/promotions.rs`.
+//! `apps/desktop-tauri/src/commands/promotions.rs`.
 //!
 //! Promotion-rule CRUD, application against sales, and per-sale listing.
 //! Note the deliberate gate asymmetry preserved verbatim from the shell:

@@ -1,5 +1,5 @@
 //! Product catalog command bodies (Wave A / S9) — the tauri-free half of
-//! `apps/desktop-client/src/commands/products.rs`.
+//! `apps/desktop-tauri/src/commands/products.rs`.
 //!
 //! S9a landed the read half: [`list_scoped`],
 //! [`list_warehouse_products_at_location`], [`lookup_by_barcode`],
