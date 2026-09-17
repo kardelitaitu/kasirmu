@@ -47,24 +47,20 @@ RUN apt-get update && \
         pkg-config \
         libc-dev \
         libssl-dev \
+        libudev-dev \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /build
+# DOCKER-13: libudev-dev is REQUIRED, not optional. `cargo build --package
+# kasirmu-cloud` reaches libudev-sys 0.1.4 transitively, whose build.rs runs
+# `pkg-config --libs --cflags libudev` and panics (exit 101) when it is absent.
+# Omitting it is what kept this image unbuildable from 2026-09-13 to 09-18 --
+# every Northflank build died at `RUN cargo build ...` with
+# "The system library `libudev` required by crate `libudev-sys` was not found".
+# ops/docker/Dockerfile.server has always installed it; this file did not, and
+# nothing caught the divergence. scripts/verify-dockerfile-workspace.py compares
+# the two files' cache-priming manifests but NOT their apt package lists.
 
-# DOCKER-12: pin the toolchain to the one THIS image ships.
-#
-# The repo's rust-toolchain.toml declares `channel = "stable"`, and rustup gives
-# that file precedence over the image's default toolchain. Left alone, every
-# `cargo` call in this stage makes the rustup shim download the CURRENT stable
-# from static.rust-lang.org, so the image's pinned 1.88.0 is bypassed: the build
-# becomes non-deterministic, depends on an outbound download, and is silently
-# compiled by whatever "stable" happens to be that day. Measured in this exact
-# image (2026-09-18): with the toolchain file present, `rustc --version` prints
-# "info: syncing channel updates for 'stable-x86_64-unknown-linux-gnu'" and then
-# a download error. RUSTUP_TOOLCHAIN takes precedence over the toolchain file,
-# which pins it to the image's 1.88.0 -- the workspace's declared MSRV in
-# Cargo.toml -- with no download at all.
-ENV RUSTUP_TOOLCHAIN=1.88.0
+WORKDIR /build
 
 # Copy manifest files first so Docker can cache dependency downloads.
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./

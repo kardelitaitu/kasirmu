@@ -36,13 +36,6 @@ RUN apt-get update && \
 
 WORKDIR /build
 
-# DOCKER-12: pin the toolchain to the one THIS image ships. Same trap as
-# Dockerfile.unified -- the repo's rust-toolchain.toml declares
-# `channel = "stable"`, which rustup honours in preference to the image's
-# default, so cargo would download the current stable instead of using the
-# pinned 1.88.0. RUSTUP_TOOLCHAIN takes precedence over the toolchain file.
-ENV RUSTUP_TOOLCHAIN=1.88.0
-
 # Copy manifest files first so Docker can cache dependency downloads.
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates/kasirmu-core/Cargo.toml crates/kasirmu-core/
