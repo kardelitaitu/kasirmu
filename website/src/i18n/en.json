@@ -517,9 +517,9 @@
     },
     "gratis": {
       "title": "Free POS App for Warung, Cafes, and Shops",
-      "description": "Free-forever POS plan: one store, one register, 30-day history. Lightweight, easy, works offline — no credit card.",
+      "description": "Free-forever POS plan: one store, one register, 3-month history. Lightweight, easy, works offline — no credit card.",
       "h1": "Free POS, Forever",
-      "lede": "Start selling today without paying a cent. The kasir.mu Free plan gives you a lightweight, easy offline-first POS app — one store, one register, 30-day history.",
+      "lede": "Start selling today without paying a cent. The kasir.mu Free plan gives you a lightweight, easy offline-first POS app — one store, one register, 3-month history.",
       "points": [
         "Rp0 forever — no credit card, no trial that suddenly ends",
         "Lightweight: runs smoothly on phones, tablets, and old PCs",
@@ -527,7 +527,7 @@
         "Offline-first: keeps selling when the internet dies"
       ],
       "limitsTitle": "Free plan limits",
-      "limits": "One store, one register, 30-day history. Need more — multi-terminal, warehouses, scheduled reports? See Plus, Pro, and Premium.",
+      "limits": "One store, one register, 3-month history. Need more — multi-terminal, warehouses, scheduled reports? See Plus, Pro, and Premium.",
       "ctaPricing": "Compare all plans",
       "ctaDownload": "Download free",
       "faq": [
@@ -540,7 +540,7 @@
           "a": "Yes. Every kasir.mu plan, including free, runs 100% offline and syncs when you're back online."
         },
         {
-          "q": "What happens after the 30-day history?",
+          "q": "What happens after the 3-month history?",
           "a": "Older data is archived; upgrade to a paid plan for longer history and scheduled reports."
         }
       ]

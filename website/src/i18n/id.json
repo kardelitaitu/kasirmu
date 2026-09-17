@@ -521,9 +521,9 @@
     },
     "gratis": {
       "title": "Aplikasi Kasir Gratis untuk Warung, Kafe, dan Toko",
-      "description": "Paket kasir gratis selamanya: satu toko, satu register, riwayat 30 hari. Ringan, mudah dipakai, jalan offline — tanpa kartu kredit.",
+      "description": "Paket kasir gratis selamanya: satu toko, satu register, riwayat 3 bulan. Ringan, mudah dipakai, jalan offline — tanpa kartu kredit.",
       "h1": "Kasir Gratis, Selamanya",
-      "lede": "Mulai jualan hari ini tanpa bayar sepeser pun. Paket Gratis kasir.mu memberi Anda aplikasi kasir offline-first yang ringan dan mudah — satu toko, satu register, riwayat 30 hari.",
+      "lede": "Mulai jualan hari ini tanpa bayar sepeser pun. Paket Gratis kasir.mu memberi Anda aplikasi kasir offline-first yang ringan dan mudah — satu toko, satu register, riwayat 3 bulan.",
       "points": [
         "Rp0 selamanya — tanpa kartu kredit, tanpa masa trial yang tiba-tiba berakhir",
         "Ringan: berjalan mulus di HP, tablet, dan PC tua",
@@ -531,7 +531,7 @@
         "Offline-first: tetap jualan saat internet mati"
       ],
       "limitsTitle": "Batas paket Gratis",
-      "limits": "Satu toko, satu register, riwayat 30 hari. Butuh lebih — multi-terminal, gudang, laporan terjadwal? Lihat paket Plus, Pro, dan Premium.",
+      "limits": "Satu toko, satu register, riwayat 3 bulan. Butuh lebih — multi-terminal, gudang, laporan terjadwal? Lihat paket Plus, Pro, dan Premium.",
       "ctaPricing": "Lihat semua paket",
       "ctaDownload": "Unduh gratis",
       "faq": [
@@ -544,7 +544,7 @@
           "a": "Ya. Semua paket kasir.mu, termasuk yang gratis, berjalan 100% offline dan tersinkron saat koneksi kembali."
         },
         {
-          "q": "Apa yang terjadi setelah riwayat 30 hari?",
+          "q": "Apa yang terjadi setelah riwayat 3 bulan?",
           "a": "Data lama diarsipkan; upgrade ke paket berbayar untuk riwayat lebih panjang dan laporan terjadwal."
         }
       ]
@@ -703,7 +703,7 @@
         },
         {
           "title": "Gratis selamanya",
-          "description": "Satu toko, satu register, dan riwayat 30 hari — gratis, tanpa kartu."
+          "description": "Satu toko, satu register, dan riwayat 3 bulan — gratis, tanpa kartu."
         }
       ],
       "benefits": [
