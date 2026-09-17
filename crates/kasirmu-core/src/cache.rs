@@ -450,7 +450,7 @@ pub mod redis_cache {
 /// be silent: without the log a terminal quietly stops invalidating
 /// products, stops publishing negative-stock warnings, and serves stale
 /// rows until the TTL, while `is_healthy()` — sampled exactly once at
-/// startup (`apps/desktop-client/src/state.rs:331`) and never polled —
+/// startup (`apps/desktop-tauri/src/state.rs:331`) and never polled —
 /// keeps reporting whatever it saw at boot.
 ///
 /// Lives outside the `cache-redis` gate: it is generic over the guard, so

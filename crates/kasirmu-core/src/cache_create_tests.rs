@@ -4,7 +4,7 @@
 //! `RedisCache` behind it needs a server, but the decision to fall back
 //! to [`NoopCache`] happens at startup on real terminals, driven by the
 //! user-editable `redis.url` setting
-//! (`apps/desktop-client/src/state.rs` -> `platform_startup::init_cache`).
+//! (`apps/desktop-tauri/src/state.rs` -> `platform_startup::init_cache`).
 //!
 //! These tests deliberately use addresses that need no infrastructure:
 //! a refused port (127.0.0.1:1) and RFC 5737 TEST-NET-1 (192.0.2.1),

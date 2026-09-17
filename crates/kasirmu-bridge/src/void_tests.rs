@@ -1,5 +1,5 @@
 //! Unit tests for the void-sale command body (Wave-D test relocation:
-//! moved out of `apps/desktop-client/src/commands/void_tests.rs`).
+//! moved out of `apps/desktop-tauri/src/commands/void_tests.rs`).
 //!
 //! Mounted at the foot of `void.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the args DTOs directly. The desktop file

@@ -3,7 +3,7 @@
 //! boot resolution (Wave E / E2).
 //!
 //! Verbatim port of the command bodies from
-//! `apps/desktop-client/src/commands/workspaces.rs`: SQL, permission-gate
+//! `apps/desktop-tauri/src/commands/workspaces.rs`: SQL, permission-gate
 //! calls and their order, log messages and levels, guard placement, error
 //! strings and scope-filter behaviour are unchanged. The only rewrites are
 //! `state.*` -> `ctx.*` (`bridge_ctx()` seam), `AppError::` ->

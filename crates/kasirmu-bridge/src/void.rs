@@ -1,5 +1,5 @@
 //! Void sale command body (Wave D / D4a) — the tauri-free half of
-//! `apps/desktop-client/src/commands/void.rs`.
+//! `apps/desktop-tauri/src/commands/void.rs`.
 //!
 //! Delegates to `Store::void_sale` which handles the status transition,
 //! stock restoration, and audit logging inside a single transaction. The
