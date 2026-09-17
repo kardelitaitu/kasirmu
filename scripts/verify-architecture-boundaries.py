@@ -92,7 +92,7 @@ from typing import Any
 
 RULES = {
     "module-to-module": {"category": "cargo", "severity": "P1", "hint": "Move composition to an application/platform boundary or depend on a shared contract."},
-    "core-upward-dependency": {"category": "cargo", "severity": "P1", "hint": "Keep oz-core below business modules; move shared contracts/models to a lower layer."},
+    "core-upward-dependency": {"category": "cargo", "severity": "P1", "hint": "Keep kasirmu-core below business modules; move shared contracts/models to a lower layer."},
     "platform-to-business": {"category": "cargo", "severity": "P1", "hint": "Use platform-startup or an application composition root for business-module wiring."},
     "ui-direct-invoke": {"category": "ui", "severity": "P2", "hint": "Route Tauri IPC through ui/src/api or a documented infrastructure adapter."},
     "bridge-toolkit-purity": {"category": "renderer", "severity": "P1", "hint": "Keep crates/kasirmu-bridge toolkit-free (ADR #49): a tauri/gtk/webkit dependency or reference removes the headless seam a second renderer binds to."},
