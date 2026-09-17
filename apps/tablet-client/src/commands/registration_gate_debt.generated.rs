@@ -280,7 +280,7 @@ pub const DEBT_CEILING: usize = 88;
 /// on faith. This retires a REGISTERED command, which `scripts/retire-legacy-commands.py`
 /// refuses to do by design: it deletes unregistered leftovers, and a live door needs the
 /// call sites moved first.
-
+///
 /// Names that never resolve a session at all.
 pub const NO_SESSION_RESOLUTION: usize = 41;
 
