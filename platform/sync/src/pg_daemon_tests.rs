@@ -856,3 +856,42 @@ fn pg_daemon_status_clone() {
     assert_eq!(cloned.last_pulled, status.last_pulled);
     assert_eq!(cloned.pending_count, status.pending_count);
 }
+
+// ── SYNC-EW: the two promises `nudge` makes ───────────────────────
+//
+// Mirror of the pair in `daemon_tests.rs`. `pg_daemon.rs` documents "identical
+// semantics to `SyncDaemon::nudge`", so the same two properties are pinned here,
+// and this is the caller that `PgSyncDaemon::wakeup_handle` was added for.
+
+/// A `nudge()` before the daemon is listening must be STORED, not dropped.
+#[tokio::test]
+async fn nudge_while_stopped_stores_one_permit() {
+    let daemon = PgSyncDaemon::new();
+    daemon.nudge();
+
+    tokio::time::timeout(Duration::from_secs(2), daemon.wakeup_handle().notified())
+        .await
+        .expect("a nudge issued while stopped must be stored, not dropped");
+}
+
+/// Three nudges must leave exactly ONE pending permit — `Notify` does not queue.
+#[tokio::test]
+async fn nudge_coalesces_a_burst_into_one_permit() {
+    let daemon = PgSyncDaemon::new();
+    let handle = daemon.wakeup_handle();
+
+    daemon.nudge();
+    daemon.nudge();
+    daemon.nudge();
+
+    tokio::time::timeout(Duration::from_secs(2), handle.notified())
+        .await
+        .expect("the first permit of the burst must be observable");
+
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), handle.notified())
+            .await
+            .is_err(),
+        "three nudges must coalesce into one permit; a second permit means Notify queued"
+    );
+}

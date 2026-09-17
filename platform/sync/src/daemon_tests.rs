@@ -1638,3 +1638,49 @@ async fn daemon_migration_redirect_persists_an_unshaped_target_pin() {
     daemon.stop().await;
     tokio::time::sleep(Duration::from_millis(200)).await;
 }
+
+// ── SYNC-EW: the two promises `nudge` makes ───────────────────────
+//
+// `nudge`'s doc comment commits to two observable properties, and neither had a
+// test: a wakeup issued while the daemon is stopped is *stored*, and a burst
+// coalesces into a *single* permit. `wakeup_handle` exists to make both
+// observable — it was added with the feature and had no caller, so rustc
+// reported it as dead code in both daemons. These two tests are its callers.
+
+/// A `nudge()` before the daemon is listening must be STORED, not dropped — the
+/// documented "if the daemon is not running the notification is stored and
+/// consumed on the next `start`". A listener attached afterwards therefore finds
+/// the permit already set and completes without waiting.
+#[tokio::test]
+async fn nudge_while_stopped_stores_one_permit() {
+    let daemon = SyncDaemon::new();
+    daemon.nudge();
+
+    tokio::time::timeout(Duration::from_secs(2), daemon.wakeup_handle().notified())
+        .await
+        .expect("a nudge issued while stopped must be stored, not dropped");
+}
+
+/// Three nudges must leave exactly ONE pending permit, because `Notify` does not
+/// queue. The second `notified()` is the discriminator: if the burst had queued,
+/// it would complete immediately instead of waiting out the timeout.
+#[tokio::test]
+async fn nudge_coalesces_a_burst_into_one_permit() {
+    let daemon = SyncDaemon::new();
+    let handle = daemon.wakeup_handle();
+
+    daemon.nudge();
+    daemon.nudge();
+    daemon.nudge();
+
+    tokio::time::timeout(Duration::from_secs(2), handle.notified())
+        .await
+        .expect("the first permit of the burst must be observable");
+
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), handle.notified())
+            .await
+            .is_err(),
+        "three nudges must coalesce into one permit; a second permit means Notify queued"
+    );
+}
