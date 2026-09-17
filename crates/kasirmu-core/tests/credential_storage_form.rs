@@ -128,7 +128,7 @@ fn raw_delta_values(conn: &Connection, key: &str) -> Vec<String> {
 
 // -- Classification ---------------------------------------------------------
 
-/// Reimplementation of the PRIVATE `oz_crypto::looks_like_ciphertext`
+/// Reimplementation of the PRIVATE `kasirmu_crypto::looks_like_ciphertext`
 /// (`crates/kasirmu-crypto/src/lib.rs:311`), which this test cannot call. Kept here
 /// as a deliberate duplicate: a census having to copy a private heuristic in
 /// order to classify its own database is itself the evidence that no public

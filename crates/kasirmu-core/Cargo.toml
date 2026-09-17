@@ -29,7 +29,7 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
 argon2 = { workspace = true }
-oz-crypto = { workspace = true }
+kasirmu-crypto = { workspace = true }
 aes-gcm = { workspace = true }
 zstd = { workspace = true }
 aead = { workspace = true }

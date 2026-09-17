@@ -1660,7 +1660,7 @@ fn seed_bare_row(conn: &Connection, key: &str, value: &str) {
 
 /// A value with the exact shape of this crate's ciphertext — 64 URL-safe
 /// base64 characters decoding to 48 bytes, well past the `12 nonce + 16
-/// tag` floor that `oz_crypto`'s `looks_like_ciphertext` gate uses — which no
+/// tag` floor that `kasirmu_crypto`'s `looks_like_ciphertext` gate uses — which no
 /// key on any machine can decrypt, because every byte is zero so the
 /// AES-256-GCM tag check always fails. From the reader's side this is what a
 /// corrupted, truncated or tampered-with secret row looks like.
@@ -1674,12 +1674,12 @@ fn pinned_probe_values_are_the_two_shapes_this_path_cannot_tell_apart() {
     // "never encrypted" from "tampered". Used as a shape oracle only; the
     // smtp key has nothing to do with the five columns below.
     assert_eq!(
-        oz_crypto::decrypt_smtp_at_rest("sk-sync-legacy:0001").unwrap(),
+        kasirmu_crypto::decrypt_smtp_at_rest("sk-sync-legacy:0001").unwrap(),
         "sk-sync-legacy:0001",
         "the legacy sample must be a value the crate calls never-encrypted"
     );
     assert!(
-        oz_crypto::decrypt_smtp_at_rest(SHAPED_UNDECRYPTABLE).is_err(),
+        kasirmu_crypto::decrypt_smtp_at_rest(SHAPED_UNDECRYPTABLE).is_err(),
         "the pinned value must be one the crate itself would call tampered,          not a legacy row — which is precisely what the five typed getters          below fail to do"
     );
 }
@@ -1786,7 +1786,7 @@ fn known_hazard_sync_api_key_hands_back_shaped_undecryptable_bytes() {
     let conn = fresh();
     seed_bare_row(&conn, keys::SYNC_API_KEY, SHAPED_UNDECRYPTABLE);
     assert!(
-        oz_crypto::decrypt_sync_api_key(SHAPED_UNDECRYPTABLE).is_err(),
+        kasirmu_crypto::decrypt_sync_api_key(SHAPED_UNDECRYPTABLE).is_err(),
         "premise: the value must fail the very decrypt this getter calls"
     );
     assert_eq!(
@@ -1801,7 +1801,7 @@ fn known_hazard_sync_terminal_secret_hands_back_shaped_undecryptable_bytes() {
     let conn = fresh();
     seed_bare_row(&conn, keys::SYNC_TERMINAL_SECRET, SHAPED_UNDECRYPTABLE);
     assert!(
-        oz_crypto::decrypt_sync_terminal_secret(SHAPED_UNDECRYPTABLE).is_err(),
+        kasirmu_crypto::decrypt_sync_terminal_secret(SHAPED_UNDECRYPTABLE).is_err(),
         "premise: the value must fail the very decrypt this getter calls"
     );
     assert_eq!(
@@ -1816,7 +1816,7 @@ fn known_hazard_pg_sync_password_hands_back_shaped_undecryptable_bytes() {
     let conn = fresh();
     seed_bare_row(&conn, keys::PG_SYNC_PASSWORD, SHAPED_UNDECRYPTABLE);
     assert!(
-        oz_crypto::decrypt_pg_sync_password(SHAPED_UNDECRYPTABLE).is_err(),
+        kasirmu_crypto::decrypt_pg_sync_password(SHAPED_UNDECRYPTABLE).is_err(),
         "premise: the value must fail the very decrypt this getter calls"
     );
     assert_eq!(
@@ -1831,7 +1831,7 @@ fn known_hazard_rate_sync_api_key_hands_back_shaped_undecryptable_bytes() {
     let conn = fresh();
     seed_bare_row(&conn, keys::RATE_SYNC_API_KEY, SHAPED_UNDECRYPTABLE);
     assert!(
-        oz_crypto::decrypt_rate_api_key(SHAPED_UNDECRYPTABLE).is_err(),
+        kasirmu_crypto::decrypt_rate_api_key(SHAPED_UNDECRYPTABLE).is_err(),
         "premise: the value must fail the very decrypt this getter calls"
     );
     assert_eq!(
@@ -1846,7 +1846,7 @@ fn known_hazard_lan_server_psk_hands_back_shaped_undecryptable_bytes() {
     let conn = fresh();
     seed_bare_row(&conn, keys::LAN_SERVER_PSK, SHAPED_UNDECRYPTABLE);
     assert!(
-        oz_crypto::decrypt_lan_psk(SHAPED_UNDECRYPTABLE).is_err(),
+        kasirmu_crypto::decrypt_lan_psk(SHAPED_UNDECRYPTABLE).is_err(),
         "premise: the value must fail the very decrypt this getter calls"
     );
     assert_eq!(

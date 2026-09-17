@@ -538,7 +538,7 @@ fn sealed_in_another_lane(key: &str) -> bool {
     matches!(key, keys::LOCAL_API_SECRET | keys::SMTP_CONFIG)
 }
 
-/// A local restatement of the PRIVATE oz_crypto::looks_like_ciphertext, copied
+/// A local restatement of the PRIVATE kasirmu_crypto::looks_like_ciphertext, copied
 /// for the same reason the census copies it: there is no public discriminator to
 /// call, which is itself the finding. Used ONLY to split a FAILED decrypt into
 /// INVALID (it tried to be ciphertext) versus LEGACY-PLAINTEXT (it never was).
