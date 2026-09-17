@@ -1,6 +1,6 @@
 {
   "meta": {
-    "description": "Platform POS offline-first untuk kafe, restoran, dan ritel. Tetap berjalan tanpa internet, sinkron saat kembali online."
+    "description": "Aplikasi kasir offline-first yang ringan dan mudah untuk kafe, restoran, dan ritel. Gratis, jalan di Android, tablet, dan Windows walau tanpa internet."
   },
   "nav": {
     "home": "Beranda",
@@ -39,7 +39,7 @@
   "pageDesc": {
     "features": "Kasir offline-first: penjualan, shift, dan stok yang tetap berjalan tanpa koneksi sama sekali.",
     "pricing": "Lima paket — Gratis selamanya, Plus, Pro, Premium, dan Enterprise. Tahunan = 2 bulan gratis.",
-    "download": "Unduh kasir.mu untuk Windows. macOS, Linux, Android, dan iOS segera hadir.",
+    "download": "Unduh aplikasi kasir gratis untuk Windows — ringan dan mudah dipasang. Android dan tablet segera hadir.",
     "support": "Dapatkan bantuan kasir.mu — dukungan email dan jawaban untuk pertanyaan paling umum.",
     "login": "Masuk ke akun kasir.mu Anda hanya dengan email.",
     "account": "Lisensi, langganan, dan informasi penagihan kasir.mu Anda.",
@@ -117,8 +117,8 @@
     }
   },
   "hero": {
-    "title": "Fitur Kelas Enterprise, Tanpa Biaya Enterprise",
-    "subtitle": "Sistem POS kelas korporasi yang dapat diakses siapa saja. Tetap jualan saat internet mati dengan inti offline-first ultra-ringan, tanpa biaya per-fitur tersembunyi.",
+    "title": "Aplikasi Kasir yang Ringan, Mudah, dan Gratis",
+    "subtitle": "Sistem POS kelas korporasi yang tetap murah: jalan di Android, tablet, dan PC tua dengan inti offline-first ultra-ringan, tanpa biaya per-fitur tersembunyi.",
     "ctaPrimary": "Unduh Gratis",
     "ctaSecondary": "Lihat Harga",
     "carousel": {
@@ -139,7 +139,7 @@
     "subtitle": "Fondasi open-source yang andal, pembayaran teruji, dan alat keamanan tingkat pertama."
   },
   "features": {
-    "title": "Fitur Kelas Enterprise, Tanpa Biaya Enterprise",
+    "title": "Fitur Kasir yang Ringan dan Mudah, Tanpa Biaya Enterprise",
     "subtitle": "Fitur unggulan yang dirancang untuk transaksi super cepat, operasional tanpa henti meski offline, dan siap berkembang bersama bisnis Anda.",
     "items": [
       {
@@ -496,7 +496,7 @@
     },
     "minimarket": {
       "label": "Minimarket",
-      "title": "Kontrol stok untuk minimarket Anda",
+      "title": "Aplikasi Kasir dan Kontrol Stok untuk Minimarket",
       "tagline": "Gudang, multi-terminal, dan visibilitas stok real-time.",
       "tierAnchor": "pro",
       "ctaPrimary": "Lihat paket Pro",

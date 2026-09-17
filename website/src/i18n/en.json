@@ -1,6 +1,6 @@
 {
   "meta": {
-    "description": "The offline-first POS platform for cafes, restaurants, and retail. Works without internet, syncs when you're back online."
+    "description": "The lightweight, easy, free POS app for cafes, restaurants, and retail. Runs on Android, tablets, and Windows — keeps selling with no internet."
   },
   "nav": {
     "home": "Home",
@@ -39,7 +39,7 @@
   "pageDesc": {
     "features": "Offline-first point of sale: sales, shifts, and stock that keep working with zero connectivity.",
     "pricing": "Five plans — Free forever, Plus, Pro, Premium, and Enterprise. Yearly = 2 months free.",
-    "download": "Download kasir.mu for Windows. macOS, Linux, Android, and iOS are coming soon.",
+    "download": "Download the free POS app for Windows — lightweight and easy to install. Android and tablets are coming soon.",
     "support": "Get help with kasir.mu — email support and answers to the most common questions.",
     "login": "Sign in to your kasir.mu account with just your email.",
     "account": "Your kasir.mu license, subscription, and billing information.",
@@ -117,8 +117,8 @@
     }
   },
   "hero": {
-    "title": "Enterprise-Grade POS, Without the Enterprise Price",
-    "subtitle": "Corporate-grade POS accessible to everyone. Keep selling through outages with a blazing-fast offline-first core, with zero hidden per-feature fees.",
+    "title": "The Lightweight, Easy, Free POS",
+    "subtitle": "Corporate-grade POS that stays cheap: runs on Android, tablets, and old PCs with a blazing-fast offline-first core, with zero hidden per-feature fees.",
     "ctaPrimary": "Download free",
     "ctaSecondary": "See Pricing",
     "carousel": {
@@ -139,7 +139,7 @@
     "subtitle": "Reliable open-source foundations, battle-tested payments, and security-first tooling."
   },
   "features": {
-    "title": "Enterprise Features, Regular Subscription",
+    "title": "Lightweight, Easy POS Features, Regular Subscription",
     "subtitle": "Core capabilities engineered for zero-latency operations, uninterrupted offline uptime, and resilient business scale.",
     "items": [
       {
@@ -496,7 +496,7 @@
     },
     "minimarket": {
       "label": "Minimarkets",
-      "title": "Stock control for your minimarket",
+      "title": "POS App and Stock Control for Your Minimarket",
       "tagline": "Warehouses, multi-terminal, and live stock visibility.",
       "tierAnchor": "pro",
       "ctaPrimary": "See the Pro plan",
