@@ -78,7 +78,7 @@ next: deprecate legacy-psk-v1 once all KDS clients speak noise-psk-v1 | perf: N/
 //! # Example
 //!
 //! ```no_run
-//! use oz_lan::LanEventForwarder;
+//! use kasirmu_lan::LanEventForwarder;
 //!
 //! let forwarder = LanEventForwarder::default();
 //! ```
