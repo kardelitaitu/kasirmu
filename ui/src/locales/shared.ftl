@@ -246,7 +246,7 @@ locale-id = Bahasa Indonesia
 
 # Accessibility
 a11y-skip-to-content = Skip to main content
-# Shared right-click menu (frontend/shared/ContextMenu.tsx), rendered by 14
+# Shared right-click menu (components/ContextMenu.tsx), rendered by 14
 # surfaces. Its labels are resolved with requiredLocalized(), so a missing key
 # here shows the key rather than silently reverting to English.
 ctx-menu-aria = Context menu
