@@ -37,7 +37,7 @@ kasir.mu uses Tauri v2 to bridge Rust and a React/TypeScript front-end. The IPC 
 
 ├── apps/desktop-tauri/
 └── src/
-    ├── main.rs                      # thin entry point — calls oz_pos_lib::run()
+    ├── main.rs                      # thin entry point — calls kasirmu_app_lib::run()
     ├── lib.rs                       # the run() function: app setup + command registration
     └── commands/
         ├── mod.rs                   # pub use for each command module
@@ -45,7 +45,7 @@ kasir.mu uses Tauri v2 to bridge Rust and a React/TypeScript front-end. The IPC 
         ├── inventory.rs             # lookup_sku_scoped, adjust_stock_scoped
         ├── hardware.rs              # open_cash_drawer(_scoped), print_receipt(_scoped)
         ├── reports.rs               # get_daily_revenue_scoped, get_menu_engineering_scoped, …
-        └── …                        # ~47 modules total (currencies, exchange_rates,
+        └── …                        # ~64 modules total (currencies, exchange_rates,
                                      #   gift_cards, kds, license, audit, …). There is
                                      #   NO payments.rs — payment commands are split
                                      #   (e.g. void.rs, gift_cards.rs).
@@ -126,7 +126,7 @@ mod error;
 mod state;
 
 fn main() {
-    oz_pos_lib::run();
+    kasirmu_app_lib::run();
 }
 ```
 
@@ -307,4 +307,4 @@ export async function onBarcodeScan(
 
 ---
 
-> last audited 03-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat

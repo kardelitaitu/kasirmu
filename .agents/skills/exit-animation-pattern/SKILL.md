@@ -249,7 +249,7 @@ The `PosScreen` undo-bar uses `useRef` instead of `useEffect`-driven timer so it
 
 | Need | Reference | Why |
 |------|-----------|-----|
-| Duration | `var(--duration-200)` (CSS), `animDuration(200)` (JS) | They collapse to `0` under reduced-motion in `frontend/themes/tokens.css`. |
+| Duration | `var(--duration-200)` (CSS), `animDuration(200)` (JS) | They collapse to `0` under reduced-motion in `ui/src/theme/tokens.css`. |
 | Easing | `var(--ease-out)` | Project-wide standard; see [`ui-components`](../ui-components/SKILL.md) styling section. |
 | `pointer-events` | inline `none` (CSS) | No token needed. |
 | `clearTimeout` | browser built-in | No token. |
@@ -336,4 +336,4 @@ When the next polish pass lands, the contributor should be able to point at this
 5. **In-flight async dismiss handlers.** If the dismiss triggers an IPC call (`holdCart`, `pay` etc.), the in-flight promise may still resolve after the element unmounts. The IPC wrappers under `@/api/*` already handle this — don't add an additional guard inside the pattern.
 6. **React strict-mode double-mount.** React 18 strict mode mounts components twice in dev. Without unmount cleanup, the first timer survives the second mount and you see duplicate unmounts in dev only. Always clear on unmount.
 
-> last audited 03-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat

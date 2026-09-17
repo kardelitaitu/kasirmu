@@ -1,6 +1,6 @@
 ---
 name: rust-backend
-description: Rust & database standards for the kasir.mu framework — Money struct, rusqlite transactions, thiserror/anyhow, clippy, doc comments. Use when adding or modifying Rust code in any `oz-*` crate.
+description: Rust & database standards for the kasir.mu framework — Money struct, rusqlite transactions, thiserror/anyhow, clippy, doc comments. Use when adding or modifying Rust code in any `kasirmu-*` crate.
 ---
 
 <!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — test convention corrected: tests live in sibling *_tests.rs files wired via #[cfg(test)] #[path = ...] mod tests, never inline #[cfg(test)] mod tests { ... }; front-end formatter corrected format_minor_units → formatMoney in ui/src/types/domain.ts (the former exists nowhere); pooling mention removed from pitfall #5 to match the single Arc<Mutex<Connection>> runtime) · verified this pass: foundation/src/money.rs signatures (Money{minor_units:i64, currency:Currency}, Currency(pub [u8;3]), from_major→Option, checked_add→Option, zero) all match the skill's sample; 90 sibling *_tests.rs files under crates/kasirmu-core/src alone; formatMoney present in ui/src/types/domain.ts · prior: 2026-08-31 docs-auditor rev (F1 migrations path, F2 always-compiled mocks, F3 no pooling) · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-08-31] · docs-auditor · status: ACCURATE (F1-F3 repaired) · FIXED 31-08: F1 migrations path root migrations/ -> crates/kasirmu-core/migrations/; F2 mocks are a plain pub mod always compiled (no #[cfg(test)]/mock-feature gate — matches hal-drivers); F3 removed the r2d2_sqlite/deadpool-sqlite pooling directive (neither is in the workspace; the runtime shares a single Arc<Mutex<Connection>>) · verified accurate: Money/Currency struct shape matches foundation/src/money.rs (minor_units:i64, currency:Currency, Currency(pub [u8;3])), i64-minor-units + thiserror conventions hold -->
@@ -12,7 +12,7 @@ The kasir.mu framework is built on Rust. This skill enforces the project's codin
 
 ## When to use
 
-- Adding or modifying code in any `oz-*` crate (`kasirmu-core`, `kasirmu-hal`, `kasirmu-lua`, `kasirmu-security`, `kasirmu-payment`, `kasirmu-reporting`, `kasirmu-logging`, `kasirmu-cli`).
+- Adding or modifying code in any `kasirmu-*` crate (`kasirmu-core`, `kasirmu-hal`, `kasirmu-lua`, `kasirmu-security`, `kasirmu-payment`, `kasirmu-reporting`, `kasirmu-logging`, `kasirmu-cli`).
 - Writing a new module, struct, or public function in Rust.
 - Working with the `Money` struct, currency codes, or pricing.
 - Writing or reviewing SQL migrations and `rusqlite` calls.
@@ -267,4 +267,4 @@ cargo test --workspace --all-features
 
 ---
 
-> last audited 03-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat

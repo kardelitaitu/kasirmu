@@ -1,6 +1,6 @@
 ---
 name: tdd
-description: Test-driven development workflow for kasir.mu — the 7-phase loop (Analyze → Find Weaknesses → Red/Green/Refactor → Verify → Journal → Update Docs → Commit), the fast TDD loop tooling (scripts/test-tdd.sh, [profile.tdd], nextest), and per-layer testing conventions. Use when fixing a bug, adding a feature test-first, or running a TDD cycle in any oz-* crate, platform/*, modules/*, app, or ui/.
+description: Test-driven development workflow for kasir.mu — the 7-phase loop (Analyze → Find Weaknesses → Red/Green/Refactor → Verify → Journal → Update Docs → Commit), the fast TDD loop tooling (scripts/test-tdd.sh, [profile.tdd], nextest), and per-layer testing conventions. Use when fixing a bug, adding a feature test-first, or running a TDD cycle in any kasirmu-* crate, platform/*, modules/*, app, or ui/.
 ---
 
 <!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — Rust test convention corrected in Phase 3 and the per-layer table: unit tests live in sibling *_tests.rs files wired via #[cfg(test)] #[path = ...] mod tests (never inline in the production file — AGENTS.md rule); UI bundle names corrected en.ftl/id.ftl → per-feature <feature>.ftl/<feature>.id.ftl; push rule softened to match AGENTS.md (never push without an explicit direct user order — not "refuse even then"); 'audit/ numbered findings' reference removed (no such dir); pre-commit gate list updated to the six core gates + Go gate) · verified this pass: [profile.tdd] in workspace Cargo.toml, scripts/{test-tdd,test-changed,test-ui-changed,wtree-guard}.sh + scan-unwrap-panic.py, docs/guides/{api-reference,user-guide}.md, JOURNAL.md all exist -->
@@ -43,7 +43,7 @@ Not for: pure docs, dependency bumps, or mechanical renames with no behavior cha
 
 Understand the current state and pick the smallest valuable slice.
 
-1. **Read the layer skill first** — `rust-backend` (oz-* crates), `ui-components` (React/TS), `tauri-ipc` (commands + `pos.ts`), `hal-drivers` (hardware). The skill names the conventions the code must follow.
+1. **Read the layer skill first** — `rust-backend` (kasirmu-* crates), `ui-components` (React/TS), `tauri-ipc` (commands + `pos.ts`), `hal-drivers` (hardware). The skill names the conventions the code must follow.
 2. **Read the relevant code** — the module, its existing tests, and its callers. Note what is *not* tested yet.
 3. **Scope the slice** — one behavior, one error path, one invariant. Write it down as a sentence: *"When X happens, the system must Y."*
 
@@ -149,7 +149,7 @@ Small, focused, well-described — while context is fresh.
 - Branch naming: `feat/<name>`, `fix/<name>`, `test/<name>`, `refactor/<name>`, `docs/<name>`, `chore/<name>`.
 - Conventional Commits: `fix(sync): quarantine poison remote items after retry budget` — summary ≤ 72 chars, imperative mood, body explains *why*.
 - One behavior per commit. The commit is the unit of review and bisect.
-- The `.githooks/pre-commit` hook runs automatically if `core.hooksPath` is set — don't bypass with `--no-verify`; fix the issue instead. **Source of truth is the hook itself: `grep -n '^# ──' .githooks/pre-commit`, and `AGENTS.md` enumerates every step with its rationale.** As of 0.0.37 there are seven: LF normalization, staged bundle parity, FTL dedupe, migration column-type lint, PG drift guard, Go, and FTL orphan lint (step 7, fires only when a `.ftl` is staged). cargo fmt was a pre-commit step until 2026-09-13, when it was removed — the step ran `cargo fmt --all`, the whole workspace, so under concurrent agents it reformatted every other session's in-flight `.rs` files in the working tree; formatting is now check-only (`cargo fmt --all -- --check`) in pre-push/CI/`check.sh`/`release.sh`. Heavy UI typecheck and Vitest i18n run under pre-push (`scripts/run-pre-push.py`) and CI. `scripts/verify-agents-mirrors.py` polices `AGENTS.md` and its mirrors against the hook, so a restated count that disagrees is a red build.
+- The `.githooks/pre-commit` hook runs automatically if `core.hooksPath` is set — don't bypass with `--no-verify`; fix the issue instead. **Source of truth is the hook itself: `grep -n '^# ──' .githooks/pre-commit`, and `AGENTS.md` enumerates every step with its rationale.** As of 0.0.39 there are seven: LF normalization, staged bundle parity, FTL dedupe, migration column-type lint, PG drift guard, Go, and FTL orphan lint (step 7, fires only when a `.ftl` is staged). cargo fmt was a pre-commit step until 2026-09-13, when it was removed — the step ran `cargo fmt --all`, the whole workspace, so under concurrent agents it reformatted every other session's in-flight `.rs` files in the working tree; formatting is now check-only (`cargo fmt --all -- --check`) in pre-push/CI/`check.sh`/`release.sh`. Heavy UI typecheck and Vitest i18n run under pre-push (`scripts/run-pre-push.py`) and CI. `scripts/verify-agents-mirrors.py` polices `AGENTS.md` and its mirrors against the hook, so a restated count that disagrees is a red build.
 - **Never run `git push` without an explicit, direct user order.** The default end state is a local commit plus a report; the human pushes.
 
 ---
@@ -228,7 +228,7 @@ npm run check:all            # lint → typecheck → test → i18n → E2E (Doc
 
 | Layer | Test location | Conventions |
 |---|---|---|
-| Rust crate (`oz-*`, `platform/*`, `modules/*`) | sibling `*_tests.rs` per module, wired via `#[cfg(test)] #[path = ...] mod tests;` | Every new module needs ≥ 1 unit test (AGENTS.md). Tests never live inline in production files. Tests may use `unwrap()`/`expect()` freely. DB tests use transactions and assert atomicity (rollback on error). |
+| Rust crate (`kasirmu-*`, `platform/*`, `modules/*`) | sibling `*_tests.rs` per module, wired via `#[cfg(test)] #[path = ...] mod tests;` | Every new module needs ≥ 1 unit test (AGENTS.md). Tests never live inline in production files. Tests may use `unwrap()`/`expect()` freely. DB tests use transactions and assert atomicity (rollback on error). |
 | HAL driver | `crates/kasirmu-hal/src/drivers/mock.rs` | Every driver needs a **mock** — required by the coding standard (`AGENTS.md` → *Database & Hardware* → **HAL Drivers**), enforced by review only — no CI job, no hook step and no checker under `scripts/` looks for it, so an unmocked driver reaches main and the first person to run it on a machine without that hardware finds out. The mock is also the harness: tests and hardware-free dev machines can only exercise a driver through it. |
 | Tauri command | sibling `*_tests.rs` in the commands module + IPC contract tests in `ui/src/__tests__/` (the `api-*-contract.test.ts` files) | `invoke` calls go through `ui/src/api/`; contract tests pin the wire shape. |
 | React component/hook | `ui/src/__tests__/` | One test file per component/hook. Use `<Localized>` ids that exist in both the English `.ftl` and the `.id.ftl` bundle for the feature (bundle-parity gate fails otherwise). |
@@ -264,4 +264,4 @@ npm run check:all            # lint → typecheck → test → i18n → E2E (Doc
 
 ---
 
-> last audited 03-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat

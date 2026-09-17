@@ -27,9 +27,9 @@ kasir.mu is a multi-crate Cargo workspace with a Tauri front-end, a strict style
 |---|------|-----|
 | 1 | **Work on the currently active branch. Never create or switch branches** unless the user explicitly orders it. | Repo policy (AGENTS.md). When a branch name is genuinely requested, use `feat/<name>`, `fix/<name>`, `docs/<name>`, `chore/<name>`, `test/<name>`, `refactor/<name>`. |
 | 2 | **Commit messages follow Conventional Commits.** | Auto-generated changelogs, semantic versioning. |
-| 3 | **PRs pass CI before merge.** | `dev-ci.yml`'s **ten** jobs: `changes`, `website`, `cargo-check`, `cargo-nextest`, `ui-test`, `i18n`, `ci-docs-drift`, `static-gates`, `release-readiness`, `northflank-deploy`. Derive rather than restate: `awk '/^jobs:/{f=1;next} /^[^[:space:]]/{f=0} f && /^  [a-z][a-z0-9_-]*:$/{gsub(/[: ]/,"");print}' .github/workflows/dev-ci.yml`. **Do not use a bare two-space key grep** — it also returns `pull_request`, `workflow_dispatch` and `run` as if they were jobs, because the `on:` block is indented the same way. This cell listed four and went stale as the rest were restored; `ci-docs-drift` is advisory and `northflank-deploy` does **not** depend on it. |
+| 3 | **PRs pass CI before merge.** | `dev-ci.yml`'s **eleven** jobs: `changes`, `website`, `cargo-check`, `cargo-nextest`, `release-bridge-test`, `ui-test`, `i18n`, `ci-docs-drift`, `static-gates`, `release-readiness`, `northflank-deploy`. Derive rather than restate: `awk '/^jobs:/{f=1;next} /^[^[:space:]]/{f=0} f && /^  [a-z][a-z0-9_-]*:$/{gsub(/[: ]/,"");print}' .github/workflows/dev-ci.yml`. **Do not use a bare two-space key grep** — it also returns `pull_request`, `workflow_dispatch` and `run` as if they were jobs, because the `on:` block is indented the same way. This cell listed four and went stale as the rest were restored; `ci-docs-drift` is advisory and `northflank-deploy` does **not** depend on it. |
 | 4 | **Never commit `.env`, secrets, or SQLite database files.** | PCI-DSS, basic hygiene. |
-| 5 | **One crate per `oz-*` responsibility.** | Compile-time boundaries, fast incremental builds. |
+| 5 | **One crate per `kasirmu-*` responsibility.** | Compile-time boundaries, fast incremental builds. |
 
 ---
 
@@ -82,7 +82,8 @@ oz-pos/
 │   ├── kasirmu-reporting/           # analytics + CSV export
 │   ├── kasirmu-logging/             # structured logging
 │   └── kasirmu-cli/                 # migrations, backup, export CLI
-│   (also: kasirmu-api, kasirmu-crypto, kasirmu-plugin, kasirmu-notification, kasirmu-media — globbed via crates/*)
+│   (also: kasirmu-api, kasirmu-bridge, kasirmu-crypto, kasirmu-lan, kasirmu-local-api, kasirmu-media,
+│    kasirmu-notification, kasirmu-plugin, and qris-core — globbed via crates/*)
 ├── apps/desktop-tauri/        # the desktop shell
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
@@ -107,8 +108,9 @@ oz-pos/
 │       └── _done/              # finished specs
 ├── .github/
 │   └── workflows/
-│       ├── dev-ci.yml          # the ONE active workflow
-│       └── *.yml.bak           # dormant reference workflows (ci, security, release, deploy, …)
+│       ├── dev-ci.yml          # active: PR + push to main + manual dispatch
+│       ├── release.yml         # active: v* tag → signed desktop installers
+│       └── attic/              # dormant *.yml.bak references (ci, security, deploy, …)
 └── scripts/                    # local dev scripts (PowerShell + bash)
 ```
 
@@ -117,16 +119,16 @@ oz-pos/
 ## Scaffolding a new crate
 
 ```bash
-# from the crates/ directory — crate names carry the oz- prefix
+# from the crates/ directory — crate names carry the kasirmu- prefix
 cd crates
-cargo new --lib oz-<name>
+cargo new --lib kasirmu-<name>
 ```
 
 ```toml
-# crates/<name>/Cargo.toml  (name the package "oz-<name>")
+# crates/<name>/Cargo.toml  (name the package "kasirmu-<name>")
 
 [package]
-name = "oz-<name>"
+name = "kasirmu-<name>"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -171,7 +173,7 @@ subdirectory is a Cargo crate.
 - Cargo rejects a manifest that has both `[lints] workspace = true` and a local `[lints.rust]` override, so a crate-level need for a different lint level must use an inner attribute in `lib.rs` (as `#![deny(unsafe_code)]` does).
 - `#![deny(unsafe_code)]` unless the crate is `kasirmu-hal` (drivers may need `unsafe` for FFI). Even then, wrap `unsafe` blocks with `// SAFETY:` comments.
 - Each crate has a `README.md` with a one-paragraph summary, public API overview, and example.
-- The crate's `mod.rs` re-exports the public surface so users can `use oz_<name>::Type;`.
+- The crate's `mod.rs` re-exports the public surface so users can `use kasirmu_<name>::Type;`.
 
 ---
 
@@ -232,7 +234,7 @@ chore: bump tauri to v2.1 and refresh lockfile
 
 ## CI pipeline
 
-The **single active workflow** is `.github/workflows/dev-ci.yml` ("Dev CI"). It runs on pull requests targeting `main` and on manual `workflow_dispatch`. Every other workflow file under `.github/workflows/` is a dormant `*.yml.bak` reference (ci, security, release, deploy, nightly, …) — do not treat them as active.
+There are **two active workflows**: `.github/workflows/dev-ci.yml` ("Dev CI") and `.github/workflows/release.yml` (a `v*` tag → signed desktop installers and updater manifests). `dev-ci.yml` runs on pull requests targeting `main`, **on push to `main`**, and on manual `workflow_dispatch`; `release.yml` fires only on `v*` tags. Everything else is dormant, and it lives one level down: the retired references are in `.github/workflows/attic/` as `*.yml.bak` (ci, security, deploy, nightly, …) — do not treat those as active.
 
 ```yaml
 name: Dev CI
@@ -256,7 +258,7 @@ Jobs (all on `ubuntu-latest`, Node pinned to **24**):
 | `cargo-check` | Installs Tauri's Linux system libs, creates the frontend build-output stubs (the `ui` dist folders) for the Tauri macro, then `cargo check --workspace --all-targets --all-features` with sccache + Swatinem/rust-cache. |
 | `cargo-nextest` | Same environment plus a `postgres:17-alpine` service (`OZ_TEST_PG_URL`), then `cargo nextest run --workspace --all-features`. |
 | `ui-test` | `ui/` npm ci → `npm test` (Vitest suite). |
-| `northflank-deploy` | Needs **seven** jobs — `changes, website, cargo-check, cargo-nextest, ui-test, i18n, static-gates` — so it excludes `ci-docs-drift` (advisory by design) and `release-readiness` (unexplained; see `docs/plans/0.0.36-backlog.md`). Triggers on **`workflow_dispatch` only in practice**: the `if:` at `dev-ci.yml:653` still carries a `github.event_name == 'push'` branch, but the workflow has no push trigger, so that half is dead code the file's own comment at L647 admits to. Calls the Northflank API; skips gracefully without `NORTHFLANK_API_TOKEN`. |
+| `northflank-deploy` | Needs **seven** jobs — `changes, website, cargo-check, cargo-nextest, ui-test, i18n, static-gates` — so it excludes `ci-docs-drift` (advisory by design) and `release-readiness` (unexplained; see `docs/plans/0.0.36-backlog.md`), and `release-bridge-test` (push-only). Reached by **both** entry points, not dispatch alone: `on.push.branches: [main]` is declared at `dev-ci.yml:6-7`, so a merge to `main` runs this workflow and the `if:` (now at `dev-ci.yml:722`, gated on `github.ref == 'refs/heads/main'`) deploys it. The file's own comment says the earlier “workflow_dispatch is the only non-PR event” claim was false. `workflow_dispatch` declares no branch filter, which is exactly why the `if:` gates on the ref. Calls the Northflank API; skips gracefully without `NORTHFLANK_API_TOKEN`. |
 
 **Rules:**
 - `RUSTFLAGS: -D warnings` means warnings fail the workflow even where no explicit clippy job runs.
@@ -357,7 +359,7 @@ Drafts go straight into `_active/` (there is no `_template/` directory). Specs m
 
 ## Common pitfalls
 
-1. **Adding a new crate to the wrong place** (e.g., `src/` instead of `crates/`). The workspace `members` list must include it, and it should follow the `oz-<name>` naming.
+1. **Adding a new crate to the wrong place** (e.g., `src/` instead of `crates/`). The workspace `members` list must include it, and it should follow the `kasirmu-<name>` naming.
 2. **Adding a per-crate `Cargo.lock`.** The workspace keeps one root lockfile, committed. Only the standalone `tools/fuzz/` workspace has its own (ignored).
 3. **Using `git commit --no-verify`** to skip pre-commit hooks. Fix the issue, don't bypass it.
 4. **Renaming a branch after pushing.** The PR link changes, CI re-runs needlessly. Pick the name right the first time.
@@ -380,4 +382,4 @@ Drafts go straight into `_active/` (there is no `_template/` directory). Specs m
 
 ---
 
-> last audited 07-09-26 by skill-drift-guard
+> last audited 18-09-26 by Budak-Korporat

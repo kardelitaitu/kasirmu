@@ -305,7 +305,7 @@ Follow the design language's **Before · Feedback · After** contract: the contr
 
 ## Testing
 
-Component tests live in `ui/src/__tests__/` as **flat** `<Component>.test.tsx` files (417+ files, e.g. `CartScreen.test.tsx`, `PaymentModal.test.tsx`). Shared render helpers are in `ui/src/__tests__/test-utils/render.tsx`:
+Component tests live in `ui/src/__tests__/` as **flat** `<Component>.test.tsx` files (297 files, plus 255 `.test.ts`, e.g. `CartScreen.test.tsx`, `PaymentModal.test.tsx`). Shared render helpers are in `ui/src/__tests__/test-utils/render.tsx`:
 
 | Helper | When |
 |---|---|
@@ -314,7 +314,7 @@ Component tests live in `ui/src/__tests__/` as **flat** `<Component>.test.tsx` f
 | `renderWithProvidersSync(ui, ...ftl)` / `renderWithProviders(ui, ...ftl)` | Same, plus Brand/Theme/Toast/Zoom providers. |
 | `rerenderWithProviders(result, ui, ...ftl)` | Re-render while keeping the provider stack intact. |
 | `renderInAct` / `renderHookInAct` (`ui/src/test-utils/renderInAct.ts`) | Direct async-act boundary; also for isolated hook tests. |
-| `withFluent(ui, ...ftl)` (`@/locales/test-utils`) | Wrap an element in Fluent providers only. |
+| `withFluent(ui, ...ftl)` (`@/i18n/test-utils`) | Wrap an element in Fluent providers only. |
 
 FTL bundles are imported raw and passed in: `import salesFtl from '@/locales/sales.ftl?raw';`
 
@@ -366,11 +366,11 @@ ui/
     ├── contexts/                 # app-wide providers (SettingsContext, CurrencyContext, WorkspaceContext, …)
     ├── hooks/                    # cross-feature hooks
     ├── i18n/                     # LocaleContext, locale registration (index.ts)
-    ├── locales/                  # per-feature bundles: sales.ftl, sales.id.ftl, shared.ftl, bundles.ftl, …
+    │                           # (the .ftl corpus lives OUTSIDE ui/ at shared-ui/locales/;
+    │                           #  `@/locales/...` is aliased there by ui/vite.config.ts)
     ├── types/
     │   └── domain.ts             # CartId, Sku, Money, AppError, formatMoney
-    ├── frontend/
-    │   └── themes/               # tokens.css (source of truth), components.css, reset.css, responsive.css
+    ├── theme/                   # tokens.css (source of truth), components.css, reset.css, responsive.css, fonts.css
     ├── utils/
     │   └── logged-invoke.ts      # invoke wrapper with timing/telemetry
     └── __tests__/                # flat <Component>.test.tsx + test-utils/
@@ -393,4 +393,4 @@ ui/
 
 ---
 
-> last audited 03-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat

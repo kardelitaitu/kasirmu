@@ -53,7 +53,7 @@ crates/kasirmu-hal/
     ├── registry.rs             # DriverRegistry + discovery
     ├── transport/
     │   ├── usb.rs
-    │   ├── bluetooth.rs
+    │   ├── tcp.rs
     │   └── serial.rs           # platform-conditional
     └── drivers/                # transport-named, NOT vendor-named
         ├── mod.rs
@@ -390,4 +390,4 @@ async fn sale_completes_after_scan() {
 
 ---
 
-> last audited 03-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat

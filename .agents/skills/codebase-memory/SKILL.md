@@ -100,8 +100,8 @@ const r = await tools.mcp__cbm__search_graph({
 | Fact | Value |
 |---|---|
 | Project name to pass | `oz-pos` |
-| Root path | `C:/dev/ozpos/0.0.35/oz-pos` |
-| Indexed branch | `0.0.37` |
+| Root path | `C:/dev/ozpos` — resolve it with `git rev-parse --show-toplevel`; the checkout is multi-root, so never hardcode a versioned subpath |
+| Indexed branch | `0.0.39` |
 | Nodes / edges | 47,002 / 238,859 |
 | Node labels / edge types | 19 / 26 (top edges: USAGE 99,400 · CALLS 56,009 · DEFINES 44,167) |
 | File nodes | 2,998 — TypeScript 1,093, Rust 967, CSS 132, Go 72, Python 51, TOML 46, Bash 44, SQL 44, YAML 24, JavaScript 8 |
@@ -288,7 +288,7 @@ await tools.mcp__cbm__detect_changes({ project: 'oz-pos', format: 'json' });
 
 Measured here: `base: main`, `changed_files: 951` — because this branch is a long-lived
 release branch, not a feature diff. `detect_changes` answers "what does this branch
-touch relative to main", which on `0.0.37` is far too wide to be a per-change impact
+touch relative to main", which on `0.0.39` is far too wide to be a per-change impact
 set. For a single change, scope it yourself: `trace_path(direction: 'inbound')` on the
 symbols you edited.
 
@@ -613,7 +613,7 @@ answer changed under a file that had already quoted the old one.
 
 `.agents/skills/skill-drift-guard/scripts/detect.sh` scans every
 `.agents/skills/*/SKILL.md`, including this one: referenced paths must exist, every
-`oz-*` token must resolve to a workspace crate, every Fluent id a code example names
+`kasirmu-*` token must resolve to a workspace crate, every Fluent id a code example names
 must exist in the locale bundles, and the footer below must stay a real DD-MM-YY within
 30 days.
 The measured facts in this file (node counts, totals, latencies, error strings) are
@@ -623,4 +623,4 @@ in "Mandatory first two calls" before repeating any of them to someone else.
 
 ---
 
-> last audited 08-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat

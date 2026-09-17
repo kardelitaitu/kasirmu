@@ -74,7 +74,7 @@ for skill in .agents/skills/*/SKILL.md; do
       http*|https*|file://*) continue ;;
     esac
     # skip regex-truncation artifacts: the extractor has no notion of a glob
-    # or an ellipsis, so `crates/oz-*` yields `crates/oz-` and prose
+    # or an ellipsis, so `crates/kasirmu-*` yields `crates/kasirmu-` and prose
     # `bash scripts/...` yields `scripts/...`. A real path never ends in
     # `-`, `.` or an ellipsis.
     case "$path" in
@@ -95,13 +95,13 @@ done
 ```bash
 # List all crates the skills claim exist
 for skill in .agents/skills/*/SKILL.md; do
-  grep -oE 'oz-[a-z-]+' "$skill" | sort -u
+  grep -oE 'kasirmu-[a-z-]+' "$skill" | sort -u
 done | sort -u > /tmp/skills-claim.txt
 
 # List all crates actually in the workspace
 # (listed from the crates/ directory itself, so this snippet does not
 #  carry a literal workspace glob that Check 1 would flag)
-ls crates | grep '^oz-' | sed 's|^|crates/|' > /tmp/workspace-has.txt
+ls crates | grep '^kasirmu-' | sed 's|^|crates/|' > /tmp/workspace-has.txt
 
 diff /tmp/skills-claim.txt /tmp/workspace-has.txt
 ```
@@ -508,4 +508,4 @@ The drift guard should be self-extending: every discovery becomes a new check, s
 
 ---
 
-> last audited 07-09-26 by skill-drift-guard
+> last audited 18-09-26 by Budak-Korporat

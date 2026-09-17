@@ -23,12 +23,12 @@ This skill defines the standardized workflow for opening new pull requests again
 
 | # | Rule | Why |
 |---|------|-----|
-| 1 | **Title format: `<branch_name> <summarized title>`.** | Must always prefix with the current branch name (e.g. `0.0.37 fix(ci): repair Trivy SARIF upload, KDS E2E tests...`). |
+| 1 | **Title format: `<branch_name> <summarized title>`.** | Must always prefix with the current branch name (e.g. `0.0.39 fix(ci): repair Trivy SARIF upload, KDS E2E tests...`). |
 | 2 | **Comprehensive descriptions from commit history.** | Always inspect the last 50 to 100 commits (`git log -n 100 --oneline` or `git log origin/main..HEAD --oneline`) and summarize key changes grouped by domain. |
 | 3 | **Base branch is always `main`.** | All PRs in kasir.mu target `main` unless the user explicitly specifies another target. PRs are opened **from the current active branch only** — the repo policy forbids creating or switching branches. |
 | 4 | **Never `git push` without explicit user permission.** | Before pushing local commits or branch to remote, you MUST present the plan to the user and obtain explicit push authorization. |
 | 5 | **Local verification first.** | Ensure relevant tests (`cargo test`, `npm run typecheck`, `scripts/lint-i18n.sh`) and pre-commit gates pass before creating the PR. |
-| 6 | **Version is locked at `0.0.37`.** | Never bump or change version numbers in manifest files. |
+| 6 | **Version is locked at `0.0.39`.** | Never bump or change version numbers in manifest files. |
 
 ---
 
@@ -83,7 +83,7 @@ git diff origin/main..HEAD --stat
 ```
 
 Categorize the findings into the following domains:
-- **Rust Backend:** Changes across the `oz-*` crates under `crates/`, `apps/desktop-tauri/src/commands/`, `apps/cloud-server/`, database migrations.
+- **Rust Backend:** Changes across the `kasirmu-*` crates under `crates/`, `apps/desktop-tauri/src/commands/`, `apps/cloud-server/`, database migrations.
 - **Frontend / UI:** Changes in `ui/src/features/`, `ui/src/components/`, styles, React state, or `@fluent/react` translations (`.ftl`).
 - **CI / DevOps & Infrastructure:** Changes in `.github/workflows/`, `scripts/`, Dockerfiles, or security scanning configs.
 - **Documentation & Architecture:** Changes in `docs/`, `AGENTS.md`, or `.agents/skills/`.
@@ -96,9 +96,9 @@ Categorize the findings into the following domains:
 Format: `<branch_name> <type>(<scope>): <summary>`
 
 Examples:
-- `0.0.37 fix(ci): repair Trivy SARIF upload, KDS E2E tests, tablet touch targets, and CI docs drift`
-- `0.0.37 feat(payment): add QRIS payment processor and terminal fallback`
-- `0.0.37 docs(agents): revise ui-components skill with design-language reference`
+- `0.0.39 fix(ci): repair Trivy SARIF upload, KDS E2E tests, tablet touch targets, and CI docs drift`
+- `0.0.39 feat(payment): add QRIS payment processor and terminal fallback`
+- `0.0.39 docs(agents): revise ui-components skill with design-language reference`
 
 #### 2. Body Structure (`pr_body.md`)
 Create a markdown file (e.g. `pr_body.md` at repo root) containing structured sections:
@@ -204,4 +204,4 @@ gh pr checks --watch --fail-fast -i 30
 | Update existing PR body | `gh pr edit <PR_NUMBER> --body-file pr_body.md` |
 | Check PR CI status | `gh pr checks <PR_NUMBER>` |
 
-> last audited 03-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat

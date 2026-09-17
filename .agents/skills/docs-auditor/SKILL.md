@@ -257,7 +257,7 @@ Use fast local search and file reads first. Run the narrowest relevant validatio
 
 When a truth anchor belongs to a domain covered by another skill:
 
-- **`rust-backend`** — for Money struct usage, transaction patterns, error types, `oz-*` crate conventions
+- **`rust-backend`** — for Money struct usage, transaction patterns, error types, `kasirmu-*` crate conventions
 - **`ui-components`** — for React component props, ARIA, Fluent IDs
 - **`tauri-ipc`** — for Tauri command names, `#[tauri::command]` signatures, `ui/src/api/` wrappers
 - **`hal-drivers`** — for device driver trait impls, mock coverage (`crates/kasirmu-hal/src/drivers/mock.rs`)
@@ -377,4 +377,4 @@ Two anchors verified, one drift found, one-line patch — that is the whole loop
 
 ---
 
-> last audited 08-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat

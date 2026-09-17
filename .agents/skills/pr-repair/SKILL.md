@@ -28,11 +28,11 @@ This skill defines the standardized, disciplined workflow for diagnosing, reprod
 | 2 | **Reproduce locally in isolation.** | Reproduce the failing test or check locally using the smallest possible command before writing fixes. |
 | 3 | **Minimal surgical fixes.** | Address the root cause. Never delete assertions, skip tests, widen tolerances, or suppress linters unless the test was demonstrably testing an obsolete specification. |
 | 4 | **Maintain architectural standards.** | Money values stay in `i64` minor units (`Money`), database writes in `rusqlite` transactions, UI text in `@fluent/react` via `<Localized>`, and Tauri IPC routed through `ui/src/api/`. |
-| 5 | **Version is locked at `0.0.37`.** | Never modify the version number in `Cargo.toml`, `package.json`, or any manifest. |
+| 5 | **Version is locked at `0.0.39`.** | Never modify the version number in `Cargo.toml`, `package.json`, or any manifest. |
 | 6 | **Scope verification to the affected area.** | Run targeted tests during iteration. Full `scripts/check.sh` is reserved for final pre-push or explicit requests. |
 | 7 | **Never kill running background processes.** | Do not kill `.exe` or background services that may belong to other agents or active dev servers. |
 | 8 | **Never `git push` without an explicit direct command.** | Always stop at local commit. Even after full verification, ask or wait for the user to explicitly tell you to push. |
-| 9 | **Catch early, repair instantly — 30s fail-fast polling.** | The CI matrix contains 38+ jobs taking 15–25 minutes. Never run bare `gh pr checks --watch` which hangs until all checks finish. Instead, poll every 30s with fail-fast early exit (`gh pr checks <PR> --watch --fail-fast -i 30` or `bash scripts/poll-pr-checks.sh`). As soon as 1 or 2 fast checks fail, catch them immediately and start repairing without waiting for the rest. |
+| 9 | **Catch early, repair instantly — 30s fail-fast polling.** | `dev-ci.yml` runs 11 jobs, all on `ubuntu-latest` — there is no OS matrix — so typical wall time is a few minutes. Never run bare `gh pr checks --watch` which hangs until all checks finish. Instead, poll every 30s with fail-fast early exit (`gh pr checks <PR> --watch --fail-fast -i 30` or `bash scripts/poll-pr-checks.sh`). As soon as 1 or 2 fast checks fail, catch them immediately and start repairing without waiting for the rest. |
 
 ---
 
@@ -242,8 +242,7 @@ git status
 #### 3. Commit Locally
 Make a clean, descriptive local commit explaining the repair:
 ```powershell
-git add <repaired_files>
-git commit -m "fix(<scope>): repair <test_name_or_failure_description>"
+git commit -m "fix(<scope>): repair <test_name_or_failure_description>" -- <repaired_files>
 ```
 
 #### 4. Push Protocol — Explicit Permission Required
@@ -280,4 +279,4 @@ python scripts/diagnose-pr.py <PR_NUMBER>
 | `CI Docs Drift` | Undocumented script or workflow | `python scripts/verify-ci-docs-drift.py` |
 | `Skill Drift Tests` | Stale audit date or broken ref | `bash .agents/skills/skill-drift-guard/scripts/detect.sh` |
 
-> last audited 03-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat
