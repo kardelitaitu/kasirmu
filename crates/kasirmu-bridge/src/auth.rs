@@ -1,5 +1,5 @@
 //! Auth command bodies (Wave B / B4a) — the tauri-free half of
-//! `apps/desktop-client/src/commands/auth.rs`.
+//! `apps/desktop-tauri/src/commands/auth.rs`.
 //!
 //! Key items: [`record_security_event`] (the desktop's single security-event
 //! sink, shared with `commands/staff.rs`), [`insert_session`] (the session

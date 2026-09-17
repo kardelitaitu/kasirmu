@@ -1,7 +1,7 @@
 //! Brand / white-label command bodies (primary colour, logo path, location name).
 //!
 //! Wave F: extracted byte-for-byte from
-//! `apps/desktop-client/src/commands/branding.rs`, except `pick_logo_file`
+//! `apps/desktop-tauri/src/commands/branding.rs`, except `pick_logo_file`
 //! and `pick_logo_file_scoped`, which keep their full bodies desktop-side:
 //! `tauri_plugin_dialog`'s blocking pick takes a Rust closure callback and
 //! `BridgeCtx` carries no dialog seam (inventing one is a parked owner

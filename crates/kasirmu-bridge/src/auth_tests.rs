@@ -7,7 +7,7 @@ use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 //-- The release leg for these sessions lives in crate::testing (RULE at assert_refused_by_the_seeded_row) --
 
 /// The picker-ticket HMAC key the desktop's AppState::for_test_with_conn seeds
-/// (apps/desktop-client/src/state.rs:826), so tickets minted and verified here
+/// (apps/desktop-tauri/src/state.rs:826), so tickets minted and verified here
 /// round-trip against the very secret the shell carried before the relocation.
 const TEST_PICKER_SECRET: &[u8] = b"test-picker-ticket-secret";
 

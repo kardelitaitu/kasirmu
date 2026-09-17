@@ -1,5 +1,5 @@
 //! Unit tests for the branding DTOs and logo-path validation (test
-//! relocation: moved out of `apps/desktop-client/src/commands/branding_tests.rs`).
+//! relocation: moved out of `apps/desktop-tauri/src/commands/branding_tests.rs`).
 //!
 //! Mounted at the foot of `branding.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves `BrandSettingsDto` and `ALLOWED_LOGO_EXTENSIONS`

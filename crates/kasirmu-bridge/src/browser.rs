@@ -1,5 +1,5 @@
 //! External-browser URL construction (ADR #38) — the tauri-free half of
-//! apps/desktop-client/src/commands/browser.rs.
+//! apps/desktop-tauri/src/commands/browser.rs.
 //!
 //! Key items: build_image_query (product name + optional brand), urlencoding
 //! (the percent-encoder for the query component) and product_image_search_url,
