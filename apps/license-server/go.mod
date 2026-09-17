@@ -1,4 +1,4 @@
-module github.com/oz-pos/license-server
+module github.com/kasirmu/license-server
 
 go 1.25.0
 
