@@ -54,6 +54,7 @@ COPY crates/kasirmu-media/Cargo.toml crates/kasirmu-media/
 COPY crates/kasirmu-lan/Cargo.toml crates/kasirmu-lan/
 COPY crates/kasirmu-local-api/Cargo.toml crates/kasirmu-local-api/
 COPY crates/kasirmu-bridge/Cargo.toml crates/kasirmu-bridge/
+COPY crates/qris-core/Cargo.toml crates/qris-core/
 COPY foundation/Cargo.toml foundation/
 COPY platform/core/Cargo.toml platform/core/
 COPY platform/kernel/Cargo.toml platform/kernel/
@@ -94,6 +95,7 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
              crates/kasirmu-reporting/src crates/kasirmu-cli/src \
              crates/kasirmu-crypto/src crates/kasirmu-media/src crates/kasirmu-lan/src crates/kasirmu-local-api/src \
              crates/kasirmu-bridge/src \
+             crates/qris-core/src \
              foundation/src \
              platform/core/src platform/kernel/src platform/startup/src \
              platform/sync/src \
@@ -120,6 +122,7 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
     && echo "// dummy" > crates/kasirmu-lan/src/lib.rs \
     && echo "// dummy" > crates/kasirmu-local-api/src/lib.rs \
     && echo "// dummy" > crates/kasirmu-bridge/src/lib.rs \
+    && echo "// dummy" > crates/qris-core/src/lib.rs \
     && echo "// dummy" > foundation/src/lib.rs \
     && echo "// dummy" > platform/core/src/lib.rs \
     && echo "// dummy" > platform/kernel/src/lib.rs \
