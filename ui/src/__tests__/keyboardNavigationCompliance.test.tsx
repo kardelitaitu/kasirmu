@@ -25,22 +25,22 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import { withFluent } from '@/locales/test-utils';
 import sharedFtl from '@/locales/shared.ftl?raw';
-import AppLayout from '@/frontend/shell/AppLayout';
-import TabletAppLayout from '@/frontend/shell/tablet/TabletAppLayout';
+import AppLayout from '@/app/AppLayout';
+import TabletAppLayout from '@/app/tablet/TabletAppLayout';
 import { Modal } from '@/components/Modal';
 import StoreSwitcher from '@/components/StoreSwitcher';
 import { registerNavItem, clearNavItems } from '@/platform/ui/menu-registry';
 import type { LocationProfile } from '@/api/locations';
 
 // ── Shell leaf stubs (each covered by its own focused suite) ──────────
-vi.mock('@/frontend/shell/StatusBar', () => ({
+vi.mock('@/app/StatusBar', () => ({
   // A div (NOT a <footer>) so the status role is aria-allowed-role legal:
   // axe rejects role="status" on <footer> (implicit contentinfo semantics).
   default: () => (
     <div role="status" aria-label="Application status">v0.0.25</div>
   ),
 }));
-vi.mock('@/frontend/shell/UpdateBanner', () => ({ default: () => null }));
+vi.mock('@/app/UpdateBanner', () => ({ default: () => null }));
 vi.mock('@/components/StockAlertBell', () => ({ default: () => null }));
 vi.mock('@/components/RoleBadge', () => ({ default: () => null }));
 

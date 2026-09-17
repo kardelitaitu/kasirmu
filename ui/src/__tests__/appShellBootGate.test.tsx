@@ -1,6 +1,6 @@
 // ── AppShell boot gate: an unknown answer must never be written as a fact ────
 //
-// The desktop boot effect (ui/src/frontend/shell/AppShell.tsx) used to decide
+// The desktop boot effect (ui/src/app/AppShell.tsx) used to decide
 // three things from ONE try/catch around a Promise.all, and its catch wrote
 // `hasActiveLicense = true` AND `hasCompletedSetup = true`. A single transient
 // IPC throw therefore suppressed the activation screen, suppressed the setup
@@ -39,7 +39,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { act } from 'react';
 import type { ReactNode } from 'react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
-import AppShell from '@/frontend/shell/AppShell';
+import AppShell from '@/app/AppShell';
 import { clearPages } from '@/platform/ui/page-registry';
 import settingsFtl from '@/locales/settings.ftl?raw';
 import staffFtl from '@/locales/staff.ftl?raw';
@@ -60,7 +60,7 @@ vi.mock('@/api/license', () => ({
 }));
 
 // The boot path reaches exactly ONE staff function: `hasUsers`
-// (ui/src/frontend/shell/AppShell.tsx:24, called at :201 and :215 — nothing
+// (ui/src/app/AppShell.tsx:24, called at :201 and :215 — nothing
 // else from `@/api/staff` is imported by anything this file renders). An earlier
 // revision of this file also defined `listStaff`, `getStaff`, `createStaff`,
 // `updateStaff` and `deleteStaff` — NONE of which `@/api/staff` exports (the

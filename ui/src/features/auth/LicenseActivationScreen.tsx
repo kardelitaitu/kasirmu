@@ -7,7 +7,7 @@ import { detectBundleId } from '@/utils/bundle';
 import { getVersion, getLocalIp } from '@/api/system';
 import StatusBar from '@/components/StatusBar';
 import { Localized, useLocalization } from '@fluent/react';
-import ThemeToggle from '@/frontend/shell/ThemeToggle';
+import ThemeToggle from '@/app/ThemeToggle';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { plainErrorMessage } from '@/utils/app-error';
 import './LicenseActivationScreen.css';

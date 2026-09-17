@@ -11,7 +11,7 @@ import { screen, waitFor, act } from '@testing-library/react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { HARNESS_SESSION_TOKEN } from '@/__tests__/test-utils/harnessDefaults';
-import AppShell from '@/frontend/shell/AppShell';
+import AppShell from '@/app/AppShell';
 import sharedFtl from '@/locales/shared.ftl?raw';
 import staffFtl from '@/locales/staff.ftl?raw';
 import type { ActiveMemo } from '@/api/memos';

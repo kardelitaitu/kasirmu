@@ -9,7 +9,7 @@
 //
 // HOW THE TABLET DIFFERS (measured; it shapes every case below):
 //   * NO HASH ROUTING. git grep location.hash|hashchange over
-//     ui/src/frontend/shell/tablet/ = zero hits. currentRoute is internal state
+//     ui/src/app/tablet/ = zero hits. currentRoute is internal state
 //     (:39 default 'pos') set only by handleNavigate (:89-101 — checks ONLY
 //     isPageAccessible, never feature) and by the workspace-rebind effect
 //     (:50-62: admin->settings, warehouse->products). The desktop's
@@ -35,7 +35,7 @@ import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { act } from 'react';
 import { renderWithProviders, rerenderWithProviders } from '@/__tests__/test-utils/render';
-import TabletAppShell from '@/frontend/shell/tablet/TabletAppShell';
+import TabletAppShell from '@/app/tablet/TabletAppShell';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import staffFtl from '@/locales/staff.ftl?raw';
 import {

@@ -1,5 +1,5 @@
-import Tooltip from '@/frontend/shell/Tooltip';
-import ThemeToggle from '@/frontend/shell/ThemeToggle';
+import Tooltip from '@/app/Tooltip';
+import ThemeToggle from '@/app/ThemeToggle';
 import { useLocalization } from '@fluent/react';
 import './TooltipPreview.css';
 

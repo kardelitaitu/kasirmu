@@ -72,7 +72,7 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
-vi.mock('@/frontend/shell/ThemeProvider', () => ({
+vi.mock('@/app/ThemeProvider', () => ({
   useTheme: () => ({ theme: 'light', toggleTheme: mockToggleTheme }),
   ThemeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));

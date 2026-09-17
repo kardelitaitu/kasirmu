@@ -9,7 +9,7 @@ vi.mock('@/components/Localized', () => ({
   Localized: ({ children }: { id: string; children: React.ReactNode }) => <>{children}</>,
 }));
 
-vi.mock('@/frontend/shell/ThemeToggle', () => ({
+vi.mock('@/app/ThemeToggle', () => ({
   default: () => <div data-testid="theme-toggle">ThemeToggle</div>,
 }));
 

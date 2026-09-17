@@ -19,7 +19,7 @@ import { useBrand } from '@/contexts/BrandContext';
 import { deriveAccentPalette, applyAccentPalette } from '@/utils/color';
 import { useToast } from '@/components/Toast';
 import { requiredLocalized } from '@/components';
-import { useOptionalTheme, type Theme } from '@/frontend/shell/ThemeProvider';
+import { useOptionalTheme, type Theme } from '@/app/ThemeProvider';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';

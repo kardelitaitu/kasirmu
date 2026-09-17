@@ -42,7 +42,7 @@ describe('data.ts API contract', () => {
   // And this records the hole rather than endorsing it: the unscoped wrappers are
   // still exported and still reached from the renderer — from
   // features/settings/DataManagementScreen.tsx whenever sessionToken is the empty
-  // string, and from frontend/shell/UpdateBanner.tsx, which has no token at all.
+  // string, and from app/UpdateBanner.tsx, which has no token at all.
   // Deleting these two cases would hide that, not fix it.
   it('getBackupStatus still calls the UNGATED command (known bypass, see report)', async () => {
     mockInvoke.mockResolvedValue({ lastBackup: null });

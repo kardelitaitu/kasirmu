@@ -28,7 +28,7 @@ const POLL_INTERVAL_MS = 60_000;
  * `null` and this indicator read `configured:false, online:false` forever, on
  * every device, including one holding a live Stripe key. Its consumer renders
  * the gateway pill only when `configured` is true
- * (ui/src/frontend/shell/StatusBar.tsx), so the whole segment has been absent
+ * (ui/src/app/StatusBar.tsx), so the whole segment has been absent
  * from the status bar since the day it shipped. The Rust door is correct and
  * unchanged; this file was asking it for something it must never hand over.
  *

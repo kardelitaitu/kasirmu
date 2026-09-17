@@ -47,7 +47,7 @@ vi.mock('@/utils/export-csv', () => ({ downloadCsv: vi.fn() }));
 // grid). Mock it to a passthrough that stamps the resolved content onto the
 // trigger cell, so tests assert the wiring without paying for 168 portals or
 // re-testing the shared Tooltip's hover timing (covered by Tooltip.test.tsx).
-vi.mock('@/frontend/shell/Tooltip', () => ({
+vi.mock('@/app/Tooltip', () => ({
   default: ({ content, children }: { content: React.ReactNode; children: React.ReactElement }) =>
     React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
       'data-tooltip-content': typeof content === 'string' ? content : undefined,

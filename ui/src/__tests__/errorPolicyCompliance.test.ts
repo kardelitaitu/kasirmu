@@ -23,7 +23,7 @@ import path from 'path';
 // repo layout — follow the cartExtraction.test.ts convention and resolve
 // against the working directory (ui/ when vitest runs from ui/).
 const SRC = path.resolve(process.cwd(), 'src');
-const SCAN_DIRS = ['features', 'hooks', 'contexts', 'components', 'frontend'];
+const SCAN_DIRS = ['features', 'hooks', 'contexts', 'components', 'app', 'frontend'];
 const ALLOWED_EXT = ['.ts', '.tsx'];
 
 // Intentional functional-parse sites that READ raw messages for logic but

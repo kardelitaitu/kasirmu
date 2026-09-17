@@ -27,7 +27,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
-import { useTheme } from '@/frontend/shell/ThemeProvider';
+import { useTheme } from '@/app/ThemeProvider';
 import { useFullscreen } from '@/hooks/useFullscreen';
 import type { Dispatch, SetStateAction } from 'react';
 import { SORT_MODES } from '../RestaurantMenu';

@@ -32,7 +32,7 @@ import { listWarehouseProductsAtLocation, type ProductDto } from '@/api/products
 /**
  * One settled read. `ok: false` means the call NEVER ANSWERED — a different
  * fact from "answered, and the answer was an empty list". The shape is the
- * sanctioned boot idiom (frontend/shell/AppShell.tsx:87-94); the load-bearing
+ * sanctioned boot idiom (app/AppShell.tsx:87-94); the load-bearing
  * half is that the caller writes nothing on `ok: false`, so the state keeps
  * its UNKNOWN value instead of being overwritten with a plausible empty one.
  */

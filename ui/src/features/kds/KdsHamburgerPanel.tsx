@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { useOptionalTheme } from '@/frontend/shell/ThemeProvider';
+import { useOptionalTheme } from '@/app/ThemeProvider';
 import { useOptionalHardwareAccel } from '@/contexts/HardwareAccelContext';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';

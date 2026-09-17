@@ -22,7 +22,7 @@ import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { LocalizationProvider, ReactLocalization } from '@fluent/react';
 import { BrandProvider } from '@/contexts/BrandContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
-import { ThemeProvider } from '@/frontend/shell/ThemeProvider';
+import { ThemeProvider } from '@/app/ThemeProvider';
 import { ToastProvider } from '@/components/Toast';
 
 // `renderWithProviders` mounts the REAL BrandProvider and CurrencyProvider, and both

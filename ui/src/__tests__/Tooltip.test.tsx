@@ -1,7 +1,7 @@
 // ── Tooltip contract tests ─────────────────────────────────────────
 //
 // Pins the contract for the Tooltip component at
-// `@/frontend/shell/Tooltip`. Covers show/hide timing,
+// `@/app/Tooltip`. Covers show/hide timing,
 // focus/blur behavior, positioning, accessibility, and more.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -9,12 +9,12 @@ import { act } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import Tooltip from '@/frontend/shell/Tooltip';
+import Tooltip from '@/app/Tooltip';
 
 // Read the stylesheet so CSS contracts (pointer-events gating) can be
 // asserted without a real browser.
 const tooltipCss = readFileSync(
-  join(__dirname, '..', 'frontend', 'shell', 'Tooltip.css'),
+  join(__dirname, '..', 'app', 'Tooltip.css'),
   'utf-8',
 );
 

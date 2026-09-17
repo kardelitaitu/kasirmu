@@ -1,5 +1,5 @@
 import { Localized } from '@/components/Localized';
-import ThemeToggle from '@/frontend/shell/ThemeToggle';
+import ThemeToggle from '@/app/ThemeToggle';
 import { Badge } from '@/components/Badge';
 import { Spinner } from '@/components/Spinner';
 import { Skeleton } from '@/components/Skeleton';

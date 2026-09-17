@@ -22,7 +22,7 @@ import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 
 // Theme: return null by default (no theme toggle rendered).
 let mockTheme: string | null = null;
-vi.mock('@/frontend/shell/ThemeProvider', () => ({
+vi.mock('@/app/ThemeProvider', () => ({
   useOptionalTheme: () =>
     mockTheme === null
       ? null

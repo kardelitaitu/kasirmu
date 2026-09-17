@@ -23,7 +23,7 @@ import {
 } from './topologyCard';
 import { nodeHeight } from './topologyMetrics';
 import { SettingsIcon, EditIcon, UnlinkIcon } from './NodeTopologyIcons';
-import Tooltip from '../../frontend/shell/Tooltip';
+import Tooltip from '../../app/Tooltip';
 
 interface TelemetryBadge {
   badge: string;

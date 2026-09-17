@@ -25,7 +25,7 @@ import userEvent from '@testing-library/user-event';
 import { Modal } from '@/components/Modal';
 import { Button } from '@/components/Button';
 import { ToastProvider, useToast } from '@/components/Toast';
-import StatusBar from '@/frontend/shell/StatusBar';
+import StatusBar from '@/app/StatusBar';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
 import sharedFtl from '@/locales/shared.ftl?raw';
@@ -70,7 +70,7 @@ vi.mock('@/components/FastPINOverlay', () => ({
   default: () => null,
 }));
 
-vi.mock('@/frontend/shell/ThemeToggle', () => ({
+vi.mock('@/app/ThemeToggle', () => ({
   default: () => <button type="button">Theme</button>,
 }));
 

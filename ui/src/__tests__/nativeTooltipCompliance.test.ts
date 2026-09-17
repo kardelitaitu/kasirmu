@@ -2,7 +2,7 @@
  * Native browser tooltip compliance
  *
  * The app has ONE tooltip design: the React <Tooltip> component in
- * `frontend/shell/Tooltip.tsx`. A `title` attribute on a plain HTML element
+ * `app/Tooltip.tsx`. A `title` attribute on a plain HTML element
  * instead renders the OS/browser's own square tooltip, which
  *
  *   1. looks nothing like the designed bubble (off-brand, unthemeable),
@@ -198,7 +198,7 @@ describe('native browser tooltip compliance (no title= on HTML elements)', () =>
 
   it('document.title (page title) is not mistaken for a tooltip', () => {
     // AppLayout sets document.title for the window caption — legitimate.
-    const src = readFileSync(join(UI_SRC, 'frontend', 'shell', 'AppLayout.tsx'), 'utf8');
+    const src = readFileSync(join(UI_SRC, 'app', 'AppLayout.tsx'), 'utf8');
     expect(src).toContain('document.title');
     expect(HITS.some((h) => h.file.endsWith('AppLayout.tsx'))).toBe(false);
   });

@@ -1,5 +1,5 @@
 import { lazy } from 'react';
-import AppShell from '@/frontend/shell/AppShell';
+import AppShell from '@/app/AppShell';
 import { registerAllFeatures } from '@/features';
 import { AppProviders } from '@/contexts/AppProviders';
 import { useDisableAutofill } from '@/hooks/useDisableAutofill';

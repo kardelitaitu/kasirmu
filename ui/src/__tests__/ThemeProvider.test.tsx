@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
 import { render, screen, renderHook } from '@testing-library/react';
-import { ThemeProvider, useTheme } from '@/frontend/shell/ThemeProvider';
+import { ThemeProvider, useTheme } from '@/app/ThemeProvider';
 import { BrandProvider } from '@/contexts/BrandContext';
 import type { ReactNode } from 'react';
 

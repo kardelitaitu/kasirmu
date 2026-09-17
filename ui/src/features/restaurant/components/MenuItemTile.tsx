@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { requiredLocalized } from '@/components';
-import Tooltip from '@/frontend/shell/Tooltip';
+import Tooltip from '@/app/Tooltip';
 import { Localized } from '@/components/Localized';
 import { formatMoney, type Product } from '@/types/domain';
 import { useLocalization } from '@fluent/react';

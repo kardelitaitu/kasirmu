@@ -45,7 +45,7 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
-vi.mock('@/frontend/shell/Tooltip', () => ({
+vi.mock('@/app/Tooltip', () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 

@@ -21,9 +21,9 @@ const SYSTEM_COLORS = /ButtonText|ButtonFace|CanvasText|Canvas|Highlight|GrayTex
  */
 const COLOR_ONLY_INDICATORS: Requirement[] = [
   // Status bar connection dots — colour + glow only
-  { file: 'frontend/shell/StatusBar.css', selector: '.statusbar-dot--online', reason: 'status dot (colour + glow only)' },
-  { file: 'frontend/shell/StatusBar.css', selector: '.statusbar-dot--offline', reason: 'status dot (colour + glow only)' },
-  { file: 'frontend/shell/StatusBar.css', selector: '.statusbar-dot--checking', reason: 'status dot (colour + glow only)' },
+  { file: 'app/StatusBar.css', selector: '.statusbar-dot--online', reason: 'status dot (colour + glow only)' },
+  { file: 'app/StatusBar.css', selector: '.statusbar-dot--offline', reason: 'status dot (colour + glow only)' },
+  { file: 'app/StatusBar.css', selector: '.statusbar-dot--checking', reason: 'status dot (colour + glow only)' },
   // Gateway status badge dots
   { file: 'components/GatewayStatusBadge.css', selector: '.gateway-badge__dot.online', reason: 'gateway status dot (colour only)' },
   { file: 'components/GatewayStatusBadge.css', selector: '.gateway-badge__dot.offline', reason: 'gateway status dot (colour only)' },
@@ -46,7 +46,7 @@ const COLOR_ONLY_INDICATORS: Requirement[] = [
  * Highlight colour so keyboard focus remains visible.
  */
 const FOCUS_RING_REQUIREMENTS: Requirement[] = [
-  { file: 'frontend/shell/StatusBar.css', selector: '.statusbar-btn:focus-visible', reason: 'status bar button focus ring' },
+  { file: 'app/StatusBar.css', selector: '.statusbar-btn:focus-visible', reason: 'status bar button focus ring' },
   { file: 'components/StockAlertBell.css', selector: '.stock-alert-bell:focus-visible', reason: 'stock alert bell focus ring' },
   { file: 'features/inventory/StockAlertPanel.css', selector: '.stock-alert-ack-btn:focus-visible', reason: 'stock alert acknowledge focus ring' },
 ];

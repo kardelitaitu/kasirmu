@@ -68,7 +68,7 @@ import { screen, waitFor } from '@testing-library/react';
 import { act } from 'react';
 import type { ReactNode } from 'react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
-import AppShell from '@/frontend/shell/AppShell';
+import AppShell from '@/app/AppShell';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import staffFtl from '@/locales/staff.ftl?raw';
 import {

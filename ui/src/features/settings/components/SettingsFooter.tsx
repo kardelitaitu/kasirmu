@@ -25,7 +25,7 @@
 import { useEffect, useState } from 'react';
 
 import { Localized, useLocalization } from '@fluent/react';
-import type { Theme } from '@/frontend/shell/ThemeProvider';
+import type { Theme } from '@/app/ThemeProvider';
 
 // ── Clock helper (moved here with its only consumer) ──────────────
 

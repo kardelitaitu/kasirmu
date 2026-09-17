@@ -52,7 +52,7 @@ import { useMemo } from 'react';
 
 import { Localized, useLocalization } from '@fluent/react';
 import { Button } from '@/components/Button';
-import Tooltip from '@/frontend/shell/Tooltip';
+import Tooltip from '@/app/Tooltip';
 import { ContextMenu, useContextMenu, requiredLocalized } from '@/components';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { NAV_ITEMS, NAV_L10N_KEYS } from '../SettingsNavTree';

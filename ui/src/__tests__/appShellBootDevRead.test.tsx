@@ -1,7 +1,7 @@
 // ── AppShell DEV-branch boot read: a swallowed failure is not an answer ──────
 //
 // Every boot IPC on the production path goes through `settle()`
-// (ui/src/frontend/shell/AppShell.tsx:87-94), whose whole job is to record
+// (ui/src/app/AppShell.tsx:87-94), whose whole job is to record
 // answered-or-unknown: it logs `[boot] <label> read failed — recording unknown`
 // and returns `{ ok: false }`, so the caller writes true/false into NOTHING.
 // The dev-mode bypass (:193-206) skips the licence and setup calls but still
@@ -29,7 +29,7 @@ import { screen, waitFor } from '@testing-library/react';
 import { act } from 'react';
 import type { ReactNode } from 'react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
-import AppShell from '@/frontend/shell/AppShell';
+import AppShell from '@/app/AppShell';
 import { clearPages } from '@/platform/ui/page-registry';
 import settingsFtl from '@/locales/settings.ftl?raw';
 import staffFtl from '@/locales/staff.ftl?raw';

@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { withFluent } from '@/locales/test-utils';
-import TabletAppLayout from '@/frontend/shell/tablet/TabletAppLayout';
+import TabletAppLayout from '@/app/tablet/TabletAppLayout';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
 const mockGetNavItems = vi.fn();

@@ -76,7 +76,7 @@ vi.mock('@fluent/react', () => ({
 vi.mock('@/components/StatusBar', () => ({
   default: () => <div data-testid="status-bar">StatusBar</div>,
 }));
-vi.mock('@/frontend/shell/ThemeToggle', () => ({
+vi.mock('@/app/ThemeToggle', () => ({
   default: () => <div data-testid="theme-toggle">ThemeToggle</div>,
 }));
 

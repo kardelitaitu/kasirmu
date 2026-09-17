@@ -55,7 +55,7 @@ export function useBarcodeScanner({
     // `stop_scanner` are registered in neither shell's generate_handler, so the `: plainWrapper`
     // half of each ternary could only return "command not found" -- and a real build could not
     // reach it anyway, because both shells return <StaffLoginScreen/> before any screen holding
-    // this hook mounts (ui/src/frontend/shell/AppShell.tsx:518, tablet/TabletAppShell.tsx:194).
+    // this hook mounts (ui/src/app/AppShell.tsx:518, tablet/TabletAppShell.tsx:194).
     // The dev-mock answered those names, so every browser preview and every Vitest run passed.
     if (!sessionToken) return;
 

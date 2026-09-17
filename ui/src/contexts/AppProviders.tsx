@@ -5,7 +5,7 @@ import { GlobalErrorReporter } from '@/components/GlobalErrorReporter';
 import { LocaleProvider } from '@/i18n/LocaleContext';
 import { OrgLocaleSync } from '@/i18n/OrgLocaleSync';
 import { BrandProvider } from '@/contexts/BrandContext';
-import { ThemeProvider } from '@/frontend/shell/ThemeProvider';
+import { ThemeProvider } from '@/app/ThemeProvider';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import CurrencyWorkspaceSync from '@/contexts/CurrencyWorkspaceSync';
 import { AuthProvider } from '@/contexts/AuthContext';

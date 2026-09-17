@@ -34,15 +34,15 @@ const SRC_DIR = path.resolve(process.cwd(), 'src');
 const EXPECTED_KEYS: Record<string, string> = {
   // Shell / chrome
   'app-hw-accel': 'contexts/HardwareAccelContext.tsx',
-  'app-sidebar-collapsed': 'frontend/shell/AppLayout.tsx',
-  'app-sidebar-expanded': 'frontend/shell/AppLayout.tsx',
-  'app-sidebar-sections': 'frontend/shell/AppLayout.tsx',
+  'app-sidebar-collapsed': 'app/AppLayout.tsx',
+  'app-sidebar-expanded': 'app/AppLayout.tsx',
+  'app-sidebar-sections': 'app/AppLayout.tsx',
   'app-zoom-level': 'contexts/ZoomContext.tsx',
   'auto-lock-minutes': 'hooks/useIdleTimer.ts',
   'current-username': 'contexts/AuthContext.tsx',
   'oz-key-created-at': 'hooks/useKeyAge.ts',
   'kasirmu-locale': 'i18n/LocaleContext.tsx',
-  'kasirmu-theme-v4': 'frontend/shell/ThemeProvider.tsx',
+  'kasirmu-theme-v4': 'app/ThemeProvider.tsx',
 
   // KDS
   'kds-cached-orders': 'hooks/useKdsOffline.ts',
@@ -94,8 +94,8 @@ const EXPECTED_KEYS: Record<string, string> = {
 
   // Updater internals -- not user configuration, but persisted, so pinned: a stale
   // previous_version makes the update banner offer an upgrade that already happened.
-  'updater.last_backup_path': 'frontend/shell/UpdateBanner.tsx',
-  'updater.previous_version': 'frontend/shell/UpdateBanner.tsx',
+  'updater.last_backup_path': 'app/UpdateBanner.tsx',
+  'updater.previous_version': 'app/UpdateBanner.tsx',
 
   // Dev mock -- browser-only fixtures, never shipped data. Pinned anyway so the
   // completeness check has no exceptions to reason about. These moved from the

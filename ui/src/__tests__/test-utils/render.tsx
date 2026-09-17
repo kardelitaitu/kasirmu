@@ -17,7 +17,7 @@ import { type ReactNode, type ReactElement } from 'react';
 import { render, type RenderResult } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent } from '@/locales/test-utils';
-import { ThemeProvider } from '@/frontend/shell/ThemeProvider';
+import { ThemeProvider } from '@/app/ThemeProvider';
 import { ZoomProvider } from '@/contexts/ZoomContext';
 import { ToastProvider } from '@/components/Toast';
 import { BrandProvider } from '@/contexts/BrandContext';

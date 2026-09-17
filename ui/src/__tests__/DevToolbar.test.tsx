@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { ThemeProvider } from '@/frontend/shell/ThemeProvider';
+import { ThemeProvider } from '@/app/ThemeProvider';
 import { BrandProvider } from '@/contexts/BrandContext';
 import { DevToolbar } from '@/features/design/DevToolbar';
 

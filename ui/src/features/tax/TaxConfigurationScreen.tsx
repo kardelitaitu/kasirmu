@@ -187,7 +187,7 @@ export default function TaxConfigurationScreen() {
         if (!cancelled) setRoundingModes(modes);
       })
       .catch((err) => {
-        // The shape settle() uses in frontend/shell/AppShell.tsx:87-94: record
+        // The shape settle() uses in app/AppShell.tsx:87-94: record
         // the failure and WRITE NOTHING, so the map keeps what it already
         // answered with. Nothing is written on this path either way, which is
         // why the cancelled flag is not consulted here.

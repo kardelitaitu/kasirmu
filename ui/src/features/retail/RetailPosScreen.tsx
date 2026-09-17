@@ -33,7 +33,7 @@ import { CartTaxWatcher, createIdleTaxState } from '@/features/pos/components/Ca
 import { recordMark } from '@/utils/perf-metrics';
 import { DEFAULT_LOW_STOCK_THRESHOLD, minorUnitExponent, parseMinorUnits, type CartId, type CartLine, type CourseId, type LineId, type ModifierSelection, type Money, type Product, type Sku } from '@/types/domain';
 import { useSound } from '@/components/useSound';
-import { useOptionalTheme } from '@/frontend/shell/ThemeProvider';
+import { useOptionalTheme } from '@/app/ThemeProvider';
 import RetailFnBar from './RetailFnBar';
 import RetailHeader from './RetailHeader';
 import RetailCartPanel from './RetailCartPanel';

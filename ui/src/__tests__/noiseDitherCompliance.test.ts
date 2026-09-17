@@ -396,7 +396,7 @@ function walkShadowPopulation(): void {
   sheetsRefused = 0; unparseableSheets = [];
   sheetsOpened = 0; sheetsParsed.length = 0; dirsUnreadable.length = 0;
 
-  for (const dir of ['features', 'frontend', 'components']) {
+  for (const dir of ['features', 'app', 'frontend', 'components']) {
     const files = findCssFiles(dir);
     allCssFiles.push(...files);
 

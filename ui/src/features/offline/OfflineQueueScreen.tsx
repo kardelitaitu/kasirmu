@@ -90,7 +90,7 @@ function formatRelativeTime(iso: string | null): { fluentKey: string; fluentArgs
 /**
  * One settled read: `ok: false` records UNKNOWN — never a borrowed fact.
  *
- * Copied from the sanctioned shape at ui/src/frontend/shell/AppShell.tsx:87-94.
+ * Copied from the sanctioned shape at ui/src/app/AppShell.tsx:87-94.
  * The point is not the try/catch, it is what the CALLER is allowed to write
  * afterwards: on `ok: false` there is no value, so a failure cannot be stored
  * as — or rendered as — an answer the call was never able to produce. The

@@ -12,7 +12,7 @@ import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { useToast } from '@/components/Toast';
 import { requiredLocalized } from '@/components';
-import Tooltip from '@/frontend/shell/Tooltip';
+import Tooltip from '@/app/Tooltip';
 import { getReportSchedule, getReportScheduleScoped, saveReportSchedule, type ReportScheduleConfig } from '@/api/email';
 import { getSettingScoped, setSettingScoped } from '@/api/settings';
 import { useWorkspace } from '@/contexts/WorkspaceContext';

@@ -1243,7 +1243,7 @@ const SCREENS: ScreenEntry[] = [
     ],
     // Trusted child component, named whole: the pin badge's Tooltip renders
     // `tooltip-wrapper` + `tooltip-wrapper--inline` (Tooltip.tsx:225), defined
-    // by frontend/shell/Tooltip.css:3,12 — OUTSIDE the grammar parentCss
+    // by app/Tooltip.css:3,12 — OUTSIDE the grammar parentCss
     // allows (only ../frontend/themes/ escapes src/features, :120-123), so
     // this is the externalClasses shape, not a sheet cite. A bare `tooltip-`
     // prefix would excuse any future Tooltip class; the two whole names keep
@@ -1629,8 +1629,8 @@ const SCREENS: ScreenEntry[] = [
     // isEnabled(FEATURES.USB_SCALE) — a flag a manager can light in a shipped build
     // from the Hardware group of settings/FeatureToggleScreen.tsx. There is no route
     // to claim here: features/retail has no register.tsx at all, and RetailPosScreen
-    // reaches both shells through frontend/shell/AppShell.tsx and
-    // frontend/shell/tablet/TabletAppShell.tsx. The sheet is imported by its own
+    // reaches both shells through app/AppShell.tsx and
+    // app/tablet/TabletAppShell.tsx. The sheet is imported by its own
     // component at :2, which is what makes it loadable at all.
     //
     // CITED BECAUSE THE MARKUP IS LIVE, NOT BECAUSE THE FEATURE WORKS — the styled
