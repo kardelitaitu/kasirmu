@@ -7,7 +7,7 @@ description: kasir.mu convention for symmetric CSS entry/exit animations + the R
 
 # Exit-Animation Pattern
 
-The OZ-POS UI convention for dismissing UI elements gracefully. When an element enters with a CSS keyframe animation today, **its dismissal must run a mirror keyframe** rather than snapping to unmount. This skill packages the four moving parts (CSS mirror + `--exiting` class, React exiting flag, unmount-safe timer, race-safe cleanup) so you don't re-invent the wheel on each new surface.
+The kasir.mu UI convention for dismissing UI elements gracefully. When an element enters with a CSS keyframe animation today, **its dismissal must run a mirror keyframe** rather than snapping to unmount. This skill packages the four moving parts (CSS mirror + `--exiting` class, React exiting flag, unmount-safe timer, race-safe cleanup) so you don't re-invent the wheel on each new surface.
 
 Reference implementation: commit [`fcf1d07`](https://github.com/) on branch `0.0.3` — the undo-pill in [`ui/src/features/sales/PosScreen.tsx`](../../../ui/src/features/sales/PosScreen.tsx) and [`ui/src/features/sales/CartPanel.css`](../../../ui/src/features/sales/CartPanel.css).
 

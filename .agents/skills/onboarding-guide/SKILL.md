@@ -12,7 +12,7 @@ kasir.mu is a Rust + Tauri v2 POS framework. The codebase is organized into clea
 
 > *"Pay no attention to the man behind the curtain."* — The Wizard of Oz
 >
-> The OZ-POS philosophy: keep the **merchant's** experience effortless by hiding complexity behind a lean Rust engine. Skills are how we keep the engine clean.
+> The kasir.mu philosophy: keep the **merchant's** experience effortless by hiding complexity behind a lean Rust engine. Skills are how we keep the engine clean.
 
 ## First-time setup
 

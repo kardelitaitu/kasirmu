@@ -281,7 +281,7 @@ Run these before pushing. The CI workflow is the merge gate, but a local pass ca
 - `*.db`, `*.sqlite`, `*.sqlite3` — local databases.
 - `target/` and per-crate `target/` trees, `dist/` outputs (including the ui build outputs), `node_modules/` — build artifacts.
 - `*.key`, `*.pem`, `secrets/` — credentials.
-- **Cargo.lock:** the workspace keeps a **single `Cargo.lock` at the root and it is committed** (OZ-POS ships binaries — `oz-cli`, the Tauri app). Do not add per-crate lockfiles; the only exception is the standalone `fuzz/` workspace, whose lockfile is a dev-only artifact and is ignored.
+- **Cargo.lock:** the workspace keeps a **single `Cargo.lock` at the root and it is committed** (kasir.mu ships binaries — `oz-cli`, the Tauri app). Do not add per-crate lockfiles; the only exception is the standalone `fuzz/` workspace, whose lockfile is a dev-only artifact and is ignored.
 
 A `.gitignore` template (matches the repo's real one):
 
