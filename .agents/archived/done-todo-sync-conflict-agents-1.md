@@ -94,7 +94,7 @@ for stock movements — the two pieces that do **not** exist yet.
    - `crates/oz-core/migrations/<date>_sync_clock.sql` (NEW)
 3. **Forbidden Paths (owned by siblings):**
    - `apps/cloud-server/**` (Agent 2)
-   - `ui/src/**`, `apps/desktop-client/**` (Agent 3)
+   - `ui/src/**`, `apps/desktop-tauri/**` (Agent 3)
 
 ### Shared seams — who owns the join
 

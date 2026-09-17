@@ -35,7 +35,7 @@ For comprehensive local validation that mirrors the entire CI matrix (not just t
 - **Database**: SQLite via `rusqlite`, all writes in transactions.
 - **Hardware**: `kasirmu-hal` (drivers behind `async` traits, mandatory mocks).
 - **UI**: Tauri v2 + React 18 + TypeScript, strict, accessible, localized.
-- **IPC**: Rust commands in `apps/desktop-client/src/commands/`, front-end wrappers in `ui/src/api/` (per-domain files).
+- **IPC**: Rust commands in `apps/desktop-tauri/src/commands/`, front-end wrappers in `ui/src/api/` (per-domain files).
 - **Scripting**: `mlua` runtime in `kasirmu-lua` for runtime business rules.
 - **Payment**: PCI-aware, swappable processors in `kasirmu-payment`.
 - **CI**: GitHub Actions matrix (Linux, Windows, macOS), blocking fmt/clippy/test/UI lint.

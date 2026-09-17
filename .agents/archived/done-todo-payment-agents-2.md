@@ -9,7 +9,7 @@ the AGENTS.md mandatory-mock rule, not `edc/mock.rs`. HardwareConfig in
 `bootstrap.rs` carries the EDC wiring. What does NOT exist: the
 `test_edc_connection_scoped` IPC of Phase 2.2 (zero references tree-wide).
 That single item remains open; it touches the bridge campaign's hot zone
-(desktop-client commands), so re-scope it there before acting. -->
+(desktop-tauri commands), so re-scope it there before acting. -->
 
 <!-- CLOSURE stamp: 2026-09-14 · DSH (agents-5 close-out sweep) · the open
 item above is CLOSED BY SUBSTITUTION, not by building it. 3.2 shipped
@@ -66,7 +66,7 @@ are landed or superseded; renamed done- with the history left as written.
 
 ### Phase 2.2: Terminal-Scoped Hardware Overrides
 - [ ] Wire EDC IP and port configuration into `HardwareConfig` and `platform_startup::hardware`.
-- [ ] Implement IPC command `test_edc_connection_scoped` in `desktop-client`.
+- [ ] Implement IPC command `test_edc_connection_scoped` in `desktop-tauri`.
 - [ ] Verify: `cargo check --workspace`.
 - [ ] **Commit Milestone:**
   ```bash

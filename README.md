@@ -168,7 +168,7 @@ git clone https://github.com/kardelitaitu/oz-pos.git
 cd oz-pos  # TODO: will be "kasir.mu" after repo rename
 cargo build --workspace
 cd ui && npm ci --no-audit --no-fund && cd ..  # see ui/README.md#install-script-approvals
-cd apps/desktop-client && cargo tauri dev
+cd apps/desktop-tauri && cargo tauri dev
 ```
 
 See [docs/guides/QUICKSTART.md](./docs/guides/QUICKSTART.md) for detailed setup instructions.

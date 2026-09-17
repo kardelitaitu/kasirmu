@@ -83,7 +83,7 @@ git diff origin/main..HEAD --stat
 ```
 
 Categorize the findings into the following domains:
-- **Rust Backend:** Changes across the `oz-*` crates under `crates/`, `apps/desktop-client/src/commands/`, `apps/cloud-server/`, database migrations.
+- **Rust Backend:** Changes across the `oz-*` crates under `crates/`, `apps/desktop-tauri/src/commands/`, `apps/cloud-server/`, database migrations.
 - **Frontend / UI:** Changes in `ui/src/features/`, `ui/src/components/`, styles, React state, or `@fluent/react` translations (`.ftl`).
 - **CI / DevOps & Infrastructure:** Changes in `.github/workflows/`, `scripts/`, Dockerfiles, or security scanning configs.
 - **Documentation & Architecture:** Changes in `docs/`, `AGENTS.md`, or `.agents/skills/`.

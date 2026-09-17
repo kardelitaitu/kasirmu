@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: AUDITED (draft, superseded by ADR #4) · pre-decision analysis doc; all referenced files verified present: crates/kasirmu-core/src/db/workspaces.rs, apps/desktop-client/src/commands/workspaces.rs, ui/src/contexts/WorkspaceContext.tsx, ui/src/features/workspaces/WorkspaceHome.tsx, ui/src/frontend/shell/AppShell.tsx; StoreProfile (crates/kasirmu-core/src/store_profile.rs:14) + MultiStoreDashboardScreen (ui/src/App.tsx:37) confirmed · note: its Phase 3 recommended query-level WHERE store_id=? scoping was NOT the mechanism adopted — ADR #4 (2026-07-10-workspace-type-instance-design.md) chose store-scoped SQLite DBs (filesystem isolation) instead; treat as historical draft, not as-built claim · CURRENCY 08-09-26: two paths this stamp says it verified are now dead, which is what a dated verification looks like when nobody re-runs it. `crates/kasirmu-core/src/store_profile.rs` is `crates/kasirmu-core/src/location_profile.rs` and `StoreProfile` is `LocationProfile` (line 15); `ui/src/features/stores/` is `ui/src/features/locations/`. The stamp is left as written because it records what was true on 2026-07-22, not what is true now -->
+<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: AUDITED (draft, superseded by ADR #4) · pre-decision analysis doc; all referenced files verified present: crates/kasirmu-core/src/db/workspaces.rs, apps/desktop-tauri/src/commands/workspaces.rs, ui/src/contexts/WorkspaceContext.tsx, ui/src/features/workspaces/WorkspaceHome.tsx, ui/src/app/AppShell.tsx; StoreProfile (crates/kasirmu-core/src/store_profile.rs:14) + MultiStoreDashboardScreen (ui/src/App.tsx:37) confirmed · note: its Phase 3 recommended query-level WHERE store_id=? scoping was NOT the mechanism adopted — ADR #4 (2026-07-10-workspace-type-instance-design.md) chose store-scoped SQLite DBs (filesystem isolation) instead; treat as historical draft, not as-built claim · CURRENCY 08-09-26: two paths this stamp says it verified are now dead, which is what a dated verification looks like when nobody re-runs it. `crates/kasirmu-core/src/store_profile.rs` is `crates/kasirmu-core/src/location_profile.rs` and `StoreProfile` is `LocationProfile` (line 15); `ui/src/features/stores/` is `ui/src/features/locations/`. The stamp is left as written because it records what was true on 2026-07-22, not what is true now -->
 
 # Workspace Instance Architecture — Analysis & Recommendation
 
@@ -225,12 +225,12 @@ This is a significant UX change for product management.
 |---|---|---|
 | 1 | Create `workspace_instances` table + migration | `crates/kasirmu-core/migrations/` |
 | 2 | Seed default instances from existing workspace keys | Migration SQL |
-| 3 | Add `list_workspace_instances`, `create_instance`, `delete_instance` APIs | `crates/kasirmu-core/src/db/workspaces.rs` + `apps/desktop-client/src/commands/workspaces.rs` |
+| 3 | Add `list_workspace_instances`, `create_instance`, `delete_instance` APIs | `crates/kasirmu-core/src/db/workspaces.rs` + `apps/desktop-tauri/src/commands/workspaces.rs` |
 | 4 | Migrate `user_workspaces` → `user_workspace_instances` | DB migration + Rust logic |
 | 5 | Add `list_all_workspace_types` API (for admin dropdowns) | Same files |
 | 6 | Update `WorkspaceContext` to fetch instances | `ui/src/contexts/WorkspaceContext.tsx` |
 | 7 | Update `WorkspaceHome` to show instance names/colors | `ui/src/features/workspaces/WorkspaceHome.tsx` |
-| 8 | Update `AppShell` to route by `type_key` | `ui/src/frontend/shell/AppShell.tsx` |
+| 8 | Update `AppShell` to route by `type_key` | `ui/src/app/AppShell.tsx` |
 | 9 | Add instance management UI in settings | New screen in settings sidebar |
 | 10 | Add workspace assignment UI in staff settings | New component on staff edit page |
 
@@ -337,10 +337,10 @@ Data scoping (`store_id` on tables) is **not** part of Phase 1. All instances sh
 
 - `docs/decisions/2026-07-10-workspace-type-instance-design.md` — ADR with full schema design
 - `crates/kasirmu-core/src/db/workspaces.rs` — Current workspace queries
-- `apps/desktop-client/src/commands/workspaces.rs` — Current workspace IPC commands
+- `apps/desktop-tauri/src/commands/workspaces.rs` — Current workspace IPC commands
 - `ui/src/contexts/WorkspaceContext.tsx` — Current workspace state management
 - `ui/src/features/workspaces/WorkspaceHome.tsx` — Workspace picker UI
-- `ui/src/frontend/shell/AppShell.tsx` — Workspace routing and rendering
+- `ui/src/app/AppShell.tsx` — Workspace routing and rendering
 - `ARCHITECTURE.md` — Overall architecture reference
 
 > last audited 08-09-26 by buffy

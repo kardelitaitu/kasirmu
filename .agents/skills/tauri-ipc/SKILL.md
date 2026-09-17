@@ -24,8 +24,8 @@ kasir.mu uses Tauri v2 to bridge Rust and a React/TypeScript front-end. The IPC 
 
 | # | Rule | Why |
 |---|------|-----|
-| 1 | **Rust commands live in `apps/desktop-client/src/commands/<feature>.rs`.** | One folder, one feature, easy to find. |
-| 2 | **All commands are registered in `apps/desktop-client/src/lib.rs`.** | Registration lives next to `Builder::default()` in the `invoke_handler!` list. |
+| 1 | **Rust commands live in `apps/desktop-tauri/src/commands/<feature>.rs`.** | One folder, one feature, easy to find. |
+| 2 | **All commands are registered in `apps/desktop-tauri/src/lib.rs`.** | Registration lives next to `Builder::default()` in the `invoke_handler!` list. |
 | 3 | **Front-end calls go through `ui/src/api/` (per-domain files).** Components never call `invoke()` directly. |
 | 4 | **Every command is `async fn` and returns `Result<T, AppError>`.** | Errors are typed on both sides; no stringified blobs. |
 | 5 | **Every command takes its dependencies via `tauri::State<...>`.** | No globals, no thread-locals. |
@@ -35,7 +35,7 @@ kasir.mu uses Tauri v2 to bridge Rust and a React/TypeScript front-end. The IPC 
 
 ## Layout
 
-├── apps/desktop-client/
+├── apps/desktop-tauri/
 └── src/
     ├── main.rs                      # thin entry point — calls oz_pos_lib::run()
     ├── lib.rs                       # the run() function: app setup + command registration
@@ -70,7 +70,7 @@ ui/
 ## Defining a Rust command
 
 ```rust
- // apps/desktop-client/src/commands/pos.rs
+ // apps/desktop-tauri/src/commands/pos.rs
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -111,7 +111,7 @@ pub async fn add_line_scoped(
 - Argument struct is `*Args`, return type is `*Result`. Keeps the call site readable.
 - `State<'_, AppState>` is the only way to reach the database, services, or hardware. No module-level `static`s.
 - Scoped commands take `session_token: String` **first**, call `state.resolve_session(&session_token)?`, and check the required permission before touching data.
-- Errors are `AppError`, defined once in `apps/desktop-client/src/error.rs` and re-exported. Don't return `String` errors.
+- Errors are `AppError`, defined once in `apps/desktop-tauri/src/error.rs` and re-exported. Don't return `String` errors.
 - Commands are pure: they take inputs, return outputs, and use `State` for the world. No hidden state.
 
 ---
@@ -119,7 +119,7 @@ pub async fn add_line_scoped(
 ## Registering in `lib.rs`
 
 ```rust
- // apps/desktop-client/src/main.rs
+ // apps/desktop-tauri/src/main.rs
 
 mod commands;
 mod error;
@@ -131,7 +131,7 @@ fn main() {
 ```
 
 ```rust
- // apps/desktop-client/src/lib.rs
+ // apps/desktop-tauri/src/lib.rs
 
 use tauri::Builder;
 use crate::state::AppState;
@@ -233,7 +233,7 @@ export function usePosState(cartId: CartId) {
 Use Tauri events for streaming or push-style updates (e.g., barcode scan, printer status, sync progress).
 
 ```rust
-// apps/desktop-client/src/commands/hardware.rs
+// apps/desktop-tauri/src/commands/hardware.rs
 
 use tauri::{AppHandle, Emitter};  // <-- Emitter trait is required for .emit()
 

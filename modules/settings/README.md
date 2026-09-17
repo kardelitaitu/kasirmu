@@ -20,7 +20,7 @@ The Settings module owns the store configuration vertical. It handles store name
 ## Currently Owns
 
 - **Backend** — Settings CRUD, feature flags, currencies (`crates/kasirmu-core/src/settings.rs`, `crates/kasirmu-core/src/db/settings.rs`)
-- **Commands** — Settings, setup, and sync Tauri commands (`apps/desktop-client/src/commands/settings.rs`, `apps/desktop-client/src/commands/setup.rs`, `apps/desktop-client/src/commands/sync.rs`)
+- **Commands** — Settings, setup, and sync Tauri commands (`apps/desktop-tauri/src/commands/settings.rs`, `apps/desktop-tauri/src/commands/setup.rs`, `apps/desktop-tauri/src/commands/sync.rs`)
 - **Frontend** — Settings and setup wizard screens (`ui/src/features/settings/`, `ui/src/features/setup/`)
 - **API** — TypeScript API client (`ui/src/api/settings.ts`)
 - **Locale** — Fluent translation strings (`ui/src/locales/settings.ftl`)

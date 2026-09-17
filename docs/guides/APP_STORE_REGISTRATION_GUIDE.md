@@ -18,10 +18,10 @@ This guide provides end-to-end instructions for registering, signing, building, 
 ### Step 2: Build Release Packages
 From your workspace root, run Tauri's Windows bundler:
 ```powershell
-cd apps/desktop-client
+cd apps/desktop-tauri
 cargo tauri build --bundles msi,nsis
 ```
-- **Output Artifacts**: `apps/desktop-client/target/release/bundle/msi/oz-pos_0.0.25_x64_en-US.msi` and `.exe` (NSIS).
+- **Output Artifacts**: `apps/desktop-tauri/target/release/bundle/msi/oz-pos_0.0.25_x64_en-US.msi` and `.exe` (NSIS).
 
 ### Step 3: Create App Submission on Partner Center
 1. Log into Partner Center → **Apps and Services** → **Windows & Xbox**.

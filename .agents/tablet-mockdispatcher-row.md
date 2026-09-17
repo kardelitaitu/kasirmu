@@ -8,7 +8,7 @@ and every claim carries the command that produced it. Reproduce any of them befo
 ## 1. what to insert, and where
 
 Anchor: the existing `dev-mock/tauri-api.ts` entry in the `allowed` array of
-`apps/tablet-client/src/commands/registration_gate_tests.rs`, at **:831**, inside
+`apps/mobile-tauri/src/commands/registration_gate_tests.rs`, at **:831**, inside
 `let allowed = [` opened at `:830`. Insert these ten lines immediately after it, so the new
 path sits in the dev-mock cluster and the `__tests__/dev-mock-scoped-aliases.test.ts` entry
 stays where it is. One row per array, named exactly. No directory glob — see §4.
@@ -28,7 +28,7 @@ stays where it is. One row per array, named exactly. No directory glob — see �
 
 These are the lines I had inserted and then removed by reversal of my own block, not a
 proposal written after the fact: `grep -c "dev-mock/core/mockDispatcher.ts"
-apps/tablet-client/src/commands/registration_gate_tests.rs` returned 1 while patched and
+apps/mobile-tauri/src/commands/registration_gate_tests.rs` returned 1 while patched and
 returns 0 now.
 
 ## 2. the measurement that makes them safe
@@ -74,7 +74,7 @@ point. so this entry adds a case to a class the file defines, it does not weaken
 ## 4. provenance, the three things that keep this honest
 
 1. **i did not touch your file after reverting.**
-   `wc -l -c apps/tablet-client/src/commands/registration_gate_tests.rs` → 923 lines,
+   `wc -l -c apps/mobile-tauri/src/commands/registration_gate_tests.rs` → 923 lines,
    36,640 bytes; `md5sum` → `9d8fbdd778d528eeebac43418e1feeca`, the same hash it carried
    before i touched it, and `grep -c "dev-mock/core/mockDispatcher.ts"` → 0. the revert was
    done by writing bytes (reversal of my own inserted block), never by `git checkout` or
@@ -96,15 +96,15 @@ point. so this entry adds a case to a class the file defines, it does not weaken
 ## 5. what this file is
 
 untracked, written by the auditor who finished the desktop half
-(`apps/desktop-client/src/commands/registration_gate_tests.rs`, 1,129 lines, 46,966 bytes,
+(`apps/desktop-tauri/src/commands/registration_gate_tests.rs`, 1,129 lines, 46,966 bytes,
 `md5sum` → `8232cb0e8674bb5dcab95042c17e9bf2`, desktop filter green at 8 of 8 with this same
 allowed-path change applied there) and reverted this one. no commit was made anywhere by me in
 your crate, and no source file under apps, crates, platform or ui was edited by me for this
 handoff beyond the two named above.
 
 One addendum from the clippy sweep on 2026-09-13: the `clippy::collapsible_if` row at
-`apps/desktop-client/src/commands/registration_gate_tests.rs:264` was cleared in the desktop copy by
-`143497c916` (`style(desktop-client)`), and `apps/tablet-client/src/commands/registration_gate_tests.rs`
+`apps/desktop-tauri/src/commands/registration_gate_tests.rs:264` was cleared in the desktop copy by
+`143497c916` (`style(desktop-tauri)`), and `apps/mobile-tauri/src/commands/registration_gate_tests.rs`
 carries the identical lint at the identical line and column — `:264`, the same nested
 `if want.contains(&name) { if let Some((sig, body)) = grab(&chars, j) {` — because this harness was
 copied across the two shells, so one line would clean both files at once; it was **not** touched, the
@@ -117,7 +117,7 @@ appended 09:16 +07. nothing above is retracted; §2 and §3 are now reproduced r
   failed`, `finished in 0.16s` on a warm target (cargo printed `Finished ... in 0.74s`, the whole
   invocation 1.4s wall, 09:13:04 +07; the earlier 09:07 +07 run read 1.04s warm — same verdict).
 - the failure is `drift_pin_no_computed_command_names_in_ui`, panicking at
-  `apps/tablet-client/src/commands/registration_gate_tests.rs:871`: `PIN OF A KNOWN HAZARD, NOT AN
+  `apps/mobile-tauri/src/commands/registration_gate_tests.rs:871`: `PIN OF A KNOWN HAZARD, NOT AN
   ENDORSEMENT: 100 of 103 invoke() sites in ui/src name the command as a literal and these 1 build
   it at runtime`, and the named site is `ui/src/dev-mock/core/mockDispatcher.ts:108`. one offender,
   exactly the one §2 describes; §3's `7 passed; 0 failed` after the row stays a prediction.

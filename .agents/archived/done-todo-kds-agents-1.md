@@ -51,7 +51,7 @@ LANDED (backend only, this session), one commit per milestone:
 - IPC: `get_kds_routing_rules_scoped` (KDS_VIEW) /
   `save_kds_routing_rules_scoped` (KDS_UPDATE) — bridge bodies in
   `crates/oz-bridge/src/kds_routing.rs`, shims in
-  `apps/desktop-client/src/commands/kds_routing.rs`, registered in
+  `apps/desktop-tauri/src/commands/kds_routing.rs`, registered in
   lib.rs generate_handler (+2, nowhere else), floor pin 449→451.
   Restaurant scope = session.restaurant_pos_id else terminal_id (same
   fallback the resolver already used).
@@ -69,7 +69,7 @@ LANDED (backend only, this session), one commit per milestone:
   `KdsRoutingRuleInput` (snake_case serde; `matcher` ∈ "sku"|"category"|
   "tag"; is_active default true on save; save returns the persisted set,
   ordered). Follow-ups must also: add ui/src/api kds types + the dev-mock
-  pair; bump `apps/desktop-client/tests/gate_audit.rs`
+  pair; bump `apps/desktop-tauri/tests/gate_audit.rs`
   ("kds_routing",1,["KDS_VIEW"]) → ("kds_routing",3,["KDS_UPDATE","KDS_VIEW"])
   (that census test was ALREADY red at dispatch baseline — tablet/desktop
   pins stale by foreign commands — this line lands with its owner's repair).
@@ -91,16 +91,16 @@ f8b91e5be, a63fd08b6); the deferred UI landed as `9f6fcd828`
 ftl keys, editor + api-contract test suites); the deferred dev-mock pair
 is live (`handlers/kds.ts:613-614`); the follow-up obligation this stamp
 named — gate_audit ("kds_routing",3,["KDS_UPDATE","KDS_VIEW"]) — is
-measured at apps/desktop-client/tests/gate_audit.rs:115. The three
+measured at apps/desktop-tauri/tests/gate_audit.rs:115. The three
 unchecked Phase boxes above (baseline inspect, commit milestone, dev-mock
 pair) were overtaken by those commits and stay as written history.
 Renamed done- with that record in place. -->
 
 **Document:** `done-todo-kds-agents-1.md` (was `todo-kds-agents-1.md`)  
 **Role:** Orchestrator Agent 1 (Kitchen Routing & Rules Architect)  
-**Goal:** Implement backend routing rules in `oz-core` and `desktop-client` that evaluate order line items by category/tags and route them to designated station queues (Grill, Fryer, Salad, Bar, Expo).
+**Goal:** Implement backend routing rules in `oz-core` and `desktop-tauri` that evaluate order line items by category/tags and route them to designated station queues (Grill, Fryer, Salad, Bar, Expo).
 
-**Target Crates:** `crates/oz-core/src/kds_routing.rs`, `apps/desktop-client/src/commands/kds_routing.rs`  
+**Target Crates:** `crates/oz-core/src/kds_routing.rs`, `apps/desktop-tauri/src/commands/kds_routing.rs`  
 **Sibling Documents:**
 - [`todo-kds-agents-2.md`](./todo-kds-agents-2.md) (Agent 2 — LAN Order Event Dispatcher & State Sync)
 - [`todo-kds-agents-3.md`](./todo-kds-agents-3.md) (Agent 3 — Station UI, Modifier Badges & Expo Screen)
@@ -113,7 +113,7 @@ Renamed done- with that record in place. -->
 2. **Owned Path Fence (Exclusive to Agent 1):**
    - `crates/oz-core/src/kds_routing.rs` & tests
    - `crates/oz-core/src/db/kds.rs` & `kds_lines.rs`
-   - `apps/desktop-client/src/commands/kds_routing.rs`
+   - `apps/desktop-tauri/src/commands/kds_routing.rs`
 3. **Forbidden Paths (Owned by Siblings):**
    - DO NOT edit LAN server multicast (Owned by Agent 2).
    - DO NOT edit UI screens (Owned by Agent 3).

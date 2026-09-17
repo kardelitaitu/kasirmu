@@ -219,7 +219,7 @@ prevents revenue leakage from unlimited Free/Plus team accounts"). Counts active
 users with the owner excluded.
 
 \*\* Sales history cap — **enforced** in both clients' history commands
-(`apps/desktop-client/src/commands/history.rs`,
+(`apps/desktop-tauri/src/commands/history.rs`,
 `apps/mobile-tauri/src/commands/history.rs`, C1.2): the tier window is read from the
 tenant subscription **after signature verification** and applied by
 `list_sales_with_history_cap(days)`, which returns the rows plus a `capped` flag instead

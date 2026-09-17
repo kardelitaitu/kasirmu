@@ -29,7 +29,7 @@ Client devices (desktop + tablet) each hold a **complete local SQLite
 database** — the system is offline-first, so the device copy is the working
 copy and the cloud copy is partial (only what syncs — see §2). Client backups
 are local files written beside the database (`<db>.backup.db`,
-`create_backup_scoped`, `DATA_EXPORT`-gated, `apps/desktop-client/src/commands/data.rs`);
+`create_backup_scoped`, `DATA_EXPORT`-gated, `apps/desktop-tauri/src/commands/data.rs`);
 they never leave the device unless the operator copies them.
 
 **Residency.** Deployment is **single-region**: region is a property of the
@@ -107,7 +107,7 @@ leave via metrics has to look at the sync server, not at the absence of a route 
 | `offline_queue` (cloud) | **90 days**, enforced | hourly prune, 500-row batches (`start_prune_loop_pg`; runbook §3.6) |
 | `sent_reports` dedup claims (cloud) | **90 days**, enforced | same prune |
 | Memos (device) | archived → purged at **30 days** | retention sweep (`c8d2a54f` enforced via `archived_at`; daemon `5ee1064a`; `20260914_memo_retention.sql`) |
-| `audit_log` (tenant-facing) | **tier window**, enforced | hourly daemon sweep: `Store::sweep_audit_retention` (`db/audit.rs:162`), called from `apps/desktop-client/src/lib.rs:614`/`:639` and `apps/mobile-tauri/src/lib.rs:284`. Plus 90d / Pro 180d / Premium 365d / Enterprise 1095d / Free & OneTime no entitlement (`subscription.rs:243-251`) |
+| `audit_log` (tenant-facing) | **tier window**, enforced | hourly daemon sweep: `Store::sweep_audit_retention` (`db/audit.rs:162`), called from `apps/desktop-tauri/src/lib.rs:614`/`:639` and `apps/mobile-tauri/src/lib.rs:284`. Plus 90d / Pro 180d / Premium 365d / Enterprise 1095d / Free & OneTime no entitlement (`subscription.rs:243-251`) |
 | `audit_log` rows within the window | **infinite**, immutable by trigger | the sweep only deletes PAST the window; see the trigger exception in §2 |
 | Sales, catalog, inventory, users, memos (cloud) | **no expiry** — kept while the tenant exists | no purge path in `crates/oz-api` (verified: no per-tenant `DELETE`) |
 | Local device DB | kept until operator action (backup/restore) | — |
@@ -149,7 +149,7 @@ deleted after 90 days" answer to a customer should say.
 Implemented today:
 
 - **Client data export** — `export_data` (session + `SETTINGS_EDIT`, path
-  contained, `apps/desktop-client/src/commands/data.rs`) writes an `.ozpkg`
+  contained, `apps/desktop-tauri/src/commands/data.rs`) writes an `.ozpkg`
   payload (`crates/oz-core/src/ozpkg.rs`): products, categories, settings,
   and *optionally* sale **headers only** ("no lines for privacy"), customers,
   and users **without PIN hashes**. `import_preview`/`import_data` restore it.

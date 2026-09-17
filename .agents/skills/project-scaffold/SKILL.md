@@ -46,7 +46,7 @@ members = [
     "platform/*",        # kernel, core, sync, startup (globbed)
     "foundation",
     "apps/cloud-server",
-    "apps/desktop-client",
+    "apps/desktop-tauri",
     "apps/mobile-tauri",
     # apps/license-server is Go (no Cargo.toml) — excluded; a glob over
     # apps/* would break `cargo metadata`, so apps are listed explicitly
@@ -83,7 +83,7 @@ oz-pos/
 │   ├── kasirmu-logging/             # structured logging
 │   └── kasirmu-cli/                 # migrations, backup, export CLI
 │   (also: kasirmu-api, kasirmu-crypto, kasirmu-plugin, kasirmu-notification, kasirmu-media — globbed via crates/*)
-├── apps/desktop-client/        # the desktop shell
+├── apps/desktop-tauri/        # the desktop shell
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
 │   └── src/

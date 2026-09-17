@@ -500,7 +500,7 @@ All point at the unified host; each also has an env-var override:
 | File | Change | Override |
 |------|--------|----------|
 | `crates/kasirmu-core/src/license_verification.rs` | `LICENSE_SERVER_URL` const | `OZ_LICENSE_SERVER_URL` |
-| `apps/desktop-client/tauri.conf.json` | CSP `connect-src` | — |
+| `apps/desktop-tauri/tauri.conf.json` | CSP `connect-src` | — |
 | `apps/mobile-tauri/tauri.conf.json` | CSP `connect-src` | — |
 | `ui/src/features/auth/LicenseActivationScreen.tsx` | `AUTH_SERVICE_URL` fallback | `VITE_AUTH_SERVICE_URL` |
 | `ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx` | pinned URL | — |
@@ -617,7 +617,7 @@ captures and surfaces in **Dashboard → service → Logs**.
 **Everything below is a hosted-service diagnostic, and that is a limitation of
 the clients, not of this page.** No shipped binary writes a persistent local
 log: both Tauri apps initialise logging with `kasirmu_logging::try_init()`
-(`apps/desktop-client/src/lib.rs:99`, `apps/mobile-tauri/src/lib.rs:69`),
+(`apps/desktop-tauri/src/lib.rs:99`, `apps/mobile-tauri/src/lib.rs:69`),
 which installs an `EnvFilter` + `fmt` subscriber and **no writer**
 (`crates/kasirmu-logging/src/lib.rs:78-89`, no `.with_writer`), so stdout goes wherever the OS puts it
 — which for a double-clicked desktop build is nowhere. The two entry points
@@ -942,8 +942,8 @@ are not.** `set_sync_api_key` is called from command lanes both shells reach
 (`crates/kasirmu-bridge/src/sync.rs:76`, `apps/mobile-tauri/src/commands/sync.rs:92`), from
 the sync daemon (`platform/sync/src/daemon.rs:170`), from terminal auth
 (`crates/kasirmu-core/src/sync_auth.rs:472`) and from desktop auto-provisioning
-(`apps/desktop-client/src/sync_bootstrap.rs:84`); `set_sync_terminal_secret` from the
-pairing path at `apps/desktop-client/src/sync_bootstrap.rs:248`; `set_pg_sync_password` from
+(`apps/desktop-tauri/src/sync_bootstrap.rs:84`); `set_sync_terminal_secret` from the
+pairing path at `apps/desktop-tauri/src/sync_bootstrap.rs:248`; `set_pg_sync_password` from
 `crates/kasirmu-bridge/src/sync.rs:161`. Those three keys have a walkable ladder.
 `set_rate_sync_api_key` (`platform/core/src/settings/typed.rs:557`) and
 `set_lan_server_psk` (`platform/core/src/settings/typed.rs:643`) have **no production

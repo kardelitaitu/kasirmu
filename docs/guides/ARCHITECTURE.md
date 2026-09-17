@@ -99,7 +99,7 @@ oz-pos/
 │       ├─ Cargo.toml
 │       └─ src/
 │           └─ main.rs       # clap entry-point: migrate, backup, export
-├─ apps/desktop-client/      # Tauri v2 application shell
+├─ apps/desktop-tauri/      # Tauri v2 application shell
 │   ├─ Cargo.toml
 │   ├─ tauri.conf.json       # Window config, bundle targets, updater
 │   ├─ capabilities/
@@ -169,7 +169,7 @@ oz-pos/
   generated `20260813_init.pg.sql`). The 131-file history was squashed into
   `20260813_init.sql` — not `init.sql`. `kasirmu_core::migrations::run(conn)` is invoked at
   **application-state construction**, not by a platform subsystem:
-  `apps/desktop-client/src/state.rs:212`, `apps/mobile-tauri/src/state.rs:117`,
+  `apps/desktop-tauri/src/state.rs:212`, `apps/mobile-tauri/src/state.rs:117`,
   `apps/cloud-server/src/db.rs:134`, `crates/kasirmu-api/src/lib.rs:457` and `crates/kasirmu-cli`.
   `platform/startup` does **not** run migrations — it only calls the
   `migrations::fresh_db()` test helper in `event_handlers_tests.rs`.
@@ -223,10 +223,10 @@ These crates were originally scaffolded and are now fully implemented:
 
 ### kasirmu-logging
 - `tracing` + `tracing-subscriber` with env-filter.
-- Single `kasirmu_logging::init()` call wires up log sinks. Used by `apps/desktop-client` and `kasirmu-api`.
+- Single `kasirmu_logging::init()` call wires up log sinks. Used by `apps/desktop-tauri` and `kasirmu-api`.
 - JSON formatter, syslog, and Windows Event Log outputs planned for Phase 2.
 
-### apps/desktop-client & apps/mobile-tauri (Tauri v2 Shells)
+### apps/desktop-tauri & apps/mobile-tauri (Tauri v2 Shells)
 Each app crate has an identical command surface, wired through `platform-startup`:
 - **Entry point**: `main.rs` → `lib.rs::run()`.
 - **State**: `AppState` holds `Mutex<Connection>` (SQLite WAL mode), `Arc<DriverRegistry>`, `AppHandle`.

@@ -224,7 +224,7 @@ The 131 pre-Aug-2026 migrations were squashed into `20260813_init.sql`, so numbe
 | 9. Update `row_to_kds_order` | `crates/kasirmu-core/src/db/kds.rs` | Remove items_summary derivation; keep legacy field but set from derived |
 | 10. Update `get_kds_order` | `crates/kasirmu-core/src/db/kds.rs` | Load line items alongside the order (or lazy via `with_lines()`) |
 | 11. New API: `get_kds_order_lines` | `crates/kasirmu-core/src/db/kds.rs` | Query kds_line_items by kds_order_id, ordered by course_sort_key + line_position |
-| 12. New Tauri command | `apps/desktop-client/src/commands/kds.rs` | `get_kds_order_lines_scoped` returning `Vec<KdsLineItem>` |
+| 12. New Tauri command | `apps/desktop-tauri/src/commands/kds.rs` | `get_kds_order_lines_scoped` returning `Vec<KdsLineItem>` |
 
 ### Phase 3 — Frontend Display (Day 3)
 

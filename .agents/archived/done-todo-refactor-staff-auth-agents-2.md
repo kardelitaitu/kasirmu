@@ -8,9 +8,9 @@ here was ever run. -->
 
 **Document:** `todo-refactor-staff-auth-agents-2.md`  
 **Role:** Orchestrator Agent 2 (RBAC & Staff Operations Architect)  
-**Goal:** Modularize staff member lifecycle, role assignments, wage settings, and audit event dispatching from `apps/desktop-client/src/commands/staff.rs` (1,248 lines).
+**Goal:** Modularize staff member lifecycle, role assignments, wage settings, and audit event dispatching from `apps/desktop-tauri/src/commands/staff.rs` (1,248 lines).
 
-**Target File:** `apps/desktop-client/src/commands/staff.rs`  
+**Target File:** `apps/desktop-tauri/src/commands/staff.rs`  
 **Sibling Documents:**
 - [`todo-refactor-staff-auth-agents-1.md`](./todo-refactor-staff-auth-agents-1.md) (Agent 1 — Auth & PIN Verification Core)
 - [`todo-refactor-staff-auth-agents-3.md`](./todo-refactor-staff-auth-agents-3.md) (Agent 3 — Staff Management UI Deconstruction)
@@ -21,9 +21,9 @@ here was ever run. -->
 
 1. **Commit Subject Convention:** `refactor(staff-ops): ...`
 2. **Owned Path Fence (Exclusive to Agent 2):**
-   - `apps/desktop-client/src/commands/staff.rs` & `staff_tests.rs`
-   - `apps/desktop-client/src/commands/staff_role_holders_tests.rs`
-   - `apps/desktop-client/src/commands/staff_security_events_tests.rs`
+   - `apps/desktop-tauri/src/commands/staff.rs` & `staff_tests.rs`
+   - `apps/desktop-tauri/src/commands/staff_role_holders_tests.rs`
+   - `apps/desktop-tauri/src/commands/staff_security_events_tests.rs`
 3. **Forbidden Paths (Owned by Siblings):**
    - DO NOT edit `commands/auth.rs` (Owned by Agent 1).
    - DO NOT edit `StaffManagementScreen.tsx` (Owned by Agent 3).

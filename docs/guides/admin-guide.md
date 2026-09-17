@@ -34,7 +34,7 @@ Navigate to **Admin → Workspaces** to manage workspace types:
 3. Set **role** (owner, manager, cashier, kitchen)
 4. Assign a **PIN** (**4–8 digits**) for quick login. The minimum is 4, enforced twice:
    `CreatePinScreen.tsx:44` and again server-side at
-   `apps/desktop-client/src/commands/auth.rs:192`. The maximum is 8, and it is not an
+   `apps/desktop-tauri/src/commands/auth.rs:192`. The maximum is 8, and it is not an
    error — `digitsOnly()` at `CreatePinScreen.tsx:36` does `.slice(0, 8)`, so a longer
    paste is silently truncated rather than rejected. "4-6" was wrong at the top end and
    described a bound nothing enforces.

@@ -4,7 +4,7 @@
 **Role:** Orchestrator Agent 2 (Real-Time LAN & Synchronization Architect)  
 **Goal:** Implement real-time multicasting of order status transitions (New, Preparing, Ready, Bumped) across LAN terminals so individual prep stations and the expediter (Expo) station stay synchronized with zero lag.
 
-**Target Crates:** `crates/oz-lan/` (or `desktop-client/src/lan_server.rs`), `platform-sync`  
+**Target Crates:** `crates/oz-lan/` (or `desktop-tauri/src/lan_server.rs`), `platform-sync`  
 **Sibling Documents:**
 - [`done-todo-kds-agents-1.md`](./done-todo-kds-agents-1.md) (Agent 1 — Multi-Station KDS Routing Engine)
 - [`todo-kds-agents-3.md`](./todo-kds-agents-3.md) (Agent 3 — Station UI, Modifier Badges & Expo Screen)
@@ -16,7 +16,7 @@
 1. **Commit Subject Convention:** `feat(kds-lan): ...`
 2. **Owned Path Fence (Exclusive to Agent 2):**
    - LAN event payloads for KDS in `crates/oz-lan/`
-   - Real-time order synchronization listener in `apps/desktop-client/src/commands/kds.rs`
+   - Real-time order synchronization listener in `apps/desktop-tauri/src/commands/kds.rs`
 3. **Forbidden Paths (Owned by Siblings):**
    - DO NOT edit routing tables (Owned by Agent 1).
    - DO NOT edit front-end components (Owned by Agent 3).
@@ -31,7 +31,7 @@
 > noise-psk-v1 transports, the per-peer offline buffer (DC-2), and
 > `KdsDiscoverResponse` (27 tests green). The KDS *state-sync event
 > vocabulary*, station-scoped delivery, and reconnect snapshots did NOT
-> exist — that is what landed here. `desktop-client/src/lan_server.rs`
+> exist — that is what landed here. `desktop-tauri/src/lan_server.rs`
 > is a 9-line shim; all transport work is in the crate.
 
 ### Phase 2.0: Baseline Audit
@@ -80,14 +80,14 @@
   flow; a retroactive split would have required reworking hot files in a
   concurrently-committed checkout).
 
-### ⏳ Deferred (path-fenced: `apps/desktop-client/**` owned by the live
+### ⏳ Deferred (path-fenced: `apps/desktop-tauri/**` owned by the live
 registration-gate session) — **now landed, see “App wiring — 13-09-26” below** —
 exact diff in the work-order final report;
 `// INTEGRATION(oz-lan kds-sync):` markers sit at the crate boundaries:
-1. `handle.kds_sync_handler()` registration in `apps/desktop-client/src/lib.rs`
+1. `handle.kds_sync_handler()` registration in `apps/desktop-tauri/src/lib.rs`
    (`bus.subscribe("kds.sync", …)` next to the existing two).
 2. `.with_kds_queue(provider)` chaining at forwarder construction.
-3. KDS transition commands in `apps/desktop-client/src/commands/kds.rs`
+3. KDS transition commands in `apps/desktop-tauri/src/commands/kds.rs`
    publishing the four `KdsSyncEvent` variants on the kernel event bus.
 
 ---
@@ -95,7 +95,7 @@ exact diff in the work-order final report;
 ## App wiring — 13-09-26
 
 Closes the three deferred items above. Scope was exactly
-`apps/desktop-client/src/{state.rs, commands/kds.rs, lib.rs}` — `oz-lan`,
+`apps/desktop-tauri/src/{state.rs, commands/kds.rs, lib.rs}` — `oz-lan`,
 `oz-bridge`, `oz-core` untouched (dependency inversion kept: the publish
 seam lives where both worlds are in scope). No new `#[tauri::command]`:
 `generate_handler!` is byte-identical, the 449-floor registration gate
@@ -110,7 +110,7 @@ passes, `wiring_audit` 6/6.
 **Markers:** the two `// INTEGRATION(oz-lan kds-sync):` notes at
 `crates/oz-lan/src/lib.rs:291` and `:797` sit in a crate this pass was
 fenced out of, so they remain in place — but they are now honored:
-desktop-client does register the handler, does chain
+desktop-tauri does register the handler, does chain
 `.with_kds_queue`, and does publish the four variants.
 
 **Verification:** `cargo check -p oz-pos-app` clean (note: the package is
@@ -118,7 +118,7 @@ desktop-client does register the handler, does chain
 member). `cargo test -p oz-pos-app --lib registration` 10/10 (incl. the
 449 floor, run against the edited `lib.rs`); `--lib state` 13/13;
 `--test wiring_audit` 6/6. The work order’s `kds` test filter matches no
-desktop-client test *name* (0 executed) — the real pin guarding the
+desktop-tauri test *name* (0 executed) — the real pin guarding the
 shims is `gate_audit`’s `("kds", 9, …)` row, which passes. gate_audit as
 a whole was RED at session end on one row only — `sync: pin 10, source
 12` — caused by another session’s still-uncommitted edits to
@@ -130,7 +130,7 @@ a whole was RED at session end on one row only — `sync: pin 10, source
    LAN advertisement is not part of the kds-sync crate contract.
 2. The cache is refreshed only by transitions this desktop process
    executes through these shims. A KDS tablet running its own
-   tablet-client binary applies its kitchen transitions in *its* process
+   mobile-tauri binary applies its kitchen transitions in *its* process
    and publishes on *its* bus — such transitions never reach the desktop
    kernel bus here, so this terminal’s `active_queue` can lag a
    tablet-driven change until the next desktop-side transition rebuilds
@@ -151,13 +151,13 @@ a whole was RED at session end on one row only — `sync: pin 10, source
 
 ## Post-close fix — Phase-0 over-read (13-09-26)
 
-**Fix commit:** `355d651a5f` · `fix(kds-lan): answer discover pipelined into the legacy hello segment` · files: `crates/oz-lan/src/lib.rs`, `crates/oz-lan/src/noise.rs`, `crates/oz-lan/src/lib_tests.rs`, `apps/desktop-client/src/commands/kds_lan_live_tests.rs`.
+**Fix commit:** `355d651a5f` · `fix(kds-lan): answer discover pipelined into the legacy hello segment` · files: `crates/oz-lan/src/lib.rs`, `crates/oz-lan/src/noise.rs`, `crates/oz-lan/src/lib_tests.rs`, `apps/desktop-tauri/src/commands/kds_lan_live_tests.rs`.
 
 **The bug** (root-caused by the kds-lan-live suite, left unfixed there per its fence): `handle_peer`'s Phase-0 legacy-psk-v1 branch read the hello line through a *transient* `BufReader` inside a `{ }` block. BufReader fills its 8 KB buffer past the newline; when the block ended the reader was dropped and everything it had over-read — a `{"op":"discover",...}` line the tablet wrote back-to-back with its hello, coalesced by TCP into one segment — was discarded. The client then got no discovery response, no `active_queue` snapshot, and Phase 1 (which built a *second*, fresh reader) blocked on the socket until its 5 s timeout while the event stream began with heartbeats. The four green live proofs had been routed *around* the defect with a client-side 150 ms hello→discover pace.
 
 **The fix:** one connection-level `BufReader`, created before the first byte is read and moved into `PeerTx::Plain`/`PeerTx::Noise`, serves every read on the connection — Phase-0 selector, legacy hello, noise handshake frames, Phase-1 discovery — so buffered bytes survive the phase handoff. `read_frame`/`write_frame`/`noise_handshake_responder` were generalized from `&mut TcpStream` to `AsyncRead`/`AsyncWrite` (+ `Unpin`) bounds so the handshake consumes through the same reader (the selector read can already have buffered message 1 — a later raw-stream read would invert the over-read into a frame-reorder bug, so two readers never cover one stream and nothing reads the socket under the reader). Writes bypass the reader explicitly via `get_mut()`; no serialization changed, so the frozen wire contract is byte-identical (pinned by the existing byte-identity and noise roundtrip tests). New unit test `discover_pipelined_with_hello_is_answered` sends both JSON lines in one write and asserts both are processed.
 
-**Acceptance:** baseline (pre-fix): `cargo test -p oz-lan` 62 passed + 1 doctest; `cargo test -p oz-pos-app kds_lan_live` 4 passed / 1 ignored; the `-- --ignored` run red at `apps/desktop-client/src/commands/kds_lan_live_tests.rs:651` with first server line `{"type":"ping"}`. After: oz-lan 63 passed + 1 doctest green (incl. the new test); kds_lan_live **5 passed / 0 ignored**, twice back-to-back (the unpaced burst client now works); `-- --ignored` selects 0 tests; `cargo check -p oz-pos-app` clean. The `#[ignore]` on `kds_lan_live_bugdemo_discovery_lost_when_sent_with_hello` is off — it is now the active regression test; the other tests' 150 ms paces were deliberately left in place.
+**Acceptance:** baseline (pre-fix): `cargo test -p oz-lan` 62 passed + 1 doctest; `cargo test -p oz-pos-app kds_lan_live` 4 passed / 1 ignored; the `-- --ignored` run red at `apps/desktop-tauri/src/commands/kds_lan_live_tests.rs:651` with first server line `{"type":"ping"}`. After: oz-lan 63 passed + 1 doctest green (incl. the new test); kds_lan_live **5 passed / 0 ignored**, twice back-to-back (the unpaced burst client now works); `-- --ignored` selects 0 tests; `cargo check -p oz-pos-app` clean. The `#[ignore]` on `kds_lan_live_bugdemo_discovery_lost_when_sent_with_hello` is off — it is now the active regression test; the other tests' 150 ms paces were deliberately left in place.
 
 **Still-open design observation (NOT implemented, named follow-up):** the offline buffer is keyed by the ephemeral peer `ip:port` (`handle_peer`'s `peer_addr`, drained by the accept loop's `remove(&addr)`). A real reconnecting tablet gets a new ephemeral source port every time, so its buffered events sit under an address that never recurs — replay-on-reconnect effectively never fires in production (the tests see it only because they rebind the exact local port). Keying the buffer by the hello/discover `device_id` (already parsed into `PeerSubscription`) is the suggested follow-up; it needs a device_id↔peer_addr mapping established at handshake time.
 

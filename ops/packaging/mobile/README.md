@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, 1 low-severity observe) · all concrete paths verified: ui/vite.mobile.config.ts, ui/src/main.mobile.tsx, ui/src/frontend/shell/tablet/, ui/src/hooks/{useOrientation,useSwipe,useKeyboardAvoidance}.ts, ui/index.mobile.html, .github/workflows/{android,ios}.yml, apps/mobile-tauri/Cargo.toml crate-type [staticlib,cdylib,rlib], apps/mobile-tauri/AGENTS.md (linked) · observe: line 429 references ui/dist-mobile/ as a stale build dir to delete — that is a gitignored vite build artifact, not in tree (expected; it is an instruction, not a claim the dir exists) · iOS/Android build commands + signing env vars match the mobile-tauri setup · WCAG 2.2 44x44 touch targets consistent with docs/a11y.md -->
+<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, 1 low-severity observe) · all concrete paths verified: ui/vite.mobile.config.ts, ui/src/main.mobile.tsx, ui/src/app/tablet/, ui/src/hooks/{useOrientation,useSwipe,useKeyboardAvoidance}.ts, ui/index.mobile.html, .github/workflows/{android,ios}.yml, apps/mobile-tauri/Cargo.toml crate-type [staticlib,cdylib,rlib], apps/mobile-tauri/AGENTS.md (linked) · observe: line 429 references ui/dist-mobile/ as a stale build dir to delete — that is a gitignored vite build artifact, not in tree (expected; it is an instruction, not a claim the dir exists) · iOS/Android build commands + signing env vars match the mobile-tauri setup · WCAG 2.2 44x44 touch targets consistent with docs/a11y.md -->
 <!-- dead-ref-prefix-ok: apps/mobile-tauri/gen/ -->
 
 > **Prerequisite — the iOS scaffold is not in this repository.** Verified 08-09-26:
@@ -260,7 +260,7 @@ The tablet client (`apps/mobile-tauri`) shares most code with the desktop client
 | React components | ✅ Full | All feature screens, shared components |
 | API layer | ✅ Full | `ui/src/api/*` — works with both desktop and tablet |
 | Hooks | ✅ Full | `useOrientation`, `useSwipe`, `usePosState`, etc. |
-| **Shell** | ❌ Tablet-only | `ui/src/frontend/shell/tablet/` — bottom tab bar layout |
+| **Shell** | ❌ Tablet-only | `ui/src/app/tablet/` — bottom tab bar layout |
 | **Entry point** | ❌ Tablet-only | `ui/src/main.mobile.tsx` |
 | **Build config** | ❌ Tablet-only | `ui/vite.mobile.config.ts` → `ui/index.mobile.html` |
 

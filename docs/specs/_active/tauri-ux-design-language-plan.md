@@ -1,8 +1,8 @@
 # Tauri App UX Update Plan — Design Language Adoption
 
 > **Status:** Proposed · **Area:** desktop-client + tablet-client UI · **Version:** 1.0
-> **Guideline source:** `dev/design-language.html` (the single source of truth — tabs: Color Palette, Buttons, Typography, Spacing & Layout, Icons, Elements, Components, Feedback, Forms, Audit)
-> **Reference prototype:** `dev/kds-prototype.html` (what the design language looks like applied to a real screen)
+> **Guideline source:** `prototypes/design-language.html` (the single source of truth — tabs: Color Palette, Buttons, Typography, Spacing & Layout, Icons, Elements, Components, Feedback, Forms, Audit)
+> **Reference prototype:** `prototypes/kds-prototype.html` (what the design language looks like applied to a real screen)
 > **Plan type:** Checklist — tick each item as it lands.
 
 ## How to use this document
@@ -15,7 +15,7 @@ Each section maps one design-language tab to concrete work in the Tauri apps. Ch
 
 ## 0. Baseline & Source of Truth
 
-- [ ] Confirm `dev/design-language.html` is the canonical guideline; any conflict between this plan and the page is resolved in favour of the page.
+- [ ] Confirm `prototypes/design-language.html` is the canonical guideline; any conflict between this plan and the page is resolved in favour of the page.
 - [ ] Audit `ui/src/features/design/` — decide if the in-app DesignSystem showcase (tokens, swatches) is kept in sync with `design-language.html` or retired in favour of the static page.
 - [ ] Capture current screenshots of desktop-client + tablet-client for before/after comparison.
 - [ ] Enumerate the surfaces the plan touches: shell (topbar/nav/footer), settings panels, order forms, tables/menu, reports, modals/dialogs, empty/error states, toasts.
@@ -200,4 +200,4 @@ Reference: design-language #audit.
 - `ui/src/components/` — shared primitives (Button, Badge, Spinner, etc.)
 - `ui/src/features/*` (settings, sales, orders, tables, reports, kds, …) — per-screen adoption
 - `apps/desktop-client/`, `apps/tablet-client/` — Tauri entry/registration (commands stay per AGENTS.md)
-- `dev/design-language.html`, `dev/kds-prototype.html` — guideline + reference prototype (read-only here)
+- `prototypes/design-language.html`, `prototypes/kds-prototype.html` — guideline + reference prototype (read-only here)

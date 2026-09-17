@@ -246,10 +246,10 @@ permission prompt to expect** — the tracked `AndroidManifest.xml` declares onl
   Rebuild with `cargo tauri android build --apk --target aarch64`.
 - **Black bars on sides** — orientation is locked in the UI layer
   (`useOrientation('landscape-primary')` in
-  `ui/src/frontend/shell/tablet/TabletAppShell.tsx`); the tablet
+  `ui/src/app/tablet/TabletAppShell.tsx`); the tablet
   `tauri.conf.json` has `"windows": []` and no per-window `resizable` key to
   "fix". On unusual aspect ratios check the safe-area CSS
-  (`ui/src/frontend/shell/tablet/tablet.css`) rather than the config.
+  (`ui/src/app/tablet/tablet.css`) rather than the config.
 - **White screen on launch** — WebView initialization issue. Check `adb logcat`
   for `chromium` or `webview` errors.
 
@@ -287,7 +287,7 @@ smooth, back navigation works correctly.
 | 4.3 | Search products | Tap search bar → keyboard opens → results filter in real-time | ☐ |
 | 4.4 | Category filter tabs | Tabs are ≥ 48px height. Tap reliably switches category. | ☐ |
 | 4.5 | Cart panel | Right-side cart panel visible. Shows "Cart is empty" (`pos-cart-empty`, `ui/src/locales/sales.ftl:16`). | ☐ |
-| 4.6 | Bottom navigation bar | Tabs are **workspace-driven**: nav items are filtered to the workspace's screen list and capped at 7 (`ui/src/frontend/shell/tablet/TabletAppLayout.tsx:56-58`), and labels come from each feature's registry (e.g. route `sales` renders as "POS Terminal", `ui/src/features/sales/register.tsx`). A typical POS workspace shows POS Terminal / KDS / Settings; confirm ≥ 48px tap targets | ☐ |
+| 4.6 | Bottom navigation bar | Tabs are **workspace-driven**: nav items are filtered to the workspace's screen list and capped at 7 (`ui/src/app/tablet/TabletAppLayout.tsx:56-58`), and labels come from each feature's registry (e.g. route `sales` renders as "POS Terminal", `ui/src/features/sales/register.tsx`). A typical POS workspace shows POS Terminal / KDS / Settings; confirm ≥ 48px tap targets | ☐ |
 
 **Pass criteria:** All touch targets meet minimum size, scrolling is smooth,
 keyboard does not cover critical UI.

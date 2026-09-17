@@ -142,7 +142,7 @@ diagnosis; [Fact] for every count.
 ## Off-by-one settled
 
 There is **no regex gap and no tree defect**. `a32b13aaa 05:08
-refactor(desktop-client): drop the ungated rotate_encryption_key command` removed one
+refactor(desktop-tauri): drop the ungated rotate_encryption_key command` removed one
 entry from `lib.rs` and set both `REGISTERED_FLOOR` and `REGISTERED_TOTAL` to **447**. My
 earlier `448` was a blob read from before 05:08. Parse says 447, the constant says 447,
 `sort -u` says 447 unique, `uniq -d` says zero duplicates. The discrepancy was mine and my

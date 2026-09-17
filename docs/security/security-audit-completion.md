@@ -1,9 +1,9 @@
 # kasir.mu Security Audit — Completion Summary
 
-<!-- Audit stamp: 2026-09-09 · DSH · status: HISTORICAL-RECORD, annotated not rewritten (1 code finding) · Dated completion summary for the 2026-07 Tauri security audit (version 0.0.31, completed 2026-08-29 by Buffy). Body preserved verbatim per this repo rule for historical docs; a CURRENCY block was added under the header instead of editing claims inside the record. · Mechanism citations still resolve: C-2 SECRET_KEY_DENY_LIST at apps/desktop-client/src/commands/settings.rs:782; H-5 at-rest encryption real for license.api_key at commands/license.rs:135; oz-crypto exposes encrypt_api_key/decrypt_api_key/encrypt_smtp_at_rest (lib.rs:158/164/204), re-exported by crates/oz-core/src/crypto.rs:14. · The two counts a reader would take as current have moved: registered commands are now 429 desktop / 301 tablet / 454 distinct (measured 08-09-26 from the generate_handler! lists), and the secret-key population is 14 desktop / 13 tablet rather than 6. · CODE FINDING recorded, NOT patched: local_api.secret, added after this audit, is the per-install signing key for the local HTTP API and is stored by plain Settings::set (local_api.rs:197/:210) with no crypto import in that file, while license.api_key in the same app is encrypt-wrapped - so a post-audit secret meets a weaker standard than the six this page certifies. The desktop/tablet difference is exactly that key and is correct, not drift, because the local API has no tablet handlers. · My own parse produced two false findings before the real one: the marker string matched a file-header comment some 600 lines from the const, and a non-greedy slice swallowed unrelated literals, so the lists first appeared as 27/23 and then 73/25 entries containing SQL fragments. Both were fixed by anchoring on the const declaration, and only then was the 14/13 asymmetry worth reporting. -->
+<!-- Audit stamp: 2026-09-09 · DSH · status: HISTORICAL-RECORD, annotated not rewritten (1 code finding) · Dated completion summary for the 2026-07 Tauri security audit (version 0.0.31, completed 2026-08-29 by Buffy). Body preserved verbatim per this repo rule for historical docs; a CURRENCY block was added under the header instead of editing claims inside the record. · Mechanism citations still resolve: C-2 SECRET_KEY_DENY_LIST at apps/desktop-tauri/src/commands/settings.rs:782; H-5 at-rest encryption real for license.api_key at commands/license.rs:135; oz-crypto exposes encrypt_api_key/decrypt_api_key/encrypt_smtp_at_rest (lib.rs:158/164/204), re-exported by crates/oz-core/src/crypto.rs:14. · The two counts a reader would take as current have moved: registered commands are now 429 desktop / 301 tablet / 454 distinct (measured 08-09-26 from the generate_handler! lists), and the secret-key population is 14 desktop / 13 tablet rather than 6. · CODE FINDING recorded, NOT patched: local_api.secret, added after this audit, is the per-install signing key for the local HTTP API and is stored by plain Settings::set (local_api.rs:197/:210) with no crypto import in that file, while license.api_key in the same app is encrypt-wrapped - so a post-audit secret meets a weaker standard than the six this page certifies. The desktop/tablet difference is exactly that key and is correct, not drift, because the local API has no tablet handlers. · My own parse produced two false findings before the real one: the marker string matched a file-header comment some 600 lines from the const, and a non-greedy slice swallowed unrelated literals, so the lists first appeared as 27/23 and then 73/25 entries containing SQL fragments. Both were fixed by anchoring on the const declaration, and only then was the 14/13 asymmetry worth reporting. -->
 
 **Original audit:** 2026-07 (see `docs/archived/tauri-security-audit.md`)
-**Audit scope:** `apps/desktop-client` + `apps/mobile-tauri` (Tauri v2)
+**Audit scope:** `apps/desktop-tauri` + `apps/mobile-tauri` (Tauri v2)
 **Version:** `0.0.31`
 **Completion date:** 2026-08-29
 
@@ -20,7 +20,7 @@
 > **The secret-key population is larger than six.** That row names six config secrets
 > (`sync_api_key`, `sync.terminal_secret`, `pg_sync.password`, `rate_sync.api_key`, the LAN
 > PSK, and `cc506cd2`'s sweep). Today `SECRET_KEY_DENY_LIST` carries **14 entries on desktop**
-> (`apps/desktop-client/src/commands/settings.rs:782`) and **13 on tablet**; the extras are
+> (`apps/desktop-tauri/src/commands/settings.rs:782`) and **13 on tablet**; the extras are
 > `local_api.secret`, four `license.*` keys, `smtp_config`, and
 > `stripe.api_key`/`square.api_key`/`midtrans.server_key`. The one desktop-only entry is
 > `local_api.secret`, and that asymmetry is correct rather than drift: the local API has no
@@ -28,9 +28,9 @@
 >
 > ⚠️ **CODE FINDING, recorded and not patched.** Of those post-audit additions,
 > `local_api.secret` — the per-install **signing secret** for the LAN/local HTTP API — is
-> written with a plain `Settings::set` (`apps/desktop-client/src/local_api.rs:197` on create,
+> written with a plain `Settings::set` (`apps/desktop-tauri/src/local_api.rs:197` on create,
 > `:210` in `rotate_secret`), and that file imports no encryption helper at all. The contrast
-> is not theoretical: `apps/desktop-client/src/commands/license.rs:9` imports
+> is not theoretical: `apps/desktop-tauri/src/commands/license.rs:9` imports
 > `encrypt_api_key`/`decrypt_api_key` and wraps its stored key at `:135`. So a secret added
 > *after* this audit meets a **weaker standard than the six it certifies** — deny-listed from
 > the IPC surface (C-2) but not encrypted at rest (H-5). Whether that is acceptable is a call
@@ -80,7 +80,7 @@ The security audit identified 17 findings across 4 severity levels (2 Critical, 
 
 **Verification:**
 ```bash
-grep -n "validate_contained_path\|session_token\|require_permission" apps/desktop-client/src/commands/data.rs
+grep -n "validate_contained_path\|session_token\|require_permission" apps/desktop-tauri/src/commands/data.rs
 # Shows session validation + path containment on all file operations
 ```
 
@@ -102,7 +102,7 @@ grep -n "validate_contained_path\|session_token\|require_permission" apps/deskto
 
 **Verification:**
 ```bash
-grep -n "is_secret_key\|REDACTED" apps/desktop-client/src/commands/settings.rs
+grep -n "is_secret_key\|REDACTED" apps/desktop-tauri/src/commands/settings.rs
 # Shows deny-list gating on get_setting
 ```
 
@@ -185,7 +185,7 @@ grep -rn "Scoped" ui/src/api/ | wc -l
 
 **Verification:**
 ```bash
-grep -n "picker_ticket::verify_picker_ticket" apps/desktop-client/src/commands/auth.rs
+grep -n "picker_ticket::verify_picker_ticket" apps/desktop-tauri/src/commands/auth.rs
 # Shows HMAC verification before session minting
 ```
 
@@ -252,7 +252,7 @@ ls crates/oz-crypto/src/
 
 **Verification:**
 ```bash
-grep -n "Settings::get_sync_server_url" apps/desktop-client/src/commands/sync.rs
+grep -n "Settings::get_sync_server_url" apps/desktop-tauri/src/commands/sync.rs
 # Shows URL resolved from settings, not caller input
 ```
 

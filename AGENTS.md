@@ -132,7 +132,7 @@ npm ci --no-audit --no-fund
   - Integration tests belong in the top-level `tests/` directory (outside `src/`).
 
 ### 3. Tauri & UI Standards
-- Tauri IPC commands live in `apps/desktop-client/src/commands/` or `apps/mobile-tauri/src/commands/` and are registered in their respective `lib.rs`.
+- Tauri IPC commands live in `apps/desktop-tauri/src/commands/` or `apps/mobile-tauri/src/commands/` and are registered in their respective `lib.rs`.
 - Front-end API calls must route through `ui/src/api/` (per-domain files). **Never call `invoke(...)` directly inside React components.**
 - **"Settings" disambiguation:** "The Tauri Settings page" means `ui/src/features/settings/SettingsPage.tsx` — the master–detail UI (route `settings`) with the top-right Save button. Not `ui/src/api/settings.ts` (IPC client), `ui/src/contexts/SettingsContext.tsx` (shared state), the `settings.rs` IPC commands, the `kasirmu-core` settings service/DB, or `modules/settings/` (a kernel lifecycle stub, not the UI).
 - **⚠️ "Is this screen dead code?" needs three greps, not one.** Feature screens register **lazily** (`lazy(() => import(...))` + `registerPage`/`registerNavItem` in `ui/src/features/*/register.tsx`), so an import search finds nothing on a live screen. Check the screen name, then `route: '<route>'`, across `ui/src` — and never trust a truncated (`head`-cut) hit list, since `ui/src/__tests__/` sorts before `ui/src/features/`.
@@ -174,7 +174,7 @@ Every commit message **MUST** strictly follow the conventional format:
   - `perf`: Performance improvements
   - `ci`: CI workflows, GitHub Actions, build scripts
   - `audit`: Code audit stamps and remediations
-- **`<area>`**: Domain, crate, or component (e.g. `sales`, `admin`, `website`, `ci`, `core`, `desktop-client`, `ui`, `licensing`, `agents`).
+- **`<area>`**: Domain, crate, or component (e.g. `sales`, `admin`, `website`, `ci`, `core`, `desktop-tauri`, `ui`, `licensing`, `agents`).
 - **`<description>`**: Imperative, concise summary of the change (e.g. `add gift card tender`, `resolve modal overflow`).
 
 > Enforced by `.githooks/commit-msg` (subject line only; bodies stay free-form). Git-generated messages (`Merge …`, `Revert …`, `fixup!`, `squash!`) and an empty subject pass through. Like every hook it needs `core.hooksPath`.

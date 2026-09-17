@@ -1,9 +1,9 @@
 # Linux Desktop Launch Test — kasir.mu
-<!-- Audit stamp: 2026-09-09 . DSH . status: ACCURATE, 1 precision note (seed references flagged, not fixed) . Verified-true: Tauri window size 1280x800 (apps/desktop-client/tauri.conf.json:18-19), internal doc links resolve (../releases/checklist.md; ./windows-launch-test.md; ../operations/vps-migration.md, docker-deployment.md, runbook.md all tracked), Rust MSRV 1.88 (rust-toolchain.toml), Node>=22/npm>=11 (ui/package.json:80-82), Tauri v2 apt dependency names (libwebkit2gtk-4.1-dev etc.) valid, cargo tauri build produces .deb/.AppImage via targets=all. FLAGGED not fixed: Settings to Database to Seed Sample Data (line 88) and the login error No staff accounts found (line 98) appear only in docs - no such Settings action exists in ui/src/features/settings/DataManagementScreen.tsx and the string is absent from code; no seeder binary exists in the repo (git grep name=seeder and ls-files grep seeder both empty). These are doc claims about a seed path that does not exist; left for the doc owner under code/config drift rule D. -->
+<!-- Audit stamp: 2026-09-09 . DSH . status: ACCURATE, 1 precision note (seed references flagged, not fixed) . Verified-true: Tauri window size 1280x800 (apps/desktop-tauri/tauri.conf.json:18-19), internal doc links resolve (../releases/checklist.md; ./windows-launch-test.md; ../operations/vps-migration.md, docker-deployment.md, runbook.md all tracked), Rust MSRV 1.88 (rust-toolchain.toml), Node>=22/npm>=11 (ui/package.json:80-82), Tauri v2 apt dependency names (libwebkit2gtk-4.1-dev etc.) valid, cargo tauri build produces .deb/.AppImage via targets=all. FLAGGED not fixed: Settings to Database to Seed Sample Data (line 88) and the login error No staff accounts found (line 98) appear only in docs - no such Settings action exists in ui/src/features/settings/DataManagementScreen.tsx and the string is absent from code; no seeder binary exists in the repo (git grep name=seeder and ls-files grep seeder both empty). These are doc claims about a seed path that does not exist; left for the doc owner under code/config drift rule D. -->
 
 > **Status:** Implemented (2026-07-21)
 > **Target audience:** QA / developers testing on Ubuntu 22.04+ or Debian 12+
-> **Related:** [Release Checklist](../releases/checklist.md) · [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-client/tauri.conf.json) · [Windows Launch Test](./windows-launch-test.md)
+> **Related:** [Release Checklist](../releases/checklist.md) · [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-tauri/tauri.conf.json) · [Windows Launch Test](./windows-launch-test.md)
 
 This guide covers building the kasir.mu desktop client on Linux and
 running the core POS flow end-to-end on a physical Linux machine.
@@ -116,7 +116,7 @@ cargo run -p kasirmu-cli -- seed
 
 ```bash
 # From the repository root
-cd apps/desktop-client
+cd apps/desktop-tauri
 
 # Build the Tauri app (frontend + Rust + bundle)
 cargo tauri build
@@ -148,7 +148,7 @@ cargo build --release -p oz-pos-app
 ### Option C — Quick Dev Launch
 
 ```bash
-# From apps/desktop-client, builds on demand and launches:
+# From apps/desktop-tauri, builds on demand and launches:
 cargo tauri dev
 ```
 
@@ -298,7 +298,7 @@ htop -p $(pgrep -d',' -f oz-pos-app)
 
 ```bash
 # Launch with DevTools (debug build only)
-cd apps/desktop-client
+cd apps/desktop-tauri
 cargo tauri dev
 # Then Ctrl+Shift+I to open DevTools → Performance tab
 ```
@@ -484,7 +484,7 @@ Notes:
 
 - [Windows Launch Test](./windows-launch-test.md) — Windows equivalent guide
 - [Release Checklist](../releases/checklist.md) — Pre-release verification
-- [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-client/tauri.conf.json) — Window size, CSP, bundle settings
+- [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-tauri/tauri.conf.json) — Window size, CSP, bundle settings
 - [VPS Migration Guide](../operations/vps-migration.md) — Cloud server deployment
 - [Docker Deployment Guide](../operations/docker-deployment.md) — Full stack deployment
 - [Runbook](../operations/runbook.md) — Incident response procedures

@@ -36,7 +36,7 @@ This document defines the incident response procedures for the kasir.mu point-of
 
 This plan covers all kasir.mu components:
 
-- **Desktop client** (`apps/desktop-client/`) — retail POS terminals
+- **Desktop client** (`apps/desktop-tauri/`) — retail POS terminals
 - **Tablet client** (`apps/mobile-tauri/`) — mobile POS terminals
 - **Cloud server** (`apps/cloud-server/`) — sync API and authentication
 - **License server** (`apps/license-server/`) — license activation and management

@@ -296,7 +296,7 @@ Doc under audit: `docs/guides/api-reference.md` — heading "Sessions", paragrap
 
 ```bash
 # 1. Find the command implementation and its return type
-rg -n "fn create_shift" apps/desktop-client/src/commands/ ui/src/api/
+rg -n "fn create_shift" apps/desktop-tauri/src/commands/ ui/src/api/
 
 # 2. Confirm the total field and its type on the actual struct
 rg -n "struct Shift" crates/kasirmu-core/src/

@@ -698,7 +698,7 @@ documentation implied.
 
 **Desktop IPC is written but not committed.** As of this entry,
 `explain_feature_availability_scoped` exists in the working tree at
-`apps/desktop-client/src/commands/subscription.rs` (+208 lines, +1
+`apps/desktop-tauri/src/commands/subscription.rs` (+208 lines, +1
 registration in `lib.rs`) under another agent, uncommitted. It is better
 than the design above in two ways worth keeping: it maps each feature to a
 real registry permission (`gate_permission`, all nine keys verified to

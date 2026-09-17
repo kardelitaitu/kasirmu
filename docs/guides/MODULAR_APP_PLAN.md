@@ -41,7 +41,7 @@ We have already established the foundational architecture across the Rust backen
 | :--- | :--- | :--- |
 | **Backend Core Flags** | `crates/kasirmu-core/src/features.rs` | Enforces **32 granular feature flags** across 8 logical groups (`Core`, `Payments`, `Products`, `Staff`, `Hardware`, `Business Rules`, `Restaurant`, `Scaling`, `Reporting`, `Advanced`). Includes automatic bottom-up dependency resolution (`FeatureRegistry::enable`). |
 | **Setup Wizard & Presets** | `ui/src/features/setup/SetupWizard.tsx` | Provides **4 built-in presets**: `Simple Retail` (🛒), `Restaurant` (🍽️), `Full Store` (🏪), and `Custom` (⚙️). Presets pre-check exact bundles of feature flags during initial store setup. |
-| **Admin Feature Toggles** | `ui/src/features/settings/FeatureToggleScreen.tsx`<br>`apps/desktop-client/src/commands/features.rs` | Admin can toggle flags post-setup via IPC (`list_all_features`, `set_feature`). Persists directly to SQLite `settings` table (`feature.<key> = "1"`). Auto-enables dependencies and cascades terminal auto-registration (`MultiTerminal`). |
+| **Admin Feature Toggles** | `ui/src/features/settings/FeatureToggleScreen.tsx`<br>`apps/desktop-tauri/src/commands/features.rs` | Admin can toggle flags post-setup via IPC (`list_all_features`, `set_feature`). Persists directly to SQLite `settings` table (`feature.<key> = "1"`). Auto-enables dependencies and cascades terminal auto-registration (`MultiTerminal`). |
 | **UI Registry System** | `ui/src/platform/ui/page-registry/index.ts`<br>`ui/src/platform/ui/menu-registry/index.ts` | Screens and sidebar items register with an optional `feature` requirement (e.g. `registerPage({ route: 'kds', feature: 'kitchen-display' })`). |
 | **Frontend Feature Hook** | `ui/src/hooks/useFeatures.ts` | React components subscribe to `useFeatures()`, which provides `isEnabled(key)` and `filterRoutes()` to hide disabled tabs and routes instantly. |
 | **Workspace Routing** | `ui/src/features/workspaces/WorkspaceHome.tsx`<br>`ui/src/contexts/WorkspaceContext.tsx` | Organizes workflows into **5 Workspaces**: `restaurant-pos`, `store-pos`, `kds`, `inventory`, and `admin`. Filtered by user role and store feature entitlements. |
@@ -106,7 +106,7 @@ Every phase and high-level objective is broken down below into actionable, atomi
 
 - [x] **1.3.1 [Keyword Search Bar UI]**: In `FeatureToggleScreen.tsx` (`ui/src/features/settings/FeatureToggleScreen.tsx`), add `searchQuery` state and search input box. Filter `grouped` items so only features whose `key`, `name`, or `description` match `searchQuery` case-insensitively are displayed.
 - [x] **1.3.2 [Group Bulk Action Buttons]**: In `FeatureToggleScreen.tsx`, render "Enable All" and "Disable All" buttons in the header of each group category card (`Core`, `Hardware`, `Business Rules`, etc.).
-- [x] **1.3.3 [Bulk IPC Backend Command]**: Implement `set_features_bulk(keys: Vec<String>, enabled: bool)` in `apps/desktop-client/src/commands/features.rs` and register it in `lib.rs` so toggling an entire group of features executes atomically in a single SQLite transaction and returns the updated `ListAllFeaturesResult`.
+- [x] **1.3.3 [Bulk IPC Backend Command]**: Implement `set_features_bulk(keys: Vec<String>, enabled: bool)` in `apps/desktop-tauri/src/commands/features.rs` and register it in `lib.rs` so toggling an entire group of features executes atomically in a single SQLite transaction and returns the updated `ListAllFeaturesResult`.
 
 ---
 
@@ -117,20 +117,20 @@ Every phase and high-level objective is broken down below into actionable, atomi
 - [x] **2.1.1 [Kernel Module Status Tracking]**: In `platform/kernel/src/kernel/` (a module directory, not a single `kernel.rs`), update the `Kernel` struct in `kernel/lifecycle.rs` to maintain runtime state per registered module: `ModuleStatus::Registered | Loaded | Started | Stopped`, declared in `kernel/types.rs`.
 - [x] **2.1.2 [Runtime Start/Stop Methods]**: Implement `kernel.start_module(id: &str)` and `kernel.stop_module(id: &str)`. When `stop_module` is called, invoke `module.stop()`, `module.unload()`, and update status to `Stopped`.
 - [x] **2.1.3 [Dynamic EventBus Unsubscribe]**: In `platform/kernel/src/event_bus.rs`, add subscription ownership tags (`module_id`) when handlers are registered (`bus.subscribe_for_module(module_id, topic, handler)`). Implement `bus.unsubscribe_module(module_id: &str)` to cleanly drop all handlers owned by a stopped module.
-- [x] **2.1.4 [IPC Command to Kernel Wiring]**: Connect `set_feature` in `apps/desktop-client/src/commands/features.rs` to invoke `kernel.start_module()` when a top-level module feature is enabled, and `kernel.stop_module()` when disabled, without restarting the application.
+- [x] **2.1.4 [IPC Command to Kernel Wiring]**: Connect `set_feature` in `apps/desktop-tauri/src/commands/features.rs` to invoke `kernel.start_module()` when a top-level module feature is enabled, and `kernel.stop_module()` when disabled, without restarting the application.
 
 #### 2.2 Active Operation Guards (Safe Disabling Validation)
 
 - [x] **2.2.1 [Guard Trait & Error Structure]**: In `crates/kasirmu-core/src/features.rs` (or `platform/kernel/`), define `pub trait FeatureGuard: Send + Sync { fn can_disable(&self, feature: Feature, conn: &Connection) -> Result<(), String>; }`.
 - [x] **2.2.2 [KDS Tickets Safety Guard]**: Implement `KdsFeatureGuard`. When `feature == Feature::KitchenDisplay`, query `SELECT COUNT(*) FROM kds_orders WHERE status IN ('pending', 'preparing')`. If count > 0, return `Err(format!("Cannot disable Kitchen Display while {} tickets are actively in progress", count))`.
 - [x] **2.2.3 [Shift Reconciliation Safety Guard]**: Implement `ShiftFeatureGuard`. When `feature == Feature::ShiftManagement`, query `SELECT COUNT(*) FROM shifts WHERE closed_at IS NULL`. If count > 0, return `Err("Cannot disable Shift Management while a shift is actively open and unreconciled")`.
-- [x] **2.2.4 [IPC Guard Integration]**: In `set_feature` (`apps/desktop-client/src/commands/features.rs`), run all registered `FeatureGuard` checks before mutating `FeatureRegistry`. If any guard returns an `Err`, abort the transaction and return the actionable error string.
+- [x] **2.2.4 [IPC Guard Integration]**: In `set_feature` (`apps/desktop-tauri/src/commands/features.rs`), run all registered `FeatureGuard` checks before mutating `FeatureRegistry`. If any guard returns an `Err`, abort the transaction and return the actionable error string.
 
 #### 2.3 Terminal Profiles & Kiosk Lock
 
 - [x] **2.3.1 [SQLite Schema Migration]**: In `crates/kasirmu-core/migrations/` (the SQL lives there, with the registry in `crates/kasirmu-core/src/migrations.rs` — there is no `src/db/migrations/`), add migration table `terminal_profiles` (`terminal_id TEXT PRIMARY KEY, profile_type TEXT NOT NULL, locked_screen TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`). Profile types: `'counter_pos' | 'kds_kiosk' | 'customer_display' | 'unrestricted'`.
-- [x] **2.3.2 [Terminal Profile IPC Commands]**: Implement `get_terminal_profile(terminal_id: String) -> Result<TerminalProfileDto, AppError>` and `set_terminal_profile(terminal_id: String, profile_type: String)` in `apps/desktop-client/src/commands/terminals.rs`.
-- [x] **2.3.3 [UI Kiosk Lockdown Guard]**: In `ui/src/frontend/shell/AppShell.tsx`, load `activeTerminalProfile` via hook `useTerminalProfile()`. If `profile_type === 'kds_kiosk'`, bypass the workspace picker (`WorkspaceHome`), force `currentRoute = 'kds'`, and hide the top header and back buttons to prevent leaving KDS mode.
+- [x] **2.3.2 [Terminal Profile IPC Commands]**: Implement `get_terminal_profile(terminal_id: String) -> Result<TerminalProfileDto, AppError>` and `set_terminal_profile(terminal_id: String, profile_type: String)` in `apps/desktop-tauri/src/commands/terminals.rs`.
+- [x] **2.3.3 [UI Kiosk Lockdown Guard]**: In `ui/src/app/AppShell.tsx`, load `activeTerminalProfile` via hook `useTerminalProfile()`. If `profile_type === 'kds_kiosk'`, bypass the workspace picker (`WorkspaceHome`), force `currentRoute = 'kds'`, and hide the top header and back buttons to prevent leaving KDS mode.
 
 ---
 
@@ -157,7 +157,7 @@ Every phase and high-level objective is broken down below into actionable, atomi
 #### 3.4 LAN / mDNS Peer-to-Peer KDS Discovery
 
 - [x] **3.4.1 [mDNS Service Broadcaster]**: In `crates/kasirmu-core/src/sync/lan_discovery.rs`, implement `LanDiscoverer` advertising service `_oz-pos._tcp.local.` with TXT records `terminal_id`, `role`, and `tcp_port`.
-- [x] **3.4.2 [Local TCP/WebSocket Event Forwarder]**: Implement a lightweight TCP/WebSocket server inside `apps/desktop-client` (`port 9180`). When `sale.completed` or `order.course_fired` is emitted on Resto POS, forward the JSON event directly over LAN TCP to all connected KDS tablet peers.
+- [x] **3.4.2 [Local TCP/WebSocket Event Forwarder]**: Implement a lightweight TCP/WebSocket server inside `apps/desktop-tauri` (`port 9180`). When `sale.completed` or `order.course_fired` is emitted on Resto POS, forward the JSON event directly over LAN TCP to all connected KDS tablet peers.
 - [x] **3.4.3 [LAN Offline Buffer & Reconnection]**: Add heartbeat ping (`every 5s`) between Resto POS desktop and KDS tablets. If LAN Wi-Fi drops, buffer fired tickets locally in `offline_lan_queue` and flush immediately upon TCP reconnection.
 
 #### 3.5 Menu Engineering Analytics Matrix

@@ -75,7 +75,7 @@ Staff and auditor never see the section. Click behaviour:
 - `get_subscription_capabilities` reads the signed local `tenant_subscription`
   row and returns `tier` plus feature flags, but the DTO exposes no `status`,
   `expiresAt`, or `graceUntil` to the UI.
-- `apps/desktop-client/src/commands/license.rs` already exposes
+- `apps/desktop-tauri/src/commands/license.rs` already exposes
   `check_license_status`, which calls the license server's
   `POST /api/v1/license/status` endpoint and returns `tier`, `status`, `active`,
   `expiresAt`, and `graceUntil`.
@@ -416,7 +416,7 @@ access: {
       permission + feature-set, so the quota axis is asserted at the
       FeatureVerdict contract the gate layer reads; the resolver side is
       pinned by verdict_names_quota_at_the_cap_and_clears_one_below
-      (apps/desktop-client/src/commands/subscription_tests.rs).
+      (apps/desktop-tauri/src/commands/subscription_tests.rs).
 - [x] **Align the existing Topology Editor with the new home policy.** The
       editor already supports branch-scoped graphs, location/workspace/warehouse/
       hardware nodes, typed semantic wires, address-like branch properties,
@@ -451,7 +451,7 @@ access: {
       `crates/oz-core/src/migrations.rs:193-194`, and the enforcement point is
       `crates/oz-core/src/db/staff.rs:274-296` `require_permission_for_resource`, refusing at
       `:290-292` with "resource {scope_id} out of scope for user {user_id}" — reached from
-      `apps/desktop-client/src/commands/authz.rs:164`, `crates/oz-bridge/src/ctx.rs:353` and
+      `apps/desktop-tauri/src/commands/authz.rs:164`, `crates/oz-bridge/src/ctx.rs:353` and
       `crates/oz-bridge/src/regional.rs:96`. The claim to keep is the small one: branch and
       workspace scope are evaluated by `staff.rs:229-249` `require_permission_scoped` ->
       `assignments.rs:198 matches_scope`, and the same axis reaches the availability resolver at
@@ -473,8 +473,8 @@ access: {
       `scripts/generate-pg-migration.py`), a new arm in `resource_covered_by` `:313-325`, and an
       explicit contradiction of the file's own `:124-125`. (c) **Keep the vocabulary coarse and
       gate the device where device-local gating already lives** — the per-terminal rail pattern,
-      `apps/desktop-client/src/commands/local_payment.rs:41` get (tablet twin
-      `apps/tablet-client/src/commands/local_payment.rs:29`, both re-verified). (a) and (c) ask
+      `apps/desktop-tauri/src/commands/local_payment.rs:41` get (tablet twin
+      `apps/mobile-tauri/src/commands/local_payment.rs:29`, both re-verified). (a) and (c) ask
       nothing of a coder; only (b) is an implementation, and because it reverses a ruling the
       code states out loud, it is an owner decision, not a task. **This belongs on
       `docs/plans/notes.md` as a question — reported here, not filed there, because that page is
@@ -844,7 +844,7 @@ statically at `30d6e035f` — **it does, among all six presets:**
 - The table *is* the seed source: `crates/oz-core/src/db/staff.rs:69-71` seeds by iterating
   `ROLE_PRESETS` with an upsert that re-syncs name, description **and permissions** on every startup,
   so an existing database converges on these grants rather than keeping stale ones.
-- Already pinned behaviourally: `apps/desktop-client/src/commands/topology/topology_command_tests.rs:1406-1410`
+- Already pinned behaviourally: `apps/desktop-tauri/src/commands/topology/topology_command_tests.rs:1406-1410`
   asserts a manager session (has `staff:update`, lacks `topology:write`) is denied.
 
 **Two limits of this closure, stated so it is not read as more than it is.** (i) It is a **static

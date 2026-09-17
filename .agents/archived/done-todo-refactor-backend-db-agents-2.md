@@ -139,5 +139,5 @@
   `cargo fmt -p oz-core -- --check` lists diffs only in `kds_rules.rs` and
   `kds_rules_tests.rs` (foreign, in-flight), none in campaign files.
 - **Collisions:** none observed inside the fence; foreign dirty files (auth/QRIS
-  session under `apps/tablet-client/`, `crates/oz-bridge/src/lib.rs`, generated PG
+  session under `apps/mobile-tauri/`, `crates/oz-bridge/src/lib.rs`, generated PG
   schema, dev-mock UI) were never staged, committed, or reverted.

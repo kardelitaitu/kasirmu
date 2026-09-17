@@ -3,7 +3,7 @@ name: database
 description: The kasir.mu database system — SQLite via rusqlite, the migration runner, the PostgreSQL replica, backup/restore, and the DB-NN invariants. Use when adding or changing a migration, editing anything under crates/kasirmu-core/migrations/, touching connection setup or PRAGMAs, writing SQL that reads or writes money columns, regenerating the PG schema, or debugging a startup failure that mentions migrations, checksums, or drift.
 ---
 
-<!-- Audit stamp: 2026-09-15 · Budak-Korporat · status: ACCURATE (new skill, rev 1 — no predecessor) · verified this pass, by direct measurement rather than by reading another doc: registry entry count 58 (`grep -c 'Migration {'` in crates/kasirmu-core/src/migrations.rs) against 58 non-`.pg.sql` files and 59 total `*.sql` in crates/kasirmu-core/migrations/; `pub const ALL` opens at crates/kasirmu-core/src/migrations.rs:43; the PRAGMA block is crates/kasirmu-core/src/migrations.rs:352-362 (WAL, busy_timeout 5000, synchronous NORMAL, foreign_keys ON); `fresh_db` at crates/kasirmu-core/src/migrations.rs:377-423 (LazyLock snapshot cloned via rusqlite::backup::Backup); `schema_migrations` DDL at platform/core/src/database/migrations.rs:174-178 (id/applied_at/checksum); `resolve_db_path` at apps/desktop-client/src/state.rs:757-763; the column-type rules and the 12-entry whitelist at scripts/verify-migration-column-types.py:109-170; the generator's single DST at scripts/generate-pg-migration.py:66 and its `--check` branch at :611; the footer convention across all 13 pre-existing skills. Every connection-opener row in the PRAGMA table below was read out of a repo-wide `PRAGMA|journal_mode|busy_timeout|foreign_keys` grep, not inferred from one example. All 23 filesystem paths cited in this document were tested for existence before publication. · NOT verified this pass, and flagged as such: the count of `unchecked_transaction` sites and the `Store` module count in §10 come from the RUST-08 note at the top of crates/kasirmu-core/src/db/mod.rs, which I read but did not independently recount. · DB-06, DB-07 and DB-09 are absent from the repository; see §6. -->
+<!-- Audit stamp: 2026-09-15 · Budak-Korporat · status: ACCURATE (new skill, rev 1 — no predecessor) · verified this pass, by direct measurement rather than by reading another doc: registry entry count 58 (`grep -c 'Migration {'` in crates/kasirmu-core/src/migrations.rs) against 58 non-`.pg.sql` files and 59 total `*.sql` in crates/kasirmu-core/migrations/; `pub const ALL` opens at crates/kasirmu-core/src/migrations.rs:43; the PRAGMA block is crates/kasirmu-core/src/migrations.rs:352-362 (WAL, busy_timeout 5000, synchronous NORMAL, foreign_keys ON); `fresh_db` at crates/kasirmu-core/src/migrations.rs:377-423 (LazyLock snapshot cloned via rusqlite::backup::Backup); `schema_migrations` DDL at platform/core/src/database/migrations.rs:174-178 (id/applied_at/checksum); `resolve_db_path` at apps/desktop-tauri/src/state.rs:757-763; the column-type rules and the 12-entry whitelist at scripts/verify-migration-column-types.py:109-170; the generator's single DST at scripts/generate-pg-migration.py:66 and its `--check` branch at :611; the footer convention across all 13 pre-existing skills. Every connection-opener row in the PRAGMA table below was read out of a repo-wide `PRAGMA|journal_mode|busy_timeout|foreign_keys` grep, not inferred from one example. All 23 filesystem paths cited in this document were tested for existence before publication. · NOT verified this pass, and flagged as such: the count of `unchecked_transaction` sites and the `Store` module count in §10 come from the RUST-08 note at the top of crates/kasirmu-core/src/db/mod.rs, which I read but did not independently recount. · DB-06, DB-07 and DB-09 are absent from the repository; see §6. -->
 
 # kasir.mu Database
 
@@ -43,7 +43,7 @@ are named and enforced, and how the PostgreSQL replica is generated.
 | The generated PostgreSQL schema | `crates/kasirmu-core/migrations/20260813_init.pg.sql` |
 | The `Store` facade over all domain tables | `crates/kasirmu-core/src/db/` |
 | Per-store database files | `platform/core/src/database/manager.rs` |
-| Desktop/tablet connection + path resolution | `apps/desktop-client/src/state.rs`, `apps/mobile-tauri/src/state.rs` |
+| Desktop/tablet connection + path resolution | `apps/desktop-tauri/src/state.rs`, `apps/mobile-tauri/src/state.rs` |
 | Cloud (SQLite + PostgreSQL) | `apps/cloud-server/src/db.rs` |
 | The column-type lint | `scripts/verify-migration-column-types.py` |
 | The PG generator | `scripts/generate-pg-migration.py` |
@@ -56,7 +56,7 @@ are named and enforced, and how the PostgreSQL replica is generated.
 Two different resolution stories, and they do not share code:
 
 - **Desktop and tablet clients** — `<app_data_dir>/kasir.db`, unconditionally.
-  `resolve_db_path` (`apps/desktop-client/src/state.rs:757-763`) joins the Tauri
+  `resolve_db_path` (`apps/desktop-tauri/src/state.rs:757-763`) joins the Tauri
   app-data directory with the literal file name. The tablet twin is
   `apps/mobile-tauri/src/state.rs`. **There is no env-var override and no dev/prod
   variant on this path** — if you need a different file in a test, construct the state
@@ -77,7 +77,7 @@ entry point must set the PRAGMAs itself. The full set observed in the repository
 | Opener | PRAGMAs |
 |---|---|
 | `kasirmu_core::migrations::run` (`crates/kasirmu-core/src/migrations.rs:352-362`) | `journal_mode=WAL`, `busy_timeout=5000`, `synchronous=NORMAL`, `foreign_keys=ON` |
-| Desktop `AppState::new` (`apps/desktop-client/src/state.rs:225-227`) | `foreign_keys=ON`, `journal_mode=WAL` |
+| Desktop `AppState::new` (`apps/desktop-tauri/src/state.rs:225-227`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | Tablet `AppState::new` (`apps/mobile-tauri/src/state.rs:112-114`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | `platform/startup` (`platform/startup/src/lib.rs:62-63`, `:293-294`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | `Pool::open` (`platform/core/src/database/pool.rs:42-43`) | `journal_mode=WAL`, `foreign_keys=ON` |
@@ -107,7 +107,7 @@ There is **no `cache_size` PRAGMA anywhere** in the repository.
 
 **One connection, behind a mutex. There is no pool.**
 
-- Desktop: `pub db: Arc<Mutex<Connection>>` in `apps/desktop-client/src/state.rs` —
+- Desktop: `pub db: Arc<Mutex<Connection>>` in `apps/desktop-tauri/src/state.rs` —
   a **`tokio::sync::Mutex`**, so commands lock it with `.lock().await`.
 - Tablet: a bare `tokio::sync::Mutex<Connection>`, not wrapped in `Arc`.
 - Per-store: `Arc<std::sync::Mutex<HashMap<String, Arc<Mutex<Connection>>>>>` in
@@ -362,7 +362,7 @@ logged without masking the original error.
 - `platform/core/src/database/manager_tests.rs` uses `tempfile::tempdir()` for the
   per-store-file tests, which need real files.
 - Tauri state has test constructors (`AppState::for_test` and friends) in
-  `apps/desktop-client/src/state.rs`; the cloud has an in-memory connector in
+  `apps/desktop-tauri/src/state.rs`; the cloud has an in-memory connector in
   `apps/cloud-server/src/db.rs`.
 
 ---

@@ -719,8 +719,8 @@ actual relationship mutation.
          invalidating the pull cache (D64(e) satisfied).
        - **E1-5 — `03714f55e`** (9 files, +315/−3):
          `list_tax_rate_rounding_modes_scoped` in BOTH clients
-         (`apps/desktop-client/src/commands/tax.rs:595`,
-         `apps/tablet-client/src/commands/tax.rs:586`), `SETTINGS_READ`-gated
+         (`apps/desktop-tauri/src/commands/tax.rs:595`,
+         `apps/mobile-tauri/src/commands/tax.rs:586`), `SETTINGS_READ`-gated
          with the store resolved from the session token, registered in both
          `lib.rs` handler lists; client side
          `ui/src/api/tax.ts:154` `RoundingModeKey` + :162
@@ -1776,7 +1776,7 @@ transient (no UI yet); the other 8 predate this workstream.
 
 ⚠️ **`list_active_memos_scoped` and `acknowledge_memo_scoped` cannot be
 allowlisted on tablet — they have to be registered there.** Checked at
-`c9772415`: `apps/tablet-client/src/commands/` has **no `memo.rs` at all**
+`c9772415`: `apps/mobile-tauri/src/commands/` has **no `memo.rs` at all**
 (every "memo" hit in that crate is the substring "mem**ory**"), so the tablet
 currently has zero Memo surface. The tempting move is to add four `tablet`
 allowlist entries and call the gate green — the file has 153 of them already,
@@ -1784,8 +1784,8 @@ which is exactly how a tablet gap becomes permanent. But the spec puts Memos on
 tablet surfaces by name:
 
 - "on **KDS** the interval doubles to 30 minutes" — KDS is served by
-  `apps/tablet-client/src/commands/kds.rs`. Verified the UI actually reaches
-  it on tablet: the tablet has its own entry `ui/src/main.tablet.tsx` (built by
+  `apps/mobile-tauri/src/commands/kds.rs`. Verified the UI actually reaches
+  it on tablet: the tablet has its own entry `ui/src/main.mobile.tsx` (built by
   `npm run build:tablet` → `ui/dist-tablet`, a *separate* bundle from desktop's
   `ui/dist`, so "shared source" alone would not prove it) and that entry calls
   `registerAllFeatures()` at line 23 — no KDS exclusion. A KDS cadence that no
@@ -1962,10 +1962,10 @@ Verified end to end at `f5d6482f` while reviewing the in-flight expiry-sweep
 daemon. Three links, each checked rather than assumed:
 
 1. **The tablet opens its own SQLite file** — `resolve_db_path(app)` →
-   `Connection::open(&db_path)` (`tablet-client/src/state.rs:104-111`), separate
+   `Connection::open(&db_path)` (`mobile-tauri/src/state.rs:104-111`), separate
    from desktop's `StoreDatabaseManager::new(db_dir, …)`
-   (`desktop-client/src/state.rs:303`).
-2. **Memos can only be authored on desktop.** `apps/tablet-client/src/commands/
+   (`desktop-tauri/src/state.rs:303`).
+2. **Memos can only be authored on desktop.** `apps/mobile-tauri/src/commands/
    memo.rs` has exactly two commands — `list_active_memos_scoped:99` and
    `acknowledge_memo_scoped:116`. Desktop has four, adding
    `create_memo_scoped:120` and `publish_memo_scoped:149`.
@@ -2146,7 +2146,7 @@ makes that free, since nothing has been written yet.
 
 `git grep revise_memo` returns the definition (`memos.rs:206`) and five call
 sites, **all in `memos_tests.rs`**. No command in either shell, no UI reference.
-For contrast, `publish_memo` shows up in `apps/desktop-client/src/commands/
+For contrast, `publish_memo` shows up in `apps/desktop-tauri/src/commands/
 memo.rs` *and* `lib.rs` — the shape a wired feature has.
 
 That is not sloppiness: the commit is honestly scoped as `feat(core)`, and a
@@ -2549,7 +2549,7 @@ action.
 **The normative case is much stronger than "inconsistent with 9 FKs".** The
 repo already has a *named, tested policy* for this exact problem:
 `delete_customer_scoped_is_blocked_by_loyalty_and_sales_references`
-(`apps/desktop-client/src/commands/customers_tests.rs:683`, **CUST-11**) —
+(`apps/desktop-tauri/src/commands/customers_tests.rs:683`, **CUST-11**) —
 "a customer referenced by a loyalty account or sales rows must NOT be silently
 deleted — the FK guard (`foreign_keys = ON`) rejects the delete so no orphaned
 child rows can be left behind." Its mechanism is `REFERENCES customers(id)`
@@ -2563,8 +2563,8 @@ the opposite.
 **And the CASCADE is live, not inert.** Worth stating explicitly, because SQLite
 silently disables FK enforcement by default and that alone would have made this
 whole finding moot: `PRAGMA foreign_keys = ON` is set on every connection path —
-`desktop-client/src/state.rs:207`, `desktop-client/src/local_api.rs:149`,
-`tablet-client/src/state.rs:112`, `cloud-server/src/db.rs:132,142`. The cascade
+`desktop-tauri/src/state.rs:207`, `desktop-tauri/src/local_api.rs:149`,
+`mobile-tauri/src/state.rs:112`, `cloud-server/src/db.rs:132,142`. The cascade
 fires.
 
 **Options — none chosen, this is the owner's call:**
@@ -2796,7 +2796,7 @@ cleanup; each is recorded with its gates. Design source: §"Cloud-read design
    the unreachable-cloud path (port 1) degrading to the local read instead of
    erroring. `cargo test -p oz-pos-tablet commands::memo` 6/6. No code defect;
    the misattribution is a pathspec-discipline failure on a shared tree —
-   `git log -- apps/tablet-client/src/commands/memo.rs` points at a topology
+   `git log -- apps/mobile-tauri/src/commands/memo.rs` points at a topology
    commit, and this entry is the durable record of the true contents.
 
 4. **`f2dbb745` — spec documentation (`docs(api)`).** Both memo routes are

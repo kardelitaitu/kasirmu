@@ -6,7 +6,7 @@ Evidence gathered by a read-only audit at 00:29:56Z-00:35:00Z UTC, tip `46cbe764
 ## The finding
 `sync::list_sync_conflicts_scoped` is registered and reaches the network with **no permission check at any depth**.
 
-- defined `apps/desktop-client/src/commands/sync.rs:429`, registered `apps/desktop-client/src/lib.rs:1262`
+- defined `apps/desktop-tauri/src/commands/sync.rs:429`, registered `apps/desktop-tauri/src/lib.rs:1262`
 - its entire authorization surface is [sync.rs:434] `state.resolve_scope(&session_token)?;`
 - depth 2 `AppState::resolve_scope` [state.rs:598-626] = `resolve_session(token)` + `open_store(...)`
 - depth 3 `resolve_session` [state.rs:450-475] = session-store lookup + expiry check + `InvalidSession`
@@ -53,8 +53,8 @@ Nothing in this note edits your files. The ratchet lane holds its pin as it stan
 
 appended 09:16 +07. the read above has no tablet counterpart, and its ui is reachable there anyway.
 - no conflict commands on tablet. the only two definitions in the repo are
-  `apps/desktop-client/src/commands/sync.rs:429` and `:474`; both names return 0 under
-  `apps/tablet-client/src` and 0 under `crates` (queries: tree-wide grep of
+  `apps/desktop-tauri/src/commands/sync.rs:429` and `:474`; both names return 0 under
+  `apps/mobile-tauri/src` and 0 under `crates` (queries: tree-wide grep of
   `fn list_sync_conflicts_scoped|fn resolve_sync_conflict_scoped` → 2, then the same two names
   scoped to each of those dirs; all three at 09:11 +07). so there is nothing to register, and a
   bare `generate_handler` line on tablet would be wrong — it names a command that crate lacks.
@@ -64,8 +64,8 @@ appended 09:16 +07. the read above has no tablet counterpart, and its ui is reac
   file (query 09:12 +07: grep `isTablet|isMobile|platform|viewport|matchMedia|tablet` → 0 in
   `SettingsPage.tsx`, and its single hit in `SettingsNavTree.tsx` is `:4`, an import of
   `@/frontend/shell/Tooltip` — a component, not a check).
-- the tablet shell uses the same shared page registry: `ui/src/main.tablet.tsx:15` and `:64` into
-  `ui/src/frontend/shell/tablet/TabletAppShell.tsx:8` and `:194-196`, and
+- the tablet shell uses the same shared page registry: `ui/src/main.mobile.tsx:15` and `:64` into
+  `ui/src/app/tablet/TabletAppShell.tsx:8` and `:194-196`, and
   `ui/src/features/settings/register.tsx:10-15` gates the route on `manager` plus
   `settings:read` alone. so a manager holding settings:read on a tablet sees Sync Conflicts and
   issues an invoke against a shell that cannot answer it.
@@ -85,7 +85,7 @@ appended 09:16 +07. nothing below is chosen; it is the order the two findings fi
   choice, the same precedent as memo authoring and payables)".
 - the full fix order: guard the desktop read at `sync.rs:429` the way `:482` guards the write, or
   record why it needs no guard (the two ways out above, unchanged); only then port the guarded
-  shape onto tablet's own `resolve_scope` chain at `apps/tablet-client/src/state.rs:226` with
+  shape onto tablet's own `resolve_scope` chain at `apps/mobile-tauri/src/state.rs:226` with
   `SYNC_MANAGE` from `platform/core/src/rbac.rs:567` — tablet already uses that permission seven
   times in its own `commands/sync.rs` (`:363, :383, :466, :486, :525, :556, :593`; query: grep
   `SYNC_MANAGE` in that file → 7, 09:15 +07).

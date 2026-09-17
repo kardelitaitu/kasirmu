@@ -36,7 +36,7 @@
      - `ReceiptSettingsPanel.tsx` → `sections/ReceiptSection.tsx` (257 lines) + live `screens/ReceiptFormatSettingsCard.tsx` (488 lines)
      - `TaxSettingsPanel.tsx` → `screens/TaxConfigurationScreen.tsx` is a 32-line placeholder; the live tax UI is still `ui/src/features/tax/TaxConfigurationScreen.tsx` (1,027 lines, own route `tax-config`, registered at `ui/src/features/tax/register.tsx:8`)
 3. **Forbidden Paths (Owned by Siblings):**
-   - DO NOT edit backend Rust command files (Owned by Agent 1): `apps/desktop-client/src/commands/settings.rs` (379 lines), `apps/tablet-client/src/commands/settings.rs` (949 lines), `crates/oz-core/src/settings.rs` (897 lines), `crates/oz-core/src/db/settings.rs` (286 lines), `modules/settings/` (kernel module, 202-line `lib.rs` — a lifecycle stub, not the UI).
+   - DO NOT edit backend Rust command files (Owned by Agent 1): `apps/desktop-tauri/src/commands/settings.rs` (379 lines), `apps/mobile-tauri/src/commands/settings.rs` (949 lines), `crates/oz-core/src/settings.rs` (897 lines), `crates/oz-core/src/db/settings.rs` (286 lines), `modules/settings/` (kernel module, 202-line `lib.rs` — a lifecycle stub, not the UI).
    - DO NOT edit `ui/src/features/settings/DataManagementScreen.tsx` (1,016 lines, Owned by Agent 3).
      > Name collision worth knowing: a second file of the same basename sits at
      > `ui/src/features/settings/screens/DataManagementScreen.tsx` (32 lines, rebuild placeholder) and is
@@ -297,7 +297,7 @@ that UI, since the only importers today are tests.
 > contains `todo-` (`is_historical_doc`, `.agents/skills/docs-auditor/scripts/check-dead-refs.py:193-213`), so a
 > dead path written below still reads clean. Every path here was re-opened with `sed -n` instead of trusting it,
 > and one did move: the topbar and save bar now live at `ui/src/features/settings/components/SettingsTopbar.tsx`,
-> and `AppShell` is at `ui/src/frontend/shell/AppShell.tsx` (not `ui/src/frontend/AppShell.tsx`).
+> and `AppShell` is at `ui/src/app/AppShell.tsx` (not `ui/src/frontend/AppShell.tsx`).
 
 ### N-1 — the save fan-out re-stamps WHOLE DTOs from a one-shot hydrate
 
@@ -377,7 +377,7 @@ Rejected alternatives, with their reasons, so nobody re-drafts them:
 - **(a) CLOSED 2026-09-14, and it closed opposite to the guess.** The question was whether the cross-store case
   is reachable at all. **Store switch: NOT REACHABLE.** `switchStore`
   (`ui/src/contexts/WorkspaceContext.tsx:269-282`) calls `setSessionToken(null)` at `:274` BEFORE minting a
-  replacement, and `ui/src/frontend/shell/AppShell.tsx:410-431` returns `<StaffLoginScreen/>` whenever there is
+  replacement, and `ui/src/app/AppShell.tsx:410-431` returns `<StaffLoginScreen/>` whenever there is
   no session — so React commits a render where the routed page is not in the tree, `SettingsPage` unmounts,
   `initialized` dies with it, and the remount hydrates fresh. There is **no `key={sessionToken}` anywhere**; the
   protection is the login gate, not a key. Say it plainly: the store-switch path is safe BY ACCIDENT of the

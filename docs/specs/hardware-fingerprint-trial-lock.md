@@ -2,7 +2,7 @@
 
 **Specification ID:** SPEC-2026-TRIAL-LOCK  
 **Status:** Active Draft — ⚠️ trial definition re-scoped (see note)  
-**Target Module:** `crates/oz-security`, `apps/desktop-client/src/commands/license.rs`, License Auth Server (PocketBase)  
+**Target Module:** `crates/oz-security`, `apps/desktop-tauri/src/commands/license.rs`, License Auth Server (PocketBase)  
 **Date:** 2026-07-20  
 
 > **Re-scope note (2026-08-17):** the flat **90-day free trial** referenced

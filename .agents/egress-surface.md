@@ -33,8 +33,8 @@ which has exactly five callers:
 | 1 | desktop set_setting | crates/oz-bridge/src/settings.rs:1230 | String |
 | 2 | desktop set_setting_scoped | crates/oz-bridge/src/settings.rs:1297 | String |
 | 3 | desktop BATCH set_settings_scoped | crates/oz-bridge/src/settings.rs:1368 | HashMap<String, String> |
-| 4 | tablet set_setting | apps/tablet-client/src/commands/settings.rs:570 | String |
-| 5 | tablet set_setting_scoped | apps/tablet-client/src/commands/settings.rs:904 | String |
+| 4 | tablet set_setting | apps/mobile-tauri/src/commands/settings.rs:570 | String |
+| 5 | tablet set_setting_scoped | apps/mobile-tauri/src/commands/settings.rs:904 | String |
 
 None of the five enumerates, validates or restricts a key. THE ONLY BOUND ON WHAT
 CAN BE QUEUED IS THE PREDICATE IngestPolicy::RemoteSync.admits - today: the
@@ -55,8 +55,8 @@ excluded, returns 8 call sites. They expand to 14 distinct names:
 |---|---|---|
 | ui.locale | ui/src/features/settings/sections/GeneralSection.tsx:50 | yes (traced) |
 | exit_survey.last_response | ui/src/components/ExitSurveyModal.tsx:52-54 | yes (traced) |
-| updater.previous_version | ui/src/frontend/shell/UpdateBanner.tsx:13, written at :188 | yes (traced) |
-| updater.last_backup_path | ui/src/frontend/shell/UpdateBanner.tsx:16, written at :189 | yes (traced) |
+| updater.previous_version | ui/src/app/UpdateBanner.tsx:13, written at :188 | yes (traced) |
+| updater.last_backup_path | ui/src/app/UpdateBanner.tsx:16, written at :189 | yes (traced) |
 | inventory.low_stock_threshold | workspace-cards/WorkspaceInventorySettings.tsx:98 | yes (traced) |
 | inventory.deduction_prefer_warehouse | workspace-cards/WorkspaceInventorySettings.tsx:99 | yes (traced) |
 | kds.sound_enabled | workspace-cards/WorkspaceKdsSettings.tsx:137 | yes (traced) |
@@ -147,7 +147,7 @@ unbounded and the ceiling is still ~100 names, not twelve.
    declares 74 distinct key VALUES and the Rust side uses ~63 literals. Take the
    union as the working ceiling for a real allow-list: closer to a hundred names
    than to twelve, and the twelve is a subset of one screen family.
-3. A shape note for whoever picks up the allow-list: apps/tablet-client/src/
+3. A shape note for whoever picks up the allow-list: apps/mobile-tauri/src/
    commands/registration_gate_tests.rs::denied_setting_names reads keys.rs AS TEXT
    (include-str style: it opens the file by relative path, finds the two
    declarations by the string "pub const SECRET_KEY_DENY_LIST" /

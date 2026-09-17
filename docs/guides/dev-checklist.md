@@ -10,7 +10,7 @@ A checklist to ensure the app is fully functional during development. Run throug
 
 The app must handle a **fresh database** gracefully.
 
-- [ ] **`has_users` IPC exists** — `apps/desktop-client/src/commands/auth.rs` exposes a `has_users` command that returns `{ has_users: bool }` by checking `Store::list_users()`.
+- [ ] **`has_users` IPC exists** — `apps/desktop-tauri/src/commands/auth.rs` exposes a `has_users` command that returns `{ has_users: bool }` by checking `Store::list_users()`.
 - [ ] **Registered in invoke_handler** — `has_users` is listed in `lib.rs` `generate_handler![]`.
 - [ ] **UI wrapper exists** — `ui/src/api/staff.ts` exports `hasUsers()`.
 - [ ] **AppShell checks on startup** — `AppShell.tsx` calls `hasUsers()` and shows `CreatePinScreen` when `hasAnyUsers === false`, bypassing the license/setup gate.
@@ -21,7 +21,7 @@ The app must handle a **fresh database** gracefully.
 
 Features are gated by the `get_subscription_capabilities` IPC. The dev database starts with a **Free** tier bootstrap row.
 
-### 2a. Rust Backend (`crates/kasirmu-core/src/entitlements.rs`, projected by `apps/desktop-client/src/commands/subscription.rs`)
+### 2a. Rust Backend (`crates/kasirmu-core/src/entitlements.rs`, projected by `apps/desktop-tauri/src/commands/subscription.rs`)
 
 - [ ] **Debug override** — `Entitlements::apply_debug_upgrade()` at
   `crates/kasirmu-core/src/entitlements.rs:102`. Three things this checklist got wrong until

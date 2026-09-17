@@ -133,7 +133,7 @@ pub fn record_sale(
 - A function that writes must take `&mut Connection` (or `&Transaction`) — never `&Connection`.
 - Use `?` everywhere; let `tx.commit()` happen only on the happy path. A `?` before `commit()` triggers `Drop`, which rolls back automatically.
 - Migrations live in `crates/kasirmu-core/migrations/<timestamp>_<name>.sql` and are run by `kasirmu-cli migrate`.
-- The Tauri runtime shares a single `Arc<Mutex<Connection>>` (see `apps/desktop-client/src/state.rs`); there is no connection pool (no `r2d2`/`deadpool` in the workspace).
+- The Tauri runtime shares a single `Arc<Mutex<Connection>>` (see `apps/desktop-tauri/src/state.rs`); there is no connection pool (no `r2d2`/`deadpool` in the workspace).
 - For read-only queries, you may use `&Connection` and skip the transaction.
 
 ---

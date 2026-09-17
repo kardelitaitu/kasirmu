@@ -1,5 +1,7 @@
 # OZ-POS install scripts
 
+<!-- dead-ref-prefix-ok: install/uninstall · this is the English phrase "One-line install/uninstall", not a path; `install/` is a top-level prefix so the checker extracts it. Suppressed at the page head, where check-dead-refs.py reads the opt-out (first 40 lines). Every other reference on this page is still checked. -->
+
 <!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (0 findings) · verified against HEAD: all 4 referenced scripts exist (win/install.ps1, win/uninstall.ps1, install.sh, uninstall.sh); repo URL kardelitaitu/oz-pos matches git remote and install.ps1's default $Repo -->
 
 One-line install/uninstall for all three desktop platforms, backed by the
