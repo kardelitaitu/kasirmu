@@ -133,7 +133,7 @@ Then, once you know which files your answer depends on:
 ```ts
 await tools.mcp__cbm__check_index_coverage({
   project: 'oz-pos',
-  paths: ['crates/oz-core/src/kds.rs', 'crates/oz-core/migrations/20260813_init.sql'],
+  paths: ['crates/kasirmu-core/src/kds.rs', 'crates/kasirmu-core/migrations/20260813_init.sql'],
 });
 ```
 
@@ -437,7 +437,7 @@ Also: `trace_path` does **not** take `name` — the parameter is `function_name`
   `/nonexistent/plugin/dir` and a SQL index comment parsed as a path. On the 08-09-26
   index the same call returns 20 mostly-real `/api/v1/...` rows plus `/freeze/i` and
   `/unfreeze/i` — regex literals from test code. Route nodes are a text-mining artifact
-  as often as a real endpoint; confirm against `crates/oz-api/src/routes/` or the Tauri
+  as often as a real endpoint; confirm against `crates/kasirmu-api/src/routes/` or the Tauri
   command registry, and never diff two route lists across index generations.
 - **`aspects: ['layers']` classifies scripts as `internal` with fan-in 0**, which is
   true but useless. Use `clusters` for the real seams.

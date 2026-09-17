@@ -18,7 +18,7 @@ Each rule below was bought with a real false positive during development:
     dead. Use an explicit prefix slice.
   * Accepts directories, not just files: "docs/specs/" is a valid reference.
   * Skips placeholders: braces, angles, asterisks, ellipses, XXX, YYYY, NN. A plan
-    that says "add crates/oz-core/migrations/XXX_foo.sql" describes a file to be
+    that says "add crates/kasirmu-core/migrations/XXX_foo.sql" describes a file to be
     created, not one that exists.
   * Skips lines that are ABOUT a missing thing rather than pointing at it. A page
     that says "deploy.yml does not exist" is correct, and flagging it would teach

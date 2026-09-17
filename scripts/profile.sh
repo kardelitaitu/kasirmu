@@ -100,8 +100,8 @@ if $HELP || [[ $# -eq 0 && -z "$BENCH" && -z "$BINARY" && -z "$PID" && $LIST == 
 fi
 
 if $LIST; then
-    echo -e "${CYAN}Available benchmark targets (crates/oz-core/benches/):${NC}"
-    for f in crates/oz-core/benches/*.rs; do
+    echo -e "${CYAN}Available benchmark targets (crates/kasirmu-core/benches/):${NC}"
+    for f in crates/kasirmu-core/benches/*.rs; do
         base=$(basename "$f" .rs)
         echo -e "  ${GREEN}- $base${NC}"
     done

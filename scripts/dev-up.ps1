@@ -45,7 +45,7 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 # MIRROR of the same block in scripts/dev-up.sh — keep the two in step.
 # docker-compose.yml hard-requires OZ_API_SECRET (:55) and OZ_ADMIN_KEY (:70)
 # with the fail-closed ':?' form. That requirement IS the fix: an unset
-# OZ_ADMIN_KEY makes admin_key_authorised() (crates/oz-api/src/routes/
+# OZ_ADMIN_KEY makes admin_key_authorised() (crates/kasirmu-api/src/routes/
 # tokens.rs) return TRUE, turning POST /api/v1/tokens into an unauthenticated
 # mint. Compose refusing to parse without one must stay; what this script owes
 # a developer is a value to run with.

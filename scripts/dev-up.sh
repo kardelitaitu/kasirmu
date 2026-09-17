@@ -55,7 +55,7 @@ fi
 #
 # docker-compose.yml hard-requires OZ_API_SECRET (:55) and OZ_ADMIN_KEY (:70)
 # with the fail-closed `:?` interpolation form. That requirement IS the fix:
-# admin_key_authorised() in crates/oz-api/src/routes/tokens.rs returns TRUE
+# admin_key_authorised() in crates/kasirmu-api/src/routes/tokens.rs returns TRUE
 # when no admin key is configured, so an unset OZ_ADMIN_KEY made
 # POST /api/v1/tokens an unauthenticated mint. Compose refusing to parse
 # without one must stay. What dev-up owes a developer is a value to run with,
@@ -175,7 +175,7 @@ if [ -n "$GENERATED_SECRETS" ]; then
 fi
 
 # ── Check license key ─────────────────────────────────────────────
-LICENSE_KEY_PATH="crates/oz-core/oz-license-private.pem"
+LICENSE_KEY_PATH="crates/kasirmu-core/oz-license-private.pem"
 if [ -z "${OZ_LICENSE_PRIVATE_KEY:-}" ]; then
   if [ -f "$LICENSE_KEY_PATH" ]; then
     export OZ_LICENSE_PRIVATE_KEY=$(cat "$LICENSE_KEY_PATH")

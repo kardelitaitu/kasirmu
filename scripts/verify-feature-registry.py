@@ -9,7 +9,7 @@ WHY
 The OZ-POS feature flag system requires three sources of truth to stay
 in sync:
   1. The Rust `Feature` enum + `feature_key()` in
-     `crates/oz-core/src/features.rs` — canonical backend definitions.
+     `crates/kasirmu-core/src/features.rs` — canonical backend definitions.
   2. The `FEATURES` constant in
      `ui/src/hooks/useFeatures.ts` — frontend feature key registry.
   3. `feature: '...'` attributes on `registerPage()` and `registerNavItem()`
@@ -41,7 +41,7 @@ is red), and adding the key to the working copy WITHOUT committing it made this 
 print '0 issue(s)' and exit 0.
 
 So the registries are now graded as committed, via "git show
-HEAD:crates/oz-core/src/features.rs" and the same for ui/src/hooks/useFeatures.ts,
+HEAD:crates/kasirmu-core/src/features.rs" and the same for ui/src/hooks/useFeatures.ts,
 with the working copy as a declared fallback that SAYS it fell back and what that costs
 (no git, no HEAD, path not committed, or a HEAD blob whose body parses to zero keys --
 a parse failure on the committed side is not evidence of a missing registry). The run
@@ -84,7 +84,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-RUST_FEATURES_REL = "crates/oz-core/src/features.rs"
+RUST_FEATURES_REL = "crates/kasirmu-core/src/features.rs"
 FRONTEND_FEATURES_REL = "ui/src/hooks/useFeatures.ts"
 RUST_FEATURES_PATH = ROOT / RUST_FEATURES_REL
 FRONTEND_FEATURES_PATH = ROOT / FRONTEND_FEATURES_REL

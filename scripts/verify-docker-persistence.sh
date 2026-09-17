@@ -12,7 +12,7 @@
 #             asserts the key survived and the superuser still authenticates.
 #
 # Usage:
-#   OZ_LICENSE_PRIVATE_KEY="$(cat crates/oz-core/oz-license-private.pem)" \
+#   OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)" \
 #     bash scripts/verify-docker-persistence.sh
 #
 # A throwaway RSA key is generated if OZ_LICENSE_PRIVATE_KEY is unset.

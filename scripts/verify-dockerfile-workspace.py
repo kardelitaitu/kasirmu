@@ -62,7 +62,7 @@ def workspace_members() -> list[str]:
     if not m:
         sys.exit("error: could not locate [workspace] section in Cargo.toml")
     body = m.group(1)
-    # Match `"crates/oz-core",` lines (trailing comma, CRLF-safe). Only the
+    # Match `"crates/kasirmu-core",` lines (trailing comma, CRLF-safe). Only the
     # members list itself — workspace.dependencies entries contain '='.
     raw = [
         x for x in re.findall(r'^\s*"([^"]+)",?\s*$', body, re.M) if "=" not in x

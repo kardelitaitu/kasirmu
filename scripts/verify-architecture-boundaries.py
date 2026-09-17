@@ -33,7 +33,7 @@ The line used to print three counts and nothing else, and every one of them was
 a FINDING count -- tracked, blocking, stale. Those measure debt, not scope. So
 "0 new/expired blocking finding(s)" was equally true of a run that graded this
 workspace and of a run whose --root pointed at a directory holding no crates, no
-ui/src and no crates/oz-bridge. That second run is a supported mode, not a
+ui/src and no crates/kasirmu-bridge. That second run is a supported mode, not a
 corruption: --root is a documented flag above, and the node suite in
 scripts/__tests__/verify-architecture-boundaries.test.mjs already reaches fixture
 scope another way -- it copies this script into the fixture directory and passes
@@ -55,7 +55,7 @@ KNOWN LIMIT -- A REAL REPO CAN PRESENT AS A FIXTURE
 ===================================================
 
 An empty population is INTENDED here and stays intended: the walker docstrings
-say a fixture repository without crates/oz-bridge yields no findings, and
+say a fixture repository without crates/kasirmu-bridge yields no findings, and
 --root / --metadata-file exist precisely so synthetic trees can be graded -- and
 the node suite named above is made of nothing else. So this file deliberately has
 NO empty-population floor: adding one would fail the fixture runs that are this
@@ -95,7 +95,7 @@ RULES = {
     "core-upward-dependency": {"category": "cargo", "severity": "P1", "hint": "Keep oz-core below business modules; move shared contracts/models to a lower layer."},
     "platform-to-business": {"category": "cargo", "severity": "P1", "hint": "Use platform-startup or an application composition root for business-module wiring."},
     "ui-direct-invoke": {"category": "ui", "severity": "P2", "hint": "Route Tauri IPC through ui/src/api or a documented infrastructure adapter."},
-    "bridge-toolkit-purity": {"category": "renderer", "severity": "P1", "hint": "Keep crates/oz-bridge toolkit-free (ADR #49): a tauri/gtk/webkit dependency or reference removes the headless seam a second renderer binds to."},
+    "bridge-toolkit-purity": {"category": "renderer", "severity": "P1", "hint": "Keep crates/kasirmu-bridge toolkit-free (ADR #49): a tauri/gtk/webkit dependency or reference removes the headless seam a second renderer binds to."},
     "ui-framework-vocabulary": {"category": "renderer", "severity": "P2", "hint": "Keep renderer vocabulary out of app-layer prose (ADR #53): cite the caller by its role, not by its .tsx/.css filename."},
 }
 BUSINESS_PREFIX = "modules-"
@@ -325,7 +325,12 @@ def cargo_findings(metadata: dict[str, Any], root: Path, scope: dict[str, int]) 
             target_is_business = target.startswith(BUSINESS_PREFIX)
             owner_is_business = owner.startswith(BUSINESS_PREFIX)
             rule = None
-            if owner == "oz-core" and target_is_business:
+            # Both spellings are accepted deliberately: the package is named
+            # `kasirmu-core` since the Tier-3 rename, while a cached graph captured
+            # before it (the `--metadata-file` path the tests use) still calls it
+            # `oz-core`. Matching either widens coverage; matching one would let the
+            # rule stop firing the moment the two disagree.
+            if owner in ("kasirmu-core", "oz-core") and target_is_business:
                 rule = "core-upward-dependency"
             elif owner_is_business and target_is_business:
                 rule = "module-to-module"
@@ -610,7 +615,7 @@ def ui_findings(root: Path, scope: dict[str, int]) -> list[dict[str, Any]]:
 
 
 def bridge_toolkit_findings(root: Path, scope: dict[str, int]) -> list[dict[str, Any]]:
-    """Report UI-toolkit coupling inside `crates/oz-bridge` (ADR #49).
+    """Report UI-toolkit coupling inside `crates/kasirmu-bridge` (ADR #49).
 
     ADR #49 makes the bridge headless *by dependency*: it carries no `tauri`,
     `gtk`, `webkit2gtk` or `tauri-plugin-*`, so command bodies can be driven
@@ -619,11 +624,11 @@ def bridge_toolkit_findings(root: Path, scope: dict[str, int]) -> list[dict[str,
 
     Comments and string contents are masked before scanning, so the crate's own
     "depends on no tauri, gtk or webkit type" assertions do not self-report.
-    A fixture repository without `crates/oz-bridge` yields no findings, and says so:
+    A fixture repository without `crates/kasirmu-bridge` yields no findings, and says so:
     the run's "[population examined: ...]" clause reports 0 bridge files scanned
     rather than staying silent about the absence.
     """
-    crate = root / "crates" / "oz-bridge"
+    crate = root / "crates" / "kasirmu-bridge"
     if not crate.is_dir():
         # Intended fixture behaviour, and now visible rather than implied: this
         # walk examined no file, which the green line prints as zero.
@@ -833,7 +838,7 @@ def population_clause(scope: dict[str, int]) -> str:
         f" [population examined: {scope['crates']} crate(s) in the Cargo graph, "
         f"{scope['dep_edges']} dependency edge(s) followed, "
         f"{scope['ui_files']} UI file(s) scanned, "
-        f"{scope['bridge_files']} crates/oz-bridge file(s) scanned, "
+        f"{scope['bridge_files']} crates/kasirmu-bridge file(s) scanned, "
         f"{scope['app_layer_files']} app-layer .rs file(s) scanned across "
         f"{scope['app_layer_roots']}/{len(UI_VOCABULARY_ROOTS)} root(s), "
         f"{scope['baseline_entries']} baseline entry(ies)]"

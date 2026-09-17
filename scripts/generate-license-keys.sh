@@ -4,8 +4,8 @@
 # Generates an RSA-2048 key pair for the license server (ADR #9).
 #
 # Outputs:
-#   crates/oz-core/oz-license.key.pub     ← Public key (embedded in POS binary, committed)
-#   crates/oz-core/oz-license-private.pem ← Private key (set as OZ_LICENSE_PRIVATE_KEY env var, git-ignored)
+#   crates/kasirmu-core/oz-license.key.pub     ← Public key (embedded in POS binary, committed)
+#   crates/kasirmu-core/oz-license-private.pem ← Private key (set as OZ_LICENSE_PRIVATE_KEY env var, git-ignored)
 #
 # Requirements:
 #   - OpenSSL (brew install openssl / apt install openssl)
@@ -16,8 +16,8 @@
 
 set -euo pipefail
 
-public_key_path="crates/oz-core/oz-license.key.pub"
-private_key_path="crates/oz-core/oz-license-private.pem"
+public_key_path="crates/kasirmu-core/oz-license.key.pub"
+private_key_path="crates/kasirmu-core/oz-license-private.pem"
 
 # ── Colors ──────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -44,8 +44,8 @@ fi
 echo -e "${GREEN}[✓] OpenSSL found: $(which openssl)${NC}"
 
 # ── Ensure we're in the project root ─────────────────────────────────
-if [ ! -d "crates/oz-core" ]; then
-    echo -e "${RED}ERROR: Must be run from the project root (crates/oz-core/ not found).${NC}"
+if [ ! -d "crates/kasirmu-core" ]; then
+    echo -e "${RED}ERROR: Must be run from the project root (crates/kasirmu-core/ not found).${NC}"
     exit 1
 fi
 

@@ -1,6 +1,6 @@
 """Fail a verification run whose Postgres cases silently did not execute.
 
-Why this exists.  In `apps/cloud-server`, `crates/oz-api` and `platform/sync` a
+Why this exists.  In `apps/cloud-server`, `crates/kasirmu-api` and `platform/sync` a
 Postgres-gated test does not use `#[ignore]`.  It probes for a database, prints
 an "… test skipped …" line through `eprintln!`, and then `return`s.  A `return`
 is a PASS to the runner, so `cargo test` exits 0 and the summary reads
@@ -48,7 +48,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-CRATES = ["oz-cloud-server", "oz-api", "platform-sync"]
+CRATES = ["oz-cloud-server", "kasirmu-api", "platform-sync"]
 
 # Source trees the arm census walks. Deliberately a filesystem walk, not
 # `git ls-files`: subprocess with captured stdio is denied under some agent
@@ -97,7 +97,7 @@ ARM_BASELINE = 68
 # Per-crate membership: each crate that owns arms today must keep at least one.
 # Renaming a file survives this; a whole crate's arms going uncounted does not,
 # which is the "fix landed in one crate, 17 left behind" failure in another form.
-ARM_CRATES = ("apps/cloud-server", "crates/oz-api", "platform/sync")
+ARM_CRATES = ("apps/cloud-server", "crates/kasirmu-api", "platform/sync")
 
 # A skip EVENT in test output: the word "skip" as its own word, on a line that is
 # NOT a runner result line. The exclusion is the whole point --
@@ -125,7 +125,7 @@ def _arm_body(lines: list[str], start: int) -> list[str]:
     "Where it closes" = the first following line that starts with `}` at an
     indent no greater than the eprintln's. Without this the census reads the
     *neighbouring* match arm and calls it a skip:
-    crates/oz-security/src/lib_tests.rs:95 ends its `KeyUnavailable` arm with a
+    crates/kasirmu-security/src/lib_tests.rs:95 ends its `KeyUnavailable` arm with a
     bare `}`, and the `panic!` two lines later belongs to `Err(other)`, a
     different arm that genuinely does fail. Reading across the boundary would
     count a print-and-continue fallback as a silent pass.
@@ -188,7 +188,7 @@ def count_source_arms() -> tuple[int, dict[str, int]]:
     widen as files are renamed:
       * only test code -- path contains `_tests` or a `tests/` segment, which
         excludes production `eprintln!` notes like the WAL-checkpoint line in
-        crates/oz-cli/src/commands/backup.rs;
+        crates/kasirmu-cli/src/commands/backup.rs;
       * only arms that actually abandon the test -- a `return`, `panic!`, `fail!`,
         `unreachable!` or a bare `None` *inside the arm's own block*. The bare
         `None` is how a helper propagates a skip to its callers (both arms in
@@ -616,7 +616,7 @@ def self_test() -> int:
     expect("production WAL-checkpoint eprintln is NOT counted as an arm",
            not any(p.endswith("commands/backup.rs") for p in per_file))
     expect("print-and-continue keyring fallback is NOT counted as an arm",
-           not any("oz-security" in p for p in per_file))
+           not any("kasirmu-security" in p for p in per_file))
 
     # (3b) the arm-boundary and macro rules, as fixtures. These exist because
     #      `\bpanic!\b` cannot ever match -- `!` is non-word and `(` after it is

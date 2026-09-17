@@ -112,7 +112,7 @@ TAURI_CONFIGS = sorted((ROOT / "apps").glob("*/tauri.conf.json"))
 # "KNOWN LIMIT" in the module docstring for what to do when you ship one.
 SOURCE_MANIFESTS = [
     ROOT / "apps" / "cloud-server" / "app.manifest",
-    ROOT / "crates" / "oz-cli" / "app.manifest",
+    ROOT / "crates" / "kasirmu-cli" / "app.manifest",
     ROOT / "apps" / "license-server" / "app.manifest",
     ROOT / "scripts" / "updater-compat-check" / "app.manifest",
 ]

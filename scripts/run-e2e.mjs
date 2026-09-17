@@ -316,7 +316,7 @@ function assertImagesFresh() {
  * only — it is not committed, never persisted, and discarded on cleanup.
  *
  * NOTE: The generated key does NOT match the committed public key
- * (crates/oz-core/oz-license.key.pub). Tests that verify real license
+ * (crates/kasirmu-core/oz-license.key.pub). Tests that verify real license
  * signatures must provide a real OZ_LICENSE_PRIVATE_KEY instead.
  */
 function ensureLicenseKey() {

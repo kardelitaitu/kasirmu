@@ -3,7 +3,7 @@ name: rust-backend
 description: Rust & database standards for the kasir.mu framework — Money struct, rusqlite transactions, thiserror/anyhow, clippy, doc comments. Use when adding or modifying Rust code in any `oz-*` crate.
 ---
 
-<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — test convention corrected: tests live in sibling *_tests.rs files wired via #[cfg(test)] #[path = ...] mod tests, never inline #[cfg(test)] mod tests { ... }; front-end formatter corrected format_minor_units → formatMoney in ui/src/types/domain.ts (the former exists nowhere); pooling mention removed from pitfall #5 to match the single Arc<Mutex<Connection>> runtime) · verified this pass: foundation/src/money.rs signatures (Money{minor_units:i64, currency:Currency}, Currency(pub [u8;3]), from_major→Option, checked_add→Option, zero) all match the skill's sample; 90 sibling *_tests.rs files under crates/oz-core/src alone; formatMoney present in ui/src/types/domain.ts · prior: 2026-08-31 docs-auditor rev (F1 migrations path, F2 always-compiled mocks, F3 no pooling) · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-08-31] · docs-auditor · status: ACCURATE (F1-F3 repaired) · FIXED 31-08: F1 migrations path root migrations/ -> crates/oz-core/migrations/; F2 mocks are a plain pub mod always compiled (no #[cfg(test)]/mock-feature gate — matches hal-drivers); F3 removed the r2d2_sqlite/deadpool-sqlite pooling directive (neither is in the workspace; the runtime shares a single Arc<Mutex<Connection>>) · verified accurate: Money/Currency struct shape matches foundation/src/money.rs (minor_units:i64, currency:Currency, Currency(pub [u8;3])), i64-minor-units + thiserror conventions hold -->
+<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — test convention corrected: tests live in sibling *_tests.rs files wired via #[cfg(test)] #[path = ...] mod tests, never inline #[cfg(test)] mod tests { ... }; front-end formatter corrected format_minor_units → formatMoney in ui/src/types/domain.ts (the former exists nowhere); pooling mention removed from pitfall #5 to match the single Arc<Mutex<Connection>> runtime) · verified this pass: foundation/src/money.rs signatures (Money{minor_units:i64, currency:Currency}, Currency(pub [u8;3]), from_major→Option, checked_add→Option, zero) all match the skill's sample; 90 sibling *_tests.rs files under crates/kasirmu-core/src alone; formatMoney present in ui/src/types/domain.ts · prior: 2026-08-31 docs-auditor rev (F1 migrations path, F2 always-compiled mocks, F3 no pooling) · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-08-31] · docs-auditor · status: ACCURATE (F1-F3 repaired) · FIXED 31-08: F1 migrations path root migrations/ -> crates/kasirmu-core/migrations/; F2 mocks are a plain pub mod always compiled (no #[cfg(test)]/mock-feature gate — matches hal-drivers); F3 removed the r2d2_sqlite/deadpool-sqlite pooling directive (neither is in the workspace; the runtime shares a single Arc<Mutex<Connection>>) · verified accurate: Money/Currency struct shape matches foundation/src/money.rs (minor_units:i64, currency:Currency, Currency(pub [u8;3])), i64-minor-units + thiserror conventions hold -->
 # Rust Backend & Database Standards
 
 The kasir.mu framework is built on Rust. This skill enforces the project's coding standards, especially around **money safety**, **database integrity**, and **error handling**.
@@ -132,7 +132,7 @@ pub fn record_sale(
 **Rules:**
 - A function that writes must take `&mut Connection` (or `&Transaction`) — never `&Connection`.
 - Use `?` everywhere; let `tx.commit()` happen only on the happy path. A `?` before `commit()` triggers `Drop`, which rolls back automatically.
-- Migrations live in `crates/oz-core/migrations/<timestamp>_<name>.sql` and are run by `oz-cli migrate`.
+- Migrations live in `crates/kasirmu-core/migrations/<timestamp>_<name>.sql` and are run by `oz-cli migrate`.
 - The Tauri runtime shares a single `Arc<Mutex<Connection>>` (see `apps/desktop-client/src/state.rs`); there is no connection pool (no `r2d2`/`deadpool` in the workspace).
 - For read-only queries, you may use `&Connection` and skip the transaction.
 
@@ -244,7 +244,7 @@ cargo test --workspace --all-features
   mod tests;
   ```
   Start the test file with `use super::*;`. Integration tests belong in the top-level `tests/` directory.
-- Mock implementations of traits live in `crates/oz-hal/src/drivers/mock.rs` — a plain `pub mod`, always compiled (not gated by `#[cfg(test)]` or a `mock` feature).
+- Mock implementations of traits live in `crates/kasirmu-hal/src/drivers/mock.rs` — a plain `pub mod`, always compiled (not gated by `#[cfg(test)]` or a `mock` feature).
 
 ---
 

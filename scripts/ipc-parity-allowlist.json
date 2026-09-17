@@ -186,19 +186,19 @@
   "dev_mock": [
     {
       "name": "delete_topology_template",
-      "reason": "Deletes one per-branch diagram template from the store DB (crates/oz-bridge/src/topology/commands.rs::delete_topology_template -> template_delete, behind authorize_topology_write / TOPOLOGY_WRITE). NOT hardware- or shell-bound: dev-mock already keeps a localStorage topology slice (ui/src/dev-mock/handlers/topology.ts, handlers/topology-state.ts) with graph, apply and revision handlers, so a parallel template map is writable. LIKELY OWED rather than accepted -- no rationale recorded beyond the dev-mock hot-file rule in _dev_mock_comment. NEEDS-OWNER-INPUT."
+      "reason": "Deletes one per-branch diagram template from the store DB (crates/kasirmu-bridge/src/topology/commands.rs::delete_topology_template -> template_delete, behind authorize_topology_write / TOPOLOGY_WRITE). NOT hardware- or shell-bound: dev-mock already keeps a localStorage topology slice (ui/src/dev-mock/handlers/topology.ts, handlers/topology-state.ts) with graph, apply and revision handlers, so a parallel template map is writable. LIKELY OWED rather than accepted -- no rationale recorded beyond the dev-mock hot-file rule in _dev_mock_comment. NEEDS-OWNER-INPUT."
     },
     {
       "name": "gateway_status",
-      "reason": "Returns the three configured/online gateway booleans computed server-side from deny-listed secret settings (crates/oz-bridge/src/settings.rs::gateway_status), read live by ui/src/frontend/shell/StatusBar.tsx through useGatewayStatus. NOT hardware-bound: the mock already stubs the same store with 'get_setting': () => null (ui/src/dev-mock/handlers/settings.ts:71), so an all-false three-entry handler is trivial. LIKELY OWED -- no recorded rationale beyond the _dev_mock_comment hot-file rule. NEEDS-OWNER-INPUT."
+      "reason": "Returns the three configured/online gateway booleans computed server-side from deny-listed secret settings (crates/kasirmu-bridge/src/settings.rs::gateway_status), read live by ui/src/frontend/shell/StatusBar.tsx through useGatewayStatus. NOT hardware-bound: the mock already stubs the same store with 'get_setting': () => null (ui/src/dev-mock/handlers/settings.ts:71), so an all-false three-entry handler is trivial. LIKELY OWED -- no recorded rationale beyond the _dev_mock_comment hot-file rule. NEEDS-OWNER-INPUT."
     },
     {
       "name": "list_topology_templates",
-      "reason": "Names a branch's saved templates, sorted (crates/oz-bridge/src/topology/commands.rs::list_topology_templates -> template_list; needs a session, not the write capability). NOT hardware- or shell-bound -- same localStorage topology slice already exists in dev-mock. LIKELY OWED; see delete_topology_template. NEEDS-OWNER-INPUT."
+      "reason": "Names a branch's saved templates, sorted (crates/kasirmu-bridge/src/topology/commands.rs::list_topology_templates -> template_list; needs a session, not the write capability). NOT hardware- or shell-bound -- same localStorage topology slice already exists in dev-mock. LIKELY OWED; see delete_topology_template. NEEDS-OWNER-INPUT."
     },
     {
       "name": "load_topology_template",
-      "reason": "Loads one template payload, None when absent or unreadable (crates/oz-bridge/src/topology/commands.rs::load_topology_template -> template_load). NOT hardware- or shell-bound -- dev-mock already models the topology graph it returns. LIKELY OWED; see delete_topology_template. NEEDS-OWNER-INPUT."
+      "reason": "Loads one template payload, None when absent or unreadable (crates/kasirmu-bridge/src/topology/commands.rs::load_topology_template -> template_load). NOT hardware- or shell-bound -- dev-mock already models the topology graph it returns. LIKELY OWED; see delete_topology_template. NEEDS-OWNER-INPUT."
     },
     {
       "name": "local_api_mint_token_scoped",
@@ -226,7 +226,7 @@
     },
     {
       "name": "preview_promoted_total_from_lines_scoped",
-      "reason": "PROMO-3 preview of the engine-exact payable over caller-supplied cart lines -- cart, sale, tax (with Lua plugin overrides) and the promotion engine on a store-DB connection (crates/oz-bridge/src/pos.rs::preview_promoted_total_from_lines_scoped). Its sibling IS MOCKED: preview_promoted_total_scoped at ui/src/dev-mock/handlers/sales.ts:420 mirrors the same discount math via applyMockPromotionDiscounts, and ui/src/features/sales/PaymentModal.tsx:540 invokes this variant live, so the split is unexplained. LIKELY OWED. NEEDS-OWNER-INPUT."
+      "reason": "PROMO-3 preview of the engine-exact payable over caller-supplied cart lines -- cart, sale, tax (with Lua plugin overrides) and the promotion engine on a store-DB connection (crates/kasirmu-bridge/src/pos.rs::preview_promoted_total_from_lines_scoped). Its sibling IS MOCKED: preview_promoted_total_scoped at ui/src/dev-mock/handlers/sales.ts:420 mirrors the same discount math via applyMockPromotionDiscounts, and ui/src/features/sales/PaymentModal.tsx:540 invokes this variant live, so the split is unexplained. LIKELY OWED. NEEDS-OWNER-INPUT."
     },
     {
       "name": "products_clear_image_scoped",
@@ -242,7 +242,7 @@
     },
     {
       "name": "save_topology_template",
-      "reason": "Saves one named diagram template for a branch, replacing any template of that name (crates/oz-bridge/src/topology/commands.rs::save_topology_template -> template_save, behind authorize_topology_write; the payload skips Apply validation because a template is a starting point, not a claim). NOT hardware- or shell-bound -- see delete_topology_template. LIKELY OWED. NEEDS-OWNER-INPUT."
+      "reason": "Saves one named diagram template for a branch, replacing any template of that name (crates/kasirmu-bridge/src/topology/commands.rs::save_topology_template -> template_save, behind authorize_topology_write; the payload skips Apply validation because a template is a starting point, not a claim). NOT hardware- or shell-bound -- see delete_topology_template. LIKELY OWED. NEEDS-OWNER-INPUT."
     }
   ]
 }

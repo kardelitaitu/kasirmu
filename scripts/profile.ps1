@@ -7,7 +7,7 @@
     Supports profiling benchmarks, binaries, and running processes by PID.
 
 .PARAMETER Bench
-    Benchmark target name from crates/oz-core/benches/ (e.g. "transaction_commit", "barcode_lookup").
+    Benchmark target name from crates/kasirmu-core/benches/ (e.g. "transaction_commit", "barcode_lookup").
     When omitted with no other target, lists available benchmarks.
 
 .PARAMETER Binary
@@ -87,8 +87,8 @@ if ($Help -or $PSBoundParameters.Count -eq 0) {
 }
 
 if ($List) {
-    Write-Host "Available benchmark targets (crates/oz-core/benches/):" -ForegroundColor Cyan
-    $benchDir = Join-Path $PSScriptRoot ".." "crates" "oz-core" "benches"
+    Write-Host "Available benchmark targets (crates/kasirmu-core/benches/):" -ForegroundColor Cyan
+    $benchDir = Join-Path $PSScriptRoot ".." "crates" "kasirmu-core" "benches"
     $benches = Get-ChildItem -Path $benchDir -Filter "*.rs" | Select-Object -ExpandProperty BaseName
     foreach ($b in $benches | Sort-Object) {
         Write-Host "  - $b" -ForegroundColor Green

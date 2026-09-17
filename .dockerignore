@@ -17,7 +17,7 @@
 docs
 
 # Front-end (Node.js / Tauri) — not needed for cloud-server. oz-core
-# vendors its copy of topologySemantics.json (crates/oz-core/src/), so the
+# vendors its copy of topologySemantics.json (crates/kasirmu-core/src/), so the
 # server build never touches the UI tree at all.
 ui
 node_modules

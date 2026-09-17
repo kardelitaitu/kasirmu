@@ -266,8 +266,8 @@ describe('verify-architecture-boundaries.py', () => {
   it('accepts a toolkit-free oz-bridge and ignores the crate own purity comments', () => {
     const dir = fixture({
       uiFiles: {
-        'crates/oz-bridge/Cargo.toml': '[package]\nname = "oz-bridge"\n\n[dependencies]\nserde = "1"\n',
-        'crates/oz-bridge/src/lib.rs': '// depends on no tauri, gtk or webkit type\npub struct Ctx;\n',
+        'crates/kasirmu-bridge/Cargo.toml': '[package]\nname = "oz-bridge"\n\n[dependencies]\nserde = "1"\n',
+        'crates/kasirmu-bridge/src/lib.rs': '// depends on no tauri, gtk or webkit type\npub struct Ctx;\n',
       },
     });
     const result = run(dir);
@@ -277,8 +277,8 @@ describe('verify-architecture-boundaries.py', () => {
   it('reports a UI toolkit dependency or reference inside oz-bridge', () => {
     const dir = fixture({
       uiFiles: {
-        'crates/oz-bridge/Cargo.toml': '[package]\nname = "oz-bridge"\n\n[dependencies]\ntauri = "2"\n',
-        'crates/oz-bridge/src/lib.rs': '// no tauri here\nuse tauri::Manager;\n',
+        'crates/kasirmu-bridge/Cargo.toml': '[package]\nname = "oz-bridge"\n\n[dependencies]\ntauri = "2"\n',
+        'crates/kasirmu-bridge/src/lib.rs': '// no tauri here\nuse tauri::Manager;\n',
       },
     });
     const result = run(dir);
@@ -291,7 +291,7 @@ describe('verify-architecture-boundaries.py', () => {
   it('reports renderer vocabulary in an application-layer doc comment', () => {
     const dir = fixture({
       uiFiles: {
-        'crates/oz-core/src/lib.rs': '/// Rendered by `Row.tsx` and styled in `row.css`.\npub struct Row;\n',
+        'crates/kasirmu-core/src/lib.rs': '/// Rendered by `Row.tsx` and styled in `row.css`.\npub struct Row;\n',
       },
     });
     const result = run(dir);
@@ -304,7 +304,7 @@ describe('verify-architecture-boundaries.py', () => {
   it('ignores the same vocabulary inside a string literal', () => {
     const dir = fixture({
       uiFiles: {
-        'crates/oz-core/src/exts.rs': 'pub const EXTS: [&str; 2] = [".tsx", ".css"];\n',
+        'crates/kasirmu-core/src/exts.rs': 'pub const EXTS: [&str; 2] = [".tsx", ".css"];\n',
       },
     });
     const result = run(dir);
@@ -315,7 +315,7 @@ describe('verify-architecture-boundaries.py', () => {
   it('does not let a lone lifetime apostrophe swallow the comments after it', () => {
     const dir = fixture({
       uiFiles: {
-        'crates/oz-core/src/lifetime.rs': "pub fn name() -> &'static str { NAME }\n/// Cited as `Row.tsx`.\npub struct Row;\n",
+        'crates/kasirmu-core/src/lifetime.rs': "pub fn name() -> &'static str { NAME }\n/// Cited as `Row.tsx`.\npub struct Row;\n",
       },
     });
     const result = run(dir);
@@ -327,7 +327,7 @@ describe('verify-architecture-boundaries.py', () => {
   it('scans block comments, including the text after a nested close', () => {
     const dir = fixture({
       uiFiles: {
-        'crates/oz-core/src/block.rs': '/* outer /* inner */ still outer: `Row.tsx` */\npub struct Row;\n',
+        'crates/kasirmu-core/src/block.rs': '/* outer /* inner */ still outer: `Row.tsx` */\npub struct Row;\n',
       },
     });
     const result = run(dir);
@@ -369,12 +369,12 @@ describe('verify-architecture-boundaries.py', () => {
     assert.equal(json.summary.tracked, 1, result.output);
     assert.equal(json.summary.stale, 0, 'a differently-spelled root must not orphan a live suppression');
     assert.equal(json.summary.blocking, 0, result.output);
-    assert.equal(json.tracked_transitional[0].path, 'crates/oz-core/Cargo.toml');
+    assert.equal(json.tracked_transitional[0].path, 'crates/kasirmu-core/Cargo.toml');
   });
 
   it('tracks a ./-prefixed suppression against an absolute finding', () => {
     const dir = fixture(CORE_CRM);
-    baselineFor(dir, [baselineEntry('core-upward-dependency', './crates/oz-core/Cargo.toml', 'modules-crm')]);
+    baselineFor(dir, [baselineEntry('core-upward-dependency', './crates/kasirmu-core/Cargo.toml', 'modules-crm')]);
     const result = run(dir, ['--strict', '--json']);
     assert.equal(result.code, 0, result.output);
     assert.equal(JSON.parse(result.output).summary.tracked, 1, result.output);
@@ -445,18 +445,18 @@ describe('verify-architecture-boundaries.py', () => {
   });
 
   it('does NOT let an escaped ../ entry silence a repo-relative finding', () => {
-    // Before the repair this entry normalized to 'crates/oz-core/Cargo.toml' and
+    // Before the repair this entry normalized to 'crates/kasirmu-core/Cargo.toml' and
     // matched the finding, so a suppression naming a file OUTSIDE the repo
     // silenced a violation INSIDE it. Equality on normalized paths refuses it,
     // and the entry stays visible as stale rather than vanishing.
     const dir = fixture(CORE_CRM);
-    baselineFor(dir, [baselineEntry('core-upward-dependency', '../crates/oz-core/Cargo.toml', 'modules-crm')]);
+    baselineFor(dir, [baselineEntry('core-upward-dependency', '../crates/kasirmu-core/Cargo.toml', 'modules-crm')]);
     const result = run(dir, ['--strict', '--json']);
     assert.equal(result.code, 1, 'an unmatched finding must still block: ' + result.output);
     const json = JSON.parse(result.output);
     assert.equal(json.summary.blocking, 1, result.output);
     assert.equal(json.summary.tracked, 0, 'the escaped entry must not be reported as matching');
-    assert.equal(json.new_blocking[0].path, 'crates/oz-core/Cargo.toml');
+    assert.equal(json.new_blocking[0].path, 'crates/kasirmu-core/Cargo.toml');
     assert.equal(json.summary.stale, 1, 'the foreign entry is reported stale, not silently useful');
   });
 });

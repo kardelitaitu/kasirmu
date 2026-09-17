@@ -105,14 +105,14 @@ Confirm the fix and no regressions — **scoped to the area you changed**. Full 
 Required during the loop:
 
 ```bash
-bash scripts/test-tdd.sh -p crates/oz-core   # the crate you changed — [profile.tdd] + nextest
+bash scripts/test-tdd.sh -p crates/kasirmu-core   # the crate you changed — [profile.tdd] + nextest
 bash scripts/test-changed.sh                 # only crates touched vs origin/main
 bash scripts/test-ui-changed.sh              # only UI tests affected by changed files
 cargo fmt --all -- --check                   # formatting gate
 bash scripts/wtree-guard.sh check            # nothing changed under you since you verified
 ```
 
-`-p` takes a crate **directory** (`crates/oz-core`), not a package name. The script resolves cargo across PowerShell / Git Bash / WSL PATHs; if it cannot find one, set `CARGO=/path/to/cargo` rather than editing the script.
+`-p` takes a crate **directory** (`crates/kasirmu-core`), not a package name. The script resolves cargo across PowerShell / Git Bash / WSL PATHs; if it cannot find one, set `CARGO=/path/to/cargo` rather than editing the script.
 
 Static checks on the changed area:
 - Rust: cargo clippy -p <crate> -- -D warnings
@@ -163,7 +163,7 @@ This repo is often edited by several agents and the user concurrently. TDD cycle
 - **Own your files and hunks.** Stage and commit only what you changed — avoid broad `git add -A`; never discard or overwrite another agent's uncommitted work. Note that `git commit -- <path>` commits the **working-tree version of that path**, not "your hunks": if someone else has in-flight edits to the same file they land in your commit. Re-run the tests for that path immediately before committing, not minutes before.
 - **Track the drift window with `scripts/wtree-guard.sh`.** Claim the files you are working on, stamp them once your tests pass, and check again right before you commit:
   ```bash
-  bash scripts/wtree-guard.sh own crates/oz-core/src/cache.rs   # claim
+  bash scripts/wtree-guard.sh own crates/kasirmu-core/src/cache.rs   # claim
   bash scripts/wtree-guard.sh verify                            # after tests pass
   bash scripts/wtree-guard.sh check                             # immediately before commit; exit 1 on drift
   ```
@@ -180,18 +180,18 @@ The workspace ships a dedicated TDD profile and scripts so Red→Green→Refacto
 ### `scripts/test-tdd.sh` — the core loop
 
 ```bash
-bash scripts/test-tdd.sh -p crates/oz-core   # compile + test one crate via nextest
+bash scripts/test-tdd.sh -p crates/kasirmu-core   # compile + test one crate via nextest
 bash scripts/test-tdd.sh                 # auto-detect the crate from cwd
 bash scripts/test-tdd.sh --watch         # re-run on every .rs change (recommended)
 bash scripts/test-tdd.sh --vanilla       # fall back to cargo test (no nextest)
 ```
 
-`-p` takes the **crate directory path** (e.g. `crates/oz-core`, `platform/sync`) — not the package name — because the script resolves `--manifest-path <dir>/Cargo.toml` from the workspace root.
+`-p` takes the **crate directory path** (e.g. `crates/kasirmu-core`, `platform/sync`) — not the package name — because the script resolves `--manifest-path <dir>/Cargo.toml` from the workspace root.
 
 It sets `CARGO_PROFILE=tdd`, which uses the `[profile.tdd]` section in the workspace `Cargo.toml` (inherits `dev`, `debug = false`, `incremental = true`) — the fastest possible edit-compile-test cycle. Recommended workflow:
 
 ```bash
-cd crates/oz-core
+cd crates/kasirmu-core
 bash scripts/test-tdd.sh --watch
 ```
 
@@ -229,7 +229,7 @@ npm run check:all            # lint → typecheck → test → i18n → E2E (Doc
 | Layer | Test location | Conventions |
 |---|---|---|
 | Rust crate (`oz-*`, `platform/*`, `modules/*`) | sibling `*_tests.rs` per module, wired via `#[cfg(test)] #[path = ...] mod tests;` | Every new module needs ≥ 1 unit test (AGENTS.md). Tests never live inline in production files. Tests may use `unwrap()`/`expect()` freely. DB tests use transactions and assert atomicity (rollback on error). |
-| HAL driver | `crates/oz-hal/src/drivers/mock.rs` | Every driver needs a **mock** — required by the coding standard (`AGENTS.md` → *Database & Hardware* → **HAL Drivers**), enforced by review only — no CI job, no hook step and no checker under `scripts/` looks for it, so an unmocked driver reaches main and the first person to run it on a machine without that hardware finds out. The mock is also the harness: tests and hardware-free dev machines can only exercise a driver through it. |
+| HAL driver | `crates/kasirmu-hal/src/drivers/mock.rs` | Every driver needs a **mock** — required by the coding standard (`AGENTS.md` → *Database & Hardware* → **HAL Drivers**), enforced by review only — no CI job, no hook step and no checker under `scripts/` looks for it, so an unmocked driver reaches main and the first person to run it on a machine without that hardware finds out. The mock is also the harness: tests and hardware-free dev machines can only exercise a driver through it. |
 | Tauri command | sibling `*_tests.rs` in the commands module + IPC contract tests in `ui/src/__tests__/` (the `api-*-contract.test.ts` files) | `invoke` calls go through `ui/src/api/`; contract tests pin the wire shape. |
 | React component/hook | `ui/src/__tests__/` | One test file per component/hook. Use `<Localized>` ids that exist in both the English `.ftl` and the `.id.ftl` bundle for the feature (bundle-parity gate fails otherwise). |
 | Money logic | anywhere in `oz-core`/`foundation` | Assert on `minor_units: i64`, never `f32`/`f64`. Test `checked_add`/`from_major` overflow and currency-mismatch paths. |

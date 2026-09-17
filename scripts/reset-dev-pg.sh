@@ -50,7 +50,7 @@ docker exec oz-pg-test-15432 psql -U postgres -d postgres -c "DROP SCHEMA IF EXI
 
 # ── Apply the committed PG_INIT ─────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PG_INIT_PATH="${SCRIPT_DIR}/../crates/oz-core/migrations/20260813_init.pg.sql"
+PG_INIT_PATH="${SCRIPT_DIR}/../crates/kasirmu-core/migrations/20260813_init.pg.sql"
 
 if [ ! -f "$PG_INIT_PATH" ]; then
     echo "❌ PG_INIT file not found at $PG_INIT_PATH"

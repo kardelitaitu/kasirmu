@@ -159,11 +159,11 @@ fi
 # (LOYALTY-01: the 1.4 tier multiplier stored as 1.3999999999999999111
 # made a $22.50 sale earn 31 points instead of 32; MONEY-01 same class).
 # New float columns require a justified whitelist entry in the script.
-# Runs only when the commit stages files under crates/oz-core/migrations/
+# Runs only when the commit stages files under crates/kasirmu-core/migrations/
 # (the script re-derives the staged set itself, ~50ms). CI runs the full
 # scan in complement (.github/workflows/dev-ci.yml # static-gates).
 if [ -f scripts/verify-migration-column-types.py ]; then
-    STAGED_MIG=$(git diff --cached --name-only --diff-filter=ACM -- 'crates/oz-core/migrations/*.sql' || true)
+    STAGED_MIG=$(git diff --cached --name-only --diff-filter=ACM -- 'crates/kasirmu-core/migrations/*.sql' || true)
     if [ -n "$STAGED_MIG" ]; then
         if ! "$PYTHON" scripts/verify-migration-column-types.py --staged-only; then
             echo "error: migration column-type lint failed — exact-decimal values must be fixed-point integers (*_minor, *_millionths). See message above." >&2
@@ -173,7 +173,7 @@ if [ -f scripts/verify-migration-column-types.py ]; then
 fi
 
 # ── PG schema drift guard ─────────────────────────────────────────
-# crates/oz-core/migrations/20260813_init.pg.sql is GENERATED from the
+# crates/kasirmu-core/migrations/20260813_init.pg.sql is GENERATED from the
 # full SQLite migration chain by scripts/generate-pg-migration.py and
 # must never be hand-edited. Any staged change to a migration file, the
 # registry, the generator, or the PG file itself re-derives the expected
@@ -182,7 +182,7 @@ fi
 # (.github/workflows/dev-ci.yml # static-gates).
 if [ -f scripts/generate-pg-migration.py ]; then
     STAGED_PG_TRIGGER=$(git diff --cached --name-only --diff-filter=ACM -- \
-        'crates/oz-core/migrations/*.sql' 'crates/oz-core/src/migrations.rs' \
+        'crates/kasirmu-core/migrations/*.sql' 'crates/kasirmu-core/src/migrations.rs' \
         'scripts/generate-pg-migration.py' || true)
     if [ -n "$STAGED_PG_TRIGGER" ]; then
         if ! "$PYTHON" scripts/generate-pg-migration.py --check; then

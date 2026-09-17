@@ -3,7 +3,7 @@ name: pr-repair
 description: Systematic workflow for diagnosing, reproducing, repairing, and verifying failed tests and CI checks on a GitHub pull request in kasir.mu. Covers gh CLI diagnosis, scoped reproduction (Rust, UI, E2E, gates, drift scripts), repair patterns, and verification protocols.
 ---
 
-<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — version lock corrected 0.0.31 → 0.0.35; poll-pr-checks.ps1 corrected to the real scripts/poll-pr-checks.sh (no .ps1 exists); the Fluent bundle-path wording corrected to the per-feature English/.id.ftl layout; touch-target rule aligned with the design language 48px floor; illustrative Fluent ids reworded so the drift-guard Fluent check stays clean; reset-dev-pg.ps1 mention removed — only the .sh exists; vitest repro switched to npm run test -- filter) · verified this pass: scripts/poll-pr-checks.sh, scripts/reset-dev-pg.sh, scripts/diagnose-pr.py, scripts/verify-ci-docs-drift.py, scripts/verify-architecture-boundaries.py, scripts/verify-no-hardcoded-money-format.py, scripts/test-tdd.sh, crates/oz-api/src/pg_tests.rs, apps/cloud-server/src/db_tests.rs exist; ui npm scripts e2e:api / e2e:ui / typecheck / lint / test confirmed in ui/package.json -->
+<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — version lock corrected 0.0.31 → 0.0.35; poll-pr-checks.ps1 corrected to the real scripts/poll-pr-checks.sh (no .ps1 exists); the Fluent bundle-path wording corrected to the per-feature English/.id.ftl layout; touch-target rule aligned with the design language 48px floor; illustrative Fluent ids reworded so the drift-guard Fluent check stays clean; reset-dev-pg.ps1 mention removed — only the .sh exists; vitest repro switched to npm run test -- filter) · verified this pass: scripts/poll-pr-checks.sh, scripts/reset-dev-pg.sh, scripts/diagnose-pr.py, scripts/verify-ci-docs-drift.py, scripts/verify-architecture-boundaries.py, scripts/verify-no-hardcoded-money-format.py, scripts/test-tdd.sh, crates/kasirmu-api/src/pg_tests.rs, apps/cloud-server/src/db_tests.rs exist; ui npm scripts e2e:api / e2e:ui / typecheck / lint / test confirmed in ui/package.json -->
 
 # PR Repair — Fixing Failed Tests and CI Checks on Pull Requests
 
@@ -125,7 +125,7 @@ bash scripts/test-tdd.sh -p crates/<crate_name>
 ```
 
 #### 2. Dev PostgreSQL Drift (`Db("db error")`)
-When PG tests like `crates/oz-api/src/pg_tests.rs` or `apps/cloud-server/src/db_tests.rs` fail with cryptic `Db("db error")`:
+When PG tests like `crates/kasirmu-api/src/pg_tests.rs` or `apps/cloud-server/src/db_tests.rs` fail with cryptic `Db("db error")`:
 ```powershell
 # Reset dev PostgreSQL schema drift
 bash scripts/reset-dev-pg.sh

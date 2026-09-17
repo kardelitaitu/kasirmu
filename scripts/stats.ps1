@@ -26,7 +26,7 @@ $excludeDirs = @(
 
 # Generated documentation output, excluded by repo-relative path prefix (the
 # name-based list above can't express these without also dropping real source:
-# "api" would match crates/oz-api and ui/src/api). These trees are rebuilt by
+# "api" would match crates/kasirmu-api and ui/src/api). These trees are rebuilt by
 # scripts/build-docs.sh and .gitignore'd — counting them made the badge report
 # ~1.16M lines of mdBook/TypeDoc HTML instead of source.
 $excludePaths = @(

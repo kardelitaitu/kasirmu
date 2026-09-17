@@ -260,7 +260,7 @@ When a truth anchor belongs to a domain covered by another skill:
 - **`rust-backend`** — for Money struct usage, transaction patterns, error types, `oz-*` crate conventions
 - **`ui-components`** — for React component props, ARIA, Fluent IDs
 - **`tauri-ipc`** — for Tauri command names, `#[tauri::command]` signatures, `ui/src/api/` wrappers
-- **`hal-drivers`** — for device driver trait impls, mock coverage (`crates/oz-hal/src/drivers/mock.rs`)
+- **`hal-drivers`** — for device driver trait impls, mock coverage (`crates/kasirmu-hal/src/drivers/mock.rs`)
 - **`skill-drift-guard`** — for drift in the `.agents/skills/*/SKILL.md` files themselves, and for audit-footer format enforcement across all `*.md`
 
 Delegate the verification to subagent calls and wait for results. Do not duplicate verification work.
@@ -299,11 +299,11 @@ Doc under audit: `docs/guides/api-reference.md` — heading "Sessions", paragrap
 rg -n "fn create_shift" apps/desktop-client/src/commands/ ui/src/api/
 
 # 2. Confirm the total field and its type on the actual struct
-rg -n "struct Shift" crates/oz-core/src/
-rg -n "total:" crates/oz-core/src/shift.rs
+rg -n "struct Shift" crates/kasirmu-core/src/
+rg -n "total:" crates/kasirmu-core/src/shift.rs
 
 # 3. Trace when this API last changed (was the doc written before a refactor?)
-git log -S "struct Shift" --oneline -- crates/oz-core/src/
+git log -S "struct Shift" --oneline -- crates/kasirmu-core/src/
 ```
 
 Resulting finding:
@@ -313,7 +313,7 @@ Resulting finding:
 1. Sessions — "create_shift returns a Shift with a Money total"
    Doc says: returns `total: Money`
    Code has: `total: i64` (minor units) — `Money` was flattened during the 0.0.21
-   money-safety refactor; `crates/oz-core/src/shift.rs:41`
+   money-safety refactor; `crates/kasirmu-core/src/shift.rs:41`
    Fix: change the doc to "`total: i64` minor units"
 ```
 

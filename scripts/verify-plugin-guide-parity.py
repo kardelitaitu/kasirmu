@@ -18,8 +18,8 @@ It verifies, in both directions:
 
   1. **Documented → implemented:** every `oz.<name>` binding named in the
      guide's `oz` Global Table + Legacy Hooks sections must be registered
-     in `crates/oz-plugin/src/manager.rs` (`oz.set("...")`) or listed in
-     `LuaRuntime::LEGACY_HOOK_NAMES` in `crates/oz-lua/src/lib.rs`.
+     in `crates/kasirmu-plugin/src/manager.rs` (`oz.set("...")`) or listed in
+     `LuaRuntime::LEGACY_HOOK_NAMES` in `crates/kasirmu-lua/src/lib.rs`.
      A documented-but-missing binding fails the gate.
 
   2. **Implemented → documented:** every binding registered in
@@ -30,7 +30,7 @@ It verifies, in both directions:
 
   3. **CLI commands:** any `cargo run -p oz-cli -- <cmd>` line in the
      guide must reference a real subcommand in
-     `crates/oz-cli/src/cli.rs` (the `Command` enum). Also, the two
+     `crates/kasirmu-cli/src/cli.rs` (the `Command` enum). Also, the two
      historic phantom commands (`run-script`, `validate-plugins`) are
      explicitly forbidden.
 
@@ -69,9 +69,9 @@ ROOT = Path(__file__).resolve().parent.parent
 # the historical docs/plugin-guide.md path made this gate fail-closed
 # with "guide not found" on every run after the doc tree was reorganized.
 GUIDE = ROOT / "docs" / "guides" / "plugin-guide.md"
-MANAGER = ROOT / "crates" / "oz-plugin" / "src" / "manager.rs"
-OZ_LUA_LIB = ROOT / "crates" / "oz-lua" / "src" / "lib.rs"
-OZ_CLI = ROOT / "crates" / "oz-cli" / "src" / "cli.rs"
+MANAGER = ROOT / "crates" / "kasirmu-plugin" / "src" / "manager.rs"
+OZ_LUA_LIB = ROOT / "crates" / "kasirmu-lua" / "src" / "lib.rs"
+OZ_CLI = ROOT / "crates" / "kasirmu-cli" / "src" / "cli.rs"
 
 # `oz.<name>` tokens anywhere in the guide (over-detection is safe).
 OZ_TOKEN = re.compile(r"\boz\.([a-z][a-z0-9_]*)\b")

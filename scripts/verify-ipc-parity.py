@@ -1854,7 +1854,7 @@ def gate_in_body(body: str) -> str | None:
 
 
 def _bridge_fn_body(fn_name: str, cache={}) -> str:
-    """The body of a `pub async fn` in `crates/oz-bridge`, "" when there is none.
+    """The body of a `pub async fn` in `crates/kasirmu-bridge`, "" when there is none.
 
     Walked once per process and cached by name: this is called for every shell command that looks
     ungated, and re-reading the crate each time would make the gate slower than the thing it
@@ -1863,7 +1863,7 @@ def _bridge_fn_body(fn_name: str, cache={}) -> str:
     shape since the shells became thin.
     """
     if not cache:
-        root = REPO_ROOT / "crates" / "oz-bridge" / "src"
+        root = REPO_ROOT / "crates" / "kasirmu-bridge" / "src"
         for rs in sorted(root.rglob("*.rs")) if root.is_dir() else []:
             text = rs.read_text(encoding="utf-8", errors="replace")
             for m in re.finditer(r"\bfn\s+(\w+)\s*\(", text):
@@ -3274,7 +3274,7 @@ def self_test() -> int:
          "m.rs:13" not in call_sites and "m.rs:15" in call_sites)
     # The delegation blind spot, found 2026-09-16 by the red this leg gave the coursing lane:
     # `set_line_course_scoped` was reported as an ungated redundant twin whose caller should be
-    # allowlisted as "host-only", while `crates/oz-bridge/src/pos.rs:505` gates it on
+    # allowlisted as "host-only", while `crates/kasirmu-bridge/src/pos.rs:505` gates it on
     # SALES_PROCESS one line below the shell's `oz_bridge::pos::set_line_course_scoped(&ctx, ...)`.
     thin = "pub async fn x_scoped(t: String) -> R {\n    oz_bridge::pos::x_scoped(&ctx, &t, a).await\n}"
     ungated = "pub async fn y_scoped(t: String) -> R {\n    load(&t)\n}"

@@ -77,7 +77,7 @@ if [ "$NO_DOCKER" = false ]; then
 
   # Check if license private key is set (required by license server).
   if [ -z "${OZ_LICENSE_PRIVATE_KEY:-}" ]; then
-    KEY_FILE="$ROOT_DIR/crates/oz-core/oz-license-private.pem"
+    KEY_FILE="$ROOT_DIR/crates/kasirmu-core/oz-license-private.pem"
     if [ -f "$KEY_FILE" ]; then
       echo "    Reading license key from $KEY_FILE"
       export OZ_LICENSE_PRIVATE_KEY=$(cat "$KEY_FILE")

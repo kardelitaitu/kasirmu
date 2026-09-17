@@ -103,7 +103,7 @@ echo
 
 # Each bucket must fire ALONE -- a router that over-triggers wastes exactly the
 # runner minutes this mechanism exists to save.
-check "rust crate"          "rust=true ui=false i18n=false website=false docs=false release=false" "crates/oz-core/src/db.rs"
+check "rust crate"          "rust=true ui=false i18n=false website=false docs=false release=false" "crates/kasirmu-core/src/db.rs"
 check "rust lockfile"       "rust=true ui=false i18n=false website=false docs=false release=false" "Cargo.lock"
 check "ui tsx"              "rust=false ui=true i18n=true website=false docs=false release=false"  "ui/src/features/reports/DashboardScreen.tsx"
 check "ui lockfile"         "rust=false ui=true i18n=false website=false docs=false release=false" "ui/package-lock.json"
@@ -131,7 +131,7 @@ check "tauri updater pubkey" "rust=true ui=false i18n=false website=false docs=f
 check "release workflow"    "rust=false ui=false i18n=false website=false docs=true release=true"  ".github/workflows/release.yml"
 # The workflow gating everything must never be able to route itself away.
 check "this workflow"       "rust=true ui=true i18n=true website=true docs=true release=true"     ".github/workflows/dev-ci.yml"
-check "mixed rust+website"  "rust=true ui=false i18n=false website=true docs=false release=false"  "$(printf 'crates/oz-api/src/lib.rs\nwebsite/src/site.css')"
+check "mixed rust+website"  "rust=true ui=false i18n=false website=true docs=false release=false"  "$(printf 'crates/kasirmu-api/src/lib.rs\nwebsite/src/site.css')"
 check "unrelated file"      "rust=false ui=false i18n=false website=false docs=false release=false" "README.md"
 # Non-PR events must always run the full matrix.
 check "dispatch event"      "rust=true ui=true i18n=true website=true docs=true release=true"     "README.md" "workflow_dispatch"

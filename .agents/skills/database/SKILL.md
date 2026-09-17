@@ -1,9 +1,9 @@
 ---
 name: database
-description: The kasir.mu database system — SQLite via rusqlite, the migration runner, the PostgreSQL replica, backup/restore, and the DB-NN invariants. Use when adding or changing a migration, editing anything under crates/oz-core/migrations/, touching connection setup or PRAGMAs, writing SQL that reads or writes money columns, regenerating the PG schema, or debugging a startup failure that mentions migrations, checksums, or drift.
+description: The kasir.mu database system — SQLite via rusqlite, the migration runner, the PostgreSQL replica, backup/restore, and the DB-NN invariants. Use when adding or changing a migration, editing anything under crates/kasirmu-core/migrations/, touching connection setup or PRAGMAs, writing SQL that reads or writes money columns, regenerating the PG schema, or debugging a startup failure that mentions migrations, checksums, or drift.
 ---
 
-<!-- Audit stamp: 2026-09-15 · Budak-Korporat · status: ACCURATE (new skill, rev 1 — no predecessor) · verified this pass, by direct measurement rather than by reading another doc: registry entry count 58 (`grep -c 'Migration {'` in crates/oz-core/src/migrations.rs) against 58 non-`.pg.sql` files and 59 total `*.sql` in crates/oz-core/migrations/; `pub const ALL` opens at crates/oz-core/src/migrations.rs:43; the PRAGMA block is crates/oz-core/src/migrations.rs:352-362 (WAL, busy_timeout 5000, synchronous NORMAL, foreign_keys ON); `fresh_db` at crates/oz-core/src/migrations.rs:377-423 (LazyLock snapshot cloned via rusqlite::backup::Backup); `schema_migrations` DDL at platform/core/src/database/migrations.rs:174-178 (id/applied_at/checksum); `resolve_db_path` at apps/desktop-client/src/state.rs:757-763; the column-type rules and the 12-entry whitelist at scripts/verify-migration-column-types.py:109-170; the generator's single DST at scripts/generate-pg-migration.py:66 and its `--check` branch at :611; the footer convention across all 13 pre-existing skills. Every connection-opener row in the PRAGMA table below was read out of a repo-wide `PRAGMA|journal_mode|busy_timeout|foreign_keys` grep, not inferred from one example. All 23 filesystem paths cited in this document were tested for existence before publication. · NOT verified this pass, and flagged as such: the count of `unchecked_transaction` sites and the `Store` module count in §10 come from the RUST-08 note at the top of crates/oz-core/src/db/mod.rs, which I read but did not independently recount. · DB-06, DB-07 and DB-09 are absent from the repository; see §6. -->
+<!-- Audit stamp: 2026-09-15 · Budak-Korporat · status: ACCURATE (new skill, rev 1 — no predecessor) · verified this pass, by direct measurement rather than by reading another doc: registry entry count 58 (`grep -c 'Migration {'` in crates/kasirmu-core/src/migrations.rs) against 58 non-`.pg.sql` files and 59 total `*.sql` in crates/kasirmu-core/migrations/; `pub const ALL` opens at crates/kasirmu-core/src/migrations.rs:43; the PRAGMA block is crates/kasirmu-core/src/migrations.rs:352-362 (WAL, busy_timeout 5000, synchronous NORMAL, foreign_keys ON); `fresh_db` at crates/kasirmu-core/src/migrations.rs:377-423 (LazyLock snapshot cloned via rusqlite::backup::Backup); `schema_migrations` DDL at platform/core/src/database/migrations.rs:174-178 (id/applied_at/checksum); `resolve_db_path` at apps/desktop-client/src/state.rs:757-763; the column-type rules and the 12-entry whitelist at scripts/verify-migration-column-types.py:109-170; the generator's single DST at scripts/generate-pg-migration.py:66 and its `--check` branch at :611; the footer convention across all 13 pre-existing skills. Every connection-opener row in the PRAGMA table below was read out of a repo-wide `PRAGMA|journal_mode|busy_timeout|foreign_keys` grep, not inferred from one example. All 23 filesystem paths cited in this document were tested for existence before publication. · NOT verified this pass, and flagged as such: the count of `unchecked_transaction` sites and the `Store` module count in §10 come from the RUST-08 note at the top of crates/kasirmu-core/src/db/mod.rs, which I read but did not independently recount. · DB-06, DB-07 and DB-09 are absent from the repository; see §6. -->
 
 # kasir.mu Database
 
@@ -20,15 +20,15 @@ are named and enforced, and how the PostgreSQL replica is generated.
 
 ## When to use
 
-- Adding, editing, or reviewing a file under `crates/oz-core/migrations/`.
-- Adding or changing an entry in the registry (`crates/oz-core/src/migrations.rs`).
+- Adding, editing, or reviewing a file under `crates/kasirmu-core/migrations/`.
+- Adding or changing an entry in the registry (`crates/kasirmu-core/src/migrations.rs`).
 - Changing connection setup or any `PRAGMA`.
 - Writing SQL that reads or writes a money, rate, or multiplier column.
 - Regenerating the PostgreSQL schema, or seeing the PG drift gate fail.
 - Debugging a startup failure whose message names migrations, a checksum, drift,
   `duplicate column name`, or `already exists`.
 - Adding a backup, restore, or export path.
-- Writing tests for anything under `crates/oz-core/src/db/`.
+- Writing tests for anything under `crates/kasirmu-core/src/db/`.
 
 ---
 
@@ -36,12 +36,12 @@ are named and enforced, and how the PostgreSQL replica is generated.
 
 | What | Where |
 |---|---|
-| The SQL migrations (source of truth) | `crates/oz-core/migrations/*.sql` |
-| The registry that orders and embeds them | `crates/oz-core/src/migrations.rs` |
+| The SQL migrations (source of truth) | `crates/kasirmu-core/migrations/*.sql` |
+| The registry that orders and embeds them | `crates/kasirmu-core/src/migrations.rs` |
 | The generic runner (no domain knowledge) | `platform/core/src/database/migrations.rs` |
-| The migration test corpus | `crates/oz-core/src/migrations_tests.rs` |
-| The generated PostgreSQL schema | `crates/oz-core/migrations/20260813_init.pg.sql` |
-| The `Store` facade over all domain tables | `crates/oz-core/src/db/` |
+| The migration test corpus | `crates/kasirmu-core/src/migrations_tests.rs` |
+| The generated PostgreSQL schema | `crates/kasirmu-core/migrations/20260813_init.pg.sql` |
+| The `Store` facade over all domain tables | `crates/kasirmu-core/src/db/` |
 | Per-store database files | `platform/core/src/database/manager.rs` |
 | Desktop/tablet connection + path resolution | `apps/desktop-client/src/state.rs`, `apps/tablet-client/src/state.rs` |
 | Cloud (SQLite + PostgreSQL) | `apps/cloud-server/src/db.rs` |
@@ -76,26 +76,26 @@ entry point must set the PRAGMAs itself. The full set observed in the repository
 
 | Opener | PRAGMAs |
 |---|---|
-| `oz_core::migrations::run` (`crates/oz-core/src/migrations.rs:352-362`) | `journal_mode=WAL`, `busy_timeout=5000`, `synchronous=NORMAL`, `foreign_keys=ON` |
+| `oz_core::migrations::run` (`crates/kasirmu-core/src/migrations.rs:352-362`) | `journal_mode=WAL`, `busy_timeout=5000`, `synchronous=NORMAL`, `foreign_keys=ON` |
 | Desktop `AppState::new` (`apps/desktop-client/src/state.rs:225-227`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | Tablet `AppState::new` (`apps/tablet-client/src/state.rs:112-114`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | `platform/startup` (`platform/startup/src/lib.rs:62-63`, `:293-294`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | `Pool::open` (`platform/core/src/database/pool.rs:42-43`) | `journal_mode=WAL`, `foreign_keys=ON` |
 | `Pool::open_in_memory` (`platform/core/src/database/pool.rs:52`) | `foreign_keys=ON` only — no WAL |
 | `StoreDatabaseManager::open_or_create_connection` (`platform/core/src/database/manager.rs:106-111`) | `foreign_keys=ON` always; `journal_mode=WAL` **only when the file is new** |
-| `oz_api::serve` (`crates/oz-api/src/lib.rs:453-456`) | `foreign_keys=ON`, `journal_mode=WAL` |
-| CLI `open_db` (`crates/oz-cli/src/commands/mod.rs:57-60`) | `foreign_keys=ON`, `journal_mode=WAL` |
+| `oz_api::serve` (`crates/kasirmu-api/src/lib.rs:453-456`) | `foreign_keys=ON`, `journal_mode=WAL` |
+| CLI `open_db` (`crates/kasirmu-cli/src/commands/mod.rs:57-60`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | Cloud `DbPool::connect_sqlite` (`apps/cloud-server/src/db.rs:131-133`) | `foreign_keys=ON`, `journal_mode=WAL` |
-| `open_api_store_connection` (`crates/oz-local-api/src/lib.rs:162-167`) | `foreign_keys=ON`, `journal_mode=WAL`, `busy_timeout` 5s |
+| `open_api_store_connection` (`crates/kasirmu-local-api/src/lib.rs:162-167`) | `foreign_keys=ON`, `journal_mode=WAL`, `busy_timeout` 5s |
 
 **The rule that matters: `foreign_keys` is per-connection and SQLite's default is OFF.**
 It is not inherited, not persisted in the file, and not implied by another connection
 having set it. Every opener sets it explicitly, and the reason is written down at
-`crates/oz-core/src/migrations.rs:360-362`. A new connection that forgets it will
+`crates/kasirmu-core/src/migrations.rs:360-362`. A new connection that forgets it will
 silently accept orphaned child rows.
 
-`busy_timeout` is set in only two places (`crates/oz-core/src/migrations.rs:353` and
-`crates/oz-local-api/src/lib.rs:166`). Its absence elsewhere is intentional, not an
+`busy_timeout` is set in only two places (`crates/kasirmu-core/src/migrations.rs:353` and
+`crates/kasirmu-local-api/src/lib.rs:166`). Its absence elsewhere is intentional, not an
 oversight: without it, SQLite fails immediately on write-lock contention instead of
 waiting.
 
@@ -128,8 +128,8 @@ work is store-scoped. Most domain work is then delegated to `oz_bridge`.
 ### The registry is the source of truth
 
 Migrations are `.sql` files embedded at compile time and run in **array order, which is
-canonical and deliberately not filename order** (`crates/oz-core/src/migrations.rs:12-15`).
-`pub const ALL` opens at `crates/oz-core/src/migrations.rs:43` and holds **58 entries**.
+canonical and deliberately not filename order** (`crates/kasirmu-core/src/migrations.rs:12-15`).
+`pub const ALL` opens at `crates/kasirmu-core/src/migrations.rs:43` and holds **58 entries**.
 Each entry is two fields:
 
 ```rust
@@ -141,7 +141,7 @@ Migration {
 
 There is **no `down` field** — the registry carries no reverse SQL, by design (DB-03).
 
-> **The count trap.** `crates/oz-core/migrations/` contains **59** `*.sql` files but the
+> **The count trap.** `crates/kasirmu-core/migrations/` contains **59** `*.sql` files but the
 > registry has **58** entries. The extra file is the generated `20260813_init.pg.sql`,
 > which is *not* a migration and must never be added to the registry. A doc or gate that
 > quotes "59 migrations" is quoting a **file count**, not a registry count. The parity
@@ -189,7 +189,7 @@ The drift re-apply tries the whole script first and, only on a duplicate-object 
 falls back to executing statement by statement and skipping the statements whose effect
 is provably already present. It cannot rescue a migration that consumes the state it
 transforms — a column converted then dropped, a table renamed — which is the DB-03 class.
-`cosmetic_edit_to_any_migration_re_applies_cleanly` in `crates/oz-core/src/migrations_tests.rs`
+`cosmetic_edit_to_any_migration_re_applies_cleanly` in `crates/kasirmu-core/src/migrations_tests.rs`
 pins which migrations are in which set.
 
 ---
@@ -201,10 +201,10 @@ use in a commit message or a review comment.
 
 | ID | Requirement | Enforced by |
 |---|---|---|
-| **DB-01** | Registry ↔ filesystem parity: every non-`.pg.sql` file has exactly one registry entry, and every entry resolves to a real file | `migration_registry_matches_filesystem` in `crates/oz-core/src/migrations_tests.rs` |
+| **DB-01** | Registry ↔ filesystem parity: every non-`.pg.sql` file has exactly one registry entry, and every entry resolves to a real file | `migration_registry_matches_filesystem` in `crates/kasirmu-core/src/migrations_tests.rs` |
 | **DB-02** | Every applied migration records a SHA-256 checksum; a changed definition fails closed, after first re-applying | `platform/core/src/database/migrations.rs` |
-| **DB-03** | Forward-only. No ad-hoc down SQL; destructive or data-consuming changes need a backup-plus-forward-repair procedure | `crates/oz-core/src/migrations.rs` module doc |
-| **DB-04** | Store-scoped isolation: a store-scoped read or write must never leak across stores and must never touch the NULL global sentinel | four audits in `crates/oz-core/src/migrations_tests.rs` |
+| **DB-03** | Forward-only. No ad-hoc down SQL; destructive or data-consuming changes need a backup-plus-forward-repair procedure | `crates/kasirmu-core/src/migrations.rs` module doc |
+| **DB-04** | Store-scoped isolation: a store-scoped read or write must never leak across stores and must never touch the NULL global sentinel | four audits in `crates/kasirmu-core/src/migrations_tests.rs` |
 | **DB-05** | Foreign-key isolation: `foreign_keys` is disabled at the connection level around each apply and rollback, then the caller's previous setting is restored | `platform/core/src/database/migrations.rs` |
 | **DB-08** | Settings delta-ledger concurrency: a UNIQUE index on `(key, terminal_id, version)`, each attempt in its own `BEGIN IMMEDIATE`, retried on collision | `platform/core/src/settings/raw.rs` |
 
@@ -225,7 +225,7 @@ use in a commit message or a review comment.
 | Rates, multipliers, ratios | `*_millionths` | Scaled by 10^6, `i64` |
 
 `scripts/verify-migration-column-types.py` enforces this on every `*.sql` under
-`crates/oz-core/migrations/` (the PG file included). It strips comments first, then
+`crates/kasirmu-core/migrations/` (the PG file included). It strips comments first, then
 looks for a column-name-plus-float-type pair, so naming a float in a comment cannot trip
 it. The gate is wired into `.githooks/pre-commit` as the migration column-type lint and
 runs with `--staged-only` there.
@@ -258,11 +258,11 @@ does not exist.
 **SQLite is the source of truth. Postgres is a generated replica.** The contract is
 `docs/records/sqlite-pg-roles.md`; read it before touching anything PG-shaped.
 
-- `crates/oz-core/migrations/20260813_init.pg.sql` is **generated**, by
+- `crates/kasirmu-core/migrations/20260813_init.pg.sql` is **generated**, by
   `scripts/generate-pg-migration.py`. Its single output path is fixed at
   `scripts/generate-pg-migration.py:66`, and the file it writes carries a
   `DO NOT EDIT BY HAND` header. **Never hand-edit it.**
-- The generator parses registry order out of `crates/oz-core/src/migrations.rs`, applies
+- The generator parses registry order out of `crates/kasirmu-core/src/migrations.rs`, applies
   every migration to a throwaway in-memory SQLite database, dumps the resulting
   `sqlite_master` state, and translates it: `INTEGER` → `BIGINT`, `REAL` →
   `DOUBLE PRECISION`, autoincrement to identity, `STRICT` dropped, tables emitted in
@@ -288,26 +288,26 @@ To re-sync a shared dev database after a PG schema change, use `scripts/reset-de
 ## 9. Backup, restore, and recovery
 
 - **Backup** uses rusqlite's online `Backup` API (`Store::backup` in
-  `crates/oz-core/src/db/mod.rs`), not `VACUUM INTO` — it is safe against a live
+  `crates/kasirmu-core/src/db/mod.rs`), not `VACUUM INTO` — it is safe against a live
   connection.
 - **Integrity** is `PRAGMA integrity_check`; there is also a tenant-integrity check that
   fails loudly on foreign-tenant rows and runs at desktop boot.
-- **Restore** is `crates/oz-cli/src/commands/backup.rs`. It is order-sensitive: it
+- **Restore** is `crates/kasirmu-cli/src/commands/backup.rs`. It is order-sensitive: it
   checkpoints the WAL with `PRAGMA wal_checkpoint(TRUNCATE)`, **deletes the `-wal` and
   `-shm` sidecars**, and only then copies the file in. Skipping the sidecar deletion
   produces a torn restore — the copied file is silently re-mixed with the previous
   database's write-ahead log. Store deletion removes the same sidecars.
 - **Shell wrappers**: `scripts/backup-db.sh` and `scripts/restore-db.sh`.
 - **The one recovery journal** is the cross-database topology Apply journal in
-  `crates/oz-bridge/src/topology/persistence.rs`. It is deliberately retained until
+  `crates/kasirmu-bridge/src/topology/persistence.rs`. It is deliberately retained until
   *both* databases are restored, which is what makes compensation retryable after a
   crash. Do not "tidy it up" on a successful apply.
 - **Stock-ledger self-healing** writes one deterministic compensating movement per
-  shortfall (`crates/oz-core/src/db/products_stock_adjust/ledger.rs`), rather than
+  shortfall (`crates/kasirmu-core/src/db/products_stock_adjust/ledger.rs`), rather than
   mutating the ledger in place.
 
-Integration coverage lives in `crates/oz-core/tests/backup_restore_integration.rs` and
-`crates/oz-core/tests/corruption_recovery_integration.rs`.
+Integration coverage lives in `crates/kasirmu-core/tests/backup_restore_integration.rs` and
+`crates/kasirmu-core/tests/corruption_recovery_integration.rs`.
 
 ---
 
@@ -316,7 +316,7 @@ Integration coverage lives in `crates/oz-core/tests/backup_restore_integration.r
 `rust-backend` states the rule as: *all writes happen in a transaction*, and *a function
 that writes must take `&mut Connection`, never `&Connection`*.
 
-The `Store` facade in `crates/oz-core/src/db/mod.rs` **deliberately deviates from the
+The `Store` facade in `crates/kasirmu-core/src/db/mod.rs` **deliberately deviates from the
 second half**, and documents why: `Store` borrows `&Connection`, because checked
 transactions require `&mut Connection`, which would force every caller to hold a mutable
 borrow of the shared connection for the whole write. So `Store` uses
@@ -358,7 +358,7 @@ logged without masking the original error.
   through the SQLite `backup::Backup` API — orders of magnitude faster than re-running
   `execute_batch` per test. It is `#[doc(hidden)]` and test-only.
 - For a database you intend to migrate yourself, open in memory and run migrations
-  explicitly, the way `crates/oz-core/src/migrations_tests.rs` does.
+  explicitly, the way `crates/kasirmu-core/src/migrations_tests.rs` does.
 - `platform/core/src/database/manager_tests.rs` uses `tempfile::tempdir()` for the
   per-store-file tests, which need real files.
 - Tauri state has test constructors (`AppState::for_test` and friends) in
