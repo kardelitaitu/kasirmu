@@ -1,5 +1,5 @@
 //! Product-bundle command bodies (Wave F) — the tauri-free half of
-//! `apps/desktop-client/src/commands/bundles.rs`.
+//! `apps/desktop-tauri/src/commands/bundles.rs`.
 //!
 //! All six operations are store-scoped (ADR #7): resolve the scope, enforce
 //! the per-domain permission (F-017), then lock the session's own store

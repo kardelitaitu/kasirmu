@@ -1,5 +1,5 @@
 //! Unit tests for the category command bodies (Wave-A test relocation: moved
-//! out of `apps/desktop-client/src/commands/categories_tests.rs`).
+//! out of `apps/desktop-tauri/src/commands/categories_tests.rs`).
 //!
 //! Mounted at the foot of `categories.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the DTOs, `run_list_categories` and the scoped

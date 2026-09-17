@@ -1,5 +1,5 @@
 //! Category command bodies (Wave A / S3) — the tauri-free half of
-//! `apps/desktop-client/src/commands/categories.rs`.
+//! `apps/desktop-tauri/src/commands/categories.rs`.
 //!
 //! Key functions: [`run_list_categories`] (pure `&Connection` body), and the
 //! session-scoped [`list_scoped`], [`create_scoped`], [`update_scoped`] and
