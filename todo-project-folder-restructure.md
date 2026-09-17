@@ -811,6 +811,14 @@ not deleted. That covers `README.md`, `ARCHITECTURE.md`, `AGENTS.md`, `CHANGELOG
 **Pile D — rename, do not move.** `oz-pos-updater.key.pub` is a **tracked** Tauri updater public key
 still carrying the old brand. It also slips past `.gitignore`'s `*.key` rule because it ends `.pub`.
 
+> **Renamed 2026-09-18 → `kasirmu-updater.key.pub`** (commit `369645276`), the `kasirmu-*` prefix the
+> rebrand gave every code artifact. Three live references moved with it: `.dockerignore`, the root
+> allowlist in `scripts/verify-root-policy.py`, and `scripts/extract-updater-seed.py`'s
+> `KEY_FILE_DEFAULT` — which names the *private* half, `kasirmu-updater.key`, so the pair keeps its
+> symmetry. That default has a `--key-file` override, so a checkout still holding the old filename is
+> unaffected. Everything else naming the old path is a dated record (`docs/decisions/`,
+> `docs/archived/`, `CHANGELOG.md`) and was left alone.
+
 **What it actually is (verified 2026-09-17):** the 152-byte file holds the *base64* of the minisign
 key, and that same base64 string is **inlined verbatim** as `pubkey` in
 `apps/desktop-tauri/tauri.conf.json:72`. So the running updater does **not** read this file — deleting
@@ -836,6 +844,16 @@ example, not a reader: `.githooks/commit-msg:8` cites a commit titled
 among `bad_subjects`. `website/package.json` declares no Lighthouse script, and
 `.github/workflows/website.yml.bak` is retired. Lighthouse CI also runs ad-hoc via `npx lhci autorun`,
 which is why this of all things should be deleted by its owner rather than by a tidy-up pass.
+
+> **Deleted 2026-09-18** (commit `369645276`). The owner took the decision this section was waiting for.
+> Confirmed dead immediately before removal: no live consumer, and nothing outside the two historical
+> citations above reads the filename.
+>
+> **The deletion also removed its permit.** `scripts/verify-root-policy.py`'s `ROOT_FILE_ALLOWLIST` still
+> listed `.lighthouserc.json`, and the gate kept passing — an allowlist is a *permit* list with no
+> stale-entry check, so a permit for a file that no longer exists is invisible surface that would
+> silently re-authorise the file if it ever came back. Verified by probe: recreating the file now
+> produces `stray root file: .lighthouserc.json`, and the clean tree still reports clean.
 
 ### Root directories: 22 tracked (28 on disk) → 19, and why only 7 are clutter
 
