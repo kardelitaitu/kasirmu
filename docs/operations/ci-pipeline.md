@@ -111,6 +111,7 @@
 | Website unit tests | `check` (website.yml) | Required | `check.sh` (website test) |
 | Architecture boundaries | `static-gates` | Required | `check.sh` (architecture boundaries) |
 | No raw params (ADR #7 Phase 4) | — | Required | `check.sh` (no-raw-params) |
+| Root policy (P8) | — (no CI job) | Required | `check.sh` (root policy) — fails when the repo root gains a file outside the folder-restructure plan's section-5 allowlist, and sweeps empty directories, the one junk class no git-based check can see. Local-only: a runner checkout may carry ephemera this repo does not own |
 | No hardcoded money format | `static-gates` | Required | `check.sh` (hardcoded-money-format) |
 | Docker build smoke | — | Required | `check.sh` (docker build) |
 | Migration smoke | — | Required | `check.sh` (migration) |
