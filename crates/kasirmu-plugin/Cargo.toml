@@ -1,11 +1,11 @@
 [package]
-name = "oz-plugin"
+name = "kasirmu-plugin"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Plugin discovery, loading, and sandboxing for OZ-POS."
+description = "Plugin discovery, loading, and sandboxing for kasir.mu."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]

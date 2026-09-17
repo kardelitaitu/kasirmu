@@ -14,7 +14,7 @@ next: consider sqlite3_set_authorizer as the long-term replacement for the regex
 //! # Example
 //!
 //! ```no_run
-//! # use oz_plugin::db::PluginDb;
+//! # use kasirmu_plugin::db::PluginDb;
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let conn = rusqlite::Connection::open_in_memory()?;
 //! let db = PluginDb::new(conn, "my-plugin");

@@ -15,7 +15,7 @@ next: none | perf: N/A
 //! # Example
 //!
 //! ```no_run
-//! # use oz_plugin::package::OzpkArchive;
+//! # use kasirmu_plugin::package::OzpkArchive;
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let archive = OzpkArchive::open("path/to/plugin.ozpkg")?;
 //! let manifest = archive.manifest();
