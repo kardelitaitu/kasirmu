@@ -38,6 +38,9 @@ export default function SearchModal({ isOpen, onClose, locale }: Props) {
       { id: 'support', title: locale === 'id' ? 'Bantuan & Kontak' : 'Support & Contact', category: 'pages', url: `/${locale}/support`, keywords: 'faq contact discord email help' },
       
       // Vertical Solutions
+      { id: 'kasir-gratis', title: locale === 'id' ? 'Kasir Gratis Selamanya' : 'Free POS Forever', category: 'pages', url: `/${locale}/kasir-gratis`, keywords: 'kasir gratis free umkm warung murah mudah ringan offline' },
+      { id: 'kasir-murah', title: locale === 'id' ? 'Kasir Murah Tanpa Biaya Tersembunyi' : 'Cheap POS With No Hidden Fees', category: 'pages', url: `/${locale}/kasir-murah`, keywords: 'kasir murah harga price cheap affordable plus pro gratis' },
+      { id: 'kasir-android', title: locale === 'id' ? 'Kasir Android & Tablet' : 'Android & Tablet POS', category: 'pages', url: `/${locale}/aplikasi-kasir-android`, keywords: 'kasir android tablet hp ringan mudah offline apk' },
       { id: 'cafe', title: locale === 'id' ? 'Solusi untuk Kafe & Kedai Kopi' : 'Solutions for Cafes & Coffee Shops', category: 'pages', url: `/${locale}/cafe`, keywords: 'cafe coffee table orders kds modifiers kasir kafe' },
       { id: 'restaurant', title: locale === 'id' ? 'Solusi untuk Restoran & F&B' : 'Solutions for Restaurants', category: 'pages', url: `/${locale}/restaurant`, keywords: 'restaurant kitchen display split bill service charge kasir restoran' },
       { id: 'minimarket', title: locale === 'id' ? 'Solusi untuk Minimarket & Ritel' : 'Solutions for Minimarkets & Retail', category: 'pages', url: `/${locale}/minimarket`, keywords: 'barcode scanning sku inventory fast retail kasir toko' },

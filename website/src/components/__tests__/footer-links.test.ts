@@ -29,14 +29,14 @@ describe('Footer link structure', () => {
   });
 
   it('renders the sitemap columns', () => {
-    for (const slug of ['features', 'pricing', 'download', 'warung', 'cafe', 'restaurant', 'minimarket', 'warehouse', 'docs', 'support']) {
+    for (const slug of ['features', 'pricing', 'download', 'kasir-gratis', 'kasir-murah', 'aplikasi-kasir-android', 'warung', 'cafe', 'restaurant', 'minimarket', 'warehouse', 'docs', 'support']) {
       expect(FOOTER_SRC).toContain(`'${slug}'`);
     }
   });
 
   it('uses getRelativeLocaleUrl for navigation links', () => {
     const matches = FOOTER_SRC.match(/getRelativeLocaleUrl\(/g);
-    expect(matches).toHaveLength(12);
+    expect(matches).toHaveLength(15);
   });
 
   it('has aria-label on the legal nav', () => {
@@ -49,7 +49,7 @@ describe('Footer link structure', () => {
 
   it('has footer-link class on navigation links', () => {
     const footerLinkMatches = FOOTER_SRC.match(/class="footer-link/g);
-    expect(footerLinkMatches).toHaveLength(12);
+    expect(footerLinkMatches).toHaveLength(15);
   });
 });
 
@@ -96,6 +96,18 @@ describe('Footer link targets exist', () => {
 
   it('docs hub page exists', () => {
     expect(() => readFileSync(join(pagesDir, 'docs', 'index.astro'))).not.toThrow();
+  });
+
+  it('kasir-gratis landing page exists', () => {
+    expect(() => readFileSync(join(pagesDir, 'kasir-gratis.astro'))).not.toThrow();
+  });
+
+  it('kasir-murah landing page exists', () => {
+    expect(() => readFileSync(join(pagesDir, 'kasir-murah.astro'))).not.toThrow();
+  });
+
+  it('aplikasi-kasir-android landing page exists', () => {
+    expect(() => readFileSync(join(pagesDir, 'aplikasi-kasir-android.astro'))).not.toThrow();
   });
 
   it('legal/privacy page exists', () => {
