@@ -70,7 +70,7 @@ describe('Theme audit Step E — RetailPosScreen anti-pattern guard', () => {
     const source = readSource();
     // Positive assertion — confirms we are still wired to the global
     // theme. Drop this if the consumer is intentionally rewired.
-    const hasImport = /import\s+\{[^}]*(?:useTheme|useOptionalTheme)[^}]*\}\s+from\s+['"]@\/frontend\/shell\/ThemeProvider['"]/.test(
+    const hasImport = /import\s+\{[^}]*(?:useTheme|useOptionalTheme)[^}]*\}\s+from\s+['"]@\/app\/ThemeProvider['"]/.test(
       source,
     );
     expect(hasImport).toBe(true);
