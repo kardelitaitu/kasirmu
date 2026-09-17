@@ -769,6 +769,8 @@ fn resolve_db_path(app: &AppHandle) -> Result<PathBuf, AppError> {
         let old_db = base.join("com.ozpos.app").join("oz-pos.db");
         let new_db = dir.join("kasir.db");
         if old_db.exists() && !new_db.exists() {
+            std::fs::create_dir_all(&dir)
+                .map_err(|e| AppError::Internal(format!("creating app data dir {dir:?}: {e}")))?;
             std::fs::copy(&old_db, &new_db).map_err(|e| {
                 AppError::Internal(format!("migrating db from {old_db:?} to {new_db:?}: {e}"))
             })?;
