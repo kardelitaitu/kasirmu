@@ -1,0 +1,87 @@
+# ── OZ-POS Production Compose Override — hardened profile (DOCKER-07) ─
+#
+# Merge with the base stack for a deployment-grade posture:
+#
+#   export OZ_API_SECRET=$(openssl rand -hex 32)
+#   export OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)"
+#   docker compose --project-directory . -f ops/docker/docker-compose.yml -f ops/docker/docker-compose.prod.yml up -d
+#
+# (For PostgreSQL, also merge docker-compose.pg.yml and set PG_PASSWORD.)
+#
+# What this profile changes vs. the developer stack:
+#   • read-only root filesystems — only declared volumes are writable,
+#     plus a tmpfs /tmp for each service
+#   • drops ALL Linux capabilities except the minimal set the entrypoints
+#     need to chown volumes and drop privileges (CHOWN, SETUID, SETGID)
+#   • `security_opt: no-new-privileges:true` and `init: true`
+#   • CPU/memory resource limits per service
+#   • Redis and PostgreSQL are NOT published to the host — only the public
+#     API ports (3099, 8080) are exposed; internal services stay on the
+#     private Compose network
+#
+# Secrets remain fail-closed: OZ_API_SECRET and OZ_LICENSE_PRIVATE_KEY are
+# required by the base file, PG_PASSWORD by docker-compose.pg.yml (DOCKER-04).
+
+services:
+  pos-cloud-server:
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID]
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    mem_limit: 1024m
+    cpus: "2.0"
+    ports:
+      - "${OZ_API_PORT:-3099}:${OZ_API_PORT:-3099}"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  license-server:
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID]
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    mem_limit: 512m
+    cpus: "1.0"
+    ports:
+      - "8080:8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  redis:
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID]
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    mem_limit: 512m
+    cpus: "1.0"
+    # Not exposed to the host — internal Compose network only.
+    ports: !override []
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # pos-cloud-db lives in docker-compose.pg.yml (merged with `-f`) and is
+  # hardened in that file — this override only touches services defined in
+  # the base compose, so `-f ops/docker/docker-compose.yml -f ops/docker/docker-compose.prod.yml`
+  # stays valid on its own (SQLite stack).
+

@@ -28,8 +28,8 @@ fn seed_ref(
 
 #[test]
 fn gc_cleans_orphaned_refs() {
-    let conn = oz_core::migrations::fresh_db();
-    let store = oz_core::Store::new(&conn);
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = kasirmu_core::Store::new(&conn);
 
     // Seed a ref that is orphaned (refcount=0, old).
     seed_ref(&conn, "tenant-a", "aaaaaaaaaaaaaaaa", 0, 90000);
@@ -45,8 +45,8 @@ fn gc_cleans_orphaned_refs() {
 
 #[test]
 fn gc_removes_files_when_present() {
-    let conn = oz_core::migrations::fresh_db();
-    let store = oz_core::Store::new(&conn);
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = kasirmu_core::Store::new(&conn);
 
     let tmp = std::env::temp_dir().join(format!("oz-gc-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).unwrap();
@@ -75,8 +75,8 @@ fn gc_removes_files_when_present() {
 
 #[test]
 fn gc_noop_when_no_orphans() {
-    let conn = oz_core::migrations::fresh_db();
-    let store = oz_core::Store::new(&conn);
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = kasirmu_core::Store::new(&conn);
 
     seed_ref(&conn, "tenant-a", "aaaaaaaaaaaaaaaa", 1, 90000);
     seed_ref(&conn, "tenant-a", "bbbbbbbbbbbbbbbb", 2, 100);
@@ -87,8 +87,8 @@ fn gc_noop_when_no_orphans() {
 
 #[test]
 fn gc_respects_grace_period() {
-    let conn = oz_core::migrations::fresh_db();
-    let store = oz_core::Store::new(&conn);
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = kasirmu_core::Store::new(&conn);
 
     // Very recent grace (0 seconds) — should still ignore new orphans.
     seed_ref(&conn, "tenant-a", "aaaaaaaaaaaaaaaa", 0, 1); // 1 second old

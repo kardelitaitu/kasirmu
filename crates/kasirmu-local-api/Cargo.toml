@@ -1,0 +1,28 @@
+[package]
+name = "kasirmu-local-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Headless loopback REST API server for the register: embeds the kasirmu-api router on 127.0.0.1 with settings-driven enable/port/secret and per-store audit sink."
+
+[lints]
+workspace = true
+
+[dependencies]
+kasirmu-api = { workspace = true }
+kasirmu-core = { workspace = true }
+platform-core = { workspace = true }
+axum = { workspace = true }
+tokio = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rand = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+reqwest = { workspace = true }

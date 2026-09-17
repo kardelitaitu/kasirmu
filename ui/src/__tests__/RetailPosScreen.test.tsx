@@ -16,7 +16,7 @@ import salesFtl from '@/locales/sales.ftl?raw';
 import productsFtl from '@/locales/products.ftl?raw';
 import tablesFtl from '@/locales/tables.ftl?raw';
 import RetailPosScreen from '@/features/retail/RetailPosScreen';
-import { useTheme } from '@/frontend/shell/ThemeProvider';
+import { useTheme } from '@/app/ThemeProvider';
 import type { ReactNode } from 'react';
 import type { LineId, Sku } from '@/types/domain';
 

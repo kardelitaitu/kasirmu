@@ -6,7 +6,7 @@ import { LocalizationProvider, ReactLocalization } from '@fluent/react';
 import type { ReactElement, ReactNode } from 'react';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import StaffLoginScreen from '@/features/auth/StaffLoginScreen';
 import { BrandProvider } from '@/contexts/BrandContext';
 import { checkUsername } from '@/api/staff';
@@ -38,14 +38,14 @@ vi.mock('@/api/branding', () => ({
   getBrandSettings: () => Promise.resolve({
     primary_colour: '#147EFB',
     logo_path: null,
-    store_name: 'OZ-POS',
+    store_name: 'kasir.mu',
   }),
 }));
 
 function withProviders(children: ReactNode): ReactElement {
   const bundle = new FluentBundle('en-US');
   bundle.addResource(new FluentResource(`
-staff-login-title = OZ-POS
+staff-login-title = kasir.mu
 staff-login-subtitle = Staff Login
 staff-login-progress-aria =
     .aria-label = Login progress

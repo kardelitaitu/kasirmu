@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { LocalizationProvider, ReactLocalization } from '@fluent/react';
 import type { ReactElement, ReactNode } from 'react';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import SessionLockScreen from '@/features/auth/SessionLockScreen';
 
 // vi.hoisted ensures the mock references exist before vitest hoists the

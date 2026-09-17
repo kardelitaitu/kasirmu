@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, memo, useCallback, useMemo } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { useTicketSla, type SlaThresholds } from '@/features/kds/hooks/useTicketSla';
-import { useSound } from '@/frontend/shared/useSound';
-import { requiredLocalized } from '@/frontend/shared';
+import { useSound } from '@/components/useSound';
+import { requiredLocalized } from '@/components';
 import { getKdsOrderLinesScoped, type KdsOrder, type KdsLineItem } from '@/api/kds';
 import { createCooldownWrapper } from '@/features/kds/hooks/useActionCooldown';
 import { contrastText } from '@/features/kds/kdsCardColors';
@@ -142,7 +142,7 @@ export function nextActionKey(status: string): string | null {
 
 /**
  * KdsTicketCard renders a single KDS ticket with the design-language
- * prototype anatomy (dev/kds-prototype.html):
+ * prototype anatomy (see docs/specs/_active/tauri-ux-design-language-plan.md):
  *
  *   header (icon + order# + SLA time + status)  → collapses the card
  *   body: category headers (n/M Course + check) → collapse per course,

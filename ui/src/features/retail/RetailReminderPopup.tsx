@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { useLocalization } from '@fluent/react';
 
 export interface RetailReminderPopupProps {

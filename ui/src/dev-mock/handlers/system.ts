@@ -476,7 +476,7 @@ export const systemHandlers: Record<string, MockHandler> = {
   // `ui/src/__tests__/api-security-contract.test.ts:38-44`), but this file still
   // carried a handler for it, which the scoped-alias rule then copied onto
   // `rotate_encryption_key_scoped` -- the name the desktop actually registers
-  // (`apps/desktop-client/src/lib.rs:1151`). Answering the dead name is what kept
+  // (`apps/desktop-tauri/src/lib.rs:1151`). Answering the dead name is what kept
   // the live one working in dev, so the handler moves here instead of being dropped:
   // a mock that fakes success for a command deleted as a bypass is a resurrection
   // hazard, and a mock that goes silent on the surviving gated command is the T5-5
@@ -513,7 +513,7 @@ export const systemHandlers: Record<string, MockHandler> = {
 
   'get_backup_status': () => ({ lastBackup: null, lastBackupSize: null }),
   'create_backup': () => ({ path: '/backups/backup.db', sizeBytes: 1024 }),
-  'export_data': () => ({ path: '/exports/data.ozpkg', sizeBytes: 512, types: ['products'] }),
+  'export_data': () => ({ path: '/exports/data.kasirpkg', sizeBytes: 512, types: ['products'] }),
   'import_preview': () => ({ storeName: 'Test Store', appVersion: pkg.version, exportedAt: new Date().toISOString(), types: ['products'], productCount: 10, categoryCount: 2, saleCount: null, customerCount: null, userCount: null, settingCount: null }),
   'import_data': () => ({ productsImported: 10, categoriesImported: 2, salesImported: 0, customersImported: 0, usersImported: 0, settingsImported: 0 }),
 

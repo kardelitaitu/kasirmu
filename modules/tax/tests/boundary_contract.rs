@@ -1,26 +1,26 @@
 //! Cross-layer boundary contract for the tax vertical (TAX-10).
 //!
 //! `modules/tax` is the contractual owner of the tax domain types
-//! (`TaxRate`, `RoundingMode`), which `oz-core` re-exports
-//! (`crates/oz-core/src/tax_rate.rs`) and which the Tauri command layer
+//! (`TaxRate`, `RoundingMode`), which `kasirmu-core` re-exports
+//! (`crates/kasirmu-core/src/tax_rate.rs`) and which the Tauri command layer
 //! (`apps/*-client/src/commands/tax.rs`) and the UI's API surface
 //! (`ui/src/api/tax.ts`) consume. These tests pin that boundary so the
 //! pieces cannot drift:
 //!
 //! 1. **Module registration** — `manifest.json` id must match the
 //!    `Module` trait id and declare the documented permissions.
-//! 2. **Type identity** — `oz_core::tax_rate::{TaxRate, RoundingMode}`
+//! 2. **Type identity** — `kasirmu_core::tax_rate::{TaxRate, RoundingMode}`
 //!    are *the same types* as the `modules_tax` ones (compile-time proof).
 //! 3. **DB behaviour parity** — the module repository/service must observe
-//!    exactly the same rows as `oz_core`'s `Store`, including the TAX-03
+//!    exactly the same rows as `kasirmu_core`'s `Store`, including the TAX-03
 //!    soft-delete (`is_active = 0`) policy.
 //! 4. **Serde wire shape** — `TaxRate` serializes the exact field names
 //!    the frontend `TaxRateDto` declares, so IPC payloads stay in sync.
 
 use foundation::contracts::Module;
+use kasirmu_core::db::Store;
+use kasirmu_core::migrations::fresh_db;
 use modules_tax::{RoundingMode, TaxModule, TaxRate, TaxService};
-use oz_core::db::Store;
-use oz_core::migrations::fresh_db;
 
 // ── 1. Module registration contract ─────────────────────────────────
 
@@ -55,12 +55,12 @@ fn identity<T>(t: T) -> T {
 
 #[test]
 fn oz_core_reexports_exact_module_types() {
-    // These function-pointer assignments compile ONLY if the oz-core
+    // These function-pointer assignments compile ONLY if the kasirmu-core
     // re-export is literally the same type as the modules_tax type.
     // If someone forks the type in either crate, this fails to build.
-    let _rate: fn(oz_core::tax_rate::TaxRate) -> oz_core::tax_rate::TaxRate =
+    let _rate: fn(kasirmu_core::tax_rate::TaxRate) -> kasirmu_core::tax_rate::TaxRate =
         identity::<modules_tax::TaxRate>;
-    let _mode: fn(oz_core::tax_rate::RoundingMode) -> oz_core::tax_rate::RoundingMode =
+    let _mode: fn(kasirmu_core::tax_rate::RoundingMode) -> kasirmu_core::tax_rate::RoundingMode =
         identity::<modules_tax::RoundingMode>;
 }
 
@@ -146,7 +146,7 @@ fn archived_rates_are_hidden_by_repository_and_store() {
     // TAX-03 soft-delete: archiving hides the rate.
     store.delete_tax_rate(&rate.id).unwrap();
 
-    // oz-core store: hidden.
+    // kasirmu-core store: hidden.
     assert!(store.get_tax_rate(&rate.id).unwrap().is_none());
 
     // The module repository must observe the SAME policy. Without the
@@ -182,7 +182,7 @@ fn repository_list_tax_rates_filters_archived_and_matches_store() {
     store.delete_tax_rate(&archived.id).unwrap();
 
     // The module repository must observe the SAME active row set as the
-    // oz-core store — archived (is_active = 0) rates must be filtered out.
+    // kasirmu-core store — archived (is_active = 0) rates must be filtered out.
     let via_module = TaxService::list_tax_rates(&conn).unwrap();
     let via_store = store.list_tax_rates().unwrap();
 

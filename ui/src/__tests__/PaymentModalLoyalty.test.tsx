@@ -28,7 +28,7 @@
  * float arithmetic in the test. Where a mutant could render a raw minor
  * integer, an extra assertion says so out loud (L3, L8).
  *
- * English asserted here was read out of ui/src/locales/sales.ftl:
+ * English asserted here was read out of shared-ui/locales/sales.ftl:
  *   :157 payment-cancel                 = Cancel
  *   :164 payment-loyalty-use-points     = Use Points
  *   :165 payment-loyalty-points-label   = Points
@@ -38,8 +38,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
-import { withFluent } from '@/locales/test-utils';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { withFluent } from '@/i18n/test-utils';
+import { ToastProvider } from '@/components/Toast';
 import salesFtl from '@/locales/sales.ftl?raw';
 import PaymentModal from '@/features/sales/PaymentModal';
 import LoyaltyTenderPanel from '@/features/sales/payment/LoyaltyTenderPanel';

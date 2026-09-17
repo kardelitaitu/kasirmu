@@ -9,7 +9,7 @@ write has been attempted since. every claim below carries the command that produ
   C:/dev/ozpos/backups/git-20260913-061103. it carries all seven packs and every loose
   object, including the 1101 dangling ones, so the bargaining chip is out of reach of
   the next pass. point at it before touching anything in this checkout.
-- the missing reachable blob e7c707c1 is apps/desktop-client/tests/kernel_lifecycle.rs,
+- the missing reachable blob e7c707c1 is apps/desktop-tauri/tests/kernel_lifecycle.rs,
   the exact content of the lost timing commit df0a103ad - working file, salvage copy
   (.agents/salvage/kernel_lifecycle.rs and .TIMING-FIX, one hash) and index entry all
   agree. TWO RECOVERIES happened here and they are not one event.
@@ -18,11 +18,11 @@ write has been attempted since. every claim below carries the command that produ
   object existed before any repair commit landed - most plausibly written by the very
   attempt whose commit object the 05:52 prune ate, and it stayed reachable because the
   INDEX is a reachability root and the index never stopped naming it.
-  edge recovery, at 8cefb1aea test(desktop-client): calibrate the retry-timing bound
+  edge recovery, at 8cefb1aea test(desktop-tauri): calibrate the retry-timing bound
   instead of guessing at it: that commit restored the EDGE, not the object. the blob is
   now named by a commit on the branch instead of dangling from an index entry alone.
   the two commands that tell them apart: git cat-file -t e7c707c1 answers blob, which is
-  the object question; git ls-files -s -- apps/desktop-client/tests/kernel_lifecycle.rs
+  the object question; git ls-files -s -- apps/desktop-tauri/tests/kernel_lifecycle.rs
   answers whether the index is still the only root naming it, which is the edge question.
   the warning, kept in weaker form: an index-wide operation - bare git commit, git
   commit -a, git stash, or git commit --amend, which takes the index whatever the
@@ -49,8 +49,8 @@ that does not exist.
 
 ## three commits written in the same two minutes, one per writer, all unreachable
 
-- df0a103ad  test(desktop-client): calibrate the retry-timing bound instead of guessing
-             at it. apps/desktop-client/tests/kernel_lifecycle.rs, +51/-5. the tip the
+- df0a103ad  test(desktop-tauri): calibrate the retry-timing bound instead of guessing
+             at it. apps/desktop-tauri/tests/kernel_lifecycle.rs, +51/-5. the tip the
              ref still points at.
 - e6b57893d  test(ui): cover the second eod-report declaration - nav gate armed on
              reports:view too. ui/src/__tests__/eodReportExportPermissionDrift.test.ts,
@@ -62,8 +62,8 @@ that does not exist.
 
     af6ec2eb2  -> commit   test(ui): pin the eod-report route ... (5-case pin, 159 lines)
     c54d9f9cc  -> commit   fix(ui): correct the widget gate comment and arm the three tiles
-    e046e2f26  -> commit   test(desktop-client): re-pin the gate census rows ...
-    a32b13aaa  -> commit   refactor(desktop-client): drop the ungated rotate_encryption_key
+    e046e2f26  -> commit   test(desktop-tauri): re-pin the gate census rows ...
+    a32b13aaa  -> commit   refactor(desktop-tauri): drop the ungated rotate_encryption_key
     48540aee0  -> commit   fix(ui): arm the widget gate on the two export tiles ...
     ce8666604  -> commit   dbcfaa13a -> commit   (also probed, both resolve)
     df0a103ad  -> fatal: Not a valid object name df0a103ad

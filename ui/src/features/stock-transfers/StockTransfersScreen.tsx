@@ -19,7 +19,7 @@ import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
-import { requiredLocalized, type RequiredLocalizedL10n } from '@/frontend/shared';
+import { requiredLocalized, type RequiredLocalizedL10n } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './StockTransfersScreen.css';
 
@@ -41,7 +41,7 @@ function localizedStatusLabel(l10n: RequiredLocalizedL10n, status: string): stri
 /**
  * One settled read. `ok: false` records that the call NEVER ANSWERED — which
  * is a different fact from "answered, and the answer was an empty list". The
- * shape is the sanctioned boot idiom (frontend/shell/AppShell.tsx:87-94), and
+ * shape is the sanctioned boot idiom (app/AppShell.tsx:87-94), and
  * the part that matters is what the caller does with `ok: false`: NOTHING, so
  * the picker keeps its UNKNOWN state instead of being overwritten with a
  * plausible empty catalogue.

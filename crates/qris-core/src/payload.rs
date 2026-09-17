@@ -286,11 +286,11 @@ impl QrisPayload {
         }
 
         // 62: Additional Data
-        if let Some(ref ad) = self.additional_data {
-            if !ad.is_empty() {
-                let nested = ad.to_nested_string();
-                out.push_str(&tlv::encode_field(TAG_ADDITIONAL_DATA, &nested));
-            }
+        if let Some(ref ad) = self.additional_data
+            && !ad.is_empty()
+        {
+            let nested = ad.to_nested_string();
+            out.push_str(&tlv::encode_field(TAG_ADDITIONAL_DATA, &nested));
         }
 
         // Extra unknown tags — emit before CRC

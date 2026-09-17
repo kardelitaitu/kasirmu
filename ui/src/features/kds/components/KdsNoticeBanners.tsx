@@ -22,7 +22,7 @@
  * guard would read all ten as dead.
  */
 import { Localized, useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 
 export interface KdsNoticeBannersProps {
   /** Already-localised message; the screen owns it via setError/clearError. */

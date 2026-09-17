@@ -59,15 +59,15 @@ bash scripts/generate-license-keys.sh
 
 This does:
 
-1. Generates a `crates/oz-core/oz-license-private.pem` file (RSA-2048, PKCS8 PEM).
-2. Extracts the public key into `crates/oz-core/oz-license.key.pub` (DER/SPKI format).
+1. Generates a `crates/kasirmu-core/oz-license-private.pem` file (RSA-2048, PKCS8 PEM).
+2. Extracts the public key into `crates/kasirmu-core/oz-license.key.pub` (DER/SPKI format).
 3. The private key file is **git-ignored** — never commit it.
 
 ### 2.2 Verify the keys exist
 
 ```
-crates/oz-core/oz-license.key.pub       ← committed, embedded in the binary
-crates/oz-core/oz-license-private.pem   ← git-ignored, loaded as env var on Northflank
+crates/kasirmu-core/oz-license.key.pub       ← committed, embedded in the binary
+crates/kasirmu-core/oz-license-private.pem   ← git-ignored, loaded as env var on Northflank
 ```
 
 ### 2.3 Test locally (optional)
@@ -78,7 +78,7 @@ cd apps/license-server
 go build -o license-server .
 
 # Run with the private key
-$env:OZ_LICENSE_PRIVATE_KEY = (Get-Content -Raw ../../crates/oz-core/oz-license-private.pem)
+$env:OZ_LICENSE_PRIVATE_KEY = (Get-Content -Raw ../../crates/kasirmu-core/oz-license-private.pem)
 ./license-server serve --http=0.0.0.0:8080
 ```
 
@@ -99,7 +99,7 @@ docker build -t oz-pos/license-server -f apps/license-server/Dockerfile apps/lic
 ```bash
 docker run --rm -p 8080:8080 \
   -v license_pb_data:/pb/pb_data \
-  -e OZ_LICENSE_PRIVATE_KEY="$(Get-Content -Raw crates/oz-core/oz-license-private.pem)" \
+  -e OZ_LICENSE_PRIVATE_KEY="$(Get-Content -Raw crates/kasirmu-core/oz-license-private.pem)" \
   oz-pos/license-server
 ```
 
@@ -206,12 +206,12 @@ The license server requires the RSA private key as an environment variable. **Ne
 2. Click **Create Secret Group** → name it `license-server-secrets`.
 3. Add a secret:
    - **Key:** `OZ_LICENSE_PRIVATE_KEY`
-   - **Value:** Paste the **entire** contents of `crates/oz-core/oz-license-private.pem` (including `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----`).
+   - **Value:** Paste the **entire** contents of `crates/kasirmu-core/oz-license-private.pem` (including `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----`).
 
    In PowerShell:
 
    ```powershell
-   Get-Content -Raw crates/oz-core/oz-license-private.pem | Set-Clipboard
+   Get-Content -Raw crates/kasirmu-core/oz-license-private.pem | Set-Clipboard
    ```
 
 4. (Optional) Add the support-contact webhook:

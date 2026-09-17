@@ -1,4 +1,4 @@
-# Changelog — OZ-POS 0.0.34
+# Changelog — kasir.mu 0.0.34
 
 **Release date:** 2026-09-02
 **Commits since 0.0.33:** 242
@@ -7,7 +7,7 @@
 
 ## Highlights
 
-This release is the **largest single version in OZ-POS history**, assembled from four parallel agent workstreams that were merged into `0.0.34` via coordinated rebase-and-merge protocol. The 242 commits span cloud sync performance infrastructure, a complete product image pipeline, a full audit round across all 18 crates, a topology semantic contract rewrite, an admin dashboard redesign, and substantial UI/UX hardening.
+This release is the **largest single version in kasir.mu history**, assembled from four parallel agent workstreams that were merged into `0.0.34` via coordinated rebase-and-merge protocol. The 242 commits span cloud sync performance infrastructure, a complete product image pipeline, a full audit round across all 18 crates, a topology semantic contract rewrite, an admin dashboard redesign, and substantial UI/UX hardening.
 
 ### Agent workstreams
 

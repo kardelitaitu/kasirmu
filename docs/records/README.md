@@ -114,7 +114,7 @@ The per-sector audit reports were consolidated into [**Audit Open Findings**](./
 - **ui** — [Retail POS UX Audit — 2026-07-29](../archived/2026-07-29-retail-pos-ux-audit.md)
 - **sync** — [Unify Auth & Sync to Northflank](../archived/2026-08-15-unify-auth-and-sync.md)
 - **architecture** — [GLM-5.3 Tauri App Review — Journal](../archived/2026-08-30-glm-5.3-tauri-app-review.md)
-- **architecture** — [OZ-POS Full Crate Audit — GLM 5.3-Flash (RSA)](../archived/2026-08-31-glm-5.3f-crates-audit.md)
+- **architecture** — [kasir.mu Full Crate Audit — GLM 5.3-Flash (RSA)](../archived/2026-08-31-glm-5.3f-crates-audit.md)
 - **quality** — [Code Quality Audit — 0.0.14](../archived/code-quality-2026-07-20.md)
 - **database** — [Database Optimization Audit — 2026-07-20](../archived/database-optimization-2026-07-20.md)
 - **quality** — [Developer Experience Audit — 2026-07-20](../archived/dev-experience-2026-07-20.md)
@@ -123,7 +123,7 @@ The per-sector audit reports were consolidated into [**Audit Open Findings**](./
 - **ui** — [Modal & Overlay Audit Checklist](../archived/modal-audit-checklist.md)
 - **theming** — [Shadow Banding Audit — Task List](../archived/TODO-shadow-audit.md)
 - **products** — [Product Image Storage Plan - Review Summary](../archived/plan-product-images-review.md)
-- **general** — [OZ-POS Design Exceptions Register](../archived/design-exceptions.md)
+- **general** — [kasir.mu Design Exceptions Register](../archived/design-exceptions.md)
 
 ## System Analysis / Observability (`docs/observability/`)
 

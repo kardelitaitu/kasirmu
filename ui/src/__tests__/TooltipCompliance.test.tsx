@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import Tooltip from '@/frontend/shell/Tooltip';
+import Tooltip from '@/app/Tooltip';
 
 const MARGIN = 8;
 

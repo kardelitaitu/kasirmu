@@ -1,0 +1,32 @@
+[package]
+name = "kasirmu-notification"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "WhatsApp Cloud API notification client for kasir.mu — template messaging, media support, webhook verification, and mock driver for testing."
+
+# Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
+[lints]
+workspace = true
+
+[dependencies]
+kasirmu-core = { workspace = true }
+foundation = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+rusqlite = { workspace = true }
+lettre = { workspace = true }
+tracing = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+[dev-dependencies]
+serial_test = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

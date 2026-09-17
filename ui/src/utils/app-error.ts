@@ -2,7 +2,7 @@
  * Shared AppError normalizer (ERR-05/ERR-06).
  *
  * Every Tauri command rejects with a typed `AppError` (`kind` discriminator
- * plus optional `subKind`, see `apps/desktop-client/src/error.rs` and
+ * plus optional `subKind`, see `apps/desktop-tauri/src/error.rs` and
  * `ui/src/types/domain.ts`). Raw backend messages can leak SQL, identifiers,
  * and infrastructure details into the UI — so screens must never render
  * `err.message` directly.

@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · all owned paths verified: crates/oz-core/src/db/products.rs, apps/desktop-client/src/commands/{products,product_variants,categories}.rs, ui/src/features/{products,inventory}, ui/src/api/products.ts, ui/src/locales/{products,inventory}.ftl; modules/inventory/manifest.json deps [] match; Module trait + Kernel::register/load_all/start_all match platform/kernel API · Status "Phase 2.3 POC" consistent with files still in original locations · RE-AUDITED 31-08 by docs-auditor: manifest.json re-verified (id inventory, v1.0.0, deps [], perms view/edit/adjust); boundary_contract.rs present; the crate now has a parity-tested mirror (repository.rs InventoryRepository, service.rs InventoryService, handlers.rs SaleCompleted stock-decrement) that is NOT the runtime path — on_load/on_start/on_stop are stubs (log + "future phases will…" comments), live CRUD still in crates/oz-core/src/db/products.rs. FIXED: the Lifecycle section had copied those future-phase comments and presented them as current behaviour ("warms caches and verifies stock integrity", "flushes state") — corrected to describe the stubs; body notes the mirror layer; normalized footer -->
+<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · all owned paths verified: crates/kasirmu-core/src/db/products.rs, apps/desktop-tauri/src/commands/{products,product_variants,categories}.rs, ui/src/features/{products,inventory}, ui/src/api/products.ts, shared-ui/locales/{products,inventory}.ftl; modules/inventory/manifest.json deps [] match; Module trait + Kernel::register/load_all/start_all match platform/kernel API · Status "Phase 2.3 POC" consistent with files still in original locations · RE-AUDITED 31-08 by docs-auditor: manifest.json re-verified (id inventory, v1.0.0, deps [], perms view/edit/adjust); boundary_contract.rs present; the crate now has a parity-tested mirror (repository.rs InventoryRepository, service.rs InventoryService, handlers.rs SaleCompleted stock-decrement) that is NOT the runtime path — on_load/on_start/on_stop are stubs (log + "future phases will…" comments), live CRUD still in crates/kasirmu-core/src/db/products.rs. FIXED: the Lifecycle section had copied those future-phase comments and presented them as current behaviour ("warms caches and verifies stock integrity", "flushes state") — corrected to describe the stubs; body notes the mirror layer; normalized footer -->
 
 # Inventory Module
 
@@ -19,13 +19,13 @@ The Inventory module owns the entire product and stock management vertical. It h
 
 ## Currently Owns
 
-- **Backend** — Product CRUD, stock, variants, categories (`crates/oz-core/src/db/products.rs`)
-- **Commands** — Product and variant Tauri commands (`apps/desktop-client/src/commands/products.rs`, `apps/desktop-client/src/commands/product_variants.rs`, `apps/desktop-client/src/commands/categories.rs`)
+- **Backend** — Product CRUD, stock, variants, categories (`crates/kasirmu-core/src/db/products.rs`)
+- **Commands** — Product and variant Tauri commands (`apps/desktop-tauri/src/commands/products.rs`, `apps/desktop-tauri/src/commands/product_variants.rs`, `apps/desktop-tauri/src/commands/categories.rs`)
 - **Frontend** — Product screens (`ui/src/features/products/`), inventory adjustment (`ui/src/features/inventory/`)
 - **API** — TypeScript API client (`ui/src/api/products.ts`)
-- **Locale** — Fluent translation strings (`ui/src/locales/products.ftl`, `ui/src/locales/inventory.ftl`)
+- **Locale** — Fluent translation strings (`shared-ui/locales/products.ftl`, `shared-ui/locales/inventory.ftl`)
 
-In the current phase the runtime product/stock path still runs through the files above (notably `crates/oz-core/src/db/products.rs`). The crate now also carries a parity-tested mirror — `repository.rs` (`InventoryRepository`), `service.rs` (`InventoryService`), and `handlers.rs` (a `SaleCompleted` stock-decrement handler) — pinned by `tests/boundary_contract.rs`, but these are **not yet wired into the runtime** (the lifecycle hooks below are stubs). A subsequent phase will move the implementation fully into `modules/inventory/`.
+In the current phase the runtime product/stock path still runs through the files above (notably `crates/kasirmu-core/src/db/products.rs`). The crate now also carries a parity-tested mirror — `repository.rs` (`InventoryRepository`), `service.rs` (`InventoryService`), and `handlers.rs` (a `SaleCompleted` stock-decrement handler) — pinned by `tests/boundary_contract.rs`, but these are **not yet wired into the runtime** (the lifecycle hooks below are stubs). A subsequent phase will move the implementation fully into `modules/inventory/`.
 
 ## Lifecycle
 

@@ -1,14 +1,14 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
 import { render, screen, renderHook } from '@testing-library/react';
-import { ThemeProvider, useTheme } from '@/frontend/shell/ThemeProvider';
+import { ThemeProvider, useTheme } from '@/app/ThemeProvider';
 import { BrandProvider } from '@/contexts/BrandContext';
 import type { ReactNode } from 'react';
 
 // ── Hooks only used for type-level assertions are tested implicitly
 //    via renderHook + wrapper. No need to import Theme explicitly.
 
-const STORAGE_KEY = 'oz-pos-theme-v4';
+const STORAGE_KEY = 'kasirmu-theme-v4';
 
 /** Shared wrapper that provides both brand and theme context. */
 function Wrapper({ children }: { children: ReactNode }) {

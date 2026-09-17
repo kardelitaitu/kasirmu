@@ -1,7 +1,7 @@
 import { Fragment, useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/Button';
 import { Localized, useLocalization } from '@fluent/react';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { transactionTypeLabel } from './transactionTypeLabel';

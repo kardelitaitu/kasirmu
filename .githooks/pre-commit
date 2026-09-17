@@ -130,7 +130,7 @@ if [ -f scripts/verify-bundle-parity.py ]; then
         if ! "$PYTHON" scripts/verify-bundle-parity.py --staged-only \
                 --include-getstring --include-nav-keys --include-key-fields \
                 --include-dynamic-literals --include-id-maps --check-domain-pairs \
-                --scan-dirs features,components,frontend,contexts,hooks,platform \
+                --scan-dirs features,components,app,theme,registries,contexts,hooks \
                 "${STAGED_FILES[@]}"; then
             printf '%s\n' "error: bundle parity — staged files reference keys missing from one or both .ftl bundles. See verify-bundle-parity.py output above." >&2
             exit 1
@@ -142,7 +142,7 @@ fi
 # Runs `scripts/dedupe-ftl.py --dry-run` when .ftl files are staged.
 # ~50ms cost; runs in-process without mutating any files.
 if [ -f scripts/dedupe-ftl.py ]; then
-    STAGED_FTL_DEDUPE=$(git diff --cached --name-only --diff-filter=ACM -- 'ui/src/locales/*.ftl' || true)
+    STAGED_FTL_DEDUPE=$(git diff --cached --name-only --diff-filter=ACM -- 'shared-ui/locales/*.ftl' || true)
     if [ -n "$STAGED_FTL_DEDUPE" ]; then
         if output=$("$PYTHON" scripts/dedupe-ftl.py --dry-run 2>&1); then
             : # clean — silently discard the "no duplicates" line
@@ -159,11 +159,11 @@ fi
 # (LOYALTY-01: the 1.4 tier multiplier stored as 1.3999999999999999111
 # made a $22.50 sale earn 31 points instead of 32; MONEY-01 same class).
 # New float columns require a justified whitelist entry in the script.
-# Runs only when the commit stages files under crates/oz-core/migrations/
+# Runs only when the commit stages files under crates/kasirmu-core/migrations/
 # (the script re-derives the staged set itself, ~50ms). CI runs the full
 # scan in complement (.github/workflows/dev-ci.yml # static-gates).
 if [ -f scripts/verify-migration-column-types.py ]; then
-    STAGED_MIG=$(git diff --cached --name-only --diff-filter=ACM -- 'crates/oz-core/migrations/*.sql' || true)
+    STAGED_MIG=$(git diff --cached --name-only --diff-filter=ACM -- 'crates/kasirmu-core/migrations/*.sql' || true)
     if [ -n "$STAGED_MIG" ]; then
         if ! "$PYTHON" scripts/verify-migration-column-types.py --staged-only; then
             echo "error: migration column-type lint failed — exact-decimal values must be fixed-point integers (*_minor, *_millionths). See message above." >&2
@@ -173,7 +173,7 @@ if [ -f scripts/verify-migration-column-types.py ]; then
 fi
 
 # ── PG schema drift guard ─────────────────────────────────────────
-# crates/oz-core/migrations/20260813_init.pg.sql is GENERATED from the
+# crates/kasirmu-core/migrations/20260813_init.pg.sql is GENERATED from the
 # full SQLite migration chain by scripts/generate-pg-migration.py and
 # must never be hand-edited. Any staged change to a migration file, the
 # registry, the generator, or the PG file itself re-derives the expected
@@ -182,7 +182,7 @@ fi
 # (.github/workflows/dev-ci.yml # static-gates).
 if [ -f scripts/generate-pg-migration.py ]; then
     STAGED_PG_TRIGGER=$(git diff --cached --name-only --diff-filter=ACM -- \
-        'crates/oz-core/migrations/*.sql' 'crates/oz-core/src/migrations.rs' \
+        'crates/kasirmu-core/migrations/*.sql' 'crates/kasirmu-core/src/migrations.rs' \
         'scripts/generate-pg-migration.py' || true)
     if [ -n "$STAGED_PG_TRIGGER" ]; then
         if ! "$PYTHON" scripts/generate-pg-migration.py --check; then
@@ -252,7 +252,7 @@ fi
 #
 # Runs last and only when the commit stages a .ftl file, so nothing else pays for it.
 if [ -f scripts/verify-ftl-orphans.py ]; then
-    STAGED_FTL=$(git diff --cached --name-only --diff-filter=ACMR -- 'ui/src/locales/*.ftl' || true)
+    STAGED_FTL=$(git diff --cached --name-only --diff-filter=ACMR -- 'shared-ui/locales/*.ftl' || true)
     if [ -n "$STAGED_FTL" ]; then
         if ! "$PYTHON" scripts/verify-ftl-orphans.py --staged-only; then
             echo "error: FTL orphan lint failed — a key was added with no reference, or the last reference to a key was removed. See message above." >&2

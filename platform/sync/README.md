@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-08-29 · docs-auditor · status: ACCURATE (1 finding repaired + 1 minor note) · F1: usage snippet used `platform_sync::SyncConfig` but SyncConfig is NOT re-exported from platform_sync — correct path is `oz_core::SyncConfig` (re-exported at oz_core/src/lib.rs:236) · note: the directory tree (queue/, transport/, replication/, conflict/) is illustrative — actual layout is flat src/ files queue.rs, transport.rs, replication.rs, conflict.rs (+ daemon.rs, pg_daemon.rs, pg_transport.rs) · crate is platform-sync (Cargo.toml name); SyncEngine (src/lib.rs:1518) and run_sync_cycle (lib.rs:1784) verified; offline-first + LWW conflict resolution matches implementation -->
+<!-- Audit stamp: 2026-08-29 · docs-auditor · status: ACCURATE (1 finding repaired + 1 minor note) · F1: usage snippet used `platform_sync::SyncConfig` but SyncConfig is NOT re-exported from platform_sync — correct path is `kasirmu_core::SyncConfig` (re-exported at kasirmu_core/src/lib.rs:236) · note: the directory tree (queue/, transport/, replication/, conflict/) is illustrative — actual layout is flat src/ files queue.rs, transport.rs, replication.rs, conflict.rs (+ daemon.rs, pg_daemon.rs, pg_transport.rs) · crate is platform-sync (Cargo.toml name); SyncEngine (src/lib.rs:1518) and run_sync_cycle (lib.rs:1784) verified; offline-first + LWW conflict resolution matches implementation -->
 
 # platform-sync
 
@@ -41,7 +41,7 @@ removed by the caller after the run (`docker stop oz-pos-pg-sync-tdd`).
 
 ```
 platform/sync/
-├── queue/       — Local change log (wraps oz-core offline_queue table)
+├── queue/       — Local change log (wraps kasirmu-core offline_queue table)
 ├── transport/   — HTTP client for communicating with remote sync server
 ├── replication/ — Push + pull orchestration
 └── conflict/    — Conflict resolution strategies (LWW initially)
@@ -51,10 +51,35 @@ platform/sync/
 
 ```rust
 use platform_sync::SyncEngine;
-use oz_core::{SyncConfig, db::Store};
+use kasirmu_core::{SyncConfig, db::Store};
 
 let engine = SyncEngine::new(config);
 let result = engine.run_sync_cycle(&store).await?;
 ```
+
+## Event-Triggered Wakeup (SYNC-EW)
+
+Both `SyncDaemon` and `PgSyncDaemon` expose a `nudge()` method that signals the
+run loop to wake up immediately and run a sync tick, instead of waiting for the
+next periodic interval (60–120 s for HTTP, 60 s for PG).
+
+```rust
+// From any Tauri command that has AppState:
+state.sync_daemon.nudge();
+state.pg_sync_daemon.nudge();
+```
+
+The run loop listens on a `tokio::sync::Notify` as a third `select!` arm. After
+the notifier fires, the daemon sleeps a 1.5 s debounce window to coalesce rapid
+bursts (e.g. barcode-scan batch) before running a single sync cycle.
+
+**Offline resilience:** `nudge()` is fire-and-forget. If the daemon cannot reach
+the server the item stays in `offline_queue` and the normal exponential backoff
+handles retry — the wakeup path does not change failure handling.
+
+**Wiring:** `apps/desktop-tauri/src/commands/pos.rs` calls `nudge()` after a
+successful `complete_sale_scoped`. The tablet uses an `Arc<Notify>` field on
+`AppState` (`sync_wakeup`) that the inline sync daemon in `apps/mobile-tauri/src/lib.rs`
+selects on.
 
 > last audited 29-08-26 by docs-auditor

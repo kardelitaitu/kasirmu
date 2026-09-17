@@ -49,7 +49,7 @@ status: Implemented (2026-08-03)
 > a property of a command nobody invokes automatically. That wiring remains owner territory.
 
 **Date:** 2026-08-03
-**Author:** Architecture Team & OZ-POS Contributors
+**Author:** Architecture Team & kasir.mu Contributors
 **Tags:** reliability, panic, unwrap, expect, error-handling, RUST-07, enforcement
 
 ---

@@ -1,5 +1,5 @@
 import { useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
 import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import ProductLookupScreen from '@/features/products/ProductLookupScreen';

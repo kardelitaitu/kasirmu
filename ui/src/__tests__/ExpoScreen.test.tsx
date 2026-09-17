@@ -53,7 +53,7 @@ vi.mock('@/features/kds/hooks/useTicketSla', () => ({
   useTicketSla: () => ({ level: 'green', display: '0s', elapsedSeconds: 0 }),
 }));
 
-vi.mock('@/frontend/shared/useSound', () => ({
+vi.mock('@/components/useSound', () => ({
   useSound: () => ({ playAlert: vi.fn(), speak: mockSpeak, setSoundEnabled: vi.fn() }),
 }));
 

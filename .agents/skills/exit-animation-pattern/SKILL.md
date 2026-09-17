@@ -1,13 +1,13 @@
 ---
 name: exit-animation-pattern
-description: OZ-POS convention for symmetric CSS entry/exit animations + the React state machine that gates a dismiss through the CSS animation duration. Applies to pills, badges, banners, modals, and any in-flight overlay whose dismissal currently snaps to unmount. Use when adding a smooth fade-out sibling to an existing entry animation, or when reviewing a polish commit for the four required components.
+description: kasir.mu convention for symmetric CSS entry/exit animations + the React state machine that gates a dismiss through the CSS animation duration. Applies to pills, badges, banners, modals, and any in-flight overlay whose dismissal currently snaps to unmount. Use when adding a smooth fade-out sibling to an existing entry animation, or when reviewing a polish commit for the four required components.
 ---
 
 <!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — surface-classification row cited nonexistent commit 8d2c67b for payment-modal--exit symmetry; corrected to d6f3ae97, verified present in PaymentModal.css with mirrored slide-up keyframes) · verified this pass: ui/src/utils/animation.ts animDuration(ms) returns 0 under prefers-reduced-motion; commits fcf1d07 (undo-pill), 3dd919d (cousin-pos), 1fcb1dec (cousin-surfaces) all resolve; CSS classes pos-cart-undo-bar, pos-cart-line-wrap--exiting, pos-hold-modal, pos-close-shift-modal, pos-cart-hold-badge, pos-shift-error, payment-modal--exit all present under ui/src; relative links to ui files (../../../ui/…) and sibling skills (../) resolve · history: 31-08 docs-auditor fixed 5 broken relative links (three ui-file links ../../ui/… → ../../../ui/…, two sibling-skill links ./ → ../) -->
 
 # Exit-Animation Pattern
 
-The OZ-POS UI convention for dismissing UI elements gracefully. When an element enters with a CSS keyframe animation today, **its dismissal must run a mirror keyframe** rather than snapping to unmount. This skill packages the four moving parts (CSS mirror + `--exiting` class, React exiting flag, unmount-safe timer, race-safe cleanup) so you don't re-invent the wheel on each new surface.
+The kasir.mu UI convention for dismissing UI elements gracefully. When an element enters with a CSS keyframe animation today, **its dismissal must run a mirror keyframe** rather than snapping to unmount. This skill packages the four moving parts (CSS mirror + `--exiting` class, React exiting flag, unmount-safe timer, race-safe cleanup) so you don't re-invent the wheel on each new surface.
 
 Reference implementation: commit [`fcf1d07`](https://github.com/) on branch `0.0.3` — the undo-pill in [`ui/src/features/sales/PosScreen.tsx`](../../../ui/src/features/sales/PosScreen.tsx) and [`ui/src/features/sales/CartPanel.css`](../../../ui/src/features/sales/CartPanel.css).
 
@@ -249,7 +249,7 @@ The `PosScreen` undo-bar uses `useRef` instead of `useEffect`-driven timer so it
 
 | Need | Reference | Why |
 |------|-----------|-----|
-| Duration | `var(--duration-200)` (CSS), `animDuration(200)` (JS) | They collapse to `0` under reduced-motion in `frontend/themes/tokens.css`. |
+| Duration | `var(--duration-200)` (CSS), `animDuration(200)` (JS) | They collapse to `0` under reduced-motion in `ui/src/theme/tokens.css`. |
 | Easing | `var(--ease-out)` | Project-wide standard; see [`ui-components`](../ui-components/SKILL.md) styling section. |
 | `pointer-events` | inline `none` (CSS) | No token needed. |
 | `clearTimeout` | browser built-in | No token. |
@@ -336,4 +336,4 @@ When the next polish pass lands, the contributor should be able to point at this
 5. **In-flight async dismiss handlers.** If the dismiss triggers an IPC call (`holdCart`, `pay` etc.), the in-flight promise may still resolve after the element unmounts. The IPC wrappers under `@/api/*` already handle this — don't add an additional guard inside the pattern.
 6. **React strict-mode double-mount.** React 18 strict mode mounts components twice in dev. Without unmount cleanup, the first timer survives the second mount and you see duplicate unmounts in dev only. Always clear on unmount.
 
-> last audited 03-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat

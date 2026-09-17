@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { screen, cleanup } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
-import { withFluent } from '@/locales/test-utils';
+import { withFluent } from '@/i18n/test-utils';
 import sharedFtl from '@/locales/shared.ftl?raw';
 import { AppBootSplash } from '@/components/AppBootSplash';
 

@@ -908,7 +908,7 @@ fn snapshot_tax_rate_accepts_a_payload_without_the_scope_keys() {
 #[test]
 fn snapshot_tax_rate_round_trips_scope_and_window_verbatim() {
     // Values are carried, not re-derived: the exclusive-end rule lives in
-    // oz_core::db::tax and must not be restated per transport.
+    // kasirmu_core::db::tax and must not be restated per transport.
     let json = r#"{"id":"t-2","name":"Jakarta","rate_bps":1100,
                    "legal_entity_id":null,"location_id":"loc-jkt",
                    "effective_from":"2026-01-01","effective_to":"2027-01-01"}"#;

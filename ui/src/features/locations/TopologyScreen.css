@@ -72,7 +72,7 @@
     box-shadow var(--duration-150) var(--ease-out);
 }
 
-/* Canonical OZ-POS input focus (cat-mgmt-input, create-pin-input): the
+/* Canonical kasir.mu input focus (cat-mgmt-input, create-pin-input): the
    border picks up the focus colour with an inset 1px ring — an OUTset
    outline here floated 1px past the compact toolbar field and collided
    with the adjacent Create button. */

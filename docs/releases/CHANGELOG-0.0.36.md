@@ -1,4 +1,4 @@
-# Changelog — OZ-POS 0.0.36
+# Changelog — kasir.mu 0.0.36
 
 **Release date:** 2026-09-04
 **Commits since 0.0.35:** 73 (`d318e4ea..82697c99`)

@@ -2,7 +2,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (platform-core slice B: auth deep read)
 crate: platform-core | status: SAFE | lint: CLEAN
-findings: exemplary — Argon2id with per-hash salts; malformed hashes AND the sync snapshot placeholder fail closed to Ok(false) (test-pinned, cross-referenced with oz-core SNAPSHOT_PIN_HASH_PLACEHOLDER so imported operators cannot log in without a credential)
+findings: exemplary — Argon2id with per-hash salts; malformed hashes AND the sync snapshot placeholder fail closed to Ok(false) (test-pinned, cross-referenced with kasirmu-core SNAPSHOT_PIN_HASH_PLACEHOLDER so imported operators cannot log in without a credential)
 next: none | perf: Argon2 default params suit local PIN cadence
 */
 //!
@@ -123,7 +123,7 @@ mod tests {
 
     #[test]
     fn verify_snapshot_placeholder_hash_fails_closed() {
-        // The sync-import placeholder (oz-core SNAPSHOT_PIN_HASH_PLACEHOLDER)
+        // The sync-import placeholder (kasirmu-core SNAPSHOT_PIN_HASH_PLACEHOLDER)
         // must not verify against any PIN and must not surface an internal error.
         assert!(!verify_pin("1234", "!snapshot-no-credential!").unwrap());
         assert!(!verify_pin("", "!snapshot-no-credential!").unwrap());

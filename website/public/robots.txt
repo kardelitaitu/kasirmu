@@ -2,3 +2,5 @@ User-agent: *
 Allow: /
 
 Sitemap: https://kasir.mu/sitemap-index.xml
+
+# LLM content: https://kasir.mu/llms.txt

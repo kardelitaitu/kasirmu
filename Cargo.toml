@@ -19,8 +19,8 @@ members = [
     "platform/*",
     "foundation",
     "apps/cloud-server",
-    "apps/desktop-client",
-    "apps/tablet-client",
+    "apps/desktop-tauri",
+    "apps/mobile-tauri",
 ]
 
 # Standalone crates that pin their own dependency graph and must NOT
@@ -28,8 +28,8 @@ members = [
 # `[workspace]` table; listing them here documents the intent and keeps
 # `cargo package`/path-dependency discovery from pulling them back in.
 exclude = [
-    "fuzz",
-    "fuzz/hfuzz",
+    "tools/fuzz",
+    "tools/fuzz/hfuzz",
     "scripts/updater-compat-check",
 ]
 
@@ -40,28 +40,28 @@ rust-version = "1.88"   # axum/tower-http deps (time 0.3.47+) require ≥ 1.88
 license = "SEE LICENSE IN LICENSE"
 license-file = "LICENSE"
 publish = false
-authors = ["OZ-POS contributors"]
-repository = "https://github.com/kardelitaitu/oz-pos"
+authors = ["kasir.mu contributors"]
+repository = "https://github.com/kardelitaitu/oz-pos"  # TODO: update after repo rename
 readme = "README.md"
 
 [workspace.dependencies]
-# all crates import from here: oz-core = { workspace = true }
-oz-api = { path = "crates/oz-api" }
-oz-core = { path = "crates/oz-core" }
-oz-bridge = { path = "crates/oz-bridge" }
-oz-crypto = { path = "crates/oz-crypto" }
-oz-lan = { path = "crates/oz-lan" }
-oz-local-api = { path = "crates/oz-local-api" }
-oz-hal = { path = "crates/oz-hal" }
-oz-lua = { path = "crates/oz-lua" }
-oz-plugin = { path = "crates/oz-plugin" }
-oz-security = { path = "crates/oz-security" }
-oz-notification = { path = "crates/oz-notification" }
-oz-payment = { path = "crates/oz-payment" }
-oz-reporting = { path = "crates/oz-reporting" }
-oz-logging = { path = "crates/oz-logging" }
-oz-media = { path = "crates/oz-media" }
-oz-cli = { path = "crates/oz-cli" }
+# all crates import from here: kasirmu-core = { workspace = true }
+kasirmu-api = { path = "crates/kasirmu-api" }
+kasirmu-core = { path = "crates/kasirmu-core" }
+kasirmu-bridge = { path = "crates/kasirmu-bridge" }
+kasirmu-crypto = { path = "crates/kasirmu-crypto" }
+kasirmu-lan = { path = "crates/kasirmu-lan" }
+kasirmu-local-api = { path = "crates/kasirmu-local-api" }
+kasirmu-hal = { path = "crates/kasirmu-hal" }
+kasirmu-lua = { path = "crates/kasirmu-lua" }
+kasirmu-plugin = { path = "crates/kasirmu-plugin" }
+kasirmu-security = { path = "crates/kasirmu-security" }
+kasirmu-notification = { path = "crates/kasirmu-notification" }
+kasirmu-payment = { path = "crates/kasirmu-payment" }
+kasirmu-reporting = { path = "crates/kasirmu-reporting" }
+kasirmu-logging = { path = "crates/kasirmu-logging" }
+kasirmu-media = { path = "crates/kasirmu-media" }
+kasirmu-cli = { path = "crates/kasirmu-cli" }
 qris-core = { path = "crates/qris-core" }
 foundation = { path = "foundation" }
 platform-core = { path = "platform/core" }
@@ -79,7 +79,7 @@ modules-loyalty = { path = "modules/loyalty" }
 # ── Planned verticals (stub modules) ──────────────────────────────────
 # Each already exists as a registered no-op Module implementing the
 # kernel lifecycle, owning its manifest.json + feature flag, with the
-# domain logic still living in oz-core / desktop-client. See
+# domain logic still living in kasirmu-core / desktop-tauri. See
 # modules/README.md for the promotion path from stub to owning module.
 modules-purchasing = { path = "modules/purchasing" }
 modules-promotions = { path = "modules/promotions" }
@@ -131,7 +131,7 @@ hex = "0.4"
 tower = { version = "0.5", features = ["limit"] }
 http-body-util = "0.1"
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls"] }
-# Cloud sync Postgres transport — one canonical spec for oz-api,
+# Cloud sync Postgres transport — one canonical spec for kasirmu-api,
 # platform-sync, and apps/cloud-server (feature-unified at build time).
 tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-serde_json-1"] }
 deadpool-postgres = { version = "0.14", features = ["serde"] }
@@ -183,15 +183,15 @@ wiremock = "0.6.5"
 # in `lints`"), so a crate cannot relax a workspace lint from its manifest.
 #
 # Second, and decisively: `unsafe_code` is not uniformly deniable here.
-# `oz-logging` calls syslog/eventlog through FFI (`syslog.rs`,
-# `eventlog.rs`) and `oz-notification` uses `unsafe` in its tests, and
+# `kasirmu-logging` calls syslog/eventlog through FFI (`syslog.rs`,
+# `eventlog.rs`) and `kasirmu-notification` uses `unsafe` in its tests, and
 # neither currently carries a crate-level opt-out — adding a workspace-wide
 # deny would break both builds, which is out of scope for a plumbing change.
 #
 # The crates that DO deny it keep the file-local `#![deny(unsafe_code)]`
 # inner attribute, which stays the reviewable place for an exception:
-# `oz-lua` narrows two `unsafe impl Send/Sync` with `#[allow(unsafe_code)]`
-# plus a `// SAFETY:` rationale, and `oz-security` scopes its Windows
+# `kasirmu-lua` narrows two `unsafe impl Send/Sync` with `#[allow(unsafe_code)]`
+# plus a `// SAFETY:` rationale, and `kasirmu-security` scopes its Windows
 # CredRead/CredWrite FFI behind `#![allow(unsafe_code)]` in `windows.rs`.
 [workspace.lints.rust]
 missing_docs = "warn"
@@ -204,12 +204,12 @@ codegen-units = 8
 strip = "symbols"
 overflow-checks = true
 
-# oz-pos-app (Tauri shell) — optimized for the Tauri binary.
+# kasirmu-app (Tauri shell) — optimized for the Tauri binary.
 # Cargo only allows opt-level, codegen-units, debug, strip,
 # debug-assertions, and overflow-checks in package profiles.
 # lto and panic must be set at the workspace level when we're
 # closer to release.
-[profile.release.package.oz-pos-app]
+[profile.release.package.kasirmu-app]
 codegen-units = 1
 opt-level = "s"
 strip = true

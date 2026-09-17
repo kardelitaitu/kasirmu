@@ -118,13 +118,13 @@ export const brandHandlers: Record<string, MockHandler> = {
   'get_brand_settings': () => ({
     primary_colour: '#147EFB',
     logo_path: null,
-    store_name: 'OZ-POS Demo',
+    store_name: 'kasir.mu Demo',
     colour_hover: null,
   }),
   'get_brand_settings_scoped': () => ({
     primary_colour: '#147EFB',
     logo_path: null,
-    store_name: 'OZ-POS Demo',
+    store_name: 'kasir.mu Demo',
     colour_hover: null,
   }),
 };

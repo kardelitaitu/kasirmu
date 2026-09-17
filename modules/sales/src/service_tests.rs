@@ -23,7 +23,7 @@ fn cart_with_line() -> Cart {
 }
 
 fn fresh_conn() -> rusqlite::Connection {
-    oz_core::migrations::fresh_db()
+    kasirmu_core::migrations::fresh_db()
 }
 
 #[test]

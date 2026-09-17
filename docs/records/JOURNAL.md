@@ -2226,7 +2226,7 @@ The uniform whole-wire affordance (click = select + cycle) applies even mid-gest
 
 2. **ThemeProvider cleaned up** — Removed `BrandInfo` interface, `brand`/`updateBrand` state (now handled by BrandContext), and the direct `getBrandSettings` effect. Now uses `useBrand()` from BrandContext to reactively apply the accent palette whenever `primary_colour` changes.
 
-3. **AppLayout sidebar header** — Replaced hardcoded "OZ-POS" with dynamic brand logo (if set) + store name (fallback to "OZ-POS"). Also sets `document.title` reactively to the store name.
+3. **AppLayout sidebar header** — Replaced hardcoded "kasir.mu" with dynamic brand logo (if set) + store name (fallback to "kasir.mu"). Also sets `document.title` reactively to the store name.
 
 4. **AppearanceSettings** — Replaced `useTheme().updateBrand` with `useBrand().refreshBrandSettings()`. `handlePickLogo` now also refreshes brand settings immediately so the sidebar shows the new logo without waiting for "Save".
 

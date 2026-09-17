@@ -33,8 +33,8 @@
  */
 import { useCallback, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
-import type { useToast } from '@/frontend/shared/Toast';
+import { requiredLocalized } from '@/components';
+import type { useToast } from '@/components/Toast';
 import { voidPendingSale, type CompleteSaleResult } from '@/api/sales';
 import { qrisAutoChargeScoped, qrisAutoStatusScoped } from '@/api/qris-auto';
 import { plainErrorMessage } from '@/utils/app-error';

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { getKeyRotationInfo } from '@/api/security';
 
 const ROTATION_DAYS = 90;

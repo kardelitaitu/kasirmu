@@ -9,9 +9,9 @@
    :30 --color-warning) are ported as the bare token, because that token resolves in all
    three theme blocks and the literal could only ever mask its absence.
 
-   READ THIS BEFORE TRUSTING THE SURFACE: crates/oz-hal/src/drivers/scale.rs is a stub -
+   READ THIS BEFORE TRUSTING THE SURFACE: crates/kasirmu-hal/src/drivers/scale.rs is a stub -
    HidWeightScale::read_weight returns NotFound unconditionally, nothing calls
-   register_scale(), and crates/oz-hal/src/bootstrap.rs:4 says the wiring waits on the
+   register_scale(), and crates/kasirmu-hal/src/bootstrap.rs:4 says the wiring waits on the
    driver. So the indicator mounts, polls every 2s and sits permanently in --idle: the
    --stable, --unstable, -dot--stable, -dot--unstable and -actions rules style states no
    device can produce today. They are ported because the DRIVER unblocks them, not the

@@ -91,7 +91,7 @@ pub const SYNC_API_KEY: &str = "sync_api_key";
 /// not in Rust outside tests - so refusing it breaks nothing that works
 /// today. What it was costing was egress: on no deny list, it left the
 /// device on BOTH untrusted lanes (the `settings.update` sync queue and the
-/// portable `.ozpkg` package) as a duplicate cleartext secret.
+/// portable `.kasirpkg` package) as a duplicate cleartext secret.
 pub const AUTH_TOKEN: &str = "sync.auth_token";
 /// Whether cloud sync is enabled. `"1"` or `"0"`. Default `"0"`.
 pub const SYNC_ENABLED: &str = "sync_enabled";
@@ -128,7 +128,7 @@ pub const PG_SYNC_REQUIRE_TLS: &str = "pg_sync.require_tls";
 /// Credential-bearing even though it is spelled as an endpoint: the
 /// URL-embedded form `redis://:PASSWORD@host:6379` is what operators
 /// actually save (and what `config_validator` already redacts before
-/// logging — see `crates/oz-core/src/config_validator.rs`, COR-3), so the
+/// logging — see `crates/kasirmu-core/src/config_validator.rs`, COR-3), so the
 /// whole value is a password in every respect. It is therefore on
 /// [`SECRET_KEY_DENY_LIST`]: never readable through the raw `get_setting`
 /// IPC, never replicated to a peer, never packaged. The daemon keeps
@@ -197,7 +197,7 @@ pub const EDC_DEFAULT_TERMINAL: &str = "edc.default_terminal";
 // ── Regional defaults ─────────────────────────────────────
 /// Organization-default BCP-47 locale, written by the Settings → General
 /// language selector. Named here because the literal previously had no reader
-/// anywhere in the repo; `oz_core::regional` now consumes it as the
+/// anywhere in the repo; `kasirmu_core::regional` now consumes it as the
 /// organization layer of the locale chain.
 pub const UI_LOCALE: &str = "ui.locale";
 
@@ -205,15 +205,15 @@ pub const UI_LOCALE: &str = "ui.locale";
 //
 // The two deny lists at the foot of this module are the ONE shared source of
 // truth for both shells: the desktop lane re-exports them through
-// `oz_bridge::settings` and `apps/tablet-client` imports them directly. They
+// `kasirmu_bridge::settings` and `apps/mobile-tauri` imports them directly. They
 // are built FROM the constants declared here — never from retyped literals —
 // so renaming a key value moves the guard with it instead of silently
 // dropping coverage (the original `sync.terminal_secret` typo left the
 // stored key `sync_terminal_secret` readable through `get_setting` and
-// exportable in a `.ozpkg` for exactly that reason).
+// exportable in a `.kasirpkg` for exactly that reason).
 
 /// Per-install Local API JWT signing secret. Mirrors
-/// `oz_local_api::SETTINGS_SECRET`; declared as a literal here because
+/// `kasirmu_local_api::SETTINGS_SECRET`; declared as a literal here because
 /// platform-core must not depend on the Local API crate.
 pub const LOCAL_API_SECRET: &str = "local_api.secret";
 /// Serialised SMTP account JSON, whose `password` field is encrypted at rest.
@@ -258,7 +258,7 @@ pub const HARDWARE_FINGERPRINT: &str = "hardware_fingerprint";
 /// ([`REDIS_URL`] does: `redis://:PASSWORD@host:6379` is the form operators
 /// save), so refusing the endpoint is refusing the secret, not the host.
 /// Adding a credential constant here
-/// is mandatory; `crates/oz-bridge/src/settings_tests.rs` walks every
+/// is mandatory; `crates/kasirmu-bridge/src/settings_tests.rs` walks every
 /// credential-family constant declared in this module and fails if any of
 /// them is missing from [`SECRET_KEY_DENY_LIST`] or
 /// [`NON_EXPORTABLE_DEVICE_KEYS`].
@@ -307,7 +307,7 @@ pub const NON_EXPORTABLE_DEVICE_KEYS: &[&str] =
 /// daemon_tick.rs:292). Nothing signs or MACs an item (queue.rs:10-12: the
 /// sender is not an authority), so any peer in the tenant, or the server
 /// operator, can name these six today. The sharpest is not spelled like a
-/// secret at all: crates/oz-core/src/sync_auth.rs:72 sends Authorization:
+/// secret at all: crates/kasirmu-core/src/sync_auth.rs:72 sends Authorization:
 /// Bearer <sync api key> to whatever `sync_server_url` currently holds, so
 /// planting that one name exfiltrates a credential without ever naming a
 /// credential key. The rest switch or repoint the transport tenant-wide.
@@ -331,11 +331,11 @@ pub const NON_EXPORTABLE_DEVICE_KEYS: &[&str] =
 ///
 /// Each name here is refused at the door AND is never a queue producer, so
 /// refusing it drops no working traffic. The four writers of `sync_server_url`
-/// are crates/oz-bridge/src/sync.rs:71, apps/tablet-client/src/commands/sync.rs:87,
-/// apps/desktop-client/src/sync_bootstrap.rs:83 and
+/// are crates/kasirmu-bridge/src/sync.rs:71, apps/mobile-tauri/src/commands/sync.rs:87,
+/// apps/desktop-tauri/src/sync_bootstrap.rs:83 and
 /// platform/sync/src/daemon_tick.rs:83 - none calls
 /// `Store::enqueue_settings_update_superseding`
-/// (crates/oz-core/src/db/offline.rs:194). Note that last one writes this row
+/// (crates/kasirmu-core/src/db/offline.rs:194). Note that last one writes this row
 /// from a network RESPONSE, outside the ingest lane entirely (the ADR 11
 /// migration redirect), so this list does not reach that path either.
 ///
@@ -376,7 +376,7 @@ pub fn is_peer_named_hazard_key(key: &str) -> bool {
 /// `pub` so the lifecycle-manager prefix rule
 /// ([`crate::settings::is_manager_owned_key`]) AND the one comparison of this
 /// family that lives in another crate — the manager-owner label of the bridge
-/// lane (`crates/oz-bridge/src/settings.rs`, `managed_key_owner`) — fold a
+/// lane (`crates/kasirmu-bridge/src/settings.rs`, `managed_key_owner`) — fold a
 /// candidate through THIS function instead of writing a second normalisation:
 /// the credential half and the prefix half of one ingest boolean have to answer
 /// a near-miss spelling the same way, or the boolean has two matching semantics
@@ -434,7 +434,7 @@ pub fn normalised_candidate(key: &str) -> String {
 /// equality against the list, exactly the comparison [`is_secret_setting_key`]
 /// already made, so nothing about a verdict moves tonight. The consequence,
 /// stated rather than discovered later: `smtp_config:tenant-a`, the
-/// `{base}:{tenant}` form `crates/oz-api/src/pg.rs` writes through
+/// `{base}:{tenant}` form `crates/kasirmu-api/src/pg.rs` writes through
 /// `scoped_setting_key`, resolves to `None` even though it is the same SMTP
 /// secret. That is a KNOWN BLIND SPOT with a recorded owner — the
 /// credential-suffix wave — pinned by

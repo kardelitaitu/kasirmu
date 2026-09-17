@@ -29,7 +29,7 @@ Write-Host "Dropping and recreating public schema..."
 docker exec $container psql -U postgres -d postgres -c "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;"
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
-$pgInit = Join-Path $PSScriptRoot "..\crates\oz-core\migrations\20260813_init.pg.sql"
+$pgInit = Join-Path $PSScriptRoot "..\crates\kasirmu-core\migrations\20260813_init.pg.sql"
 if (-not (Test-Path $pgInit)) {
     Write-Host "❌ PG_INIT file not found at $pgInit"
     exit 1

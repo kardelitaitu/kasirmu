@@ -12,6 +12,6 @@
 #
 [tarpaulin]
 manifest-path = "Cargo.toml"
-packages = ["oz-core", "oz-hal", "oz-lua"]
+packages = ["kasirmu-core", "kasirmu-hal", "kasirmu-lua"]
 out = ["Html", "Json"]
 output-dir = "coverage/"

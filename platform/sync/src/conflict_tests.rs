@@ -8,7 +8,7 @@
 //! `mod tests` in `conflict.rs` (F-018).
 
 use super::*;
-use oz_core::offline::OfflineQueueStatus;
+use kasirmu_core::offline::OfflineQueueStatus;
 
 fn make_item(created_at: &str, action: &str) -> OfflineQueueItem {
     OfflineQueueItem {
@@ -21,7 +21,7 @@ fn make_item(created_at: &str, action: &str) -> OfflineQueueItem {
         created_at: created_at.to_owned(),
         synced_at: None,
         tenant_id: "default".into(),
-        priority: oz_core::offline::SyncPriority::Normal,
+        priority: kasirmu_core::offline::SyncPriority::Normal,
     }
 }
 
@@ -46,7 +46,7 @@ fn make_item_with_version(
         created_at: created_at.to_owned(),
         synced_at: None,
         tenant_id: "default".into(),
-        priority: oz_core::offline::SyncPriority::Normal,
+        priority: kasirmu_core::offline::SyncPriority::Normal,
     }
 }
 
@@ -71,7 +71,7 @@ fn make_stock_item(created_at: &str, action: &str, delta: i64, sku: &str) -> Off
         created_at: created_at.to_owned(),
         synced_at: None,
         tenant_id: "default".into(),
-        priority: oz_core::offline::SyncPriority::Normal,
+        priority: kasirmu_core::offline::SyncPriority::Normal,
     }
 }
 

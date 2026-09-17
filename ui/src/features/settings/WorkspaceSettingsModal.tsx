@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { createPortal } from 'react-dom';
 import { Localized, useLocalization } from '@fluent/react';
 import { useExitAnimation } from '@/hooks/useExitAnimation';

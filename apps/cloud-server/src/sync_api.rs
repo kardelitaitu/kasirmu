@@ -27,7 +27,7 @@ use serde::Deserialize;
 use sha2::Digest;
 use tokio::sync::Mutex;
 
-use oz_api::auth::{ApiTokenClaims, auth_middleware};
+use kasirmu_api::auth::{ApiTokenClaims, auth_middleware};
 use platform_sync::transport::{PullRequest, PullResponse, PushOutcome, PushResponse};
 
 use crate::metrics;
@@ -221,7 +221,7 @@ pub async fn plan_middleware(
     next: middleware::Next,
 ) -> Result<axum::response::Response, axum::response::Response> {
     use axum::response::IntoResponse;
-    use oz_core::TenantPlan;
+    use kasirmu_core::TenantPlan;
 
     if !enforce_plans {
         return Ok(next.run(request).await);
@@ -229,7 +229,7 @@ pub async fn plan_middleware(
 
     let tenant_id = request
         .extensions()
-        .get::<oz_api::auth::ApiTokenClaims>()
+        .get::<kasirmu_api::auth::ApiTokenClaims>()
         .and_then(|claims| claims.tenant_id.as_deref())
         .unwrap_or("default");
 
@@ -260,7 +260,7 @@ pub async fn plan_middleware(
 async fn push_handler(
     State(state): State<SyncState>,
     Extension(claims): Extension<ApiTokenClaims>,
-    axum::Json(items): axum::Json<Vec<oz_core::offline::OfflineQueueItem>>,
+    axum::Json(items): axum::Json<Vec<kasirmu_core::offline::OfflineQueueItem>>,
 ) -> Result<axum::Json<PushResponse>, (axum::http::StatusCode, String)> {
     let start = std::time::Instant::now();
 
@@ -282,7 +282,8 @@ async fn push_handler(
     // batch outcomes can be reassembled in request order — the client
     // zips `pending` against `results` by index (apply_push_results), so
     // a reordering would mark the WRONG items as synced/failed.
-    let mut valid_items: Vec<oz_core::offline::OfflineQueueItem> = Vec::with_capacity(items.len());
+    let mut valid_items: Vec<kasirmu_core::offline::OfflineQueueItem> =
+        Vec::with_capacity(items.len());
     let mut valid_indexes: Vec<usize> = Vec::with_capacity(items.len());
     for (idx, item) in items.iter().enumerate() {
         if !state.skip_push_validation && uuid::Uuid::parse_str(&item.id).is_err() {
@@ -410,7 +411,7 @@ async fn pull_handler(
         (Some(ts), Some(cid)) => Some((ts.as_str(), cid.as_str())),
         _ => None,
     };
-    let mut items: Vec<oz_core::offline::OfflineQueueItem> = store
+    let mut items: Vec<kasirmu_core::offline::OfflineQueueItem> = store
         .pull_items(tenant_id, req.since.as_deref(), cursor, limit)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -481,7 +482,7 @@ fn json_snapshot_response(bytes: Vec<u8>, if_none_match: Option<&str>) -> axum::
 ///
 /// Both `POST /api/v1/tax-rates` and `POST /api/v1/users` now stamp
 /// `tenant_id` from JWT claims (same pattern as `create_product` in
-/// `oz-api/src/routes/products.rs`). New tax rates and users are
+/// `kasirmu-api/src/routes/products.rs`). New tax rates and users are
 /// correctly scoped per-tenant for snapshot isolation.
 #[tracing::instrument(skip(state, headers), fields(tenant_id = claims.tenant_id.as_deref().unwrap_or("default")))]
 async fn snapshot_handler(

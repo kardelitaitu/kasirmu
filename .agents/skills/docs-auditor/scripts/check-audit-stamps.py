@@ -103,8 +103,11 @@ def main() -> int:
                 continue
 
             raw = FOOTER_RE.findall(text)
-            if raw and not footers:
-                bad_dates.append((rel, "-".join(raw[-1])))
+            for dd, mm, yy in raw:
+                try:
+                    _dt.date(2000 + int(yy), int(mm), int(dd))
+                except ValueError:
+                    bad_dates.append((rel, "%s-%s-%s" % (dd, mm, yy)))
 
             if not stamps:
                 footer_only.append((rel, footers[-1]))

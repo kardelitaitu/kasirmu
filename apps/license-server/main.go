@@ -1042,7 +1042,7 @@ func safePrefix(s string, n int) string {
 // SubscriptionPayload is the JSON structure signed by the license server.
 // This is the payload the POS stores locally and verifies against the
 // embedded public key. Must stay in sync with Rust SignedSubscriptionPayload
-// in crates/oz-core/src/license_verification.rs.
+// in crates/kasirmu-core/src/license_verification.rs.
 type SubscriptionPayload struct {
 	TenantID string `json:"tenant_id"`
 	TierKey  string `json:"tier_key"`

@@ -4,7 +4,7 @@
 # Verifies that BOTH OZ-POS container images survive a full container
 # replacement on their named volumes, exactly as production restarts them:
 #
-#   cloud   — SQLite at OZ_DB_PATH=/data/oz-pos.db on a named volume.
+#   cloud   — SQLite at OZ_DB_PATH=/data/kasir.db on a named volume.
 #             Creates a product via the API, replaces the container,
 #             asserts the product is still readable.
 #   license — PocketBase at /pb/pb_data on a named volume. Creates a
@@ -12,7 +12,7 @@
 #             asserts the key survived and the superuser still authenticates.
 #
 # Usage:
-#   OZ_LICENSE_PRIVATE_KEY="$(cat crates/oz-core/oz-license-private.pem)" \
+#   OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)" \
 #     bash scripts/verify-docker-persistence.sh
 #
 # A throwaway RSA key is generated if OZ_LICENSE_PRIVATE_KEY is unset.
@@ -46,7 +46,7 @@ cleanup
 
 # ── Build both images ────────────────────────────────────────────────
 echo "── Building images ──"
-docker build -q -f Dockerfile.server -t "$CLOUD_IMG" . >/dev/null
+docker build -q -f ops/docker/Dockerfile.server -t "$CLOUD_IMG" . >/dev/null
 echo "cloud image built"
 docker build -q -f apps/license-server/Dockerfile -t "$LICENSE_IMG" apps/license-server >/dev/null
 echo "license image built"
@@ -63,7 +63,7 @@ echo "── Cloud: boot on fresh volume ──"
 docker volume create "$CLOUD_VOL" >/dev/null
 MSYS_NO_PATHCONV=1 docker run -d --name "$CLOUD_CONTAINER" \
     -v "$CLOUD_VOL:/data" \
-    -e OZ_DB_PATH=/data/oz-pos.db \
+    -e OZ_DB_PATH=/data/kasir.db \
     -e OZ_API_SECRET=persist-test-secret \
     -e OZ_API_PORT="$CLOUD_PORT" \
     -p "$CLOUD_PORT:$CLOUD_PORT" \
@@ -91,7 +91,7 @@ echo "── Cloud: replace container on same volume ──"
 docker rm -f "$CLOUD_CONTAINER" >/dev/null
 MSYS_NO_PATHCONV=1 docker run -d --name "$CLOUD_CONTAINER" \
     -v "$CLOUD_VOL:/data" \
-    -e OZ_DB_PATH=/data/oz-pos.db \
+    -e OZ_DB_PATH=/data/kasir.db \
     -e OZ_API_SECRET=persist-test-secret \
     -e OZ_API_PORT="$CLOUD_PORT" \
     -p "$CLOUD_PORT:$CLOUD_PORT" \

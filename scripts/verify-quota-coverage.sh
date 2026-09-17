@@ -52,15 +52,15 @@ TABLES="products|users|terminals|locations|workspace_instances"
 INSERT_RE="INSERT( OR (IGNORE|REPLACE))? INTO (${TABLES})[ (]"
 GATE_RE="enforce_[a-z_]*quota|ensure_quota_allows|enforce_creation_quota|quota_gate::"
 FN_RE="^[[:space:]]*(pub([[:space:]]+(crate|in|super))?[[:space:]]+)?(async[[:space:]]+)?(unsafe[[:space:]]+)?fn[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*"
-SCAN=(apps/desktop-client/src apps/tablet-client/src crates/oz-core/src)
+SCAN=(apps/desktop-tauri/src apps/mobile-tauri/src crates/kasirmu-core/src)
 
 # Whitelist: "file::fn | reason". A KNOWN-GAP reason stays visible.
 WHITELIST=(
-"crates/oz-core/src/sync_pull.rs::upsert_products | Cloud PULL mirror of hub-authored rows: the hub enforced the quota when the row was created, and re-gating a pull would make a tenant that legitimately grew past its limit fail to SYNC rather than fail to CREATE - that loses data instead of protecting it."
-"crates/oz-core/src/sync_pull.rs::upsert_users | Same pull-mirror class as upsert_products: the rows arrive from the hub, where the gated authoring door already ran."
-"apps/desktop-client/src/state.rs::seed_primary_store | First-run bootstrap of the ONE primary location an empty install needs, before any subscription row exists, so there is no tier to ask. Gating it makes a fresh install unbootable."
-"apps/desktop-client/src/commands/topology/commands.rs::apply_topology_diff | KNOWN-GAP (journal D54, RESOLVED by adoption - journal D65): topology nodes ARE constrained here - type allowlist, per-location caps, suspend_surplus - and the TopologyNodes marker dimension is now LANDED read-computed (8bae644e0: severity over iff quota_suspended or over limit, limit = sum of finite per-location caps, quota_count refuses TopologyNodes loudly). This entry stays as the record of the one create door that REJECTS rather than over-creates, so no marker overflow hook exists for a gate to check; it turns STALE the day apply_topology_diff grows an INSERT instead of being satisfied."
-"crates/oz-core/src/db/products_stock_query.rs::create_product_if_absent_in_tx | KNOWN-GAP: a PUBLIC Store create door with ZERO in-tree callers (git grep on the name matches only its own definition). Nothing ungated runs today, so this is not a live hole - but whoever wires it up must gate first, and this line is the tripwire that makes that visible the day it gains a caller."
+"crates/kasirmu-core/src/sync_pull.rs::upsert_products | Cloud PULL mirror of hub-authored rows: the hub enforced the quota when the row was created, and re-gating a pull would make a tenant that legitimately grew past its limit fail to SYNC rather than fail to CREATE - that loses data instead of protecting it."
+"crates/kasirmu-core/src/sync_pull.rs::upsert_users | Same pull-mirror class as upsert_products: the rows arrive from the hub, where the gated authoring door already ran."
+"apps/desktop-tauri/src/state.rs::seed_primary_store | First-run bootstrap of the ONE primary location an empty install needs, before any subscription row exists, so there is no tier to ask. Gating it makes a fresh install unbootable."
+"apps/desktop-tauri/src/commands/topology/commands.rs::apply_topology_diff | KNOWN-GAP (journal D54, RESOLVED by adoption - journal D65): topology nodes ARE constrained here - type allowlist, per-location caps, suspend_surplus - and the TopologyNodes marker dimension is now LANDED read-computed (8bae644e0: severity over iff quota_suspended or over limit, limit = sum of finite per-location caps, quota_count refuses TopologyNodes loudly). This entry stays as the record of the one create door that REJECTS rather than over-creates, so no marker overflow hook exists for a gate to check; it turns STALE the day apply_topology_diff grows an INSERT instead of being satisfied."
+"crates/kasirmu-core/src/db/products_stock_query.rs::create_product_if_absent_in_tx | KNOWN-GAP: a PUBLIC Store create door with ZERO in-tree callers (git grep on the name matches only its own definition). Nothing ungated runs today, so this is not a live hole - but whoever wires it up must gate first, and this line is the tripwire that makes that visible the day it gains a caller."
 )
 
 fn_name_at() { # FILE LINE -> name of the closest fn signature at or above LINE

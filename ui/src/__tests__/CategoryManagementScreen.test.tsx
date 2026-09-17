@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import CategoryManagementScreen from '@/features/categories/CategoryManagementScreen';
 import sharedFtl from '@/locales/shared.ftl?raw';
 import settingsFtl from '@/locales/settings.ftl?raw';

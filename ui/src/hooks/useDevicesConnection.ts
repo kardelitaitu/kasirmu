@@ -1,6 +1,6 @@
 //! `useDevicesConnection` — device-connectivity status for the status bar.
 //!
-//! Probes `discover_hardware_scoped` (USB enumeration over oz-hal) and folds
+//! Probes `discover_hardware_scoped` (USB enumeration over kasirmu-hal) and folds
 //! the answer into the shared `ConnectionHealth` vocabulary. This is the
 //! ServiceKind::DeviceConnectivity slice of the service-health contracts box
 //! (todo-global-saas-3.md): a device-side answer, not a placeholder. The full

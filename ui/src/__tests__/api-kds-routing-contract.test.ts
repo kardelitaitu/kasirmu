@@ -1,7 +1,7 @@
 // ── IPC contract tests for the KDS routing-rule wrappers in kds.ts ──────
 //
 // Pins the two routing-rule wrappers onto the command names registered in
-// apps/desktop-client/src/lib.rs and onto the argument shape those Rust
+// apps/desktop-tauri/src/lib.rs and onto the argument shape those Rust
 // signatures take (session_token, rules). The restaurant scope comes from the
 // session, never from the payload, so the last case asserts the payload carries
 // nothing that could let one restaurant rewrite another restaurant's routing.

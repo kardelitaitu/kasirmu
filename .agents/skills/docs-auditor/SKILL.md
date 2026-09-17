@@ -210,7 +210,7 @@ Before starting any verification:
 | `git diff <stamp> -- <path>` | See changes since last audit |
 | `cargo test -p <crate>` | Run tests for the affected crate |
 | `npm run typecheck` (from `ui/`) | Verify TS/React claims in UI docs |
-| `rg` over `ui/src/locales/*.ftl` | Verify Fluent IDs referenced by docs |
+| `rg` over `shared-ui/locales/*.ftl` | Verify Fluent IDs referenced by docs |
 | `scripts/check.sh` | Full local validation mirroring CI |
 | `python3 .agents/skills/docs-auditor/scripts/check-orphans.py` | Shallow-mode structural pass: unversioned wrappers, heading orphans, stale version headers (§4b) |
 | `python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py` | Compare every stamp date against its footer date across all `*.md`; flags the under-reporting direction and impossible footer dates (`detect.sh` accepts `31-13-26` on shape). Exit 1 on drift. |
@@ -257,10 +257,10 @@ Use fast local search and file reads first. Run the narrowest relevant validatio
 
 When a truth anchor belongs to a domain covered by another skill:
 
-- **`rust-backend`** — for Money struct usage, transaction patterns, error types, `oz-*` crate conventions
+- **`rust-backend`** — for Money struct usage, transaction patterns, error types, `kasirmu-*` crate conventions
 - **`ui-components`** — for React component props, ARIA, Fluent IDs
 - **`tauri-ipc`** — for Tauri command names, `#[tauri::command]` signatures, `ui/src/api/` wrappers
-- **`hal-drivers`** — for device driver trait impls, mock coverage (`crates/oz-hal/src/drivers/mock.rs`)
+- **`hal-drivers`** — for device driver trait impls, mock coverage (`crates/kasirmu-hal/src/drivers/mock.rs`)
 - **`skill-drift-guard`** — for drift in the `.agents/skills/*/SKILL.md` files themselves, and for audit-footer format enforcement across all `*.md`
 
 Delegate the verification to subagent calls and wait for results. Do not duplicate verification work.
@@ -296,14 +296,14 @@ Doc under audit: `docs/guides/api-reference.md` — heading "Sessions", paragrap
 
 ```bash
 # 1. Find the command implementation and its return type
-rg -n "fn create_shift" apps/desktop-client/src/commands/ ui/src/api/
+rg -n "fn create_shift" apps/desktop-tauri/src/commands/ ui/src/api/
 
 # 2. Confirm the total field and its type on the actual struct
-rg -n "struct Shift" crates/oz-core/src/
-rg -n "total:" crates/oz-core/src/shift.rs
+rg -n "struct Shift" crates/kasirmu-core/src/
+rg -n "total:" crates/kasirmu-core/src/shift.rs
 
 # 3. Trace when this API last changed (was the doc written before a refactor?)
-git log -S "struct Shift" --oneline -- crates/oz-core/src/
+git log -S "struct Shift" --oneline -- crates/kasirmu-core/src/
 ```
 
 Resulting finding:
@@ -313,7 +313,7 @@ Resulting finding:
 1. Sessions — "create_shift returns a Shift with a Money total"
    Doc says: returns `total: Money`
    Code has: `total: i64` (minor units) — `Money` was flattened during the 0.0.21
-   money-safety refactor; `crates/oz-core/src/shift.rs:41`
+   money-safety refactor; `crates/kasirmu-core/src/shift.rs:41`
    Fix: change the doc to "`total: i64` minor units"
 ```
 
@@ -377,4 +377,4 @@ Two anchors verified, one drift found, one-line patch — that is the whole loop
 
 ---
 
-> last audited 08-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat

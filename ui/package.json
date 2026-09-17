@@ -1,5 +1,5 @@
 {
-  "name": "oz-pos-ui",
+  "name": "kasirmu-ui",
   "private": true,
   "version": "0.0.39",
   "type": "module",
@@ -7,10 +7,10 @@
   "license": "SEE LICENSE IN ../LICENSE",
   "scripts": {
     "dev": "vite",
-    "dev:tablet": "vite --config vite.tablet.config.ts",
+    "dev:mobile": "vite --config vite.mobile.config.ts",
     "check:all": "node ../scripts/check-ui.mjs",
     "build": "tsc -b && vite build",
-    "build:tablet": "tsc -b && vite build --config vite.tablet.config.ts",
+    "build:mobile": "tsc -b && vite build --config vite.mobile.config.ts",
     "preview": "vite preview",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -18,7 +18,7 @@
     "dedupe:ftl": "python3 ../scripts/dedupe-ftl.py",
     "typecheck": "tsc --noEmit",
     "bundle:check": "node ../scripts/check-bundle.mjs",
-    "bundle:check:tablet": "node ../scripts/check-bundle.mjs --config=vite.tablet.config.ts",
+    "bundle:check:mobile": "node ../scripts/check-bundle.mjs --config=vite.mobile.config.ts",
     "test": "vitest run",
     "test:a11y": "vitest run --reporter=verbose src/__tests__/a11y/",
     "test:watch": "vitest",

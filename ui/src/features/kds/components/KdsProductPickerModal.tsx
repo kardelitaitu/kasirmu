@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { requiredLocalized, LoadingStatus } from '@/frontend/shared';
+import { requiredLocalized, LoadingStatus } from '@/components';
 import { useLocalization } from '@fluent/react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { animDuration } from '@/utils/animation';

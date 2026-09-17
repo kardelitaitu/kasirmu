@@ -104,15 +104,15 @@ step -Label "npm install" -Block {
 
 # Step 4: Database migration
 step -Label "database migration" -Block {
-    cargo run -p oz-cli -- migrate
+    cargo run -p kasirmu-cli -- migrate
     Write-Host "  Schema up to date"
 }
 
 # Step 5: Migration idempotency
 step -Label "migration idempotency" -Block {
-    cargo run -p oz-cli -- migrate
+    cargo run -p kasirmu-cli -- migrate
     Write-Host "  Idempotent -- second run succeeds"
-    Remove-Item -LiteralPath "oz-pos.db", "oz-pos.db-wal", "oz-pos.db-shm" -ErrorAction Ignore
+            Remove-Item -LiteralPath "kasir.db", "kasir.db-wal", "kasir.db-shm" -ErrorAction Ignore
 }
 
 # Step 6: Demo data seed (optional, skip if command not available)
@@ -120,7 +120,7 @@ step -Label "demo data seed" -Block {
     # Try to seed demo data; skip gracefully if subcommand unavailable.
     # Run via cmd.exe to suppress PowerShell error records from 2>&1
     # that would otherwise become terminating errors under $ErrorActionPreference = "Stop".
-    $output = & cmd /c "cargo run -p oz-cli -- seed-demo 2>nul"
+    $output = & cmd /c "cargo run -p kasirmu-cli -- seed-demo 2>nul"
     if ($LASTEXITCODE -eq 0) {
         Write-Host "  Demo data loaded"
     } else {
@@ -131,7 +131,7 @@ step -Label "demo data seed" -Block {
 
 # Step 7: cargo check (quick verify)
 step -Label "cargo check (quick verify)" -Block {
-    cargo check --workspace --all-features --exclude oz-pos-app --exclude oz-pos-tablet
+    cargo check --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile
     Write-Host "  Workspace compiles cleanly"
 }
 

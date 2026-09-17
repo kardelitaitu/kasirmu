@@ -2,11 +2,11 @@
 //
 // Pure model helpers for the KDS routing-rules editor (todo-kds-agents-1 UI
 // follow-up). The backend save IPC is a WHOLE-SET REPLACE with server-assigned
-// ids/timestamps (crates/oz-bridge/src/kds_routing.rs), so the editor works on
+// ids/timestamps (crates/kasirmu-bridge/src/kds_routing.rs), so the editor works on
 // draft rows and priority is POSITIONAL: the row list order is the priority
 // order, and `toSavePayload` renumbers `priority` 1..n on save. Ranking is
 // priority-ascending — lower number = higher rank (see `KdsRoutingRule` in
-// crates/oz-core/src/kds.rs).
+// crates/kasirmu-core/src/kds.rs).
 //
 // TAG MATCHER HONESTY: a `tag` rule STORES and round-trips but NEVER MATCHES
 // — tags are not modeled in the catalog (`KdsRuleMatcher::Tag => false` in

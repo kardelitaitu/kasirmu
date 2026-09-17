@@ -2,13 +2,13 @@
 
 **Status:** Research (Recommended: Defer to post-1.0)
 **Date:** 2026-07-20
-**Author:** OZ-POS Engineering
+**Author:** kasir.mu Engineering
 
 ---
 
 ## Context
 
-The ROADMAP Phase 5 calls for "Analytics export to cloud warehouse (BigQuery / Snowflake)." OZ-POS already has:
+The ROADMAP Phase 5 calls for "Analytics export to cloud warehouse (BigQuery / Snowflake)." kasir.mu already has:
 - `AnalyticsBundle` (P15-4) — 8 structured report types bundled as JSON
 - `ReportScheduleConfig` (P15-5) — scheduling config persisted in settings
 - `ExportConfig` — date range, limit, threshold knobs

@@ -9,7 +9,7 @@ vi.mock('@/components/Localized', () => ({
   Localized: ({ children }: { id: string; children: React.ReactNode }) => <>{children}</>,
 }));
 
-vi.mock('@/frontend/shell/ThemeToggle', () => ({
+vi.mock('@/app/ThemeToggle', () => ({
   default: () => <div data-testid="theme-toggle">ThemeToggle</div>,
 }));
 
@@ -53,7 +53,7 @@ const mockAddToast = vi.fn();
 const mockRemoveToast = vi.fn();
 const mockClearToasts = vi.fn();
 
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   ToastProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useToast: () => ({
     addToast: mockAddToast,

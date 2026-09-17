@@ -10,14 +10,14 @@ status: Proposed (2026-07-16)
 
 **Status:** Proposed (2026-07-16)
 **Date:** 2026-07-16
-**Author:** OZ-POS Contributors
+**Author:** kasir.mu Contributors
 **Tags:** release, ci, github-actions, build, signing, updater
 
 ---
 
 ## Context
 
-OZ-POS ships Windows desktop installers (NSIS `.exe`, WiX `.msi`) to end users. Currently there is no automated pipeline to build, sign, and publish these artifacts. Releasing a new version involves manual steps:
+kasir.mu ships Windows desktop installers (NSIS `.exe`, WiX `.msi`) to end users. Currently there is no automated pipeline to build, sign, and publish these artifacts. Releasing a new version involves manual steps:
 
 1. Bump version in `Cargo.toml`, `tauri.conf.json`, `package.json`
 2. Build the Tauri app locally
@@ -127,7 +127,7 @@ Steps:
   "platforms": {
     "windows-x86_64": {
       "signature": "<base64-ed25519-signature>",
-      "url": "https://github.com/kardelitaitu/oz-pos/releases/download/v0.1.0/OZ-POS_0.1.0_x64-setup.exe"
+      "url": "https://github.com/kardelitaitu/oz-pos/releases/download/v0.1.0/kasir.mu_0.1.0_x64-setup.exe"
     }
   }
 }

@@ -85,7 +85,7 @@ from pathlib import Path
 # Configuration
 # ----------------------------------------------------------------------------
 
-LOCALE_DIR = Path("ui/src/locales")
+LOCALE_DIR = Path("shared-ui/locales")
 
 # Per-domain translator hand-off guidance. Keys are bundle base names
 # (no extension). Values are concrete, actionable hints for the
@@ -159,7 +159,7 @@ def collect_blocks(text: str) -> tuple[list[str], list[tuple[str, list[str]]]]:
     inline translator annotations later in the file.
 
     Parser-tolerance: a blank line that appears INSIDE a message block
-    (e.g. ``ui/src/locales/purchasing.ftl`` separates ``.placeholder``
+    (e.g. ``shared-ui/locales/purchasing.ftl`` separates ``.placeholder``
     and ``.aria-label`` with a blank line) does NOT end the block. The
     flush helper merges the buffered key + attrs into the previous block
     for the same key on a downstream flush, so orphan attribute lines

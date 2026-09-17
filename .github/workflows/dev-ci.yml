@@ -87,10 +87,10 @@ jobs:
           fi
 
           # Rust: every workspace member (crates/*, modules/*, platform/*,
-          # foundation, the three apps, fuzz, the updater compat check) plus
+          # foundation, the three apps, tools/fuzz, the updater compat check) plus
           # anything that changes how cargo resolves the build.
           printf '%s\n' "$files" | grep -qE \
-            '^crates/|^modules/|^platform/|^foundation/|^apps/(cloud-server|desktop-client|tablet-client)/|^fuzz/|^scripts/updater-compat-check/|^Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain' \
+            '^crates/|^modules/|^platform/|^foundation/|^apps/(cloud-server|desktop-tauri|mobile-tauri)/|^tools/fuzz/|^scripts/updater-compat-check/|^Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain' \
             && echo "rust=true"  >> "$GITHUB_OUTPUT" || echo "rust=false" >> "$GITHUB_OUTPUT"
 
           # UI: ui/src has zero imports reaching outside ui/, so ui/ is a sound
@@ -101,7 +101,7 @@ jobs:
           # i18n: the .ftl bundles, any TSX/TS the parity scanner reads, and the
           # four scripts that implement the gates.
           printf '%s\n' "$files" | grep -qE \
-            '^ui/src/locales/|^ui/src/.*\.(ts|tsx)$|^scripts/lint-i18n\.sh$|^scripts/verify-bundle-parity\.py$|^scripts/dedupe-ftl\.py$|^scripts/verify-ftl-orphans\.py$' \
+            '^shared-ui/locales/|^ui/src/.*\.(ts|tsx)$|^scripts/lint-i18n\.sh$|^scripts/verify-bundle-parity\.py$|^scripts/dedupe-ftl\.py$|^scripts/verify-ftl-orphans\.py$' \
             && echo "i18n=true" >> "$GITHUB_OUTPUT" || echo "i18n=false" >> "$GITHUB_OUTPUT"
 
           printf '%s\n' "$files" | grep -qE '^website/' \
@@ -128,7 +128,7 @@ jobs:
           # rotate or typo that key and every client auto-update rejects the
           # signature, which is precisely what check-updater-compat.mjs detects.
           printf '%s\n' "$files" | grep -qE \
-            '^scripts/(check-release-version|check-updater-compat|generate-latest-json|verify-updater-signature)\.mjs$|^scripts/updater-compat-check/|^apps/desktop-client/tauri\.conf\.json$|^apps/desktop-client/Cargo\.toml$|^\.github/workflows/release\.yml$|^docs/releases/' \
+            '^scripts/(check-release-version|check-updater-compat|generate-latest-json|verify-updater-signature)\.mjs$|^scripts/updater-compat-check/|^apps/desktop-tauri/tauri\.conf\.json$|^apps/desktop-tauri/Cargo\.toml$|^\.github/workflows/release\.yml$|^docs/releases/' \
             && echo "release=true" >> "$GITHUB_OUTPUT" || echo "release=false" >> "$GITHUB_OUTPUT"
 
       - name: Decisions
@@ -160,6 +160,8 @@ jobs:
         run: cd website && npm test
       - name: Build
         run: cd website && npm run build
+      - name: Internal link check
+        run: cd website && npm run check:links
 
   # ── 2. Cargo Check: Fast compilation check ────────────────────────────
   cargo-check:
@@ -186,8 +188,8 @@ jobs:
       - uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
       - name: Prepare frontend dist stubs for Tauri macro
         run: |
-          mkdir -p ui/dist ui/dist-tablet ui/dist-desktop
-          touch ui/dist/index.html ui/dist-tablet/index.html ui/dist-desktop/index.html
+          mkdir -p ui/dist ui/dist-mobile ui/dist-desktop
+          touch ui/dist/index.html ui/dist-mobile/index.html ui/dist-desktop/index.html
       # Runs before `cargo check` deliberately: it is ~2s warm, so a formatting
       # nit fails fast instead of after a multi-minute compile. Gate:
       # scripts/gates.json -> "rust-fmt".
@@ -234,8 +236,8 @@ jobs:
       - uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
       - name: Prepare frontend dist stubs for Tauri macro
         run: |
-          mkdir -p ui/dist ui/dist-tablet ui/dist-desktop
-          touch ui/dist/index.html ui/dist-tablet/index.html ui/dist-desktop/index.html
+          mkdir -p ui/dist ui/dist-mobile ui/dist-desktop
+          touch ui/dist/index.html ui/dist-mobile/index.html ui/dist-desktop/index.html
       - name: Install cargo-nextest
         uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2
         with:
@@ -260,7 +262,7 @@ jobs:
   # this workflow costs ~75 runner-minutes per run (measured on PR #95). That
   # is far too much to spend every night to test one crate.
   #
-  # WHY NO SYSTEM DEPS: `oz-bridge` is headless by contract — no tauri / gtk /
+  # WHY NO SYSTEM DEPS: `kasirmu-bridge` is headless by contract — no tauri / gtk /
   # webkit2gtk dependency (see its Cargo.toml) — so unlike `cargo-nextest` this
   # job skips the apt-get layer and the frontend dist stubs.
   #
@@ -284,7 +286,7 @@ jobs:
         with:
           tool: cargo-nextest
       - name: Run bridge tests in the release profile
-        run: cargo nextest run -p oz-bridge --release
+        run: cargo nextest run -p kasirmu-bridge --release
 
   # ── 4. UI Test: Frontend Vitest suite ─────────────────────────────────
   ui-test:
@@ -335,8 +337,8 @@ jobs:
       # Gate: scripts/gates.json -> "bundle-budget".
       - name: Bundle budget (desktop)
         run: cd ui && npm run bundle:check
-      - name: Bundle budget (tablet)
-        run: cd ui && npm run bundle:check:tablet
+      - name: Bundle budget (mobile)
+        run: cd ui && npm run bundle:check:mobile
 
   # ── 5. i18n: Fluent bundle quality gate ──────────────────────────────
   # Restored by the Fluent page audit. This step used to live in ci.yml, which
@@ -733,7 +735,7 @@ jobs:
     #
     #   * release-readiness proves the DESKTOP updater signing chain, and this job
     #     consumes none of it. It POSTs the commit sha to Northflank, which builds
-    #     Dockerfile.unified -- a backend container that takes no installer, no
+    #     ops/docker/Dockerfile.unified -- a backend container that takes no installer, no
     #     latest.json and no updater pubkey. That chain is already hard-gated where
     #     it binds, in release.yml: release-validate runs the same
     #     scripts/check-updater-compat.mjs, release-build needs release-validate,

@@ -100,11 +100,11 @@ Final pricing determined by: number of locations, terminals, users, support leve
 - **Phase 2 (next) — CRITICAL revenue unlock:** route Indonesian customers to a
   **Midtrans** checkout — fixed Rp prices and local payment methods (QRIS, virtual
   accounts, e-wallets) that cards alone can't reach; Paddle stays for global.
-  Midtrans over Xendit because `oz-payment` already integrates Midtrans QRIS
+  Midtrans over Xendit because `kasirmu-payment` already integrates Midtrans QRIS
   for in-store payments. **Without Phase 2, the Indonesian TAM is effectively limited
   to card-holding customers — a fraction of the 65M MSME market. This is not optional
   for Indonesian revenue growth.**
-- **Costs of Phase 2:** OZ-POS becomes merchant of record for ID payments
+- **Costs of Phase 2:** kasir.mu becomes merchant of record for ID payments
   (Indonesian PPN, refunds, disputes); a second webhook + provisioning path
   in the license server; local-method subscriptions are less mature than
   card auto-renew.
@@ -155,19 +155,19 @@ that merely implies something about it, so the check runs **before** the inferre
    **Until then the matrix above is the effective truth**, and this section describes the
    mechanism, not a lever you can pull today.
 
-Code of record: `payload_feature_grant` in `crates/oz-core/src/subscription.rs`,
+Code of record: `payload_feature_grant` in `crates/kasirmu-core/src/subscription.rs`,
 `server_grant_for` in each client's `src/commands/subscription.rs`, and the `Features`
 field in `apps/license-server/main.go`.
 
 ### Quick Reference: Best For
 
-> **Positioning statement:** OZ-POS is the QRIS-native POS with offline-first reliability,
+> **Positioning statement:** kasir.mu is the QRIS-native POS with offline-first reliability,
 > priced for the Indonesian market. Lead every ad, landing page, and sales conversation
 > with this — not tier names.
 
 | Tier | Best For | Hero Feature |
 | :--- | :--- | :--- |
-| **Free** | Warung / kios trying OZ-POS — limited to 3 months of sales history | Cash POS + receipt printing |
+| **Free** | Warung / kios trying kasir.mu — limited to 3 months of sales history | Cash POS + receipt printing |
 | **Plus** | Single-location shops ready to grow from manual to smart | **Daily Sales Dashboard** (Laporan Harian) + QRIS |
 | **Pro** ⭐ | Cafes, toko, growing businesses ready for full analytics & KDS | Analytics + KDS + multi-terminal |
 | **Premium** | Multi-location chains needing loyalty & automation | Loyalty program + 5 locations + 1h support |
@@ -190,10 +190,10 @@ field in `apps/license-server/main.go`.
 count was only a dashboard-side derivation `maxKDSForTier()` and that "no product-count
 quota ships at all". Both were stale by a full phase. Phase 1 "Centralize quota
 enforcement" landed, and the code that landed **cites this table** — the header comment
-of `crates/oz-core/src/db/workspaces_tests.rs` reads "KDS screen quota
+of `crates/kasirmu-core/src/db/workspaces_tests.rs` reads "KDS screen quota
 (subscription-tiers.md §Numeric Limits)" — while this page still denied the quota
 existed. What is enforced now, all through `QuotaDimension`
-(`crates/oz-core/src/downgrade.rs`) plus an `enforce_*_quota` guard on the mutation:
+(`crates/kasirmu-core/src/downgrade.rs`) plus an `enforce_*_quota` guard on the mutation:
 
 | Dimension | Cap fn | Enforced at |
 |---|---|---|
@@ -219,8 +219,8 @@ prevents revenue leakage from unlimited Free/Plus team accounts"). Counts active
 users with the owner excluded.
 
 \*\* Sales history cap — **enforced** in both clients' history commands
-(`apps/desktop-client/src/commands/history.rs`,
-`apps/tablet-client/src/commands/history.rs`, C1.2): the tier window is read from the
+(`apps/desktop-tauri/src/commands/history.rs`,
+`apps/mobile-tauri/src/commands/history.rs`, C1.2): the tier window is read from the
 tenant subscription **after signature verification** and applied by
 `list_sales_with_history_cap(days)`, which returns the rows plus a `capped` flag instead
 of erroring — the blurred-preview-with-CTA behaviour this note asked for. Free users see
@@ -463,7 +463,7 @@ Create dedicated landing pages per vertical — higher-converting than a generic
 | `docs/decisions/archived/2026-07-20-free-trial-lifecycle-and-license-activation-workflow.md` (ADR #23) | Trial lifecycle + custom_data contracts | 90-day trial — **re-scope note + 3 deviation notes** (see cross-ref (see ADR Index)): **Dev 1:** segmented trials implemented 2026-08-18 (`trial_vertical` in `activate.go`, 14-day Plus general / 14-day Pro restaurant-cafe / 30-day Pro enterprise-referral). **Dev 2:** Paddle `custom_data` contract documented — `email` (register-first, webhook upserts tenant) + `bundle` (C3.2, cross-checked against price map) + `phone` (backfilled); signup vertical **not** carried. **Dev 3:** hardware-fingerprint trial lock shipped (`trial_registrations`, `POST /license/trial`, `enforceTrialLock`, client `get_hardware_fingerprint`). |
 | `docs/decisions/2026-08-18-adr39-midtrans-subscription-payments.md` (ADR #39) | Midtrans webhook + custom-field contracts | Midtrans checkout routing + 8 deviation notes (see cross-ref (see ADR Index)): SHA-512 not HMAC, `custom_field1`–`custom_field4` contract (tier/email/period/bundle), period cross-check, amount-authoritative tier resolution, grace, dedup, notification fallthrough, key fast-path. |
 | `website/src/content/docs/{en,id}/{licensing,welcome,installation,activation}.md` | User-facing docs | 90-day / four-tier copy — **updated to the 5-tier free-forever model 2026-08-17** |
-| `crates/oz-core/src/subscription.rs` | Enforcement (client-side quotas) | enum Free/OneTime/Plus/Pro/Premium/Enterprise |
+| `crates/kasirmu-core/src/subscription.rs` | Enforcement (client-side quotas) | enum Free/OneTime/Plus/Pro/Premium/Enterprise |
 | `apps/license-server/paddle_webhook.go` → `tierQuotas(tier, bundle)` | Enforcement (license mint) | pro/premium/enterprise → 0/0/all types; free → 1/1/3 types; plus → 1/2, kds unlocked by `bundle_id == "restaurant_starter"` (**C3.2, implemented 2026-08-18** — activation honors it for trial keys; both webhooks issue paid bundles from the price map's optional `:bundle_id` segment, cross-checked against the checkout custom field) |
 | `website/src/components/paddle.ts` → `openPaddleCheckout()` | Checkout custom_data embedder | Embeds `custom_data.email` (required) + `custom_data.bundle` (optional C3.2) + `custom_data.phone` (may ride along); vertical **not** carried (see ADR #23 Dev 2) |
 | `website/src/components/CheckoutButton.tsx` | Pricing-page checkout | Same contract as `paddle.ts`; routes id-locale to Midtrans Snap (`custom_field1`–`custom_field4`) per ADR #39 |

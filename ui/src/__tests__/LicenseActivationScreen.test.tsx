@@ -36,12 +36,12 @@ vi.mock('@/components/ConnectionStatus', () => ({
   default: ({ label }: { label: string }) => <div data-testid="connection-status">{label}</div>,
 }));
 
-vi.mock('@/frontend/shell/ThemeToggle', () => ({
+vi.mock('@/app/ThemeToggle', () => ({
   default: () => <div data-testid="theme-toggle" />,
 }));
 
 const mockAddToast = vi.fn();
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
 
@@ -77,7 +77,7 @@ vi.mock('@fluent/react', () => ({
           'auth-paste': 'Paste',
           'auth-version': 'Version {version}',
           'auth-ip-address': 'IP Address : {ip}',
-          'auth-copyright': 'OZ-POS © {year} All rights reserved.',
+          'auth-copyright': 'kasir.mu © {year} All rights reserved.',
           'staff-login-connection-auth': 'Auth Server',
           'staff-login-connection-sync': 'Sync Server',
         };

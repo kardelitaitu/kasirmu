@@ -14,7 +14,7 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { TOOLS } from '@/features/workspaces/tools';
-import { getNavItems } from '@/platform/ui/menu-registry';
+import { getNavItems } from '@/registries/menu-registry';
 import { registerAllFeatures } from '@/features';
 
 const ROLE_LEVEL: Record<string, number> = {

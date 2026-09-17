@@ -7,8 +7,8 @@
 
 use deadpool_postgres::Pool;
 
-use oz_core::export::email_report::{SMTP_CONFIG_SETTINGS_KEY, SmtpConfig};
-use oz_core::export::{REPORT_SCHEDULE_SETTINGS_KEY, ReportScheduleConfig};
+use kasirmu_core::export::email_report::{SMTP_CONFIG_SETTINGS_KEY, SmtpConfig};
+use kasirmu_core::export::{REPORT_SCHEDULE_SETTINGS_KEY, ReportScheduleConfig};
 // ── Settings helpers ───────────────────────────────────────────────
 
 /// Read a raw `settings` value (None when absent).
@@ -69,7 +69,7 @@ pub async fn set_setting_scoped_pg(
 
 /// Load the tenant's SMTP config from the settings table (scoped key with
 /// bare-key fallback), decrypting the password transparently (mirrors
-/// `oz_core`'s `Store::get_smtp_config`).
+/// `kasirmu_core`'s `Store::get_smtp_config`).
 pub async fn get_smtp_config_pg(pool: &Pool, tenant: &str) -> Result<Option<SmtpConfig>, String> {
     let raw = match get_setting_scoped_pg(pool, SMTP_CONFIG_SETTINGS_KEY, tenant).await? {
         Some(v) => v,
@@ -83,7 +83,7 @@ pub async fn get_smtp_config_pg(pool: &Pool, tenant: &str) -> Result<Option<Smtp
         // F-029: fails closed — legacy plaintext passes through inside
         // decrypt_smtp_at_rest, tampered ciphertext surfaces as an error.
         config.password = Some(
-            oz_core::crypto::decrypt_smtp_at_rest(pwd)
+            kasirmu_core::crypto::decrypt_smtp_at_rest(pwd)
                 .map_err(|e| format!("stored SMTP password failed authentication: {e}"))?,
         );
     }

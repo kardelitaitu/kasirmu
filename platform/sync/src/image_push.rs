@@ -12,8 +12,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use oz_core::Store;
-use oz_core::sync_client::SyncConfig;
+use kasirmu_core::Store;
+use kasirmu_core::sync_client::SyncConfig;
 use tokio::sync::Mutex;
 
 /// ── Configuration (tunable — tweak at the top) ─────────────────────────

@@ -266,7 +266,7 @@ if should_run paths; then
         http*|https*|file://*|node_modules*|target/*|dist/*) continue ;;
       esac
       # Skip regex-truncation artifacts. The extractor has no notion of a
-      # glob or an ellipsis, so `crates/oz-*` yields `crates/oz-` and prose
+      # glob or an ellipsis, so `crates/kasirmu-*` yields `crates/kasirmu-` and prose
       # like `bash scripts/...` yields `scripts/...`. A real path never ends
       # in `-`, `.` or an ellipsis, so dropping these cannot mask genuine
       # drift — it only stops the check crying wolf on every run.
@@ -291,12 +291,12 @@ fi
 if should_run crates; then
   : "${Cargo_FILE:=Cargo.toml}"
   if [ -f "$Cargo_FILE" ]; then
-    : "$(grep -oE '"crates/oz-[a-z-]+"' "$Cargo_FILE" 2>/dev/null | sort -u | sed 's|"crates/||;s|"||')"
-    workspace_crates="$(grep -oE '"crates/oz-[a-z-]+"' "$Cargo_FILE" 2>/dev/null | sort -u | sed 's|"crates/||;s|"||')"
-    skill_crates="$(cat .agents/skills/*/SKILL.md | grep -oE 'oz-[a-z-]+' | sort -u)"
+    : "$(grep -oE '"crates/kasirmu-[a-z-]+"' "$Cargo_FILE" 2>/dev/null | sort -u | sed 's|"crates/||;s|"||')"
+    workspace_crates="$(grep -oE '"crates/kasirmu-[a-z-]+"' "$Cargo_FILE" 2>/dev/null | sort -u | sed 's|"crates/||;s|"||')"
+    skill_crates="$(cat .agents/skills/*/SKILL.md | grep -oE 'kasirmu-[a-z-]+' | sort -u)"
 
     while read -r c; do
-      [ -z "$c" ] || [ "$c" = "oz-pos" ] || [[ "$c" = oz-pos-* ]] && continue
+      [ -z "$c" ] && continue
       if ! echo "$workspace_crates" | grep -qx "$c"; then
         FINDINGS[crates]+="missing in workspace: ${c}"$'\n'
       fi
@@ -318,7 +318,7 @@ if should_run api; then
     # claim and produced a permanent stream of un-actionable findings.
     # `< <(…)` not `grep | while`: see the subshell note in Check 1.
     while read -r line; do
-      FINDINGS[api]+="${skill}: ${line} (verify signature in foundation/src/money.rs, re-exported by oz-core/src/money.rs)"$'\n'
+      FINDINGS[api]+="${skill}: ${line} (verify signature in foundation/src/money.rs, re-exported by kasirmu-core/src/money.rs)"$'\n'
     done < <(awk '/^```/{f=!f; next} f && /Money::(from_major|checked_add|zero|new)/{print NR": "$0}' "$skill" 2>/dev/null)
   done < <(find .agents/skills -name SKILL.md 2>/dev/null)
 fi
@@ -384,7 +384,7 @@ if should_run refs; then
       # Heuristic: anything else in backticks inside the router table is a skill reference
       if [ -d ".agents/skills/$ref" ]; then continue; fi
       # …but only if it resolves to NOTHING else real. The guide backtick-names
-      # workspace members (`oz-core`), dependencies (`mlua`, `rusqlite`,
+      # workspace members (`kasirmu-core`), dependencies (`mlua`, `rusqlite`,
       # `async-trait`) and CI keys (`static-gates`, `continue-on-error`) in the
       # same voice it uses for skills, and token shape cannot tell them apart.
       # Without this, every one of those is a permanent false positive and the
@@ -415,14 +415,14 @@ fi
 # no skill has documented yet.
 # ---------------------------------------------------------------------------
 if should_run fluent; then
-  if [ -d "ui/src/locales" ]; then
+  if [ -d "shared-ui/locales" ]; then
     while read -r skill; do
       [ -z "$skill" ] && continue
       # Permissive pattern: any non-empty id. Trust the FTL to define the format.
       # `< <(…)` not `grep | while`: see the subshell note in Check 1.
       while read -r ftl_id; do
-        if ! grep -rqE "^${ftl_id}\s*=" ui/src/locales/ 2>/dev/null; then
-          FINDINGS[fluent]+="${skill}: Fluent id '${ftl_id}' not found in ui/src/locales/"$'\n'
+        if ! grep -rqE "^${ftl_id}\s*=" shared-ui/locales/ 2>/dev/null; then
+          FINDINGS[fluent]+="${skill}: Fluent id '${ftl_id}' not found in shared-ui/locales/"$'\n'
         fi
       done < <(grep -hoE 'id="[^"]+"' "$skill" 2>/dev/null | sort -u | \
         sed 's/id="//;s/"$//')

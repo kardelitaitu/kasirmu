@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
 import StatusBar from '@/components/StatusBar';
 import { staffLogin } from '@/api/staff';
@@ -354,7 +354,7 @@ export default function SessionLockScreen({
               LicenseActivationScreen, so the id build reads "Versi …" /
               "Hak Cipta Dilindungi". */}
           <Localized id="auth-copyright" vars={{ year: String(new Date().getFullYear()) }}>
-            <span className="session-lock-footer-copyright">OZ-POS © {new Date().getFullYear()} All rights reserved.</span>
+            <span className="session-lock-footer-copyright">kasir.mu © {new Date().getFullYear()} All rights reserved.</span>
           </Localized>
         </div>
         <div className="session-lock-footer-right">

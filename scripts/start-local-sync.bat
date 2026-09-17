@@ -5,6 +5,7 @@ REM
 REM  Run from project root (or from the scripts/ folder via double-click).
 REM  Checks if Docker Desktop is installed and running; if stopped, attempts
 REM  to auto-start Docker Desktop. Once ready, runs `docker compose up -d`
+REM  with --project-directory . and the ops/docker/ compose files (see below).
 REM  to build and start the headless `pos-cloud-server` container on port 3099.
 REM
 REM  Usage (SQLite — default, no external DB container needed):
@@ -74,12 +75,12 @@ echo Docker engine is running!
 echo.
 echo [2/4] Validating Docker Compose configuration and required secrets...
 if "%~1"=="--pg" goto validate_pg_config
-docker compose config --quiet
+docker compose --project-directory . -f ops/docker/docker-compose.yml -f ops/docker/docker-compose.override.yml config --quiet
 if errorlevel 1 goto compose_config_failed
 goto launch_sqlite
 
 :validate_pg_config
-docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.pg.yml config --quiet
+docker compose --project-directory . -f ops/docker/docker-compose.yml -f ops/docker/docker-compose.override.yml -f ops/docker/docker-compose.pg.yml config --quiet
 if errorlevel 1 goto compose_config_failed
 
 goto launch_pg
@@ -87,14 +88,14 @@ goto launch_pg
 :launch_sqlite
 echo.
 echo [3/4] Launching OZ-POS Cloud Sync Server (SQLite default)...
-docker compose up -d --build
+docker compose --project-directory . -f ops/docker/docker-compose.yml -f ops/docker/docker-compose.override.yml up -d --build
 if errorlevel 1 goto compose_failed
 goto wait_ready
 
 :launch_pg
 echo.
 echo [3/4] Launching OZ-POS Cloud Sync Server (PostgreSQL)...
-docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.pg.yml up -d --build
+docker compose --project-directory . -f ops/docker/docker-compose.yml -f ops/docker/docker-compose.override.yml -f ops/docker/docker-compose.pg.yml up -d --build
 if errorlevel 1 goto compose_failed
 goto wait_ready
 
@@ -143,7 +144,7 @@ goto readiness_probe
 :readiness_failed
 echo.
 echo ERROR: Docker containers started, but the health or token endpoint did not become ready.
-echo Check logs with: docker compose logs --tail=100 pos-cloud-server
+echo Check logs with: docker compose --project-directory . -f ops/docker/docker-compose.yml logs --tail=100 pos-cloud-server
 echo.
 pause
 exit /b 1
@@ -155,8 +156,8 @@ echo  OZ-POS Local Sync Server is running and ready!
 echo.
 echo  - API Endpoint:    http://localhost:%SYNC_PORT%
 echo  - Health Check:    http://localhost:%SYNC_PORT%/api/v1/health
-echo  - Live Logs:       docker compose logs -f pos-cloud-server
-echo  - Stop Server:     Run stop-local-sync.bat or docker compose down
+echo  - Live Logs:       docker compose --project-directory . -f ops/docker/docker-compose.yml logs -f pos-cloud-server
+echo  - Stop Server:     Run stop-local-sync.bat or docker compose --project-directory . -f ops/docker/docker-compose.yml down
 echo.
 echo  To test cloud sync in your POS app, go to Settings -^> Sync / Multi-store
 echo  and set the Sync Server URL to: http://localhost:%SYNC_PORT%

@@ -1,0 +1,68 @@
+# ── OZ-POS PostgreSQL Override — Enterprise profile ─────────────────
+#
+# Merged with the base stack when PostgreSQL is required (DOCKER-04):
+#
+#   export OZ_API_SECRET=$(openssl rand -hex 32)
+#   export OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)"
+#   export PG_PASSWORD=$(openssl rand -hex 32)
+#   docker compose --project-directory . -f ops/docker/docker-compose.yml -f ops/docker/docker-compose.pg.yml up -d
+#
+# PG_PASSWORD is REQUIRED — Compose fails fast if it is absent so a
+# PostgreSQL service never starts with an empty/well-known password.
+# DATABASE_URL on the cloud server is derived from these PG_* values.
+#
+# Environment overrides:
+#   PG_USER / PG_PASSWORD / PG_DATABASE — PostgreSQL credentials (PG_PASSWORD required)
+
+services:
+  pos-cloud-server:
+    environment:
+      # Connect the cloud server to PostgreSQL instead of SQLite.
+      DATABASE_URL: "postgresql://${PG_USER:-ozpos}:${PG_PASSWORD:?PG_PASSWORD is required (docker-compose.pg.yml)}@pos-cloud-db:5432/${PG_DATABASE:-ozpos}"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    depends_on:
+      pos-cloud-db:
+        condition: service_healthy
+
+  # ── PostgreSQL Database ──────────────────────────────────────────
+  # DOCKER-02: pinned to an immutable digest (refreshed 2026-08-17).
+  # DOCKER-07: hardened by default (this is the production DB profile) —
+  # read-only rootfs with a tmpfs /tmp, minimal capabilities, resource
+  # limits, and no host port publishing (internal Compose network only).
+  pos-cloud-db:
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    environment:
+      POSTGRES_USER: "${PG_USER:-ozpos}"
+      POSTGRES_PASSWORD: "${PG_PASSWORD:?PG_PASSWORD is required (docker-compose.pg.yml)}"
+      POSTGRES_DB: "${PG_DATABASE:-ozpos}"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID]
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    mem_limit: 1024m
+    cpus: "2.0"
+    volumes:
+      - oz_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-ozpos} -d ${PG_DATABASE:-ozpos}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    restart: unless-stopped
+
+volumes:
+  oz_pg_data:

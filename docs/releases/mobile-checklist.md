@@ -54,7 +54,7 @@
   - Trigger: GitHub Actions **iOS Build** workflow (macOS runner)
   - Download the IPA artifact
 - [ ] **IPA is signed**
-  - `codesign -dv --verbose=4 OZ-POS.app`
+  - `codesign -dv --verbose=4 kasir.mu.app`
   - Team ID matches `APPLE_TEAM_ID`
 - [ ] **IPA size is reasonable**
   - Compare against previous release (typically 30–80 MB)

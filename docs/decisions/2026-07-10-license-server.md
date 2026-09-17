@@ -10,7 +10,7 @@ status: Implemented (2026-07-15)
 
 **Status:** Implemented (2026-07-15)
 **Date:** 2026-07-10
-**Author:** Architecture Team & OZ-POS Contributors
+**Author:** Architecture Team & kasir.mu Contributors
 **Tags:** licensing, activation, subscription-signing, pocketbase, northflank
 
 > **Re-scope note:** the architecture described below is implemented and
@@ -35,7 +35,7 @@ status: Implemented (2026-07-15)
 
 ## Context
 
-OZ-POS is sold as licensed software. A customer buys a license (e.g., "Pro tier, 2 stores") and receives a license key. The POS software needs to validate this key, activate the license, and receive a cryptographically signed `tenant_subscription` record that governs feature access, store quotas, and instance limits (per ADR #5).
+kasir.mu is sold as licensed software. A customer buys a license (e.g., "Pro tier, 2 stores") and receives a license key. The POS software needs to validate this key, activate the license, and receive a cryptographically signed `tenant_subscription` record that governs feature access, store quotas, and instance limits (per ADR #5).
 
 The license server is the **signing authority** — it holds the RSA private key and issues signed subscription payloads. Once activated, the POS operates offline using the locally-stored signed subscription (ADR #5's 14-day offline grace). The license server is only contacted during activation, renewal, and tier changes.
 
@@ -148,7 +148,7 @@ CUSTOMER                            POCKETBASE                        POS (LOCAL
    ← Receives key:
      OZ-PRO-ABC1-DEF2-GHI3
 
-2. Installs OZ-POS
+2. Installs kasir.mu
    → Enters key in setup wizard ──────────────────────────────────→  stores key
 
 3.                                    ← POST /api/v1/license/activate ←
@@ -365,7 +365,7 @@ Same as original design:
 
 ### 7. Signing Flow (Custom Go Hook)
 
-The license server holds an RSA-2048 private key. The corresponding public key (`oz-pos-updater.key.pub`) is **embedded in the OZ-POS binary** at build time (unchanged from original design).
+The license server holds an RSA-2048 private key. The corresponding public key (`oz-pos-updater.key.pub`) is **embedded in the kasir.mu binary** at build time (unchanged from original design).
 
 #### PocketBase Go main.go structure
 

@@ -3,9 +3,9 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 
-import { ThemeProvider } from '@/frontend/shell/ThemeProvider';
+import { ThemeProvider } from '@/app/ThemeProvider';
 import { BrandProvider } from '@/contexts/BrandContext';
-import ThemeToggle from '@/frontend/shell/ThemeToggle';
+import ThemeToggle from '@/app/ThemeToggle';
 
 function renderScreen() {
   return renderWithFluentSync(

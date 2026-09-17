@@ -30,7 +30,7 @@ import { resolve } from 'path';
 // that parity is a verification task, so it needs a verifier, not a review.
 
 const CSS_PATH = resolve(__dirname, '../features/locations/NodeTopologyEditor.css');
-const TOKENS_PATH = resolve(__dirname, '../frontend/themes/tokens.css');
+const TOKENS_PATH = resolve(__dirname, '../theme/tokens.css');
 
 const css = readFileSync(CSS_PATH, 'utf-8');
 const tokens = readFileSync(TOKENS_PATH, 'utf-8');

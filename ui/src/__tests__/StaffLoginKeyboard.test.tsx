@@ -34,7 +34,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { LocalizationProvider, ReactLocalization } from '@fluent/react';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 
 vi.mock('@/contexts/BrandContext', () => ({
   useBrand: () => ({ settings: null, loading: false, refreshBrandSettings: vi.fn() }),
@@ -44,7 +44,7 @@ vi.mock('@/contexts/BrandContext', () => ({
 function renderScreen() {
   const bundle = new FluentBundle('en-US');
   bundle.addResource(new FluentResource(`
-staff-login-title = OZ-POS
+staff-login-title = kasir.mu
 staff-login-subtitle = Staff Login
 staff-login-progress-aria =
     .aria-label = Login progress
@@ -73,7 +73,7 @@ staff-login-submit = Login
 staff-login-error-deactivated = Account is deactivated
 staff-login-error-not-found = User not found
 staff-login-error-connection = Could not verify username. Check your connection.
-staff-login-copyright = © 2026 OZ-POS. All rights reserved.
+staff-login-copyright = © 2026 kasir.mu. All rights reserved.
 staff-login-attempts-remaining = ({ $count } attempts remaining)
 staff-login-lockout = Locked out. Try again in { $seconds }s
 `));

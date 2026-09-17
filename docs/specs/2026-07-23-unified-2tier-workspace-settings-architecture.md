@@ -2,14 +2,14 @@
 
 **Status:** Proposed
 **Date:** 2026-07-23
-**Author:** Architecture Team & OZ-POS Contributors
+**Author:** Architecture Team & kasir.mu Contributors
 **Tags:** settings, workspace, architecture, rbac, ui-components, design-system, i18n, a11y, multi-location, hal, event-bus, node-topology
 
 ---
 
 ## Context
 
-Settings management in OZ-POS is currently fragmented across **5 distinct components and UI paradigms**:
+Settings management in kasir.mu is currently fragmented across **5 distinct components and UI paradigms**:
 
 1. **`SettingsPage.tsx`** (`ui/src/features/settings/SettingsPage.tsx`): Full-screen Settings Hub with a 13-section left sidebar tree (`SettingsNavTree.tsx`), accessible from the Admin workspace (`#/settings`). Uses modern design tokens and dither cards.
 2. **`RetailOptionsScreen.tsx`** (`ui/src/features/retail/RetailOptionsScreen.tsx`): 8-tab modal overlay used when pressing `F10` / `Options` inside Store POS (`RetailPosScreen.tsx`). Uses legacy modal styles, hardcoded colors, and raw inputs.
@@ -142,7 +142,7 @@ Peripherals belong strictly to workspace cards, with strict separation between S
 - Settings changes write a **last-write-wins (LWW) delta record** with a monotonically increasing `version` column to the `setting_updated` ledger, enabling consistent sync across multi-terminal offline clusters.
 - **Version strategy — per-key counter**: The `version` column is incremented per `(key, terminal_id)` pair via `SELECT COALESCE(MAX(version), 0) + 1 FROM setting_updated WHERE key = ? AND terminal_id = ?`. This ensures only genuine conflicts on the same setting key trigger the concurrent-edit dialog (edge case #8). A global counter would fire false-positive conflict warnings on every unrelated setting change.
 - **`SettingsUpdated` event payload**: The `settings_updated` event emitted by the backend includes `changed_keys: Vec<String>` and `terminal_id: String`. `SettingsContext` uses `changed_keys` to scope its refetch to only the affected settings, avoiding a full reload-all on every event.
-- **Future consideration**: If LWW proves insufficient for concurrent multi-terminal edits (e.g. two managers changing the same KDS SLA timer simultaneously), a CRDT-based approach can replace LWW in a follow-up ADR. LWW is chosen as the initial strategy because it is significantly simpler to implement and test, and OZ-POS's typical deployment pattern (≤3 terminals per store) makes true concurrent-conflict scenarios rare.
+- **Future consideration**: If LWW proves insufficient for concurrent multi-terminal edits (e.g. two managers changing the same KDS SLA timer simultaneously), a CRDT-based approach can replace LWW in a follow-up ADR. LWW is chosen as the initial strategy because it is significantly simpler to implement and test, and kasir.mu's typical deployment pattern (≤3 terminals per store) makes true concurrent-conflict scenarios rare.
 
 #### Pillar E: Visual Topology Canvas Integration (`NodeTopologyEditor.tsx`)
 - **Existing Foundation**: `SettingsNavTree.tsx` already includes a `topology` nav item that renders `<TopologyScreen />`. `NodeTopologyEditor.tsx` and `TopologyScreen.tsx` in `ui/src/features/stores/` provide the interactive node diagram with drag, wire editing, and inspector drawer infrastructure.

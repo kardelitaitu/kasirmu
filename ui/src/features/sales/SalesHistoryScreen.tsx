@@ -28,7 +28,7 @@ import { useSwipe } from '@/hooks/useSwipe';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
-import { EmptyState, ErrorState, requiredLocalized } from '@/frontend/shared';
+import { EmptyState, ErrorState, requiredLocalized } from '@/components';
 import { NoSalesIcon, NotFoundIcon } from '@/components/EmptyStateIllustrations';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import RefundModal from './RefundModal';

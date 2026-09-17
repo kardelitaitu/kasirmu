@@ -9,7 +9,7 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useContextMenu } from '@/frontend/shared/useContextMenu';
+import { useContextMenu } from '@/components/useContextMenu';
 
 /* ── Clipboard mock ──────────────────────────────────────────────── */
 

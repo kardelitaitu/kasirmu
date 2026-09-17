@@ -12,7 +12,7 @@ const FAST_WAIT = { interval: 5, timeout: 500 } as const;
 import { renderWithFluent } from '@/__tests__/test-utils/render';
 import settingsFtl from '@/locales/settings.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import FeatureToggleScreen from '@/features/settings/FeatureToggleScreen';
 
 // ── Mock @tauri-apps/api/core ────────────────────────────────────

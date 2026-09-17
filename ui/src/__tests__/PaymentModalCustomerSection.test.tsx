@@ -65,7 +65,7 @@
  * expected figure comes from the SAME production formatter the component calls
  * (formatMoney from types/domain) - no float money, no literal currency string.
  *
- * English asserted here was read out of ui/src/locales/sales.ftl:
+ * English asserted here was read out of shared-ui/locales/sales.ftl:
  *   :157 payment-cancel                        = Cancel
  *   :161 payment-customer-change              = Change
  *   :162 payment-customer-select              = Select Customer
@@ -79,8 +79,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
-import { withFluent } from '@/locales/test-utils';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { withFluent } from '@/i18n/test-utils';
+import { ToastProvider } from '@/components/Toast';
 import salesFtl from '@/locales/sales.ftl?raw';
 import PaymentModal from '@/features/sales/PaymentModal';
 import { formatMoney, type CartLine, type LineId, type Money, type Sku } from '@/types/domain';

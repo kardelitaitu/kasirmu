@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, Fragment } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { EmptyState, requiredLocalized } from '@/frontend/shared';
+import { EmptyState, requiredLocalized } from '@/components';
 import { NoLoyaltyIcon } from '@/components/EmptyStateIllustrations';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';

@@ -1,13 +1,13 @@
 ---
 name: pr-repair
-description: Systematic workflow for diagnosing, reproducing, repairing, and verifying failed tests and CI checks on a GitHub pull request in OZ-POS. Covers gh CLI diagnosis, scoped reproduction (Rust, UI, E2E, gates, drift scripts), repair patterns, and verification protocols.
+description: Systematic workflow for diagnosing, reproducing, repairing, and verifying failed tests and CI checks on a GitHub pull request in kasir.mu. Covers gh CLI diagnosis, scoped reproduction (Rust, UI, E2E, gates, drift scripts), repair patterns, and verification protocols.
 ---
 
-<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — version lock corrected 0.0.31 → 0.0.35; poll-pr-checks.ps1 corrected to the real scripts/poll-pr-checks.sh (no .ps1 exists); the Fluent bundle-path wording corrected to the per-feature English/.id.ftl layout; touch-target rule aligned with the design language 48px floor; illustrative Fluent ids reworded so the drift-guard Fluent check stays clean; reset-dev-pg.ps1 mention removed — only the .sh exists; vitest repro switched to npm run test -- filter) · verified this pass: scripts/poll-pr-checks.sh, scripts/reset-dev-pg.sh, scripts/diagnose-pr.py, scripts/verify-ci-docs-drift.py, scripts/verify-architecture-boundaries.py, scripts/verify-no-hardcoded-money-format.py, scripts/test-tdd.sh, crates/oz-api/src/pg_tests.rs, apps/cloud-server/src/db_tests.rs exist; ui npm scripts e2e:api / e2e:ui / typecheck / lint / test confirmed in ui/package.json -->
+<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — version lock corrected 0.0.31 → 0.0.35; poll-pr-checks.ps1 corrected to the real scripts/poll-pr-checks.sh (no .ps1 exists); the Fluent bundle-path wording corrected to the per-feature English/.id.ftl layout; touch-target rule aligned with the design language 48px floor; illustrative Fluent ids reworded so the drift-guard Fluent check stays clean; reset-dev-pg.ps1 mention removed — only the .sh exists; vitest repro switched to npm run test -- filter) · verified this pass: scripts/poll-pr-checks.sh, scripts/reset-dev-pg.sh, scripts/diagnose-pr.py, scripts/verify-ci-docs-drift.py, scripts/verify-architecture-boundaries.py, scripts/verify-no-hardcoded-money-format.py, scripts/test-tdd.sh, crates/kasirmu-api/src/pg_tests.rs, apps/cloud-server/src/db_tests.rs exist; ui npm scripts e2e:api / e2e:ui / typecheck / lint / test confirmed in ui/package.json -->
 
 # PR Repair — Fixing Failed Tests and CI Checks on Pull Requests
 
-This skill defines the standardized, disciplined workflow for diagnosing, reproducing, fixing, and verifying failed tests or failing CI checks on a GitHub pull request in the OZ-POS repository.
+This skill defines the standardized, disciplined workflow for diagnosing, reproducing, fixing, and verifying failed tests or failing CI checks on a GitHub pull request in the kasir.mu repository.
 
 ---
 
@@ -28,11 +28,11 @@ This skill defines the standardized, disciplined workflow for diagnosing, reprod
 | 2 | **Reproduce locally in isolation.** | Reproduce the failing test or check locally using the smallest possible command before writing fixes. |
 | 3 | **Minimal surgical fixes.** | Address the root cause. Never delete assertions, skip tests, widen tolerances, or suppress linters unless the test was demonstrably testing an obsolete specification. |
 | 4 | **Maintain architectural standards.** | Money values stay in `i64` minor units (`Money`), database writes in `rusqlite` transactions, UI text in `@fluent/react` via `<Localized>`, and Tauri IPC routed through `ui/src/api/`. |
-| 5 | **Version is locked at `0.0.37`.** | Never modify the version number in `Cargo.toml`, `package.json`, or any manifest. |
+| 5 | **Version is locked at `0.0.39`.** | Never modify the version number in `Cargo.toml`, `package.json`, or any manifest. |
 | 6 | **Scope verification to the affected area.** | Run targeted tests during iteration. Full `scripts/check.sh` is reserved for final pre-push or explicit requests. |
 | 7 | **Never kill running background processes.** | Do not kill `.exe` or background services that may belong to other agents or active dev servers. |
 | 8 | **Never `git push` without an explicit direct command.** | Always stop at local commit. Even after full verification, ask or wait for the user to explicitly tell you to push. |
-| 9 | **Catch early, repair instantly — 30s fail-fast polling.** | The CI matrix contains 38+ jobs taking 15–25 minutes. Never run bare `gh pr checks --watch` which hangs until all checks finish. Instead, poll every 30s with fail-fast early exit (`gh pr checks <PR> --watch --fail-fast -i 30` or `bash scripts/poll-pr-checks.sh`). As soon as 1 or 2 fast checks fail, catch them immediately and start repairing without waiting for the rest. |
+| 9 | **Catch early, repair instantly — 30s fail-fast polling.** | `dev-ci.yml` runs 11 jobs, all on `ubuntu-latest` — there is no OS matrix — so typical wall time is a few minutes. Never run bare `gh pr checks --watch` which hangs until all checks finish. Instead, poll every 30s with fail-fast early exit (`gh pr checks <PR> --watch --fail-fast -i 30` or `bash scripts/poll-pr-checks.sh`). As soon as 1 or 2 fast checks fail, catch them immediately and start repairing without waiting for the rest. |
 
 ---
 
@@ -77,7 +77,7 @@ git pull origin $(git branch --show-current)
 
 > [!IMPORTANT]
 > **Never run bare `gh pr checks --watch` to wait for all checks to finish.**
-> In OZ-POS, `dev-ci.yml` runs **11 jobs**, all on `ubuntu-latest` — there is **no OS matrix**, so "waiting for the matrix" is not a thing here. Typical wall time is a few minutes, dominated by `cargo-nextest` and `ui-test`. (This line previously claimed "38+ jobs across multiple OS matrices taking 15–25 minutes", which overstates the count ~3.5x and invents a dimension that does not exist; `release.yml` adds 5 more, but only on `v*` tags.) The fail-fast advice below stands regardless, and is if anything more valuable here: with 11 jobs and no matrix, a green run arrives quickly, so a slow poll wastes the whole window in which you could already be fixing the first failure.
+> In kasir.mu, `dev-ci.yml` runs **11 jobs**, all on `ubuntu-latest` — there is **no OS matrix**, so "waiting for the matrix" is not a thing here. Typical wall time is a few minutes, dominated by `cargo-nextest` and `ui-test`. (This line previously claimed "38+ jobs across multiple OS matrices taking 15–25 minutes", which overstates the count ~3.5x and invents a dimension that does not exist; `release.yml` adds 5 more, but only on `v*` tags.) The fail-fast advice below stands regardless, and is if anything more valuable here: with 11 jobs and no matrix, a green run arrives quickly, so a slow poll wastes the whole window in which you could already be fixing the first failure.
 
 ```powershell
 # Option A: Native gh CLI with 30s interval and fail-fast (exits on the first failed check!):
@@ -125,13 +125,13 @@ bash scripts/test-tdd.sh -p crates/<crate_name>
 ```
 
 #### 2. Dev PostgreSQL Drift (`Db("db error")`)
-When PG tests like `crates/oz-api/src/pg_tests.rs` or `apps/cloud-server/src/db_tests.rs` fail with cryptic `Db("db error")`:
+When PG tests like `crates/kasirmu-api/src/pg_tests.rs` or `apps/cloud-server/src/db_tests.rs` fail with cryptic `Db("db error")`:
 ```powershell
 # Reset dev PostgreSQL schema drift
 bash scripts/reset-dev-pg.sh
 
 # Re-run the failing test
-cargo test -p oz-api --test pg_tests
+cargo test -p kasirmu-api --test pg_tests
 ```
 
 #### 3. Rust Formatting & Linter
@@ -173,7 +173,7 @@ npm run e2e:ui
 
 #### 7. Localization & Fluent Bundle Parity
 ```powershell
-# Verify Fluent key parity between the English .ftl and .id.ftl bundles under ui/src/locales/
+# Verify Fluent key parity between the English .ftl and .id.ftl bundles under shared-ui/locales/
 bash scripts/lint-i18n.sh
 
 # Check duplicate FTL keys
@@ -214,7 +214,7 @@ Classify the root cause and apply the appropriate repair:
 - **Repair:** Execute `bash scripts/reset-dev-pg.sh` and ensure migrations in `20260813_init.pg.sql` or subsequent migration files match test expectations.
 
 #### Scenario D: Missing or Unsynced Fluent Localization
-- **Symptom:** a `<Localized>` key added in React JSX is missing from the matching `ui/src/locales/<feature>.ftl` (English) or `<feature>.id.ftl` (Indonesian) bundle — e.g. `sales.ftl` for a sales-surface key.
+- **Symptom:** a `<Localized>` key added in React JSX is missing from the matching `shared-ui/locales/<feature>.ftl` (English) or `<feature>.id.ftl` (Indonesian) bundle — e.g. `sales.ftl` for a sales-surface key.
 - **Repair:** Add the key and corresponding translated string to **both** the English and the `.id.ftl` bundle.
 
 #### Scenario E: UI Accessibility (`aria-*`) or Touch Target Failure
@@ -242,8 +242,7 @@ git status
 #### 3. Commit Locally
 Make a clean, descriptive local commit explaining the repair:
 ```powershell
-git add <repaired_files>
-git commit -m "fix(<scope>): repair <test_name_or_failure_description>"
+git commit -m "fix(<scope>): repair <test_name_or_failure_description>" -- <repaired_files>
 ```
 
 #### 4. Push Protocol — Explicit Permission Required
@@ -269,7 +268,7 @@ python scripts/diagnose-pr.py <PR_NUMBER>
 | CI Check Name | Root Cause Indicator | Local Reproduction Command |
 |---|---|---|
 | `Rust Test / test-workspace` | Rust assertion or panic | `cargo test -p <crate> <test_name> -- --nocapture` |
-| `PG Integration / pg_tests` | `Db("db error")` drift | `bash scripts/reset-dev-pg.sh && cargo test -p oz-api --test pg_tests` |
+| `PG Integration / pg_tests` | `Db("db error")` drift | `bash scripts/reset-dev-pg.sh && cargo test -p kasirmu-api --test pg_tests` |
 | `Rust Lint / cargo fmt` | Formatting discrepancy | `cargo fmt --all` |
 | `Rust Lint / clippy` | Compiler/clippy warning | `cargo clippy -p <crate> --all-targets --all-features -- -D warnings` |
 | `UI Test / vitest` | Component/unit test failure | `cd ui && npm run test -- <test_name_fragment>` |
@@ -280,4 +279,4 @@ python scripts/diagnose-pr.py <PR_NUMBER>
 | `CI Docs Drift` | Undocumented script or workflow | `python scripts/verify-ci-docs-drift.py` |
 | `Skill Drift Tests` | Stale audit date or broken ref | `bash .agents/skills/skill-drift-guard/scripts/detect.sh` |
 
-> last audited 03-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat

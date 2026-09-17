@@ -35,7 +35,7 @@ vi.mock('@/api/license', () => ({
   testAuthConnection: vi.fn().mockResolvedValue({ ok: true, status: 'Connected', latencyMs: 10 }),
 }));
 
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
 
@@ -98,7 +98,7 @@ describe('SessionLockScreen', () => {
         render(<SessionLockScreen onUnlock={mockOnUnlock} />);
         expect(screen.getByText(/02:30|2:30/)).toBeInTheDocument();
         // Scope the date assertions to the date element — the footer version
-        // text ("OZ-POS Enterprise v0.0.25") also contains digits, so a bare
+        // text ("kasir.mu Enterprise v0.0.25") also contains digits, so a bare
         // getByText(/25/) would match multiple nodes.
         const dateEl = screen.getByText(/Saturday/);
         expect(dateEl.textContent).toMatch(/July/);

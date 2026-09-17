@@ -1,5 +1,5 @@
 import { lazy } from 'react';
-import { registerPage } from '@/platform/ui/page-registry';
+import { registerPage } from '@/registries/page-registry';
 
 const WarehouseConsole = lazy(() => import('./WarehouseConsole'));
 

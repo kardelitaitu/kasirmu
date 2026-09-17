@@ -2,8 +2,8 @@
 //! objects that exist only on the cloud deployment, as plain data.
 //!
 //! Both builders moved out of `openapi.rs` unchanged; `openapi_spec` is their
-//! only caller, and it merges their output into the shared `oz-api` document
-//! and stamps the cloud scope (`oz_api::spec::annotate_scope`) itself, so
+//! only caller, and it merges their output into the shared `kasirmu-api` document
+//! and stamps the cloud scope (`kasirmu_api::spec::annotate_scope`) itself, so
 //! nothing here knows about scopes, tags, or the base spec.
 //!
 //! Both functions are named by the parent, so both are `pub(super)` and
@@ -63,7 +63,7 @@ pub(super) fn build_cloud_schemas() -> Value {
             }
         },
         // One offline queue item exactly as it crosses the wire. The Rust type
-        // is `oz_core::offline::OfflineQueueItem`: the push handler
+        // is `kasirmu_core::offline::OfflineQueueItem`: the push handler
         // deserialises `Json<Vec<OfflineQueueItem>>`, the pull response
         // returns the same struct, and the `conflict` branch of `PushOutcome`
         // flattens it next to its tag. Field names, nullability and casing are

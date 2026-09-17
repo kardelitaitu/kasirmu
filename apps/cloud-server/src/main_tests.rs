@@ -91,7 +91,7 @@ fn test_config() -> config::CloudServerConfig {
 
 /// Helper: build an in-memory database with migrations applied.
 fn fresh_db() -> Connection {
-    oz_core::migrations::fresh_db()
+    kasirmu_core::migrations::fresh_db()
 }
 
 /// Helper: create a test router backed by an in-memory database.
@@ -119,7 +119,7 @@ fn test_app() -> Router {
 
 /// Create a test JWT token.
 fn test_token(tenant_id: Option<&str>) -> String {
-    oz_api::auth::create_token("test", Some(24), tenant_id, None)
+    kasirmu_api::auth::create_token("test", Some(24), tenant_id, None)
         .unwrap()
         .token
 }
@@ -235,7 +235,7 @@ async fn metrics_render_rate_limit_and_webhook_counters() {
 #[tokio::test]
 async fn health_returns_ok() {
     let app = test_app();
-    // oz-api health endpoint
+    // kasirmu-api health endpoint
     let req = Request::builder()
         .uri("/api/v1/health")
         .body(Body::empty())
@@ -301,7 +301,7 @@ async fn cloud_health_reports_the_portable_derivation_selection() {
     assert!(field.is_boolean(), "must be a plain bool, got {field}");
     assert_eq!(
         field.as_bool().unwrap(),
-        oz_core::crypto::master_key_derivation_active(),
+        kasirmu_core::crypto::master_key_derivation_active(),
         "the payload must carry the derivation own answer"
     );
     // Nothing key-shaped may ride along with it.
@@ -447,7 +447,7 @@ async fn console_subscriber_inits_without_panic() {
     // This test verifies that the console subscriber can be
     // initialised without panicking. In CI it's a no-op since the
     // `console` feature is not enabled; run locally with:
-    //   RUSTFLAGS="--cfg tokio_unstable" cargo test --features console -p oz-cloud-server
+    //   RUSTFLAGS="--cfg tokio_unstable" cargo test --features console -p kasirmu-cloud
     console_subscriber::init();
     // If we get here, init succeeded (no double-init panic).
     tracing::info!("tokio-console smoke test passed");

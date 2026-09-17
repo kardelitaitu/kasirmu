@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/Button';
 import { Localized, useLocalization } from '@fluent/react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { useToast } from '@/frontend/shared/Toast';
-import { requiredLocalized, LoadingStatus } from '@/frontend/shared';
+import { useToast } from '@/components/Toast';
+import { requiredLocalized, LoadingStatus } from '@/components';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { listProductsScoped, type ProductDto } from '@/api/products';
 import {

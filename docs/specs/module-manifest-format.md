@@ -4,13 +4,13 @@
 
 **Version:** 1.0
 **Status:** Draft
-**Applies to:** OZ-POS Phase 2+
+**Applies to:** kasir.mu Phase 2+
 
 ---
 
 ## Overview
 
-Every module in OZ-POS must have a `manifest.json` file at its root. The manifest defines the module's identity, version, dependencies, and metadata. It is used by tooling for scaffolding, dependency analysis, documentation generation, and (in future phases) runtime consistency checks.
+Every module in kasir.mu must have a `manifest.json` file at its root. The manifest defines the module's identity, version, dependencies, and metadata. It is used by tooling for scaffolding, dependency analysis, documentation generation, and (in future phases) runtime consistency checks.
 
 ---
 

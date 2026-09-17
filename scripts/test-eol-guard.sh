@@ -14,7 +14,7 @@
 #      included. Git's real binary sniffing happens later, inside `git add`. So
 #      filtering on check-attr alone lets a PNG through, and `tr -d '\r'` then
 #      deletes the 0D 0A in the PNG signature -- 1515 -> 1507 bytes on
-#      apps/desktop-client/icons/32x32.png, signature destroyed, and `git add`
+#      apps/desktop-tauri/icons/32x32.png, signature destroyed, and `git add`
 #      stores the mangled blob. Silent data loss behind a green hook.
 #
 # The guard is EXTRACTED from the hook, not copied, so this test cannot drift
@@ -72,7 +72,7 @@ printf 'plain\r\n'            > plain.txt
 # the fixture would read as text and the case would fail for the wrong reason.
 # Use the real file the bug was found on -- it has NULs, and it is the exact
 # bytes whose corruption was measured.
-REAL_ICON="$REPOROOT/apps/desktop-client/icons/32x32.png"
+REAL_ICON="$REPOROOT/apps/desktop-tauri/icons/32x32.png"
 if [ -f "$REAL_ICON" ]; then
   cp "$REAL_ICON" icons/real.png
 else

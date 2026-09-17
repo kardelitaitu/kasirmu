@@ -32,8 +32,8 @@ Measured 2026-09-13 against HEAD `90b7132ca` (branch `0.0.37`). Read-only run: n
 
 `registration_gate_tests.rs` already ran and **its output is already on disk** as two generated ledgers, one row per registered command that the shell does not gate-accept:
 
-- `apps/desktop-client/src/commands/registration_gate_debt.generated.rs`
-- `apps/tablet-client/src/commands/registration_gate_debt.generated.rs`
+- `apps/desktop-tauri/src/commands/registration_gate_debt.generated.rs`
+- `apps/mobile-tauri/src/commands/registration_gate_debt.generated.rs`
 
 I did not reimplement the scan. I re-derived its inputs from `lib.rs` independently and they reconcile exactly:
 
@@ -50,7 +50,7 @@ One caveat that moves a number, and one only: the tablet ledger was written at *
 
 ## 1. The table — class A: unscoped command performs no permission check while its scoped twin does
 
-Desktop rows, registration site is `apps/desktop-client/src/lib.rs`.
+Desktop rows, registration site is `apps/desktop-tauri/src/lib.rs`.
 
 | name | handler / registration line | gated? | twin (gate-accepted) | same name on tablet |
 |---|---|---|---|---|
@@ -77,7 +77,7 @@ Desktop rows, registration site is `apps/desktop-client/src/lib.rs`.
 | `settings::get_setting` | commands/settings.rs:243 @1203 | NO | `get_setting_scoped` | C |
 | `sync::test_sync_connection` | commands/sync.rs @1269 | NO | `test_sync_connection_scoped` | **A as well** |
 
-Tablet rows, registration site is `apps/tablet-client/src/lib.rs`; 13 from the ledger plus one restored in section 4.
+Tablet rows, registration site is `apps/mobile-tauri/src/lib.rs`; 13 from the ledger plus one restored in section 4.
 
 | name | handler / registration line | gated? | twin (gate-accepted) | same name on desktop |
 |---|---|---|---|---|
@@ -96,7 +96,7 @@ Tablet rows, registration site is `apps/tablet-client/src/lib.rs`; 13 from the l
 | `currencies::set_default_currency` | commands/currencies.rs @515 | NO | `set_default_currency_scoped` | C |
 | `sync::test_sync_connection` | commands/sync.rs @609 | NO | `test_sync_connection_scoped` | **A as well** |
 
-**Proven by direct code read, not inherited from the ledger:** the five `history` rows. In `apps/tablet-client/src/commands/history.rs`, `require_permission_for_user` appears at lines **297, 340, 380, 404, 428** — all five inside `*_scoped` — and at **no line inside the five unscoped originals** (58, 114, 145, 157, 205). That is exactly the shape the orphan was cut to count: the twins got a permission, the originals stayed open, and both names remain registered.
+**Proven by direct code read, not inherited from the ledger:** the five `history` rows. In `apps/mobile-tauri/src/commands/history.rs`, `require_permission_for_user` appears at lines **297, 340, 380, 404, 428** — all five inside `*_scoped` — and at **no line inside the five unscoped originals** (58, 114, 145, 157, 205). That is exactly the shape the orphan was cut to count: the twins got a permission, the originals stayed open, and both names remain registered.
 
 ---
 
@@ -135,7 +135,7 @@ What is deliberately **not** waved away: the nine `license::*` rows in desktop c
 
 ## 4. The one correction the raw ledger gets wrong
 
-`history::export_daily_summary_scoped` is recorded as `resolves_session_names_no_permission`. It no longer is: `apps/tablet-client/src/commands/history.rs:380` calls `require_permission_for_user(..., permissions::REPORTS_EXPORT)`. Generated file 03:56:46, commit 04:04:21.
+`history::export_daily_summary_scoped` is recorded as `resolves_session_names_no_permission`. It no longer is: `apps/mobile-tauri/src/commands/history.rs:380` calls `require_permission_for_user(..., permissions::REPORTS_EXPORT)`. Generated file 03:56:46, commit 04:04:21.
 
 Consequences, and this is the class of error that turns a count into a lie:
 - tablet debt is **125**, not 126; the frozen `DEBT_CEILING = 126` is one row too high, and a ratchet ceiling that is too high will not catch a regression that only shrinks,
@@ -160,6 +160,6 @@ Spot check for other staleness: `stale ledger rows absent from live list: none` 
 - **No desktop-side permission read.** Tablet `history.rs` and `settings.rs` were verified line by line; for desktop the harness was trusted. Desktop gates may live in `crates/oz-bridge/src/*` (its own header says the bridge is in the parse set), which I never opened. **All 22 desktop class-A rows are harness-measured, not hand-proven.**
 - `security::rotate_encryption_key` (desktop) — the highest-impact name in the list — was not read.
 - **No `ui/src/api` caller grep.** Whether each class-A unscoped name still has a front-end caller is what decides deregister versus gate-in-place. Unanswered; about 34 wrappers.
-- **Neither harness could be executed.** Tablet is truncated at `registration_gate_tests.rs:200` (`cargo check -p oz-pos-tablet --tests` exit **101**). Desktop would not even be reached: `cargo check -p oz-pos-app --tests` exits **0**, but the `#[cfg(test)]` shim is not in HEAD, because I restored `mod.rs` in the previous task — so `cargo test -p oz-pos-app registration` currently matches **no test**. **Re-applying `.agents/orphan-mod-rs.diff` is what makes it runnable**, and that is a `git apply`, not a build.
+- **Neither harness could be executed.** Tablet is truncated at `registration_gate_tests.rs:200` (`cargo check -p oz-pos-tablet --tests` exit **101**). Desktop would not even be reached: `cargo check -p kasirmu-app --tests` exits **0**, but the `#[cfg(test)]` shim is not in HEAD, because I restored `mod.rs` in the previous task — so `cargo test -p kasirmu-app registration` currently matches **no test**. **Re-applying `.agents/orphan-mod-rs.diff` is what makes it runnable**, and that is a `git apply`, not a build.
 - Ledger staleness beyond section 4 is unproven for other families.
-- No source file was edited; no commit, no stash, no `cargo clean`, no `cargo build`. Exit codes read before pipes: `oz-pos-app` check **0**, `oz-pos-tablet` check **0**, `cargo fmt --all -- --check` **0** (green since the reject).
+- No source file was edited; no commit, no stash, no `cargo clean`, no `cargo build`. Exit codes read before pipes: `kasirmu-app` check **0**, `oz-pos-tablet` check **0**, `cargo fmt --all -- --check` **0** (green since the reject).

@@ -95,14 +95,14 @@
       "label": "Rust tests",
       "status": "required",
       "runners": { "check.sh": ["test workspace", "test doctests"] },
-      "_note": "Was ci.yml#rust-test-fast. dev-ci.yml runs `cargo nextest run --workspace --all-features` with NO excludes, so it covers this more broadly than check.sh, whose own nextest step excludes oz-pos-app. nextest does not run doctests, so that part remains check.sh-only.",
+      "_note": "Was ci.yml#rust-test-fast. dev-ci.yml runs `cargo nextest run --workspace --all-features` with NO excludes, so it covers this more broadly than check.sh, whose own nextest step excludes kasirmu-app. nextest does not run doctests, so that part remains check.sh-only.",
       "ci": { "workflow": "dev-ci.yml", "job": "cargo-nextest" }
     },
     {
       "id": "release-bridge-tests",
       "label": "Release-profile bridge tests",
       "status": "required",
-      "_note": "CI-ONLY by design: no check.sh runner, because a release build would add minutes to every local run. dev-ci.yml#release-bridge-test runs `cargo nextest run -p oz-bridge --release` on push to main only (not PR, not scheduled): a release compile is much colder than the debug one, and taxing every PR with it was ruled not worth the guarantee. Landable because release went green at 2dc500382 - never land a gate red. Flag trap: `-P release` is the NEXTEST profile and would silently re-run the debug build; `-r`/`--release` is the cargo profile.",
+      "_note": "CI-ONLY by design: no check.sh runner, because a release build would add minutes to every local run. dev-ci.yml#release-bridge-test runs `cargo nextest run -p kasirmu-bridge --release` on push to main only (not PR, not scheduled): a release compile is much colder than the debug one, and taxing every PR with it was ruled not worth the guarantee. Landable because release went green at 2dc500382 - never land a gate red. Flag trap: `-P release` is the NEXTEST profile and would silently re-run the debug build; `-r`/`--release` is the cargo profile.",
       "ci": { "workflow": "dev-ci.yml", "job": "release-bridge-test" }
     },
     {
@@ -112,6 +112,18 @@
       "runners": { "check.sh": ["architecture boundaries"] },
       "_note": "Was ci.yml#architecture-boundaries. Runs in dev-ci.yml#static-gates with --strict, verified green locally.",
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
+    },
+    {
+      "id": "root-policy",
+      "label": "Root policy (P8)",
+      "status": "required",
+      "_note": "Added in 0.0.39 (P8 of todo-project-folder-restructure.md). scripts/verify-root-policy.py fails when the repo root gains a file outside the section-5 allowlist (tool contracts + owner entry files + .env) and sweeps empty directories, the one junk class no git-based check can see. Cleared pr_body.md, skill-drift-report.md, scripts/__pycache__ and .agents/__pycache__ (Pile C); cleared the empty ui/scripts directory. Local-only by design: it inspects the working tree, so a runner checkout may legitimately carry ephemera this repo does not own; therefore no ci key, and pre-commit is deliberately not lengthened - scripts/check.sh is its only runner.",
+      "runners": {
+       "check.sh": [
+        "root policy",
+        "root policy self-test"
+       ]
+      }
     },
     {
       "id": "no-raw-params",
@@ -140,7 +152,7 @@
       "id": "topology-parity",
       "label": "Topology contract parity",
       "status": "required",
-      "_note": "Added 0.0.37. scripts/verify-topology-parity.py keeps the vendored oz-core copy and the UI copy of topologySemantics.json byte-identical, since both sides of the IPC boundary read it. Local-only: check.sh is its only runner.",
+      "_note": "Added 0.0.37. scripts/verify-topology-parity.py keeps the vendored kasirmu-core copy and the UI copy of topologySemantics.json byte-identical, since both sides of the IPC boundary read it. Local-only: check.sh is its only runner.",
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["topology contract parity"] }
     },
@@ -200,14 +212,14 @@
       "label": "Docker build smoke (--docker-dry-run)",
       "status": "required",
       "runners": { "check.sh": ["docker build"] },
-      "_note": "Local-only by necessity, not by oversight. check.sh:405 runs `docker build -f Dockerfile.server -t oz-pos-cloud:local`; every container workflow in .github/workflows is retired to .bak (docker-*.yml.bak), so no live job builds an image and there is nowhere to cite. Recorded here so the absence is a decision rather than a gap: on a clone without core.hooksPath nothing builds the server image before merge."
+      "_note": "Local-only by necessity, not by oversight. check.sh:405 runs `docker build -f ops/docker/Dockerfile.server -t oz-pos-cloud:local`; every container workflow in .github/workflows is retired to .bak (docker-*.yml.bak), so no live job builds an image and there is nowhere to cite. Recorded here so the absence is a decision rather than a gap: on a clone without core.hooksPath nothing builds the server image before merge."
     },
     {
       "id": "migration",
       "label": "Migration smoke",
       "status": "required",
       "runners": { "check.sh": ["migration"] },
-      "_note": "Local-only. check.sh:98-99 run `cargo run -p oz-cli -- migrate` twice (smoke + idempotency). No CI job does. ⚠ The section comment at check.sh:97 says 'mirrors CI `migration` job' and that is FALSE -- dev-ci.yml's ten jobs are changes, website, cargo-check, cargo-nextest, ui-test, i18n, ci-docs-drift, static-gates, release-readiness, northflank-deploy; none is named `migration`. Distinct from pg-schema-drift and migration-column-types, which ARE CI-backed in static-gates since 0.0.37; this entry is the SQLite migrate-up path, which never is."
+      "_note": "Local-only. check.sh:98-99 run `cargo run -p kasirmu-cli -- migrate` twice (smoke + idempotency). No CI job does. ⚠ The section comment at check.sh:97 says 'mirrors CI `migration` job' and that is FALSE -- dev-ci.yml's ten jobs are changes, website, cargo-check, cargo-nextest, ui-test, i18n, ci-docs-drift, static-gates, release-readiness, northflank-deploy; none is named `migration`. Distinct from pg-schema-drift and migration-column-types, which ARE CI-backed in static-gates since 0.0.37; this entry is the SQLite migrate-up path, which never is."
     },
     {
       "id": "skill-drift",
@@ -289,8 +301,8 @@
       "id": "bundle-budget",
       "label": "Bundle budget",
       "status": "required",
-      "runners": { "check:all": ["bundle budget", "bundle budget (tablet)"] },
-      "_note": "gzip budgets on BOTH artifacts built from one `ui/` tree. Enforced by the job named in this row's `ci` block: `dev-ci.yml#ui-test` declares `Bundle budget (desktop)` and `Bundle budget (tablet)`, which are the first CI steps to compile `ui/` at all -- each `bundle:check` script builds before it measures. The same two gates are declared locally in scripts/check-ui.mjs (`npm run check:all`), cited by gate name rather than line number, because this row once cited `check-ui.mjs:139` and it had rotted to :157. The woff2 line is `BUDGET_WOFF2_KB`, default 400 KB against a measured 296 KB -- 74 % of a ceiling set against today's payload, so the realistic way to fail it is a second family or a wider subset. PERF-02; the tablet leg closes notes.md item 38.",
+      "runners": { "check:all": ["bundle budget", "bundle budget (mobile)"] },
+      "_note": "gzip budgets on BOTH artifacts built from one `ui/` tree. Enforced by the job named in this row's `ci` block: `dev-ci.yml#ui-test` declares `Bundle budget (desktop)` and `Bundle budget (mobile)`, which are the first CI steps to compile `ui/` at all -- each `bundle:check` script builds before it measures. The same two gates are declared locally in scripts/check-ui.mjs (`npm run check:all`), cited by gate name rather than line number, because this row once cited `check-ui.mjs:139` and it had rotted to :157. The woff2 line is `BUDGET_WOFF2_KB`, default 400 KB against a measured 296 KB -- 74 % of a ceiling set against today's payload, so the realistic way to fail it is a second family or a wider subset. PERF-02; the tablet leg closes notes.md item 38.",
       "ci": { "workflow": "dev-ci.yml", "job": "ui-test" }
     },
     {
@@ -311,7 +323,7 @@
       "id": "rust-test-apps",
       "label": "Rust test apps",
       "status": "required",
-      "_note": "Was ci.yml#rust-test-apps. dev-ci.yml's nextest carries no --exclude flags, so the app crates are in scope; check.sh's equivalent DOES exclude oz-pos-app, which is why this looked uncovered.",
+      "_note": "Was ci.yml#rust-test-apps. dev-ci.yml's nextest carries no --exclude flags, so the app crates are in scope; check.sh's equivalent DOES exclude kasirmu-app, which is why this looked uncovered.",
       "ci": { "workflow": "dev-ci.yml", "job": "cargo-nextest" }
     },
     {
@@ -363,7 +375,7 @@
       "label": "Fuzz",
       "status": "retired",
       "_note": "cargo-fuzz ran in ci.yml#fuzz only. The RUSTC_WRAPPER='' note recorded below is still accurate for whoever restores it.",
-      "note": "The fuzz job deliberately sets RUSTC_WRAPPER: '' in its job env. The ubuntu runner image globally wraps rustc with sccache, which breaks cargo-fuzz's --target build (its rustc version probe execs the resolved nightly toolchain path directly and dies with 'could not execute process sccache .../bin/rustc -vV'). The fuzz job is the only job affected (nightly + --target), so sccache must stay disabled there — do NOT re-add it. Caching is instead handled by Swatinem/rust-cache@v2 with `workspaces: fuzz` (cargo-fuzz builds into fuzz/target/, which default workspace discovery misses)."
+      "note": "The fuzz job deliberately sets RUSTC_WRAPPER: '' in its job env. The ubuntu runner image globally wraps rustc with sccache, which breaks cargo-fuzz's --target build (its rustc version probe execs the resolved nightly toolchain path directly and dies with 'could not execute process sccache .../bin/rustc -vV'). The fuzz job is the only job affected (nightly + --target), so sccache must stay disabled there — do NOT re-add it. Caching is instead handled by Swatinem/rust-cache@v2 with `workspaces: tools/fuzz` (cargo-fuzz builds into tools/fuzz/target/, which default workspace discovery misses)."
     },
     {
       "id": "flaky-quarantine",
@@ -457,7 +469,7 @@
       "id": "release-readiness",
       "label": "Release readiness",
       "status": "required",
-      "_note": "Runs scripts/check-updater-compat.mjs, which builds a Rust harness pinned to the minisign-verify version the real Tauri updater client uses and proves that signatures from generate-latest-json.mjs VERIFY, that a tampered installer is REJECTED, and that the pubkey committed in tauri.conf.json parses. Before this it ran ONLY inside release.yml.bak, i.e. nowhere at all -- so the signing chain could have rotted silently alongside the retired workflow and the first symptom would be customers unable to auto-update. Path-gated on the release toolchain and the updater pubkey because the harness needs a cold cargo build. No `runners` key: that field names LOCAL entry points, and this one needs a cargo build, so it is CI-only. DEPLOY COUPLING IS A DECISION, NOT AN OVERSIGHT (2026-09-14): `northflank-deploy` deliberately omits this gate from its `needs` -- that deploy POSTs the commit sha to Northflank, which builds Dockerfile.unified, a BACKEND container consuming no installer, no latest.json and no updater pubkey, while release.yml gates this chain where it binds (release-validate runs the same scripts/check-updater-compat.mjs, release-build needs release-validate, release-publish needs release-build). Adding the edge here would bind 100% of deploys to a check unrelated to the artifact shipped, because the changes router forces release=true on every non-PR event while the release router paths held 140 of 7,841 commits over the last 90 days (1.79%), and because its own failure surface (an unstable rust-toolchain pin, node 24, a cold cargo build under the workflow-wide RUSTFLAGS) can stop a deploy it cannot affect; narrowing the route instead is a no-op on the deploy path. Read `status` as POLICY, not as a deploy graph: required-by-policy and not-a-deploy-prerequisite are both true at once, so the missing `needs` edge is this note, not a bug to file. Residual risk, stated: `main` is unprotected, so a red run of this gate is still mergeable.",
+      "_note": "Runs scripts/check-updater-compat.mjs, which builds a Rust harness pinned to the minisign-verify version the real Tauri updater client uses and proves that signatures from generate-latest-json.mjs VERIFY, that a tampered installer is REJECTED, and that the pubkey committed in tauri.conf.json parses. Before this it ran ONLY inside release.yml.bak, i.e. nowhere at all -- so the signing chain could have rotted silently alongside the retired workflow and the first symptom would be customers unable to auto-update. Path-gated on the release toolchain and the updater pubkey because the harness needs a cold cargo build. No `runners` key: that field names LOCAL entry points, and this one needs a cargo build, so it is CI-only. DEPLOY COUPLING IS A DECISION, NOT AN OVERSIGHT (2026-09-14): `northflank-deploy` deliberately omits this gate from its `needs` -- that deploy POSTs the commit sha to Northflank, which builds ops/docker/Dockerfile.unified, a BACKEND container consuming no installer, no latest.json and no updater pubkey, while release.yml gates this chain where it binds (release-validate runs the same scripts/check-updater-compat.mjs, release-build needs release-validate, release-publish needs release-build). Adding the edge here would bind 100% of deploys to a check unrelated to the artifact shipped, because the changes router forces release=true on every non-PR event while the release router paths held 140 of 7,841 commits over the last 90 days (1.79%), and because its own failure surface (an unstable rust-toolchain pin, node 24, a cold cargo build under the workflow-wide RUSTFLAGS) can stop a deploy it cannot affect; narrowing the route instead is a no-op on the deploy path. Read `status` as POLICY, not as a deploy graph: required-by-policy and not-a-deploy-prerequisite are both true at once, so the missing `needs` edge is this note, not a bug to file. Residual risk, stated: `main` is unprotected, so a red run of this gate is still mergeable.",
       "ci": { "workflow": "dev-ci.yml", "job": "release-readiness" }
     },
     {
@@ -472,7 +484,7 @@
       "id": "eol-guard",
       "label": "EOL guard",
       "status": "required",
-      "_note": "Added in 0.0.36 (R36-15). The pre-commit line-ending step filtered on 'git check-attr text' alone, which is wrong twice: it ignored '.gitattributes *.bat text eol=crlf' and stripped CRLF from the working tree (producing a phantom-dirty git status with zero content diff), and because '* text=auto' reports 'auto' for every path including binaries, a staged PNG had the 0D 0A in its signature deleted and the mangled blob re-staged -- verified on apps/desktop-client/icons/32x32.png, 1515 to 1507 bytes. Both are silent corruption behind a green hook. The test extracts the live guard from .githooks/pre-commit rather than copying it, so it cannot drift from what it polices, and it fails loudly if either guard disappears.",
+      "_note": "Added in 0.0.36 (R36-15). The pre-commit line-ending step filtered on 'git check-attr text' alone, which is wrong twice: it ignored '.gitattributes *.bat text eol=crlf' and stripped CRLF from the working tree (producing a phantom-dirty git status with zero content diff), and because '* text=auto' reports 'auto' for every path including binaries, a staged PNG had the 0D 0A in its signature deleted and the mangled blob re-staged -- verified on apps/desktop-tauri/icons/32x32.png, 1515 to 1507 bytes. Both are silent corruption behind a green hook. The test extracts the live guard from .githooks/pre-commit rather than copying it, so it cannot drift from what it polices, and it fails loudly if either guard disappears.",
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["eol guard"] }
     },
@@ -480,7 +492,7 @@
       "id": "typecheck-gate",
       "label": "typecheck gate",
       "status": "required",
-      "_note": "Added in 0.0.37. Guards the UI typecheck step of .githooks/pre-commit, which was added after ten commits landed with HEAD failing tsc -- Vitest injects describe/it/expect/beforeEach/vi at runtime, so a missing import passes 'npm run test' and only fails 'tsc --noEmit', and nothing ran that before commit. The step fires only when a commit stages ui/src TypeScript, so on a Rust-only or docs-only stretch it goes unexercised and is indistinguishable from a step someone deleted; this test extracts the live step from the hook and drives it against a throwaway repo with a stubbed npm, asserting it triggers on nested .ts/.tsx, stays off for CSS/Rust/CI/docs-only and empty indexes, honours OZPOS_SKIP_TYPECHECK=1, aborts with rc=1 on a failing typecheck, and warns rather than silently passing when ui/node_modules is absent.",
+      "_note": "Added in 0.0.37. Guards the UI typecheck step of .githooks/pre-commit, which was added after ten commits landed with HEAD failing tsc -- Vitest injects describe/it/expect/beforeEach/vi at runtime, so a missing import passes 'npm run test' and only fails 'tsc --noEmit', and nothing ran that before commit. The step fires only when a commit stages ui/src TypeScript, so on a Rust-only or docs-only stretch it goes unexercised and is indistinguishable from a step someone deleted; this test extracts the live step from the hook and drives it against a throwaway repo with a stubbed npm, asserting it triggers on nested .ts/.tsx, stays off for CSS/Rust/CI/docs-only and empty indexes, honours KASIRMU_SKIP_TYPECHECK=1, aborts with rc=1 on a failing typecheck, and warns rather than silently passing when ui/node_modules is absent.",
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["typecheck gate"] }
     },

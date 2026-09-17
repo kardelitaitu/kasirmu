@@ -1,0 +1,24 @@
+[package]
+name = "kasirmu-hal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Hardware Abstraction Layer for kasir.mu: barcode scanners, receipt printers, cash drawers, customer displays, weight scales."
+
+# Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
+[lints]
+workspace = true
+
+[dependencies]
+kasirmu-core = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+rusb = { workspace = true }
+serialport = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

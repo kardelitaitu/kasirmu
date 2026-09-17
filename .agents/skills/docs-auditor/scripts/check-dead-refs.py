@@ -18,7 +18,7 @@ Each rule below was bought with a real false positive during development:
     dead. Use an explicit prefix slice.
   * Accepts directories, not just files: "docs/specs/" is a valid reference.
   * Skips placeholders: braces, angles, asterisks, ellipses, XXX, YYYY, NN. A plan
-    that says "add crates/oz-core/migrations/XXX_foo.sql" describes a file to be
+    that says "add crates/kasirmu-core/migrations/XXX_foo.sql" describes a file to be
     created, not one that exists.
   * Skips lines that are ABOUT a missing thing rather than pointing at it. A page
     that says "deploy.yml does not exist" is correct, and flagging it would teach
@@ -130,7 +130,7 @@ def build_index():
 # wrong. The distinction that matters is the other one: a doc pointing at a gitignored
 # path describes something you are meant to CREATE, while a doc pointing at a
 # NON-ignored missing path describes something that should have been committed.
-# (That second case is a live finding: apps/tablet-client/gen/apple/ is not ignored,
+# (That second case is a live finding: apps/mobile-tauri/gen/apple/ is not ignored,
 # and .gitignore states the gen/ scaffold policy IS committed - so the iOS guides point
 # at a scaffold that was never generated.)
 
@@ -257,7 +257,7 @@ def check_file(path, files, dirs, basenames, include_bare=False):
     lines = text.split(chr(10))
 
     # File-level, prefix-scoped opt-out, declared once near the top of the page:
-    #   <!-- dead-ref-prefix-ok: apps/tablet-client/gen/ -->
+    #   <!-- dead-ref-prefix-ok: apps/mobile-tauri/gen/ -->
     # A page whose entire subject is generated output (an iOS build guide) should say so
     # once, visibly, instead of carrying a dozen inline pragmas. It stays grep-able, and
     # the exemption is scoped to a prefix so the rest of the page is still checked.
@@ -327,6 +327,18 @@ def main():
         return 2
 
     targets = args.paths or sorted(f for f in files if f.endswith(".md"))
+
+    # A gitignored file is not part of the repository, so it cannot be a live document OF
+    # the repository. Grading one invents findings about a scratch artifact -- which is
+    # the class the SCRATCH list below means to skip but cannot express: SCRATCH is tested
+    # with str.startswith on the whole relative path, so "-journal.md" can never match
+    # ".agents/manager-journal-<topic>.md", the repo's actual naming. Measured 2026-09-18:
+    # five such journals held 73 of this gate's 148 findings and .workbuddy-ai/memory held
+    # another. Uses the same batched query as the unresolved-path filter, so the answer
+    # comes from .gitignore rather than a second hardcoded list.
+    ignored_docs = git_ignored(set(targets))
+    if ignored_docs:
+        targets = [t for t in targets if t not in ignored_docs]
 
     live, hist, errs, scanned = [], [], [], 0
     rows = []            # (file, line, candidate, historical) - filtered below

@@ -1,0 +1,225 @@
+# ── OZ-POS Unified Image (auth + sync in one container) ──────────────
+#
+# Builds both functions into a single image and runs them under one
+# supervisor behind a single caddy reverse proxy:
+#
+#   caddy  :80 ──► /api/v1/license/*, /_/*, /api/collections/* → PocketBase :8080
+#               └─► everything else (sync/REST/webhooks/tokens) → kasirmu-cloud :3099
+#
+# Usage:
+#
+#   docker build -f ops/docker/Dockerfile.unified -t oz-pos-unified:latest .
+#   docker run -d -p 80:80 \
+#     -v oz_data:/data \
+#     -e OZ_API_SECRET="$(openssl rand -hex 32)" \
+#     -e OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)" \
+#     oz-pos-unified:latest
+#
+# Sync defaults to SQLite at /data/kasir.db; set DATABASE_URL to switch
+# to the managed Postgres addon (see unify-auth-and-sync.md and the
+# runbook §8 env table — free on Northflank, the production target).
+# The default below is the free-tier SQLite shape; both sync SQLite and
+# PocketBase's pb_data live under the single /data volume (DOCKER-11).
+
+# ── Stage 1: Go license server (static build) ────────────────────────
+# DOCKER-02: base images pinned to immutable digests (re-pinned 2026-09-17, digest-only; was refreshed 2026-08-17 to
+# Go 1.25.13 — clears the stdlib CVE set fixed in 1.25.13).
+FROM golang:1.25-alpine@sha256:1ae0735f00daffa3aaf1363a5184c0d2dc55c78e3db4ec70241cdac97bf84b59 AS gobuilder
+
+WORKDIR /src
+
+COPY apps/license-server/go.mod apps/license-server/go.sum ./
+RUN go mod download
+
+# Production sources only — .dockerignore excludes *_test.go,
+# healthcheck.go (//go:build ignore), build artifacts, and IDE files.
+# modernc.org/sqlite is pure Go so CGO_ENABLED=0 produces a static binary.
+COPY apps/license-server/ ./
+
+RUN CGO_ENABLED=0 go build -o /out/pocketbase -ldflags="-s -w" .
+
+# ── Stage 2: Rust cloud server ───────────────────────────────────────
+# DOCKER-02: base images pinned to immutable digests (refreshed 2026-08-03).
+FROM rust:1.88-slim@sha256:38bc5a86d998772d4aec2348656ed21438d20fcdce2795b56ca434cf21430d89 AS builder
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        pkg-config \
+        libc-dev \
+        libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy manifest files first so Docker can cache dependency downloads.
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates/kasirmu-core/Cargo.toml crates/kasirmu-core/
+COPY crates/kasirmu-api/Cargo.toml crates/kasirmu-api/
+COPY crates/kasirmu-logging/Cargo.toml crates/kasirmu-logging/
+COPY crates/kasirmu-hal/Cargo.toml crates/kasirmu-hal/
+COPY crates/kasirmu-lua/Cargo.toml crates/kasirmu-lua/
+COPY crates/kasirmu-notification/Cargo.toml crates/kasirmu-notification/
+COPY crates/kasirmu-plugin/Cargo.toml crates/kasirmu-plugin/
+COPY crates/kasirmu-security/Cargo.toml crates/kasirmu-security/
+COPY crates/kasirmu-payment/Cargo.toml crates/kasirmu-payment/
+COPY crates/kasirmu-reporting/Cargo.toml crates/kasirmu-reporting/
+COPY crates/kasirmu-cli/Cargo.toml crates/kasirmu-cli/
+COPY crates/kasirmu-crypto/Cargo.toml crates/kasirmu-crypto/
+COPY crates/kasirmu-media/Cargo.toml crates/kasirmu-media/
+COPY crates/kasirmu-lan/Cargo.toml crates/kasirmu-lan/
+COPY crates/kasirmu-local-api/Cargo.toml crates/kasirmu-local-api/
+COPY crates/kasirmu-bridge/Cargo.toml crates/kasirmu-bridge/
+COPY crates/qris-core/Cargo.toml crates/qris-core/
+COPY foundation/Cargo.toml foundation/
+COPY platform/core/Cargo.toml platform/core/
+COPY platform/kernel/Cargo.toml platform/kernel/
+COPY platform/startup/Cargo.toml platform/startup/
+COPY platform/sync/Cargo.toml platform/sync/
+COPY modules/sales/Cargo.toml modules/sales/
+COPY modules/inventory/Cargo.toml modules/inventory/
+COPY modules/crm/Cargo.toml modules/crm/
+COPY modules/tax/Cargo.toml modules/tax/
+COPY modules/settings/Cargo.toml modules/settings/
+COPY modules/staff/Cargo.toml modules/staff/
+COPY modules/reporting/Cargo.toml modules/reporting/
+COPY modules/terminal/Cargo.toml modules/terminal/
+COPY modules/currency/Cargo.toml modules/currency/
+COPY modules/loyalty/Cargo.toml modules/loyalty/
+COPY modules/giftcards/Cargo.toml modules/giftcards/
+COPY modules/kitchen/Cargo.toml modules/kitchen/
+COPY modules/promotions/Cargo.toml modules/promotions/
+COPY modules/purchasing/Cargo.toml modules/purchasing/
+COPY scripts/updater-compat-check/Cargo.toml scripts/updater-compat-check/
+COPY apps/cloud-server/Cargo.toml apps/cloud-server/
+
+# Prime the dependency cache (best-effort, mirrors Dockerfile.server —
+# see DOCKER-09).
+RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-logging/src \
+             crates/kasirmu-hal/src crates/kasirmu-lua/src crates/kasirmu-notification/src \
+             crates/kasirmu-plugin/src crates/kasirmu-security/src crates/kasirmu-payment/src \
+             crates/kasirmu-reporting/src crates/kasirmu-cli/src \
+             crates/kasirmu-crypto/src crates/kasirmu-media/src crates/kasirmu-lan/src crates/kasirmu-local-api/src \
+             crates/kasirmu-bridge/src \
+             crates/qris-core/src \
+             foundation/src \
+             platform/core/src platform/kernel/src platform/startup/src \
+             platform/sync/src \
+             modules/sales/src modules/inventory/src \
+             modules/crm/src modules/tax/src modules/settings/src \
+             modules/staff/src modules/reporting/src modules/terminal/src \
+             modules/currency/src modules/loyalty/src \
+             modules/giftcards/src modules/kitchen/src \
+             modules/promotions/src modules/purchasing/src \
+             apps/cloud-server/src apps/desktop-tauri/src apps/mobile-tauri/src \
+    && echo "// dummy" > crates/kasirmu-core/src/lib.rs \
+    && echo "// dummy" > crates/kasirmu-api/src/lib.rs \
+    && echo "// dummy" > crates/kasirmu-logging/src/lib.rs \
+    && echo "// dummy" > crates/kasirmu-hal/src/lib.rs \
+    && echo "// dummy" > crates/kasirmu-lua/src/lib.rs \
+    && echo "// dummy" > crates/kasirmu-notification/src/lib.rs \
+    && echo "// dummy" > crates/kasirmu-plugin/src/lib.rs \
+    && echo "// dummy" > crates/kasirmu-security/src/lib.rs \
+    && echo "// dummy" > crates/kasirmu-payment/src/lib.rs \
+    && echo "// dummy" > crates/kasirmu-reporting/src/lib.rs \
+    && echo "// dummy" > crates/kasirmu-cli/src/lib.rs \
+    && echo "// dummy" > crates/kasirmu-crypto/src/lib.rs \
+    && echo "// dummy" > crates/kasirmu-media/src/lib.rs \
+    && echo "// dummy" > crates/kasirmu-lan/src/lib.rs \
+    && echo "// dummy" > crates/kasirmu-local-api/src/lib.rs \
+    && echo "// dummy" > crates/kasirmu-bridge/src/lib.rs \
+    && echo "// dummy" > crates/qris-core/src/lib.rs \
+    && echo "// dummy" > foundation/src/lib.rs \
+    && echo "// dummy" > platform/core/src/lib.rs \
+    && echo "// dummy" > platform/kernel/src/lib.rs \
+    && echo "// dummy" > platform/startup/src/lib.rs \
+    && echo "// dummy" > platform/sync/src/lib.rs \
+    && echo "// dummy" > modules/sales/src/lib.rs \
+    && echo "// dummy" > modules/inventory/src/lib.rs \
+    && echo "// dummy" > modules/crm/src/lib.rs \
+    && echo "// dummy" > modules/tax/src/lib.rs \
+    && echo "// dummy" > modules/settings/src/lib.rs \
+    && echo "// dummy" > modules/staff/src/lib.rs \
+    && echo "// dummy" > modules/reporting/src/lib.rs \
+    && echo "// dummy" > modules/terminal/src/lib.rs \
+    && echo "// dummy" > modules/currency/src/lib.rs \
+    && echo "// dummy" > modules/loyalty/src/lib.rs \
+    && echo "// dummy" > modules/giftcards/src/lib.rs \
+    && echo "// dummy" > modules/kitchen/src/lib.rs \
+    && echo "// dummy" > modules/promotions/src/lib.rs \
+    && echo "// dummy" > modules/purchasing/src/lib.rs \
+    && echo "// dummy" > apps/cloud-server/src/main.rs \
+    && echo "// dummy" > apps/desktop-tauri/src/main.rs \
+    && printf '[package]\nname = "kasirmu-app"\nversion = "0.0.39"\nedition = "2024"\n' > apps/desktop-tauri/Cargo.toml \
+    && echo "// dummy" > apps/mobile-tauri/src/main.rs \
+    && printf '[package]\nname = "kasirmu-mobile"\nversion = "0.0.39"\nedition = "2024"\n' > apps/mobile-tauri/Cargo.toml \
+    && (cargo build --package kasirmu-cloud --release > /tmp/prime.log 2>&1 \
+        || { echo "WARN: dependency cache-priming build did not complete (best-effort; see /tmp/prime.log)"; }) \
+    && true
+
+# Copy the actual source and rebuild. ui/ is intentionally NOT copied:
+# kasirmu-core vendors its topologySemantics.json contract and the server build
+# must never depend on the UI tree (.dockerignore excludes ui entirely).
+COPY crates/ crates/
+COPY foundation/ foundation/
+COPY platform/ platform/
+COPY modules/ modules/
+COPY apps/ apps/
+
+RUN cargo build --package kasirmu-cloud --release
+
+# ── Stage 3: caddy binary (copied out of its official image) ─────────
+# DOCKER-02: pinned to an immutable digest (refreshed 2026-08-14).
+FROM caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648 AS caddy
+
+# ── Stage 4: Runtime (both functions + caddy + supervisor) ───────────
+# DOCKER-02: base images pinned to immutable digests (refreshed 2026-08-17).
+FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS runtime
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        libc6 \
+        supervisor \
+        wget \
+        jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# DOCKER-01: single non-root user owns both data directories. supervisord
+# runs as root only to bind caddy's :80; each program drops to `ozpos`.
+# DOCKER-11: ONE volume at /data serves both functions — sync SQLite at
+# /data/kasir.db and PocketBase at /data/pb_data (supervisord passes
+# `--dir=/data/pb_data`) — so a single persistent volume is sufficient
+# (Northflank free tier grants one volume per service).
+RUN groupadd --system ozpos && \
+    useradd --system --gid ozpos --home-dir /app ozpos && \
+    mkdir -p /app /data /etc/caddy && \
+    chown -R ozpos:ozpos /app /data
+
+WORKDIR /app
+
+COPY --from=builder /build/target/release/kasirmu-cloud /app/kasirmu-cloud
+COPY --from=gobuilder /out/pocketbase /app/pocketbase
+COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
+
+COPY apps/unified/supervisord.conf /etc/supervisor/supervisord.conf
+COPY apps/unified/Caddyfile /etc/caddy/Caddyfile
+COPY apps/unified/docker-entrypoint.sh /app/docker-entrypoint.sh
+COPY apps/unified/healthcheck.sh /app/healthcheck.sh
+RUN chmod +x /app/docker-entrypoint.sh /app/healthcheck.sh
+
+# Runtime volume: single /data volume holds both the sync SQLite DB
+# (OZ_DB_PATH=/data/kasir.db) and PocketBase's pb_data (/data/pb_data).
+VOLUME ["/data"]
+
+ENV OZ_DB_PATH=/data/kasir.db
+ENV OZ_API_PORT=3099
+ENV RUST_LOG=info
+
+# Single public port — caddy path-routes to :8080 / :3099 internally.
+EXPOSE 80
+
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=30s \
+    CMD /app/healthcheck.sh
+
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["supervisord", "-n", "-c", "/etc/supervisor/supervisord.conf"]

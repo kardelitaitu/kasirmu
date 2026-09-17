@@ -7,7 +7,7 @@
 #
 # Usage:
 #   bash scripts/test-tdd.sh                     # auto-detect crate from cwd (nextest)
-#   bash scripts/test-tdd.sh -p crates/oz-core   # specific crate (a DIRECTORY, not a package name)
+#   bash scripts/test-tdd.sh -p crates/kasirmu-core   # specific crate (a DIRECTORY, not a package name)
 #   bash scripts/test-tdd.sh --vanilla           # use cargo test instead of nextest
 #   bash scripts/test-tdd.sh --watch             # watch mode (needs cargo-watch)
 #
@@ -15,7 +15,7 @@
 #   CARGO=/path/to/cargo   override toolchain detection entirely
 #
 # Recommended for local TDD workflow:
-#   $ cd crates/oz-core
+#   $ cd crates/kasirmu-core
 #   $ bash scripts/test-tdd.sh --watch
 
 set -euo pipefail
@@ -109,7 +109,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -p)
       if [ $# -lt 2 ] || [ -z "${2:-}" ]; then
-        echo "test-tdd: -p takes a crate DIRECTORY, e.g. -p crates/oz-core" >&2
+        echo "test-tdd: -p takes a crate DIRECTORY, e.g. -p crates/kasirmu-core" >&2
         exit 1
       fi
       TARGET_CRATE="$2"
@@ -143,7 +143,7 @@ if [ -z "$TARGET_CRATE" ]; then
 
   if [ -z "$TARGET_CRATE" ]; then
     echo "test-tdd: could not auto-detect a crate from $CURRENT_DIR" >&2
-    echo "  Specify one with: bash scripts/test-tdd.sh -p crates/oz-core" >&2
+    echo "  Specify one with: bash scripts/test-tdd.sh -p crates/kasirmu-core" >&2
     echo "  (-p takes a directory path, not a package name)" >&2
     exit 1
   fi
@@ -152,7 +152,7 @@ fi
 MANIFEST="$TARGET_CRATE/Cargo.toml"
 if [ ! -f "$MANIFEST" ]; then
   echo "test-tdd: no Cargo.toml at $TARGET_CRATE/" >&2
-  echo "  -p takes a crate DIRECTORY (crates/oz-core, platform/sync), not a package name (oz-core)." >&2
+  echo "  -p takes a crate DIRECTORY (crates/kasirmu-core, platform/sync), not a package name (kasirmu-core)." >&2
   exit 1
 fi
 

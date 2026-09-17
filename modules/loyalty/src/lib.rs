@@ -19,12 +19,12 @@ next: none | perf: N/A
 //! (screens, API calls, Fluent locale) still live in their
 //! original locations:
 //!
-//! - Domain: `crates/oz-core/src/loyalty.rs`
-//! - DB: `crates/oz-core/src/db/loyalty.rs`
-//! - Commands: `apps/desktop-client/src/commands/` (TBD)
+//! - Domain: `crates/kasirmu-core/src/loyalty.rs`
+//! - DB: `crates/kasirmu-core/src/db/loyalty.rs`
+//! - Commands: `apps/desktop-tauri/src/commands/` (TBD)
 //! - Frontend: `ui/src/features/loyalty/` (LoyaltyManagementScreen)
 //! - API: `ui/src/api/` (TBD)
-//! - Locale: `ui/src/locales/` (TBD)
+//! - Locale: `shared-ui/locales/` (TBD)
 //!
 //! In subsequent phases, these files will be physically moved into
 //! `modules/loyalty/` as the module system matures.
@@ -35,7 +35,7 @@ next: none | perf: N/A
 
 //! # Re-exports
 //!
-//! This module re-exports loyalty domain types from `oz-core` so that
+//! This module re-exports loyalty domain types from `kasirmu-core` so that
 //! consumers can access all loyalty-related types through a single crate:
 //!
 //! ```

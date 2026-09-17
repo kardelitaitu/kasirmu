@@ -13,7 +13,7 @@ import {
  *
  * `kds` selects the server-issued doubled interval (KDS kitchen traffic
  * cannot afford the base-interrupt cadence). The multiplier itself lives in
- * `oz_core::memo::KDS_INTERVAL_MULTIPLIER` and arrives over IPC — the UI
+ * `kasirmu_core::memo::KDS_INTERVAL_MULTIPLIER` and arrives over IPC — the UI
  * never hardcodes either interval.
  */
 export interface UseMemosOptions {

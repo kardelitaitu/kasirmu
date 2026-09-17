@@ -68,7 +68,7 @@ import { screen, waitFor } from '@testing-library/react';
 import { act } from 'react';
 import type { ReactNode } from 'react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
-import AppShell from '@/frontend/shell/AppShell';
+import AppShell from '@/app/AppShell';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import staffFtl from '@/locales/staff.ftl?raw';
 import {
@@ -77,8 +77,8 @@ import {
   getPage,
   isPageAccessible,
   registerPage,
-} from '@/platform/ui/page-registry';
-import { clearNavItems, getNavItems, registerNavItem } from '@/platform/ui/menu-registry';
+} from '@/registries/page-registry';
+import { clearNavItems, getNavItems, registerNavItem } from '@/registries/menu-registry';
 
 // ── Feature key under test ───────────────────────────────────────────
 // Synthetic on purpose (see WHAT THIS FILE DOES NOT REACH): mirrors the shape of

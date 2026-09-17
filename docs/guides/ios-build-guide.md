@@ -1,20 +1,20 @@
 # iOS / iPad Build Guide
-<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (1 finding) · Finding: §3 told the reader to "configure the GitHub secrets as documented in .github/workflows/ios.yml" — that file is .github/workflows/ios.yml.bak since 23c963303 (2026-09-02) and GitHub never executes a .bak, so no live workflow consumes any of those secrets; the repair keeps the secret manifest (cited at .github/workflows/ios.yml.bak:13-19) but says plainly that it is revival documentation, not today's pipeline · VERIFIED: git grep -l CLOUDFLARE/APPLE secret names across .github/workflows shows the live pair is dev-ci.yml + release.yml only; git grep -in ios -- .github/workflows/dev-ci.yml .github/workflows/release.yml returns exactly one hit, the comment at .github/workflows/release.yml:24 ("Mobile (android.yml.bak / ios.yml.bak). Never part of this file.") · LEFT ALONE deliberately: the whole guide is still forward-looking because the 08-09-26 prerequisite note at the top is true — apps/tablet-client/gen/ has no apple/ scaffold committed, so nothing here can be executed end-to-end and no claim below it was re-verified against Xcode behaviour · The macOS/keychain commands are third-party tool usage, not repo claims; unverified from this workstation. -->
-<!-- dead-ref-prefix-ok: apps/tablet-client/gen/ -->
+<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (1 finding) · Finding: §3 told the reader to "configure the GitHub secrets as documented in .github/workflows/ios.yml" — that file is .github/workflows/ios.yml.bak since 23c963303 (2026-09-02) and GitHub never executes a .bak, so no live workflow consumes any of those secrets; the repair keeps the secret manifest (cited at .github/workflows/ios.yml.bak:13-19) but says plainly that it is revival documentation, not today's pipeline · VERIFIED: git grep -l CLOUDFLARE/APPLE secret names across .github/workflows shows the live pair is dev-ci.yml + release.yml only; git grep -in ios -- .github/workflows/dev-ci.yml .github/workflows/release.yml returns exactly one hit, the comment at .github/workflows/release.yml:24 ("Mobile (android.yml.bak / ios.yml.bak). Never part of this file.") · LEFT ALONE deliberately: the whole guide is still forward-looking because the 08-09-26 prerequisite note at the top is true — apps/mobile-tauri/gen/ has no apple/ scaffold committed, so nothing here can be executed end-to-end and no claim below it was re-verified against Xcode behaviour · The macOS/keychain commands are third-party tool usage, not repo claims; unverified from this workstation. -->
+<!-- dead-ref-prefix-ok: apps/mobile-tauri/gen/ -->
 
 > **Prerequisite — the iOS scaffold is not in this repository.** Verified 08-09-26:
-> `apps/tablet-client/gen/` contains only `android/` (49 tracked files) and `schemas/`.
+> `apps/mobile-tauri/gen/` contains only `android/` (49 tracked files) and `schemas/`.
 > There is no `apple/` directory, committed or on disk. `.gitignore` states the policy
 > explicitly — *"the generated scaffold under `apps/*/gen/` is COMMITTED so CI and
 > contributors don't need the Tauri CLI installed to build"* — and Android follows that
 > policy while iOS has never been generated. So **every `gen/apple/...` path below
 > describes output of `cargo tauri ios init`, which must be run on a macOS host first.**
 > The project filename is also not stable: this guide says `oz-pos-tablet.xcodeproj`
-> while `docs/guides/ios-build-guide.md` says `OZ-POS.xcodeproj`, and neither can be
+> while `docs/guides/ios-build-guide.md` says `kasir.mu.xcodeproj`, and neither can be
 > verified until the scaffold exists. Prefer discovery over a hardcoded name:
-> `find apps/tablet-client/gen/apple -maxdepth 1 -name "*.xcodeproj"`.
+> `find apps/mobile-tauri/gen/apple -maxdepth 1 -name "*.xcodeproj"`.
 
-> **Purpose:** Build, sign, and distribute OZ-POS tablet client for iOS/iPad.
+> **Purpose:** Build, sign, and distribute kasir.mu tablet client for iOS/iPad.
 >
 > **Related:** [iOS Install Test](./ios-install-test.md) · [Android Keystore Guide](./android-keystore-guide.md)
 > · [Mobile Release Checklist](https://github.com/kardelitaitu/oz-pos/blob/main/docs/releases/mobile-checklist.md)
@@ -72,7 +72,7 @@ sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
 ```bash
 # From the repo root
-cd apps/tablet-client
+cd apps/mobile-tauri
 
 # Initialize the iOS project (generates gen/apple/ directory)
 cargo tauri ios init
@@ -88,7 +88,7 @@ ls -la gen/apple/
 
 1. Open the generated Xcode project:
    ```bash
-   open apps/tablet-client/gen/apple/OZ-POS.xcodeproj
+   open apps/mobile-tauri/gen/apple/kasir.mu.xcodeproj
    ```
 2. Select the target → **Signing & Capabilities**
 3. Check **Automatically manage signing**
@@ -147,7 +147,7 @@ is desktop-only by design — see `.github/workflows/release.yml:24`.
 ## 4. Building for Simulator
 
 ```bash
-cd apps/tablet-client
+cd apps/mobile-tauri
 
 # Build and run on the default iOS simulator
 cargo tauri ios build --debug
@@ -161,7 +161,7 @@ Then select an iPad simulator and press **Run** (▶).
 ### Local build
 
 ```bash
-cd apps/tablet-client
+cd apps/mobile-tauri
 
 # Build a release IPA
 cargo tauri ios build --release
@@ -195,7 +195,7 @@ Or trigger manually:
    - Go to [App Store Connect](https://appstoreconnect.apple.com)
    - → Apps → [+] → New App
    - Platform: **iOS/iPadOS**
-   - Name: **OZ-POS Tablet**
+   - Name: **kasir.mu Tablet**
    - Bundle ID: Match the `APPLE_BUNDLE_ID` secret
 
 2. **Upload IPA via Transporter**:
@@ -222,8 +222,8 @@ After `cargo tauri ios init`, the project may be in a different location:
 
 ```bash
 # Search for the generated project
-find apps/tablet-client/gen -name "*.xcodeproj" -maxdepth 3
-find apps/tablet-client/gen -name "*.xcworkspace" -maxdepth 3
+find apps/mobile-tauri/gen -name "*.xcodeproj" -maxdepth 3
+find apps/mobile-tauri/gen -name "*.xcworkspace" -maxdepth 3
 ```
 
 ### Code signing fails in CI
@@ -246,8 +246,8 @@ The IPA output path varies by Xcode version:
 ```bash
 # Common locations
 find target -name "*.ipa" 2>/dev/null
-find apps/tablet-client/gen/apple -name "*.ipa" 2>/dev/null
-find apps/tablet-client/target -name "*.ipa" 2>/dev/null
+find apps/mobile-tauri/gen/apple -name "*.ipa" 2>/dev/null
+find apps/mobile-tauri/target -name "*.ipa" 2>/dev/null
 ```
 
 ---

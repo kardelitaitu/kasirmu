@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import { useLocalization } from '@fluent/react';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { TopologyDeleteDialogs } from './topologyDeleteDialogs';

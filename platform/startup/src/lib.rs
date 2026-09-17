@@ -1,6 +1,6 @@
 // No crate-level lint allow lives here any more. There used to be one: an
 // allow for the undeclared-cfg lint, justified as making
-// `cfg(feature = "metrics")` legal because `oz-reporting` enabled it. That
+// `cfg(feature = "metrics")` legal because `kasirmu-reporting` enabled it. That
 // premise was false — a dependency's features do not enter this crate's cfg
 // space — and the gate it excused was real but dead: `metrics` was never
 // declared in this crate's Cargo.toml, so the `pub mod server` in
@@ -20,7 +20,7 @@ next: none | perf: N/A
 
 //! Shared application startup for OZ-POS desktop and tablet clients.
 //!
-//! Both `apps/desktop-client` and `apps/tablet-client` call this crate
+//! Both `apps/desktop-tauri` and `apps/mobile-tauri` call this crate
 //! to avoid duplicating module registration and event handler wiring.
 //!
 //! The background sync daemon remains in each client because it depends on
@@ -48,7 +48,7 @@ pub mod rate_sync;
 
 use std::sync::{Arc, Mutex};
 
-use oz_core::cache::Cache;
+use kasirmu_core::cache::Cache;
 use platform_kernel::Kernel;
 use rusqlite::Connection;
 use tokio::sync::Mutex as AsyncMutex;
@@ -70,7 +70,7 @@ fn open_handler_connection(
 /// Falls back to a no-op cache when Redis is unavailable or the
 /// `cache-redis` feature is disabled.
 pub fn init_cache(redis_url: &str, ttl_seconds: u64) -> Arc<dyn Cache> {
-    oz_core::cache::create_cache(redis_url, ttl_seconds)
+    kasirmu_core::cache::create_cache(redis_url, ttl_seconds)
 }
 
 /// Register all business modules and wire event handlers on the kernel.
@@ -124,7 +124,7 @@ pub fn init_module_system(
         let k = kernel.blocking_lock();
         let bus = k.event_bus();
 
-        bus.subscribe::<oz_core::events::SaleCompleted>(
+        bus.subscribe::<kasirmu_core::events::SaleCompleted>(
             "sale.completed",
             Box::new(crate::event_handlers::SaleSyncEnqueuer::new(
                 handler_conn.clone(),
@@ -139,49 +139,49 @@ pub fn init_module_system(
         // and no currency validation (foreign-currency sales were
         // added raw); leaving it subscribed alongside the transactional
         // hook would double-count every sale.
-        bus.subscribe::<oz_core::events::SaleCompleted>(
+        bus.subscribe::<kasirmu_core::events::SaleCompleted>(
             "sale.completed",
             Box::new(crate::event_handlers::AuditLogHandler::new(
                 handler_conn.clone(),
             )),
         );
-        bus.subscribe::<oz_core::events::ProductCreated>(
+        bus.subscribe::<kasirmu_core::events::ProductCreated>(
             "product.created",
             Box::new(crate::event_handlers::AuditLogHandler::new(
                 handler_conn.clone(),
             )),
         );
-        bus.subscribe::<oz_core::events::ProductCreated>(
+        bus.subscribe::<kasirmu_core::events::ProductCreated>(
             "product.created",
             Box::new(crate::event_handlers::InventorySyncEnqueuer::new(
                 handler_conn.clone(),
             )),
         );
-        bus.subscribe::<oz_core::events::StockAdjusted>(
+        bus.subscribe::<kasirmu_core::events::StockAdjusted>(
             "stock.adjusted",
             Box::new(crate::event_handlers::AuditLogHandler::new(
                 handler_conn.clone(),
             )),
         );
-        bus.subscribe::<oz_core::events::StockAdjusted>(
+        bus.subscribe::<kasirmu_core::events::StockAdjusted>(
             "stock.adjusted",
             Box::new(crate::event_handlers::InventorySyncEnqueuer::new(
                 handler_conn.clone(),
             )),
         );
-        bus.subscribe::<oz_core::events::SaleCompleted>(
+        bus.subscribe::<kasirmu_core::events::SaleCompleted>(
             "sale.completed",
             Box::new(modules_reporting::handlers::SaleCompletedReporter::new(
                 handler_conn.clone(),
             )),
         );
-        bus.subscribe::<oz_core::events::SaleCompleted>(
+        bus.subscribe::<kasirmu_core::events::SaleCompleted>(
             "sale.completed",
             Box::new(crate::event_handlers::LoyaltyEarnHandler::new(handler_conn)),
         );
 
         // ── ADR #22 Phase 0e: SettingsUpdated handler (non-blocking) ──
-        bus.subscribe::<oz_core::events::SettingsUpdated>(
+        bus.subscribe::<kasirmu_core::events::SettingsUpdated>(
             "settings.updated",
             Box::new(crate::event_handlers::SettingsUpdatedHandler::new()),
         );
@@ -189,23 +189,25 @@ pub fn init_module_system(
         // ── WhatsApp notification handlers (opt-in via feature flag + env vars) ─
         #[cfg(feature = "whatsapp-notifications")]
         {
-            use oz_notification::NotificationClient;
+            use kasirmu_notification::NotificationClient;
 
-            match oz_notification::whatsapp::WhatsAppClient::from_env() {
+            match kasirmu_notification::whatsapp::WhatsAppClient::from_env() {
                 Ok(whatsapp) => {
                     let client: std::sync::Arc<dyn NotificationClient> =
                         std::sync::Arc::new(whatsapp);
 
-                    bus.subscribe::<oz_core::events::SaleCompleted>(
+                    bus.subscribe::<kasirmu_core::events::SaleCompleted>(
                         "sale.completed",
-                        Box::new(oz_notification::handlers::OrderConfirmationHandler::new(
-                            client.clone(),
-                            std::env::var("WHATSAPP_STORE_PHONE").ok(),
-                        )),
+                        Box::new(
+                            kasirmu_notification::handlers::OrderConfirmationHandler::new(
+                                client.clone(),
+                                std::env::var("WHATSAPP_STORE_PHONE").ok(),
+                            ),
+                        ),
                     );
-                    bus.subscribe::<oz_core::events::SaleCompleted>(
+                    bus.subscribe::<kasirmu_core::events::SaleCompleted>(
                         "sale.completed",
-                        Box::new(oz_notification::handlers::PaymentReceiptHandler::new(
+                        Box::new(kasirmu_notification::handlers::PaymentReceiptHandler::new(
                             client.clone(),
                             std::env::var("WHATSAPP_RECEIPT_PHONE")
                                 .unwrap_or_else(|_| "+15550000000".into()),
@@ -218,9 +220,9 @@ pub fn init_module_system(
                         .unwrap_or(5);
                     let manager_phone = std::env::var("WHATSAPP_MANAGER_PHONE")
                         .unwrap_or_else(|_| "+15550000000".into());
-                    bus.subscribe::<oz_core::events::StockAdjusted>(
+                    bus.subscribe::<kasirmu_core::events::StockAdjusted>(
                         "stock.adjusted",
-                        Box::new(oz_notification::handlers::StockLowAlertHandler::new(
+                        Box::new(kasirmu_notification::handlers::StockLowAlertHandler::new(
                             client,
                             threshold,
                             manager_phone,
@@ -249,11 +251,45 @@ pub fn init_module_system(
     Ok(())
 }
 
+/// The runtime daemons are spawned on when no ambient runtime is reachable.
+///
+/// [`spawn_daemon`] is called from each shell's synchronous `setup` hook, where
+/// no ambient runtime exists and a bare [`tokio::spawn`] would panic. The
+/// shell's own runtime cannot be named from here without depending on that
+/// shell's toolkit, which this crate must not do (ADR #49, ADR #53), so the
+/// daemon runtime is owned here and built lazily on first use.
+fn daemon_runtime() -> &'static tokio::runtime::Runtime {
+    static RUNTIME: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
+    RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .thread_name("kasirmu-daemon")
+            .build()
+            .expect("failed to build the daemon runtime")
+    })
+}
+
+/// Spawn a detached task on the ambient runtime when there is one, and on the
+/// daemon runtime otherwise.
+///
+/// Preferring the ambient handle means a caller that already has a runtime —
+/// including the watchdog spawned from inside [`spawn_daemon`] — keeps sharing
+/// it, so the fallback runtime is built only for the synchronous `setup` path.
+fn spawn_detached(fut: impl std::future::Future<Output = ()> + Send + 'static) {
+    // Dropping the returned handle detaches the task, which is what a daemon
+    // wants: nothing joins it and it lives until the process exits.
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => drop(handle.spawn(fut)),
+        Err(_) => drop(daemon_runtime().spawn(fut)),
+    }
+}
+
 /// Spawn a background daemon with a watchdog that logs on panic or
 /// unexpected exit.
 ///
-/// Uses `tauri::async_runtime::spawn` (which is available during
-/// synchronous Tauri `setup`, unlike bare `tokio::spawn`).  Panic
+/// Runs on the ambient runtime when the caller has one and on this crate's own
+/// daemon runtime otherwise, which is what makes the call safe from a
+/// synchronous `setup` hook — unlike a bare [`tokio::spawn`].  Panic
 /// detection is done via a `oneshot` channel: if the daemon future
 /// panics, the channel sender is dropped during unwind and the
 /// watchdog sees a `RecvError`.
@@ -261,11 +297,11 @@ pub fn spawn_daemon(
     name: &'static str,
     fut: impl std::future::Future<Output = ()> + Send + 'static,
 ) {
-    tauri::async_runtime::spawn(async move {
+    spawn_detached(async move {
         let (tx, rx) = tokio::sync::oneshot::channel();
 
         // Watchdog: fired when the daemon future resolves or panics.
-        tauri::async_runtime::spawn(async move {
+        spawn_detached(async move {
             match rx.await {
                 Ok(()) => tracing::warn!("{name} exited unexpectedly"),
                 Err(_) => tracing::error!("{name} panicked"),
@@ -305,7 +341,7 @@ fn open_reaper_connection(
 /// If the database at `db_path` cannot be opened, the reaper logs an error
 /// and exits — it does not crash the application.
 pub fn init_pending_sale_reaper(db_path: &std::path::Path) {
-    use oz_core::db::Store;
+    use kasirmu_core::db::Store;
     use std::time::Duration;
 
     let path = db_path.to_owned();

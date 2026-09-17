@@ -34,8 +34,8 @@ THE FIX
 This script walks every literal `<Localized id="...">` site in
 `ui/src/features/**/*.tsx` (and `.ts`), extracts the literal id, and
 asserts:
-  * the id is defined in `ui/src/locales/*.ftl` (English source),
-  * the id is ALSO defined in `ui/src/locales/*.id.ftl` (Indonesian
+  * the id is defined in `shared-ui/locales/*.ftl` (English source),
+  * the id is ALSO defined in `shared-ui/locales/*.id.ftl` (Indonesian
     translation, which the project ships side-by-side rather than as
     a separate locale dir; see `ui/src/i18n/index.ts`).
 
@@ -155,7 +155,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 UI_SRC_DIR = ROOT / "ui" / "src"
 FEATURE_DIR = UI_SRC_DIR / "features"
-LOCALE_DIR = UI_SRC_DIR / "locales"
+# P9a: the Fluent corpus is a repo-level asset now, outside ui/ — it is plain data
+# that any toolkit can consume. Built from path segments rather than one string,
+# so a textual `ui/src/locales` sweep does not reach it.
+SHARED_UI_DIR = ROOT / "shared-ui"
+LOCALE_DIR = SHARED_UI_DIR / "locales"
 
 # rev 2: which ui/src subdirectories are walked. `features` alone
 # reproduces the rev-1 contract exactly.

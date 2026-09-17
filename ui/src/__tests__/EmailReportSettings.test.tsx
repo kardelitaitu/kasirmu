@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
-import { withFluent, withFluentLocale } from '@/locales/test-utils';
+import { withFluent, withFluentLocale } from '@/i18n/test-utils';
 import EmailReportSettings from '@/features/settings/EmailReportSettings';
 import { HARNESS_SESSION_TOKEN } from '@/__tests__/test-utils/harnessDefaults';
 import salesFtl from '@/locales/sales.ftl?raw';
@@ -35,7 +35,7 @@ vi.mock('@/api/email', () => ({
   sendTestReport: () => mockSendTestReport(),
 }));
 
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
 
@@ -53,12 +53,12 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
   }),
 }));
 
-vi.mock('@/frontend/shell/Tooltip', () => ({
+vi.mock('@/app/Tooltip', () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-vi.mock('@/frontend/shared', () => ({
-  ...vi.importActual('@/frontend/shared'),
+vi.mock('@/components', () => ({
+  ...vi.importActual('@/components'),
   requiredLocalized: (l10n: { getString: (id: string) => string }, id: string) =>
     l10n.getString(id),
 }));

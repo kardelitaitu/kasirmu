@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { withFluent, withFluentLocale } from '@/locales/test-utils';
+import { withFluent, withFluentLocale } from '@/i18n/test-utils';
 import salesFtl from '@/locales/sales.ftl?raw';
 import salesIdFtl from '@/locales/sales.id.ftl?raw';
 import { CourseSelectorBar } from '@/features/sales/components/CourseSelectorBar';

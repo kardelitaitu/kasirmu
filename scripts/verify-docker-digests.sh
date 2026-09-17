@@ -11,7 +11,7 @@
 # BUT NOTHING RUNS IT — pins DO silently rot and nobody is alerted.
 #
 #   Measured 2026-09-16: the only reference to this script anywhere is
-#   .github/workflows/docker-digest-drift.yml.bak:37, and that file is a
+#   .github/workflows/attic/docker-digest-drift.yml.bak:37, and that file is a
 #   RETIRED workflow (its own header still advertises cron "0 5 * * 1",
 #   Mondays 05:00, in inert .bak text GitHub never executes). A grep of
 #   "verify-docker-digests" across scripts/check.sh, scripts/gates.json,
@@ -33,12 +33,12 @@ cd "$(dirname "$0")/.."
 
 # Files that carry `image:tag@sha256:...` pins (DOCKER-02).
 FILES=(
-    "Dockerfile.server"
-    "Dockerfile.unified"
+    "ops/docker/Dockerfile.server"
+    "ops/docker/Dockerfile.unified"
     "apps/license-server/Dockerfile"
-    "docker-compose.yml"
-    "docker-compose.pg.yml"
-    "docker-compose.e2e.yml"
+    "ops/docker/docker-compose.yml"
+    "ops/docker/docker-compose.pg.yml"
+    "ops/docker/docker-compose.e2e.yml"
 )
 
 drift=0

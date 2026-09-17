@@ -1,12 +1,12 @@
-# Multi-KDS Architecture Plan for Single Location (OZ-POS Specific)
+# Multi-KDS Architecture Plan for Single Location (kasir.mu Specific)
 
-This document outlines a concrete implementation plan for supporting multiple Kitchen Display Systems (KDS) per location in OZ-POS, grounded in the existing codebase architecture, patterns, and conventions.
+This document outlines a concrete implementation plan for supporting multiple Kitchen Display Systems (KDS) per location in kasir.mu, grounded in the existing codebase architecture, patterns, and conventions.
 
 ## Executive Summary
 
-**Current State**: OZ-POS already has a functional KDS implementation (`ui/src/features/kds/`, `crates/oz-core/src/kds.rs`, `apps/desktop-client/src/commands/kds.rs`) that supports a single KDS workspace instance per location via ADR #7 multi-store scoping.
+**Current State**: kasir.mu already has a functional KDS implementation (`ui/src/features/kds/`, `crates/oz-core/src/kds.rs`, `apps/desktop-client/src/commands/kds.rs`) that supports a single KDS workspace instance per location via ADR #7 multi-store scoping.
 
-**Goal**: Extend the system to support multiple KDS devices per location while maintaining backward compatibility and leveraging existing OZ-POS patterns.
+**Goal**: Extend the system to support multiple KDS devices per location while maintaining backward compatibility and leveraging existing kasir.mu patterns.
 
 **Key Insight**: Rather than introducing entirely new systems, we extend the existing multi-store scoping (ADR #7) model to work at the location level, making each Restaurant POS the local hub for its KDS children.
 
@@ -718,9 +718,9 @@ Based on existing patterns and benchmarks:
 - Migration scripts and guides ✅
 - Final review and release preparation ✅
 
-## 10. Alignment with Existing OZ-POS Principles
+## 10. Alignment with Existing kasir.mu Principles
 
-This plan strictly adheres to OZ-POS's established architectural principles:
+This plan strictly adheres to kasir.mu's established architectural principles:
 
 ### 10.1 Modularity
 - Extends existing modules rather than creating monolithic changes
@@ -754,7 +754,7 @@ This plan strictly adheres to OZ-POS's established architectural principles:
 
 ## Conclusion
 
-By grounding this multi-KDS implementation plan in the existing OZ-POS codebase, patterns, and conventions, we create a solid, actionable blueprint that:
+By grounding this multi-KDS implementation plan in the existing kasir.mu codebase, patterns, and conventions, we create a solid, actionable blueprint that:
 
 1. **Leverages Existing Strengths**: Builds on proven patterns rather than inventing new systems
 2. **Minimizes Risk**: Uses established, tested infrastructure where possible
@@ -762,7 +762,7 @@ By grounding this multi-KDS implementation plan in the existing OZ-POS codebase,
 4. **Follows Conventions**: Adheres to existing coding standards, documentation practices, and architectural principles
 5. **Provides Clear Path**: Offers specific, file-level implementation guidance
 
-The plan transforms the conceptual architectural vision into an implementable technical specification that aligns perfectly with OZ-POS's existing codebase and development practices.
+The plan transforms the conceptual architectural vision into an implementable technical specification that aligns perfectly with kasir.mu's existing codebase and development practices.
 
 ## Recommendation & Priority
 

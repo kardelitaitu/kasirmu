@@ -351,7 +351,7 @@ function assertContrast(pair: ContrastPair, tokens: Record<string, string>): voi
 /* ── Test runner ─────────────────────────────────────────────── */
 
 // SCOPE NOTE (resto-pos tackle-all Phase 5, 2026-09-16): this suite reads
-// ONLY `frontend/themes/tokens.css` and grades a fixed pair list built from
+// ONLY `theme/tokens.css` and grades a fixed pair list built from
 // those tokens. No feature stylesheet is opened, so every restaurant-specific
 // paint is outside its scope except where a restaurant rule happens to reuse
 // a globally-tested pair (the pin badge: accentFg on accent). Ungraded by
@@ -362,7 +362,7 @@ function assertContrast(pair: ContrastPair, tokens: Record<string, string>): voi
 // (danger-fg on the popover surface, tested only against --color-danger).
 // Widening this suite to feature sheets is a separate decision, not a
 // follow-up fix — recorded here so a green is never read as "colours checked".
-const TOKENS_PATH = resolve(__dirname, '../frontend/themes/tokens.css');
+const TOKENS_PATH = resolve(__dirname, '../theme/tokens.css');
 
 interface ThemeInfo {
   selector: string;

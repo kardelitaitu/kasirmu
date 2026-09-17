@@ -56,7 +56,7 @@
 
 import { useCallback, useEffect, useRef, type MutableRefObject, type SetStateAction } from 'react';
 import type { useLocalization } from '@fluent/react';
-import type { ToastType } from '@/frontend/shared/Toast';
+import type { ToastType } from '@/components/Toast';
 import type { PortName, TopologyNodeData, TopologyWireData } from './NodeTopologyEditor';
 import {
   clampNodeToViewport,

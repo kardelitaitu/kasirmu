@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef, type KeyboardEvent } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import {
   listTaxRatesScoped,
   createTaxRateScoped,
@@ -24,7 +24,7 @@ import { Button } from '@/components/Button';
 import { Badge } from '@/components/Badge';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Skeleton } from '@/components/Skeleton';
-import { SettingsPopup, requiredLocalized } from '@/frontend/shared';
+import { SettingsPopup, requiredLocalized } from '@/components';
 import { parseAppError } from '@/utils/app-error';
 import './TaxConfigurationScreen.css';
 
@@ -187,7 +187,7 @@ export default function TaxConfigurationScreen() {
         if (!cancelled) setRoundingModes(modes);
       })
       .catch((err) => {
-        // The shape settle() uses in frontend/shell/AppShell.tsx:87-94: record
+        // The shape settle() uses in app/AppShell.tsx:87-94: record
         // the failure and WRITE NOTHING, so the map keeps what it already
         // answered with. Nothing is written on this path either way, which is
         // why the cancelled flag is not consulted here.

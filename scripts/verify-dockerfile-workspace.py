@@ -4,13 +4,13 @@
 DOCKER-09: each Dockerfile (server and unified) manually copies every
 workspace member's Cargo.toml into the builder stage to prime the
 dependency cache, and creates dummy src dirs so `cargo build -p
-oz-cloud-server` can resolve the whole workspace. If a member is added to
+kasirmu-cloud` can resolve the whole workspace. If a member is added to
 the root Cargo.toml but forgotten in a Dockerfile, the priming build
 silently fails (it is best-effort) and the cache layer is dead weight —
 every image build then recompiles the full dependency tree.
 
-P2: the unified image (Dockerfile.unified) had drifted from Dockerfile.server
-— missing oz-crypto / oz-media (both in cloud-server's dependency graph),
+P2: the unified image (ops/docker/Dockerfile.unified) had drifted from ops/docker/Dockerfile.server
+— missing kasirmu-crypto / kasirmu-media (both in cloud-server's dependency graph),
 scripts/updater-compat-check (a workspace member cargo must resolve), and
 four modules (giftcards/kitchen/promotions/purchasing — not in the
 cloud-server graph, but cargo still parses every member manifest). Its
@@ -18,7 +18,7 @@ prime stage always failed, so every unified build paid the full compile.
 
 This script parses the workspace `members` list from the root Cargo.toml and
 asserts each member's manifest (or the inline dummy fallback for
-apps/desktop-client and apps/tablet-client) is present in EVERY Dockerfile's
+apps/desktop-tauri and apps/mobile-tauri) is present in EVERY Dockerfile's
 cache stage. For the inline dummies it also checks the `printf`-generated
 Cargo.toml carries the CURRENT `[workspace.package]` version and edition, so
 a version bump cannot silently leave a stale `0.0.34`/`2021` in the cache
@@ -38,22 +38,22 @@ ROOT = Path(__file__).resolve().parent.parent
 CARGO_TOML = ROOT / "Cargo.toml"
 
 # Dockerfiles to validate, with members they are ALLOWED to omit. Both images
-# build `oz-cloud-server`; currently both carry the full member list so the
+# build `kasirmu-cloud`; currently both carry the full member list so the
 # exclusion sets are empty — kept so a future image can intentionally prune
 # members without breaking the check.
 DOCKERFILES: dict[str, set[str]] = {
-    "Dockerfile.server": set(),
-    "Dockerfile.unified": set(),
+    "ops/docker/Dockerfile.server": set(),
+    "ops/docker/Dockerfile.unified": set(),
 }
 
 # These workspace members are NOT copied as manifests: the cache stage
 # synthesizes inline dummy Cargo.tomls for them (they are excluded from the
 # Docker build context by .dockerignore), so they are checked separately.
-INLINE_DUMMY_MEMBERS = {"apps/desktop-client", "apps/tablet-client"}
+INLINE_DUMMY_MEMBERS = {"apps/desktop-tauri", "apps/mobile-tauri"}
 
-# These workspace members are standalone fuzz/workspaces that are NOT
-# part of the cloud-server build and not included in the Docker context.
-SKIP_MEMBERS = {"fuzz", "fuzz/hfuzz"}
+# These workspace members are standalone fuzz workspaces under tools/fuzz/ that
+# are NOT part of the cloud-server build and not included in the Docker context.
+SKIP_MEMBERS = {"tools/fuzz", "tools/fuzz/hfuzz"}
 
 
 def workspace_members() -> list[str]:
@@ -62,7 +62,7 @@ def workspace_members() -> list[str]:
     if not m:
         sys.exit("error: could not locate [workspace] section in Cargo.toml")
     body = m.group(1)
-    # Match `"crates/oz-core",` lines (trailing comma, CRLF-safe). Only the
+    # Match `"crates/kasirmu-core",` lines (trailing comma, CRLF-safe). Only the
     # members list itself — workspace.dependencies entries contain '='.
     raw = [
         x for x in re.findall(r'^\s*"([^"]+)",?\s*$', body, re.M) if "=" not in x

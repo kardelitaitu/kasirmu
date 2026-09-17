@@ -4,72 +4,72 @@
   "entries": [
     {
       "rule": "core-upward-dependency",
-      "path": "crates/oz-core/Cargo.toml",
+      "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-crm",
-      "reason": "Existing oz-core upward dependency documented in the Phase 1 architecture baseline.",
+      "reason": "Existing kasirmu-core upward dependency documented in the Phase 1 architecture baseline.",
       "owner": "OZ-POS maintainers",
       "introduced": "2026-08-06",
       "expires": "2026-11-06"
     },
     {
       "rule": "core-upward-dependency",
-      "path": "crates/oz-core/Cargo.toml",
+      "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-currency",
-      "reason": "Existing oz-core upward dependency documented in the Phase 1 architecture baseline.",
+      "reason": "Existing kasirmu-core upward dependency documented in the Phase 1 architecture baseline.",
       "owner": "OZ-POS maintainers",
       "introduced": "2026-08-06",
       "expires": "2026-11-06"
     },
     {
       "rule": "core-upward-dependency",
-      "path": "crates/oz-core/Cargo.toml",
+      "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-inventory",
-      "reason": "Existing oz-core upward dependency documented in the Phase 1 architecture baseline.",
+      "reason": "Existing kasirmu-core upward dependency documented in the Phase 1 architecture baseline.",
       "owner": "OZ-POS maintainers",
       "introduced": "2026-08-06",
       "expires": "2026-11-06"
     },
     {
       "rule": "core-upward-dependency",
-      "path": "crates/oz-core/Cargo.toml",
+      "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-loyalty",
-      "reason": "Existing oz-core upward dependency documented in the Phase 1 architecture baseline.",
+      "reason": "Existing kasirmu-core upward dependency documented in the Phase 1 architecture baseline.",
       "owner": "OZ-POS maintainers",
       "introduced": "2026-08-06",
       "expires": "2026-11-06"
     },
     {
       "rule": "core-upward-dependency",
-      "path": "crates/oz-core/Cargo.toml",
+      "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-sales",
-      "reason": "Existing oz-core upward dependency documented in the Phase 1 architecture baseline.",
+      "reason": "Existing kasirmu-core upward dependency documented in the Phase 1 architecture baseline.",
       "owner": "OZ-POS maintainers",
       "introduced": "2026-08-06",
       "expires": "2026-11-06"
     },
     {
       "rule": "core-upward-dependency",
-      "path": "crates/oz-core/Cargo.toml",
+      "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-staff",
-      "reason": "Existing oz-core upward dependency documented in the Phase 1 architecture baseline.",
+      "reason": "Existing kasirmu-core upward dependency documented in the Phase 1 architecture baseline.",
       "owner": "OZ-POS maintainers",
       "introduced": "2026-08-06",
       "expires": "2026-11-06"
     },
     {
       "rule": "core-upward-dependency",
-      "path": "crates/oz-core/Cargo.toml",
+      "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-tax",
-      "reason": "Existing oz-core upward dependency documented in the Phase 1 architecture baseline.",
+      "reason": "Existing kasirmu-core upward dependency documented in the Phase 1 architecture baseline.",
       "owner": "OZ-POS maintainers",
       "introduced": "2026-08-06",
       "expires": "2026-11-06"
     },
     {
       "rule": "core-upward-dependency",
-      "path": "crates/oz-core/Cargo.toml",
+      "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-terminal",
-      "reason": "Existing oz-core upward dependency documented in the Phase 1 architecture baseline.",
+      "reason": "Existing kasirmu-core upward dependency documented in the Phase 1 architecture baseline.",
       "owner": "OZ-POS maintainers",
       "introduced": "2026-08-06",
       "expires": "2026-11-06"

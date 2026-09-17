@@ -120,14 +120,14 @@ interface ScreenEntry {
    * Paths are relative to src/features/, same as `css` — with ONE widened
    * exception, and it is narrow on purpose: a sheet that lives OUTSIDE
    * src/features but is loaded GLOBALLY may be named as
-   * `../frontend/themes/<sheet>.css`, and nothing else may ever appear
+   * `../theme/<sheet>.css`, and nothing else may ever appear
    * there. So `parentCss` has exactly two legal shapes — a sheet this
    * family of entries inherits inside src/features (e.g.
    * `settings/SettingsPage.css`, cited by the four settings cards), or a
-   * theme sheet both shells import. `../frontend/themes/components.css`
+   * theme sheet both shells import. `../theme/components.css`
    * is the live case for the second shape: it defines `.sr-only` at :1492
    * and `.skeleton` at :1296, and is imported by BOTH entry points
-   * (main.tsx:7 desktop, main.tablet.tsx:20 tablet), so those utilities
+   * (main.tsx:7 desktop, main.mobile.tsx:20 tablet), so those utilities
    * really are provided at the element the class sits on.
    *
    * Before that exception, the only way to keep a global utility from
@@ -317,10 +317,10 @@ const SCREENS: ScreenEntry[] = [
     // lane sees a documented hold, not a mute nobody looked at.
     // '--shake' stays on its own merit: a classList toggle the walker cannot reach at all.
     dynamicClassPrefixes: ['staff-login-logo--small', 'staff-login-card--shake'],
-    // Cited, not muted: .skeleton is defined in frontend/themes/components.css:1296,
-    // a sheet both entry points import (main.tsx:7, main.tablet.tsx:20). The mute
+    // Cited, not muted: .skeleton is defined in theme/components.css:1296,
+    // a sheet both entry points import (main.tsx:7, main.mobile.tsx:20). The mute
     // claimed a runtime-composed name; the cite says what is true.
-    parentCss: ['../frontend/themes/components.css'],
+    parentCss: ['../theme/components.css'],
     // These classes are defined in StaffLoginScreen.css but are used by the
     // StatusBar component (imported and rendered inside StaffLoginScreen).
     externalClasses: [
@@ -361,11 +361,11 @@ const SCREENS: ScreenEntry[] = [
     name: 'KdsScreen',
     tsx: 'kds/KdsScreen.tsx',
     css: ['kds/KdsScreen.css', 'kds/KdsCompletedView.css', 'kds/components/ModifierBadge.css'],
-    // Cited, not muted: .sr-only is defined in frontend/themes/components.css:1492
-    // and that sheet is imported by both entry points (main.tsx:7, main.tablet.tsx:20),
+    // Cited, not muted: .sr-only is defined in theme/components.css:1492
+    // and that sheet is imported by both entry points (main.tsx:7, main.mobile.tsx:20),
     // so the class is provided to this screen. Case 1 resolves it here; cases 2 and 3
     // never grade the theme sheet through this entry.
-    parentCss: ['../frontend/themes/components.css'],
+    parentCss: ['../theme/components.css'],
     dynamicClassPrefixes: [
       // ── HEADER (rewritten 2026-09-16 · DSH) ── what the arm asserts is an IDENTITY, never a
       // size: graded = credited + inert + residual, and this line describes that identity as the
@@ -741,8 +741,8 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'settings/SettingsSelect.tsx',
     css: ['settings/SettingsSelect.css'],
     // Cited, not muted: this component's markup uses .sr-only, which is defined in
-    // frontend/themes/components.css:1492, a sheet both entry points import (main.tsx:7
-    // desktop, main.tablet.tsx:20 tablet). It is not composed at runtime, so a
+    // theme/components.css:1492, a sheet both entry points import (main.tsx:7
+    // desktop, main.mobile.tsx:20 tablet). It is not composed at runtime, so a
     // knownDynamicFragments entry here would assert something false and then hide the
     // name from case 3 forever. No additionalTsx either: all nine ssel-* names have
     // exactly one consumer, this component -- measured with the guard's own extractors,
@@ -750,7 +750,7 @@ const SCREENS: ScreenEntry[] = [
     // locations/TopologyScreen.tsx, the only other file that names the component at :28,
     // renders <SettingsSelect> at :747 and :918 without using a single ssel-* class.
     // A sibling that merely shares a surface is not what that field claims.
-    parentCss: ['../frontend/themes/components.css'],
+    parentCss: ['../theme/components.css'],
   },
 
   {
@@ -1243,8 +1243,8 @@ const SCREENS: ScreenEntry[] = [
     ],
     // Trusted child component, named whole: the pin badge's Tooltip renders
     // `tooltip-wrapper` + `tooltip-wrapper--inline` (Tooltip.tsx:225), defined
-    // by frontend/shell/Tooltip.css:3,12 — OUTSIDE the grammar parentCss
-    // allows (only ../frontend/themes/ escapes src/features, :120-123), so
+    // by app/Tooltip.css:3,12 — OUTSIDE the grammar parentCss
+    // allows (only ../theme/ escapes src/features, :120-123), so
     // this is the externalClasses shape, not a sheet cite. A bare `tooltip-`
     // prefix would excuse any future Tooltip class; the two whole names keep
     // a third one reading dead. (Folded with the Agent-3-era 'restaurant-card'
@@ -1267,10 +1267,10 @@ const SCREENS: ScreenEntry[] = [
       'restaurant/components/MenuSearchBar.tsx',
     ],
     // Cited, not muted: the sr-only span the menu card's "Add" label moved into
-    // is styled by frontend/themes/components.css:1492, which both entry points
-    // import (main.tsx:7, main.tablet.tsx:20) — so the name is global, not
+    // is styled by theme/components.css:1492, which both entry points
+    // import (main.tsx:7, main.mobile.tsx:20) — so the name is global, not
     // runtime-composed, and the cite is checkable by the coverage block.
-    parentCss: ['../frontend/themes/components.css'],
+    parentCss: ['../theme/components.css'],
   },
 
   // ── Appearance Settings ────────────────────────────────
@@ -1291,7 +1291,7 @@ const SCREENS: ScreenEntry[] = [
     css: ['settings/AppearanceSettings.css'],
     parentCss: ['settings/SettingsPage.css'],
     knownDynamicFragments: [
-      // Card component classes (defined in frontend/themes/components.css)
+      // Card component classes (defined in theme/components.css)
       // that are used inline in AppearanceSettings.tsx but not present
       // in the screen's own CSS files.
       'card--padding-md',
@@ -1527,7 +1527,7 @@ const SCREENS: ScreenEntry[] = [
     // claim here that a registered page exists.
     //
     // Walk A came back 0 undefined / 0 dead UNAAIDED, so this entry carries NO
-    // parentCss: a trial cite of ../frontend/themes/components.css was refused RED
+    // parentCss: a trial cite of ../theme/components.css was refused RED
     // by the citation case as vacuous (nothing this sheet's markup uses is missing
     // from it). The dossier's `--selected` orphan is not in the tree any more —
     // case-insensitive `selected` is 0 hits in both files at a8bc36269.
@@ -1543,7 +1543,7 @@ const SCREENS: ScreenEntry[] = [
     // it unaided — all eight base names (create-pin-container / -card / -header /
     // -form-group / -input / -submit-btn / -error-banner and spinner) live in
     // this entry's own sheet — so it carries NO parentCss either: a trial
-    // cite of ../frontend/themes/components.css came back RED from the citation case
+    // cite of ../theme/components.css came back RED from the citation case
     // as vacuous. The new assertion refused a cite the queue had assumed.
     name: 'CreatePinScreen',
     tsx: 'auth/CreatePinScreen.tsx',
@@ -1575,7 +1575,7 @@ const SCREENS: ScreenEntry[] = [
     // Walk A is clean with NO exemption at all, which is the dossier's claim and now
     // the run's: 0 undefined / 0 dead over 35 distinct class names in 46 selector
     // rules, no prefix line, no fragment line, and a trial parentCss of
-    // ../frontend/themes/components.css refused RED by the citation case as vacuous.
+    // ../theme/components.css refused RED by the citation case as vacuous.
     // Note `.custom-report-col-item--selected` is both defined and used here — the
     // --selected name TopologyApplyConfirm's dossier called an orphan belongs to THIS
     // sheet, where it is honest, and 0 case-insensitive `selected` hits remain there.
@@ -1629,12 +1629,12 @@ const SCREENS: ScreenEntry[] = [
     // isEnabled(FEATURES.USB_SCALE) — a flag a manager can light in a shipped build
     // from the Hardware group of settings/FeatureToggleScreen.tsx. There is no route
     // to claim here: features/retail has no register.tsx at all, and RetailPosScreen
-    // reaches both shells through frontend/shell/AppShell.tsx and
-    // frontend/shell/tablet/TabletAppShell.tsx. The sheet is imported by its own
+    // reaches both shells through app/AppShell.tsx and
+    // app/tablet/TabletAppShell.tsx. The sheet is imported by its own
     // component at :2, which is what makes it loadable at all.
     //
     // CITED BECAUSE THE MARKUP IS LIVE, NOT BECAUSE THE FEATURE WORKS — the styled
-    // surface is real and the data is not: crates/oz-hal/src/drivers/scale.rs:57 says
+    // surface is real and the data is not: crates/kasirmu-hal/src/drivers/scale.rs:57 says
     // HidWeightScale::read_weight reports Unsupported deliberately (it used to say
     // NotFound, which told an operator to check a cable on a driver that was never
     // written), registry.rs:4 records that no caller invokes register_scale() — the
@@ -1647,7 +1647,7 @@ const SCREENS: ScreenEntry[] = [
     // rules style states no device can produce today; that is a driver gap, and this
     // entry neither hides it nor certifies the feature.
     //
-    // NO parentCss: grep over the nine names frontend/themes/components.css re-defines
+    // NO parentCss: grep over the nine names theme/components.css re-defines
     // (sr-only, spinner, card, btn, badge, status-indicator, kds-workspace,
     // shift-status-active, settings-footer-shortcut) returns 0 rules here, and case 1
     // resolves all 17 names against this sheet alone — no exemption of any kind added.
@@ -1798,12 +1798,12 @@ describe.each(SCREENS)(
     // when the same class appears in the same file via compound selectors.
     const cssPaths = css.map((c) => path.join(FEATURES_DIR, c));
     // `css` resolves inside src/features, always. A `parentCss` path may
-    // escape it only under ../frontend/themes/ — see the field's
+    // escape it only under ../theme/ — see the field's
     // docstring — and the coverage block refuses anything else, so this
     // branch cannot be reached by a sibling feature sheet posing as a
     // parent. Anything else stays joined as before.
     const parentPaths = (parentCss ?? []).map((c) =>
-      c.startsWith('../frontend/themes/') ? path.resolve(FEATURES_DIR, c) : path.join(FEATURES_DIR, c),
+      c.startsWith('../theme/') ? path.resolve(FEATURES_DIR, c) : path.join(FEATURES_DIR, c),
     );
 
     const index = (target: Map<string, string[]>, cssPath: string) => {
@@ -2013,7 +2013,7 @@ it('dead-class census: what the guard calls dead, and what a prefix rescues', ()
 // it has shrunk to 23 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
 // Every stylesheet under src, keyed the way SCREENS names it: a feature sheet loses its
-// features/ prefix, anything else keeps its path from src (frontend/themes/components.css
+// features/ prefix, anything else keeps its path from src (theme/components.css
 // and friends). This is the universe the externalClasses case grades against, because a
 // mute makes a claim about a sheet and a sheet outside the entry can only be found by
 // walking sheets rather than by believing the list.
@@ -2040,8 +2040,8 @@ function allSheetIndex(): Map<string, Set<string>> {
         const classes = new Set(extractClassSelectors(fs.readFileSync(full, 'utf8')));
         out.set(key, classes);
         // SAME FILE, BOTH SPELLINGS, ONE SET OBJECT. A cite for a sheet outside src/features is
-        // written '../frontend/themes/<sheet>.css' — the grammar the citation case resolves at
-        // :1653 and :2050 — while the key above is 'frontend/themes/<sheet>.css'. Two grammars
+        // written '../theme/<sheet>.css' — the grammar the citation case resolves at
+        // :1653 and :2050 — while the key above is 'theme/<sheet>.css'. Two grammars
         // naming one file, and an equality lookup could only ever see one of them, so the prefix
         // arm graded those entries WITHOUT the shared sheet they had cited. Rewriting the DATA is
         // not safe: probeB proved the bare form throws ENOENT in the extractor case. So the index
@@ -2167,12 +2167,12 @@ describe('stylesheet coverage', () => {
     // who owns the name: a sibling's sheet is not this screen's parent.
     const escaping = SCREENS.flatMap((entry) =>
       (entry.parentCss ?? [])
-        .filter((p) => p.split('/').includes('..') && !p.startsWith('../frontend/themes/'))
+        .filter((p) => p.split('/').includes('..') && !p.startsWith('../theme/'))
         .map((p) => `${entry.name}: ${p}`),
     ).sort();
     expect(
       escaping,
-      `parentCss: ${escaping.length} citation(s) leave src/features without naming a theme sheet — the only prefix allowed is ../frontend/themes/: ${escaping.join(', ')}`,
+      `parentCss: ${escaping.length} citation(s) leave src/features without naming a theme sheet — the only prefix allowed is ../theme/: ${escaping.join(', ')}`,
     ).toEqual([]);
 
     // Third structural check in this same case, and the reason the block
@@ -2217,7 +2217,7 @@ describe('stylesheet coverage', () => {
 
       const parentDefined = new Set<string>();
       for (const p of parents) {
-        const file = p.startsWith('../frontend/themes/')
+        const file = p.startsWith('../theme/')
           ? path.resolve(FEATURES_DIR, p)
           : path.join(FEATURES_DIR, p);
         if (!fs.existsSync(file)) {
@@ -2650,7 +2650,7 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
 // ── Citation resolution for the prefix arm ───────────────────────
 //
 // allSheetIndex() strips a leading `features/` from every key it writes (:1878), so
-// `frontend/themes/components.css` IS a key and `../frontend/themes/components.css` — the
+// `theme/components.css` IS a key and `../theme/components.css` — the
 // form this ledger's own parentCss contract at :123 permits — can NEVER be one. The citation
 // case resolves that form by hand (:1653, :2050); the prefix arm compares cited paths against
 // index keys, so for such an entry the shared sheet is silently absent from ownClasses. A
@@ -2666,7 +2666,7 @@ it('every sheet a ledger entry cites is an allSheetIndex key the prefix arm can 
       if (index.has(p)) continue;
       const stripped = p.replace(/^(\.\.\/)+/, ''); // ../ is what parentCss may legitimately carry; the key never does
       unresolvable.push(
-        entry.name + ': cites ' + p + ' — not a key among the ' + index.size + ' indexed sheets' + (index.has(stripped) ? ' (the same sheet IS indexed as ' + stripped + ', so nothing about the family is missing: only the lookup misses)' : ' (no sheet of that name is indexed at all)') + '; the prefix arm therefore graded this entry WITHOUT that shared sheet in ownClasses. Rewrite the string to the bare key form is NOT the fix — the citation case at :1653/:2050 joins cites onto FEATURES_DIR and special-cases only the ../frontend/themes/ grammar, so the bare key throws ENOENT there. Make the arm resolve a cite the way those two do (or index it under both), and do not strike the prefix.',
+        entry.name + ': cites ' + p + ' — not a key among the ' + index.size + ' indexed sheets' + (index.has(stripped) ? ' (the same sheet IS indexed as ' + stripped + ', so nothing about the family is missing: only the lookup misses)' : ' (no sheet of that name is indexed at all)') + '; the prefix arm therefore graded this entry WITHOUT that shared sheet in ownClasses. Rewrite the string to the bare key form is NOT the fix — the citation case at :1653/:2050 joins cites onto FEATURES_DIR and special-cases only the ../theme/ grammar, so the bare key throws ENOENT there. Make the arm resolve a cite the way those two do (or index it under both), and do not strike the prefix.',
       );
     }
   }

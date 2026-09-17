@@ -39,7 +39,7 @@ vi.mock('@/hooks/useVersionStatus', () => ({ useVersionStatus: () => mocks.versi
 
 // Render the tooltip content alongside the trigger so the message is
 // assertable; the real Tooltip only shows it on hover.
-vi.mock('@/frontend/shell/Tooltip', () => ({
+vi.mock('@/app/Tooltip', () => ({
   default: ({ children, content }: { children: React.ReactNode; content: React.ReactNode }) => (
     <>
       {children}
@@ -49,7 +49,7 @@ vi.mock('@/frontend/shell/Tooltip', () => ({
 }));
 
 const mockAddToast = vi.fn();
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
 

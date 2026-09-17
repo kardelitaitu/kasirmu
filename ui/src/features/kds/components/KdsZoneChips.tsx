@@ -29,7 +29,7 @@
  */
 import { Localized, useLocalization } from '@fluent/react';
 import type { KeyboardEvent } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 
 export interface KdsZoneChipsProps {
   /** Distinct kitchen zones, already de-duplicated and sorted by the screen. */

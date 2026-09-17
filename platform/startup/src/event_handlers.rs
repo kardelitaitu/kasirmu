@@ -13,10 +13,10 @@ next: none | perf: handlers hold the shared DB mutex briefly
 use std::sync::{Arc, Mutex};
 
 use foundation::contracts::{EventHandler, ModuleResult};
-use oz_core::audit::AuditEntry;
-use oz_core::db::Store;
-use oz_core::events::{ProductCreated, SaleCompleted, SettingsUpdated, StockAdjusted};
-use oz_core::offline::SyncPriority;
+use kasirmu_core::audit::AuditEntry;
+use kasirmu_core::db::Store;
+use kasirmu_core::events::{ProductCreated, SaleCompleted, SettingsUpdated, StockAdjusted};
+use kasirmu_core::offline::SyncPriority;
 use rusqlite::Connection;
 use tracing::{error, info};
 

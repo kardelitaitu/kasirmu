@@ -19,11 +19,11 @@
 //! Ownership", appended in 1c6949975.
 
 use super::*;
-use oz_core::migrations;
-use oz_core::sync_client::{PushOutcome, apply_sync_outcomes};
+use kasirmu_core::migrations;
+use kasirmu_core::sync_client::{PushOutcome, apply_sync_outcomes};
 use rusqlite::Connection;
 
-/// The prefix is private to oz_core::sync_client; mirrored so the duplicate-id row fails
+/// The prefix is private to kasirmu_core::sync_client; mirrored so the duplicate-id row fails
 /// loudly if the two ever drift apart.
 const DUPLICATE_ID_PREFIX: &str = "duplicate id:";
 
@@ -182,7 +182,7 @@ fn observe(store: &Store<'_>, local: &OfflineQueueItem) -> Observed {
     }
 }
 
-/// Consumer 1 - the manual / tablet push path, oz_core::sync_client::apply_sync_outcomes.
+/// Consumer 1 - the manual / tablet push path, kasirmu_core::sync_client::apply_sync_outcomes.
 fn run_consumer_one(c: &Case) -> Observed {
     let store = setup_store();
     let local = enqueue_local(&store, c);
@@ -460,7 +460,7 @@ fn duplicate_id_rejection_is_synced_here_and_recorded_as_a_parity_gap_there() {
     .unwrap();
 
     assert!(
-        oz_core::sync_client::is_duplicate_id_rejection(&reason),
+        kasirmu_core::sync_client::is_duplicate_id_rejection(&reason),
         "UNDECIDED: the predicate consumer 1 and the SQLite daemon share"
     );
     assert_eq!(
@@ -508,11 +508,14 @@ fn duplicate_id_rejection_is_synced_here_and_recorded_as_a_parity_gap_there() {
 #[test]
 fn duplicate_id_prefix_has_not_drifted() {
     assert!(
-        oz_core::sync_client::is_duplicate_id_rejection(&format!("{}abc", DUPLICATE_ID_PREFIX)),
+        kasirmu_core::sync_client::is_duplicate_id_rejection(&format!(
+            "{}abc",
+            DUPLICATE_ID_PREFIX
+        )),
         "UNDECIDED: the mirrored prefix no longer matches DUPLICATE_ID_REJECTION_PREFIX - update this test and re-read the parity claim"
     );
     assert!(
-        !oz_core::sync_client::is_duplicate_id_rejection("duplicate: abc"),
+        !kasirmu_core::sync_client::is_duplicate_id_rejection("duplicate: abc"),
         "UNDECIDED: the predicate is prefix-exact, so a near-miss reason still fails terminally"
     );
 }

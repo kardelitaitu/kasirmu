@@ -1,0 +1,40 @@
+[package]
+name = "kasirmu-payment"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Payment processor abstraction for kasir.mu — Stripe, Square, EMV terminals behind a single trait."
+
+# Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
+[lints]
+workspace = true
+
+[dependencies]
+kasirmu-core = { workspace = true }
+kasirmu-hal = { workspace = true }
+foundation = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+base64 = { workspace = true }
+reqwest = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+# `paddle` gates the planned stub driver. The default keeps it compiled so
+# the API surface is always present; lean builds can disable it.
+# The former `edc` feature is gone: card terminals are devices and moved to
+# kasirmu-hal, where drivers are unconditional and there is nothing to gate.
+default = ["paddle"]
+paddle = []
+
+[dev-dependencies]
+wiremock = { workspace = true }
+once_cell = "1.19"
+tokio = { workspace = true, features = ["test-util"] }

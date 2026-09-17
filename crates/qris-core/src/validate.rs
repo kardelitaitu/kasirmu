@@ -41,10 +41,10 @@ pub fn validate_all(payload: &QrisPayload) -> Vec<QrisError> {
     }
 
     // Amount must be a valid decimal if present
-    if let Some(ref a) = payload.amount {
-        if crate::amount::parse_amount(a).is_err() {
-            errors.push(QrisError::InvalidAmount(a.clone()));
-        }
+    if let Some(ref a) = payload.amount
+        && crate::amount::parse_amount(a).is_err()
+    {
+        errors.push(QrisError::InvalidAmount(a.clone()));
     }
 
     // Tip consistency

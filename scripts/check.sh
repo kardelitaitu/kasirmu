@@ -44,6 +44,12 @@ step() {
 
 total_start=$(date +%s)
 
+# Root policy gate (P8): the repo root holds only name-resolved tool contracts
+# and the owner entry files; this also sweeps empty directories, the one junk
+# class no git-based check can see. Local-only by design (see the gate header).
+step "root policy" "python3 scripts/verify-root-policy.py" python3 scripts/verify-root-policy.py
+step "root policy self-test" "python3 scripts/verify-root-policy.py --self-test" python3 scripts/verify-root-policy.py --self-test
+
 # ── Rust (mirrors CI `rust` job) ──────────────────────────────────────────
 step "cargo fmt" "cargo fmt --all -- --check" cargo fmt --all -- --check
 
@@ -112,7 +118,7 @@ step "test shadow copies" "python3 scripts/verify-test-shadow-copies.py" python3
 # is not installed.
 cpu_count=$(nproc --all 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 if command -v cargo-nextest &>/dev/null || cargo nextest --version &>/dev/null 2>&1; then
-    step "test workspace (nextest)" "cargo nextest run --workspace --all-features --exclude oz-pos-app --exclude oz-pos-tablet" cargo nextest run --workspace --all-features --exclude oz-pos-app --exclude oz-pos-tablet
+    step "test workspace (nextest)" "cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile" cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile
     step "test doctests" "cargo test --doc --workspace" cargo test --doc --workspace
     # Grade the run's JUnit report, not its summary line. A retry-rescued flake is
     # invisible to every other reader: nextest turns a genuine failure into
@@ -143,9 +149,9 @@ fi
 # 0.0.37 (pg-schema-drift and migration-column-types, both in static-gates), but this
 # one is the SQLite migrate-up path and nothing enforces it off a developer machine.
 # Recorded in scripts/gates.json -> "migration".
-step "migration smoke test" "cargo run -p oz-cli -- migrate" cargo run -p oz-cli -- migrate
-step "migration idempotency" "cargo run -p oz-cli -- migrate" cargo run -p oz-cli -- migrate
-rm -f oz-pos.db oz-pos.db-wal oz-pos.db-shm
+step "migration smoke test" "cargo run -p kasirmu-cli -- migrate" cargo run -p kasirmu-cli -- migrate
+step "migration idempotency" "cargo run -p kasirmu-cli -- migrate" cargo run -p kasirmu-cli -- migrate
+rm -f kasir.db kasir.db-wal kasir.db-shm
 
 # ── Skill drift guard (blocking in CI too: dev-ci.yml#static-gates) -------
 if command -v bash &>/dev/null; then
@@ -306,7 +312,7 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
     # BEFORE ui build (which is ~30s). Fail-fast on a ~1s lint check
     # so contributors don't pay the full build cost for a translation
     # gap. Detects translation gaps and Fluent key duplicates in
-    # `ui/src/locales/*.id.ftl` before they reach CI.
+    # `shared-ui/locales/*.id.ftl` before they reach CI.
     cd ..
     step "i18n lint" "bash scripts/lint-i18n.sh" bash scripts/lint-i18n.sh
     # AUDIT-27 CI-06: FTL dedupe — detect duplicate Fluent keys so local
@@ -318,7 +324,7 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
     step "ftl orphans" "python3 scripts/verify-ftl-orphans.py --self-test" \
         python3 scripts/verify-ftl-orphans.py --self-test
     step "feature registry parity" "python3 scripts/verify-feature-registry.py" python3 scripts/verify-feature-registry.py
-    # Topology contract parity — the vendored oz-core copy and the UI copy
+    # Topology contract parity — the vendored kasirmu-core copy and the UI copy
     # must stay byte-identical (both sides of the IPC boundary read it).
     step "topology contract parity" "python3 scripts/verify-topology-parity.py" python3 scripts/verify-topology-parity.py
     # npm run build skipped — typecheck + vitest already cover correctness;
@@ -526,9 +532,9 @@ step "release workflow self-test" "python3 scripts/verify-release-workflow.py --
 # ── Docker build smoke test (optional: --docker-dry-run) ──────────────────
 if [ "${1:-}" = "--docker-dry-run" ]; then
     if command -v docker &>/dev/null; then
-        step "docker build" "docker build -f Dockerfile.server -t oz-pos-cloud:local ." docker build -f Dockerfile.server -t oz-pos-cloud:local .
+        step "docker build" "docker build -f ops/docker/Dockerfile.server -t kasir-cloud:local ." docker build -f ops/docker/Dockerfile.server -t kasir-cloud:local .
 
-        SIZE=$(docker run --rm --entrypoint stat oz-pos-cloud:local --format=%s /app/oz-cloud-server 2>/dev/null || echo "0")
+        SIZE=$(docker run --rm --entrypoint stat kasir-cloud:local --format=%s /app/kasirmu-cloud 2>/dev/null || echo "0")
         if [ "$SIZE" -gt "0" ]; then
             MAX=$((50 * 1024 * 1024))
             if [ "$SIZE" -gt "$MAX" ]; then

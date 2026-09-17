@@ -1,6 +1,6 @@
 //! Startup integration tests for the cloud server binary.
 //!
-//! These tests spawn the real `oz-cloud-server` executable as a subprocess
+//! These tests spawn the real `kasirmu-cloud` executable as a subprocess
 //! and assert on its exit code and stderr. They verify the production-
 //! hardening gates that must fail startup *before* the server binds a port —
 //! the process has to exit with a clear, actionable error instead of falling
@@ -8,14 +8,14 @@
 
 use std::process::Command;
 
-/// Absolute path to the compiled `oz-cloud-server` binary.
+/// Absolute path to the compiled `kasirmu-cloud` binary.
 ///
 /// Cargo sets `CARGO_BIN_EXE_<name>` at *runtime* for integration tests (not
 /// at compile time, so `env!` cannot see it). The name is the bin target name
 /// exactly as-is, so it keeps the hyphen.
 fn bin_path() -> String {
-    std::env::var("CARGO_BIN_EXE_oz-cloud-server").expect(
-        "CARGO_BIN_EXE_oz-cloud-server must be set; run via `cargo test` so \
+    std::env::var("CARGO_BIN_EXE_kasirmu-cloud").expect(
+        "CARGO_BIN_EXE_kasirmu-cloud must be set; run via `cargo test` so \
          Cargo injects the binary path",
     )
 }

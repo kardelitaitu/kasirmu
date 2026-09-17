@@ -37,7 +37,7 @@ are pinned (0ca10266); the four touched suites are 80/80.
 Deviations kept: nav is registered in the Settings hub (next to Sync
 Status), not "Tools → Operations" — the flat settings IA is where the app
 actually put operations screens; desktop crate is `oz-pos-app`, not the
-`oz-desktop-client` the 3.1 verify box guessed; the dev-mock resolve
+`oz-desktop-tauri` the 3.1 verify box guessed; the dev-mock resolve
 handler returns false, so in dev every resolve now (post-fix #2) shows the
 "resolved elsewhere" notice — stub quality, flagged for the devmock
 campaign that owns tauri-api.ts right now. -->
@@ -67,8 +67,8 @@ two versions side by side, choose a winner, and leave an audit trail.
    `ui` returns nothing. The previous revision assumed it. **This work order
    now builds it** (Phase 3.1) — see the extended fence below.
 
-2. **Tauri commands live in `apps/desktop-client/src/commands/<feature>.rs`
-   and are registered in `apps/desktop-client/src/lib.rs`.** Confirmed
+2. **Tauri commands live in `apps/desktop-tauri/src/commands/<feature>.rs`
+   and are registered in `apps/desktop-tauri/src/lib.rs`.** Confirmed
    entries: `commands::sync::get_sync_settings_scoped`,
    `commands::sync::update_sync_settings_scoped`,
    `commands::sync::pg_sync_status_scoped`,
@@ -103,8 +103,8 @@ two versions side by side, choose a winner, and leave an audit trail.
    - `ui/src/features/sync/components/ConflictDiffViewer.tsx` (NEW)
    - `ui/src/api/syncConflicts.ts` (NEW)
    - `ui/src/locales/sync.ftl` and `ui/src/locales/sync.id.ftl` (NEW)
-   - `apps/desktop-client/src/commands/sync.rs` — **only** the new command fn
-   - `apps/desktop-client/src/lib.rs` — **only** the new registration line
+   - `apps/desktop-tauri/src/commands/sync.rs` — **only** the new command fn
+   - `apps/desktop-tauri/src/lib.rs` — **only** the new registration line
    - `ui/src/dev-mock/tauri-api.ts` — **only** the new handler entry
 3. **Forbidden Paths (owned by siblings):**
    - `platform/sync/src/crdt/**` (Agent 1)
@@ -145,16 +145,16 @@ both sides code against the same contract.
 
 ### Phase 3.1: IPC Command & Data Layer (prerequisite — do this first)
 - [x] Add `resolve_sync_conflict_scoped` to
-      `apps/desktop-client/src/commands/sync.rs`, tenant-scoped, calling
+      `apps/desktop-tauri/src/commands/sync.rs`, tenant-scoped, calling
       Agent 2's `POST /api/sync/conflicts/:id/resolve`.
-- [x] Register it in `apps/desktop-client/src/lib.rs` alongside the other
+- [x] Register it in `apps/desktop-tauri/src/lib.rs` alongside the other
       `commands::sync::*_scoped` entries.
 - [x] Add the matching handler to `ui/src/dev-mock/tauri-api.ts`.
 - [x] Add `ui/src/api/syncConflicts.ts` — typed client for list and resolve,
       with the severity enum (`high` / `medium` / `low`) matching Agent 2's
       `CHECK` constraint. **Do not invent a second severity vocabulary.**
-- [x] Verify: `cargo check -p oz-desktop-client` (or the crate name in
-      `apps/desktop-client/Cargo.toml`).
+- [x] Verify: `cargo check -p oz-desktop-tauri` (or the crate name in
+      `apps/desktop-tauri/Cargo.toml`).
 - [x] **Commit Milestone:**
   ```bash
   git commit -m "feat(sync-ui): add resolve_sync_conflict_scoped IPC command and sync conflicts API client"

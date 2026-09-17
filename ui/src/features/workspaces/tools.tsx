@@ -19,7 +19,7 @@
 //
 // `minimumRole` is the HOME front door, not the security gate. The route's own
 // gate is authoritative: `registerPage` declares `requiredRole` +
-// `requiredPermission`, and `passesGate` (platform/ui/page-registry) consults the
+// `requiredPermission`, and `passesGate` (registries/page-registry) consults the
 // permission whenever the session carries granted keys. Home-stricter is the
 // documented policy (todo-tools.md:730), so a card hidden here does NOT mean the
 // route would refuse it — the two surfaces are meant to differ. Measured

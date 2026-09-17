@@ -3,10 +3,10 @@ import { test, expect } from '@playwright/test';
 /**
  * E2E: Tablet Shell Entry (TAB-04)
  *
- * Exercises the REAL tablet entry point (`index.tablet.html` → `main.tablet.tsx`
+ * Exercises the REAL tablet entry point (`index.mobile.html` → `main.mobile.tsx`
  * → `TabletAppShell`), unlike `tablet-viewport.spec.ts` which only resized the
  * desktop app's viewport. The shared Vite dev server serves multi-page HTML,
- * so the tablet entry is reachable at `/index.tablet.html` on the same origin.
+ * so the tablet entry is reachable at `/index.mobile.html` on the same origin.
  *
  * Checks:
  *   - The tablet shell boots (login screen renders)
@@ -14,15 +14,15 @@ import { test, expect } from '@playwright/test';
  *   - Touch targets are >= 44px on the tablet login screen
  */
 
-test.describe('Tablet Shell Entry (index.tablet.html)', () => {
+test.describe('Tablet Shell Entry (index.mobile.html)', () => {
   test('boots the tablet entry and renders the login screen', async ({ page }) => {
-    await page.goto('/index.tablet.html');
+    await page.goto('/index.mobile.html');
     await page.waitForSelector('.staff-login-screen', { timeout: 15_000 });
     await expect(page.locator('.staff-login-screen')).toBeVisible();
   });
 
   test('no horizontal overflow on the tablet entry', async ({ page }) => {
-    await page.goto('/index.tablet.html');
+    await page.goto('/index.mobile.html');
     await page.waitForSelector('.staff-login-screen', { timeout: 15_000 });
 
     // Viewport-relative: this spec runs in both the desktop (1366px) and
@@ -34,7 +34,7 @@ test.describe('Tablet Shell Entry (index.tablet.html)', () => {
   });
 
   test('touch targets are at least 44px on the tablet entry', async ({ page }) => {
-    await page.goto('/index.tablet.html');
+    await page.goto('/index.mobile.html');
     await page.waitForSelector('.staff-login-screen', { timeout: 15_000 });
 
     const usernameInput = page.locator('.staff-login-input');
@@ -55,7 +55,7 @@ test.describe('Tablet Shell Entry (index.tablet.html)', () => {
   });
 
   test('login + workspace picker work on the tablet entry', async ({ page }) => {
-    await page.goto('/index.tablet.html');
+    await page.goto('/index.mobile.html');
     await page.waitForSelector('.staff-login-screen', { timeout: 15_000 });
 
     await page.locator('.staff-login-input').fill('owner');

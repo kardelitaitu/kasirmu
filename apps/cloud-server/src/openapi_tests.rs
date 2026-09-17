@@ -323,7 +323,7 @@ fn health_endpoints_have_no_security() {
 /// resolves to a real route (≠ 404 ≠ 405).
 fn test_full_router() -> axum::Router {
     let state = crate::CloudServerState {
-        db: std::sync::Arc::new(tokio::sync::Mutex::new(oz_core::migrations::fresh_db())),
+        db: std::sync::Arc::new(tokio::sync::Mutex::new(kasirmu_core::migrations::fresh_db())),
         pg: None,
         started_at: std::time::Instant::now(),
         health_depth_cache: crate::HealthDepthCache::default(),
@@ -446,7 +446,7 @@ const ROUTE_VERBS: [&str; 8] = [
 /// loudly and is trivially reworded, the safe direction for a guard.
 fn source_registered_routes() -> BTreeMap<String, BTreeSet<String>> {
     let sources: &[&str] = &[
-        include_str!("../../../crates/oz-api/src/lib.rs"),
+        include_str!("../../../crates/kasirmu-api/src/lib.rs"),
         include_str!("main.rs"),
         include_str!("sync_api.rs"),
         include_str!("webhooks.rs"),
@@ -724,7 +724,7 @@ fn every_operation_carries_correct_scope() {
     let mut seen = 0usize;
     for (path, item) in paths {
         for (verb, operation) in item.as_object().unwrap() {
-            if !oz_api::spec::is_operation_key(verb) {
+            if !kasirmu_api::spec::is_operation_key(verb) {
                 continue;
             }
             seen += 1;
@@ -784,7 +784,7 @@ fn every_merged_ref_resolves() {
 
 // ── Drift-guard assertion 4 (spec 0047 §3) — READ_KEY_MAP coverage ──
 /// Every protected GET operation in the spec must have a corresponding
-/// entry in `oz_api::read_tiers::READ_KEY_MAP`.  Public/health/docs and
+/// entry in `kasirmu_api::read_tiers::READ_KEY_MAP`.  Public/health/docs and
 /// sync routes are excluded (they keep their own gating).
 #[test]
 fn every_spec_get_operation_has_read_key_entry() {
@@ -832,7 +832,7 @@ fn every_spec_get_operation_has_read_key_entry() {
             }
 
             // Check if READ_KEY_MAP has an entry for this (method, path).
-            let in_map = oz_api::read_tiers::READ_KEY_MAP
+            let in_map = kasirmu_api::read_tiers::READ_KEY_MAP
                 .iter()
                 .any(|e| e.method == "GET" && e.path == path.as_str());
             if !in_map {
@@ -1018,7 +1018,7 @@ fn validates(spec: &Value, schema: &Value, value: &Value) -> bool {
 
 #[test]
 fn push_outcome_documented_schema_matches_serde_wire_shape() {
-    use oz_core::offline::OfflineQueueItem;
+    use kasirmu_core::offline::OfflineQueueItem;
     use platform_sync::transport::{PushOutcome, PushResponse};
 
     let spec = openapi_spec();

@@ -33,13 +33,29 @@ done
 # cd to repo root
 cd "$(dirname "$0")/.."
 
+# ── Compose entry points ───────────────────────────────────────────
+# The Docker artifacts live under ops/docker/ (they used to sit at the repo
+# root). `--project-directory .` keeps the Compose project rooted at the repo,
+# which does three things at once: it preserves the project name derived from
+# the directory (so existing volumes stay `ozpos_oz_cloud_data` rather than
+# becoming `docker_*`), it lets Compose read the repo-root .env this script
+# generates, and it keeps `context: .` in the base file resolving to the repo
+# root for the image builds.
+COMPOSE_BASE=(docker compose --project-directory . -f ops/docker/docker-compose.yml)
+# Dev defaults (RUST_LOG=debug, debug ports) used to arrive from Compose's
+# implicit override auto-merge; an explicit -f suppresses that merge, so the
+# override is now named explicitly on the non-PG path. The PG path keeps its
+# long-standing behaviour — it always passed -f, so it never merged it.
+COMPOSE_DEV=("${COMPOSE_BASE[@]}" -f ops/docker/docker-compose.override.yml)
+COMPOSE_PG=("${COMPOSE_BASE[@]}" -f ops/docker/docker-compose.pg.yml)
+
 # ── Tear-down mode ────────────────────────────────────────────────
 if $DOWN; then
   echo "👋 Tearing down OZ-POS dev environment..."
   if $PG_MODE; then
-    docker compose -f docker-compose.yml -f docker-compose.pg.yml down -v
+    "${COMPOSE_PG[@]}" down -v
   else
-    docker compose down -v
+    "${COMPOSE_DEV[@]}" down -v
   fi
   echo "✅ Done. Volumes removed."
   exit 0
@@ -53,9 +69,9 @@ fi
 
 # ── Generate the required secrets once, persist them, reuse on next run ──
 #
-# docker-compose.yml hard-requires OZ_API_SECRET (:55) and OZ_ADMIN_KEY (:70)
+# ops/docker/docker-compose.yml hard-requires OZ_API_SECRET (:55) and OZ_ADMIN_KEY (:70)
 # with the fail-closed `:?` interpolation form. That requirement IS the fix:
-# admin_key_authorised() in crates/oz-api/src/routes/tokens.rs returns TRUE
+# admin_key_authorised() in crates/kasirmu-api/src/routes/tokens.rs returns TRUE
 # when no admin key is configured, so an unset OZ_ADMIN_KEY made
 # POST /api/v1/tokens an unauthenticated mint. Compose refusing to parse
 # without one must stay. What dev-up owes a developer is a value to run with,
@@ -175,7 +191,7 @@ if [ -n "$GENERATED_SECRETS" ]; then
 fi
 
 # ── Check license key ─────────────────────────────────────────────
-LICENSE_KEY_PATH="crates/oz-core/oz-license-private.pem"
+LICENSE_KEY_PATH="crates/kasirmu-core/oz-license-private.pem"
 if [ -z "${OZ_LICENSE_PRIVATE_KEY:-}" ]; then
   if [ -f "$LICENSE_KEY_PATH" ]; then
     export OZ_LICENSE_PRIVATE_KEY=$(cat "$LICENSE_KEY_PATH")
@@ -190,18 +206,18 @@ fi
 if $BUILD; then
   echo "🔨 Building Docker images..."
   if $PG_MODE; then
-    docker compose -f docker-compose.yml -f docker-compose.pg.yml build
+    "${COMPOSE_PG[@]}" build
   else
-    docker compose build
+    "${COMPOSE_DEV[@]}" build
   fi
 fi
 
 # ── Start services ────────────────────────────────────────────────
 echo "🚀 Starting OZ-POS backend services..."
 if $PG_MODE; then
-  docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d
+  "${COMPOSE_PG[@]}" up -d
 else
-  docker compose up -d
+  "${COMPOSE_DEV[@]}" up -d
 fi
 
 # ── Wait for health checks ────────────────────────────────────────
@@ -217,7 +233,7 @@ INTERVAL=3
 while [ $ELAPSED -lt $TIMEOUT ]; do
   ALL_HEALTHY=true
   for SVC in $SERVICES; do
-    STATUS=$(docker compose ps --format json "$SVC" 2>/dev/null | grep -o '"Health":"[^"]*"' | cut -d'"' -f4)
+    STATUS=$("${COMPOSE_BASE[@]}" ps --format json "$SVC" 2>/dev/null | grep -o '"Health":"[^"]*"' | cut -d'"' -f4)
     if [ "$STATUS" != "healthy" ]; then
       ALL_HEALTHY=false
       break
@@ -229,7 +245,7 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
 done
 
 if [ $ELAPSED -ge $TIMEOUT ]; then
-  echo "⚠️  Health check timeout after ${TIMEOUT}s. Check logs: docker compose logs"
+  echo "⚠️  Health check timeout after ${TIMEOUT}s. Check logs: ${COMPOSE_BASE[*]} logs"
 else
   echo "✅ All services healthy (${ELAPSED}s)"
 fi
@@ -250,5 +266,7 @@ fi
 echo "╠══════════════════════════════════════════════════════════╣"
 echo "║  Start desktop app: scripts/start-desktop.bat (cargo run)║"
 echo "║  Stop services:    bash scripts/dev-up.sh --down         ║"
-echo "║  View logs:        docker compose logs -f                ║"
+echo "║  View logs:        see the full command below            ║"
 echo "╚══════════════════════════════════════════════════════════╝"
+echo ""
+echo "Tail logs: ${COMPOSE_BASE[*]} logs -f"

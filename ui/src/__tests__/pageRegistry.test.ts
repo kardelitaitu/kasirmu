@@ -19,7 +19,7 @@ import {
   isPageAccessible,
   passesGate,
   registerPage,
-} from '@/platform/ui/page-registry';
+} from '@/registries/page-registry';
 
 const page = (route: string, extra: Partial<Parameters<typeof registerPage>[0]> = {}) => ({
   route,

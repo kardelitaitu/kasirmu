@@ -9,7 +9,7 @@
 
 1. **No production code was read.** `NodeTopologyEditor.tsx`, `nodeTopologyEditorPointer.ts`, `nodeTopologyEditorKeyboard.ts` and `topologyContract.ts` were **counted, not read**. Nothing here asserts anything about canvas behaviour, state, or correctness.
 2. **No test was run.** Zero Vitest, zero `cargo`, zero node test invocation. The run that `a5222df23` named as `:418`'s falsifiable form was **not executed**; the cost of that decision is stated in that box's section, as the plan's disposition discipline requires.
-3. **Nothing outside `ui/src/**` that a Phase-7 box names** — not `apps/desktop-client/**`, not `crates/oz-bridge/**`, not `crates/oz-hal/**` (all three under live edits by other lanes), and not the backend command layer Phases 1–6 already reviewed.
+3. **Nothing outside `ui/src/**` that a Phase-7 box names** — not `apps/desktop-tauri/**`, not `crates/oz-bridge/**`, not `crates/oz-hal/**` (all three under live edits by other lanes), and not the backend command layer Phases 1–6 already reviewed.
 4. **The plan's three `[carried]` inventory rows were not re-derived** — `~94 files / ~26,254 lines (4,225 CSS)`, `~65 files / ~33,587 lines, ~1,244 declarations`, and the `~35 files / ~15,600 lines` canvas sub-surface. The plan labels them `[carried]` from a teammate's exploration; this pass neither adopted nor refuted them.
 5. **No CSS, i18n or a11y question.** `ui/src/features/locations/NodeTopologyEditor.css` was counted (3,152 lines, matching the plan) and not opened.
 6. **Nothing was fixed.** This lane's commit contains exactly one path; `:421` below.
@@ -49,7 +49,7 @@ The Phase-7 boxes are cited `:416`–`:422`. In the working tree those seven box
 
 *Measured (population and sizes, the plan's table row by row):* `wc -l ui/src/features/locations/nodeTopologyEditorPointer.ts ui/src/features/locations/nodeTopologyEditorKeyboard.ts ui/src/features/locations/NodeTopologyEditor.tsx ui/src/features/locations/topologyContract.ts` → **1,100 · 591 · 2,478 · 1,056**, total 5,225. Every one of those four still matches the plan at this tip — the number that rotted in Phase 7 is `:418`'s, not these.
 
-*Measured (dirtiness):* `git status --porcelain -- ui/src/features/locations/` → **no output** at this tip, so this pass read a clean surface for those paths. Re-run it before dispatching anything; four lanes are writing code in this checkout right now, in `apps/tablet-client` and `apps/desktop-client`.
+*Measured (dirtiness):* `git status --porcelain -- ui/src/features/locations/` → **no output** at this tip, so this pass read a clean surface for those paths. Re-run it before dispatching anything; four lanes are writing code in this checkout right now, in `apps/mobile-tauri` and `apps/desktop-tauri`.
 
 *Not examined:* the handlers were not read, so no pairing of consumers is offered here, in either direction.
 

@@ -10,7 +10,7 @@ const locale = Astro.currentLocale ?? 'en';
 const pageTitle = `kasir.mu — ${t(locale, 'login.title')}`;
 ---
 
-<Base title={pageTitle} description={t(locale, 'pageDesc.login')}>
+<Base title={pageTitle} description={t(locale, 'pageDesc.login')} noindex>
   <section class="mx-auto max-w-6xl px-4 py-20">
     <div data-reveal class="mb-10 text-center">
       <h1 class="text-3xl font-bold">{t(locale, 'login.title')}</h1>

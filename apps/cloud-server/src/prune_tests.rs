@@ -71,7 +71,7 @@ async fn throwaway_pg_db(
 #[serial(pg_rls_cutover)]
 #[test]
 fn prune_delete_treats_hostile_id_as_data() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     // An old synced row whose id carries a statement terminator plus a
     // destructive CREATE. If the DELETE interpolates the id, `hacked`
     // appears in the schema.
@@ -111,7 +111,7 @@ fn prune_delete_treats_hostile_id_as_data() {
 #[serial(pg_rls_cutover)]
 #[test]
 fn prune_ages_out_old_pending_rows_like_synced_ones() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     conn.execute_batch(
         "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority) VALUES
          ('old-pending', 'act', '{}', 'pending', 0, NULL, '2025-01-01T00:00:00Z', NULL, 't1', 1),
@@ -145,7 +145,7 @@ fn prune_ages_out_old_pending_rows_like_synced_ones() {
 #[serial(pg_rls_cutover)]
 #[test]
 fn prune_records_deleted_rows_on_retention_counter() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     conn.execute_batch(
         "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority) VALUES
          ('old-1', 'act', '{}', 'pending', 0, NULL, '2025-01-01T00:00:00Z', NULL, 't1', 1),

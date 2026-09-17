@@ -1,6 +1,6 @@
 {
   "meta": {
-    "description": "Platform POS offline-first untuk kafe, restoran, dan ritel. Tetap berjalan tanpa internet, sinkron saat kembali online."
+    "description": "Aplikasi kasir offline-first yang ringan dan mudah untuk kafe, restoran, dan ritel. Gratis, jalan di Android, tablet, dan Windows walau tanpa internet."
   },
   "nav": {
     "home": "Beranda",
@@ -39,8 +39,10 @@
   "pageDesc": {
     "features": "Kasir offline-first: penjualan, shift, dan stok yang tetap berjalan tanpa koneksi sama sekali.",
     "pricing": "Lima paket — Gratis selamanya, Plus, Pro, Premium, dan Enterprise. Tahunan = 2 bulan gratis.",
-    "download": "Unduh kasir.mu untuk Windows. macOS, Linux, Android, dan iOS segera hadir.",
+    "download": "Unduh aplikasi kasir gratis untuk Windows — ringan dan mudah dipasang. Android dan tablet segera hadir.",
     "support": "Dapatkan bantuan kasir.mu — dukungan email dan jawaban untuk pertanyaan paling umum.",
+    "cara": "Panduan cara pakai kasir.mu langkah demi langkah: install, transaksi pertama, QRIS, stok, dan jualan offline.",
+    "perbandingan": "Perbandingan jujur kasir.mu vs aplikasi kasir lain: Moka, Majoo, Olsera, Qasir, dan Pawoon — harga, fitur, dan offline.",
     "login": "Masuk ke akun kasir.mu Anda hanya dengan email.",
     "account": "Lisensi, langganan, dan informasi penagihan kasir.mu Anda.",
     "privacy": "Bagaimana kasir.mu mengumpulkan, menggunakan, dan melindungi data Anda.",
@@ -78,6 +80,30 @@
       {
         "q": "Di mana saya bisa melaporkan bug?",
         "a": "Email kami di support@kasir.mu dengan nomor versi Anda dan deskripsi kejadian."
+      },
+      {
+        "q": "Apakah kasir.mu murah? Berapa harganya?",
+        "a": "Paket Gratis selamanya Rp0 untuk satu toko dan satu register. Paket Plus mulai Rp49rb per bulan — tanpa biaya per-fitur tersembunyi."
+      },
+      {
+        "q": "Apakah kasir.mu jalan di tablet atau HP Android murah?",
+        "a": "Ya. kasir.mu ringan dan berjalan mulus di tablet Android, HP, dan PC spesifikasi rendah — aplikasi Android native segera hadir."
+      },
+      {
+        "q": "Apakah aplikasi kasir ini mudah dipakai orang gaptek?",
+        "a": "Ya. kasir.mu dirancang agar gampang dipakai: kasir bisa jualan dalam 3 langkah mudah tanpa pelatihan khusus."
+      },
+      {
+        "q": "Apakah ada aplikasi kasir gratis tanpa internet?",
+        "a": "Ya. Paket gratis kasir.mu berjalan 100% offline di perangkat Anda dan tersinkron ke cloud saat koneksi kembali."
+      },
+      {
+        "q": "Apakah kasir.mu bisa terima QRIS?",
+        "a": "Ya. kasir.mu menerima QRIS dinamis dan dompet digital langsung di layar, tanpa perangkat tambahan."
+      },
+      {
+        "q": "Apakah kasir.mu sama dengan kasirmu atau kasir mu?",
+        "a": "Ya, sama. kasir.mu juga sering ditulis kasirmu atau kasir mu — semuanya aplikasi kasir offline-first ini."
       }
     ]
   },
@@ -117,8 +143,8 @@
     }
   },
   "hero": {
-    "title": "Fitur Kelas Enterprise, Tanpa Biaya Enterprise",
-    "subtitle": "Sistem POS kelas korporasi yang dapat diakses siapa saja. Tetap jualan saat internet mati dengan inti offline-first ultra-ringan, tanpa biaya per-fitur tersembunyi.",
+    "title": "Aplikasi Kasir yang Ringan, Mudah, dan Gratis",
+    "subtitle": "Sistem POS kelas korporasi yang tetap murah: jalan di Android, tablet, dan PC tua dengan inti offline-first ultra-ringan, tanpa biaya per-fitur tersembunyi.",
     "ctaPrimary": "Unduh Gratis",
     "ctaSecondary": "Lihat Harga",
     "carousel": {
@@ -139,7 +165,7 @@
     "subtitle": "Fondasi open-source yang andal, pembayaran teruji, dan alat keamanan tingkat pertama."
   },
   "features": {
-    "title": "Fitur Kelas Enterprise, Tanpa Biaya Enterprise",
+    "title": "Fitur Kasir yang Ringan dan Mudah, Tanpa Biaya Enterprise",
     "subtitle": "Fitur unggulan yang dirancang untuk transaksi super cepat, operasional tanpa henti meski offline, dan siap berkembang bersama bisnis Anda.",
     "items": [
       {
@@ -455,6 +481,140 @@
     "regionIndonesia": "Indonesia",
     "regionHint": "Menentukan harga dan metode pembayaran"
   },
+  "landing": {
+    "qris": {
+      "title": "Kasir QRIS: QR Statis + Dinamis di Semua Paket",
+      "description": "Terima QRIS statis (stiker toko) dan QR dinamis per transaksi di semua paket kasir.mu, termasuk Gratis. Settlement Midtrans otomatis, tanpa EDC tambahan.",
+      "h1": "Kasir QRIS Statis + Dinamis",
+      "lede": "Pelanggan Anda sudah bayar pakai QR — kasir.mu menerima keduanya. Tampilkan QR dinamis dengan nominal transaksi, atau pakai stiker QR statis toko Anda. Keduanya tersedia di semua paket, termasuk Gratis.",
+      "points": [
+        "QR dinamis: nominal terkunci per transaksi via Midtrans, settlement dipolling otomatis",
+        "QR statis: pakai stiker NMID toko Anda, referensi dicatat dan direkonsiliasi untuk struk",
+        "Tanpa EDC tambahan: cukup layar kasir atau tablet",
+        "Masuk semua paket: Gratis, Plus, Pro, Premium, Enterprise"
+      ],
+      "howTitle": "Cara terima QRIS di kasir",
+      "how": [
+        "Buka tagihan di layar pembayaran dan pilih QRIS",
+        "Untuk dinamis: tunjukkan QR yang muncul ke pelanggan untuk dipindai",
+        "Untuk statis: tunjukkan stiker QR toko, catat referensi yang muncul",
+        "Transaksi cocok otomatis saat settlement masuk — struk siap cetak"
+      ],
+      "ctaPricing": "Lihat semua paket",
+      "ctaDownload": "Unduh gratis",
+      "faq": [
+        {
+          "q": "Apakah QRIS tersedia di paket gratis?",
+          "a": "Ya. QRIS statis + dinamis tersedia di semua paket kasir.mu, termasuk Gratis selamanya."
+        },
+        {
+          "q": "Apa bedanya QRIS statis dan dinamis?",
+          "a": "Statis memakai satu stiker QR toko untuk semua nominal (kasir mencatat referensi manual). Dinamis membuat QR baru per transaksi dengan nominal terkunci dan verifikasi otomatis."
+        },
+        {
+          "q": "Perlu EDC atau alat tambahan?",
+          "a": "Tidak. Cukup layar kasir atau tablet — QR tampil di layar, pelanggan pindai pakai e-wallet atau m-banking apa pun."
+        },
+        {
+          "q": "Bagaimana jika internet mati saat bayar QRIS?",
+          "a": "Transaksi tercatat lokal dan direkonsiliasi saat koneksi kembali — kasir tidak pernah terblokir."
+        }
+      ]
+    },
+    "gratis": {
+      "title": "Aplikasi Kasir Gratis untuk Warung, Kafe, dan Toko",
+      "description": "Paket kasir gratis selamanya: satu toko, satu register, riwayat 3 bulan. Ringan, mudah dipakai, jalan offline — tanpa kartu kredit.",
+      "h1": "Kasir Gratis, Selamanya",
+      "lede": "Mulai jualan hari ini tanpa bayar sepeser pun. Paket Gratis kasir.mu memberi Anda aplikasi kasir offline-first yang ringan dan mudah — satu toko, satu register, riwayat 3 bulan.",
+      "points": [
+        "Rp0 selamanya — tanpa kartu kredit, tanpa masa trial yang tiba-tiba berakhir",
+        "Ringan: berjalan mulus di HP, tablet, dan PC tua",
+        "Mudah: kasir bisa jualan dalam 3 langkah tanpa pelatihan",
+        "Offline-first: tetap jualan saat internet mati"
+      ],
+      "limitsTitle": "Batas paket Gratis",
+      "limits": "Satu toko, satu register, riwayat 3 bulan. Butuh lebih — multi-terminal, gudang, laporan terjadwal? Lihat paket Plus, Pro, dan Premium.",
+      "ctaPricing": "Lihat semua paket",
+      "ctaDownload": "Unduh gratis",
+      "faq": [
+        {
+          "q": "Apakah benar-benar gratis?",
+          "a": "Ya. Paket Gratis Rp0 selamanya untuk satu toko dan satu register — tanpa kartu kredit."
+        },
+        {
+          "q": "Apakah kasir gratis ini jalan tanpa internet?",
+          "a": "Ya. Semua paket kasir.mu, termasuk yang gratis, berjalan 100% offline dan tersinkron saat koneksi kembali."
+        },
+        {
+          "q": "Apa yang terjadi setelah riwayat 3 bulan?",
+          "a": "Data lama diarsipkan; upgrade ke paket berbayar untuk riwayat lebih panjang dan laporan terjadwal."
+        }
+      ]
+    },
+    "murah": {
+      "title": "Aplikasi Kasir Murah: Mulai Rp0, Plus Rp49rb per Bulan",
+      "description": "Harga kasir transparan: Gratis Rp0, Plus Rp49rb, Pro Rp99rb per bulan. Tanpa biaya per-fitur tersembunyi — murah untuk warung sampai restoran.",
+      "h1": "Kasir Murah Tanpa Biaya Tersembunyi",
+      "lede": "Mulai gratis, naik kelas saat siap. Setiap paket kasir.mu sudah termasuk inti offline-first, QRIS, dan audit trail — yang membedakan hanya kapasitas, bukan fitur yang dikunci.",
+      "tiersTitle": "Tiga langkah harga",
+      "tiers": [
+        "Gratis — Rp0 selamanya: satu toko, satu register",
+        "Plus — Rp49rb per bulan: untuk warung dan toko yang tumbuh",
+        "Pro — Rp99rb per bulan: multi-terminal, KDS, analitik jam sibuk"
+      ],
+      "contrastTitle": "kasir.mu vs POS cloud konvensional",
+      "contrast": [
+        "POS lain macet saat internet mati — kasir.mu tetap jualan offline",
+        "POS lain kunci KDS dan multi-toko di kontrak Enterprise — kasir.mu menyertakannya di paket reguler",
+        "POS lain tambah biaya per fitur dan per register — kasir.mu transparan per paket"
+      ],
+      "ctaPricing": "Bandingkan semua paket",
+      "faq": [
+        {
+          "q": "Berapa harga termurah kasir.mu?",
+          "a": "Rp0 — paket Gratis selamanya. Paket berbayar termurah adalah Plus Rp49rb per bulan."
+        },
+        {
+          "q": "Apakah ada biaya per-fitur atau per register tersembunyi?",
+          "a": "Tidak. Harga per paket, transparan — fitur inti seperti offline-first, QRIS, dan audit trail ada di semua paket."
+        },
+        {
+          "q": "Apakah ada diskon tahunan?",
+          "a": "Ya — bayar tahunan sama dengan 2 bulan gratis."
+        }
+      ]
+    },
+    "android": {
+      "title": "Aplikasi Kasir Android & Tablet: Ringan untuk HP Murah",
+      "description": "kasir.mu segera hadir di Android dan tablet: aplikasi kasir ringan yang mudah dipakai di HP murah, tetap jalan offline. Unduh versi Windows hari ini.",
+      "h1": "Kasir Android & Tablet, Segera Hadir",
+      "lede": "Hari ini kasir.mu berjalan di Windows; aplikasi Android dan tablet native sedang dikerjakan. Kabar baiknya: antarmukanya sudah ramah sentuhan — target sentuh besar, layout menumpuk di layar portrait — jadi tim Anda siap sebelum APK-nya tiba.",
+      "points": [
+        "Ringan: dirancang untuk HP dan tablet Android murah dengan RAM kecil",
+        "Mudah: tombol besar, alur 3 langkah, tanpa pelatihan khusus",
+        "Offline-first: tetap jualan di gudang atau area tanpa sinyal",
+        "Tablet-optimized: layout responsif dari desktop hingga portrait"
+      ],
+      "statusTitle": "Status hari ini",
+      "status": "Windows tersedia sekarang. Android 7.0+ dan iOS segera hadir — unduh versi Windows untuk mencoba alurnya, atau hubungi kami untuk kabar rilis Android.",
+      "ctaDownload": "Unduh versi Windows",
+      "ctaSupport": "Tanya soal Android",
+      "faq": [
+        {
+          "q": "Kapan aplikasi kasir Android-nya rilis?",
+          "a": "Segera hadir — minimum Android 7.0 Nougat. Versi Windows tersedia hari ini dengan alur yang sama."
+        },
+        {
+          "q": "Apakah jalan di tablet murah?",
+          "a": "Ya — kasir.mu dirancang ringan untuk tablet dan HP Android murah, dan tetap jualan offline."
+        },
+        {
+          "q": "Apakah bisa dipakai di HP kasir touchscreen?",
+          "a": "Ya. Target sentuh mengikuti standar 44px dan layout beradaptasi ke layar kecil."
+        }
+      ]
+    }
+  },
   "vertical": {
     "positioning": "kasir.mu — kasir native QRIS dengan keandalan offline-first, harga untuk pasar Indonesia.",
     "whyTitle": "Mengapa kasir.mu untuk bisnis Anda?",
@@ -464,8 +624,8 @@
     "bundleCta": "Plus + KDS — Paket Restaurant Starter",
     "kafe": {
       "label": "Kafe / Coffee shop",
-      "title": "Kasir yang menjaga kafe Anda tetap ramai",
-      "tagline": "KDS, analitik, dan multi-terminal — bekerja penuh offline.",
+      "title": "Aplikasi Kasir Kafe: Pesanan, Dapur & QRIS Tetap Lancar",
+      "tagline": "KDS, analitik jam sibuk, dan multi-terminal untuk kafe Anda — bekerja penuh offline.",
       "tierAnchor": "pro",
       "ctaPrimary": "Lihat paket Pro",
       "leadWithTrial": true,
@@ -496,7 +656,7 @@
     },
     "minimarket": {
       "label": "Minimarket",
-      "title": "Kontrol stok untuk minimarket Anda",
+      "title": "Aplikasi Kasir dan Kontrol Stok untuk Minimarket",
       "tagline": "Gudang, multi-terminal, dan visibilitas stok real-time.",
       "tierAnchor": "pro",
       "ctaPrimary": "Lihat paket Pro",
@@ -545,7 +705,7 @@
         },
         {
           "title": "Gratis selamanya",
-          "description": "Satu toko, satu register, dan riwayat 30 hari — gratis, tanpa kartu."
+          "description": "Satu toko, satu register, dan riwayat 3 bulan — gratis, tanpa kartu."
         }
       ],
       "benefits": [
@@ -556,32 +716,41 @@
     },
     "restoran": {
       "label": "Restoran",
-      "title": "Dari dapur hingga kasir, tetap sinkron",
-      "tagline": "KDS, poin loyalitas, dan laporan terjadwal untuk restoran Anda.",
+      "title": "Aplikasi Kasir Restoran: Dapur, Meja & QRIS Tetap Sinkron",
+      "tagline": "KDS, manajemen meja, poin loyalitas, dan QRIS statis + dinamis untuk restoran Anda — tetap jualan saat internet mati.",
       "tierAnchor": "premium",
       "ctaPrimary": "Lihat paket Premium",
       "features": [
         {
           "title": "Layar dapur (KDS)",
-          "description": "Pesanan mengalir dari kasir ke dapur dalam hitungan detik — waktu antar berkurang."
+          "description": "Pesanan mengalir dari kasir ke dapur dalam hitungan detik — tiket per meja, eskalasi keterlambatan, dan bunyi peringatan. Waktu antar berkurang, perputaran meja naik."
+        },
+        {
+          "title": "Manajemen meja restoran",
+          "description": "Denah lantai interaktif: status tersedia, terisi, reservasi. Ketuk meja untuk buka order, pindah tagihan antar meja, gabung atau bagi tagihan per pelanggan."
+        },
+        {
+          "title": "QRIS statis + dinamis di meja",
+          "description": "Tampilkan QR dinamis per tagihan untuk dipindai pelanggan, atau pakai stiker QR statis toko. Settlement Midtrans dipolling otomatis dan cocok ke transaksi — tanpa EDC tambahan."
         },
         {
           "title": "Poin loyalitas",
-          "description": "Berikan poin kepada pelanggan tetap dan pertahankan mereka kembali."
+          "description": "Berikan poin kepada pelanggan tetap di setiap pembayaran dan pertahankan mereka kembali — otomatis tanpa kartu fisik."
         },
         {
           "title": "Laporan terjadwal",
-          "description": "Terima laporan penjualan otomatis via email — harian atau mingguan."
+          "description": "Terima laporan penjualan restoran otomatis via email — harian atau mingguan: omzet, menu terlaris, jam sibuk, dan void."
         },
         {
-          "title": "Multi-toko",
-          "description": "Kelola banyak outlet dengan toko dan terminal tanpa batas."
+          "title": "Multi-outlet",
+          "description": "Kelola banyak outlet dengan toko dan terminal tanpa batas — menu, harga, dan stok tersinkron antar cabang."
         }
       ],
       "benefits": [
         "Perputaran meja lebih cepat dengan dapur yang tetap sinkron.",
-        "Loyalitas bawaan yang meningkatkan kunjungan berulang.",
-        "Pembayaran native QRIS yang sudah dipakai pelanggan Anda."
+        "Tagihan terpisah atau gabung per meja tanpa drama di kasir.",
+        "Pembayaran QRIS statis + dinamis yang sudah dipakai pelanggan Anda.",
+        "Tetap terima pesanan saat Wi-Fi restoran mati — sinkron saat online."
       ]
     },
     "warehouse": {

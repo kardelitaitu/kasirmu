@@ -67,6 +67,6 @@ Write-Host "Setup complete. Current server config:" -ForegroundColor Green
 sccache --show-stats 2>&1 | Select-String "Cache location|Max cache size|Version \(client\)" | ForEach-Object { "    $($_.Line.Trim())" }
 Write-Host ""
 Write-Host "Next:" -ForegroundColor Green
-Write-Host "  1. Run a cold build:  cargo clean && cargo check --workspace --exclude oz-pos-app"
-Write-Host "  2. Run a warm build:  cargo check --workspace --exclude oz-pos-app"
+Write-Host "  1. Run a cold build:  cargo clean && cargo check --workspace --exclude kasirmu-app"
+Write-Host "  2. Run a warm build:  cargo check --workspace --exclude kasirmu-app"
 Write-Host "  3. Check stats:       sccache --show-stats"

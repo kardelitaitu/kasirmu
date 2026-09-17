@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { staffLogin } from "@/api/staff";
-import { Localized } from "@/frontend/shared/Localized";
+import { Localized } from "@/components/Localized";
 import { useLocalization } from "@fluent/react";
 import "./FastPINOverlay.css";
 import { plainErrorMessage } from "@/utils/app-error";

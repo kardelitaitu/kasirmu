@@ -171,6 +171,6 @@
   -p oz-cloud-server` clean; no `#[allow]`/visibility edits; per-file `rustfmt
   --edition 2024` only, and `cargo fmt -p oz-core -- --check` shows diffs solely in
   foreign in-flight `kds_rules*` files.
-- **Collisions:** none observed inside the fence; foreign dirty files (`apps/tablet-client/**`,
+- **Collisions:** none observed inside the fence; foreign dirty files (`apps/mobile-tauri/**`,
   `crates/oz-bridge/src/*`, `migrations/20260813_init.pg.sql`, `ui/src/dev-mock/**`,
   `scripts/scan-unwrap-panic.py`) never staged, committed, or reverted.

@@ -23,7 +23,7 @@ const COLUMN_TITLE_KEYS = ['kds-pending', 'kds-preparing', 'kds-ready'] as const
 
 /**
  * KdsLayoutMasonry — the single KDS view (design-language prototype:
- * dev/kds-prototype.html).
+ * see docs/specs/_active/tauri-ux-design-language-plan.md).
  *
  * All open orders flow into N equal-width columns (a JS masonry: cards
  * are distributed round-robin so each column stays roughly balanced),

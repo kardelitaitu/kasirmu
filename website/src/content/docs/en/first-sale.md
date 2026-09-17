@@ -45,10 +45,11 @@ cashier's level.
 
 ## Take payment
 
-Press **Pay**. Cash is the only method available today — enter the amount
-tendered and the change is calculated for you. QRIS, debit and credit
-cards, and e-wallets are coming soon and will appear here as options.
-Attaching a customer for loyalty is supported.
+Press **Pay**. Cash and QRIS are available — enter the cash amount
+tendered and the change is calculated for you, or show a dynamic QR for
+the customer to scan (or your store's static QR). Debit and credit cards,
+and e-wallets are coming soon and will appear here as options. Attaching
+a customer for loyalty is supported.
 
 ## Receipt and record
 

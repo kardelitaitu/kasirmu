@@ -3,8 +3,8 @@
 # Generates an RSA-2048 key pair for the license server (ADR #9).
 #
 # Outputs:
-#   crates/oz-core/oz-license.key.pub     ← Public key (embedded in POS binary, committed)
-#   crates/oz-core/oz-license-private.pem ← Private key (set as OZ_LICENSE_PRIVATE_KEY env var, git-ignored)
+#   crates/kasirmu-core/oz-license.key.pub     ← Public key (embedded in POS binary, committed)
+#   crates/kasirmu-core/oz-license-private.pem ← Private key (set as OZ_LICENSE_PRIVATE_KEY env var, git-ignored)
 #
 # Requirements:
 #   - OpenSSL (included with Git for Windows: C:\Program Files\Git\usr\bin\openssl.exe)
@@ -15,8 +15,8 @@
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$publicKeyPath  = "crates/oz-core/oz-license.key.pub"
-$privateKeyPath = "crates/oz-core/oz-license-private.pem"
+$publicKeyPath  = "crates/kasirmu-core/oz-license.key.pub"
+$privateKeyPath = "crates/kasirmu-core/oz-license-private.pem"
 
 Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host "  OZ-POS License Key Generator (ADR #9)"            -ForegroundColor Cyan

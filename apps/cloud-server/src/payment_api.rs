@@ -8,7 +8,7 @@ next: none | perf: N/A
 //!
 //! `POST /api/payment/midtrans/qris` — JWT-authenticated (same
 //! `auth_middleware` + per-tenant rate-limit stack as `sync_api`), raises a
-//! QR through the EXISTING `oz-payment` Midtrans driver (do not fork it: the
+//! QR through the EXISTING `kasirmu-payment` Midtrans driver (do not fork it: the
 //! repair stamp records why), and records the issuance in
 //! [`crate::midtrans_ledger`] so the settlement webhook can resolve the sale
 //! even before the device syncs.
@@ -43,10 +43,10 @@ use axum::{
     routing::{get, post},
 };
 use foundation::{Currency, Money};
-use oz_api::auth::{ApiTokenClaims, auth_middleware};
-use oz_payment::PaymentProcessor as _;
-use oz_payment::drivers::qris::QrisPaymentProcessor;
-use oz_payment::types::PaymentRequest;
+use kasirmu_api::auth::{ApiTokenClaims, auth_middleware};
+use kasirmu_payment::PaymentProcessor as _;
+use kasirmu_payment::drivers::qris::QrisPaymentProcessor;
+use kasirmu_payment::types::PaymentRequest;
 use serde::Deserialize;
 use tokio::sync::Mutex;
 
@@ -60,7 +60,7 @@ const QRIS_CURRENCY: &[u8; 3] = b"IDR";
 
 /// QR validity window served to the UI so the countdown has ONE source of
 /// truth: the driver hardcodes the same 300 s (`QRIS_EXPIRY_SECS` in
-/// `crates/oz-payment/src/drivers/qris.rs` — Midtrans-side expiry we do not
+/// `crates/kasirmu-payment/src/drivers/qris.rs` — Midtrans-side expiry we do not
 /// control; agents-3 repair notes the roadmap's "15 minutes" was wrong).
 const QRIS_EXPIRY_SECS: u32 = 300;
 

@@ -94,12 +94,16 @@ def load_live():
     files, baks = {}, set()
     if not os.path.isdir(WF_DIR):
         return {}, set(), baks
-    for f in sorted(os.listdir(WF_DIR)):
-        if f.endswith(".yml"):
-            files[f[:-4]] = open(os.path.join(WF_DIR, f), encoding="utf-8",
-                                 errors="replace").read()
-        elif f.endswith(".yml.bak"):
-            baks.add(f[:-8])
+    # Retired workflows live in the attic/ subdirectory since P4 of the folder
+    # restructure, so the .bak enumeration walks recursively. Live *.yml files
+    # GitHub would execute only ever sit at the top level, so they stay flat.
+    for root, _dirs, names in os.walk(WF_DIR):
+        for f in sorted(names):
+            if f.endswith(".yml"):
+                files[f[:-4]] = open(os.path.join(root, f), encoding="utf-8",
+                                     errors="replace").read()
+            elif f.endswith(".yml.bak"):
+                baks.add(f[:-8])
     return parse_ci(files), set(files), baks
 
 
@@ -131,7 +135,8 @@ def check_text(text, jobs, live, baks, all_jobs):
                 continue
             if nm in baks:
                 out.append((i + 1, "treats " + nm + ".yml as CI, but only " + nm +
-                            ".yml.bak exists and GitHub never executes a .bak file"))
+                            ".yml.bak exists (in .github/workflows/attic/) and GitHub"
+                            " never executes a .bak file"))
             else:
                 out.append((i + 1, "names " + nm + ".yml, which exists neither live nor as"
                             " a .bak"))

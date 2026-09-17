@@ -1,6 +1,6 @@
 import type { ReactLocalization } from '@fluent/react';
 import type { InventoryTransaction } from '@/api/inventory';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 
 /**
  * Fluent message ids for inventory transaction types.

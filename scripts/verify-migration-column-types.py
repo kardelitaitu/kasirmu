@@ -11,7 +11,7 @@ fixed-point integers — `*_minor` (i64 cents) and `*_millionths` (i64
 scaled decimals). This lint stops a NEW float column from entering the
 schema without a conscious, written justification.
 
-Scope: every .sql under crates/oz-core/migrations/ (SQLite side AND the
+Scope: every .sql under crates/kasirmu-core/migrations/ (SQLite side AND the
 generated init.pg.sql — the PG file is where hand-ported drift historically
 introduced DOUBLE PRECISION twins of flagged columns).
 
@@ -39,7 +39,7 @@ CAUGHT/CLEAN tally, so a root guard that stops firing cannot go unnoticed.
 A ROOT ON THE COMMAND LINE IS REFUSED WHERE IT RESOLVES, BEFORE THE WALK
 ========================================================================
 
-This gate has no root argument — the corpus is `crates/oz-core/migrations`, derived from
+This gate has no root argument — the corpus is `crates/kasirmu-core/migrations`, derived from
 `__file__` — but its siblings (`scan-unwrap-panic.py`, `verify-no-hardcoded-money-format.py`)
 do take `--roots`, so a caller typing a root list here is asking for a scoped scan. Nothing
 used to read a positional, so:
@@ -100,7 +100,7 @@ from pathlib import Path
 
 # Repo-relative, never anchored to a hardcoded checkout (AGENTS.md).
 ROOT = Path(__file__).resolve().parent.parent
-MIGRATIONS = ROOT / "crates" / "oz-core" / "migrations"
+MIGRATIONS = ROOT / "crates" / "kasirmu-core" / "migrations"
 
 # Column-name + float-type pair. The column name is the word before the
 # type keyword; matches inside comments are impossible (comments are
@@ -203,21 +203,21 @@ def refuse(mode: str, scanned: int, corpus: int, *, index_unreadable: bool = Fal
     else:
         print("  a copy of this script outside a checkout reaches this line instead of "
               "reporting a clean schema; run it from a tree that holds "
-              "crates/oz-core/migrations/.")
+              "crates/kasirmu-core/migrations/.")
     print("  note: --staged-only with nothing staged is NOT a refusal — there the empty "
           "set is the correct answer and the gate exits 0.")
 
 
 # -- root arguments ---------------------------------------------------------------
 #
-# This gate has one corpus: `crates/oz-core/migrations`, resolved from __file__ above. It
+# This gate has one corpus: `crates/kasirmu-core/migrations`, resolved from __file__ above. It
 # implements no root argument, so anything on the command line that looks like a root — a
 # `--roots` list, or a bare path — is a request to scope this scan to paths it cannot honour.
 # Sibling gates (`scan-unwrap-panic.py`, `verify-no-hardcoded-money-format.py`) DO take root
 # lists, which is why typing one here is a likely mistake rather than an impossible one.
 #
 # Before this section a root-shaped token was simply never read, and never read is not the same
-# as refused: `verify-migration-column-types.py crates/oz-core/migratios` — one letter off —
+# as refused: `verify-migration-column-types.py crates/kasirmu-core/migratios` — one letter off —
 # printed the ordinary whole-tree `ok:` line at exit 0. A PASS manufactured by a typo, about a
 # corpus the caller did not name. So a root is now resolved where it resolves, BEFORE any walk,
 # and an unresolvable one refuses at 2.
@@ -331,7 +331,7 @@ def staged_migration_paths() -> set[str] | None:
     try:
         proc = subprocess.run(
             ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM", "-z", "--",
-             "crates/oz-core/migrations/"],
+             "crates/kasirmu-core/migrations/"],
             cwd=ROOT, capture_output=True, text=True, check=True,
         )
     except Exception as exc:  # no repo, no git, non-zero exit
@@ -452,11 +452,11 @@ def self_test() -> int:
     #     request with the flag refusal and no root diagnosis, which is the half-answer (1)
     #     already covers — this case is what makes the "it reads no root argument" sentence load
     #     bearing, since a root list cannot be honoured here whether it resolves or not.
-    rc, out, err = _run_gate(["--roots", "crates", "crates/oz-core/migrations"])
+    rc, out, err = _run_gate(["--roots", "crates", "crates/kasirmu-core/migrations"])
     verdict(
         rc == 2 and "reads no root argument" in err and not _verdict_printed(out + err),
         "CAUGHT",
-        "--roots crates crates/oz-core/migrations: refused, and says this gate scopes to nothing",
+        "--roots crates crates/kasirmu-core/migrations: refused, and says this gate scopes to nothing",
         "exit 2 plus the 'reads no root argument' refusal, still no verdict line",
         f"exit {rc}, reason printed={'reads no root argument' in err}",
     )
@@ -489,7 +489,7 @@ def self_test() -> int:
     #     Mutation: delete the positional arm of main(). The run then falls through to the
     #     whole-tree scan and exits 0 with its ordinary ok line, which is the defect: one letter
     #     off in a path, and the gate certifies a corpus the caller did not name.
-    rc, out, err = _run_gate(["crates/oz-core/migratios"])
+    rc, out, err = _run_gate(["crates/kasirmu-core/migratios"])
     verdict(
         rc == 2 and "migratios" in err and not _verdict_printed(out + err),
         "CAUGHT",

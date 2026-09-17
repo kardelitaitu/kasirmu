@@ -1,7 +1,7 @@
 /**
  * Pricing content is keyed on the REAL tier enum used by the schema and the
  * client (`free` / `plus` / `pro` / `premium` / `enterprise` — see
- * apps/license-server/pb_schema.json and crates/oz-core/src/subscription.rs).
+ * apps/license-server/pb_schema.json and crates/kasirmu-core/src/subscription.rs).
  * `plus` is the new entry paid tier (subscription-tiers.md §1/§2); the
  * license-server schema is the remaining gap there (pb_schema.json still
  * lists only free/pro/premium/enterprise).

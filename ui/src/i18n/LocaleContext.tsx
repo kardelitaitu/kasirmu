@@ -41,7 +41,17 @@ interface LocaleProviderProps {
   children: ReactNode;
 }
 
-const STORAGE_KEY = 'oz-pos-locale';
+const STORAGE_KEY = 'kasirmu-locale';
+const LEGACY_LOCALE = 'oz-pos-locale';
+
+// Migrate legacy locale key on first load after upgrade.
+try {
+  const legacyValue = localStorage.getItem(LEGACY_LOCALE);
+  if (legacyValue !== null && localStorage.getItem(STORAGE_KEY) === null) {
+    localStorage.setItem(STORAGE_KEY, legacyValue);
+  }
+  localStorage.removeItem(LEGACY_LOCALE);
+} catch { /* localStorage unavailable */ }
 
 /** Supported locale codes, ordered for lookup. */
 const SUPPORTED_LOCALES: LocaleCode[] = ['en', 'id'];

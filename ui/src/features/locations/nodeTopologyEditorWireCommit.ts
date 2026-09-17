@@ -33,7 +33,7 @@
 
 import { useCallback, type MutableRefObject, type SetStateAction } from 'react';
 import type { useLocalization } from '@fluent/react';
-import type { ToastType } from '@/frontend/shared/Toast';
+import type { ToastType } from '@/components/Toast';
 import { rowRelationshipOptions, type WireRelationshipOption } from './topologyCard';
 import {
   stockRoutingWires,

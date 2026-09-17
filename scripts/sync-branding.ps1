@@ -9,7 +9,7 @@
 #   1. Locates ImageMagick for optional .icns generation
 #   2. Reads the brand's manifest.json for theme tokens and asset paths
 #   3. Auto-generates icon.icns if missing (macOS format via ImageMagick + binary pack)
-#   4. Copies desktop icons to apps/desktop-client/icons/ and apps/tablet-client/icons/
+#   4. Copies desktop icons to apps/desktop-tauri/icons/ and apps/mobile-tauri/icons/
 #   5. Copies web icons (favicons, PWA) to ui/public/
 #   6. Copies vector SVGs to ui/public/branding/
 #   7. Updates ui/public/site.webmanifest name/short_name (preserving formatting)
@@ -236,13 +236,13 @@ if (-not (Test-Path $brandIcns)) {
 Write-Host ""
 Write-Host "-- Desktop icons --" -ForegroundColor White
 $desktopFiles = @(
-    @{src="desktop/icon.ico";    dst1="apps/desktop-client/icons/icon.ico";    dst2="apps/tablet-client/icons/icon.ico"},
-    @{src="desktop/icon.icns";   dst1="apps/desktop-client/icons/icon.icns";   dst2="apps/tablet-client/icons/icon.icns"},
-    @{src="desktop/icon.png";    dst1="apps/desktop-client/icons/icon.png";    dst2="apps/tablet-client/icons/icon.png"},
-    @{src="desktop/32x32.png";   dst1="apps/desktop-client/icons/32x32.png";   dst2="apps/tablet-client/icons/32x32.png"},
-    @{src="desktop/64x64.png";   dst1="apps/desktop-client/icons/64x64.png";   dst2="apps/tablet-client/icons/64x64.png"},
-    @{src="desktop/128x128.png"; dst1="apps/desktop-client/icons/128x128.png"; dst2="apps/tablet-client/icons/128x128.png"},
-    @{src="desktop/256x256.png"; dst1="apps/desktop-client/icons/256x256.png"; dst2="apps/tablet-client/icons/256x256.png"}
+    @{src="desktop/icon.ico";    dst1="apps/desktop-tauri/icons/icon.ico";    dst2="apps/mobile-tauri/icons/icon.ico"},
+    @{src="desktop/icon.icns";   dst1="apps/desktop-tauri/icons/icon.icns";   dst2="apps/mobile-tauri/icons/icon.icns"},
+    @{src="desktop/icon.png";    dst1="apps/desktop-tauri/icons/icon.png";    dst2="apps/mobile-tauri/icons/icon.png"},
+    @{src="desktop/32x32.png";   dst1="apps/desktop-tauri/icons/32x32.png";   dst2="apps/mobile-tauri/icons/32x32.png"},
+    @{src="desktop/64x64.png";   dst1="apps/desktop-tauri/icons/64x64.png";   dst2="apps/mobile-tauri/icons/64x64.png"},
+    @{src="desktop/128x128.png"; dst1="apps/desktop-tauri/icons/128x128.png"; dst2="apps/mobile-tauri/icons/128x128.png"},
+    @{src="desktop/256x256.png"; dst1="apps/desktop-tauri/icons/256x256.png"; dst2="apps/mobile-tauri/icons/256x256.png"}
 )
 
 foreach ($f in $desktopFiles) {
@@ -255,8 +255,8 @@ foreach ($f in $desktopFiles) {
 # 256x256 doubles as @2x
 if (Test-Path "$BrandDir/desktop/256x256.png") {
     if (-not $DryRun) {
-        Copy-Item -Force "$BrandDir/desktop/256x256.png" "apps/desktop-client/icons/128x128@2x.png"
-        Copy-Item -Force "$BrandDir/desktop/256x256.png" "apps/tablet-client/icons/128x128@2x.png"
+        Copy-Item -Force "$BrandDir/desktop/256x256.png" "apps/desktop-tauri/icons/128x128@2x.png"
+        Copy-Item -Force "$BrandDir/desktop/256x256.png" "apps/mobile-tauri/icons/128x128@2x.png"
     }
     Write-Host "  [OK]   256x256 -> 128x128@2x.png (both apps)" -ForegroundColor Green
 }
@@ -326,9 +326,9 @@ $safeId = $brandId -replace '[^a-zA-Z0-9.-]', '-'
 
 Write-Host ""
 Write-Host "-- Tauri config (desktop) --" -ForegroundColor White
-$tauriConfigPath = "apps/desktop-client/tauri.conf.json"
+$tauriConfigPath = "apps/desktop-tauri/tauri.conf.json"
 if (Test-Path $tauriConfigPath) {
-    $desktopId = if ($brandId -eq "default") { "com.ozpos.app" } else { "com.ozpos.$safeId" }
+    $desktopId = if ($brandId -eq "default") { "mu.kasir.app" } else { "mu.kasir.$safeId" }
     if (-not $DryRun) {
         $raw = Get-Content $tauriConfigPath -Raw
         $raw = $raw -replace '(?<="productName":\s*)"[^"]*"', "`"$appName`""
@@ -343,9 +343,9 @@ if (Test-Path $tauriConfigPath) {
 
 Write-Host ""
 Write-Host "-- Tauri config (tablet) --" -ForegroundColor White
-$tabletConfigPath = "apps/tablet-client/tauri.conf.json"
+$tabletConfigPath = "apps/mobile-tauri/tauri.conf.json"
 if (Test-Path $tabletConfigPath) {
-    $tabletId = if ($brandId -eq "default") { "com.ozpos.tablet" } else { "com.ozpos.tablet.$safeId" }
+    $tabletId = if ($brandId -eq "default") { "mu.kasir.mobile" } else { "mu.kasir.mobile.$safeId" }
     if (-not $DryRun) {
         $raw = Get-Content $tabletConfigPath -Raw
         $raw = $raw -replace '(?<="productName":\s*)"[^"]*"', "`"$appName`""

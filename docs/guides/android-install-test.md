@@ -1,10 +1,10 @@
-# Android APK Install Test — OZ-POS
+# Android APK Install Test — kasir.mu
 
 > **Status:** Implemented (2026-07-21)
 > **Target audience:** QA / developers testing on Android 10+ physical tablets
-> **Related:** [Mobile Build Guide](https://github.com/kardelitaitu/oz-pos/tree/main/packaging/mobile) · [Tauri Tablet Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/tablet-client/tauri.conf.json) · [Windows Launch Test](./windows-launch-test.md) · [Linux Launch Test](./linux-launch-test.md)
+> **Related:** [Mobile Build Guide](https://github.com/kardelitaitu/oz-pos/tree/main/ops/packaging/mobile) · [Tauri Tablet Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/mobile-tauri/tauri.conf.json) · [Windows Launch Test](./windows-launch-test.md) · [Linux Launch Test](./linux-launch-test.md)
 
-This guide covers building, installing, and testing the OZ-POS tablet app
+This guide covers building, installing, and testing the kasir.mu tablet app
 on a physical Android device (phone or tablet).
 
 ---
@@ -88,7 +88,7 @@ rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-andro
 ### One-Time: Initialize the Android Project
 
 ```bash
-cd apps/tablet-client
+cd apps/mobile-tauri
 cargo tauri android init
 cd ../..
 ```
@@ -96,7 +96,7 @@ cd ../..
 The scaffold under `gen/android/` is **committed** (`.gitignore:167-169`: "The
 generated scaffold under apps/*/gen/ is COMMITTED so CI and contributors don't
 need the Tauri CLI installed to build" — 49 tracked files under
-`apps/tablet-client/gen/`, including `app/build.gradle.kts` with its
+`apps/mobile-tauri/gen/`, including `app/build.gradle.kts` with its
 `signingConfigs` block). So `cargo tauri android init` is only needed if the
 directory is missing; if you see "already initialized", skip this step, and if
 you do change the scaffold, commit the change.
@@ -105,29 +105,29 @@ you do change the scaffold, commit the change.
 
 ```bash
 # Build the tablet frontend first
-cd ui && npx vite build --config vite.tablet.config.ts && cd ..
+cd ui && npx vite build --config vite.mobile.config.ts && cd ..
 
-# Build debug APK from tablet-client
-cd apps/tablet-client
+# Build debug APK from mobile-tauri
+cd apps/mobile-tauri
 cargo tauri android build --apk --target aarch64
 cd ../..
 ```
 
 Output location:
 ```
-apps/tablet-client/gen/android/app/build/outputs/apk/debug/oz-pos-tablet-arm64-v8a-debug.apk
+apps/mobile-tauri/gen/android/app/build/outputs/apk/debug/oz-pos-tablet-arm64-v8a-debug.apk
 ```
 
 ### Option B — Release Build (Signed, for Physical Testing)
 
 ```bash
 # Build the tablet frontend
-cd ui && npx vite build --config vite.tablet.config.ts && cd ..
+cd ui && npx vite build --config vite.mobile.config.ts && cd ..
 
 # Generate a keystore if you don't have one — same names the keystore guide
 # mandates (android-keystore-guide.md §1): oz-pos-release.keystore / oz-pos-key
 # / 1825 days
-cd apps/tablet-client
+cd apps/mobile-tauri
 keytool -genkey -v -keystore oz-pos-release.keystore \
   -alias oz-pos-key -keyalg RSA -keysize 2048 -validity 1825
 # You will be prompted for the keystore password, then the key password —
@@ -143,33 +143,33 @@ flags, so this file is the only signing route. When the file is absent the
 APK builds unsigned. Write it from PowerShell:
 
 ```powershell
-Set-Location apps/tablet-client/gen/android
+Set-Location apps/mobile-tauri/gen/android
 "password=<same-password>" | Out-File keystore.properties -Encoding ascii
 "keyAlias=oz-pos-key" | Add-Content keystore.properties
-"storeFile=<full path to>\apps\tablet-client\oz-pos-release.keystore" | Add-Content keystore.properties
+"storeFile=<full path to>\apps\mobile-tauri\oz-pos-release.keystore" | Add-Content keystore.properties
 ```
 
 or from a POSIX shell:
 
 ```bash
-cat > apps/tablet-client/gen/android/keystore.properties <<'EOF'
+cat > apps/mobile-tauri/gen/android/keystore.properties <<'EOF'
 password=<same-password>
 keyAlias=oz-pos-key
-storeFile=/abs/path/to/apps/tablet-client/oz-pos-release.keystore
+storeFile=/abs/path/to/apps/mobile-tauri/oz-pos-release.keystore
 EOF
 ```
 
 Then build:
 
 ```bash
-cd apps/tablet-client
+cd apps/mobile-tauri
 cargo tauri android build --apk --target aarch64
 cd ../..
 ```
 
 Output location:
 ```
-apps/tablet-client/gen/android/app/build/outputs/apk/release/oz-pos-tablet-arm64-v8a.apk
+apps/mobile-tauri/gen/android/app/build/outputs/apk/release/oz-pos-tablet-arm64-v8a.apk
 ```
 
 > ℹ️ `storeFile` is consumed as written by gradle — give it the keystore's
@@ -178,7 +178,7 @@ apps/tablet-client/gen/android/app/build/outputs/apk/release/oz-pos-tablet-arm64
 ### Option C — Quick Dev (Hot Reload)
 
 ```bash
-cd apps/tablet-client
+cd apps/mobile-tauri
 cargo tauri android dev
 cd ../..
 ```
@@ -198,14 +198,14 @@ adb devices
 # Expected: <device-id>  device
 
 # Install debug APK
-adb install -r apps/tablet-client/gen/android/app/build/outputs/apk/debug/oz-pos-tablet-arm64-v8a-debug.apk
+adb install -r apps/mobile-tauri/gen/android/app/build/outputs/apk/debug/oz-pos-tablet-arm64-v8a-debug.apk
 
 # Or install release APK
-adb install -r apps/tablet-client/gen/android/app/build/outputs/apk/release/oz-pos-tablet-arm64-v8a.apk
+adb install -r apps/mobile-tauri/gen/android/app/build/outputs/apk/release/oz-pos-tablet-arm64-v8a.apk
 
 # Verify installation
 adb shell pm list packages | grep ozpos
-# Expected: package:com.ozpos.tablet
+# Expected: package:mu.kasir.mobile
 ```
 
 ### Via USB Transfer (No ADB)
@@ -226,7 +226,7 @@ adb shell pm list packages | grep ozpos
 
 | Step | Action | Expected Result |
 |------|--------|----------------|
-| 1.1 | Tap the **OZ-POS Tablet** icon (launcher label from `res/values/strings.xml`) | App icon renders correctly (not missing/blank) |
+| 1.1 | Tap the **kasir.mu Tablet** icon (launcher label from `res/values/strings.xml`) | App icon renders correctly (not missing/blank) |
 | 1.2 | Wait for splash screen | Splash screen appears within **8 seconds** |
 | 1.3 | Full load | Login screen appears in landscape orientation |
 | 1.4 | Check orientation | App locks to **landscape-primary** — rotating to portrait keeps landscape |
@@ -241,15 +241,15 @@ permission prompt to expect** — the tracked `AndroidManifest.xml` declares onl
 - **"App not installed"** — APK architecture mismatch. Ensure you built for
   `aarch64` (most modern devices) or `armeabi-v7a` (older 32-bit tablets).
 - **"INSTALL_FAILED_UPDATE_INCOMPATIBLE"** — Previous version installed.
-  Uninstall first: `adb uninstall com.ozpos.tablet`.
+  Uninstall first: `adb uninstall mu.kasir.mobile`.
 - **"App keeps stopping" on launch** — Missing Android SDK/NDK version mismatch.
   Rebuild with `cargo tauri android build --apk --target aarch64`.
 - **Black bars on sides** — orientation is locked in the UI layer
   (`useOrientation('landscape-primary')` in
-  `ui/src/frontend/shell/tablet/TabletAppShell.tsx`); the tablet
+  `ui/src/app/tablet/TabletAppShell.tsx`); the tablet
   `tauri.conf.json` has `"windows": []` and no per-window `resizable` key to
   "fix". On unusual aspect ratios check the safe-area CSS
-  (`ui/src/frontend/shell/tablet/tablet.css`) rather than the config.
+  (`ui/src/app/tablet/tablet.css`) rather than the config.
 - **White screen on launch** — WebView initialization issue. Check `adb logcat`
   for `chromium` or `webview` errors.
 
@@ -260,7 +260,7 @@ permission prompt to expect** — the tracked `AndroidManifest.xml` declares onl
 | 2.1 | Tap PIN pad digit 1 | Key highlights on touch (visual feedback) | ☐ |
 | 2.2 | Enter PIN digits | Each tap produces haptic feedback (if enabled) | ☐ |
 | 2.3 | Tap Submit/OK | Loading spinner; transitions to workspace picker | ☐ |
-| 2.4 | Wrong PIN (3 attempts) | Invalid-PIN error with an attempts counter — the Fluent string is `staff-login-attempts-remaining` = "(N attempts remaining)" (`ui/src/locales/staff.ftl:121`); there is no single sentence "Invalid PIN. 3 attempts remaining." | ☐ |
+| 2.4 | Wrong PIN (3 attempts) | Invalid-PIN error with an attempts counter — the Fluent string is `staff-login-attempts-remaining` = "(N attempts remaining)" (`shared-ui/locales/staff.ftl:121`); there is no single sentence "Invalid PIN. 3 attempts remaining." | ☐ |
 | 2.5 | Wrong PIN (5 attempts) | **Timed** lockout: `staff-login-lockout` = "Locked out. Try again in {seconds}s" (`staff.ftl:122`); on the session lock the variant is `session-lock-lockout` = "Wait {seconds}s." (`:143`). It self-expires — no "Contact administrator" string exists anywhere in the locales, so do NOT file a FAIL when the pad re-enables by itself | ☐ |
 | 2.6 | Empty PIN validation | Submit button is **disabled** while the PIN is empty (`StaffLoginScreen.tsx:430`) — no error message fires; "Please enter a PIN." does not exist. Sub-4-digit PINs get `staff-login-pin-min-length` = "PIN must be at least 4 digits." (`staff.ftl:118`) | ☐ |
 
@@ -286,8 +286,8 @@ smooth, back navigation works correctly.
 | 4.2 | Scroll product grid | Touch scroll works — smooth, no stutter | ☐ |
 | 4.3 | Search products | Tap search bar → keyboard opens → results filter in real-time | ☐ |
 | 4.4 | Category filter tabs | Tabs are ≥ 48px height. Tap reliably switches category. | ☐ |
-| 4.5 | Cart panel | Right-side cart panel visible. Shows "Cart is empty" (`pos-cart-empty`, `ui/src/locales/sales.ftl:16`). | ☐ |
-| 4.6 | Bottom navigation bar | Tabs are **workspace-driven**: nav items are filtered to the workspace's screen list and capped at 7 (`ui/src/frontend/shell/tablet/TabletAppLayout.tsx:56-58`), and labels come from each feature's registry (e.g. route `sales` renders as "POS Terminal", `ui/src/features/sales/register.tsx`). A typical POS workspace shows POS Terminal / KDS / Settings; confirm ≥ 48px tap targets | ☐ |
+| 4.5 | Cart panel | Right-side cart panel visible. Shows "Cart is empty" (`pos-cart-empty`, `shared-ui/locales/sales.ftl:16`). | ☐ |
+| 4.6 | Bottom navigation bar | Tabs are **workspace-driven**: nav items are filtered to the workspace's screen list and capped at 7 (`ui/src/app/tablet/TabletAppLayout.tsx:56-58`), and labels come from each feature's registry (e.g. route `sales` renders as "POS Terminal", `ui/src/features/sales/register.tsx`). A typical POS workspace shows POS Terminal / KDS / Settings; confirm ≥ 48px tap targets | ☐ |
 
 **Pass criteria:** All touch targets meet minimum size, scrolling is smooth,
 keyboard does not cover critical UI.
@@ -340,7 +340,7 @@ is not implemented.
 | 7.1 | Tap **Pay** / **Checkout** | Payment screen opens | ☐ |
 | 7.2 | **Swipe left** on cart panel | Payment modal opens (gesture shortcut) | ☐ |
 | 7.3 | **Swipe right** on payment modal | Returns to cart (gesture shortcut) | ☐ |
-| 7.4 | Select payment method | Cash / Card / Split options — the split entry is "Split Payments" (`payment-split-title`, `ui/src/locales/sales.ftl:122`); there is no "Mixed" label. Each easy to tap | ☐ |
+| 7.4 | Select payment method | Cash / Card / Split options — the split entry is "Split Payments" (`payment-split-title`, `shared-ui/locales/sales.ftl:122`); there is no "Mixed" label. Each easy to tap | ☐ |
 | 7.5 | Cash: enter amount tendered | Numeric keypad is large enough to tap reliably | ☐ |
 | 7.6 | Complete payment | Sale completes. Success message. | ☐ |
 | 7.7 | Receipt preview | Receipt displays full details on screen | ☐ |
@@ -417,7 +417,7 @@ or visual corruption.
 | Memory usage (loaded) | < 300 MB | < 200 MB | Android Studio Profiler |
 | Battery drain | < 5%/hour | < 2%/hour | Battery settings |
 | APK size (arm64) | < 80 MB | < 50 MB | File explorer |
-| App data size (fresh install) | < 30 MB | < 20 MB | Settings → Apps → OZ-POS → Storage |
+| App data size (fresh install) | < 30 MB | < 20 MB | Settings → Apps → kasir.mu → Storage |
 
 ### Measuring Performance
 
@@ -425,19 +425,19 @@ or visual corruption.
 
 1. Connect device via USB
 2. Open Android Studio → **View** → **Tool Windows** → **Profiler**
-3. Select `com.ozpos.tablet` from the device dropdown
+3. Select `mu.kasir.mobile` from the device dropdown
 4. Monitor **CPU**, **Memory**, **Network**, and **Energy** in real time
 
 **Using `adb`:**
 
 ```bash
 # Memory (RSS/PSS in KB)
-adb shell dumpsys meminfo com.ozpos.tablet
+adb shell dumpsys meminfo mu.kasir.mobile
 
 # Battery stats
-adb shell dumpsys batterystats --charged com.ozpos.tablet
+adb shell dumpsys batterystats --charged mu.kasir.mobile
 
-# CPU usage — the Android process name is the applicationId `com.ozpos.tablet`
+# CPU usage — the Android process name is the applicationId `mu.kasir.mobile`
 # (build.gradle.kts:34), so grep on `ozpos` WITHOUT the hyphen; `grep oz-pos`
 # silently returns nothing.
 adb shell top -n 1 | grep ozpos
@@ -456,8 +456,8 @@ adb logcat -b events | grep "am_proc_start"
 # Continuous log stream (filter by app)
 adb logcat -v time -s "oz-pos-tablet" "Tauri" "Rust" "chromium" "WebView"
 
-# Filter to only errors — match `ozpos` (the process is `com.ozpos.tablet`,
-# the Rust lib is `oz_pos_tablet_lib`; neither contains "oz-pos")
+# Filter to only errors — match `ozpos` (the process is `mu.kasir.mobile`,
+# the Rust lib is `kasirmu_mobile_lib`; neither contains "oz-pos")
 adb logcat -v time *:E | grep -i "ozpos\|oz_pos\|rust\|panic"
 
 # Save to file
@@ -520,7 +520,7 @@ adb pull /sdcard/oz-pos-screenrecord.mp4
 ☐ Prerequisites: JDK 17+, Android SDK 34+, NDK 27, cargo-ndk, Rust targets
 
 ☐ BUILD
-   ☐ Frontend builds with vite.tablet.config.ts
+   ☐ Frontend builds with vite.mobile.config.ts
    ☐ Android project initialized (cargo tauri android init)
    ☐ Debug APK builds successfully
    ☐ APK size < 80 MB
@@ -631,8 +631,8 @@ Notes:
 
 ## Related
 
-- [Mobile Build & Deployment Guide](https://github.com/kardelitaitu/oz-pos/tree/main/packaging/mobile) — Full Android/iOS build pipeline
-- [Tablet Client Notes](https://github.com/kardelitaitu/oz-pos/blob/main/apps/tablet-client/AGENTS.md) — Android dev conventions
+- [Mobile Build & Deployment Guide](https://github.com/kardelitaitu/oz-pos/tree/main/ops/packaging/mobile) — Full Android/iOS build pipeline
+- [Tablet Client Notes](https://github.com/kardelitaitu/oz-pos/blob/main/apps/mobile-tauri/AGENTS.md) — Android dev conventions
 - [iPad Launch Test](./ios-install-test.md) — iOS equivalent guide
 - [Windows Launch Test](./windows-launch-test.md) — Desktop equivalent guide
 - [Linux Launch Test](./linux-launch-test.md) — Linux equivalent guide

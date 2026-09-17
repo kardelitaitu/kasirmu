@@ -12,9 +12,9 @@
 
 ## 🔒 Fence
 
-- NEW: `apps/desktop-client/src/commands/kds_lan_live_tests.rs` (wired via one `#[cfg(test)] #[path=...] mod` line appended to `commands/kds.rs`)
-- Existing test files in `apps/desktop-client/src/**` may be READ freely.
-- FORBIDDEN: `crates/oz-lan/**` (validated as-is; any crate bug found is REPORTED, not fixed here), `crates/oz-bridge/**`, `crates/oz-core/**`, `lib.rs`, `state.rs`, `apps/tablet-client/**` (live session), `ui/**`, migrations, `registration_gate_tests.rs`.
+- NEW: `apps/desktop-tauri/src/commands/kds_lan_live_tests.rs` (wired via one `#[cfg(test)] #[path=...] mod` line appended to `commands/kds.rs`)
+- Existing test files in `apps/desktop-tauri/src/**` may be READ freely.
+- FORBIDDEN: `crates/oz-lan/**` (validated as-is; any crate bug found is REPORTED, not fixed here), `crates/oz-bridge/**`, `crates/oz-core/**`, `lib.rs`, `state.rs`, `apps/mobile-tauri/**` (live session), `ui/**`, migrations, `registration_gate_tests.rs`.
 
 ## 📋 Task Checklist
 
@@ -37,7 +37,7 @@
 ## ✅ Results stamp — 2026-09-13 (Orchestrator Agent 4)
 
 **Code commit:** `0302039258` — `test(kds-lan): dual-terminal live validation - filtered broadcast, buffer replay, reconnect snapshot`
-New `apps/desktop-client/src/commands/kds_lan_live_tests.rs` (657 lines, 5 tests) + 4-line `#[cfg(test)] #[path=...] mod` append to `commands/kds.rs`. No `#[tauri::command]` added — this commit touches no registration surface at all (for the live state of the 449 floor in a multi-session tree, see the verification note below).
+New `apps/desktop-tauri/src/commands/kds_lan_live_tests.rs` (657 lines, 5 tests) + 4-line `#[cfg(test)] #[path=...] mod` append to `commands/kds.rs`. No `#[tauri::command]` added — this commit touches no registration surface at all (for the live state of the 449 floor in a multi-session tree, see the verification note below).
 
 ### 0. Phase 4.0 — deepest layer actually reached
 

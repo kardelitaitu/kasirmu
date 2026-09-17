@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import userEvent from '@testing-library/user-event';
-import StatusBar from '@/frontend/shell/StatusBar';
+import StatusBar from '@/app/StatusBar';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
 const mockUseGatewayStatus = vi.fn();
@@ -27,7 +27,7 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ session: authSession.value }),
 }));
 
-vi.mock('@/frontend/shell/ThemeToggle', () => ({
+vi.mock('@/app/ThemeToggle', () => ({
   default: () => <button type="button" aria-label="Toggle theme">🌓</button>,
 }));
 
@@ -40,11 +40,11 @@ vi.mock('@/hooks/useDevicesConnection', () => ({
   useDevicesConnection: () => ({ state: 'connected', latencyMs: null, cause: null, devices: 1, retryNow: () => {} }),
 }));
 
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: vi.fn() }),
 }));
 
-vi.mock('@/frontend/shell/Tooltip', () => ({
+vi.mock('@/app/Tooltip', () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 

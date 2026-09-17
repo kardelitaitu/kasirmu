@@ -19,9 +19,9 @@ next: none | perf: N/A
 //! (DB CRUD, Tauri commands) and frontend (screens, API calls,
 //! Fluent locale) still live in their original locations:
 //!
-//! - Backend: `crates/oz-core/src/db/sales.rs` + `apps/desktop-client/src/commands/pos.rs`
+//! - Backend: `crates/kasirmu-core/src/db/sales.rs` + `apps/desktop-tauri/src/commands/pos.rs`
 //! - Frontend: `ui/src/features/sales/` + `ui/src/api/sales.ts`
-//! - Locale: `ui/src/locales/sales.ftl`
+//! - Locale: `shared-ui/locales/sales.ftl`
 //!
 //! In subsequent phases, these files will be physically moved into
 //! `modules/sales/` as the module system matures.

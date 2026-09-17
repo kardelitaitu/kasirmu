@@ -26,7 +26,7 @@ import fs from 'fs';
 import path from 'path';
 
 // Vitest's cwd is ui/, not ui/src/ -- the same reason storageKeyPins.test.ts resolves 'src'.
-const TOKENS_PATH = path.resolve(process.cwd(), 'src/frontend/themes/tokens.css');
+const TOKENS_PATH = path.resolve(process.cwd(), 'src/theme/tokens.css');
 
 /**
  * Tokens with a documented reason to paint nothing.
@@ -34,7 +34,7 @@ const TOKENS_PATH = path.resolve(process.cwd(), 'src/frontend/themes/tokens.css'
  * `--shadow-xs` is the bug this file was written to record: geometry present, alpha 0.00,
  * in BOTH the light (L202) and dark (L425) theme blocks, used by
  * features/sales/CartPanel.brand.css, CartPanelFooterTotals.css, CartPanelLineItem.css and
- * `.card--shadow-xs` in frontend/themes/components.css.
+ * `.card--shadow-xs` in theme/components.css.
  */
 const KNOWN_ZERO_ALPHA_SHADOW_TOKENS = ['--shadow-xs'];
 

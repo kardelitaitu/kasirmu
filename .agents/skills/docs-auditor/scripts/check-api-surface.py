@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 
 DOC_REL = "docs/guides/api-reference.md"
-CLIENTS = {"desktop": "apps/desktop-client", "tablet": "apps/tablet-client"}
+CLIENTS = {"desktop": "apps/desktop-client", "tablet": "apps/mobile-tauri"}
 BT = chr(96)  # a backtick, without embedding one in this file
 
 HANDLER_RE = re.compile(r'generate_handler!\s*\[(.*?)\n\s*\]', re.S)

@@ -30,27 +30,27 @@ const read = (relative: string): string => readFileSync(join(repoRoot, relative)
 /** Codes the core validator does not emit, and where the rule actually lives. */
 const ENFORCED_ELSEWHERE: Readonly<Record<string, { file: string; why: string }>> = {
   'unsupported-schema-version': {
-    file: 'apps/desktop-client/src/commands/topology/semantics.rs',
+    file: 'apps/desktop-tauri/src/commands/topology/semantics.rs',
     why: 'a read gate on the contract envelope, not a graph rule — see the two '
       + 'independent schema-version axes in ADR #45 §2',
   },
   'warehouse-at-capacity': {
-    file: 'apps/desktop-client/src/commands/topology/persistence.rs',
+    file: 'apps/desktop-tauri/src/commands/topology/persistence.rs',
     why: 'an apply-path limit; the core validator has no view of live state',
   },
   'warehouse-missing-stock-routing': {
-    file: 'apps/desktop-client/src/commands/topology/persistence.rs',
+    file: 'apps/desktop-tauri/src/commands/topology/persistence.rs',
     why: 'an apply-path limit, same reason',
   },
   'unknown-wire-endpoint': {
-    file: 'crates/oz-core/src/topology.rs',
+    file: 'crates/kasirmu-core/src/topology.rs',
     why: 'the CONDITION is enforced, under a different code: a wire pointing at a '
       + 'nonexistent node is refused as invalid-location-connection (probed, not '
       + 'inferred). A naming mismatch, not a gap — but the two surfaces do name '
       + 'the same defect differently, which the checklist work should reconcile',
   },
   'warehouse-tier-limit': {
-    file: 'apps/desktop-client/src/commands/topology/commands.rs',
+    file: 'apps/desktop-tauri/src/commands/topology/commands.rs',
     why: 'the CONDITION is enforced by validate_warehouse_quota against the '
       + 'verified subscription tier inside apply_topology_diff, with its own test '
       + 'suite. The backend never spells the UI code string, which is exactly how '
@@ -60,7 +60,7 @@ const ENFORCED_ELSEWHERE: Readonly<Record<string, { file: string; why: string }>
 
 describe('topology validation code parity (TS ↔ Rust)', () => {
   const tsSource = read('ui/src/features/locations/topologyContract.ts');
-  const coreSource = read('crates/oz-core/src/topology.rs');
+  const coreSource = read('crates/kasirmu-core/src/topology.rs');
 
   const tsCodes = [...new Set(
     [...tsSource.matchAll(/code:\s*'([a-z][a-z0-9-]*)'/g)].map((m) => m[1] ?? '').filter(Boolean),

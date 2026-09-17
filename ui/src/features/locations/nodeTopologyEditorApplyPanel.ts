@@ -42,7 +42,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { MutableRefObject, SetStateAction } from 'react';
 import type { useLocalization } from '@fluent/react';
-import type { ToastType } from '@/frontend/shared/Toast';
+import type { ToastType } from '@/components/Toast';
 import { parseAppError, plainErrorMessage } from '@/utils/app-error';
 import type { ApplyDiffItem, TopologyApplyConfirmData } from './TopologyApplyConfirm';
 import { isTopologyRevisionConflict, validateEditorGraph } from './topologyEditorHelpers';

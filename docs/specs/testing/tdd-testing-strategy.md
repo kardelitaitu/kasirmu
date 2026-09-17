@@ -1,8 +1,8 @@
-# OZ-POS Rust Crate Testing Strategy — TDD Implementation Plan
+# kasir.mu Rust Crate Testing Strategy — TDD Implementation Plan
 
 ## Executive Summary
 
-The OZ-POS codebase has **32+ Rust crates** with varying test coverage. This plan implements a systematic Test-Driven Development (TDD) approach to improve reliability.
+The kasir.mu codebase has **32+ Rust crates** with varying test coverage. This plan implements a systematic Test-Driven Development (TDD) approach to improve reliability.
 
 ---
 

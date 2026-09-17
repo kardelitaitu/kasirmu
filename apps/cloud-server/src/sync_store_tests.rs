@@ -2,7 +2,7 @@ use super::*;
 use std::str::FromStr;
 
 fn fresh_db() -> Arc<Mutex<Connection>> {
-    Arc::new(Mutex::new(oz_core::migrations::fresh_db()))
+    Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db()))
 }
 
 /// Create a throwaway PostgreSQL database, apply the full schema, and
@@ -64,7 +64,7 @@ async fn throwaway_pool() -> Option<(deadpool_postgres::Pool, String)> {
         .ok()?;
     let client = pool.get().await.ok()?;
     client
-        .batch_execute(oz_core::migrations::PG_INIT)
+        .batch_execute(kasirmu_core::migrations::PG_INIT)
         .await
         .ok()?;
     drop(client);
@@ -100,7 +100,7 @@ async fn sqlite_backend_push_pull_plan_snapshot_roundtrip() {
     assert_eq!(store.get_tenant_plan("tenant-a").await.unwrap(), None);
     {
         let conn = conn.lock().await;
-        oz_core::Store::new(&conn)
+        kasirmu_core::Store::new(&conn)
             .set_tenant_plan("tenant-a", TenantPlan::Pro)
             .unwrap();
     }

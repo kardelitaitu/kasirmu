@@ -1,7 +1,7 @@
 import type React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ProductThumb } from '@/components/ProductThumb';

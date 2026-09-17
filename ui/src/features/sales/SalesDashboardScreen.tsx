@@ -1,6 +1,6 @@
 import { Localized, useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
-import { getWidgets, getDeniedWidgets, useWidgetUser } from '@/platform/ui/widget-registry';
+import { requiredLocalized } from '@/components';
+import { getWidgets, getDeniedWidgets, useWidgetUser } from '@/registries/widget-registry';
 import { useFeatures } from '@/hooks/useFeatures';
 import { Card } from '@/components/Card';
 import { LazyBoundary } from '@/components/LazyBoundary';
@@ -14,7 +14,7 @@ import './SalesDashboardScreen.css';
  * Widgets are filtered by enabled features so feature-gated widgets
  * only appear when their feature is turned on, and by the same
  * role/permission gate pages and nav items pass through
- * (`passesGate` in platform/ui/page-registry, reached here through
+ * (`passesGate` in registries/page-registry, reached here through
  * `getWidgets`/`getDeniedWidgets`).
  *
  * A widget the user may NOT see still occupies its slot, as a denied

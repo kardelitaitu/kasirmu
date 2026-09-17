@@ -23,7 +23,7 @@ from pathlib import Path
 # Repo root, script-relative: scripts/ sits one level below it. An
 # explicit path argument still wins, so the tool works from anywhere.
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[1]
-LOCALES = ROOT / "ui" / "src" / "locales"
+LOCALES = ROOT / "shared-ui" / "locales"
 
 
 EN = set()

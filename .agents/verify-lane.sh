@@ -205,7 +205,7 @@ if printf '%s' "${*:-}" | grep -q -- '--head'; then
   say "grading the COMMIT: $HEAD_PIN checked out at $WT"
   say "  (nothing in this working tree is read or written by this mode, so the dirt other lanes"
   say "   leave behind is not part of this verdict -- and is not listed as provenance either)"
-  for spec in "tablet:apps/tablet-client" "desktop:apps/desktop-client"; do
+  for spec in "tablet:apps/mobile-tauri" "desktop:apps/desktop-tauri"; do
     name=${spec%%:*}; path=${spec#*:}
     run "[$name @HEAD] lib tests" cargo test --manifest-path "$WT/$path/Cargo.toml" --lib
     run "[$name @HEAD] clippy -D unused-imports -D dead_code" \
@@ -222,13 +222,13 @@ if printf '%s' "${*:-}" | grep -q -- '--head'; then
   exit "$FAIL"
 fi
 
-run "clippy tablet (lib+tests, -D warnings)" cargo clippy -p oz-pos-tablet --all-targets -- -D warnings
-run "clippy desktop (lib+tests, -D warnings)" cargo clippy -p oz-pos-app --all-targets -- -D warnings
-run "tablet lib tests" cargo test -p oz-pos-tablet --lib
-run "desktop lib tests" cargo test -p oz-pos-app --lib
-run "tablet registration gate" cargo test -p oz-pos-tablet --lib registration_gate -- --exact \
+run "clippy tablet (lib+tests, -D warnings)" cargo clippy -p kasirmu-mobile --all-targets -- -D warnings
+run "clippy desktop (lib+tests, -D warnings)" cargo clippy -p kasirmu-app --all-targets -- -D warnings
+run "tablet lib tests" cargo test -p kasirmu-mobile --lib
+run "desktop lib tests" cargo test -p kasirmu-app --lib
+run "tablet registration gate" cargo test -p kasirmu-mobile --lib registration_gate -- --exact \
   commands::registration_gate_tests::drift_pin_debt_ceilings_only_shrink
-run "desktop registration gate" cargo test -p oz-pos-app --lib registration_gate
+run "desktop registration gate" cargo test -p kasirmu-app --lib registration_gate
 run "ipc parity" python scripts/verify-ipc-parity.py
 run "ipc parity self-test" python scripts/verify-ipc-parity.py --self-test
 run "scoped coverage" bash scripts/verify-scoped-coverage.sh

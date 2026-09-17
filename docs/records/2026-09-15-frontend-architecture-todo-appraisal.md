@@ -8,7 +8,7 @@ Scope: sections 1–4 of the root todo, plus its implied Slint/embedded directio
 ## Verdict
 
 The document is a competent **generic** Tauri v2 + React blueprint. It is not a blueprint
-for *this* repository. Roughly half of it restates things OZ-POS already decided
+for *this* repository. Roughly half of it restates things kasir.mu already decided
 differently, by ADR, for recorded reasons — and the two sections that would cost the most
 to retrofit (§1 specta-generated bindings, §2 Zustand) are the two that a Slint target
 would throw away anyway.

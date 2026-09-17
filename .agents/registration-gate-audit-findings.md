@@ -16,13 +16,13 @@ meaningless. [Fact]
 
 ## 1. Tablet ratchet — SOUND
 
-- `cargo test -p oz-pos-tablet registration` -> exit 0, `running 7 tests`, 7 passed. [Fact]
-- `cargo test -p oz-pos-tablet` **unfiltered** -> exit 0, `running 640 tests`,
+- `cargo test -p kasirmu-tablet registration` -> exit 0, `running 7 tests`, 7 passed. [Fact]
+- `cargo test -p kasirmu-tablet` **unfiltered** -> exit 0, `running 640 tests`,
   `640 passed; 0 failed; 0 ignored`, 87.16s, all seven ratchet names `... ok` inside the
   full run. The filter is how it is invoked locally; the full run is how `dev-ci.yml:253`
   (`cargo nextest run --workspace --all-features`) invokes it. No name collision, no
   fixture interference, no ordering dependence. [Fact]
-- `cargo check -p oz-pos-tablet --tests` -> exit 0, zero warning lines. [Fact]
+- `cargo check -p kasirmu-tablet --tests` -> exit 0, zero warning lines. [Fact]
 - Classification: of 193 gated, **190** rest on a hard permission marker
   (`require_permission`, `permissions::`, `has_permission`, `authorize_with`) inside the
   entry function own brace-matched body in the file whose stem equals the registered
@@ -142,7 +142,7 @@ diagnosis; [Fact] for every count.
 ## Off-by-one settled
 
 There is **no regex gap and no tree defect**. `a32b13aaa 05:08
-refactor(desktop-client): drop the ungated rotate_encryption_key command` removed one
+refactor(desktop-tauri): drop the ungated rotate_encryption_key command` removed one
 entry from `lib.rs` and set both `REGISTERED_FLOOR` and `REGISTERED_TOTAL` to **447**. My
 earlier `448` was a blob read from before 05:08. Parse says 447, the constant says 447,
 `sort -u` says 447 unique, `uniq -d` says zero duplicates. The discrepancy was mine and my
@@ -156,5 +156,5 @@ Not a commit. `git add` was not run on it, and nothing under `apps/`, `crates/` 
 was touched by this audit. The hardware trio, the `REGISTERED_TOTAL` equality leg, the
 empty-`BY_DESIGN` loop and the desktop stem merge are **reports to the owner, not fixes**.
 Scratch lives only outside the repo: `%TEMP%/tabverif`, `%TEMP%/dsk3` (`git archive HEAD`
-extracts plus classifier scripts), and one unfiltered `cargo test -p oz-pos-tablet` run
+extracts plus classifier scripts), and one unfiltered `cargo test -p kasirmu-tablet` run
 whose only repo-visible effect is `target/` artifacts on a directory five sessions share.

@@ -44,7 +44,7 @@ vi.mock('@/api/data', () => ({
 
 const mockAddToast = vi.fn();
 
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
 
@@ -97,7 +97,7 @@ beforeEach(() => {
   // have quietly defeated the point of asserting which command ran.
   mockGetBackupStatusScoped.mockResolvedValue(defaultBackupStatus);
   mockCreateBackupScoped.mockResolvedValue({ path: '/backups/backup_2026.db', sizeBytes: 12_582_912 });
-  mockExportData.mockResolvedValue({ path: '/exports/export_2026.ozpkg', sizeBytes: 524_288, types: [] });
+  mockExportData.mockResolvedValue({ path: '/exports/export_2026.kasirpkg', sizeBytes: 524_288, types: [] });
   mockImportPreview.mockResolvedValue({
     storeName: 'Test Store', appVersion: '0.0.4',
     createdAt: new Date('2026-01-15').toISOString(),
@@ -108,8 +108,8 @@ beforeEach(() => {
     productsImported: 0, categoriesImported: 0, salesImported: 0,
     customersImported: 0, usersImported: 0, settingsImported: 0,
   });
-  mockPickExportPath.mockResolvedValue('/exports/test.ozpkg');
-  mockPickImportFile.mockResolvedValue('/imports/test.ozpkg');
+  mockPickExportPath.mockResolvedValue('/exports/test.kasirpkg');
+  mockPickImportFile.mockResolvedValue('/imports/test.kasirpkg');
   mockAddToast.mockReturnValue(undefined);
 });
 
@@ -315,7 +315,7 @@ describe('DataManagement — Backup', () => {
  *
  * IF BACKUP GATING LANDS, INVERT THIS TEST, DO NOT DELETE IT. Once
  * create_backup / get_backup_status enforce the permission in Rust (see event
- * backup_ungated_no_session in crates/oz-bridge/src/data.rs), or the screen stops
+ * backup_ungated_no_session in crates/kasirmu-bridge/src/data.rs), or the screen stops
  * calling them tokenlessly, flip these expectations to the scoped names or to a
  * refusal. A flipped test keeps recording the decision; a deleted one leaves the
  * fix as unobserved as the hole was.

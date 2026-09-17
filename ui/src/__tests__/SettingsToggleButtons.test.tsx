@@ -157,7 +157,7 @@ vi.mock('@/utils/color', () => {
 });
 
 const mockAddToast = vi.fn();
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
   ToastProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
@@ -170,11 +170,11 @@ vi.mock('@/api/data', () => ({
   // module error, not a failed assertion. See DataManagementBackup.test.tsx.
   getBackupStatusScoped: vi.fn().mockResolvedValue({ lastBackup: null, lastBackupSize: null }),
   createBackupScoped: vi.fn().mockResolvedValue({ path: '/backups/backup.db', sizeBytes: 1000 }),
-  exportData: vi.fn().mockResolvedValue({ path: '/path/to/export.ozpkg', sizeBytes: 500, types: ['products'] }),
+  exportData: vi.fn().mockResolvedValue({ path: '/path/to/export.kasirpkg', sizeBytes: 500, types: ['products'] }),
   importPreview: vi.fn().mockResolvedValue({ storeName: 'Test Store', appVersion: '0.0.9', exportedAt: '2026-01-01', counts: {} }),
   importData: vi.fn().mockResolvedValue({ inserted: 10, updated: 2, errors: [] }),
-  pickExportPath: vi.fn().mockResolvedValue('/path/to/export.ozpkg'),
-  pickImportFile: vi.fn().mockResolvedValue('/path/to/import.ozpkg'),
+  pickExportPath: vi.fn().mockResolvedValue('/path/to/export.kasirpkg'),
+  pickImportFile: vi.fn().mockResolvedValue('/path/to/import.kasirpkg'),
 }));
 
 // ── SettingsPage mocks ──────────────────────────────────────────────

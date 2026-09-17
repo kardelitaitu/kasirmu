@@ -1,11 +1,11 @@
 ---
 name: codebase-memory
-description: "Query the OZ-POS code knowledge graph from run_code via the codebase-memory-mcp server. Use for structural discovery instead of grep/read: explore the codebase, understand the architecture, what functions exist, show me the structure, who calls this function, what does X call, trace the call chain, find callers of, show dependencies, impact analysis, blast radius, dead code, unused functions, high fan-in, high fan-out, refactor candidates, code quality audit, hot paths, Cypher query examples, edge types, graph query syntax, how to use search_graph."
+description: "Query the kasir.mu code knowledge graph from run_code via the codebase-memory-mcp server. Use for structural discovery instead of grep/read: explore the codebase, understand the architecture, what functions exist, show me the structure, who calls this function, what does X call, trace the call chain, find callers of, show dependencies, impact analysis, blast radius, dead code, unused functions, high fan-in, high fan-out, refactor candidates, code quality audit, hot paths, Cypher query examples, edge types, graph query syntax, how to use search_graph."
 ---
 
 <!-- Audit stamp: 2026-09-08 · DSH · status: NEW, then RE-MEASURED twice the same day as the graph advanced (generation 2026-09-04T18:32Z → 05:07Z → 05:23Z). Every number, shape, error string and latency below was produced by executing the tool against the live oz-pos graph — nothing is copied from the upstream docs. The re-measurements are themselves a lesson: 44,213 nodes became 47,002, a tld-7 hot path became tld-4, an unlabeled-source Cypher that returned 42 rows on one generation returned 0 on the next, and this file shipped one false causal claim ("index_repository lies about failing") that a later controlled retry disproved — the real cause was a reserved-name ghost file, and the refresh it credited itself to was the post-commit hook. Numbers here are dated, and so is every inference. -->
 
-# Codebase Memory — OZ-POS knowledge graph
+# Codebase Memory — kasir.mu knowledge graph
 
 AGENTS.md makes graph-first discovery a **MUST FOLLOW** rule ("ALWAYS use
 `codebase-memory-mcp` first for code exploration"). This skill is how that rule is
@@ -100,8 +100,8 @@ const r = await tools.mcp__cbm__search_graph({
 | Fact | Value |
 |---|---|
 | Project name to pass | `oz-pos` |
-| Root path | `C:/dev/ozpos/0.0.35/oz-pos` |
-| Indexed branch | `0.0.37` |
+| Root path | `C:/dev/ozpos` — resolve it with `git rev-parse --show-toplevel`; the checkout is multi-root, so never hardcode a versioned subpath |
+| Indexed branch | `0.0.39` |
 | Nodes / edges | 47,002 / 238,859 |
 | Node labels / edge types | 19 / 26 (top edges: USAGE 99,400 · CALLS 56,009 · DEFINES 44,167) |
 | File nodes | 2,998 — TypeScript 1,093, Rust 967, CSS 132, Go 72, Python 51, TOML 46, Bash 44, SQL 44, YAML 24, JavaScript 8 |
@@ -133,7 +133,7 @@ Then, once you know which files your answer depends on:
 ```ts
 await tools.mcp__cbm__check_index_coverage({
   project: 'oz-pos',
-  paths: ['crates/oz-core/src/kds.rs', 'crates/oz-core/migrations/20260813_init.sql'],
+  paths: ['crates/kasirmu-core/src/kds.rs', 'crates/kasirmu-core/migrations/20260813_init.sql'],
 });
 ```
 
@@ -203,7 +203,7 @@ for. (`languages`, `packages` and `entry_points` were never requested on their o
 | `dependencies` | The 26 edge types with counts — same block `overview` already prints. |
 | `hotspots` | Top 10 by fan-in. Cheap and genuinely useful. |
 | `clusters` | 12 Leiden communities over CALLS edges — the real seams, which cut across the folder layout. Membership shifts between index generations. |
-| `boundaries` | 10 cross-package call counts (`sync → oz-core` 346, `src → public` 89). Small and useful. |
+| `boundaries` | 10 cross-package call counts (`sync → kasirmu-core` 346, `src → public` 89). Small and useful. |
 | `layers` | 37 rows; every script lands as `internal` with fan-in 0. Low signal. |
 | `routes` | 20 rows, several of them false positives (see the noise section). |
 | `cycles` | 14 circular CALLS groups over 47,467 edges, in 113 ms. Opt-in only — never implied by `all` or `overview`. |
@@ -217,7 +217,7 @@ for. (`languages`, `packages` and `entry_points` were never requested on their o
 `<project>.<path segments joined by dots, dashes preserved>.<Symbol>[.<Member>]`
 
 ```text
-oz-pos.crates.oz-core.src.kds.KdsOrder
+oz-pos.crates.kasirmu-core.src.kds.KdsOrder
 oz-pos.foundation.src.cart.Cart.add_line
 oz-pos.ui.src.features.tables.register.registerTablesFeature
 oz-pos.agents.skills.docs-auditor.scripts.check-orphans.main
@@ -226,7 +226,7 @@ oz-pos.agents.skills.docs-auditor.scripts.check-orphans.main
 The last one is `.agents/skills/docs-auditor/scripts/check-orphans.py`: a leading dot in
 a path segment is dropped, so `.agents` becomes `agents` in the qualified name while
 `file_path` keeps the real dotted directory. Dashes survive untouched
-(`oz-core`, `check-orphans`). Never guess a qualified name from a path — get it from
+(`kasirmu-core`, `check-orphans`). Never guess a qualified name from a path — get it from
 `search_graph` or from `entry_points` in `get_architecture`.
 
 The tree format **groups** rows to save tokens: a header line carries the shared
@@ -242,7 +242,7 @@ tool when the group prefix was carrying meaning.
 
 ```ts
 const hit = await tools.mcp__cbm__search_graph({ project: 'oz-pos', name_pattern: 'KdsOrder', label: 'Struct', limit: 5 });
-const src = await tools.mcp__cbm__get_code_snippet({ project: 'oz-pos', qualified_name: 'oz-pos.crates.oz-core.src.kds.KdsOrder' });
+const src = await tools.mcp__cbm__get_code_snippet({ project: 'oz-pos', qualified_name: 'oz-pos.crates.kasirmu-core.src.kds.KdsOrder' });
 const callers = await tools.mcp__cbm__trace_path({ project: 'oz-pos', function_name: 'oz-pos.foundation.src.cart.Cart.add_line', direction: 'inbound', depth: 2 });
 ```
 
@@ -288,7 +288,7 @@ await tools.mcp__cbm__detect_changes({ project: 'oz-pos', format: 'json' });
 
 Measured here: `base: main`, `changed_files: 951` — because this branch is a long-lived
 release branch, not a feature diff. `detect_changes` answers "what does this branch
-touch relative to main", which on `0.0.37` is far too wide to be a per-change impact
+touch relative to main", which on `0.0.39` is far too wide to be a per-change impact
 set. For a single change, scope it yourself: `trace_path(direction: 'inbound')` on the
 symbols you edited.
 
@@ -423,7 +423,7 @@ Also: `trace_path` does **not** take `name` — the parameter is `function_name`
   strings. Filter by `file_pattern` and by `is_test` before calling anything dead —
   and treat a dead-code claim as needing three greps, per AGENTS.md, because features
   register lazily.
-- **Generated artifacts are indexed.** `apps/tablet-client/gen/schemas/android-schema.json`
+- **Generated artifacts are indexed.** `apps/mobile-tauri/gen/schemas/android-schema.json`
   shows up as a high-degree `Variable`; so do Go stdlib types from
   `apps/license-server`. `file_pattern` **matches, it does not exclude** — scope
   positively to the tree you want rather than trying to subtract `gen/`.
@@ -437,7 +437,7 @@ Also: `trace_path` does **not** take `name` — the parameter is `function_name`
   `/nonexistent/plugin/dir` and a SQL index comment parsed as a path. On the 08-09-26
   index the same call returns 20 mostly-real `/api/v1/...` rows plus `/freeze/i` and
   `/unfreeze/i` — regex literals from test code. Route nodes are a text-mining artifact
-  as often as a real endpoint; confirm against `crates/oz-api/src/routes/` or the Tauri
+  as often as a real endpoint; confirm against `crates/kasirmu-api/src/routes/` or the Tauri
   command registry, and never diff two route lists across index generations.
 - **`aspects: ['layers']` classifies scripts as `internal` with fan-in 0**, which is
   true but useless. Use `clusters` for the real seams.
@@ -613,7 +613,7 @@ answer changed under a file that had already quoted the old one.
 
 `.agents/skills/skill-drift-guard/scripts/detect.sh` scans every
 `.agents/skills/*/SKILL.md`, including this one: referenced paths must exist, every
-`oz-*` token must resolve to a workspace crate, every Fluent id a code example names
+`kasirmu-*` token must resolve to a workspace crate, every Fluent id a code example names
 must exist in the locale bundles, and the footer below must stay a real DD-MM-YY within
 30 days.
 The measured facts in this file (node counts, totals, latencies, error strings) are
@@ -623,4 +623,4 @@ in "Mandatory first two calls" before repeating any of them to someone else.
 
 ---
 
-> last audited 08-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat

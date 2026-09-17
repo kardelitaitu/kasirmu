@@ -1,4 +1,4 @@
-# First-Release Runbook — OZ-POS
+# First-Release Runbook — kasir.mu
 
 <!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (5 findings) · collapses a two-stamp stack into one and repairs a warning that had itself gone stale. §0's banner said "pushing a v* tag today triggers nothing" and named release.yml, android.yml and ios.yml as all retired. Only two of those are: 3b10ea3a2 restored release.yml (desktop-only, validate/build/publish on v* tags) on 2026-09-04 — the same day this banner was written, hours after it. Verified against the files today: release.yml exists with jobs release-validate / release-build / release-publish; android.yml and ios.yml exist only as .bak. · The banner is now a three-row live/retired table, and §1's Android and iOS secret headings, the §0 Mobile row, §4's “three workflows” opener and §5's asset checklist were each corrected to say nothing runs — a contributor provisioning ANDROID_KEYSTORE_BASE64 today is setting a secret no workflow will ever read. · WHY A WARNING CAN BE THE DANGEROUS KIND OF STALE: a false “this works” makes someone skip a step; a false “this does not work” makes them skip §5's signature verification on artifacts that are actually shipping. Both were live in this file at once, on opposite sides of the same table. · FROM THE 2026-08-31 STAMP (docs-auditor, “ACCURATE (0 findings)”) — re-verified today, all still true: SignPath continue-on-error: true at release.yml:272 with its “must not block a release” comment (degrades to unsigned fallback); UPDATER_CERT_PASSWORD named only in a header comment at release.yml:42 and consumed by no step; updater pubkey present in apps/desktop-client/tauri.conf.json; check-release-version.mjs, check-updater-compat.mjs, generate-latest-json.mjs exist; concurrency groups release- / release-android- / release-ios-<ref> match the files (the latter two now orphaned). · FROM THE 2026-09-04 STAMP (DSH, “STALE-BY-INFRA-CHANGE”) — its substantive repairs stand and are kept: §3 rewritten to take a $V parameter (it hardcoded 0.0.24/0.0.25, which bump-version.ps1 rejects as a backwards bump), §4/§5 preconditions, gh commands parameterized. Re-confirmed against scripts/release.sh: checks, bump, changelog, then a LOCAL tag at line 172 whose own header says it is NOT pushed — “release.sh builds and uploads nothing” remains correct. · NOTE ON THE RESTORATION COMMIT ITSELF: 3b10ea3a2 is the commit AGENTS.md cites as its cautionary example — subject “fix(website): reposition popular badge on pricing preview cards”, diff containing the restoration of the release pipeline. This file is the proof that reviewing by subject line loses real changes: the release process came back inside a badge-position commit, and no document noticed until a page that had been corrected to say “nothing runs” became wrong by becoming accurate.
   · FROM THE 2026-08-31 STAMP (docs-auditor, “ACCURATE (0 findings)”) — re-verified today, all still true: the release.yml SignPath step has continue-on-error: true at line 272, with a comment saying a SignPath failure must not block a release (it degrades to an unsigned fallback); UPDATER_CERT_PASSWORD is still named only in a header comment (release.yml:42) and consumed by no step; apps/desktop-client/tauri.conf.json still carries the updater pubkey; check-release-version.mjs, check-updater-compat.mjs and generate-latest-json.mjs exist; concurrency groups release-/release-android-/release-ios-<ref> match.
@@ -29,7 +29,7 @@
 > | Workflow | Live? | What it produces |
 > |---|---|---|
 > | `release.yml` | ✅ **LIVE** (`v*` tags) | Signed desktop installers + `latest.json`/`beta.json` updater manifests + provenance |
-> | `android.yml` | ❌ retired `.bak` | nothing — APK/AAB is a manual build (`packaging/mobile/`) |
+> | `android.yml` | ❌ retired `.bak` | nothing — APK/AAB is a manual build (`ops/packaging/mobile/`) |
 > | `ios.yml` | ❌ retired `.bak` | nothing — IPA is a manual build |
 >
 > A stale "this does not work" warning is not the safe kind of stale: an operator who
@@ -59,7 +59,7 @@ live:
 | Gate | `release.yml` · `release-validate` | Tag ↔ version parity (`check-release-version.mjs`) + updater client compat check (`check-updater-compat.mjs`) |
 | Build | `release.yml` · `release-build` | Matrix: Linux AppImage+deb, Windows NSIS+MSI, macOS DMG, Docker cloud + license images; per-artifact existence gate; blocking Trivy scans |
 | Publish | `release.yml` · `release-publish` | Toolchain self-tests → signed `latest.json` + `beta.json` → signature verification → `SHA256SUMS.txt` → **draft release** → inventory gate → **auto-publish** → provenance attestation |
-| Mobile | ~~`android.yml` / `ios.yml`~~ **retired `.bak`** | ~~Signed APK/AAB + IPA uploaded into the same release~~ — nothing runs. Build mobile by hand per `packaging/mobile/README.md` and upload with `gh release upload --clobber` (poll up to 60 min for the release to exist) |
+| Mobile | ~~`android.yml` / `ios.yml`~~ **retired `.bak`** | ~~Signed APK/AAB + IPA uploaded into the same release~~ — nothing runs. Build mobile by hand per `ops/packaging/mobile/README.md` and upload with `gh release upload --clobber` (poll up to 60 min for the release to exist) |
 
 `release-publish` is gated by `environment: release` (see §2).
 
@@ -135,7 +135,7 @@ signed.
 | Secret | Required | Format |
 |---|---|---|
 | `APPLE_TEAM_ID` | ✅ | Apple Developer team ID |
-| `APPLE_BUNDLE_ID` | ✅ | bundle id, e.g. `com.ozpos.tablet` |
+| `APPLE_BUNDLE_ID` | ✅ | bundle id, e.g. `mu.kasir.tablet` |
 | `APPLE_CERT_BASE64` | ✅ | base64-encoded distribution certificate `.p12` |
 | `APPLE_CERT_PASSWORD` | ✅ | p12 password |
 | `APPLE_PROV_PROFILE_BASE64` | ✅ | base64-encoded provisioning profile |
@@ -273,9 +273,9 @@ between draft creation and publish. For the first release, use one of these:
    # (run from the repo root so the scripts/ helper paths resolve):
    VERIFY="$PWD/scripts/verify-updater-signature.mjs"  # run from repo root
    cd /tmp/relcheck
-   node "$VERIFY" latest.json linux-x86_64   OZ-POS_*.AppImage
-   node "$VERIFY" latest.json windows-x86_64 OZ-POS_*.exe
-   node "$VERIFY" latest.json darwin-aarch64 OZ-POS_*.dmg
+   node "$VERIFY" latest.json linux-x86_64   kasir.mu_*.AppImage
+   node "$VERIFY" latest.json windows-x86_64 kasir.mu_*.exe
+   node "$VERIFY" latest.json darwin-aarch64 kasir.mu_*.dmg
    ```
    Confirm the full asset set: `latest.json`, `beta.json`, `SHA256SUMS.txt`,
    AppImage/deb, exe/msi, dmg. **No mobile job will ever finish** — android.yml and
@@ -330,7 +330,7 @@ or first run the app:
 ### The free routes (no paid CA)
 
 1. **Self-signed cert — `scripts/dev-code-sign.ps1` (dev/CI only).**
-   Generates a `CN=OZ-POS Development` code-signing cert in the **CurrentUser**
+   Generates a `CN=kasir.mu Development` code-signing cert in the **CurrentUser**
    store (no admin), installs it into the user's Trusted Root (`-YesTrust`
    does this silently via the `X509Store` API; without it you'll get Windows'
    standard "install this root certificate?" Security Warning once), signs

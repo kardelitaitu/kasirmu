@@ -1,11 +1,11 @@
-# Linux Desktop Launch Test — OZ-POS
-<!-- Audit stamp: 2026-09-09 . DSH . status: ACCURATE, 1 precision note (seed references flagged, not fixed) . Verified-true: Tauri window size 1280x800 (apps/desktop-client/tauri.conf.json:18-19), internal doc links resolve (../releases/checklist.md; ./windows-launch-test.md; ../operations/vps-migration.md, docker-deployment.md, runbook.md all tracked), Rust MSRV 1.88 (rust-toolchain.toml), Node>=22/npm>=11 (ui/package.json:80-82), Tauri v2 apt dependency names (libwebkit2gtk-4.1-dev etc.) valid, cargo tauri build produces .deb/.AppImage via targets=all. FLAGGED not fixed: Settings to Database to Seed Sample Data (line 88) and the login error No staff accounts found (line 98) appear only in docs - no such Settings action exists in ui/src/features/settings/DataManagementScreen.tsx and the string is absent from code; no seeder binary exists in the repo (git grep name=seeder and ls-files grep seeder both empty). These are doc claims about a seed path that does not exist; left for the doc owner under code/config drift rule D. -->
+# Linux Desktop Launch Test — kasir.mu
+<!-- Audit stamp: 2026-09-09 . DSH . status: ACCURATE, 1 precision note (seed references flagged, not fixed) . Verified-true: Tauri window size 1280x800 (apps/desktop-tauri/tauri.conf.json:18-19), internal doc links resolve (../releases/checklist.md; ./windows-launch-test.md; ../operations/vps-migration.md, docker-deployment.md, runbook.md all tracked), Rust MSRV 1.88 (rust-toolchain.toml), Node>=22/npm>=11 (ui/package.json:80-82), Tauri v2 apt dependency names (libwebkit2gtk-4.1-dev etc.) valid, cargo tauri build produces .deb/.AppImage via targets=all. FLAGGED not fixed: Settings to Database to Seed Sample Data (line 88) and the login error No staff accounts found (line 98) appear only in docs - no such Settings action exists in ui/src/features/settings/DataManagementScreen.tsx and the string is absent from code; no seeder binary exists in the repo (git grep name=seeder and ls-files grep seeder both empty). These are doc claims about a seed path that does not exist; left for the doc owner under code/config drift rule D. -->
 
 > **Status:** Implemented (2026-07-21)
 > **Target audience:** QA / developers testing on Ubuntu 22.04+ or Debian 12+
-> **Related:** [Release Checklist](../releases/checklist.md) · [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-client/tauri.conf.json) · [Windows Launch Test](./windows-launch-test.md)
+> **Related:** [Release Checklist](../releases/checklist.md) · [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-tauri/tauri.conf.json) · [Windows Launch Test](./windows-launch-test.md)
 
-This guide covers building the OZ-POS desktop client on Linux and
+This guide covers building the kasir.mu desktop client on Linux and
 running the core POS flow end-to-end on a physical Linux machine.
 
 ---
@@ -85,20 +85,20 @@ the login → POS → payment → receipt flow can execute:
 
 ```bash
 # Option A: demo seeder, from the repo root (the oz CLI)
-cargo run -p oz-cli -- seed-demo --all
-cargo run -p oz-cli -- seed-demo --restaurant --days 30
+cargo run -p kasirmu-cli -- seed-demo --all
+cargo run -p kasirmu-cli -- seed-demo --restaurant --days 30
 
 # Option B: first-run default settings and feature flags on a fresh DB
-cargo run -p oz-cli -- seed
+cargo run -p kasirmu-cli -- seed
 
 > ⚠️ **Corrected 09-09-26.** Neither option listed here existed as written. The `Settings →
 > Database → Seed Sample Data` menu is not in the app — that string appears only in these
 > launch guides, in nothing under `ui/src`. There is no CI-produced seeded database either:
 > `test-data` is absent from every workflow and from `scripts/` (0 hits), so
-> `target/release/test-data/oz-pos.db` has never existed as a build artifact. What is real is
-> the `oz` CLI: `seed-demo` (`crates/oz-cli/src/cli.rs:95`, dispatched at
-> `crates/oz-cli/src/commands/mod.rs:90`, implemented at
-> `crates/oz-cli/src/seed_demo.rs:64`) with `--retail` / `--restaurant` / `--all` /
+> `target/release/test-data/kasir.db` has never existed as a build artifact. What is real is
+> the `oz` CLI: `seed-demo` (`crates/kasirmu-cli/src/cli.rs:95`, dispatched at
+> `crates/kasirmu-cli/src/commands/mod.rs:90`, implemented at
+> `crates/kasirmu-cli/src/seed_demo.rs:64`) with `--retail` / `--restaurant` / `--all` /
 > `--days <n>` (`cli.rs:99-112`), and `seed` for default settings and feature flags
 > (`cli.rs:39`). Read the module header before relying on it: it writes ~10k time-series
 > sales rows for analytics/report development, which is not a minimal first-launch dataset.
@@ -116,7 +116,7 @@ cargo run -p oz-cli -- seed
 
 ```bash
 # From the repository root
-cd apps/desktop-client
+cd apps/desktop-tauri
 
 # Build the Tauri app (frontend + Rust + bundle)
 cargo tauri build
@@ -148,7 +148,7 @@ cargo build --release -p oz-pos-app
 ### Option C — Quick Dev Launch
 
 ```bash
-# From apps/desktop-client, builds on demand and launches:
+# From apps/desktop-tauri, builds on demand and launches:
 cargo tauri dev
 ```
 
@@ -162,7 +162,7 @@ cargo tauri dev
 |------|--------|----------------|
 | 1.1 | Run `./oz-pos-app` (or launch installed .deb) | Splash screen appears within **5 seconds** |
 | 1.2 | Wait for full load | Main window appears (1280×800 default). Login screen visible. |
-| 1.3 | Check window chrome | Title bar shows **OZ-POS**. Window is centered. |
+| 1.3 | Check window chrome | Title bar shows **kasir.mu**. Window is centered. |
 | 1.4 | Check taskbar/dock | Icon renders correctly in GNOME/KDE launcher. |
 | 1.5 | Resize window | Drag edges — window resizes smoothly, no visual glitches. |
 
@@ -298,7 +298,7 @@ htop -p $(pgrep -d',' -f oz-pos-app)
 
 ```bash
 # Launch with DevTools (debug build only)
-cd apps/desktop-client
+cd apps/desktop-tauri
 cargo tauri dev
 # Then Ctrl+Shift+I to open DevTools → Performance tab
 ```
@@ -327,7 +327,7 @@ grep -iE "error|panic|fail|segfault" launch-log.txt
 If the app is launched via a systemd service, use `journalctl`:
 
 ```bash
-# Recent logs from OZ-POS service
+# Recent logs from kasir.mu service
 journalctl --user -u oz-pos --since "5 minutes ago" --no-pager
 ```
 
@@ -484,7 +484,7 @@ Notes:
 
 - [Windows Launch Test](./windows-launch-test.md) — Windows equivalent guide
 - [Release Checklist](../releases/checklist.md) — Pre-release verification
-- [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-client/tauri.conf.json) — Window size, CSP, bundle settings
+- [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-tauri/tauri.conf.json) — Window size, CSP, bundle settings
 - [VPS Migration Guide](../operations/vps-migration.md) — Cloud server deployment
 - [Docker Deployment Guide](../operations/docker-deployment.md) — Full stack deployment
 - [Runbook](../operations/runbook.md) — Incident response procedures

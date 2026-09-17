@@ -58,7 +58,7 @@ const config = args.find((a) => a.startsWith('--config='))?.slice('--config='.le
   const outDirArg = args.find((a) => a.startsWith('--outdir='))?.slice('--outdir='.length);
   const outDir = resolve(
     uiDir,
-    outDirArg ?? (config?.includes('tablet') ? 'dist-tablet' : 'dist'),
+    outDirArg ?? (config?.includes('mobile') ? 'dist-mobile' : 'dist'),
   );
 
 /** gzip byte length of a file (or empty string). */
@@ -121,12 +121,12 @@ function main() {
   });
 
   // entry JS = referenced from the build output html. Vite preserves the
-  // input html basename (index.html for desktop, index.tablet.html for the
+  // input html basename (index.html for desktop, index.mobile.html for the
   // tablet build), so pick the html that actually exists in outDir.
   let entryGzip = 0;
   let entryFile = '(none)';
   try {
-    const htmlCandidates = ['index.html', 'index.tablet.html'];
+    const htmlCandidates = ['index.html', 'index.mobile.html'];
     const htmlName = htmlCandidates.find((n) =>
       readdirSync(outDir).includes(n),
     );

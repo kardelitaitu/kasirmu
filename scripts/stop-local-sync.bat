@@ -24,7 +24,7 @@ if errorlevel 1 (
 echo.
 echo ============================================================================
 echo  OZ-POS Local Sync Server containers have been stopped cleanly.
-echo  (Your database volume /data/oz-pos.db is preserved for next time)
+echo  (Your database volume /data/kasir.db is preserved for next time)
 echo ============================================================================
 echo.
 

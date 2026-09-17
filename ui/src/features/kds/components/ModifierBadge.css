@@ -3,7 +3,7 @@
  * Status-pill badges for KDS ticket modifiers (todo-kds-agents-3, Phase 3.1).
  * Registered under the KdsScreen entry in screenExtraction.test.ts together
  * with components/ModifierBadge.tsx. Token names from
- * ui/src/frontend/themes/tokens.css only — no raw hex.
+ * ui/src/theme/tokens.css only — no raw hex.
  *
  * Tone semantics follow the design language: Danger = destroy (removal
  * requests, e.g. "NO ONIONS"), Success = confirm/addition ("EXTRA CHEESE"),

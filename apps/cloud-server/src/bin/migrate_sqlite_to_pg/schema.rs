@@ -39,7 +39,7 @@ pub async fn connect_postgres(url: &str) -> Result<Pool, String> {
         .await
         .map_err(|e| format!("connect: {e}"))?;
     client
-        .batch_execute(oz_core::migrations::PG_INIT)
+        .batch_execute(kasirmu_core::migrations::PG_INIT)
         .await
         .map_err(|e| format!("apply schema: {e}"))?;
     Ok(pool)

@@ -6,7 +6,7 @@
  */
 
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { useOptionalTheme } from '@/frontend/shell/ThemeProvider';
+import { useOptionalTheme } from '@/app/ThemeProvider';
 import {
   DEFAULT_COLORS_DARK,
   DEFAULT_COLORS_LIGHT,

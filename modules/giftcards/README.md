@@ -19,7 +19,7 @@ per-card transaction history.
 | Version      | `0.1.0` |
 | Dependencies | `["sales"]` — redemption debits a card as part of a sale's tender |
 | Permissions  | `giftcards:view`, `giftcards:issue`, `giftcards:redeem`, `giftcards:manage` |
-| Feature flag | `gift-cards` (`crates/oz-core/src/features.rs`) |
+| Feature flag | `gift-cards` (`crates/kasirmu-core/src/features.rs`) |
 
 ## Why this stub exists
 

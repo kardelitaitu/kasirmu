@@ -1,7 +1,7 @@
 // ── useToast contract tests ──────────────────────────────────────
 //
 // Pins the contract for `useAnimatedToastQueue` + the canonical
-// ToastProvider at `@/frontend/shared/Toast`. Replaces the
+// ToastProvider at `@/components/Toast`. Replaces the
 // older stale `useToast.test.tsx` which imported from the dead
 // `@/hooks/useToast` path against an older API.
 
@@ -11,7 +11,7 @@ import { act } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
-import { ToastProvider, useToast } from '@/frontend/shared/Toast';
+import { ToastProvider, useToast } from '@/components/Toast';
 
 const ftl = `
 toast-dismiss-aria = Dismiss notification

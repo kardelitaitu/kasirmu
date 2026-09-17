@@ -14,9 +14,9 @@
  *
  * Every task used to send the WHOLE draft DTO. The backend writes those DTOs
  * field-by-field unconditionally: run_set_receipt_settings re-stamps ten flat
- * keys (crates/oz-bridge/src/settings.rs:997-1007, tax_rounding_mode included),
+ * keys (crates/kasirmu-bridge/src/settings.rs:997-1007, tax_rounding_mode included),
  * run_set_store_settings stamps all six in one transaction (:1021-1026), and
- * update_sync_settings_data (crates/oz-bridge/src/sync.rs:64-82) does
+ * update_sync_settings_data (crates/kasirmu-bridge/src/sync.rs:64-82) does
  * server_url.as_deref().unwrap_or("") and writes it UNCONDITIONALLY, so a null
  * there CLEARS a configured URL. Only api_key is guarded with if let Some(..),
  * which is why an absent key preserves the stored one while an absent URL does

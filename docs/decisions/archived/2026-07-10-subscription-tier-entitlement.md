@@ -10,7 +10,7 @@ status: Superseded (2026-07-10) — tier lineup & quotas superseded by `subscrip
 
 **Status:** Superseded (2026-07-10) — tier lineup & quotas superseded by `subscription-tiers.md` (FINAL, approved 2026-08-17)
 **Date:** 2026-07-10
-**Author:** Architecture Team & OZ-POS Contributors
+**Author:** Architecture Team & kasir.mu Contributors
 **Tags:** subscriptions, entitlements, billing, multi-store, quotas, offline-grace
 
 > **Supersession note:** `subscription-tiers.md` (repo root) is now the single source
@@ -46,7 +46,7 @@ Quota enforcement must coordinate across the global DB (for tier limits) and per
 
 ### 1. Signed Tenant Subscription Schema (Global Database)
 
-Because OZ-POS stores data locally in SQLite (`rusqlite`), subscription limits must be cryptographically signed to prevent users from opening the database files locally and modifying their tier. The active subscription is stored in the global database with a signature issued by `apps/cloud-server`.
+Because kasir.mu stores data locally in SQLite (`rusqlite`), subscription limits must be cryptographically signed to prevent users from opening the database files locally and modifying their tier. The active subscription is stored in the global database with a signature issued by `apps/cloud-server`.
 
 ```sql
 -- Lives in the GLOBAL database (alongside store_profiles, terminals, users, roles)

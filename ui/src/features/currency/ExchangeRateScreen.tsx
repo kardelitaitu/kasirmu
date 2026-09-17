@@ -14,9 +14,9 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
-import { SettingsPopup, requiredLocalized } from '@/frontend/shared';
+import { SettingsPopup, requiredLocalized } from '@/components';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { parseMinorUnits } from '@/types/domain';
 import './ExchangeRateScreen.css';
 

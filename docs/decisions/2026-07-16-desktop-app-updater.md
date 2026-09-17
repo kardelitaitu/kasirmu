@@ -10,14 +10,14 @@ status: Partially Implemented (2026-07-16) — Settings About page UI is live; s
 
 **Status:** Partially Implemented (2026-07-16) — Settings About page UI is live; see ADR #14 for release automation
 **Date:** 2026-07-16
-**Author:** OZ-POS Contributors
+**Author:** kasir.mu Contributors
 **Tags:** updater, deployment, release, windows, github-actions, settings
 
 ---
 
 ## Context
 
-OZ-POS is distributed as a Windows desktop application (NSIS installer, WiX MSI) via GitHub Releases. Users currently have no in-app mechanism to discover or install new versions — they must manually download the latest release from GitHub and re-install.
+kasir.mu is distributed as a Windows desktop application (NSIS installer, WiX MSI) via GitHub Releases. Users currently have no in-app mechanism to discover or install new versions — they must manually download the latest release from GitHub and re-install.
 
 Without an in-app updater:
 
@@ -139,7 +139,7 @@ After the build artifacts are attached to the release, a job (or step) generates
   "platforms": {
     "windows-x86_64": {
       "signature": "<base64-ed25519-sig-of-the-installer>",
-      "url": "https://github.com/kardelitaitu/oz-pos/releases/download/v0.0.9/OZ-POS_0.0.9_x64-setup.exe"
+      "url": "https://github.com/kardelitaitu/oz-pos/releases/download/v0.0.9/kasir.mu_0.0.9_x64-setup.exe"
     }
   }
 }
@@ -176,7 +176,7 @@ Developer:
   git push origin v0.1.0
 
 GitHub Actions:
-  ├── Build OZ-POS (Windows NSIS + MSI)
+  ├── Build kasir.mu (Windows NSIS + MSI)
   ├── Sign binaries (signtool.exe via UPDATER_CERT_SECRET)
   ├── Generate latest.json (signed with UPDATER_PRIVATE_KEY)
   └── Attach artifacts + latest.json to GitHub Release
@@ -188,7 +188,7 @@ User (in-app):
   ↓
   clicks "Install Now"
   ↓
-  Tauri downloads OZ-POS_0.1.0_x64-setup.exe
+  Tauri downloads kasir.mu_0.1.0_x64-setup.exe
   ↓
   Signs + verifies latest.json against embedded pubkey
   ↓
@@ -279,7 +279,7 @@ Rely solely on the existing `UpdateBanner` component that auto-checks on mount.
 
 ### Mitigations
 
-- **Rollback path**: GitHub Releases preserve all historical tags and assets. Users can manually download `OZ-POS_0.0.8_x64-setup.exe` from a previous release and reinstall.
+- **Rollback path**: GitHub Releases preserve all historical tags and assets. Users can manually download `kasir.mu_0.0.8_x64-setup.exe` from a previous release and reinstall.
 - **Key rotation**: If the signing key is compromised, update the public key in `tauri.conf.json` and distribute a hotfix. The next update will use the new key.
 - **CI reliability**: The workflow pins Rust toolchain via `rust-toolchain.toml` and Node.js via `.nvmrc` to prevent breaking on toolchain updates.
 - **Release notes**: The workflow extracts the release body from the GitHub Release and includes it as the `notes` field in `latest.json`, so users see changelog info in the update dialog.

@@ -2,7 +2,7 @@ use super::*;
 use rusqlite::Connection;
 
 fn fresh() -> Connection {
-    oz_core::migrations::fresh_db()
+    kasirmu_core::migrations::fresh_db()
 }
 
 #[test]
@@ -62,7 +62,7 @@ fn set_updates_timestamp() {
 
 /// The deny list, walked from the crate that owns it — never retyped here.
 fn authoritative_deny_list() -> &'static [&'static str] {
-    oz_core::settings::keys::SECRET_KEY_DENY_LIST
+    kasirmu_core::settings::keys::SECRET_KEY_DENY_LIST
 }
 
 /// ACTIVATION — when this pin flips, and what it drags along with it.

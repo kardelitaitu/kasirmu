@@ -12,7 +12,7 @@ Status: Implemented (2026-08-18) — `docs/plans/todo.md` C3.1; Phase C complete
 
 ## Context
 
-OZ-POS bills subscriptions in two markets (see `subscription-tiers.md` §2):
+kasir.mu bills subscriptions in two markets (see `subscription-tiers.md` §2):
 
 | Market | Provider | Currency | Payment methods |
 | :--- | :--- | :--- | :--- |
@@ -112,8 +112,8 @@ State of the codebase:
 
 - Indonesian merchants get **fixed Rp prices and QRIS/VA/e-wallet checkout** —
   the primary revenue unlock for the ID market (`subscription-tiers.md` §2).
-- OZ-POS becomes **merchant of record for ID payments**: Indonesian PPN
-  (11% VAT) on subscription sales, refunds, and disputes are now OZ-POS's
+- kasir.mu becomes **merchant of record for ID payments**: Indonesian PPN
+  (11% VAT) on subscription sales, refunds, and disputes are now kasir.mu's
   obligations — a legal/finance commitment the Paddle path delegated to
   Paddle's MoR.
 - **Two webhook + provisioning paths to maintain.** Mitigated by reusing

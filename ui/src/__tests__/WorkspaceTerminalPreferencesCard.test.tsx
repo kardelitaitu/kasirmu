@@ -64,7 +64,7 @@ vi.mock('@/hooks/useTerminalHardware', () => ({
   useTerminalHardware: () => mocks.hw,
 }));
 
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: vi.fn() }),
 }));
 

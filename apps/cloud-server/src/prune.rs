@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::metrics;
-use oz_core::db::Store;
+use kasirmu_core::db::Store;
 use rusqlite::Connection;
 use tokio::sync::Mutex;
 use tracing::{error, info};

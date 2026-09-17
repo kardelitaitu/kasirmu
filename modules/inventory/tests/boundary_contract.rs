@@ -5,10 +5,10 @@
 //!
 //! 1. **Module registration** — `manifest.json` id must match the
 //!    `Module` trait id and declare the documented permissions.
-//! 2. **Type identity** — the `oz_core` re-exports are *the same types*
+//! 2. **Type identity** — the `kasirmu_core` re-exports are *the same types*
 //!    as the `modules_inventory` ones (compile-time proof).
 //! 3. **DB behaviour parity** — the module service observes the same
-//!    product rows as `oz_core`'s `Store`. Stock-level parity
+//!    product rows as `kasirmu_core`'s `Store`. Stock-level parity
 //!    (`get_stock` / `adjust_stock_tx`) is intentionally NOT pinned
 //!    yet: those methods query `inventory.sku` /
 //!    `inventory.low_stock_threshold`, which are planned-schema columns
@@ -19,12 +19,12 @@
 //!    declares, including the `type` rename.
 
 use foundation::contracts::Module;
+use kasirmu_core::category::Category as CoreCategory;
+use kasirmu_core::migrations::fresh_db;
+use kasirmu_core::product::Product as CoreProduct;
+use kasirmu_core::{Inventory as CoreInventory, InventoryLocation as CoreLocation};
 use modules_inventory::{Category as ModuleCategory, Product as ModuleProduct};
 use modules_inventory::{Inventory as ModuleInventory, InventoryModule};
-use oz_core::category::Category as CoreCategory;
-use oz_core::migrations::fresh_db;
-use oz_core::product::Product as CoreProduct;
-use oz_core::{Inventory as CoreInventory, InventoryLocation as CoreLocation};
 
 // ── 1. Module registration contract ─────────────────────────────────
 
@@ -63,7 +63,7 @@ fn identity<T>(t: T) -> T {
 
 #[test]
 fn oz_core_reexports_exact_module_types() {
-    // These assignments compile ONLY if the oz-core re-exports are
+    // These assignments compile ONLY if the kasirmu-core re-exports are
     // literally the same types as the modules_inventory ones. If
     // someone forks a type in either crate, this fails to build.
     let _inv: fn(CoreInventory) -> CoreInventory = identity::<ModuleInventory>;
@@ -77,7 +77,7 @@ fn oz_core_reexports_exact_module_types() {
 #[test]
 fn module_service_and_store_agree_on_product_rows() {
     let conn = fresh_db();
-    let store = oz_core::db::Store::new(&conn);
+    let store = kasirmu_core::db::Store::new(&conn);
     let price = foundation::Money {
         minor_units: 19_999,
         currency: "USD".parse().unwrap(),
@@ -130,7 +130,7 @@ fn module_service_returns_none_for_unknown_product_id() {
 
 #[test]
 fn inventory_transaction_serializes_frontend_contract_fields() {
-    use oz_core::inventory_transaction::{
+    use kasirmu_core::inventory_transaction::{
         InventoryTransaction, InventoryTransactionId, InventoryTransactionType,
     };
 
@@ -177,7 +177,7 @@ fn inventory_transaction_serializes_frontend_contract_fields() {
 
 #[test]
 fn inventory_transaction_line_input_accepts_frontend_wire_shape() {
-    use oz_core::db::inventory::InventoryTransactionLineInput;
+    use kasirmu_core::db::inventory::InventoryTransactionLineInput;
 
     // Deserialize-only command input: pin the wire shape the frontend
     // sends (ui/src/api/inventory.ts InventoryTransactionLineInput) —

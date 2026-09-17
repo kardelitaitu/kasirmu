@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import './ScaleIndicator.css';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { useLocalization } from '@fluent/react';
 import { readScaleWeight, readScaleWeightScoped, type WeightReading } from '@/api/hardware';
 import type { Sku } from '@/types/domain';

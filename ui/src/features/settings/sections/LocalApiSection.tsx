@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import {

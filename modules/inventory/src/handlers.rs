@@ -228,8 +228,8 @@ impl EventHandler<SaleCompleted> for InventoryStockHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oz_core::db::Store;
-    use oz_core::migrations;
+    use kasirmu_core::db::Store;
+    use kasirmu_core::migrations;
     use platform_kernel::EventBus;
 
     fn fresh_db() -> Arc<Mutex<Connection>> {
@@ -263,7 +263,7 @@ mod tests {
         let event = SaleCompleted {
             sale_id: "sale-1".into(),
             store_id: None,
-            line_items: vec![oz_core::events::SaleCompletedLine {
+            line_items: vec![kasirmu_core::events::SaleCompletedLine {
                 sku: "COFFEE".into(),
                 qty: 3,
                 unit_price_minor: 350,
@@ -300,7 +300,7 @@ mod tests {
         let event = SaleCompleted {
             sale_id: "sale-2".into(),
             store_id: None,
-            line_items: vec![oz_core::events::SaleCompletedLine {
+            line_items: vec![kasirmu_core::events::SaleCompletedLine {
                 sku: "COFFEE".into(),
                 qty: 1,
                 unit_price_minor: 350,
@@ -329,7 +329,7 @@ mod tests {
         let event = SaleCompleted {
             sale_id: "sale-3".into(),
             store_id: None,
-            line_items: vec![oz_core::events::SaleCompletedLine {
+            line_items: vec![kasirmu_core::events::SaleCompletedLine {
                 sku: "UNKNOWN".into(),
                 qty: 1,
                 unit_price_minor: 100,
@@ -384,7 +384,7 @@ mod tests {
         let event = SaleCompleted {
             sale_id: "sale-bom-1".into(),
             store_id: None,
-            line_items: vec![oz_core::events::SaleCompletedLine {
+            line_items: vec![kasirmu_core::events::SaleCompletedLine {
                 sku: "BURGER".into(),
                 qty: 3,
                 unit_price_minor: 500,
@@ -425,7 +425,7 @@ mod tests {
         let event = SaleCompleted {
             sale_id: "sale-simple-1".into(),
             store_id: None,
-            line_items: vec![oz_core::events::SaleCompletedLine {
+            line_items: vec![kasirmu_core::events::SaleCompletedLine {
                 sku: "BUN".into(),
                 qty: 5,
                 unit_price_minor: 100,
@@ -459,14 +459,14 @@ mod tests {
             sale_id: "sale-mixed-1".into(),
             store_id: None,
             line_items: vec![
-                oz_core::events::SaleCompletedLine {
+                kasirmu_core::events::SaleCompletedLine {
                     sku: "BURGER".into(),
                     qty: 2,
                     unit_price_minor: 500,
                     tax_minor: 0,
                     tax_rate_id: None,
                 },
-                oz_core::events::SaleCompletedLine {
+                kasirmu_core::events::SaleCompletedLine {
                     sku: "BUN".into(),
                     qty: 10,
                     unit_price_minor: 100,
@@ -507,7 +507,7 @@ mod tests {
         let event = SaleCompleted {
             sale_id: "sale-bus-1".into(),
             store_id: None,
-            line_items: vec![oz_core::events::SaleCompletedLine {
+            line_items: vec![kasirmu_core::events::SaleCompletedLine {
                 sku: "BURGER".into(),
                 qty: 1,
                 unit_price_minor: 500,
@@ -544,7 +544,7 @@ mod tests {
         let event = SaleCompleted {
             sale_id: "sale-svc-1".into(),
             store_id: None,
-            line_items: vec![oz_core::events::SaleCompletedLine {
+            line_items: vec![kasirmu_core::events::SaleCompletedLine {
                 sku: "CARWASH".into(),
                 qty: 1,
                 unit_price_minor: 5000,
@@ -592,14 +592,14 @@ mod tests {
             sale_id: "sale-partial-1".into(),
             store_id: None,
             line_items: vec![
-                oz_core::events::SaleCompletedLine {
+                kasirmu_core::events::SaleCompletedLine {
                     sku: "COFFEE".into(),
                     qty: 2,
                     unit_price_minor: 350,
                     tax_minor: 0,
                     tax_rate_id: None,
                 },
-                oz_core::events::SaleCompletedLine {
+                kasirmu_core::events::SaleCompletedLine {
                     sku: "TEA".into(),
                     qty: 3,
                     unit_price_minor: 250,
@@ -656,14 +656,14 @@ mod tests {
             sale_id: "sale-4".into(),
             store_id: None,
             line_items: vec![
-                oz_core::events::SaleCompletedLine {
+                kasirmu_core::events::SaleCompletedLine {
                     sku: "COFFEE".into(),
                     qty: 2,
                     unit_price_minor: 350,
                     tax_minor: 0,
                     tax_rate_id: None,
                 },
-                oz_core::events::SaleCompletedLine {
+                kasirmu_core::events::SaleCompletedLine {
                     sku: "TEA".into(),
                     qty: 5,
                     unit_price_minor: 250,

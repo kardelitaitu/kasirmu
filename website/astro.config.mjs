@@ -34,11 +34,12 @@ export default defineConfig({
           id: 'id',
         },
       },
-      // Skip the auth pages — no indexable content on /account (session-gated)
-      // or /login (form-only). The docs hub (/en/docs/, /id/docs/) IS a real
+      // Skip the auth and gated pages — no indexable content on /account
+      // (session-gated), /login (form-only), or /enterprise-trial
+      // (approval-code-gated). The docs hub (/en/docs/, /id/docs/) IS a real
       // page now (4-card landing, src/pages/[locale]/docs/index.astro) so it
       // stays in the sitemap; only the locale-less bare /docs/ path is noise.
-      filter: (page) => !/\/account\/$/.test(page) && !/\/login\/$/.test(page),
+      filter: (page) => !/\/(account|login|enterprise-trial)\/$/.test(page),
     }),
   ],
   markdown: {

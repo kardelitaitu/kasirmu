@@ -23,7 +23,7 @@ NC='\033[0m'
 
 violations=0
 deprecated_ok=0
-target_dir="apps/desktop-client/src/commands"
+target_dir="apps/desktop-tauri/src/commands"
 
 if [ ! -d "$target_dir" ]; then
     echo "target directory not found: $target_dir" >&2

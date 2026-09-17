@@ -3,9 +3,9 @@
 //! wiring: settings-changed sink dispatch and subscriber fan-out.
 
 use super::*;
-use oz_core::events::SaleCompletedLine;
-use oz_core::migrations;
-use oz_core::offline::OfflineQueueStatus;
+use kasirmu_core::events::SaleCompletedLine;
+use kasirmu_core::migrations;
+use kasirmu_core::offline::OfflineQueueStatus;
 use platform_kernel::EventBus;
 
 fn fresh_db() -> Arc<Mutex<Connection>> {

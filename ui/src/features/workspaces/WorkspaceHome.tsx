@@ -3,7 +3,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFullscreen } from '@/hooks/useFullscreen';
 import { Localized, useLocalization } from '@fluent/react';
-import { ConfirmDialog, requiredLocalized } from '@/frontend/shared';
+import { ConfirmDialog, requiredLocalized } from '@/components';
 import { WorkspaceIcon } from '@/components/WorkspaceIcon';
 import { RoleIcon } from '@/components/RoleIcon';
 import OrgSelector from '@/components/OrgSelector';

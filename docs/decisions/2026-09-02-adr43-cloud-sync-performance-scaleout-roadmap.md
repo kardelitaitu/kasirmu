@@ -8,7 +8,7 @@ status: Implemented (D1–D4, D7, D9-ready) — remaining items deferred or infr
 
 **Status:** Implemented (D1–D4, D7, D9-ready) — remaining items deferred or infra-only (2026-09-02)  
 **Date:** 2026-09-02  
-**Author:** Architecture Team & OZ-POS Contributors  
+**Author:** Architecture Team & kasir.mu Contributors  
 **Tags:** cloud, sync, performance, scalability, caching, rate-limiting, observability, rls, cost-optimization, redis, postgres
 
 > **Baseline (2026-09-01–02):** the cloud server (`oz-cloud-server`, axum 0.8,

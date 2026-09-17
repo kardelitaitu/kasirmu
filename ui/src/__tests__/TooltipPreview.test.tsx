@@ -22,7 +22,7 @@ vi.mock('@fluent/react', () => ({
   ReactLocalization: class {},
 }));
 
-vi.mock('@/frontend/shell/Tooltip', () => ({
+vi.mock('@/app/Tooltip', () => ({
   default: ({ children, content }: { children: React.ReactNode; content: unknown; position?: string; showDelay?: number; hideDelay?: number; maxWidth?: string }) => (
     <span data-tooltip-content={typeof content === 'string' ? content : undefined}>
       {children}
@@ -30,7 +30,7 @@ vi.mock('@/frontend/shell/Tooltip', () => ({
   ),
 }));
 
-vi.mock('@/frontend/shell/ThemeToggle', () => ({
+vi.mock('@/app/ThemeToggle', () => ({
   default: () => <div data-testid="theme-toggle">ThemeToggle</div>,
 }));
 

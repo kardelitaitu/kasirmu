@@ -44,7 +44,7 @@ function clickComplete() {
 }
 
 function clickLaunch() {
-  fireEvent.click(screen.getByRole('button', { name: /launch oz-pos/i }));
+  fireEvent.click(screen.getByRole('button', { name: /launch kasir\.mu/i }));
 }
 
 function clickSkip() {
@@ -298,7 +298,7 @@ describe('SetupWizard — interactions', () => {
     ).toBeInTheDocument();
 
     expect(
-      screen.getByRole('button', { name: /launch oz-pos/i }),
+      screen.getByRole('button', { name: /launch kasir\.mu/i }),
     ).toBeInTheDocument();
   });
 

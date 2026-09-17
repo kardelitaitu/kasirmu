@@ -1,7 +1,7 @@
 id: 0043-architecture-boundary-checker
 title: Architecture boundary checker v1
 status: needs-human-approval
-owner: OZ-POS maintainers
+owner: kasir.mu maintainers
 implementer: Buffy
 priority: P1
 scope:

@@ -66,7 +66,8 @@ const WORKER_LOGS_PATH = '/__oz/worker-logs';
 /** Health: request/error counts per minute (Cloudflare GraphQL analytics). */
 const TRAFFIC_PATH = '/__oz/traffic';
 const JSON_HEADERS = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } as const;
-const COOKIE_NAME = 'oz_session';
+const COOKIE_NAME = 'kasirmu_session';
+const LEGACY_COOKIE_NAME = 'oz_session';
 
 /** Subdomains that require authentication (admin-only). */
 const DASHBOARD_HOSTS = new Set(['admin.kasir.mu']);
@@ -102,7 +103,16 @@ function getCookie(headers: Headers, name: string): string | null {
   return null;
 }
 
-/** Build a Set-Cookie header string for the oz_session token.
+/**
+ * Parse a named cookie value from the Cookie header, falling back to the
+ * legacy cookie name during the brand migration. Returns the new cookie
+ * value if present, otherwise the legacy value, or null if neither exists.
+ */
+function getCookieWithLegacy(headers: Headers, name: string, legacyName: string): string | null {
+  return getCookie(headers, name) ?? getCookie(headers, legacyName);
+}
+
+/** Build a Set-Cookie header string for the kasirmu_session token.
  *
  * H4 (hardening): the cookie is scoped to the specific dashboard subdomain
  * (admin.kasir.mu or dashboard.kasir.mu) instead of the parent
@@ -250,7 +260,7 @@ export default {
       }
 
 
-      const sessionCookie = getCookie(request.headers, COOKIE_NAME);
+      const sessionCookie = getCookieWithLegacy(request.headers, COOKIE_NAME, LEGACY_COOKIE_NAME);
 
       // Step 1: One-time exchange code (hardening F1). The login page
       // authenticates at the license server, gets a short-lived single-use
@@ -725,7 +735,7 @@ export default {
     // account dashboard can authenticate to the license API with a Bearer
     // header without ever holding the token in JS-readable storage.
     if (url.pathname === SESSION_PATH) {
-      const sessionCookie = getCookie(request.headers, COOKIE_NAME);
+      const sessionCookie = getCookieWithLegacy(request.headers, COOKIE_NAME, LEGACY_COOKIE_NAME);
       if (!sessionCookie) {
         return new Response(JSON.stringify({ error: 'not signed in' }), {
           status: 401,

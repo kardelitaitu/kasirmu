@@ -58,7 +58,7 @@
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts/dev-code-sign.ps1 `
-      -Exe "target/release/oz-cloud-server.exe, apps\desktop-client\target\release\oz-pos-app.exe"
+      -Exe "target/release/kasirmu-cloud.exe, apps\desktop-tauri\target\release\kasirmu-app.exe"
 
 .NOTES
   Requires: Windows SDK signtool.exe (auto-detected), New-SelfSignedCertificate

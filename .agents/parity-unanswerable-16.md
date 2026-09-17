@@ -37,28 +37,28 @@ and the sixteen are not unfiled debt at all: they are a decision somebody alread
 
 `ui site` is the invoke call site. `rust command` is the command as registered in the
 desktop shell (each of the sixteen appears exactly once in
-`apps/desktop-client/src/lib.rs`; query: `git grep -c ::<name> --
-apps/desktop-client/src/lib.rs`). `entry` is where the allowlist records it, by section and
+`apps/desktop-tauri/src/lib.rs`; query: `git grep -c ::<name> --
+apps/desktop-tauri/src/lib.rs`). `entry` is where the allowlist records it, by section and
 line. the last column is the point of this file.
 
 | ui site | rust command (file:line) | entry | reason the entry carries |
 |---|---|---|---|
-| `ui/src/api/topology.ts:179` `save_topology_template` | `apps/desktop-client/src/commands/topology/commands.rs:67` | `dev_mock` :233, `tablet` :160 | no reason recorded — the entry is a bare quoted string |
-| `ui/src/api/topology.ts:192` `load_topology_template` | `apps/desktop-client/src/commands/topology/commands.rs:88` | `dev_mock` :221, `tablet` :125 | no reason recorded — bare string |
-| `ui/src/api/topology.ts:203` `list_topology_templates` | `apps/desktop-client/src/commands/topology/commands.rs:102` | `dev_mock` :220, `tablet` :119 | no reason recorded — bare string |
-| `ui/src/api/topology.ts:214` `delete_topology_template` | `apps/desktop-client/src/commands/topology/commands.rs:115` | `dev_mock` :218, `tablet` :60 | no reason recorded — bare string |
-| `ui/src/api/gateway.ts:24` `gateway_status` | `apps/desktop-client/src/commands/settings.rs:259` (tablet twin `apps/tablet-client/src/commands/settings.rs:508`) | `dev_mock` :219, no tablet entry | no reason recorded — bare string |
-| `ui/src/api/staff.ts:572` `refresh_picker_ticket` | `apps/desktop-client/src/commands/auth.rs:294`, forwarding to `crates/oz-bridge/src/auth.rs:739` | `dev_mock` :232, `tablet` :152 | no reason recorded — bare string |
-| `ui/src/api/localApi.ts:28` `local_api_status_scoped` | `apps/desktop-client/src/commands/local_api.rs:275` | `dev_mock` :227, `tablet` :131 | no reason recorded — bare string |
-| `ui/src/api/localApi.ts:32` `local_api_set_enabled_scoped` | `apps/desktop-client/src/commands/local_api.rs:291` | `dev_mock` :224, `tablet` :128 | no reason recorded — bare string |
-| `ui/src/api/localApi.ts:36` `local_api_set_port_scoped` | `apps/desktop-client/src/commands/local_api.rs:306` | `dev_mock` :225, `tablet` :129 | no reason recorded — bare string |
-| `ui/src/api/localApi.ts:43` `local_api_set_store_scoped` | `apps/desktop-client/src/commands/local_api.rs:320` | `dev_mock` :226, `tablet` :130 | no reason recorded — bare string |
-| `ui/src/api/localApi.ts:51` `local_api_rotate_secret_scoped` | `apps/desktop-client/src/commands/local_api.rs:340` | `dev_mock` :223, `tablet` :127 | no reason recorded — bare string |
-| `ui/src/api/localApi.ts:59` `local_api_mint_token_scoped` | `apps/desktop-client/src/commands/local_api.rs:358` | `dev_mock` :222, `tablet` :126 | no reason recorded — bare string |
-| `ui/src/api/products.ts:403` `products_set_image_scoped` | `apps/desktop-client/src/commands/products_images.rs:67` | `dev_mock` :231, `tablet` :149 | no reason recorded — bare string |
-| `ui/src/api/products.ts:411` `products_clear_image_scoped` | `apps/desktop-client/src/commands/products_images.rs:102` | `dev_mock` :229, `tablet` :147 | no reason recorded — bare string |
-| `ui/src/api/products.ts:418` `products_list_images_scoped` | `apps/desktop-client/src/commands/products_images.rs:120` | `dev_mock` :230, `tablet` :148 | no reason recorded — bare string |
-| `ui/src/api/sales.ts:257` `preview_promoted_total_from_lines_scoped` | `apps/desktop-client/src/commands/pos.rs:254` (tablet twin `apps/tablet-client/src/commands/pos.rs:1265`) | `dev_mock` :228, no tablet entry | no reason recorded — bare string |
+| `ui/src/api/topology.ts:179` `save_topology_template` | `apps/desktop-tauri/src/commands/topology/commands.rs:67` | `dev_mock` :233, `tablet` :160 | no reason recorded — the entry is a bare quoted string |
+| `ui/src/api/topology.ts:192` `load_topology_template` | `apps/desktop-tauri/src/commands/topology/commands.rs:88` | `dev_mock` :221, `tablet` :125 | no reason recorded — bare string |
+| `ui/src/api/topology.ts:203` `list_topology_templates` | `apps/desktop-tauri/src/commands/topology/commands.rs:102` | `dev_mock` :220, `tablet` :119 | no reason recorded — bare string |
+| `ui/src/api/topology.ts:214` `delete_topology_template` | `apps/desktop-tauri/src/commands/topology/commands.rs:115` | `dev_mock` :218, `tablet` :60 | no reason recorded — bare string |
+| `ui/src/api/gateway.ts:24` `gateway_status` | `apps/desktop-tauri/src/commands/settings.rs:259` (tablet twin `apps/mobile-tauri/src/commands/settings.rs:508`) | `dev_mock` :219, no tablet entry | no reason recorded — bare string |
+| `ui/src/api/staff.ts:572` `refresh_picker_ticket` | `apps/desktop-tauri/src/commands/auth.rs:294`, forwarding to `crates/oz-bridge/src/auth.rs:739` | `dev_mock` :232, `tablet` :152 | no reason recorded — bare string |
+| `ui/src/api/localApi.ts:28` `local_api_status_scoped` | `apps/desktop-tauri/src/commands/local_api.rs:275` | `dev_mock` :227, `tablet` :131 | no reason recorded — bare string |
+| `ui/src/api/localApi.ts:32` `local_api_set_enabled_scoped` | `apps/desktop-tauri/src/commands/local_api.rs:291` | `dev_mock` :224, `tablet` :128 | no reason recorded — bare string |
+| `ui/src/api/localApi.ts:36` `local_api_set_port_scoped` | `apps/desktop-tauri/src/commands/local_api.rs:306` | `dev_mock` :225, `tablet` :129 | no reason recorded — bare string |
+| `ui/src/api/localApi.ts:43` `local_api_set_store_scoped` | `apps/desktop-tauri/src/commands/local_api.rs:320` | `dev_mock` :226, `tablet` :130 | no reason recorded — bare string |
+| `ui/src/api/localApi.ts:51` `local_api_rotate_secret_scoped` | `apps/desktop-tauri/src/commands/local_api.rs:340` | `dev_mock` :223, `tablet` :127 | no reason recorded — bare string |
+| `ui/src/api/localApi.ts:59` `local_api_mint_token_scoped` | `apps/desktop-tauri/src/commands/local_api.rs:358` | `dev_mock` :222, `tablet` :126 | no reason recorded — bare string |
+| `ui/src/api/products.ts:403` `products_set_image_scoped` | `apps/desktop-tauri/src/commands/products_images.rs:67` | `dev_mock` :231, `tablet` :149 | no reason recorded — bare string |
+| `ui/src/api/products.ts:411` `products_clear_image_scoped` | `apps/desktop-tauri/src/commands/products_images.rs:102` | `dev_mock` :229, `tablet` :147 | no reason recorded — bare string |
+| `ui/src/api/products.ts:418` `products_list_images_scoped` | `apps/desktop-tauri/src/commands/products_images.rs:120` | `dev_mock` :230, `tablet` :148 | no reason recorded — bare string |
+| `ui/src/api/sales.ts:257` `preview_promoted_total_from_lines_scoped` | `apps/desktop-tauri/src/commands/pos.rs:254` (tablet twin `apps/mobile-tauri/src/commands/pos.rs:1265`) | `dev_mock` :228, no tablet entry | no reason recorded — bare string |
 
 present 16 of 16, absent 0 — the whole set is at
 `scripts/ipc-parity-allowlist.json:218-233` (query: `git grep -n '"<name>"' --
@@ -114,7 +114,7 @@ command anywhere in the shells, measured as 0 hits each for `git grep -nw local_
 `local_api_mint_token`, `local_api_rotate_secret`, `products_set_image`,
 `products_clear_image`, `products_list_images`, `preview_promoted_total_from_lines` (0
 hits for all ten, against the 426 `#[tauri::command]` declarations found across
-`apps/desktop-client/src/commands` and `apps/tablet-client/src/commands`; query: count
+`apps/desktop-tauri/src/commands` and `apps/mobile-tauri/src/commands`; query: count
 matches of `#\[tauri::command\]\s*pub (async )?fn ([a-z0-9_]+)` over those two trees). the
 alias rule exists to bridge the ADR #7 rename, unscoped handler keys against scoped call
 sites (`mockDispatcher.ts:60-77`); there is nothing to bridge here. using it would mean
@@ -126,13 +126,13 @@ desktop shell registers them and the tablet shell does not, which is why each ca
 second entry in the `tablet` section (the two lines quoted in the first section,
 `list_sync_conflicts_scoped` and `resolve_sync_conflict_scoped`, are the same class of
 gap for commands outside the sixteen). only two of the sixteen exist in both shells —
-`gateway_status` (`apps/desktop-client/src/commands/settings.rs:259` /
-`apps/tablet-client/src/commands/settings.rs:508`) and
-`preview_promoted_total_from_lines_scoped` (`apps/desktop-client/src/commands/pos.rs:254`
-/ `apps/tablet-client/src/commands/pos.rs:1265`) — and those two are absent from the
+`gateway_status` (`apps/desktop-tauri/src/commands/settings.rs:259` /
+`apps/mobile-tauri/src/commands/settings.rs:508`) and
+`preview_promoted_total_from_lines_scoped` (`apps/desktop-tauri/src/commands/pos.rs:254`
+/ `apps/mobile-tauri/src/commands/pos.rs:1265`) — and those two are absent from the
 `tablet` allowlist for exactly that reason (query: membership in the `tablet` array, plus
-`git grep -c ::<name> -- apps/desktop-client/src/lib.rs
-apps/tablet-client/src/lib.rs` → 1 hit in each file for these two names, and 1 hit in the
+`git grep -c ::<name> -- apps/desktop-tauri/src/lib.rs
+apps/mobile-tauri/src/lib.rs` → 1 hit in each file for these two names, and 1 hit in the
 desktop file only for the other 14). for those 14 the browser-preview gap and the
 cross-platform gap are two independent facts about the same name, and the allowlist records
 both, with no note on either.
@@ -150,7 +150,7 @@ and `:59` are six string literals, each of the form
 `loggedInvoke<LocalApiStatusDto>('local_api_..._scoped', { sessionToken, ... })` — the
 command name is typed out in quotes at every one of the six. 0 of the six build a name at
 runtime. the pin at
-`apps/desktop-client/src/commands/registration_gate_tests.rs:864` is therefore not
+`apps/desktop-tauri/src/commands/registration_gate_tests.rs:864` is therefore not
 flagging these commands and never could: it looks for `invoke(` followed by something that
 is not a quote, and these lines put a quote immediately after the open paren.
 
@@ -160,9 +160,9 @@ literal, 3 non-literal — `ui/src/__tests__/dev-mock-scoped-aliases.test.ts:65`
 `ui/src/__tests__/useSessionKeepalive.test.ts:25` and
 `ui/src/dev-mock/core/mockDispatcher.ts:108` (this is a reimplementation of the predicate
 in `registration_gate_tests.rs:852-869`, not a run of the crate). the desktop tolerance
-list has five paths (`apps/desktop-client/src/commands/registration_gate_tests.rs:883-904`)
+list has five paths (`apps/desktop-tauri/src/commands/registration_gate_tests.rs:883-904`)
 and covers all three, so the desktop pin's offender set is 0; the tablet tolerance list has
-four (`apps/tablet-client/src/commands/registration_gate_tests.rs:830-841`), is missing
+four (`apps/mobile-tauri/src/commands/registration_gate_tests.rs:830-841`), is missing
 `dev-mock/core/mockDispatcher.ts`, and so its offender set is exactly 1, the forwarder at
 `ui/src/dev-mock/core/mockDispatcher.ts:108`.
 
@@ -173,7 +173,7 @@ extracts (`scripts/verify-ipc-parity.py:60-62` matches both spellings) is visibl
 ban. the desktop file already says that in its own words, on the entry it flags as "FOUND
 TONIGHT, NOT PRE-AUTHORISED": "If logged-invoke is meant to be the only funnel, this ban
 should be rewritten to run over its callers instead of over invoke( sites"
-(`apps/desktop-client/src/commands/registration_gate_tests.rs:833-841`). a computed name
+(`apps/desktop-tauri/src/commands/registration_gate_tests.rs:833-841`). a computed name
 written in `ui/src/api` today would be invisible to the pin and fully visible to the
 parity gate; that is the asymmetry, and it has nothing to do with the localApi six.
 
@@ -193,10 +193,10 @@ parity gate; that is the asymmetry, and it has nothing to do with the localApi s
     git grep -n 'fn local_api_status_scoped(' -- apps crates          # the rust command
     git grep -nw 'local_api_status' -- apps                           # 0 hits: no base twin
     git grep -n '"local_api_status_scoped"' -- scripts/ipc-parity-allowlist.json
-    git grep -c ::local_api_status_scoped -- apps/desktop-client/src/lib.rs         apps/tablet-client/src/lib.rs                                 # which shells register it
+    git grep -c ::local_api_status_scoped -- apps/desktop-tauri/src/lib.rs         apps/mobile-tauri/src/lib.rs                                 # which shells register it
 
     # the pins, run for real rather than mirrored:
-    cargo test -p oz-pos-app registration
+    cargo test -p kasirmu-app registration
     cargo test -p oz-pos-tablet registration
 
 timing, because the branch is moving under the reader as well as it moved under me: gate

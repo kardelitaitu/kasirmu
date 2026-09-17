@@ -24,7 +24,7 @@ Method: read-only. No cargo, no git writes, no edits outside `.agents`. Consumer
 
 | # | Entry point (shell) | Handler (working-tree file:line) | Keys written (write site) | Calls the enqueue door? | Intent |
 |---|---|---|---|---|---|
-| 1 | tablet `set_receipt_settings` | apps/tablet-client/src/commands/settings.rs:98 | 11: receipt.show_currency, receipt.decimal_separator, receipt.show_tax, receipt.footer, receipt.paper_width, receipt.show_table_number, receipt.margin_top/bottom/left/right, tax.rounding_mode — :116-126 | NO | **silent** |
+| 1 | tablet `set_receipt_settings` | apps/mobile-tauri/src/commands/settings.rs:98 | 11: receipt.show_currency, receipt.decimal_separator, receipt.show_tax, receipt.footer, receipt.paper_width, receipt.show_table_number, receipt.margin_top/bottom/left/right, tax.rounding_mode — :116-126 | NO | **silent** |
 | 2 | tablet `set_receipt_settings_scoped` | :678 | same twin | NO | silent |
 | 3 | tablet `set_store_settings` | :178 | 6: store.name (:196), store.address (:197), store.tax_id (:198), currency.default (:199), store.branch (:200), store.logo (:201) | NO | silent |
 | 4 | tablet `set_store_settings_scoped` | :708 | same twin | NO | silent |
@@ -34,23 +34,23 @@ Method: read-only. No cargo, no git writes, no edits outside `.agents`. Consumer
 | 8 | tablet `set_hardware_settings_scoped` | :841 | the same five (:854-858) | NO | silent |
 | 9 | tablet `set_user_preferences` | :398 | caller-supplied pairs — `Vec<UserPrefEntry>` mapped at :404 — written to the per-USER table, not `settings` | NO | silent, and off-lane (Finding C) |
 | 10 | tablet `set_user_preferences_scoped` | :437 | same, mapped at :450 | NO | silent, off-lane |
-| 11 | desktop `set_receipt_settings_scoped` | apps/desktop-client/src/commands/settings.rs:57 → crates/oz-bridge/src/settings.rs:991 `run_set_receipt_settings` | the same 11 (:997-1007) | NO | silent |
+| 11 | desktop `set_receipt_settings_scoped` | apps/desktop-tauri/src/commands/settings.rs:57 → crates/oz-bridge/src/settings.rs:991 `run_set_receipt_settings` | the same 11 (:997-1007) | NO | silent |
 | 12 | desktop `set_store_settings_scoped` | :95 → crates/oz-bridge/src/settings.rs:1015 | the same 6 (:1021-1026) | NO | silent |
 | 13 | desktop `set_credit_settings_scoped` | :121 → crates/oz-bridge/src/settings.rs:1072 | the same 3 (:1088-1090) | NO | silent |
 | 14 | desktop `set_hardware_settings_scoped` | :196 → crates/oz-bridge/src/settings.rs:1128 | **no settings keys at all**: `TerminalProfile` → JSON → `INSERT OR REPLACE INTO hardware_profiles` at :854, in the GLOBAL db — doc at :1125 "The `hardware_profiles` table lives in the global DB (not per-store)" | NO | silent, and structurally off the settings lane (Finding C) |
 | 15 | desktop `set_user_preferences_scoped` | :226 → crates/oz-bridge/src/settings.rs:1188 | caller-supplied pairs (:1201) → `UserPreferences::set_batch(&db, &session.user_id, &pairs)` :1202 | NO | silent, off-lane |
-| 16 | tablet `complete_setup` | apps/tablet-client/src/commands/setup.rs:72 | one composed `feature.*`-style key per feature (:97 `Settings::set(&tx, &key, &value)`), store.preset (:104), store.setup_complete (:107), store.show_setup_wizard (:110) | NO | silent |
-| 17 | desktop `complete_setup` | apps/desktop-client/src/commands/setup.rs:42 | same shape (bridge/core writers) | NO | silent |
+| 16 | tablet `complete_setup` | apps/mobile-tauri/src/commands/setup.rs:72 | one composed `feature.*`-style key per feature (:97 `Settings::set(&tx, &key, &value)`), store.preset (:104), store.setup_complete (:107), store.show_setup_wizard (:110) | NO | silent |
+| 17 | desktop `complete_setup` | apps/desktop-tauri/src/commands/setup.rs:42 | same shape (bridge/core writers) | NO | silent |
 | 18 | cloud-server `set_setting_scoped_pg` | apps/cloud-server/src/email_pg.rs:455 (helper `set_setting_pg` :419) | server-side PG config rows | n/a — the server is the hub, not a peer | documented-elsewhere: the egress policy is scoped to the two shells + the bridge (ADR 51/52 lineage); no peer lane exists here |
 
 **Query behind every NO:**
 `grep -rn 'enqueue_settings_update' apps crates platform --include=*.rs | grep -v tests` returns
 **15 lines** (44 with test files included), and the only *call sites* of a queue door in them are
 **five**: crates/oz-bridge/src/settings.rs:1230, :1297, :1368 and
-apps/tablet-client/src/commands/settings.rs:570, :904 (the rest are the two funnel definitions at
+apps/mobile-tauri/src/commands/settings.rs:570, :904 (the rest are the two funnel definitions at
 :632 / :640, their doc comments, and `crates/oz-core/src/db/offline.rs:194` where the queue row is
 written). **No typed door appears in that set.** Cross-checked per-file:
-`grep -n 'enqueue' apps/desktop-client/src/commands/setup.rs apps/tablet-client/src/commands/setup.rs` → no hits.
+`grep -n 'enqueue' apps/desktop-tauri/src/commands/setup.rs apps/mobile-tauri/src/commands/setup.rs` → no hits.
 
 ## Table 2 — the raw doors (5), for contrast
 
@@ -59,7 +59,7 @@ written). **No typed door appears in that set.** Cross-checked per-file:
 | R1 | desktop/bridge `set_setting` | crates/oz-bridge/src/settings.rs:1210 | :1230 | `String` (arbitrary) | replicate-by-default is stated |
 | R2 | desktop/bridge `set_setting_scoped` | :1258 | :1297 | `String` | stated |
 | R3 | desktop/bridge BATCH `set_settings_scoped` | :1326 | :1368 | `HashMap<String,String>` | stated; the funnel is "the single egress funnel for all three settings-write commands in this module" (:652) |
-| R4 | tablet `set_setting` | apps/tablet-client/src/commands/settings.rs:549 | :570 → helper :640 → :660 | `String` | stated; tenant hard-coded "default" at :660, doc :637 ("global queue (SYNC-10)") |
+| R4 | tablet `set_setting` | apps/mobile-tauri/src/commands/settings.rs:549 | :570 → helper :640 → :660 | `String` | stated; tenant hard-coded "default" at :660, doc :637 ("global queue (SYNC-10)") |
 | R5 | tablet `set_setting_scoped` | :879 | :904 | `String` | stated |
 
 The deliberateness that exists in-tree is all about **which keys are refused**, never about which
@@ -158,8 +158,8 @@ into a global table on the far end.]** Measure it before arming anything.
 
 Direct writers of `sync_server_url`, none of which calls a queue door, and the doc that says so
 [Fact: platform/core/src/settings/keys.rs:333 "The four writers of `sync_server_url`"]:
-crates/oz-bridge/src/sync.rs:71 · apps/tablet-client/src/commands/sync.rs:87 ·
-apps/desktop-client/src/sync_bootstrap.rs:83 · platform/sync/src/daemon_tick.rs:83 — all four
+crates/oz-bridge/src/sync.rs:71 · apps/mobile-tauri/src/commands/sync.rs:87 ·
+apps/desktop-tauri/src/sync_bootstrap.rs:83 · platform/sync/src/daemon_tick.rs:83 — all four
 verified on disk as `Settings::set_sync_server_url(...)`. **documented-elsewhere-with-a-cite**:
 the note exists to prove refusing that key "drops no working traffic", not to declare the key
 non-replicating — which is why its value is not **deliberate**.

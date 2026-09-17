@@ -1,0 +1,41 @@
+[package]
+name = "kasirmu-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "kasir.mu OpenAPI REST server — axum-based HTTP API with JWT auth."
+
+# Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
+[lints]
+workspace = true
+
+[dependencies]
+kasirmu-core = { workspace = true }
+modules-currency = { workspace = true }
+rusqlite = { workspace = true }
+axum = { workspace = true }
+jsonwebtoken = { workspace = true }
+tower-http = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+sha2 = { workspace = true }
+hmac = { workspace = true }
+hex = { workspace = true }
+foundation = { workspace = true }
+# Phase 1.2 (docs/archived/2026-08-15-unify-auth-and-sync.md): the cloud server's Postgres branch
+# passes a pool through `AppState` so REST handlers can read/write Postgres.
+tokio-postgres = { workspace = true }
+deadpool-postgres = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tower = { workspace = true }
+http-body-util = { workspace = true }
+serde_json = { workspace = true }

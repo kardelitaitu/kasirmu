@@ -4,7 +4,7 @@ import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import SalesByHourWidget from '@/features/sales/widgets/SalesByHourWidget';
 import salesFtl from '@/locales/sales.ftl?raw';
 import type { SalesByHourRow } from '@/api/sales';
-import { clearWidgets, getDeniedWidgets, getWidgets } from '@/platform/ui/widget-registry';
+import { clearWidgets, getDeniedWidgets, getWidgets } from '@/registries/widget-registry';
 import { registerSalesWidgets } from '@/features/sales/widgets';
 
 const mockExportSalesByHour = vi.fn();

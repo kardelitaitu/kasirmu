@@ -1,4 +1,4 @@
-# Admin Guide — OZ-POS
+# Admin Guide — kasir.mu
 
 <!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (3 findings) · SUPERSEDES the 2026-07-26 stamp; its observation O1 still stands and is carried forward here: this doc lists KDS as a top-level "Workspace" beside Store POS / Inventory / Admin, while the seed registers workspace_key='kds' as a SCREEN under restaurant-pos rather than a standalone workspace type — a deliberate user-facing simplification, not a code error, but a reader who administers the DB will not find a kds workspace_type row. Re-verified accurate this pass: workspace_types seeded store-pos / inventory / restaurant-pos / admin; roles Owner / Manager / Cashier / Kitchen; shift open/close, cash payout, offline queue, and the five reports (sales, eod, menu-engineering, custom, inventory) all map to real features; scripts/backup-db.sh and scripts/restore-db.sh exist; the upgrade path via PUT /api/v1/tenants/{tenant_id}/plan matches the live handler, which really is free|pro only. Repaired: (1) the setup wizard offers SIX presets (Simple Retail, Restaurant, Full Store, Cafe / Bakery, Franchise, Custom) and the page listed three — and the stamp it sat under had certified the shortened list as "consistent with workspace seeds", which is the failure mode this whole audit keeps finding: a check that confirms a summary rather than comparing it to the source; (2) PIN is 4-8 digits, not 4-6 — min 4 enforced twice (CreatePinScreen.tsx:44 and commands/auth.rs:192), max 8 applied by silent truncation in digitsOnly() (slice(0, 8)), so a long paste is cut rather than rejected; (3) removed a shadow stamp from the footer block — a "status: ACCURATE (0 findings)" line sitting outside the <!-- Audit stamp --> comment, contradicting the real stamp's 1 observation and unfindable by check-audit-stamps.py. -->
 
@@ -34,7 +34,7 @@ Navigate to **Admin → Workspaces** to manage workspace types:
 3. Set **role** (owner, manager, cashier, kitchen)
 4. Assign a **PIN** (**4–8 digits**) for quick login. The minimum is 4, enforced twice:
    `CreatePinScreen.tsx:44` and again server-side at
-   `apps/desktop-client/src/commands/auth.rs:192`. The maximum is 8, and it is not an
+   `apps/desktop-tauri/src/commands/auth.rs:192`. The maximum is 8, and it is not an
    error — `digitsOnly()` at `CreatePinScreen.tsx:36` does `.slice(0, 8)`, so a longer
    paste is silently truncated rather than rejected. "4-6" was wrong at the top end and
    described a bound nothing enforces.

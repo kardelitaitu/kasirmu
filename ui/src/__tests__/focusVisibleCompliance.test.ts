@@ -380,11 +380,11 @@ const CSS_FILES = [
   'features/design/TooltipPreview.css',
   'features/locations/MultiStoreDashboardScreen.css',
   'features/locations/TerminalStatusPanel.css',
-  'frontend/shell/AppLayout.css',
-  'frontend/shell/StatusBar.css',
-  'frontend/shell/tablet/tablet.css',
-  'frontend/shared/ContextMenu.css',
-  'frontend/shared/SettingsPopup.css',
+  'app/AppLayout.css',
+  'app/StatusBar.css',
+  'app/tablet/tablet.css',
+  'components/ContextMenu.css',
+  'components/SettingsPopup.css',
   'components/FastPINOverlay.css',
   'components/QrisQrDisplay.css',
   'components/StoreSwitcher.css',
@@ -392,7 +392,7 @@ const CSS_FILES = [
   'components/MachineIdStatus.css',
   'components/ConnectionStatus.css',
   'components/UpdateBanner.css',
-  'frontend/themes/components.css',
+  'theme/components.css',
 ];
 
 describe('Focus-visible compliance', () => {
@@ -527,7 +527,7 @@ const BOUNDARY_WAIVED_BASELINE: string[] = [
   });
 
   it('reset.css properly disables outline on bare mouse focus via :focus:not(:focus-visible)', () => {
-    const resetPath = resolve(UI_SRC, 'frontend/themes/reset.css');
+    const resetPath = resolve(UI_SRC, 'theme/reset.css');
     const css = readFileSync(resetPath, 'utf-8');
     expect(css).toMatch(/:focus:not\(:focus-visible\)\s*\{\s*outline:\s*none;?\s*\}/);
   });

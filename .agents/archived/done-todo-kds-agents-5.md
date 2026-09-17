@@ -17,7 +17,7 @@
 - [x] Existing suite green: `cargo test -p oz-lan` (63+1 baseline), `cargo test -p oz-pos-app kds_lan_live` (5/5), `--lib registration` 12/12, `--lib state` 13/13. → **All four green at baseline BEFORE any edit, all four green after, kds_lan_live twice back-to-back identical (see stamp).**
 
 ## Fence & law
-`crates/oz-lan/**` ONLY (lib.rs + kds_sync.rs + their test files) + this doc. NO desktop-client, NO bridge, NO `ui/**`. Wire format frozen — no serialization changes. `feat(kds-lan):` subjects; one-line pathspec commits; new files via the sanctioned add-chain; per-file `rustfmt --edition 2024` ONLY (the hook no longer runs cargo fmt; NEVER --all/-p). No clippy mid-run, no push/branch/stash/amend. Stamp honestly, then rename this doc → `done-todo-kds-agents-5.md`.
+`crates/oz-lan/**` ONLY (lib.rs + kds_sync.rs + their test files) + this doc. NO desktop-tauri, NO bridge, NO `ui/**`. Wire format frozen — no serialization changes. `feat(kds-lan):` subjects; one-line pathspec commits; new files via the sanctioned add-chain; per-file `rustfmt --edition 2024` ONLY (the hook no longer runs cargo fmt; NEVER --all/-p). No clippy mid-run, no push/branch/stash/amend. Stamp honestly, then rename this doc → `done-todo-kds-agents-5.md`.
 
 ---
 
@@ -90,5 +90,5 @@ House law: per-file `rustfmt --edition 2024` on exactly the six touched files; n
 ### Deferred
 
 - Buffering events for the WHOLE absence window (not just the failed write) — needs a device→subscription registry beyond this order's scope; snapshot reconciliation (`want_queue`) remains the completeness mechanism, as designed in agent 2.
-- desktop-client provider wiring note (`with_kds_queue` INTEGRATION comment in `lib.rs`) untouched: `apps/**` is fenced (two live sessions; tablet auth mid-flight).
+- desktop-tauri provider wiring note (`with_kds_queue` INTEGRATION comment in `lib.rs`) untouched: `apps/**` is fenced (two live sessions; tablet auth mid-flight).
 - `git push`: not run — awaits an explicit order.

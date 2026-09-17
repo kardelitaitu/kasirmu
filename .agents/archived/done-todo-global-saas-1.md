@@ -330,7 +330,7 @@ Scope findings from the pre-implementation investigation, in execution order:
 - **Rename surfaces mapped** — ⚠️ **the inventory below is the pre-rename state, kept
   verbatim as the audit trail; those paths no longer exist and are NOT current file
   names.** Every one has been renamed: `crates/oz-core/src/store_profile.rs` is now
-  `location_profile.rs`; `apps/desktop-client/src/commands/store_profiles.rs` is now
+  `location_profile.rs`; `apps/desktop-tauri/src/commands/store_profiles.rs` is now
   `commands/locations.rs` (with its `_tests` sibling); `ui/src/api/stores.ts` is now
   `api/locations.ts`; `ui/src/features/stores/` is now `features/locations/`;  <!-- dead-ref: ok: this note exists precisely to name the pre-rename paths -->
   `ui/src/locales/multi-store.ftl` is now `multi-location.ftl` (+ `.id.ftl`).
@@ -346,8 +346,8 @@ Scope findings from the pre-implementation investigation, in execution order:
   keys only. Added 2026-09-08 by docs-auditor; the section body is untouched.
 - **Rename surfaces mapped**: `crates/oz-core` (`store_profile.rs`,
   `db/mod.rs` region, `db/store_profile` repo if present), `apps/
-  desktop-client/src/commands/store_profiles.rs` (308 lines, 7 scoped IPC
-  commands + DTOs) + `store_profiles_tests.rs`, `apps/tablet-client`
+  desktop-tauri/src/commands/store_profiles.rs` (308 lines, 7 scoped IPC
+  commands + DTOs) + `store_profiles_tests.rs`, `apps/mobile-tauri`
   (subscription count query, terminals FK comment/tests, workspaces boot
   resolution), `apps/cloud-server` (sync tests), IPC parity allowlist (7
   command names) + dev-mock (`ui/src/dev-mock/tauri-api.ts`) + dev-mock
@@ -615,7 +615,7 @@ Scope findings from the pre-implementation investigation, in execution order:
         both families against one stateful location list, including CRUD and
         primary-location behavior.
   - Evidence: `cargo check --manifest-path
-        apps/desktop-client/Cargo.toml`; from `ui/`, `npm run typecheck`,
+        apps/desktop-tauri/Cargo.toml`; from `ui/`, `npm run typecheck`,
         `npm run lint -- --quiet`, and the focused Vitest run covering
         `dev-mock-stores.test.ts`, `api-locations-contract.test.ts`, and
         `api-stores-contract.test.ts` (21 passed). The canonical mock test
@@ -1590,8 +1590,8 @@ slice's own unfinished surface, and it looked green locally before biting:
 
 - **tablet (4):** `create_legal_entity_scoped`, `get_legal_entity_scoped`,
   `list_legal_entities_scoped`, `update_legal_entity_scoped` are invoked by
-  the UI but absent from `apps/tablet-client/src/lib.rs` `generate_handler!`.
-  Desktop is already wired (`apps/desktop-client/src/lib.rs` is modified);
+  the UI but absent from `apps/mobile-tauri/src/lib.rs` `generate_handler!`.
+  Desktop is already wired (`apps/desktop-tauri/src/lib.rs` is modified);
   tablet has not been touched. The parity gate checks **both** clients.
 - **dev-mock (4):** the same four have no handler in
   `ui/src/dev-mock/tauri-api.ts` and no unscoped twin to alias, so `invoke()`
@@ -1793,7 +1793,7 @@ safely") because the new §B read-only enforcement in desktop `pos.rs` calls
 inside async tauri commands. This is the same trap the memo push slice
 already solved (`a009d3cf`): the DB guard must die LEXICALLY before any
 await (scoped block, load-then-await), because tauri command futures must be
-Send. Pattern exists in-repo at `apps/desktop-client/src/lib.rs` (memo push
+Send. Pattern exists in-repo at `apps/desktop-tauri/src/lib.rs` (memo push
 daemon: "guard must die here, lexically, before the HTTP"). Also worth a
 thought while here: loading the subscription on EVERY sale adds a lock
 acquire per checkout — consider a cached grace-state (the fail-closed
@@ -3499,7 +3499,7 @@ feature-flag observability slice's **step-5 gate is MET** — the
 `94e8a100`, choke point `453c629f`). The `scope` reason code is now
 buildable. Its remaining execution gate is only the §B
 `max_stores` → `max_locations` rename (verified still pending: the caps
-DTO at `apps/desktop-client/src/commands/subscription.rs:34` still
+DTO at `apps/desktop-tauri/src/commands/subscription.rs:34` still
 carries `max_stores` with no deprecation note). When the shell recovers,
 the observability design's status line should be amended: implementation
 gate = §B rename only.

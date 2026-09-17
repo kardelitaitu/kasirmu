@@ -108,7 +108,7 @@ export function storeOffsetMs(tz: string | null | undefined): number {
  *
  * 'UTC' is not an invented policy: it is the schema's own default for this
  * column — `timezone TEXT NOT NULL DEFAULT 'UTC'` in both
- * crates/oz-core/migrations/20260813_init.sql:803 and the generated
+ * crates/kasirmu-core/migrations/20260813_init.sql:803 and the generated
  * 20260813_init.pg.sql:199. Because the column is NOT NULL, a persisted store
  * always has a zone; null here means the profile is still loading or the fetch
  * failed. storeOffsetMs() parses only fixed ±HH:MM offsets and returns 0 for

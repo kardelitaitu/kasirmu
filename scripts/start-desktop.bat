@@ -4,9 +4,9 @@ REM  start-desktop.bat — launches the OZ-POS desktop client in dev mode.
 REM
 REM  Run from project root (or any directory). It will cd to the Rust crate,
 REM  then `cargo tauri dev` which builds the Rust binary in debug profile,
-REM  starts Vite on the devUrl defined in apps/desktop-client/tauri.conf.json,
+REM  starts Vite on the devUrl defined in apps/desktop-tauri/tauri.conf.json,
 REM  and bridges them via the Tauri Webview. UI edits under ui/src/*.tsx hot-
-REM  reload via HMR; Rust edits under apps/desktop-client/src/ trigger a
+REM  reload via HMR; Rust edits under apps/desktop-tauri/src/ trigger a
 REM  rebuild.
 REM
 REM  DO NOT REPLACE THE COMMAND WITHOUT READING THIS:
@@ -19,7 +19,7 @@ REM      `cargo tauri build --debug` if you want a debug .exe without
 REM      leaving dev mode (still no HMR though).
 REM    - DO NOT remove `pause`. The console host closes the window on its
 REM      own when the script exits, hiding any startup error from you.
-REM    - DO NOT change `cd /d "%~dp0..\apps\desktop-client"`. cargo locates
+REM    - DO NOT change `cd /d "%~dp0..\apps\desktop-tauri"`. cargo locates
 REM      Cargo.toml via CWD; without this, running the bat from any directory
 REM      fails with "could not find Cargo.toml". (The `..` appeared when this
 REM      file moved from the repo root into scripts/ in f3d9cca6 -- the warning
@@ -28,7 +28,7 @@ REM      "restoring" it straight back to that error.)
 REM    - `setlocal` / `endlocal` keep env-var changes scoped to this run.
 REM      Do NOT add global `set` lines without bounding them between them.
 REM    - `%~dp0` is the directory containing this bat (now `scripts\`); the
-REM      `..\apps\desktop-client` suffix is resolved relative to that, so the
+REM      `..\apps\desktop-tauri` suffix is resolved relative to that, so the
 REM      bat works no matter which directory it is invoked from. Do NOT replace
 REM      with an absolute path that ties it to one developer's machine layout.
 REM
@@ -54,10 +54,10 @@ REM  inside scripts\scripts\, which does not exist.)
 REM ============================================================================
 setlocal
 
-REM cd /d into the desktop-client crate so cargo finds Cargo.toml.
-REM `%~dp0` is this bat's own directory (scripts\); `..\apps\desktop-client` is relative
+REM cd /d into the desktop-tauri crate so cargo finds Cargo.toml.
+REM `%~dp0` is this bat's own directory (scripts\); `..\apps\desktop-tauri` is relative
 REM to that, which keeps the bat independent of its invocation CWD.
-cd /d "%~dp0..\apps\desktop-client"
+cd /d "%~dp0..\apps\desktop-tauri"
 
 REM Auto-clear any stale dev process bound to the Vite port (default 1420).
 REM The .ps1 prints [OK]/[WARN]/[FAIL] lines per holder so this is visible.

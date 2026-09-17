@@ -1,8 +1,8 @@
 # Quickstart
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (4 command-level errors fixed, 1 config bug flagged) · FIXED 08-09: (a) the page told you to run bare `cargo tauri dev` from the repo root and `npm run tauri dev` from ui/ — there is no `tauri` script in ui/package.json (the UI scripts are dev, dev:tablet, build, build:tablet and none of them start the Tauri shell); (b) setup-dev.ps1 was described as six steps, it runs seven, and the list now comes from the script's own step -Label calls; (c) "the CI matrix runs on Linux, Windows and macOS" was false — every dev-ci.yml job is ubuntu-latest, and Windows/macOS exist only in release.yml on v* tags, so a platform-specific bug is not caught before merge; (d) `cargo fmt --check` was attributed to AGENTS.md, which says `cargo fmt --all` and re-stages. FLAGGED NOT FIXED: apps/desktop-client/tauri.conf.json beforeDevCommand is `npm run dev --prefix ../ui`, which resolves to apps/ui and does not exist — proved with npm (ENOENT on apps\ui\package.json, versus ../../ui which reaches package.json). Its own frontendDist and the tablet config both use ../../ui from the same depth, so desktop is the outlier; the workaround is documented in the page. That is a config change, not a doc change. Every bash line now carries the WSL-vs-Git-bash warning from AGENTS.md. · HISTORY 2026-08-31: removed the false 'mock feature gate' claim (mocks always compile), corrected the crate list to 13 and the HAL driver list · verified accurate this pass: rust-version 1.88 and edition 2024 in Cargo.toml, engines node>=22/npm>=11 in ui/package.json, all 13 crates, the five payment drivers, the onboarding-guide #first-time-setup anchor, and every relative link on the page -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (4 command-level errors fixed, 1 config bug flagged) · FIXED 08-09: (a) the page told you to run bare `cargo tauri dev` from the repo root and `npm run tauri dev` from ui/ — there is no `tauri` script in ui/package.json (the UI scripts are dev, dev:mobile, build, build:mobile and none of them start the Tauri shell); (b) setup-dev.ps1 was described as six steps, it runs seven, and the list now comes from the script's own step -Label calls; (c) "the CI matrix runs on Linux, Windows and macOS" was false — every dev-ci.yml job is ubuntu-latest, and Windows/macOS exist only in release.yml on v* tags, so a platform-specific bug is not caught before merge; (d) `cargo fmt --check` was attributed to AGENTS.md, which says `cargo fmt --all` and re-stages. FLAGGED NOT FIXED: apps/desktop-tauri/tauri.conf.json beforeDevCommand is `npm run dev --prefix ../ui`, which resolves to apps/ui and does not exist — proved with npm (ENOENT on apps\ui\package.json, versus ../../ui which reaches package.json). Its own frontendDist and the tablet config both use ../../ui from the same depth, so desktop is the outlier; the workaround is documented in the page. That is a config change, not a doc change. Every bash line now carries the WSL-vs-Git-bash warning from AGENTS.md. · HISTORY 2026-08-31: removed the false 'mock feature gate' claim (mocks always compile), corrected the crate list to 13 and the HAL driver list · verified accurate this pass: rust-version 1.88 and edition 2024 in Cargo.toml, engines node>=22/npm>=11 in ui/package.json, all 13 crates, the five payment drivers, the onboarding-guide #first-time-setup anchor, and every relative link on the page -->
 
-This guide gets OZ-POS building and running on your machine in under 15 minutes. It's aimed at first-time contributors — for the deeper project conventions, see `CONTRIBUTING.md`, `AGENTS.md`, and the skills under `.agents/skills/`.
+This guide gets kasir.mu building and running on your machine in under 15 minutes. It's aimed at first-time contributors — for the deeper project conventions, see `CONTRIBUTING.md`, `AGENTS.md`, and the skills under `.agents/skills/`.
 
 ---
 
@@ -64,14 +64,14 @@ cd ui && npm ci --no-audit --no-fund
 cd ..
 
 # 4. Run the Tauri app in development mode — from the app directory, not the root
-cd apps/desktop-client && cargo tauri dev
+cd apps/desktop-tauri && cargo tauri dev
 # tablet shell:
-cd apps/tablet-client && cargo tauri dev
+cd apps/mobile-tauri && cargo tauri dev
 ```
 
 > ⚠️ **The desktop dev command currently fails at its own pre-dev step.**
-> `apps/desktop-client/tauri.conf.json` sets `beforeDevCommand` to
-> `npm run dev --prefix ../ui`, but from `apps/desktop-client` that resolves to
+> `apps/desktop-tauri/tauri.conf.json` sets `beforeDevCommand` to
+> `npm run dev --prefix ../ui`, but from `apps/desktop-tauri` that resolves to
 > `apps/ui`, which does not exist. Proved, not inferred:
 >
 > ```text
@@ -83,17 +83,17 @@ cd apps/tablet-client && cargo tauri dev
 > ```
 >
 > The same file's `frontendDist` is `../../ui/dist` and the tablet config uses
-> `npm run dev:tablet --prefix ../../ui` — both two levels up, from the same directory
+> `npm run dev:mobile --prefix ../../ui` — both two levels up, from the same directory
 > depth. Desktop's `../ui` is the outlier and is almost certainly a missing `../`.
 > Until it is fixed, blank the hook with a config merge and start Vite yourself.
 > Verified against this tree — with the override the ENOENT disappears and the CLI goes
 > straight to `Running DevCommand`:
 >
 > ```bash
-> # terminal 1 — from apps/desktop-client
+> # terminal 1 — from apps/desktop-tauri
 > npm run dev --prefix ../../ui
 >
-> # terminal 2 — from apps/desktop-client
+> # terminal 2 — from apps/desktop-tauri
 > cargo tauri dev --config '{"build":{"beforeDevCommand":""}}' --no-dev-server-wait
 > ```
 >
@@ -102,8 +102,8 @@ cd apps/tablet-client && cargo tauri dev
 > merged over `tauri.conf.json`, which is what actually sidesteps the bad path.
 >
 > There is **no `npm run tauri` script** in `ui/package.json` (an earlier revision of
-> this page told you to run one). The UI scripts are `dev`, `dev:tablet`, `build`,
-> `build:tablet` — they start Vite only, not the Tauri shell.
+> this page told you to run one). The UI scripts are `dev`, `dev:mobile`, `build`,
+> `build:mobile` — they start Vite only, not the Tauri shell.
 
 The first build will take several minutes (Rust crates + Tauri binaries). Subsequent builds are fast.
 
@@ -119,7 +119,7 @@ cargo test --workspace --all-features
 cd ui && npm run test
 ```
 
-The Rust test suite is fully offline — no browser, no network, no hardware. Mocks live in `crates/oz-hal/src/drivers/mock.rs` and are always compiled (there is no `mock` feature gate).
+The Rust test suite is fully offline — no browser, no network, no hardware. Mocks live in `crates/kasirmu-hal/src/drivers/mock.rs` and are always compiled (there is no `mock` feature gate).
 
 ---
 
@@ -203,24 +203,24 @@ If you only want the i18n quality gate as a quick pre-flight, run `bash scripts/
 oz-pos/
 ├── Cargo.toml                  # workspace root
 ├── crates/                     # Rust workspace members (one per oz-* responsibility)
-│   ├── oz-core/                # money, currency, cart, sale, inventory
-│   ├── oz-crypto/              # cryptographic primitives (secret encryption at rest)
-│   ├── oz-hal/                 # hardware abstraction + drivers
-│   ├── oz-lua/                 # mlua runtime + script bindings
-│   ├── oz-media/               # media pipeline (compress, crop, thumbnail)
-│   ├── oz-security/            # encryption, secrets, PCI helpers
-│   ├── oz-payment/             # Stripe, Square, QRIS, Paddle, mock
-│   ├── oz-reporting/           # analytics + CSV export
-│   ├── oz-logging/             # structured logging
-│   ├── oz-api/                 # HTTP API server (axum)
-│   ├── oz-notification/        # email & push notification dispatching
-│   ├── oz-plugin/              # plugin sandbox & lifecycle
-│   └── oz-cli/                 # migrations, backup, export CLI
-├── apps/desktop-client/        # the desktop Tauri shell
+│   ├── kasirmu-core/                # money, currency, cart, sale, inventory
+│   ├── kasirmu-crypto/              # cryptographic primitives (secret encryption at rest)
+│   ├── kasirmu-hal/                 # hardware abstraction + drivers
+│   ├── kasirmu-lua/                 # mlua runtime + script bindings
+│   ├── kasirmu-media/               # media pipeline (compress, crop, thumbnail)
+│   ├── kasirmu-security/            # encryption, secrets, PCI helpers
+│   ├── kasirmu-payment/             # Stripe, Square, QRIS, Paddle, mock
+│   ├── kasirmu-reporting/           # analytics + CSV export
+│   ├── kasirmu-logging/             # structured logging
+│   ├── kasirmu-api/                 # HTTP API server (axum)
+│   ├── kasirmu-notification/        # email & push notification dispatching
+│   ├── kasirmu-plugin/              # plugin sandbox & lifecycle
+│   └── kasirmu-cli/                 # migrations, backup, export CLI
+├── apps/desktop-tauri/        # the desktop Tauri shell
 │   └── src/commands/           # Tauri commands (one folder per feature)
 ├── ui/                         # React + TypeScript front-end
 │   └── src/api/                # per-domain invoke() wrappers
-├── crates/oz-core/migrations/  # SQL migration files
+├── crates/kasirmu-core/migrations/  # SQL migration files
 ├── docs/                       # project documentation
 ├── .agents/skills/             # agent skills (read these when contributing)
 └── .github/workflows/          # CI pipelines
@@ -274,7 +274,7 @@ All green? Open the PR.
 
 ## Troubleshooting
 
-### "error: package `oz-core` cannot be built because it requires rustc 1.88 or newer"
+### "error: package `kasirmu-core` cannot be built because it requires rustc 1.88 or newer"
 
 (The version in that message is whatever the workspace is currently locked at — the
 sentence is about the toolchain floor, not the release.)
@@ -326,7 +326,7 @@ Expected. The drift guard no-ops the checks that need code (checks 2–4, 7) in 
 - [`WHITEPAPER.md`](./WHITEPAPER.md) — the "why" behind the tech choices
 - `.agents/skills/onboarding-guide` — pick the right skill for the layer you're touching
 
-Welcome to OZ-POS. Keep the curtain closed, the merchant happy, and the money integer.
+Welcome to kasir.mu. Keep the curtain closed, the merchant happy, and the money integer.
 
 ---
 

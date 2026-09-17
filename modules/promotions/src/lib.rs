@@ -17,7 +17,7 @@ next: none (migrate rule engine when built) | perf: N/A
 //!
 //! This is a **stub**: it registers with the kernel, declares its
 //! dependency on `sales`, and logs its lifecycle transitions. The rule
-//! engine still lives in `oz-core` and the management screen in
+//! engine still lives in `kasirmu-core` and the management screen in
 //! `ui/src/features/`. The `promotions-engine` feature flag already gates
 //! the capability and itself depends on `discount-engine`.
 //!

@@ -16,15 +16,15 @@
 import { describe, it, vi } from 'vitest';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import { checkA11y } from './axe-helper';
-import AppLayout from '@/frontend/shell/AppLayout';
-import TabletAppLayout from '@/frontend/shell/tablet/TabletAppLayout';
+import AppLayout from '@/app/AppLayout';
+import TabletAppLayout from '@/app/tablet/TabletAppLayout';
 import { Modal } from '@/components/Modal';
 
 // ── Leaf shell components are stubbed with minimal accessible equivalents ──
 // Each is covered by its own focused suite; only the SHELL landmark
 // structure (skip link, sidebar nav, main, status footer) is under test here.
 
-vi.mock('@/frontend/shell/StatusBar', () => ({
+vi.mock('@/app/StatusBar', () => ({
   // A div (NOT a <footer>) so the status role is aria-allowed-role legal:
   // axe rejects role="status" on <footer> (implicit contentinfo semantics).
   default: () => (
@@ -34,7 +34,7 @@ vi.mock('@/frontend/shell/StatusBar', () => ({
   ),
 }));
 
-vi.mock('@/frontend/shell/UpdateBanner', () => ({
+vi.mock('@/app/UpdateBanner', () => ({
   default: () => null,
 }));
 

@@ -354,7 +354,7 @@ waiting; the code edit moves to P8.
 
 **Classified decorative, not fixed:** DailyTotalWidget's `aria-hidden`
 locked-tier preview (4), SettingsPage's hidden form-submit shim + Ctrl/S kbd
-hints (3), WarehouseFnBar `F12`, the "OZ-POS" brand marks, "Pro" tier badges,
+hints (3), WarehouseFnBar `F12`, the "kasir.mu" brand marks, "Pro" tier badges,
 and the `e.g. 50000` / `pcs / kg / box` / `A-01` input examples.
 
 ### Round 2 status
@@ -598,7 +598,7 @@ revealed it); and the `{value}` comment above.
 | Dynamic families pinned by tests | 0 | **12 bounded families, 86 ids** |
 | Test files | 410 (1 failing) | **413, all passing** |
 
-The 21 remaining are: brand marks (OZ-POS ×2), `aria-hidden` locked-tier
+The 21 remaining are: brand marks (kasir.mu ×2), `aria-hidden` locked-tier
 preview (4), hidden form-submit shim + `Ctrl`/`S`/`F12` key hints (4), `Pro`
 tier badge, input examples (`e.g. 50000`, `pcs / kg / box` ×2, `A-01` ×2), and
 5 documented last-resort nets over **data** values (`?? item.label` ×2,

@@ -9,10 +9,17 @@ import '../styles/global.css';
 interface Props {
   title: string;
   description?: string;
+  noindex?: boolean;
+  /** Override the SoftwareApplication Offer price (default Free IDR 0). Pass locale pricing. */
+  offerPrice?: string;
+  offerCurrency?: string;
 }
 
-const { title, description } = Astro.props;
+const { title, description, noindex, offerPrice = '0', offerCurrency } = Astro.props;
 const locale = Astro.currentLocale ?? 'en';
+const resolvedCurrency = offerCurrency ?? (locale === 'id' ? 'IDR' : 'USD');
+const ogLocale = locale === 'id' ? 'id_ID' : 'en_US';
+const ogAltLocale = locale === 'id' ? 'en_US' : 'id_ID';
 const desc = description ?? t(locale, 'meta.description');
 // hreflang alternates for the same page in the other locale. Reuse the
 // locale-stripping logic from LocaleSwitcher so /en/docs/x → /id/docs/x.
@@ -38,17 +45,24 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
          global.css as the 'Inter Variable' / 'JetBrains Mono Variable'
          families) — no third-party font origin, no blocking font CSS. -->
 <!-- Apply the stored theme before first paint and on SPA swaps. -->
-    <script is:inline>
-      (() => {
-        const applyTheme = () => {
-          const t = localStorage.getItem('oz_theme');
-          document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light';
-        };
-        applyTheme();
-        document.addEventListener('astro:after-swap', applyTheme);
-      })();
-    </script>
+<script is:inline>
+  (() => {
+    const applyTheme = () => {
+      // Read new key first, fall back to legacy key for migration
+      const t = localStorage.getItem('kasirmu_theme') ?? localStorage.getItem('oz_theme');
+      // Migrate legacy key if present
+      if (localStorage.getItem('oz_theme') !== null) {
+        localStorage.setItem('kasirmu_theme', localStorage.getItem('oz_theme'));
+        localStorage.removeItem('oz_theme');
+      }
+      document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light';
+    };
+    applyTheme();
+    document.addEventListener('astro:after-swap', applyTheme);
+  })();
+</script>
     <meta name="description" content={desc} />
+    {noindex && <meta name="robots" content="noindex" />}
     <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
     <link rel="sitemap" href="/sitemap-index.xml" />
     <!-- Preconnect: Cloudflare Web Analytics beacon (auto-injected by the edge).
@@ -59,9 +73,11 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
     {locales.map((code) => (
       <link rel="alternate" hreflang={code} href={getAbsoluteLocaleUrl(code, path)} />
     ))}
+    <link rel="alternate" hreflang="x-default" href={getAbsoluteLocaleUrl('id', path)} />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="kasir.mu" />
-    <meta property="og:locale" content={locale} />
+    <meta property="og:locale" content={ogLocale} />
+    <meta property="og:locale:alternate" content={ogAltLocale} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={desc} />
     <meta property="og:url" content={new URL(Astro.url.pathname, Astro.site)} />
@@ -71,6 +87,9 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={desc} />
+    <meta name="twitter:image" content={new URL('/og-image.png', Astro.site)} />
     <script type="application/ld+json" is:inline set:html={JSON.stringify({
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
@@ -79,10 +98,31 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
       "operatingSystem": "Windows, Linux, macOS, Android",
       "offers": {
         "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD"
+        "price": offerPrice,
+        "priceCurrency": resolvedCurrency
       },
       "description": desc
+    })} />
+    <script type="application/ld+json" is:inline set:html={JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "kasir.mu",
+      "url": "https://kasir.mu",
+      "logo": "https://kasir.mu/favicon.svg",
+      "sameAs": ["https://kasir.mu"],
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "email": "support@kasir.mu",
+        "contactType": "customer support",
+        "availableLanguage": ["Indonesian", "English"]
+      }
+    })} />
+    <script type="application/ld+json" is:inline set:html={JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "kasir.mu",
+      "url": "https://kasir.mu",
+      "inLanguage": ["id", "en"]
     })} />
     <title>{title}</title>
   </head>

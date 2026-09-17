@@ -19,7 +19,7 @@ sync, and scripting — is shown on the [pricing page](../../pricing/).
 | Warehouses      | 1    | 2    | 3   | Unlimited | Unlimited |
 | Staff users     | 1    | 5    | 20  | 50      | Unlimited |
 | Sales history   | 3 months | 1 year | 5 years | Unlimited | Unlimited |
-| QRIS payments   | No   | ✓    | ✓   | ✓       | ✓         |
+| QRIS payments   | ✓ (static + dynamic) | ✓ (static + dynamic) | ✓ | ✓ | ✓ |
 | Cloud sync      | No   | ✓    | ✓   | ✓       | ✓         |
 | Scripting (Lua) | No   | No   | No  | ✓       | ✓         |
 

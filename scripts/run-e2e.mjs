@@ -72,7 +72,7 @@ let cleanupDone = false;
 // (the observed `toomanyrequests` CI failures). Keep in sync with the
 // digest in docker-compose.e2e.yml.
 const E2E_REDIS_IMAGE =
-  'public.ecr.aws/docker/library/redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2';
+  'public.ecr.aws/docker/library/redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf';
 
 /** Synchronous cross-platform sleep (Node has no sync sleep built in). */
 function sleepSync(ms) {
@@ -158,13 +158,14 @@ const LOCAL_BUILD_CONTEXTS = [
   {
     service: 'e2e-cloud-server',
     image: 'e2e-cloud-server:latest',
-    // Dockerfile.server: context is the repo root, but .dockerignore drops
-    // ui/, docs/, apps/desktop-client and apps/tablet-client, and cargo only
-    // builds the oz-cloud-server package — so apps/license-server and
+    // ops/docker/Dockerfile.server: Compose is given --project-directory, so
+    // the context is still the repo root; .dockerignore drops
+    // ui/, docs/, apps/desktop-tauri and apps/mobile-tauri, and cargo only
+    // builds the kasirmu-cloud package — so apps/license-server and
     // apps/unified cannot change this binary.
     paths: [
       'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml',
-      'Dockerfile.server', '.dockerignore',
+      'ops/docker/Dockerfile.server', '.dockerignore',
       'crates', 'foundation', 'platform', 'modules',
       'apps/cloud-server',
       'scripts/docker-entrypoint.sh', 'scripts/updater-compat-check',
@@ -264,7 +265,7 @@ function buildServices(services) {
   for (const { service, reason } of services) {
     log('Docker', `Building ${service} — ${reason}`);
     execSync(
-      `docker compose -f "${ROOT}/docker-compose.e2e.yml" build ${service}`,
+      `docker compose --project-directory "${ROOT}" -f "${ROOT}/ops/docker/docker-compose.e2e.yml" build ${service}`,
       { stdio: 'inherit', timeout: 2_400_000 },
     );
   }
@@ -302,7 +303,7 @@ function assertImagesFresh() {
   }
   console.log('');
   log('Docker', `Rebuild them and re-run:  ${BOLD}npm run e2e -- --build${NC}`);
-  log('Docker', `Or build one directly:    docker compose -f docker-compose.e2e.yml build ${stale[0].service}`);
+  log('Docker', `Or build one directly:    docker compose --project-directory . -f ops/docker/docker-compose.e2e.yml build ${stale[0].service}`);
   throw new Error('stale E2E images');
 }
 
@@ -316,7 +317,7 @@ function assertImagesFresh() {
  * only — it is not committed, never persisted, and discarded on cleanup.
  *
  * NOTE: The generated key does NOT match the committed public key
- * (crates/oz-core/oz-license.key.pub). Tests that verify real license
+ * (crates/kasirmu-core/oz-license.key.pub). Tests that verify real license
  * signatures must provide a real OZ_LICENSE_PRIVATE_KEY instead.
  */
 function ensureLicenseKey() {
@@ -344,12 +345,12 @@ function dumpContainerLogs() {
   try {
     log('Docker', 'Dumping service logs for diagnosis...');
     execSync(
-      `docker compose -f "${ROOT}/docker-compose.e2e.yml" logs --tail 100`,
+      `docker compose --project-directory "${ROOT}" -f "${ROOT}/ops/docker/docker-compose.e2e.yml" logs --tail 100`,
       { stdio: 'inherit', timeout: 15_000 },
     );
     log('Docker', 'Container status:');
     execSync(
-      `docker compose -f "${ROOT}/docker-compose.e2e.yml" ps -a`,
+      `docker compose --project-directory "${ROOT}" -f "${ROOT}/ops/docker/docker-compose.e2e.yml" ps -a`,
       { stdio: 'inherit', timeout: 10_000 },
     );
   } catch {
@@ -383,7 +384,7 @@ function startDocker() {
   try {
     prePullRedis();
     execSync(
-      `docker compose -f "${ROOT}/docker-compose.e2e.yml" up -d --wait --pull=missing`,
+      `docker compose --project-directory "${ROOT}" -f "${ROOT}/ops/docker/docker-compose.e2e.yml" up -d --wait --pull=missing`,
       { stdio: 'inherit', timeout: 120_000 },
     );
     dockerStarted = true;
@@ -401,7 +402,7 @@ function stopDocker() {
   log('Docker', 'Stopping E2E services...');
   try {
     execSync(
-      `docker compose -f "${ROOT}/docker-compose.e2e.yml" down -v`,
+      `docker compose --project-directory "${ROOT}" -f "${ROOT}/ops/docker/docker-compose.e2e.yml" down -v`,
       { stdio: 'pipe', timeout: 60_000 },
     );
     dockerStarted = false;

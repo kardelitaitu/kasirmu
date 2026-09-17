@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useLocalization, type ReactLocalization } from '@fluent/react';
-import Tooltip from '@/frontend/shell/Tooltip';
+import Tooltip from '@/app/Tooltip';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { monthCalendarGrid, DAY_LABEL_KEYS, MONTH_LABEL_KEYS, type HeatCell, type YearlyHeatmapColumn } from './analytics-data';
 import type { QueryStatus } from './useAnalyticsQuery';

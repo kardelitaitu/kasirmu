@@ -1,15 +1,15 @@
 # Promotions Module
 
-**Status:** Module crate is a lifecycle stub — the promotion engine itself shipped in `crates/oz-core` (PROMO-3)
+**Status:** Module crate is a lifecycle stub — the promotion engine itself shipped in `crates/kasirmu-core` (PROMO-3)
 
 ## Overview
 
-Discount evaluation is **live**: the engine in `crates/oz-core/src/promotion_engine.rs`
+Discount evaluation is **live**: the engine in `crates/kasirmu-core/src/promotion_engine.rs`
 computes Fixed / buy-X-get-Y discounts, and `compute_checkout_promotions` applies
 them at checkout (PROMO-3). This module crate is the *eventual* home for that
 logic — percentage and fixed-amount discounts, buy-X-get-Y, bundle pricing,
 time-windowed campaigns, and coupon codes — but the working engine currently
-lives in `oz-core`, not here. It answers one question for the cart: given these
+lives in `kasirmu-core`, not here. It answers one question for the cart: given these
 lines, which discounts apply and what do they subtract?
 
 ## Module Info
@@ -21,13 +21,13 @@ lines, which discounts apply and what do they subtract?
 | Version      | `0.1.0` |
 | Dependencies | `["sales"]` — discounts are evaluated against a cart |
 | Permissions  | `promotions:view`, `promotions:apply`, `promotions:manage` |
-| Feature flag | `promotions-engine` (`crates/oz-core/src/features.rs`) |
+| Feature flag | `promotions-engine` (`crates/kasirmu-core/src/features.rs`) |
 
 ## Currently Owns
 
 Nothing yet. `PromotionsModule` registers with the kernel, declares its dependency
 on `sales`, and logs its lifecycle transitions. The working promotion logic lives
-in `crates/oz-core` — see the `promotion_engine` row in `crates/oz-core/README.md`,
+in `crates/kasirmu-core` — see the `promotion_engine` row in `crates/kasirmu-core/README.md`,
 plus `db/promotions.rs` and the checkout application in `db/sales_checkout.rs`.
 
 ## Design notes for the promotion
@@ -43,7 +43,7 @@ plus `db/promotions.rs` and the checkout application in `db/sales_checkout.rs`.
 
 ## Promotion Checklist
 
-> The engine already exists in `oz-core` (PROMO-3); these are **migration**
+> The engine already exists in `kasirmu-core` (PROMO-3); these are **migration**
 > tasks to lift it into this module, not greenfield work.
 
 - [ ] `models.rs` — `PromotionRule`, `RuleKind`, `DiscountLine`, `Coupon`

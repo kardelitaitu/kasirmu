@@ -6,7 +6,7 @@
  * The two tokens, as measured at commit c85bae9ef:
  *   · front end arms the screen on  `reports:view`   — ui/src/features/sales/register.tsx:48
  *       registerPage({ route: 'eod-report', …, requiredPermission: 'reports:view' })
- *   · the command refuses without   `reports:export` — apps/tablet-client/src/commands/history.rs:428
+ *   · the command refuses without   `reports:export` — apps/mobile-tauri/src/commands/history.rs:428
  *       (export_eod_report_scoped → require_permission_for_user(…, permissions::REPORTS_EXPORT);
  *        the daily-summary twin at :380 and the sales-by-hour twin at :404 check the SAME constant)
  *
@@ -51,7 +51,7 @@ import path from 'node:path';
  * environment that URL is not a `file:` scheme, so `fileURLToPath` rejects it.
  */
 function findRoot(): string {
-  const markers = ['ui/src/features/sales/register.tsx', 'apps/tablet-client/src/commands/history.rs'];
+  const markers = ['ui/src/features/sales/register.tsx', 'apps/mobile-tauri/src/commands/history.rs'];
   let dir = process.cwd();
   for (let up = 0; up < 6; up += 1) {
     if (markers.every((m) => fs.existsSync(path.join(dir, m)))) return dir;
@@ -68,7 +68,7 @@ const read = (rel: string): string => fs.readFileSync(path.join(ROOT, rel), 'utf
 const REGISTER_TSX = 'ui/src/features/sales/register.tsx';
 const EOD_SCREEN = 'ui/src/features/sales/EodReportScreen.tsx';
 const API_SALES = 'ui/src/api/sales.ts';
-const TABLET_HISTORY = 'apps/tablet-client/src/commands/history.rs';
+const TABLET_HISTORY = 'apps/mobile-tauri/src/commands/history.rs';
 const RBAC = 'platform/core/src/rbac.rs';
 const PRESETS = 'platform/core/src/rbac_presets.rs';
 

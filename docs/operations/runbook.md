@@ -1,4 +1,4 @@
-# Operations Runbook — OZ-POS (unified Northflank deployment)
+# Operations Runbook — kasir.mu (unified Northflank deployment)
 
 <!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (4 findings) · SUPERSEDES the 2026-08-31 stamp, which was honest when written — "ACCURATE (0 findings)", verified against HEAD that apps/unified/healthcheck.sh and docs/archived/2026-08-15-unify-auth-and-sync.md exist and that the sync-path claims held. It was overtaken by events, and that is the finding: 23c963303 retired ten workflows to .bak on 2026-09-02, two days later, and swept none of the operational docs that named them. · REPAIRED: (1) §8.5 headline claimed "Merges to main now auto-deploy" via deploy.yml — that file is .bak, and its successor northflank-deploy sits in dev-ci.yml, whose on: block has only pull_request + workflow_dispatch, so the job's own push-branch condition is unreachable dead logic (flagged, not fixed: adding push: branches: [main] reinstates automatic production deploys, and that job omits release-readiness from its needs). Deploys are manual-only via Run workflow. (2) The §8 summary table repeated the same false trigger. (3) §8.5 recommended deploy.yml as "the preferred, auditable path" over Northflank native git triggers — the recommended path is gone, leaving the discouraged one as the only automatic option. (4) §9 claimed the website deploys via website.yml → npx wrangler deploy — zero wrangler references exist in any live workflow, and dev-ci.yml#website stops at Build; the deploy is npm run deploy from website/, by hand. · CODE FINDINGS FLAGGED, NOT PATCHED: the dead push branch above, and website/package.json:17 ("deploy": "bash ../scripts/wrangler-deploy.sh") — the only npm script in the repo invoking bare bash, which AGENTS.md records as resolving to WSL on this platform where it hangs until killed or runs Linux node against Windows-built node_modules. AGENTS.md's own env-var section recommends that command while its own Windows section says bare bash hangs: two correct documents, one contradiction, neither wrong when written. · REV 2 (09-09-26, docs-auditor, CI-claim pass) — status: ACCURATE AFTER REPAIR (4 findings) + 3 more stale-CI instructions fixed in the same section, all of them leftovers of the same retirement. Repaired: §9.2 named the PR `check` job and the `deploy` job (both only in `website.yml.bak:71`/`:144`) and §9.5 told the reader to treat a red `deploy` job as an incident (`.github/workflows/website.yml.bak` is inert since `23c963303`, 2026-09-02) — §9.2 now states plainly that nothing deploys the website and that a rejected token no longer has any CI surface at all, and §9.5 pages on the live-site probe instead. Also dead: §9.3 probe #1 (`gh run list --workflow "Website Deploy"` lists no runs — the empty list is the missing workflow, not health), the §9.3 note claiming the fail-fast credential step runs as the deploy job's first step (`website.yml.bak:155`, retired with it), §9.4 step 4's "re-run the last failed run / push a trivial change" (no run exists, and `dev-ci.yml` has no push trigger; `dev-ci.yml:137-163` builds the site and stops), and §9.1/§9.4's "put it in the GitHub secret store" (`git grep -l CLOUDFLARE_API_TOKEN -- .github/workflows` → `website.yml.bak` only; the live consumer is `scripts/wrangler-deploy.sh:42` reading the environment). Verified from the files: live workflows are `dev-ci.yml` + `release.yml` only; `dev-ci.yml` `on:` is `pull_request: branches: [main]` + `workflow_dispatch` with no `push:` and no `schedule:`; `static-gates` has 28 named steps. Nothing weakened: every open recommendation in §9.5 stays open and is now explicitly unbuilt. · STILL TRUE, re-checked not assumed: backup-pb.sh and litestream.yml are server-side artifacts the operator creates under /opt/oz, not repo files, so their absence from the tree is correct and my sweep's flags against them are false positives. · WHY THIS SLIPPED THE NET: verify-ci-docs-drift.py polices ci-pipeline.md, releases/checklist.md and the pre-commit hook — not this runbook. A workflow retirement updates the checked page and leaves the unchecked one naming the dead file. -->
 
@@ -264,7 +264,7 @@ fallback, no open token mint) and implies `OZ_DB_REQUIRE_TLS=1` (startup
 fails if `DATABASE_URL` lacks `sslmode=require`). Keep all three in the
 Northflank secret store, never in the image.
 
-The `docker-compose.yml` full-stack path enforces this even earlier: both
+The `ops/docker/docker-compose.yml` full-stack path enforces this even earlier: both
 `OZ_API_SECRET` and `OZ_ADMIN_KEY` use the `:?` required interpolation, so
 `docker compose up` fails at parse time when either is unset — regardless of
 `OZ_PRODUCTION` (DOCKER-04). Generate both with `openssl rand -hex 32`.
@@ -322,7 +322,7 @@ the growth path in `docs/archived/2026-08-15-unify-auth-and-sync.md`.
 ### Log Growth Cap (50 MB per service)
 
 Every service in the Compose stack runs the `json-file` log driver with
-`max-size: "10m"` and `max-file: "5"` (set in `docker-compose.yml` and
+`max-size: "10m"` and `max-file: "5"` (set in `ops/docker/docker-compose.yml` and
 the prod/pg overrides) — so each service holds **at most 50 MB of logs
 (5 × 10 MB) regardless of uptime**. Unbounded log growth that fills the
 host disk is no longer possible.
@@ -403,7 +403,7 @@ docker volume prune
 |---------|-------|
 | Service name | `oz-cloud` |
 | Public URL | `https://license.ozpos.my.id` |
-| Dockerfile | `Dockerfile.unified` (repo root) |
+| Dockerfile | `ops/docker/Dockerfile.unified` (under `ops/docker/`) |
 | Port | `80` (caddy; routes to :8080 PocketBase / :3099 Rust) |
 | Volume | single volume at `/data` (Northflank free tier = 1 volume) |
 | Build trigger | **`workflow_dispatch` only** — Actions → Dev CI → Run workflow, which runs `northflank-deploy`. There is no push-triggered build; see §8.5 for why the `push` branch of that job's `if:` is unreachable |
@@ -412,7 +412,7 @@ docker volume prune
 
 | Function | Data path |
 |----------|-----------|
-| Sync (Rust SQLite) | `/data/oz-pos.db` |
+| Sync (Rust SQLite) | `/data/kasir.db` |
 | Auth (PocketBase) | `/data/pb_data/` (`serve --dir=/data/pb_data`) |
 
 Both live under `/data` so one persistent volume covers the whole service.
@@ -426,13 +426,13 @@ longer exists — migrating that data requires a PocketBase backup → restore
 |----------|----------------|-------|
 | `OZ_LICENSE_PRIVATE_KEY` | RSA PEM | required — Go license server exits without it (`OZ_LICENSE_KEY` is the legacy alias) |
 | `OZ_API_SECRET` | `openssl rand -hex 32` | required when `OZ_PRODUCTION=1` |
-| `OZ_ADMIN_KEY` | `openssl rand -hex 32` | required — `docker-compose.yml` fails at parse time when unset; with `OZ_PRODUCTION=1` the server also refuses to start; gates token mint |
+| `OZ_ADMIN_KEY` | `openssl rand -hex 32` | required — `ops/docker/docker-compose.yml` fails at parse time when unset; with `OZ_PRODUCTION=1` the server also refuses to start; gates token mint |
 | `OZ_ADMIN_EMAIL` | the admin tenant's email | web-dashboard admin identity — the gate compares this to the signed-in tenant's email, and falls back to a compiled-in inbox when unset. **Set it before the admin-identity repair ships — see directly below the table** |
 | `OZ_PRODUCTION` | `1` | fail-closed boot: refuses to start if either secret is unset; implies `OZ_DB_REQUIRE_TLS=1` |
 | `OZ_ENFORCE_PLANS` | `1` | reject free-plan sync (403 plan_required) |
 | `OZ_CORS_ORIGINS` | optional | extra origins beyond the default allowlist |
 | `OZ_DB_POOL_SIZE` | `20` | Postgres pool size (ignored for SQLite) |
-| `DATABASE_URL` | `postgres://user:pass@host:5432/db?sslmode=require` | optional — switch from SQLite to the managed PostgreSQL addon (free on Northflank). Requires `sslmode=require` (fail-fast at boot). See `docs/archived/2026-08-15-unify-auth-and-sync.md` §Phase 3.5 for the full cutover. The image defaults to `/data/oz-pos.db` (SQLite); this variable overrides the connection string. |
+| `DATABASE_URL` | `postgres://user:pass@host:5432/db?sslmode=require` | optional — switch from SQLite to the managed PostgreSQL addon (free on Northflank). Requires `sslmode=require` (fail-fast at boot). See `docs/archived/2026-08-15-unify-auth-and-sync.md` §Phase 3.5 for the full cutover. The image defaults to `/data/kasir.db` (SQLite); this variable overrides the connection string. |
 | `OZ_LOG_FORMAT` | `json` or unset | log output format (plain unless `json`) |
 | `OZ_APPLY_SCHEMA` | `0` post-cutover | default applies full DDL at startup; set `0` once the schema exists and the app runs as the restricted `oz_app` role (§6.3) |
 | `OZ_REDIRECT_ONLY` / `OZ_SYNC_REDIRECT_URL` | optional | sync-redirect mode — `OZ_REDIRECT_ONLY=true` requires `OZ_SYNC_REDIRECT_URL`; dev/testing only |
@@ -467,7 +467,7 @@ Web admin access is an email match against this variable (`admin_dashboard.go:87
 Sessions are in-memory (`web_otp.go:13-19`), so a restart drops admin sessions: a session-path lockout self-heals on restart, and equally a revoked admin session cannot be killed without one. A restart is not a way to remove an attacker who has the mailbox — they just request another OTP.
 
 > **Scaling beyond the free tier:** the unified image defaults to SQLite
-> (sync `/data/oz-pos.db` + PocketBase `/data/pb_data/`), which is fine for
+> (sync `/data/kasir.db` + PocketBase `/data/pb_data/`), which is fine for
 > the target 200–400 terminals. When you approach that ceiling — or observe
 > SQLite lock contention in production (`SQLITE_BUSY` in the logs, sync
 > latency growing) — enable the **free Northflank PostgreSQL addon** and set
@@ -499,9 +499,9 @@ All point at the unified host; each also has an env-var override:
 
 | File | Change | Override |
 |------|--------|----------|
-| `crates/oz-core/src/license_verification.rs` | `LICENSE_SERVER_URL` const | `OZ_LICENSE_SERVER_URL` |
-| `apps/desktop-client/tauri.conf.json` | CSP `connect-src` | — |
-| `apps/tablet-client/tauri.conf.json` | CSP `connect-src` | — |
+| `crates/kasirmu-core/src/license_verification.rs` | `LICENSE_SERVER_URL` const | `OZ_LICENSE_SERVER_URL` |
+| `apps/desktop-tauri/tauri.conf.json` | CSP `connect-src` | — |
+| `apps/mobile-tauri/tauri.conf.json` | CSP `connect-src` | — |
 | `ui/src/features/auth/LicenseActivationScreen.tsx` | `AUTH_SERVICE_URL` fallback | `VITE_AUTH_SERVICE_URL` |
 | `ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx` | pinned URL | — |
 
@@ -570,7 +570,7 @@ dashboard clicks.
      unset skips the smoke step)
 
 **Behavior:** runs on push to `main` filtered to the unified-image inputs
-(`Dockerfile.unified`, `Cargo.toml`/`Cargo.lock`, `rust-toolchain.toml`,
+(`ops/docker/Dockerfile.unified`, `Cargo.toml`/`Cargo.lock`, `rust-toolchain.toml`,
 `crates/**`, `foundation/**`, `platform/**`, `modules/**`, `apps/**`) plus
 `workflow_dispatch` for manual redeploys. Fail-closed: missing token/IDs
 fails the job loudly. Until the §8 env table is fully applied, the smoke
@@ -616,13 +616,13 @@ captures and surfaces in **Dashboard → service → Logs**.
 
 **Everything below is a hosted-service diagnostic, and that is a limitation of
 the clients, not of this page.** No shipped binary writes a persistent local
-log: both Tauri apps initialise logging with `oz_logging::try_init()`
-(`apps/desktop-client/src/lib.rs:99`, `apps/tablet-client/src/lib.rs:69`),
+log: both Tauri apps initialise logging with `kasirmu_logging::try_init()`
+(`apps/desktop-tauri/src/lib.rs:99`, `apps/mobile-tauri/src/lib.rs:69`),
 which installs an `EnvFilter` + `fmt` subscriber and **no writer**
-(`crates/oz-logging/src/lib.rs:78-89`, no `.with_writer`), so stdout goes wherever the OS puts it
+(`crates/kasirmu-logging/src/lib.rs:78-89`, no `.with_writer`), so stdout goes wherever the OS puts it
 — which for a double-clicked desktop build is nowhere. The two entry points
 that would have created a file, `init_with_file` and `init_json_with_file`
-(`crates/oz-logging/src/lib.rs:184`, `:238`), have **zero callers outside their
+(`crates/kasirmu-logging/src/lib.rs:184`, `:238`), have **zero callers outside their
 own tests**; `log_dir` / `LogRoot` / `app_log` / `path_resolver` return **0
 matches across `apps/`**, and the EventLog backend is never wired by any
 binary either. So there is no on-device log file to open, and nothing in this
@@ -663,10 +663,10 @@ anyway because the type could not be mapped`
 (`modules/inventory/src/handlers.rs`, `operation` =
 `InventoryStockHandler::handle_line`). Search the prefix, so that finding
 nothing for one never reads as health for the other — and know which half the
-lane you are reading can even produce: `oz-cloud-server` links `oz-api` and
-`oz-core` only (`apps/cloud-server/Cargo.toml:19-20`), so container logs can
+lane you are reading can even produce: `oz-cloud-server` links `kasirmu-api` and
+`kasirmu-core` only (`apps/cloud-server/Cargo.toml:19-20`), so container logs can
 carry the fallback line (its `operation` there is
-`pg_row_to_product_with_details`, `crates/oz-api/src/pg.rs:1064`) but **never**
+`pg_row_to_product_with_details`, `crates/kasirmu-api/src/pg.rs:1064`) but **never**
 the sale-line one, which lives in `modules/inventory` — its absence from a
 hosted log is architecture, not health. On a device both can fire and neither
 is recorded anywhere (see the scope note above). Each line carries
@@ -701,7 +701,7 @@ persists a log, the on-device question is never "which rows warned" but "which
 rows *could* have": group the stored values by their form.
 
 ```sql
--- Device form: sqlite3 /data/oz-pos.db  (per-install desktop/tablet DB)
+-- Device form: sqlite3 /data/kasir.db  (per-install desktop/tablet DB)
 -- The identical statement runs on PostgreSQL unchanged; add `tenant_id` to the
 -- SELECT and GROUP BY when you run it hosted, and the forms group per tenant.
 SELECT CASE
@@ -877,7 +877,7 @@ That key list is `SECRET_KEY_DENY_LIST` in `platform/core/src/settings/keys.rs` 
 copy it from there if it has moved since this section was written, and note that
 the comparison in `is_non_exportable_setting_key` is trim-then-ASCII-case-fold,
 so an oddly spelled row is judged on its folded form. The 38-character floor comes
-from `looks_like_ciphertext` in `crates/oz-crypto/src/lib.rs`: a 12-byte nonce and
+from `looks_like_ciphertext` in `crates/kasirmu-crypto/src/lib.rs`: a 12-byte nonce and
 a 16-byte GCM tag minimum, base64url without padding. On PostgreSQL the same
 thinking applies but `GLOB` does not exist — use `value !~ '^[A-Za-z0-9_-]+$'` for
 the inverted class.
@@ -898,7 +898,7 @@ than it sounds:
 > `encrypt_sync_api_key` and its siblings derive through `portable_key`, whose
 > fallback is `derive_key` over SHA-256 of the domain prefix concatenated with the
 > literal `"static"` — not machine-bound. The crate says so about itself, plainly,
-> in the threat-model note on `derive_static_key` in `crates/oz-crypto/src/lib.rs`:
+> in the threat-model note on `derive_static_key` in `crates/kasirmu-crypto/src/lib.rs`:
 > that key is a public constant, anyone with the repository can derive it and
 > decrypt every portable at-rest value in any deployment's database, and what the
 > encoding buys is protection against opportunistic inspection of the file, not
@@ -912,7 +912,7 @@ than it sounds:
 > that variable is absent — a shaped row that fails to decrypt is therefore not
 > evidence of tampering and not evidence of cleartext either; it may simply be a
 > different derivation. For the process in front of you, ask the code rather than
-> guessing: `oz_crypto::master_key_derivation_active()` reports which derivation
+> guessing: `kasirmu_crypto::master_key_derivation_active()` reports which derivation
 > this process selected, and nothing else — a historical install may have had the
 > variable set and be long gone. Whether these families should move to
 > machine-bound derivation is a rewrap decision, and it is deliberately not taken
@@ -939,17 +939,17 @@ not before.
 
 **Which of those saves is wired today, measured at HEAD, because three are and two
 are not.** `set_sync_api_key` is called from command lanes both shells reach
-(`crates/oz-bridge/src/sync.rs:76`, `apps/tablet-client/src/commands/sync.rs:92`), from
+(`crates/kasirmu-bridge/src/sync.rs:76`, `apps/mobile-tauri/src/commands/sync.rs:92`), from
 the sync daemon (`platform/sync/src/daemon.rs:170`), from terminal auth
-(`crates/oz-core/src/sync_auth.rs:472`) and from desktop auto-provisioning
-(`apps/desktop-client/src/sync_bootstrap.rs:84`); `set_sync_terminal_secret` from the
-pairing path at `apps/desktop-client/src/sync_bootstrap.rs:248`; `set_pg_sync_password` from
-`crates/oz-bridge/src/sync.rs:161`. Those three keys have a walkable ladder.
+(`crates/kasirmu-core/src/sync_auth.rs:472`) and from desktop auto-provisioning
+(`apps/desktop-tauri/src/sync_bootstrap.rs:84`); `set_sync_terminal_secret` from the
+pairing path at `apps/desktop-tauri/src/sync_bootstrap.rs:248`; `set_pg_sync_password` from
+`crates/kasirmu-bridge/src/sync.rs:161`. Those three keys have a walkable ladder.
 `set_rate_sync_api_key` (`platform/core/src/settings/typed.rs:557`) and
 `set_lan_server_psk` (`platform/core/src/settings/typed.rs:643`) have **no production
 caller at all** — the only hits are their own definitions, the never-invoked
-`crates/oz-core/src/settings.rs:570` facade wrapper, tests and comments, and
-`crates/oz-core/tests/credential_storage_form.rs:258` already records one of them in
+`crates/kasirmu-core/src/settings.rs:570` facade wrapper, tests and comments, and
+`crates/kasirmu-core/tests/credential_storage_form.rs:258` already records one of them in
 those terms. So the only production write of `rate_sync.api_key` and `lan_server.psk`
 is `platform/core/src/settings/typed.rs:560` and
 `platform/core/src/settings/typed.rs:646`, inside setters nobody invokes, while both
@@ -961,9 +961,9 @@ after anything in this section — it is the only evidence either way.
 `smtp_config` is in step 1's list and is **not** written by any of those setters, so
 here is the chain instead of a sentence of prose to trust:
 `ui/src/features/settings/EmailReportSettings.tsx:163` (`setSettingScoped`) →
-`run_set_setting` in `crates/oz-bridge/src/settings.rs:500` (batch door `:593`; tablet
-`apps/tablet-client/src/commands/settings.rs:623`) → `Store::merged_smtp_password_json`
-(`crates/oz-core/src/export/email_report.rs:316`) → `crate::crypto::encrypt_smtp_at_rest`
+`run_set_setting` in `crates/kasirmu-bridge/src/settings.rs:500` (batch door `:593`; tablet
+`apps/mobile-tauri/src/commands/settings.rs:623`) → `Store::merged_smtp_password_json`
+(`crates/kasirmu-core/src/export/email_report.rs:316`) → `crate::crypto::encrypt_smtp_at_rest`
 at `:207` of that file. Note what that chain does and does not seal: it replaces the
 `password` **field of a JSON blob**, and only when a password was supplied
 (`:204-206`) — a value the keep-on-blank merge merely carried over is never
@@ -971,8 +971,8 @@ re-encrypted (`:202`), which is the second limit above stated exactly. And name 
 shape honestly, because the family names invite the wrong reading: the
 credential-sealed-inside-its-own-settings-value pattern this section recommends is
 live through the **portable** family (`encrypt_smtp_at_rest`,
-`crates/oz-crypto/src/lib.rs:227`), while the machine-bound sibling it resembles,
-`encrypt_smtp_password` (`crates/oz-crypto/src/lib.rs:193`), has no caller left in the
+`crates/kasirmu-crypto/src/lib.rs:227`), while the machine-bound sibling it resembles,
+`encrypt_smtp_password` (`crates/kasirmu-crypto/src/lib.rs:193`), has no caller left in the
 tree at all. A reader who looks for that function as the exemplar lane will not find
 one; what they can follow is the seam above, and that seam is a recommendation about
 an envelope shape, not a conversion any of the four surfaces above performs.
@@ -1035,7 +1035,7 @@ dashboard and simply names which account the token acts on.
   once** — copy it straight into wherever the deploy reads it from, which today is
   the environment, not GitHub: `scripts/wrangler-deploy.sh:42` fails when
   `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` are unset, and AGENTS.md feeds those
-  from `.env` / the `OZPOS_CLOUDFLARE_*` user variables. A GitHub Actions secret of the
+  from `.env` / the `KASIRMU_CLOUDFLARE_*` user variables. A GitHub Actions secret of the
   same name is harmless to keep (it is what the retired website pipeline expected) but
   `git grep -l CLOUDFLARE_API_TOKEN -- .github/workflows` matches only `website.yml.bak`
   and `scripts/wrangler-deploy.sh`, so no live workflow reads it.
@@ -1111,7 +1111,7 @@ hand, and probe #3 is the only ground truth for what actually shipped.
 2. **Verify before touching GitHub:** run the §9.3 probe #2 with the new token →
    `"status": "active"`.
 3. **Update wherever the deploy actually reads the token:** the `.env` entry and the
-   `OZPOS_CLOUDFLARE_API_TOKEN` user variable that feed `scripts/wrangler-deploy.sh`.
+   `KASIRMU_CLOUDFLARE_API_TOKEN` user variable that feed `scripts/wrangler-deploy.sh`.
    Updating only the GitHub secret (Settings → Secrets and variables → Actions →
    `CLOUDFLARE_API_TOKEN`) rotates a credential nothing live consumes, and the manual
    deploy would keep using the revoked token.

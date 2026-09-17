@@ -170,6 +170,7 @@ export default function RestaurantMenu({
   // the input it targets — must test whether focus is inside the popover.
   // The same ref object is passed to both children.
   const hamburgerDropdownRef = useRef<HTMLDivElement>(null);
+  const [menuRoot, setMenuRoot] = useState<HTMLDivElement | null>(null);
 
   const [addedSku, setAddedSku] = useState<string | null>(null);
   const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -419,6 +420,7 @@ export default function RestaurantMenu({
 
   return (
     <div
+      ref={setMenuRoot}
       className={`restaurant-menu ${menuOpen ? 'restaurant-menu--sidebar-open' : ''}`}
       style={{ '--card-size': cardSize, '--font-size': fontSize } as React.CSSProperties}
     >
@@ -429,6 +431,7 @@ export default function RestaurantMenu({
           open={menuOpen}
           onOpenChange={setMenuOpen}
           dropdownRef={hamburgerDropdownRef}
+          container={menuRoot}
           sortMode={sortMode}
           onSelectSort={handleSelectSort}
           cardSize={cardSize}

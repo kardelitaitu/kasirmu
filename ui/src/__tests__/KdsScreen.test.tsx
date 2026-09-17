@@ -129,7 +129,7 @@ vi.mock('@/features/kds/hooks/useTicketSla', async (importOriginal) => ({
   useTicketSla: (..._args: unknown[]) => mockUseTicketSla(),
 }));
 
-vi.mock('@/frontend/shared/useSound', () => ({
+vi.mock('@/components/useSound', () => ({
   useSound: () => ({
     playAlert: mockPlayAlert,
     playBeep: vi.fn(),

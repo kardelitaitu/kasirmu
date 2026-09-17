@@ -30,7 +30,7 @@ import { execFileSync } from 'node:child_process';
 export const FONT_SURFACE = [
   ':(glob)ui/src/**/*.css',
   'ui/index.html',
-  'ui/index.tablet.html',
+  'ui/index.mobile.html',
   'ui/package.json',
 ];
 

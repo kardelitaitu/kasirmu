@@ -230,7 +230,7 @@ fn legacy_whole_key_equality(key: &str) -> bool {
 }
 
 /// The suffix spellings a real install can hold. `{base}:{tenant}` is what
-/// `scoped_setting_key` in `crates/oz-api/src/pg.rs` emits, so a desktop
+/// `scoped_setting_key` in `crates/kasirmu-api/src/pg.rs` emits, so a desktop
 /// install with the loopback API can copy its own bare SMTP secret into the
 /// store-suffixed row through the keep-on-blank merge.
 fn suffixed_variants(marker: &str) -> Vec<String> {

@@ -8,7 +8,7 @@ use axum::routing::post;
 use tower::ServiceExt;
 
 fn fresh_db() -> rusqlite::Connection {
-    oz_core::migrations::fresh_db()
+    kasirmu_core::migrations::fresh_db()
 }
 
 // ── Validation ──────────────────────────────────────────────────────

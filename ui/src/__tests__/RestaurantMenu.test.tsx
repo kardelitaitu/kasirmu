@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
-import { withFluent } from '@/locales/test-utils';
+import { withFluent } from '@/i18n/test-utils';
 import userEvent from '@testing-library/user-event';
 import RestaurantMenu from '@/features/restaurant/RestaurantMenu';
 import type { Product } from '@/types/domain';
@@ -72,7 +72,7 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
-vi.mock('@/frontend/shell/ThemeProvider', () => ({
+vi.mock('@/app/ThemeProvider', () => ({
   useTheme: () => ({ theme: 'light', toggleTheme: mockToggleTheme }),
   ThemeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));

@@ -36,7 +36,7 @@ vi.mock('@/api/branding', () => ({
     Promise.resolve({
       primary_colour: '#147EFB',
       logo_path: null,
-      store_name: 'OZ-POS',
+      store_name: 'kasir.mu',
     }),
 }));
 

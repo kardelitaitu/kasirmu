@@ -1,10 +1,10 @@
-<!-- Audit stamp: 2026-07-25 · Hermes-Agent · status: ACCURATE (0 findings) · resolved F1: styles/tokens.css -> ui/src/frontend/themes/ (no ui/src/styles/) · resolved F2: ui/src/locales/en-US.ftl -> per-feature English bundles (*.ftl) · resolved F3: ui/src/i18n/id.ftl -> per-feature Bahasa Indonesia bundles (*.id.ftl) · resolved F4: "25 translation files" -> 24 per-feature bundles × 2 locales = 48 .ftl files · resolved F5: "48 Fluent bundles" -> 24 per-feature bundles, each with en + id variants · verified accurate: oz-reporting implemented (Phase 5 daily/weekly/monthly engines present in src/), oz-payment Square+QRIS/Midtrans (square.rs+qris.rs exist), redis optional dep present (line 375), i18n-gap self-note (line 486: EmailReportSettings.tsx + SettingsPage.tsx still hardcoded English) matches the settings audit finding · re-audited 2026-08-08 by docs-auditor: 3 stale checkboxes flipped (scheduled email, Android APK CI, CRDT sync), counts refreshed (39 Feature variants, 265 UI test files, 5,800+ Rust tests), rlua->mlua, i18n note narrowed to EmailReportSettings.tsx · RE-AUDITED 2026-08-31 by docs-auditor: .ftl count refreshed 24→25 bundles / 48→50 files (one per-feature bundle added since 08-08; canonical ui/src/locales/ = 25 bare + 25 .id.ftl, matching ARCHITECTURE.md + ui/README "50 .ftl files"); RESOLVED 2026-09-03 by the Fluent page audit: the stray files ui/locales/sales.ftl + ui/locales/sales.id.ftl are deleted (proven unreferenced by any code; their only keys absent from the canonical bundle (receipt-preview-barcode-visual, receipt-preview-qr-visual) are CSS class names in ReceiptPreview.tsx, not Fluent message ids); UI test count refreshed 265 files / 3,476 tests -> 405 files / ~6,700 tests (matches ui/README 08-29; grew with the test campaign); mock_integration.rs test count corrected 25 -> 21 (file has 21 #[test]/#[tokio::test] fns, no parameterized cases, unchanged since 06-30); init-db role seed corrected owner/manager/cashier -> owner/manager/staff (db.rs:104-108 seeds role-owner/role-manager/role-staff — 'cashier' is never seeded by the CLI); repointed 3 stale inline-code path refs to docs archived in d0fe7481 (a11y.md x2, benchmarks.md) -> docs/archived/; crates/oz-core/benches/ (4 files) re-confirmed -->
+<!-- Audit stamp: 2026-07-25 · Hermes-Agent · status: ACCURATE (0 findings) · resolved F1: styles/tokens.css -> ui/src/theme/ (no ui/src/styles/) · resolved F2: shared-ui/locales/en-US.ftl -> per-feature English bundles (*.ftl) · resolved F3: ui/src/i18n/id.ftl -> per-feature Bahasa Indonesia bundles (*.id.ftl) · resolved F4: "25 translation files" -> 24 per-feature bundles × 2 locales = 48 .ftl files · resolved F5: "48 Fluent bundles" -> 24 per-feature bundles, each with en + id variants · verified accurate: kasirmu-reporting implemented (Phase 5 daily/weekly/monthly engines present in src/), kasirmu-payment Square+QRIS/Midtrans (square.rs+qris.rs exist), redis optional dep present (line 375), i18n-gap self-note (line 486: EmailReportSettings.tsx + SettingsPage.tsx still hardcoded English) matches the settings audit finding · re-audited 2026-08-08 by docs-auditor: 3 stale checkboxes flipped (scheduled email, Android APK CI, CRDT sync), counts refreshed (39 Feature variants, 265 UI test files, 5,800+ Rust tests), rlua->mlua, i18n note narrowed to EmailReportSettings.tsx · RE-AUDITED 2026-08-31 by docs-auditor: .ftl count refreshed 24→25 bundles / 48→50 files (one per-feature bundle added since 08-08; canonical shared-ui/locales/ = 25 bare + 25 .id.ftl, matching ARCHITECTURE.md + ui/README "50 .ftl files"); RESOLVED 2026-09-03 by the Fluent page audit: the stray files ui/locales/sales.ftl + ui/locales/sales.id.ftl are deleted (proven unreferenced by any code; their only keys absent from the canonical bundle (receipt-preview-barcode-visual, receipt-preview-qr-visual) are CSS class names in ReceiptPreview.tsx, not Fluent message ids); UI test count refreshed 265 files / 3,476 tests -> 405 files / ~6,700 tests (matches ui/README 08-29; grew with the test campaign); mock_integration.rs test count corrected 25 -> 21 (file has 21 #[test]/#[tokio::test] fns, no parameterized cases, unchanged since 06-30); init-db role seed corrected owner/manager/cashier -> owner/manager/staff (db.rs:104-108 seeds role-owner/role-manager/role-staff — 'cashier' is never seeded by the CLI); repointed 3 stale inline-code path refs to docs archived in d0fe7481 (a11y.md x2, benchmarks.md) -> docs/archived/; crates/kasirmu-core/benches/ (4 files) re-confirmed -->
 
-# OZ-POS — Roadmap
+# kasir.mu — Roadmap
 
 > *Small codebase. Limitless possibilities.*
 
-This document defines the phased delivery plan for OZ-POS. Each phase has a clear goal, an ordered task list, and acceptance criteria. Phases build on one another — no phase begins until the previous one's criteria are met.
+This document defines the phased delivery plan for kasir.mu. Each phase has a clear goal, an ordered task list, and acceptance criteria. Phases build on one another — no phase begins until the previous one's criteria are met.
 
 **Status legend:**
 - `[x]` Completed
@@ -38,8 +38,8 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] GitHub repository init, branch policy (`feat/`, `fix/`, `docs/`, `chore/`)
 
 ### Feature Flag System
-- [x] `Feature` enum declared in `oz-core` (32 features at declaration; ~39 variants today)
-- [x] `is_enabled()`, `enable()`, `disable()` helpers in `oz-core`
+- [x] `Feature` enum declared in `kasirmu-core` (32 features at declaration; ~39 variants today)
+- [x] `is_enabled()`, `enable()`, `disable()` helpers in `kasirmu-core`
 - [x] Feature flags stored in `settings` table as `feature.<name>` rows
 - [x] Feature dependency resolution (`dependencies()` fn + auto-enable)
 - [x] Store presets: **Simple Retail**, **Restaurant**, **Full Store**, **Custom**
@@ -62,7 +62,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] `get_enabled_features` Tauri IPC command returning kebab-case feature keys
 - [x] Feature-gated sidebar navigation — nav items hidden when required feature is disabled
 
-### oz-core — Data Models & Engine
+### kasirmu-core — Data Models & Engine
 - [x] SQLite schema: `products`, `categories`, `sales`, `sale_lines`
 - [x] SQLite schema: `settings`
 - [x] SQLite schema: `currency`, `exchange_rate`
@@ -71,7 +71,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] `Currency` struct + ISO-4217 validation
 - [x] `Customer` domain type with builder pattern (new, with_email, with_phone)
 - [x] `User`/`Role` domain types with builtin role constants (owner, manager, cashier)
-- [x] ISO-4217 seed data (39 currencies + 3 roles + admin user in `oz-cli init-db`)
+- [x] ISO-4217 seed data (39 currencies + 3 roles + admin user in `kasirmu-cli init-db`)
 - [x] `Product` domain type with builder pattern (new, with_category, with_barcode)
 - [x] `Category` domain type (id, name, colour)
 - [x] `Inventory` domain type (product_id, qty, updated_at) + is_in_stock, adjust_qty
@@ -81,7 +81,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] ACID write wrapper: all multi-statement writes inside explicit transactions
 - [x] `updated_at` auto-update via SQLite `DEFAULT (strftime(...))` on mutable tables
 
-### oz-hal — Hardware
+### kasirmu-hal — Hardware
 - [x] `BarcodeScanner`, `ReceiptPrinter`, `CashDrawer` async trait definitions
 - [x] `DriverRegistry` for lookup/injection per device category
 - [x] USB barcode scanner driver (HID)
@@ -90,12 +90,12 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] Bluetooth (SPP) receipt printer driver
 - [x] TCP/network receipt printer driver (port 9100, raw ESC/POS)
 - [x] Shared ESC/POS formatting module (`escpos.rs`)
-- [x] Mock HAL driver for unit tests (`crates/oz-hal/src/drivers/mock.rs`)
+- [x] Mock HAL driver for unit tests (`crates/kasirmu-hal/src/drivers/mock.rs`)
 
 ### UI — Design System & Component Library
-- [x] CSS design tokens: colour palette, spacing scale, border-radius, shadows (`ui/src/frontend/themes/tokens.css`)
-- [x] CSS reset (`ui/src/frontend/themes/reset.css`)
-- [x] Shared component styles (`ui/src/frontend/themes/components.css`)
+- [x] CSS design tokens: colour palette, spacing scale, border-radius, shadows (`ui/src/theme/tokens.css`)
+- [x] CSS reset (`ui/src/theme/reset.css`)
+- [x] Shared component styles (`ui/src/theme/components.css`)
 - [x] Dark mode + light mode — system-preference aware, user-toggleable (`ThemeProvider` + `ThemeToggle`)
 - [x] Core component library: `Button`, `Input`, `Card`, `Modal`, `Badge`, `Toast`, `Spinner`, `Skeleton`
 - [x] Components: `EmptyState`, `ErrorState` — consistent empty/error patterns
@@ -139,11 +139,11 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 
 ### Database
 - [x] `migrations/001_sales.sql` + `002_products.sql` + `003_barcode.sql` + `004_sale_status.sql`
-- [x] `oz-core` migration runner (embedded via `include_str!`, run on startup)
+- [x] `kasirmu-core` migration runner (embedded via `include_str!`, run on startup)
 - [x] Domain-to-schema mapping: `Product`, `Category`, `Inventory`, `Sale`, `SaleLine`, `Settings`
 - [x] `Cart` (in-memory) → `Sale` (persisted) pipeline with `Sale::from_cart()`
-- [x] `oz-cli init-db` — seeds default settings + preset flags + feature flags
-- [x] `oz-cli init-db` — seeds 39 ISO-4217 currencies, 3 built-in roles (owner/manager/staff), and admin user
+- [x] `kasirmu-cli init-db` — seeds default settings + preset flags + feature flags
+- [x] `kasirmu-cli init-db` — seeds 39 ISO-4217 currencies, 3 built-in roles (owner/manager/staff), and admin user
 
 ### API — REST Endpoints (Phase 1 MVP)
 - [x] `GET /api/v1/health` — server health + version
@@ -166,8 +166,8 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] `cargo test` passes across all crates (5,800+ tests, 0 failed)
 - [x] `cargo clippy -- -D warnings` passes with zero warnings
 - [x] 5,800+ unit tests across the `oz-*` crate ecosystem, plus ~6,700 UI tests across 405 test files
-- [x] Data Management UI wired to real IPC (backup, export/import .ozpkg)
-- [x] `oz-cli import-ozpkg` writes data to DB (products, categories, sales, customers, users, settings) — except settings rows the shared platform-core predicate `is_non_exportable_setting_key` marks non-exportable, which are skipped rather than written
+- [x] Data Management UI wired to real IPC (backup, export/import .kasirpkg)
+- [x] `kasirmu-cli import (was import-ozpkg)` writes data to DB (products, categories, sales, customers, users, settings) — except settings rows the shared platform-core predicate `is_non_exportable_setting_key` marks non-exportable, which are skipped rather than written
 - [x] StaffLoginScreen supports hardware keyboard PIN entry (digits, Backspace, Enter, Escape)
 - [ ] App launches on Windows and Linux
 
@@ -176,7 +176,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 ## Phase 2 — Hardening
 > **Goal:** Secure, fully tested, and deployable on all four target platforms with a CI/CD pipeline.
 
-### oz-security
+### kasirmu-security
 - [x] OS key-ring abstraction (`Keyring` trait + `InMemoryKeyring` + platform stubs)
     - Windows: `WindowsCredentialManager` (stub)
     - Linux: `LibSecretKeyring` (stub)
@@ -194,10 +194,10 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] `docs/security/PCI-DSS_CHECKLIST.md` — full PCI-DSS v4.0 compliance checklist
 - [x] `.env.example` template for development secrets
 
-### oz-logging
-- [x] `tracing` + `tracing-subscriber` initialiser (`oz_logging::init()`)
-- [x] JSON log formatter (`oz_logging::init_json()`) — ELK/Loki compatible
-- [x] File writer with rotation (`oz_logging::init_with_file()`, `oz_logging::init_json_with_file()`)
+### kasirmu-logging
+- [x] `tracing` + `tracing-subscriber` initialiser (`kasirmu_logging::init()`)
+- [x] JSON log formatter (`kasirmu_logging::init_json()`) — ELK/Loki compatible
+- [x] File writer with rotation (`kasirmu_logging::init_with_file()`, `kasirmu_logging::init_json_with_file()`)
     - Uses `tracing-appender` for hourly rolling files
     - Spawns background cleanup thread for log retention (configurable days)
     - **Implemented, never wired — corrected 2026-09-12.** The two sentences
@@ -205,11 +205,11 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
       rotate hourly, run the retention cleanup thread, and are exercised by
       `lib_tests`. What no shipped binary does is **call** them. `git grep` for
       `init_with_file` / `init_json_with_file` across the tree returns their
-      definitions and doc examples in `crates/oz-logging`, this box, and
+      definitions and doc examples in `crates/kasirmu-logging`, this box, and
       `docs/operations/runbook.md` §8.6 — no hit under `apps/`, `modules/` or
       `platform/`, and the `try_*` variants are called only from the crate's own
-      tests. Both Tauri clients initialise with `oz_logging::try_init()`
-      (`apps/desktop-client/src/lib.rs`, `apps/tablet-client/src/lib.rs`), which
+      tests. Both Tauri clients initialise with `kasirmu_logging::try_init()`
+      (`apps/desktop-tauri/src/lib.rs`, `apps/mobile-tauri/src/lib.rs`), which
       installs an `EnvFilter` + `fmt` subscriber with **no writer**, so a
       double-clicked desktop build discards its stdout and **no POS device has a
       log file to open.** Name the missing call site: a client `setup` calling
@@ -218,7 +218,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
       hand it, so the call site needs a directory resolver with it. Not the same
       as "no file writer": `docs/operations/runbook.md` §8.6 carries the
       consequence for an operator.
-- [x] Syslog output (Linux) — `oz_logging::syslog::init_syslog()`
+- [x] Syslog output (Linux) — `kasirmu_logging::syslog::init_syslog()`
     - Uses `libc` FFI for syslog API
     - Combined subscriber: stdout + syslog via `tracing_subscriber::registry()`
     - Configurable facility (local0–local7, daemon, user, etc.)
@@ -230,7 +230,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
       and which picks `try_init()` / `try_init_json()` instead. So no deployment
       emits to a syslog daemon today; the container's stdout is the whole
       surface (see runbook §8.6).
-- [x] ~~Windows Event Log output~~ **Windows debug-output** sink — `oz_logging::eventlog::init_eventlog()`
+- [x] ~~Windows Event Log output~~ **Windows debug-output** sink — `kasirmu_logging::eventlog::init_eventlog()`
     - Uses `OutputDebugStringW` via windows-sys FFI
     - Combined subscriber: stdout + debug output via registry()
     - **Title corrected 2026-09-12, and also never wired.** Two separate
@@ -241,13 +241,13 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
       present. The Event Log API is a different thing (`RegisterEventSource` /
       `ReportEvent`), and `git grep` for either returns nothing in this crate.
       That is why a machine inspection of registered EventLog sources shows no
-      OZ-POS entry: nothing ever wrote one, so the surface cannot be diagnosed
+      kasir.mu entry: nothing ever wrote one, so the surface cannot be diagnosed
       by looking for our source name. The sub-bullet below was always honest —
       it says "debug output", not "event log" — the heading oversold it. (b) The
       sink itself is never installed: `git grep` `init_eventlog` returns its
       definition, its module doc example and `eventlog_tests` only, with no
       caller in `apps/`, `modules/` or `platform/` — including
-      `apps/desktop-client`, the only Windows binary that ships, which calls
+      `apps/desktop-tauri`, the only Windows binary that ships, which calls
       `try_init()`.
     - So the accurate statement of what a Windows field install gives you:
       **no log file, no Event Log entry, and no debug channel** — one discarded
@@ -259,10 +259,10 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 
 ### Testing
 - [x] Unit test `#[cfg(test)]` blocks in all `oz-*` crates
-- [x] Integration tests with mock HAL drivers (21 tests in `oz-hal/tests/mock_integration.rs`)
+- [x] Integration tests with mock HAL drivers (21 tests in `kasirmu-hal/tests/mock_integration.rs`)
 - [x] Front-end: Vitest + React Testing Library (`ui/src/__tests__/`)
 - [x] `eslint-plugin-jsx-a11y` enabled in `ui/eslint.config.js`
-- [x] Test coverage target: ≥ 80% on `oz-core`, `oz-hal`, `oz-lua` (requires tarpaulin)
+- [x] Test coverage target: ≥ 80% on `kasirmu-core`, `kasirmu-hal`, `kasirmu-lua` (requires tarpaulin)
 - [x] `.tarpaulin.toml` config + coverage CI job + local coverage gate in `scripts/check.sh`
 
 ### CI/CD
@@ -281,13 +281,13 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
   - `latest.json` metadata generation for auto-update
 
 ### Data Management
-- [x] `oz-cli backup` — raw SQLite snapshot (`.db` file)
-- [x] `oz-cli restore` — restore from snapshot
-- [x] `oz-cli export` — encrypted `.ozpkg` (Argon2id + AES-256-GCM + zstd)
+- [x] `kasirmu-cli backup` — raw SQLite snapshot (`.db` file)
+- [x] `kasirmu-cli restore` — restore from snapshot
+- [x] `kasirmu-cli export` — encrypted `.kasirpkg` (Argon2id + AES-256-GCM + zstd)
   - Flags: `--types`, `--password`
-- [x] `oz-cli import` — decrypt and apply `.ozpkg`
+- [x] `kasirmu-cli import` — decrypt and apply `.kasirpkg`
   - Flags: `--dry-run`, `--password`
-- [x] Feature flags embedded in `.ozpkg` plaintext metadata
+- [x] Feature flags embedded in `.kasirpkg` plaintext metadata
 
 ### Updates & Packaging
 - [x] Tauri auto-update (`tauri.conf.json` updater section → GitHub releases)
@@ -299,10 +299,10 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] Windows: MSI installer (WiX configured via `bundle.targets: "all"`)
 - [x] Linux: `.deb` + `.AppImage` packages
 - [x] macOS: `.dmg` package
-- [x] `packaging/README.md` — packaging overview and build guide
-- [x] `packaging/linux/oz-pos.desktop` — freedesktop entry
-- [x] `packaging/linux/deb/postinst` — Debian post-install script
-- [x] `packaging/linux/deb/prerm` — Debian pre-removal script
+- [x] `ops/packaging/README.md` — packaging overview and build guide
+- [x] `ops/packaging/linux/oz-pos.desktop` — freedesktop entry
+- [x] `ops/packaging/linux/deb/postinst` — Debian post-install script
+- [x] `ops/packaging/linux/deb/prerm` — Debian pre-removal script
 
 ### UI / UX — Data Management & Feature Toggle Screens
 - [x] **Data Management screen** (Settings → Data)
@@ -337,7 +337,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 ### Transaction Lifecycle
 - [x] Audit log SQL migration + domain type (`010_audit_log.sql`, `audit.rs`)
 - [x] Store methods: `log_audit`, `list_audit_entries`, `void_sale` (atomic tx with stock restoration)
-- [x] `void_sale` Tauri IPC command — lives in `apps/desktop-client/src/commands/void.rs` as `void_sale_scoped` (there is no `commands/sales.rs`)
+- [x] `void_sale` Tauri IPC command — lives in `apps/desktop-tauri/src/commands/void.rs` as `void_sale_scoped` (there is no `commands/sales.rs`)
 - [x] **Void Sale UI** — Orders screen with search, status filters, detail view, reason picker, void confirmation
 - [x] Refund / return flow (partial or full, linked to original order) — `RefundModal.tsx`, `SalesHistoryScreen.tsx` integration, previous refunds display
 - [x] Hold order (park a sale, resume later — multiple holds simultaneously)
@@ -345,7 +345,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] End-of-Day (EOD) report: cash tally, payment breakdown, shift summary
 
 ### Staff & Auth
-- [x] `StaffLogin` feature: argon2id PIN hashing + verification (`oz_core::auth`)
+- [x] `StaffLogin` feature: argon2id PIN hashing + verification (`kasirmu_core::auth`)
 - [x] `staff_login` IPC command (username lookup, PIN verify, role resolution)
 - [x] `list_staff`, `create_staff`, `update_staff` IPC commands with PIN hashing on create
 - [x] `AuthContext` + `useAuth` hook — React context for session state, login/logout, isManager/isOwner
@@ -363,8 +363,8 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] Multi-rate support (e.g., 0%, 7%, 10% on different product types)
 - [x] Tax breakdown on receipt and in order records
 
-### oz-lua — Scripting Runtime
-- [x] Embed Lua VM in `oz-lua` (rlua initially; **mlua** since 0.0.19)
+### kasirmu-lua — Scripting Runtime
+- [x] Embed Lua VM in `kasirmu-lua` (rlua initially; **mlua** since 0.0.19)
 - [x] Expose `apply_discount()`, `calc_line_tax()`, `validate_order()` to Lua
 - [x] Merchant Lua scripts loaded from `scripts/` at runtime (`load_dir`)
 - [x] Lua sandbox: no filesystem or network access from scripts
@@ -417,7 +417,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 > **Goal:** Multi-store, multi-terminal, cloud sync, payment gateways, and mobile builds.
 
 ### Cloud Sync (Optional On-Feature)
-- [x] SQLite outbox pattern (`offline_queue` table in `oz-core` + `platform-sync` queue/transport/replication layer)
+- [x] SQLite outbox pattern (`offline_queue` table in `kasirmu-core` + `platform-sync` queue/transport/replication layer)
 - [x] Background sync daemon: outbox → PostgreSQL (via `tokio-postgres`)
 - [x] Background sync daemon: outbox → HTTP server (via `reqwest`)
 - [x] Conflict resolution strategy (last-write-wins with timestamp in `platform/sync/src/conflict.rs`)
@@ -431,7 +431,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] Multi-terminal: terminals in the same store share inventory via cloud sync
 - [x] Per-terminal feature overrides (e.g., terminal A has KDS, terminal B does not) — migration `028_terminal_feature_overrides.sql` + IPC + UI in TerminalManagementScreen
 
-### oz-payment
+### kasirmu-payment
 - [x] `PaymentProcessor` trait definition
 - [x] Mock payment processor (for testing and offline demo)
 - [x] Stripe integration (card present + card not present)
@@ -440,14 +440,14 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] Payment result stored in `payments` table linked to `sale_id` (gateway reference, status, response in migration `027_payment_gateway_fields.sql`)
 
 ### Multi-Currency
-- [ ] ~~`exchange_rate` table populated by background sync from external API (`RateSyncDaemon` — Frankfurter API via `platform/startup/src/rate_sync.rs`)~~ **NOT WIRED — corrected 2026-09-12 (the box was checked; the feature does not run).** Unwired, not broken: storage and crypto are complete (`RateSyncDaemon::run_tick` fetches `https://api.frankfurter.app`, converts to `rate_millionths`, upserts via `CurrencyRepository::upsert_exchange_rate` into `exchange_rates`; `Settings::set_rate_sync_api_key` encrypts the key at rest), but nothing starts the daemon. Its only start path, **`init_rate_sync` in `platform/startup/src/lib.rs` (line 337 as measured 2026-09-12), has zero callers** — neither Tauri client starts it — no `platform_startup::spawn_daemon` call in `apps/desktop-client/src/lib.rs` or `apps/tablet-client/src/lib.rs` names rate sync, `rate_sync` and `RateSyncDaemon` appear nowhere in `apps/`, `ui/` or `crates/oz-bridge`, and `git grep init_rate_sync` over the tree matches only its own definition. **Exchange rates today are entered by a manager on the exchange-rates screen** (`ui/src/features/currency/ExchangeRateScreen.tsx`, route `exchange-rates`, `requiredRole: 'manager'`) — manual create and delete only; that is the sentence an operator or a sales conversation needs. The UI has no API-key field and no auto-sync toggle, and no IPC command writes `rate_sync.*`, so all four keys (`platform/core/src/settings/keys.rs:159-165`) have zero production writers; three are read only by the daemon that never starts, and `rate_sync.api_key` is read by nothing at all — the fetcher targets a keyless endpoint, so there was never a credential for that accessor to feed. To turn it on: call `platform_startup::init_rate_sync(db)` from a client `setup` (and note `run_tick` discards `rate_sync.interval`, so the interval would still need wiring). ⚠️ Deleting those dormant keys is not a dead-code cleanup — `rate_sync.api_key` "encrypted at rest" is a claimed remediation row in `docs/security/security-audit-completion.md` (H-5), so that doc must be updated in the same change. `CHANGELOG.md` keeps its original entry: a changelog records what was believed at release time.
+- [ ] ~~`exchange_rate` table populated by background sync from external API (`RateSyncDaemon` — Frankfurter API via `platform/startup/src/rate_sync.rs`)~~ **NOT WIRED — corrected 2026-09-12 (the box was checked; the feature does not run).** Unwired, not broken: storage and crypto are complete (`RateSyncDaemon::run_tick` fetches `https://api.frankfurter.app`, converts to `rate_millionths`, upserts via `CurrencyRepository::upsert_exchange_rate` into `exchange_rates`; `Settings::set_rate_sync_api_key` encrypts the key at rest), but nothing starts the daemon. Its only start path, **`init_rate_sync` in `platform/startup/src/lib.rs` (line 337 as measured 2026-09-12), has zero callers** — neither Tauri client starts it — no `platform_startup::spawn_daemon` call in `apps/desktop-tauri/src/lib.rs` or `apps/mobile-tauri/src/lib.rs` names rate sync, `rate_sync` and `RateSyncDaemon` appear nowhere in `apps/`, `ui/` or `crates/kasirmu-bridge`, and `git grep init_rate_sync` over the tree matches only its own definition. **Exchange rates today are entered by a manager on the exchange-rates screen** (`ui/src/features/currency/ExchangeRateScreen.tsx`, route `exchange-rates`, `requiredRole: 'manager'`) — manual create and delete only; that is the sentence an operator or a sales conversation needs. The UI has no API-key field and no auto-sync toggle, and no IPC command writes `rate_sync.*`, so all four keys (`platform/core/src/settings/keys.rs:159-165`) have zero production writers; three are read only by the daemon that never starts, and `rate_sync.api_key` is read by nothing at all — the fetcher targets a keyless endpoint, so there was never a credential for that accessor to feed. To turn it on: call `platform_startup::init_rate_sync(db)` from a client `setup` (and note `run_tick` discards `rate_sync.interval`, so the interval would still need wiring). ⚠️ Deleting those dormant keys is not a dead-code cleanup — `rate_sync.api_key` "encrypted at rest" is a claimed remediation row in `docs/security/security-audit-completion.md` (H-5), so that doc must be updated in the same change. `CHANGELOG.md` keeps its original entry: a changelog records what was believed at release time.
 - [x] Currency selector in checkout UI (when `MultiCurrency` flag enabled)
-- [ ] ~~Receipts show both charge currency and base currency~~ **FALSE FOR RECEIPTS — corrected 2026-09-12: a receipt carries one currency per amount, and it is the charge one.** Measured at the same sha as the box above, on the two payload types rather than inherited: `PrintSalesReceiptArgs` in `ui/src/api/sales.ts` and `SalesReceipt` in `crates/oz-hal/src/drivers/receipt.rs` each hold a single `subtotal`, `tax` and `total`, and their `Money` type carries exactly one `currency` — there is no base-currency amount anywhere in either, so the thermal renderer has no second figure to print. The base currency and base total do exist and are persisted on the sale (`20260821_tender_currency.sql`, surfaced as the sale-detail fields), and the checkout dialog shows both amounts side by side — that pairing is real one screen earlier, and never on the receipt. What a merchant can do today: see charge and base side by side on the payment screen, and print a receipt denominated only in the charge currency. The honest alternative to implementing it is to scope the box to the checkout screen, where it is true. Not fixed here: adding a base-currency line is a payload, bridge and driver change plus a printed-artefact decision.
-- [x] **R2 — Currency DB Extraction (ADR #30)**: 6-phase extraction of currency, exchange-rate, and currency-format settings from the monolithic `oz-core` Store facade into a dedicated `modules/currency` crate:
-  - Phase 1: `ExchangeRateRow`, `CurrencyRepository`, `CurrencyError` moved into `modules/currency`; `oz-core` Store methods became thin delegating wrappers
+- [ ] ~~Receipts show both charge currency and base currency~~ **FALSE FOR RECEIPTS — corrected 2026-09-12: a receipt carries one currency per amount, and it is the charge one.** Measured at the same sha as the box above, on the two payload types rather than inherited: `PrintSalesReceiptArgs` in `ui/src/api/sales.ts` and `SalesReceipt` in `crates/kasirmu-hal/src/drivers/receipt.rs` each hold a single `subtotal`, `tax` and `total`, and their `Money` type carries exactly one `currency` — there is no base-currency amount anywhere in either, so the thermal renderer has no second figure to print. The base currency and base total do exist and are persisted on the sale (`20260821_tender_currency.sql`, surfaced as the sale-detail fields), and the checkout dialog shows both amounts side by side — that pairing is real one screen earlier, and never on the receipt. What a merchant can do today: see charge and base side by side on the payment screen, and print a receipt denominated only in the charge currency. The honest alternative to implementing it is to scope the box to the checkout screen, where it is true. Not fixed here: adding a base-currency line is a payload, bridge and driver change plus a printed-artefact decision.
+- [x] **R2 — Currency DB Extraction (ADR #30)**: 6-phase extraction of currency, exchange-rate, and currency-format settings from the monolithic `kasirmu-core` Store facade into a dedicated `modules/currency` crate:
+  - Phase 1: `ExchangeRateRow`, `CurrencyRepository`, `CurrencyError` moved into `modules/currency`; `kasirmu-core` Store methods became thin delegating wrappers
   - Phase 2: Shared DTOs (`ExchangeRateDto`, `CreateExchangeRateArgs`) in `modules/currency/src/commands.rs`
   - Phase 3: `list_currencies` moved into `CurrencyRepository` with `CurrencyDto` shared type
-  - Phase 4: Removed `oz_core::exchange_rate` shim file and inline module
+  - Phase 4: Removed `kasirmu_core::exchange_rate` shim file and inline module
   - Phase 5: Currency-format settings added to `CurrencyRepository` with `Platform` error variant on `CurrencyError`
   - Phase 6: All 15 delegated Store methods marked `#[deprecated]`; tests annotated `#[allow(deprecated)]`
 
@@ -455,7 +455,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] Android tablet build (Tauri mobile → APK, signed) — CI **no longer** builds it: `android.yml` and `ios.yml` are retired `.bak`, and `release.yml` covers desktop only. The build path exists (`cargo tauri android build`); the automation does not.; physical-device testing still needs infra
 - [ ] iPad build (Tauri mobile → `.ipa`, TestFlight distribution)
 - [x] Touch-optimised UI layout for tablet screen sizes (tablet shell + responsive breakpoints + touch targets)
-- [x] `packaging/mobile/README.md` — Tauri v2 mobile build guide for Android & iOS
+- [x] `ops/packaging/mobile/README.md` — Tauri v2 mobile build guide for Android & iOS
 
 ### UI / UX — Responsive, Mobile & Multi-Store Screens
 
@@ -476,7 +476,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] **Payment Gateway status badge** — online / offline indicator in sidebar
 - [x] **QRIS QR code display** — full-screen QR overlay on checkout, auto-dismiss on payment confirm
 - [x] **Currency selector** — dropdown at checkout when MultiCurrency enabled
-- [ ] ~~**Exchange rate notice** — show rate used and timestamp on receipt~~ **ONE SCREEN SHORT — corrected 2026-09-12: the notice is real and rich, but it is in the checkout dialog, not on the receipt.** Unwired at the last layer, not broken. What ships: `ui/src/features/sales/PaymentModal.tsx` renders an exchange-rate notice (rate, rate source, rate timestamp) whenever the tendered currency differs from the sale currency, backed by the `payment-exchange-*` / `payment-rate-*` keys in `ui/src/locales/sales.ftl`. What does not: that notice never reaches a receipt, on screen or on paper, because the same `PrintSalesReceiptArgs` object feeds the preview and the print call, and the type has no rate field, no source field and no effective date — and one layer down, the struct the thermal renderer consumes (`SalesReceipt` in `crates/oz-hal/src/drivers/receipt.rs`) defines the same absence, so the ESC/POS path has nothing to print. Confirmed by searching `exchange`, `rate_millionths`, `base_currency` and `tender_rate` across all four layers of the print path — the payload type (`ui/src/api/sales.ts`), the on-screen preview (`ui/src/features/sales/ReceiptPreview.tsx`), the bridge builder that turns the args into the driver struct (`crates/oz-bridge/src/hardware.rs`) and the thermal driver (`crates/oz-hal/src/drivers/receipt.rs`): zero hits in every one. The `show_currency` hits that do appear across those files are the currency-symbol prefix toggle, a different feature. The rate itself is captured and persisted — `crates/oz-core/migrations/20260821_tender_currency.sql` adds `base_currency`, `base_total_minor` and `tender_rate_millionths` to the sale header, and they round-trip through `crates/oz-bridge/src/pos.rs` into the sale-detail fields — so storage is complete and display is not. What is **not** persisted is the rate's `source` and `effective_date`, which live only on the `exchange_rates` row, and at checkout the number displayed comes from a live latest-rate lookup rather than from the stored list row: **so a printed receipt can show the converted total without being able to reproduce the conversion, and editing or deleting that rate row erases the provenance of a conversion already booked on a sale.** A merchant today: a multi-currency sale records the converted amount and the rate used in the database, the checkout screen shows the rate with its source and date before payment, and the printed receipt shows neither — the customer walks out with a paper record of the converted total and no record of the conversion. Both endings are legitimate and only one is claimed: put the notice on the receipt (payload type, bridge builder and driver struct, with the source and effective date persisted on the sale rather than re-looked-up), or drop the box. That is a behaviour change with a product decision attached — a merchant record, not a wiring fix — so it is listed, not made.
+- [ ] ~~**Exchange rate notice** — show rate used and timestamp on receipt~~ **ONE SCREEN SHORT — corrected 2026-09-12: the notice is real and rich, but it is in the checkout dialog, not on the receipt.** Unwired at the last layer, not broken. What ships: `ui/src/features/sales/PaymentModal.tsx` renders an exchange-rate notice (rate, rate source, rate timestamp) whenever the tendered currency differs from the sale currency, backed by the `payment-exchange-*` / `payment-rate-*` keys in `shared-ui/locales/sales.ftl`. What does not: that notice never reaches a receipt, on screen or on paper, because the same `PrintSalesReceiptArgs` object feeds the preview and the print call, and the type has no rate field, no source field and no effective date — and one layer down, the struct the thermal renderer consumes (`SalesReceipt` in `crates/kasirmu-hal/src/drivers/receipt.rs`) defines the same absence, so the ESC/POS path has nothing to print. Confirmed by searching `exchange`, `rate_millionths`, `base_currency` and `tender_rate` across all four layers of the print path — the payload type (`ui/src/api/sales.ts`), the on-screen preview (`ui/src/features/sales/ReceiptPreview.tsx`), the bridge builder that turns the args into the driver struct (`crates/kasirmu-bridge/src/hardware.rs`) and the thermal driver (`crates/kasirmu-hal/src/drivers/receipt.rs`): zero hits in every one. The `show_currency` hits that do appear across those files are the currency-symbol prefix toggle, a different feature. The rate itself is captured and persisted — `crates/kasirmu-core/migrations/20260821_tender_currency.sql` adds `base_currency`, `base_total_minor` and `tender_rate_millionths` to the sale header, and they round-trip through `crates/kasirmu-bridge/src/pos.rs` into the sale-detail fields — so storage is complete and display is not. What is **not** persisted is the rate's `source` and `effective_date`, which live only on the `exchange_rates` row, and at checkout the number displayed comes from a live latest-rate lookup rather than from the stored list row: **so a printed receipt can show the converted total without being able to reproduce the conversion, and editing or deleting that rate row erases the provenance of a conversion already booked on a sale.** A merchant today: a multi-currency sale records the converted amount and the rate used in the database, the checkout screen shows the rate with its source and date before payment, and the printed receipt shows neither — the customer walks out with a paper record of the converted total and no record of the conversion. Both endings are legitimate and only one is claimed: put the notice on the receipt (payload type, bridge builder and driver struct, with the source and effective date persisted on the sale rather than re-looked-up), or drop the box. That is a behaviour change with a product decision attached — a merchant record, not a wiring fix — so it is listed, not made.
 
 **Hardware Integration UI**
 - [x] **Customer display wired to PosScreen** — `useCustomerDisplay` hook auto-detects the first registered display, shows cart total + item count on two 20-char lines, clears on payment complete or cart empty
@@ -494,7 +494,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 ## Phase 5 — Intelligence
 > **Goal:** Actionable merchant insights, dashboards, analytics, and i18n.
 
-### oz-reporting
+### kasirmu-reporting
 - [x] Daily / weekly / monthly sales summary queries
 - [x] Inventory low-stock alerts and reorder notifications
 - [x] Top products, category breakdown, hourly heatmap
@@ -503,14 +503,14 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 
 ### Analytics (Optional On-Feature)
 - [ ] Analytics export to cloud warehouse (BigQuery / Snowflake)
-- [x] Scheduled report delivery (email PDF) — shipped in 0.0.22 (`apps/desktop-client/src/email_scheduler.rs` + `oz-core` email export)
+- [x] Scheduled report delivery (email PDF) — shipped in 0.0.22 (`apps/desktop-tauri/src/email_scheduler.rs` + `kasirmu-core` email export)
 - [ ] Custom report builder (drag-and-drop columns)
 
 ### Accessibility & i18n
 - [x] WCAG-2.1 AA audit checklist (`docs/archived/a11y.md`)
 - [x] ARIA labels on all interactive elements
-- [x] `ui/src/locales/*.ftl` — English per-feature bundles
-- [x] `ui/src/locales/*.id.ftl` — Bahasa Indonesia per-feature bundles
+- [x] `shared-ui/locales/*.ftl` — English per-feature bundles
+- [x] `shared-ui/locales/*.id.ftl` — Bahasa Indonesia per-feature bundles
 - [x] 25 per-feature bundles × 2 locales = 50 `.ftl` files
 - [x] `@fluent/react` integration — no hardcoded strings in JSX
 - [x] `docs/archived/a11y.md` — accessibility compliance checklist
@@ -518,11 +518,11 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] UI fully translated in English + Bahasa Indonesia (25 per-feature Fluent bundles, 50 `.ftl` files, lint-i18n.sh clean)
 - [x] Thai locale removed — not a target market
 
-### oz-reporting — Performance & Profiling
+### kasirmu-reporting — Performance & Profiling
 - [ ] `tokio-console` integration macros
 - [ ] `cargo flamegraph` helpers
-- [x] Benchmark suite: barcode lookup < 1 ms, transaction commit < 5 ms (criterion benches in `crates/oz-core/benches/`, targets defined in `docs/archived/benchmarks.md`)
-- [ ] ~~Prometheus metrics endpoint (optional, in `oz-reporting` behind `metrics` feature — counters, gauges, histograms + HTTP server in `platform-startup`)~~ **NOT STARTED — corrected 2026-09-12: the app-side server half was never finished, and on 2026-09-12 it was retired.** What ships: `oz-reporting`'s feature-gated counters, gauges and histograms. What never did: the `platform-startup` HTTP endpoint — its whole `pub mod server` sat behind `#[cfg(feature = "metrics")]`, a feature `platform/startup/Cargo.toml` does not declare, so it compiled in no build, and `start_metrics_server` had no call site in either Tauri client or in `apps/cloud-server`. The box stays unchecked: nothing serves `/metrics` in the desktop or tablet app today, and the only `/metrics` route in the tree is the cloud server's own separate registry (`apps/cloud-server/src/metrics.rs`), which this box never described. `CHANGELOG.md` keeps its original entry: a changelog records what was believed at release time.
+- [x] Benchmark suite: barcode lookup < 1 ms, transaction commit < 5 ms (criterion benches in `crates/kasirmu-core/benches/`, targets defined in `docs/archived/benchmarks.md`)
+- [ ] ~~Prometheus metrics endpoint (optional, in `kasirmu-reporting` behind `metrics` feature — counters, gauges, histograms + HTTP server in `platform-startup`)~~ **NOT STARTED — corrected 2026-09-12: the app-side server half was never finished, and on 2026-09-12 it was retired.** What ships: `kasirmu-reporting`'s feature-gated counters, gauges and histograms. What never did: the `platform-startup` HTTP endpoint — its whole `pub mod server` sat behind `#[cfg(feature = "metrics")]`, a feature `platform/startup/Cargo.toml` does not declare, so it compiled in no build, and `start_metrics_server` had no call site in either Tauri client or in `apps/cloud-server`. The box stays unchecked: nothing serves `/metrics` in the desktop or tablet app today, and the only `/metrics` route in the tree is the cloud server's own separate registry (`apps/cloud-server/src/metrics.rs`), which this box never described. `CHANGELOG.md` keeps its original entry: a changelog records what was believed at release time.
 
 ### UI / UX — Reports, Dashboard & i18n Screens
 
@@ -565,7 +565,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] Stable plugin API for third-party HAL drivers (v1.0 API versioning, deprecation policy, runtime feature detection)
 - [x] Plugin manifest format (`plugin.toml` — Permission enum with 8 variants, enforced at load time)
 - [x] Plugin sandbox: Lua-based, no unsafe Rust from plugins (14 dangerous globals nil, instruction limit 100k, safe env)
-- [x] Plugin discovery and hot-reload (notify-based file watcher in desktop-client, auto-reload on .lua changes)
+- [x] Plugin discovery and hot-reload (notify-based file watcher in desktop-tauri, auto-reload on .lua changes)
 - [x] Developer docs: `docs/guides/plugin-guide.md` + CONTRIBUTING.md + `docs/guides/QUICKSTART.md` + HAL example driver (both moved out of `docs/` root into `docs/guides/`)
 
 ### Developer Experience
@@ -573,7 +573,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] `CONTRIBUTING.md` — contribution guide, PR template
 - [x] `docs/guides/QUICKSTART.md` — local dev setup
 - [x] Example Lua scripts in `scripts/examples/` (discount_bulk, tax_overrides, validate_order)
-- [x] Example custom HAL driver in `crates/oz-hal/examples/custom_barcode_scanner.rs`
+- [x] Example custom HAL driver in `crates/kasirmu-hal/examples/custom_barcode_scanner.rs`
 
 ### Future Research
 - [ ] AI-driven product recommendations (demand forecasting)

@@ -1,5 +1,6 @@
 /* ── Kitchen Display System: shell ───────────────────────────────────
- * Visual language applied from dev/kds-prototype.html (Design Language):
+ * Visual language applied from the KDS prototype documented in
+   docs/specs/_active/tauri-ux-design-language-plan.md (Design Language):
  *   - Inter + JetBrains Mono via platform stack (--font-sans/--font-mono)
  *   - Radius scale: panels 20 · cards 14 · controls 10 · tiny chips 5
  *   - Primary #147EFB (matches the design-language blue)
@@ -1007,7 +1008,7 @@
   color: var(--kds-ink);
 }
 /* prepared: every line item is done, awaiting the final advance. The
-   prototype (dev/kds-prototype.html) renders this as a solid green pill;
+   prototype (see docs/specs/_active/tauri-ux-design-language-plan.md) renders this as a solid green pill;
    the rule was missed when the Completed tab was ported, so the badge fell
    back to the muted default `.status` style. */
 .kds-card-header .status.prepared {

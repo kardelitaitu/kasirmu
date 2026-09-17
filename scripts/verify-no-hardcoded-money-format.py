@@ -123,7 +123,7 @@ DEV_ONLY_PATHS = (
 # 1. minor_units divided or reduced modulo 100 (hardcoded exp 2). The
 # optional method-chain segment catches `minor_units.abs() % 100` and the
 # optional closing paren catches wrapping parentheses like
-# `(minor_units as f64) / 100.0` — shapes the old oz-cli/email_report code
+# `(minor_units as f64) / 100.0` — shapes the old kasirmu-cli/email_report code
 # used to recover the sign. Written as plain (non-raw) strings with
 # explicit escapes to avoid double-escaping pitfalls; \. keeps its regex
 # meaning.

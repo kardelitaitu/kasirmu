@@ -1,5 +1,5 @@
 import type React from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { useState, useEffect, useRef } from 'react';
 import { useLocalization, Localized } from '@fluent/react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';

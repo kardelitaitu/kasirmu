@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect, Profiler } from 'react';
 import { Grid, type CellComponentProps } from 'react-window';
 import { useLocalization } from '@fluent/react';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { Localized } from '@/components/Localized';
 import { formatMoney, type Product } from '@/types/domain';
 import { lookupProductBySkuScoped } from '@/api/products';

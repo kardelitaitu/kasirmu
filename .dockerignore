@@ -16,13 +16,13 @@
 # Documentation & design docs (not needed at compile time)
 docs
 
-# Front-end (Node.js / Tauri) — not needed for cloud-server. oz-core
-# vendors its copy of topologySemantics.json (crates/oz-core/src/), so the
+# Front-end (Node.js / Tauri) — not needed for cloud-server. kasirmu-core
+# vendors its copy of topologySemantics.json (crates/kasirmu-core/src/), so the
 # server build never touches the UI tree at all.
 ui
 node_modules
-apps/desktop-client
-apps/tablet-client
+apps/desktop-tauri
+apps/mobile-tauri
 
 # IDE / editor configs
 .vscode
@@ -40,7 +40,7 @@ target
 # Environment / secrets
 .env
 *.env
-oz-pos-updater.key.pub
+kasirmu-updater.key.pub
 
 # Temporary / generated files
 *.log

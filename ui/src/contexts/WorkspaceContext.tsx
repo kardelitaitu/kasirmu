@@ -20,7 +20,7 @@ import {
 import { createSession, destroySession, refreshPickerTicket, switchOrganization as switchOrganizationApi } from "@/api/staff";
 import { getDeviceId } from "@/api/system";
 import { useAuth } from "@/contexts/AuthContext";
-import { requiredLocalized, useToast } from "@/frontend/shared";
+import { requiredLocalized, useToast } from "@/components";
 import { errorDetail } from "@/utils/app-error";
 import { useLocalization } from "@fluent/react";
 
@@ -400,7 +400,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           } catch (err) {
             // Refresh failed — use the existing ticket, which is the LOGIN-TIME one:
             // `pickerTicketRef.current` above holds the ticket minted at staff_login, and
-            // its TTL is five minutes (crates/oz-bridge/src/auth.rs, PICKER_TICKET_TTL_SECS,
+            // its TTL is five minutes (crates/kasirmu-bridge/src/auth.rs, PICKER_TICKET_TTL_SECS,
             // which is why this call exists at all). So a silent fallback here can hand
             // create_session a ticket that has already aged out.
             //

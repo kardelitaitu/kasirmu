@@ -1,6 +1,6 @@
 // ── AppShell boot gate: an unknown answer must never be written as a fact ────
 //
-// The desktop boot effect (ui/src/frontend/shell/AppShell.tsx) used to decide
+// The desktop boot effect (ui/src/app/AppShell.tsx) used to decide
 // three things from ONE try/catch around a Promise.all, and its catch wrote
 // `hasActiveLicense = true` AND `hasCompletedSetup = true`. A single transient
 // IPC throw therefore suppressed the activation screen, suppressed the setup
@@ -25,10 +25,10 @@
 //
 // Out of scope here, unchanged by design: the `import.meta.env.DEV` bypass
 // (dev-only, no IPC), and the Rust-side trust decision
-// (crates/oz-bridge/src/auth.rs:611-621 is the only pre-activation gate).
+// (crates/kasirmu-bridge/src/auth.rs:611-621 is the only pre-activation gate).
 //
 // WHY `completed` CANNOT BE THE LICENCE FLAG: get_setup_status's `completed`
-// is the SETUP-WIZARD DISMISSAL (crates/oz-bridge/src/setup.rs reads
+// is the SETUP-WIZARD DISMISSAL (crates/kasirmu-bridge/src/setup.rs reads
 // keys::SHOW_SETUP_WIZARD), not activation — so it is reachable on a
 // never-activated install. It may still open the door (rule 2), but it may no
 // longer be reported as "the licence is valid", and it is never inferred from
@@ -39,8 +39,8 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { act } from 'react';
 import type { ReactNode } from 'react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
-import AppShell from '@/frontend/shell/AppShell';
-import { clearPages } from '@/platform/ui/page-registry';
+import AppShell from '@/app/AppShell';
+import { clearPages } from '@/registries/page-registry';
 import settingsFtl from '@/locales/settings.ftl?raw';
 import staffFtl from '@/locales/staff.ftl?raw';
 
@@ -60,7 +60,7 @@ vi.mock('@/api/license', () => ({
 }));
 
 // The boot path reaches exactly ONE staff function: `hasUsers`
-// (ui/src/frontend/shell/AppShell.tsx:24, called at :201 and :215 — nothing
+// (ui/src/app/AppShell.tsx:24, called at :201 and :215 — nothing
 // else from `@/api/staff` is imported by anything this file renders). An earlier
 // revision of this file also defined `listStaff`, `getStaff`, `createStaff`,
 // `updateStaff` and `deleteStaff` — NONE of which `@/api/staff` exports (the

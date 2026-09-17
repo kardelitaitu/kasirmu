@@ -1,0 +1,48 @@
+[package]
+name = "kasirmu-bridge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Headless command middleware: the BridgeCtx contract and BridgeError shared by the desktop and tablet IPC shims."
+
+# Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
+[lints]
+workspace = true
+
+# Headless by contract: no tauri / gtk / webkit2gtk / tauri-plugin dependency may
+# ever be added here. See the crate doc in src/lib.rs.
+[dependencies]
+chrono = { workspace = true }
+foundation = { workspace = true }
+hex = { workspace = true }
+hmac = { workspace = true }
+image = { workspace = true }
+# lettre backs the Wave-F email bridge domain: `send_test_report` builds a
+# multipart report (Message::builder / MultiPart / SinglePart) and drives it
+# through AsyncTransport. Spec + features live in the root workspace table.
+lettre = { workspace = true }
+modules-currency = { workspace = true }
+kasirmu-core = { workspace = true }
+kasirmu-hal = { workspace = true }
+kasirmu-lua = { workspace = true }
+kasirmu-plugin = { workspace = true }
+kasirmu-reporting = { workspace = true }
+kasirmu-security = { workspace = true }
+platform-core = { workspace = true }
+platform-kernel = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+webp = { workspace = true }
+
+# serde_json is a Wave D runtime dependency: EventSink payloads and the kds/pos
+# command bodies serialize JSON at runtime. It used to live in [dev-dependencies]
+tempfile = { workspace = true }
+# for the relocated Wave-A tests, which still resolve it from [dependencies].

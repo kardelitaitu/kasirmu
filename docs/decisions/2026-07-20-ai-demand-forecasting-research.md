@@ -9,7 +9,7 @@
 
 ## Context
 
-OZ-POS collects granular sales data across stores: daily revenue, product-level
+kasir.mu collects granular sales data across stores: daily revenue, product-level
 sales with timestamps, category breakdowns, hourly heatmaps, and inventory
 movement deltas. This data could power demand forecasting — predicting which
 products will sell when, optimizing stock levels, and reducing waste from
@@ -34,7 +34,7 @@ is practical for demand forecasting in a POS context.
 
 ## 1. Data Availability
 
-OZ-POS already collects all the data needed for time-series demand forecasting:
+kasir.mu already collects all the data needed for time-series demand forecasting:
 
 | Data Source | Structure | Granularity |
 |---|---|---|
@@ -149,7 +149,7 @@ business hours would be imperceptible.
 
 On-device inference keeps all sales data local — no customer transaction
 data leaves the device. Only the pre-trained model (not training data)
-is distributed. This aligns with OZ-POS's offline-first, local-data
+is distributed. This aligns with kasir.mu's offline-first, local-data
 philosophy.
 
 ---

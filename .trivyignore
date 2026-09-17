@@ -20,7 +20,7 @@
 # local re-scan below is the ONLY reader of this file until a scan is put
 # back into a live workflow):
 #   1. Re-scan the image locally:
-#        docker build -f Dockerfile.server -t oz-pos-cloud:scan .
+#        docker build -f ops/docker/Dockerfile.server -t oz-pos-cloud:scan .
 #        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
 #          aquasec/trivy:0.61.0 image oz-pos-cloud:scan
 #   2. Add every accepted CRITICAL/HIGH to this file with a reason

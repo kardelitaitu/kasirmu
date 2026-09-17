@@ -9,8 +9,8 @@ WHY
 The topology semantic contract (`topologySemantics.json`) is consumed by
 BOTH sides of the IPC boundary:
 
-  1. Rust — `crates/oz-core/src/topology.rs` embeds a VENDORED copy
-     (`crates/oz-core/src/topologySemantics.json`) via `include_str!` so
+  1. Rust — `crates/kasirmu-core/src/topology.rs` embeds a VENDORED copy
+     (`crates/kasirmu-core/src/topologySemantics.json`) via `include_str!` so
      compiling the cloud/desktop server never touches the UI tree
      (`.dockerignore` excludes `ui` entirely).
   2. TypeScript — `ui/src/features/locations/topologyContract.ts` and
@@ -20,7 +20,7 @@ BOTH sides of the IPC boundary:
 If a developer edits the contract on one side and forgets the other, the
 Rust and TS validation engines silently disagree about the same topology
 graph — exactly the class of drift this script exists to catch before it
-reaches production. The `oz-core` unit test
+reaches production. The `kasirmu-core` unit test
 (`vendored_contract_matches_ui_canonical`) enforces the same invariant at
 test time; this script makes it enforceable from CI and `scripts/check.sh`
 without compiling anything.
@@ -34,7 +34,7 @@ shipped a bug once (CHANGELOG.md:144 / JOURNAL.md:3953: same JSON, two
 hand-written rule sets, different error contract).
 
 So the contract also carries a generated verdict corpus,
-`crates/oz-core/src/topologySemantics.matrix.json` — every (pairing row ×
+`crates/kasirmu-core/src/topologySemantics.matrix.json` — every (pairing row ×
 source kind × target kind) combination, produced by the Rust evaluator. Both
 evaluators assert against it: `topology_matrix_golden_matches_the_rust_evaluator`
 in Rust, and `ui/src/__tests__/topologyMatrix.test.ts` in TypeScript.
@@ -47,7 +47,7 @@ in a context where neither test binary is available.
 
 Regenerate the corpus deliberately:
 
-    TOPOLOGY_MATRIX_UPDATE=1 cargo test -p oz-core --lib topology_matrix
+    TOPOLOGY_MATRIX_UPDATE=1 cargo test -p kasirmu-core --lib topology_matrix
 
 USAGE
 =====
@@ -59,7 +59,7 @@ EXIT CODES
 
   0  — contract copies are byte-identical AND the corpus is consistent with
        the contract — or there is no `ui/` tree at all, which is legal in a
-       server-only build context (oz-core vendors its own). The second case is
+       server-only build context (kasirmu-core vendors its own). The second case is
        never silent: it prints `SKIP —` where the `OK —` would have been and
        closes the run with `NOT FULLY VERIFIED`, so a comparison that did not
        happen cannot be read as a comparison that passed.
@@ -67,7 +67,7 @@ EXIT CODES
        `ui/src` EXISTING while the expected contract path does not: a moved
        file (this one went `features/stores/` -> `features/locations/`) is
        exactly the drift this script exists to catch, so it fails instead of
-       skipping. Same rule the `oz-core` test now enforces.
+       skipping. Same rule the `kasirmu-core` test now enforces.
 """
 
 from __future__ import annotations
@@ -88,14 +88,14 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError):
         pass
 
-VENDORED = Path("crates/oz-core/src/topologySemantics.json")
+VENDORED = Path("crates/kasirmu-core/src/topologySemantics.json")
 UI = Path("ui/src/features/locations/topologySemantics.json")
 # The UI TREE, as distinct from the one contract file inside it. Those are two
 # different questions: no tree means a server-only checkout (legitimate), a
 # tree with no contract file means this path went stale or the file vanished
 # while its TypeScript importers stayed alive (drift).
 UI_ROOT = Path("ui/src")
-MATRIX = Path("crates/oz-core/src/topologySemantics.matrix.json")
+MATRIX = Path("crates/kasirmu-core/src/topologySemantics.matrix.json")
 
 
 def check_contract_copies() -> tuple[int, bool]:
@@ -117,7 +117,7 @@ def check_contract_copies() -> tuple[int, bool]:
                 "like a deleted one here: the contract once lived at "
                 "ui/src/features/stores/topologySemantics.json and now lives "
                 "under locations/. If it moved again, repoint UI here AND the "
-                "twin path in crates/oz-core/src/topology_tests.rs::"
+                "twin path in crates/kasirmu-core/src/topology_tests.rs::"
                 "vendored_contract_matches_ui_canonical; the TS importers "
                 "(ui/src/features/locations/topologyContract.ts) need the same "
                 "edit. If it was deleted, they are broken too."
@@ -158,7 +158,7 @@ def check_contract_copies() -> tuple[int, bool]:
         "  Copy the edited copy across so the Rust include_str! and the TS "
         "import describe the same contract:\n"
         "    cp ui/src/features/locations/topologySemantics.json "
-        "crates/oz-core/src/topologySemantics.json\n"
+        "crates/kasirmu-core/src/topologySemantics.json\n"
         "  (or the reverse, depending on which side owns the change)."
     )
     return 1, False
@@ -170,7 +170,7 @@ def check_corpus(contract: dict) -> int:
         print(
             f"verify-topology-parity: missing corpus {MATRIX}\n"
             "  Regenerate it:\n"
-            "    TOPOLOGY_MATRIX_UPDATE=1 cargo test -p oz-core --lib topology_matrix"
+            "    TOPOLOGY_MATRIX_UPDATE=1 cargo test -p kasirmu-core --lib topology_matrix"
         )
         return 1
 
@@ -235,7 +235,7 @@ def check_corpus(contract: dict) -> int:
             problems.append(
                 f"corpus row {label} admits NO kind pair in the corpus. If the "
                 "row is genuinely unauthorable today, add its kinds to "
-                "corpus_kinds() in crates/oz-core/src/topology_tests.rs and "
+                "corpus_kinds() in crates/kasirmu-core/src/topology_tests.rs and "
                 "regenerate; otherwise the endpoint evaluator is broken."
             )
 
@@ -245,7 +245,7 @@ def check_corpus(contract: dict) -> int:
             print(f"  - {problem}")
         print(
             "  Regenerate deliberately and review the matrix diff:\n"
-            "    TOPOLOGY_MATRIX_UPDATE=1 cargo test -p oz-core --lib topology_matrix"
+            "    TOPOLOGY_MATRIX_UPDATE=1 cargo test -p kasirmu-core --lib topology_matrix"
         )
         return 1
 

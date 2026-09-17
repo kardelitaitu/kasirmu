@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { requiredLocalized, type RequiredLocalizedL10n } from '@/frontend/shared';
+import { requiredLocalized, type RequiredLocalizedL10n } from '@/components';
 
 function makeL10n(
   getString: (id: string, args?: Record<string, string | number>) => string | null | undefined,

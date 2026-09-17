@@ -3,7 +3,7 @@
 // Both screens used to answer a throwing list-scoped IPC with `[]`, so a
 // cashier could not tell "this store has no products" from "the store was
 // never asked". The remedy is the sanctioned idiom in
-// frontend/shell/AppShell.tsx:87-94 — settle() returns {ok:true,value} or logs
+// app/AppShell.tsx:87-94 — settle() returns {ok:true,value} or logs
 // and returns {ok:false} and the caller WRITES NOTHING, so the state stays
 // UNKNOWN. Each pair below asserts one arm of the distinction: the unanswered
 // read says so out loud, the answered-with-zero read stays quiet.

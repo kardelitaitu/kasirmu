@@ -1,0 +1,200 @@
+# shared-ui/locales/inventory.ftl — Inventory adjustment
+
+inv-title = Inventory Adjustment
+inv-step-select-product = 1. Select Product
+inv-step-adjustment-details = 2. Adjustment Details
+inv-change = Change
+inv-change-aria = Change product
+inv-search-placeholder =
+    .placeholder = Search by SKU, name, or barcode…
+inv-search-aria = Search products
+inv-loading = Loading products…
+inv-no-results = No products match your search.
+inv-hint = Type to search for a product by SKU, name, or barcode.
+inv-stock-count = { $count } in stock
+inv-stock-off = Stock tracking off
+inv-type-aria = Adjustment type
+inv-type-add-aria = Stock In
+inv-type-add-label = Stock In (Restock)
+inv-type-remove-aria = Stock Out
+inv-type-remove-label = Stock Out (Remove)
+inv-qty-label = Quantity
+inv-qty-placeholder =
+    .placeholder = e.g. 10
+inv-qty-hint = Current stock: { $stock }
+inv-reason-label = Reason
+inv-reason-select = Select a reason…
+inv-reason-custom-label = Describe the reason
+inv-reason-custom-placeholder =
+    .placeholder = Enter the reason for this adjustment…
+inv-error = { $message }
+inv-success-adjusted = Adjusted &quot;{ $name }&quot; by { $delta }. New stock: { $newQty }
+inv-error-qty-positive = Quantity must be a positive number
+inv-error-reason-required = Please select or enter a reason
+inv-error-stock-insufficient = Cannot remove { $qty } units — only { $stock } in stock
+inv-error-generic = Failed to adjust stock
+inv-cancel = Cancel
+inv-apply-restock = Apply Restock
+inv-apply-removal = Apply Removal
+inv-adjusting = Adjusting…
+inv-reason-restock = Restock (supplier delivery)
+inv-reason-stock-take = Stock take correction
+inv-reason-return = Customer return
+inv-reason-damaged = Damaged / spoiled
+inv-reason-write-off = Write-off / expiry
+inv-reason-transfer = Transfer to other location
+inv-reason-other = Other reason…
+inv-report-title = Inventory Report
+inv-report-threshold = Threshold
+inv-report-export-csv = Export CSV
+inv-report-sku = SKU
+inv-report-product = Product
+inv-report-current-stock = Stock
+inv-report-region-aria = Inventory Report
+inv-report-threshold-aria = Stock threshold
+inv-report-print-aria = Print report
+inv-report-export-aria = Export CSV
+inv-report-csv-header-sku = SKU
+inv-report-csv-header-product = Product
+inv-report-csv-header-stock = Current Stock
+inv-report-csv-header-threshold = Threshold
+inv-report-csv-header-unit-price = Unit Price
+inv-report-csv-header-unit-cost = Unit Cost
+inv-report-csv-header-unit-margin = Unit Margin
+inv-report-csv-header-margin = Margin
+inv-report-csv-header-stock-value = Stock Value
+inv-report-no-results = No results found
+inv-search-results-aria = Search results
+inv-qty-field-aria = Quantity
+inv-reason-custom-field-aria = Describe the reason
+
+# Inventory Shifts
+inv-shift-start-title = Start Inventory Shift
+inv-shift-notes-placeholder =
+    .placeholder = e.g., Night shift count...
+inv-shift-start-btn = Start Shift
+inv-shift-active-info = { $user } — { $location } — Started { $time }
+inv-shift-end-btn = End Shift
+inv-shift-summary-title = Shift Summary
+inv-shift-summary-performed = Transactions performed during this shift:
+inv-shift-no-transactions = No transactions recorded.
+
+# Inventory Shift — error toasts + a11y
+inv-shift-error-locations = Failed to load locations
+inv-error-load = Failed to load products
+inv-shift-error-active = Failed to load active shift
+inv-shift-error-start = Failed to start shift
+inv-shift-error-end = Failed to end shift
+inv-shift-bar-aria = Shift Info
+inv-shift-location-aria = Location
+inv-shift-notes-aria = Notes
+
+# Transit Audit
+inv-transit-title = Transit Stock Audit
+inv-transit-col-sku = SKU
+inv-transit-col-product = Product
+inv-transit-col-qty = Qty
+inv-transit-col-source = Source
+inv-transit-col-dest = Destination
+inv-transit-col-sent = Sent At
+inv-transit-reverse-btn = Reverse Transfer
+inv-transit-no-overdue = No overdue transit items.
+inv-transit-reverse-title = Reverse Transfer?
+inv-transit-reverse-message = Are you sure you want to reverse this stock transfer? Stock will be returned to the source location. This action cannot be undone.
+inv-transit-reverse-confirm = Reverse
+inv-transit-transfer-label = Transfer #
+inv-transit-reversed-toast = Stock transfer reversed successfully
+inv-transit-error-load = Failed to load transit stock
+inv-transit-error-reverse = Failed to reverse transfer
+inv-transit-unknown = Unknown
+
+# Transaction Log
+inv-log-title = Inventory Transaction Log
+inv-log-filter-location = Location
+inv-log-filter-staff = Staff
+inv-log-filter-type = Type
+inv-log-filter-all = All
+inv-log-expand-btn = Details
+inv-log-col-barcode = Barcode Scanned
+inv-log-col-datetime = Date / Time
+inv-log-col-type = Type
+inv-log-col-location = Location
+inv-log-col-staff = Staff
+inv-log-col-actions = Action
+inv-log-filter-start = Start Date
+inv-log-filter-end = End Date
+inv-log-type-sale = Sale
+inv-log-type-void = Void
+inv-log-type-refund = Refund
+inv-log-type-transfer = Transfer
+inv-log-type-po-receive = PO Receive
+inv-log-type-stock-count = Stock Count
+inv-log-type-manual-adjustment = Manual Adjustment
+inv-log-loading-lines = Loading lines...
+inv-log-notes = Notes
+inv-log-error-load = Failed to load transactions
+inv-log-error-lines = Failed to load transaction details
+
+# Threshold Config
+inv-threshold-title = Stock Threshold Configuration
+inv-threshold-col-sku = SKU
+inv-threshold-col-product = Product Name
+inv-threshold-col-location = Location
+inv-threshold-col-threshold = Threshold
+inv-threshold-col-status = Status
+inv-threshold-col-actions = Actions
+inv-threshold-add-btn = + Add Threshold
+inv-threshold-dialog-title = Configure Threshold
+inv-threshold-global-opt = Global (All Locations)
+inv-threshold-filter-all = All Locations
+inv-threshold-filter-global = Global Fallback Only
+inv-threshold-status-enabled = Enabled
+inv-threshold-status-disabled = Disabled
+inv-threshold-unknown-product = Unknown Product
+
+# Threshold Config — additional keys
+inv-threshold-filter-label = Filter by Location
+inv-threshold-delete-title = Delete Threshold?
+inv-threshold-delete-message = Are you sure you want to delete this threshold alert boundary? This action cannot be undone.
+inv-threshold-delete-confirm = Delete
+inv-threshold-error-qty = Threshold must be a valid non-negative integer
+inv-threshold-error-load = Failed to load threshold data
+inv-threshold-error-save = Failed to save threshold
+inv-threshold-error-delete = Failed to delete threshold
+
+# Stock Alert Panel
+inv-alert-title = Stock Alert Panel
+inv-alert-badge-count = { $count } Stock Alerts
+inv-alert-loading-aria = Loading stock alerts
+inv-alert-loading = Loading alerts...
+inv-alert-aria = Stock alerts
+inv-alert-panel-aria = Stock alerts panel
+inv-alert-empty = No active alerts
+inv-alert-time-now = Just now
+inv-alert-time-min = { $min }m ago
+inv-alert-time-hr = { $hr }h ago
+inv-alert-ack-aria = Acknowledge alert for { $name }
+inv-alert-ack = Ack
+inv-alert-acking = ...
+inv-alert-stock-label = Stock
+inv-alert-threshold-label = Threshold
+inv-alert-error-load = Failed to load alerts
+inv-alert-error-ack = Failed to acknowledge
+
+# ── Location Picker ──
+loc-picker-label = Location
+loc-picker-trigger-aria = Select inventory location. Current: { $name }
+loc-picker-listbox-aria = Inventory locations
+loc-picker-error-load = Failed to load locations
+loc-picker-badge-primary = Primary
+loc-picker-badge-neg-stock = Neg. stock
+loc-picker-search-aria = Search locations
+loc-picker-search-placeholder = Search locations…
+loc-picker-no-results = No locations match your search.
+loc-type-store = Store
+loc-type-warehouse = Warehouse
+loc-type-transit = Transit
+loc-type-damaged = Damaged
+loc-type-virtual = Virtual
+loc-type-unknown = Unknown
+

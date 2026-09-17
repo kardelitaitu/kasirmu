@@ -48,7 +48,7 @@ function focusableWithin(panel: HTMLElement): HTMLElement[] {
  * reference changes across renders.
  *
  * Mirrors the pattern used in `Modal.tsx`, `SettingsPopup.tsx`, and
- * the shared `frontend/shared/Modal.tsx`.
+ * the shared `components/Modal.tsx`.
  *
  * @param panelRef - Ref to the dialog panel DOM element.
  * @param active   - Whether the trap should be active (typically `open && !exiting`).

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { Localized, useLocalization } from '@fluent/react';
 import { exportDailySummaryScoped, type DailySummaryRow } from '@/api/sales';
 import { formatMoney, type Money } from '@/types/domain';

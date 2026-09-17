@@ -2,8 +2,8 @@
 import { useContext, useState, useCallback } from 'react';
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
-import { Localized } from '@/frontend/shared/Localized';
-import { requiredLocalized } from '@/frontend/shared';
+import { Localized } from '@/components/Localized';
+import { requiredLocalized } from '@/components';
 import { useLocalization } from '@fluent/react';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { LocaleContext } from '@/i18n/LocaleContext';
@@ -170,7 +170,7 @@ const STEP_FEATURES: { sectionId: string; title: string; features: FeatureDef[] 
     features: [
       { key: 'reporting', label: 'Reporting', description: 'Sales, inventory, and shift reports' },
       { key: 'analytics', label: 'Analytics', description: 'Charts, top products, hourly heatmap, CSV exports' },
-      { key: 'export-import', label: 'Export & Import', description: 'Encrypted data export and import (.ozpkg)' },
+      { key: 'export-import', label: 'Export & Import', description: 'Encrypted data export and import (.kasirpkg)' },
       { key: 'cloud-sync', label: 'Cloud Sync', description: 'Sync data to cloud PostgreSQL with backup' },
       { key: 'multi-store', label: 'Multi-Store', description: 'Manage multiple store locations' },
       { key: 'multi-terminal', label: 'Multi-Terminal', description: 'Multiple POS terminals per store' },
@@ -412,7 +412,7 @@ export default function SetupWizard({ onComplete, onSkip, onLaunch }: SetupWizar
         <div className="setup-container">
           <div className="setup-header">
             <Localized id="setup-logo">
-              <div className="setup-logo">OZ-POS</div>
+              <div className="setup-logo">kasir.mu</div>
             </Localized>
           </div>
 
@@ -438,7 +438,7 @@ export default function SetupWizard({ onComplete, onSkip, onLaunch }: SetupWizar
               </p>
             </Localized>
             <Button size="lg" onClick={() => onLaunch?.()}>
-              <Localized id="setup-launch">Launch OZ-POS</Localized>
+              <Localized id="setup-launch">Launch kasir.mu</Localized>
             </Button>
           </div>
         </div>
@@ -457,7 +457,7 @@ export default function SetupWizard({ onComplete, onSkip, onLaunch }: SetupWizar
         {/* ── Header ──────────────────────────────── */}
         <div className="setup-header">
           <Localized id="setup-logo">
-            <div className="setup-logo">OZ-POS</div>
+            <div className="setup-logo">kasir.mu</div>
           </Localized>
           <Localized id="setup-tagline">
             <div className="setup-tagline">Point of Sale — Simplified</div>

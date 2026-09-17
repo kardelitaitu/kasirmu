@@ -18,7 +18,7 @@
 disables the Tauri WebView's Content Security Policy. Any HTML/JS
 loaded from any origin can execute, which is an XSS → RCE vector
 under the Tauri IPC threat model. Replace the `null` value with a
-strict allowlist CSP that aligns with the OZ-POS bundle's actual
+strict allowlist CSP that aligns with the kasir.mu bundle's actual
 needs (local assets, IPC, asset scheme).
 
 ## Baseline (pre-fix)
@@ -43,7 +43,7 @@ ASVS V5.
       `security.csp` value
 - [ ] `apps/tablet-client/tauri.conf.json` has a non-null
       `security.csp` value
-- [ ] The CSP string covers the OZ-POS bundle's actual needs:
+- [ ] The CSP string covers the kasir.mu bundle's actual needs:
       - `default-src 'self'`
       - `img-src 'self' data: asset: https://asset.localhost`
       - `style-src 'self' 'unsafe-inline'` (the audit recommends

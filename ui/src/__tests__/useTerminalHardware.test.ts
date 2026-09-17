@@ -47,7 +47,7 @@ describe('useTerminalHardware', () => {
   // ── Session scoping (F-017) ─────────────────────────────────────
 
   it('loads through the scoped command, passing the session token', async () => {
-    // get_hardware_settings is NOT registered in apps/desktop-client/src/lib.rs --
+    // get_hardware_settings is NOT registered in apps/desktop-tauri/src/lib.rs --
     // it sits in the desktop section of scripts/ipc-parity-allowlist.json as a known
     // F-008/F-050 gap -- so on desktop the unscoped call rejects and the hook's catch
     // silently falls back to defaults. get_hardware_settings_scoped IS registered
@@ -67,7 +67,7 @@ describe('useTerminalHardware', () => {
   });
 
   it('saves through the scoped command, passing the session token', async () => {
-    // set_hardware_settings does not exist in apps/desktop-client at all -- only
+    // set_hardware_settings does not exist in apps/desktop-tauri at all -- only
     // set_hardware_settings_scoped (settings.rs:650, registered lib.rs:704) does, and it is the
     // one that writes hardware_profiles and the JSON profile. So the unscoped call the hook made
     // rejected on every desktop save. The scoped setter takes no userId: it derives the user from

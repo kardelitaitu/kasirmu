@@ -33,7 +33,7 @@ The line used to print three counts and nothing else, and every one of them was
 a FINDING count -- tracked, blocking, stale. Those measure debt, not scope. So
 "0 new/expired blocking finding(s)" was equally true of a run that graded this
 workspace and of a run whose --root pointed at a directory holding no crates, no
-ui/src and no crates/oz-bridge. That second run is a supported mode, not a
+ui/src and no crates/kasirmu-bridge. That second run is a supported mode, not a
 corruption: --root is a documented flag above, and the node suite in
 scripts/__tests__/verify-architecture-boundaries.test.mjs already reaches fixture
 scope another way -- it copies this script into the fixture directory and passes
@@ -55,7 +55,7 @@ KNOWN LIMIT -- A REAL REPO CAN PRESENT AS A FIXTURE
 ===================================================
 
 An empty population is INTENDED here and stays intended: the walker docstrings
-say a fixture repository without crates/oz-bridge yields no findings, and
+say a fixture repository without crates/kasirmu-bridge yields no findings, and
 --root / --metadata-file exist precisely so synthetic trees can be graded -- and
 the node suite named above is made of nothing else. So this file deliberately has
 NO empty-population floor: adding one would fail the fixture runs that are this
@@ -92,10 +92,10 @@ from typing import Any
 
 RULES = {
     "module-to-module": {"category": "cargo", "severity": "P1", "hint": "Move composition to an application/platform boundary or depend on a shared contract."},
-    "core-upward-dependency": {"category": "cargo", "severity": "P1", "hint": "Keep oz-core below business modules; move shared contracts/models to a lower layer."},
+    "core-upward-dependency": {"category": "cargo", "severity": "P1", "hint": "Keep kasirmu-core below business modules; move shared contracts/models to a lower layer."},
     "platform-to-business": {"category": "cargo", "severity": "P1", "hint": "Use platform-startup or an application composition root for business-module wiring."},
     "ui-direct-invoke": {"category": "ui", "severity": "P2", "hint": "Route Tauri IPC through ui/src/api or a documented infrastructure adapter."},
-    "bridge-toolkit-purity": {"category": "renderer", "severity": "P1", "hint": "Keep crates/oz-bridge toolkit-free (ADR #49): a tauri/gtk/webkit dependency or reference removes the headless seam a second renderer binds to."},
+    "bridge-toolkit-purity": {"category": "renderer", "severity": "P1", "hint": "Keep crates/, modules/, platform/ and foundation/ toolkit-free (ADR #49, ADR #53): a tauri/gtk/webkit dependency or reference removes the headless seam a second renderer binds to."},
     "ui-framework-vocabulary": {"category": "renderer", "severity": "P2", "hint": "Keep renderer vocabulary out of app-layer prose (ADR #53): cite the caller by its role, not by its .tsx/.css filename."},
 }
 BUSINESS_PREFIX = "modules-"
@@ -325,7 +325,14 @@ def cargo_findings(metadata: dict[str, Any], root: Path, scope: dict[str, int]) 
             target_is_business = target.startswith(BUSINESS_PREFIX)
             owner_is_business = owner.startswith(BUSINESS_PREFIX)
             rule = None
-            if owner == "oz-core" and target_is_business:
+            # Spelled once, not as an `oz-core`/`kasirmu-core` pair: the package has
+            # been named `kasirmu-core` since the Tier-3 rename and every graph this
+            # gate accepts now comes from `cargo metadata` on this tree (the tracked
+            # `scripts/architecture-cargo-metadata.json` snapshot is no longer a
+            # fallback -- see `metadata_from_cargo`). A second spelling that no input
+            # can produce is a branch nothing exercises, i.e. a rule that would go
+            # unfelt the day it silently stopped matching.
+            if owner == "kasirmu-core" and target_is_business:
                 rule = "core-upward-dependency"
             elif owner_is_business and target_is_business:
                 rule = "module-to-module"
@@ -610,62 +617,68 @@ def ui_findings(root: Path, scope: dict[str, int]) -> list[dict[str, Any]]:
 
 
 def bridge_toolkit_findings(root: Path, scope: dict[str, int]) -> list[dict[str, Any]]:
-    """Report UI-toolkit coupling inside `crates/oz-bridge` (ADR #49).
+    """Report UI-toolkit coupling below the application layer (ADR #49, ADR #53).
 
-    ADR #49 makes the bridge headless *by dependency*: it carries no `tauri`,
-    `gtk`, `webkit2gtk` or `tauri-plugin-*`, so command bodies can be driven
-    without a shell and a second renderer can call them directly. That claim is
-    currently asserted only in prose and by a comment in the crate itself.
+    `crates/`, `modules/`, `platform/` and `foundation/` are renderer-agnostic by
+    design: the stated goal is that the UI is replaceable, and a dependency on
+    `tauri`, `gtk`, `webkit2gtk` or `tauri-plugin-*` removes the headless seam a
+    second renderer binds to. ADR #49 states that for `crates/kasirmu-bridge`
+    specifically, where command bodies must be drivable without a shell.
 
-    Comments and string contents are masked before scanning, so the crate's own
+    The rule originally inspected `crates/kasirmu-bridge` alone, which left
+    `platform/startup`'s unconditional toolkit dependency invisible to the rule
+    that declares it must not exist. It now covers all four roots, matching the
+    population `ui_vocabulary_findings` already walks.
+
+    Comments and string contents are masked before scanning, so a crate's own
     "depends on no tauri, gtk or webkit type" assertions do not self-report.
-    A fixture repository without `crates/oz-bridge` yields no findings, and says so:
-    the run's "[population examined: ...]" clause reports 0 bridge files scanned
-    rather than staying silent about the absence.
+    A fixture repository without any of the four roots yields no findings, and
+    says so: the run's "[population examined: ...]" clause reports 0 files
+    scanned rather than staying silent about the absence.
     """
-    crate = root / "crates" / "oz-bridge"
-    if not crate.is_dir():
-        # Intended fixture behaviour, and now visible rather than implied: this
-        # walk examined no file, which the green line prints as zero.
-        return []
     findings: list[dict[str, Any]] = []
-    manifest = crate / "Cargo.toml"
-    if manifest.is_file():
-        try:
-            raw_manifest = manifest.read_text(encoding="utf-8")
-        except OSError as exc:
-            raise ValueError(f"cannot read bridge manifest: {manifest}: {exc}") from exc
-        scope["bridge_files"] += 1
-        section = ""
-        for number, line in enumerate(raw_manifest.splitlines(), start=1):
-            stripped = line.strip()
-            if stripped.startswith("["):
-                section = stripped
-                continue
-            if section not in BRIDGE_TOOLKIT_SECTIONS:
-                continue
-            key = re.match(r"[\"']?([A-Za-z0-9_.\-]+)[\"']?\s*=", stripped)
-            if not key:
-                continue
-            match = BRIDGE_TOOLKIT_PATTERN.search(key.group(1))
-            if match:
-                findings.append(make_finding("bridge-toolkit-purity", relative_path(manifest, root), f"{key.group(1)} ({section})", number))
-    for path in sorted((crate / "src").rglob("*.rs")):
-        try:
-            raw = path.read_text(encoding="utf-8")
-        except OSError as exc:
-            raise ValueError(f"cannot read bridge source: {path}: {exc}") from exc
-        scope["bridge_files"] += 1
-        code = mask_comments_and_strings(raw)
-        for match in BRIDGE_TOOLKIT_PATTERN.finditer(code):
-            findings.append(
-                make_finding(
-                    "bridge-toolkit-purity",
-                    relative_path(path, root),
-                    match.group(0).lower(),
-                    code.count("\n", 0, match.start()) + 1,
+    for top in UI_VOCABULARY_ROOTS:
+        base = root / top
+        if not base.is_dir():
+            # Intended fixture behaviour, and visible rather than implied: this
+            # walk examined no file, which the green line prints as zero.
+            continue
+        for manifest in sorted(base.rglob("Cargo.toml")):
+            try:
+                raw_manifest = manifest.read_text(encoding="utf-8")
+            except OSError as exc:
+                raise ValueError(f"cannot read crate manifest: {manifest}: {exc}") from exc
+            scope["bridge_files"] += 1
+            section = ""
+            for number, line in enumerate(raw_manifest.splitlines(), start=1):
+                stripped = line.strip()
+                if stripped.startswith("["):
+                    section = stripped
+                    continue
+                if section not in BRIDGE_TOOLKIT_SECTIONS:
+                    continue
+                key = re.match(r"[\"']?([A-Za-z0-9_.\-]+)[\"']?\s*=", stripped)
+                if not key:
+                    continue
+                match = BRIDGE_TOOLKIT_PATTERN.search(key.group(1))
+                if match:
+                    findings.append(make_finding("bridge-toolkit-purity", relative_path(manifest, root), f"{key.group(1)} ({section})", number))
+        for path in sorted(base.rglob("*.rs")):
+            try:
+                raw = path.read_text(encoding="utf-8")
+            except OSError as exc:
+                raise ValueError(f"cannot read crate source: {path}: {exc}") from exc
+            scope["bridge_files"] += 1
+            code = mask_comments_and_strings(raw)
+            for match in BRIDGE_TOOLKIT_PATTERN.finditer(code):
+                findings.append(
+                    make_finding(
+                        "bridge-toolkit-purity",
+                        relative_path(path, root),
+                        match.group(0).lower(),
+                        code.count("\n", 0, match.start()) + 1,
+                    )
                 )
-            )
     return dedupe_findings(findings)
 
 
@@ -833,7 +846,7 @@ def population_clause(scope: dict[str, int]) -> str:
         f" [population examined: {scope['crates']} crate(s) in the Cargo graph, "
         f"{scope['dep_edges']} dependency edge(s) followed, "
         f"{scope['ui_files']} UI file(s) scanned, "
-        f"{scope['bridge_files']} crates/oz-bridge file(s) scanned, "
+        f"{scope['bridge_files']} file(s) scanned below the application layer, "
         f"{scope['app_layer_files']} app-layer .rs file(s) scanned across "
         f"{scope['app_layer_roots']}/{len(UI_VOCABULARY_ROOTS)} root(s), "
         f"{scope['baseline_entries']} baseline entry(ies)]"

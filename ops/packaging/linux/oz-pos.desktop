@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=OZ-POS
+Comment=Point-of-sale framework
+Exec=kasirmu-app
+Icon=oz-pos
+Type=Application
+Categories=Office;Finance;
+Terminal=false
+StartupNotify=true
+MimeType=application/x-ozpkg;

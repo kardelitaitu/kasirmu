@@ -28,10 +28,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import fs from 'fs';
 import path from 'path';
-import { withFluent } from '@/locales/test-utils';
-import { LoadingStatus } from '@/frontend/shared/LoadingStatus';
+import { withFluent } from '@/i18n/test-utils';
+import { LoadingStatus } from '@/components/LoadingStatus';
 import { Skeleton as ComponentSkeleton } from '@/components/Skeleton';
-import { Skeleton as SharedSkeleton } from '@/frontend/shared/Skeleton';
+import { Skeleton as SharedSkeleton } from '@/components/Skeleton';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
 // ── 1. Primitive single-source-of-truth ──────────────────────────────

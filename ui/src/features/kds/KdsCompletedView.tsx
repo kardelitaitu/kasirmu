@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { requiredLocalized, LoadingStatus } from '@/frontend/shared';
+import { requiredLocalized, LoadingStatus } from '@/components';
 import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { listKdsOrdersScoped, type KdsOrder } from '@/api/kds';
@@ -50,7 +50,7 @@ export function fmtDuration(from: string, to: string): string {
 }
 
 /**
- * KdsCompletedView — the prototype completed-tab view (dev/kds-prototype.html):
+ * KdsCompletedView — the prototype completed-tab view (see docs/specs/_active/tauri-ux-design-language-plan.md):
  * time-bucket columns (Today / Yesterday / This Week / Older) with collapsible
  * bucket headers. Each card is a minimized .kds-card showing order# + table +
  * items + duration + status, with a Reopen button.

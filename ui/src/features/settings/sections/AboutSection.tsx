@@ -35,7 +35,7 @@ export default function AboutSection({
             </span>
             <span className="settings-field-input-wrap">
               <Localized id="settings-app-version" vars={{ version: appVersion }}>
-                <span className="settings-license-value">OZ-POS Enterprise v{appVersion}</span>
+                <span className="settings-license-value">kasir.mu Enterprise v{appVersion}</span>
               </Localized>
             </span>
           </div>
@@ -57,7 +57,7 @@ export default function AboutSection({
             </span>
             <span className="settings-field-input-wrap">
               <Localized id="settings-copyright-notice-value">
-                <span className="settings-license-value">&copy; 2024-2026 OZ-POS Contributors. All Rights Reserved.</span>
+                <span className="settings-license-value">&copy; 2025–2026. All rights reserved.</span>
               </Localized>
             </span>
           </div>

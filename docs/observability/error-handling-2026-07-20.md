@@ -4,7 +4,7 @@
 
 ### Finding: Production code is clean
 
-- **Tauri commands** (`apps/desktop-client/src/commands/`): 191 `unwrap()` calls, **all in `#[cfg(test)]` blocks**. Production command functions use `Result<_, AppError>` with `?` propagation.
+- **Tauri commands** (`apps/desktop-tauri/src/commands/`): 191 `unwrap()` calls, **all in `#[cfg(test)]` blocks**. Production command functions use `Result<_, AppError>` with `?` propagation.
 - **Cloud server** (`apps/cloud-server/src/`): **0** `.expect()` calls in `main.rs` — the file was refactored since this audit; DB init now propagates `Result` (startup-only fail-fast remains acceptable). Remaining `expect()`/`unwrap()` are test code.
 - **Sync engine** (`platform/sync/src/`): 123 `unwrap()` calls, **all in tests**. Production functions use `Result` + `?`.
 
@@ -32,7 +32,7 @@ pub async fn create_sale(...) -> Result<SaleResult, AppError> {
 
 ### Error Categories (existing)
 
-> Updated 2026-08-08: the variants below are the **current** `AppError` enum in `apps/desktop-client/src/error.rs:20`. The 0.0.14-era table (`NotFound`/`BadRequest`/`Conflict`/`Internal`/`Unauthorized`/`RateLimited`) described an API that no longer exists.
+> Updated 2026-08-08: the variants below are the **current** `AppError` enum in `apps/desktop-tauri/src/error.rs:20`. The 0.0.14-era table (`NotFound`/`BadRequest`/`Conflict`/`Internal`/`Unauthorized`/`RateLimited`) described an API that no longer exists.
 
 | AppError variant | Frontend handling |
 |-----------------|-------------------|

@@ -5,10 +5,10 @@
 //!
 //! 1. **Module registration** — `manifest.json` id must match the
 //!    `Module` trait id and declare the documented permissions.
-//! 2. **Type identity** — the `oz_core` re-exports are *the same types*
+//! 2. **Type identity** — the `kasirmu_core` re-exports are *the same types*
 //!    as the `modules_sales` ones (compile-time proof).
 //! 3. **DB behaviour parity** — a sale the module service checks out
-//!    must be readable by `oz_core`'s `Store` with the same status and
+//!    must be readable by `kasirmu_core`'s `Store` with the same status and
 //!    total, and a module-side void must be visible through the store.
 //! 4. **Serde wire shape** — `Sale` crosses IPC raw (the Tauri
 //!    `complete_sale` / void / refund commands return it directly), so
@@ -16,13 +16,13 @@
 //!    representation are pinned against the frontend contract.
 
 use foundation::contracts::Module;
+use kasirmu_core::migrations::fresh_db;
+use kasirmu_core::refund::{Refund as CoreRefund, RefundLine as CoreRefundLine};
+use kasirmu_core::sale::{Sale as CoreSale, SaleLine as CoreSaleLine};
 use modules_sales::{
     Refund as ModuleRefund, RefundLine as ModuleRefundLine, SalesModule, SalesService,
 };
 use modules_sales::{Sale as ModuleSale, SaleLine as ModuleSaleLine};
-use oz_core::migrations::fresh_db;
-use oz_core::refund::{Refund as CoreRefund, RefundLine as CoreRefundLine};
-use oz_core::sale::{Sale as CoreSale, SaleLine as CoreSaleLine};
 
 // ── 1. Module registration contract ─────────────────────────────────
 
@@ -64,7 +64,7 @@ fn identity<T>(t: T) -> T {
 
 #[test]
 fn oz_core_reexports_exact_module_types() {
-    // These assignments compile ONLY if the oz-core re-exports are
+    // These assignments compile ONLY if the kasirmu-core re-exports are
     // literally the same types as the modules_sales ones. If someone
     // forks a type in either crate, this fails to build.
     let _sale: fn(CoreSale) -> CoreSale = identity::<ModuleSale>;
@@ -103,9 +103,9 @@ fn module_checkout_is_visible_through_the_store() {
     )
     .expect("checkout must succeed");
 
-    // oz_core's Store must observe the SAME row — same status, total,
+    // kasirmu_core's Store must observe the SAME row — same status, total,
     // and line count — even though it knows nothing about the module.
-    let store = oz_core::db::Store::new(&conn);
+    let store = kasirmu_core::db::Store::new(&conn);
     let via_store = store
         .get_sale(&sale.id)
         .expect("store read must not error")
@@ -119,7 +119,7 @@ fn module_checkout_is_visible_through_the_store() {
 #[test]
 fn module_void_is_visible_through_the_store() {
     let conn = fresh_db();
-    let store = oz_core::db::Store::new(&conn);
+    let store = kasirmu_core::db::Store::new(&conn);
 
     // Build an ACTIVE sale (Pending → Active) and persist it through
     // the store so the module's void path has a legal state-machine

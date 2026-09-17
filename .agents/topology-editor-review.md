@@ -15,7 +15,7 @@
 | `crates/oz-bridge/src/topology/commands.rs` | 1,046 lines | **yes — full read** |
 | `crates/oz-bridge/src/topology/persistence.rs` | 869 | partial (the gate, recovery, journal) |
 | `crates/oz-bridge/src/topology/semantics.rs` | — | the ownership gate only |
-| `apps/desktop-client/src/commands/topology/commands.rs` | shim | the 10 command signatures |
+| `apps/desktop-tauri/src/commands/topology/commands.rs` | shim | the 10 command signatures |
 | `ui/src/api/topology.ts` | 294 | full read |
 | topology test suites (Rust + 52 UI files) | ~6,000 + 52 files | breadth pass + targeted verification |
 | canvas geometry / pointer / keyboard / CSS | ~57k lines | **NOT reviewed** |
@@ -73,7 +73,7 @@ The gate is `validate_semantic_ownership_in` (`persistence.rs:624-633`), which r
 
 **The FK bounds the damage** — with creations present, a genuinely unknown profile fails the INSERT and the whole Apply rolls back. So this is an integrity gap, not a corruption vector, and I am not claiming a privilege escalation.
 
-**No test covers the divergence.** `grep -rn "effective_store\|session_store\|different store\|differs from" crates/oz-bridge/src/topology/*_tests.rs` → **zero hits**. The end-to-end test sets `SessionContext::new(..., store_id.into(), ...)` and a node with `store_profile_id: store_id` — the same value (`apps/desktop-client/src/commands/topology/topology_command_tests.rs:1139-1164`).
+**No test covers the divergence.** `grep -rn "effective_store\|session_store\|different store\|differs from" crates/oz-bridge/src/topology/*_tests.rs` → **zero hits**. The end-to-end test sets `SessionContext::new(..., store_id.into(), ...)` and a node with `store_profile_id: store_id` — the same value (`apps/desktop-tauri/src/commands/topology/topology_command_tests.rs:1139-1164`).
 
 **Fix:** pass `effective_store_id`'s connection to the gate as well, or instead. The gate already takes a slice; the change is additive. Then add the divergence test — one Apply where the session store and the diagram's branch profile differ.
 
@@ -105,7 +105,7 @@ So a user holding `TOPOLOGY_WRITE` under a **branch-scoped** assignment that exc
 
 **Severity: low (test/documentation). Not previously recorded.**
 
-`apps/desktop-client/src/commands/topology/topology_command_tests.rs:1094` is the end-to-end Apply test. Its second half replays a stale base revision and claims:
+`apps/desktop-tauri/src/commands/topology/topology_command_tests.rs:1094` is the end-to-end Apply test. Its second half replays a stale base revision and claims:
 
 > `:1188-1190` — *"the save rejects AFTER the store transaction commits, so the live error path must compensate and restore"*
 > `:1230-1235` — *"This test already forces exactly that path — the stale Apply fails AFTER the store transaction commits, so it is compensated — which makes it the right place to pin the §3 claim"*
@@ -134,7 +134,7 @@ The assertion at `:1213-1218` — *"the recovery journal must be cleared after a
 
 ```bash
 grep -rn "request_id\|requestId" crates/oz-bridge/src/topology/*_tests.rs \
-                                  apps/desktop-client/src/commands/topology/*_tests.rs
+                                  apps/desktop-tauri/src/commands/topology/*_tests.rs
 # (no output)
 grep -rn "already used for a different" crates/ apps/ --include=*.rs
 # → commands.rs:505 only — the production string, nowhere else
@@ -176,7 +176,7 @@ Neither can fail unless the callee becomes non-deterministic. The properties the
 These five were found by an earlier security pass (`docs/archived/manager-2-journal.md:2223-2245`) and registered as **preserved defects** from the desktop→bridge extraction, with the delta stated as *visibility only*. I re-read each; all five are still live at `257ff6122`. Recording them here so this review is a complete picture, and so the earlier finding is not lost with the journal.
 
 **M1 — `load_topology` is unauthenticated, and it is the most sensitive read in the file.**
-It takes no session at **any** layer: the bridge body (`commands.rs:154-202`) never calls `resolve_session`; the shim's signature is `(branch_id, state)` with no `session_token` (`apps/desktop-client/src/commands/topology/commands.rs:132-139`); the UI wrapper matches (`ui/src/api/topology.ts:60-64`). It returns the full stored envelope for **any** `branch_id` the caller names. Not registered on the tablet (`grep -rn "load_topology\b" apps/tablet-client/src/` → 0).
+It takes no session at **any** layer: the bridge body (`commands.rs:154-202`) never calls `resolve_session`; the shim's signature is `(branch_id, state)` with no `session_token` (`apps/desktop-tauri/src/commands/topology/commands.rs:132-139`); the UI wrapper matches (`ui/src/api/topology.ts:60-64`). It returns the full stored envelope for **any** `branch_id` the caller names. Not registered on the tablet (`grep -rn "load_topology\b" apps/mobile-tauri/src/` → 0).
 
 What makes this worth re-raising rather than merely re-listing: `load_topology_template` (`:107-113`) **does** resolve a session, with an explicit justification — *"Reading a template reveals a branch's configuration, so it needs a session — but not the write capability."* The live diagram reveals strictly more than a template, and is the one read with no session at all. The reasoning that motivated the template check applies more strongly to the diagram, and was not applied to it.
 
@@ -203,7 +203,7 @@ What makes this worth re-raising rather than merely re-listing: `load_topology_t
 | The ledger write inside the save transaction | `persistence.rs:314-318` — no oz-bridge test passes a request key |
 | The probe's agreement with enforcement | **F2** — no test asserts the two checks agree |
 
-**Scope correction worth recording:** `crates/oz-bridge/src/topology/*_tests.rs` never call `apply_topology_diff`, `recover_pending_topology_apply`, `compensate_workspace_diff` or `persist_topology_recovery`. The real end-to-end Apply tests live in `apps/desktop-client/src/commands/topology/topology_command_tests.rs`. A reviewer who reads only the bridge test files will conclude the Apply path is untested; it is not — it is tested one crate over.
+**Scope correction worth recording:** `crates/oz-bridge/src/topology/*_tests.rs` never call `apply_topology_diff`, `recover_pending_topology_apply`, `compensate_workspace_diff` or `persist_topology_recovery`. The real end-to-end Apply tests live in `apps/desktop-tauri/src/commands/topology/topology_command_tests.rs`. A reviewer who reads only the bridge test files will conclude the Apply path is untested; it is not — it is tested one crate over.
 
 **Skips and baselines:** exactly one skip in the whole topology UI (`NodeTopologyEditor.test.tsx:6607`), documented. No `#[ignore]`, no `KNOWN_BROKEN`, no `describe.skip` in the Rust topology tests. That is a clean result and worth saying plainly.
 
@@ -240,7 +240,7 @@ The original audit stamp names `257ff6122` and is left as written. This amendmen
 ```bash
 for f in crates/oz-bridge/src/topology/commands.rs \
          crates/oz-bridge/src/topology/persistence.rs \
-         apps/desktop-client/src/commands/topology/topology_command_tests.rs \
+         apps/desktop-tauri/src/commands/topology/topology_command_tests.rs \
          ui/src/api/topology.ts \
          ui/src/__tests__/topologyExport.test.ts \
          ui/src/__tests__/topologyKindRegistry.test.ts; do
@@ -255,7 +255,7 @@ done
 |---|---|
 | `crates/oz-bridge/src/topology/commands.rs` | IDENTICAL |
 | `crates/oz-bridge/src/topology/persistence.rs` | IDENTICAL |
-| `apps/desktop-client/src/commands/topology/topology_command_tests.rs` | IDENTICAL |
+| `apps/desktop-tauri/src/commands/topology/topology_command_tests.rs` | IDENTICAL |
 | `ui/src/api/topology.ts` | IDENTICAL |
 | `ui/src/__tests__/topologyExport.test.ts` | IDENTICAL |
 | `ui/src/__tests__/topologyKindRegistry.test.ts` | IDENTICAL |

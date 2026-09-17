@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { ReactNode, ReactElement } from 'react';
 import { LocalizationProvider } from '@fluent/react';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import { WorkspaceInventorySettings } from '@/features/settings/workspace-cards/WorkspaceInventorySettings';
 import { setSettingsScoped } from '@/api/settings';
 

@@ -1,7 +1,7 @@
 import { useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
-import { useToast } from '@/frontend/shared/Toast';
-import Tooltip from '@/frontend/shell/Tooltip';
+import { requiredLocalized } from '@/components';
+import { useToast } from '@/components/Toast';
+import Tooltip from '@/app/Tooltip';
 import { useAuthConnection } from '@/hooks/useAuthConnection';
 import { toneForBinaryHealth, toneForHealth, type ConnectionHealth, type StatusTone } from '@/hooks/connectionHealth';
 import { useSyncConnection } from '@/hooks/useSyncConnection';

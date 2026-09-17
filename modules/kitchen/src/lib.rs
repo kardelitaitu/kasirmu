@@ -1,7 +1,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (modules-kitchen slice A: lib deep read)
 crate: modules-kitchen | status: SAFE | lint: CLEAN
-findings: clean documented STUB — kernel registration + sales/terminal dependencies; promotion path covers ticket tables, order.fired event subscription (tickets created by event, not direct call), and the SLA timer lifecycle (spawned in on_start, cancelled in on_stop so a stopped module leaves no live timer); documents existing runtime coupling (oz_core features disable guard for kitchen-display while KDS tickets are open) that should consult this module on promotion; kitchen-display and table-management flags depend on restaurant; sibling tests per convention
+findings: clean documented STUB — kernel registration + sales/terminal dependencies; promotion path covers ticket tables, order.fired event subscription (tickets created by event, not direct call), and the SLA timer lifecycle (spawned in on_start, cancelled in on_stop so a stopped module leaves no live timer); documents existing runtime coupling (kasirmu_core features disable guard for kitchen-display while KDS tickets are open) that should consult this module on promotion; kitchen-display and table-management flags depend on restaurant; sibling tests per convention
 next: none (promote KDS ticket state when built) | perf: N/A
 */
 
@@ -22,10 +22,10 @@ next: none (promote KDS ticket state when built) | perf: N/A
 //! `table-management` feature flags already gate the capability, and both
 //! depend on `restaurant`.
 //!
-//! Note the existing runtime coupling: `oz_core::features` enforces a
+//! Note the existing runtime coupling: `kasirmu_core::features` enforces a
 //! disable guard that refuses to turn `kitchen-display` off while KDS
 //! tickets are open. When this stub is promoted, that guard should consult
-//! this module rather than reaching into `oz-core` tables directly.
+//! this module rather than reaching into `kasirmu-core` tables directly.
 //!
 //! Promotion path — see `modules/README.md`:
 //! 1. Move ticket tables and queries into `repository.rs`.

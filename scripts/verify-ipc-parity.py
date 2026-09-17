@@ -47,7 +47,7 @@ own write did not happen (`AllowlistWriteRefused` -- the file moved under this r
 would not accept the rename, the swap failed outright). A write that did not happen is a WRITE
 problem and gets the refusal code; it says nothing about anybody's command names. A crash
 must never spend 1, because 1 is the number a reader (and
-`apps/tablet-client/src/commands/sync.rs:639`) treats as evidence about real commands. See
+`apps/mobile-tauri/src/commands/sync.rs:639`) treats as evidence about real commands. See
 `AllowlistUnusable`.
 """
 
@@ -70,7 +70,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 UI_SCAN_DIRS = [
     "ui/src/api",
     "ui/src/hooks",
-    "ui/src/frontend",
+    "ui/src/app",
     "ui/src/components",
     "ui/src/contexts",
     "ui/src/features",
@@ -78,8 +78,8 @@ UI_SCAN_DIRS = [
 ]
 
 SHELLS = {
-    "desktop": "apps/desktop-client/src/lib.rs",
-    "tablet": "apps/tablet-client/src/lib.rs",
+    "desktop": "apps/desktop-tauri/src/lib.rs",
+    "tablet": "apps/mobile-tauri/src/lib.rs",
 }
 
 ALLOWLIST_PATH = REPO_ROOT / "scripts" / "ipc-parity-allowlist.json"
@@ -359,13 +359,17 @@ FN_DEFINITION_BEFORE_RE = re.compile(r"\bfn\s+$")
 TYPE_QUALIFIER_RE = re.compile(r"[A-Z]|^Self$")
 # Path prefixes that name somebody else's function. This is the shape the whole sharing
 # programme produces, so it is not an edge case: a desktop shim whose own body reads
-#     oz_bridge::settings::get_receipt_settings(&ctx)
+#     kasirmu_bridge::settings::get_receipt_settings(&ctx)
 # inside `pub async fn get_receipt_settings`. A name search sees a call to
 # `get_receipt_settings` and grades the command as load-bearing, when what it found is the
 # shim reaching the bridge's version of the same name. `crate::` is deliberately absent -- a
 # same-crate path call really is this shell's function.
 FOREIGN_PATH_ROOTS = {
-    "oz_bridge", "oz_core", "oz_lan", "oz_local_api", "tauri", "std", "core", "alloc",
+    # Missing one of these silently grades a delegation shim as a load-bearing command, so
+    # the list is deliberately wide where it is real. The four `oz_` roots that sat here
+    # during the crate rename were dropped once no `oz_x::` site remained on the tree.
+    "kasirmu_bridge", "kasirmu_core", "kasirmu_lan", "kasirmu_local_api",
+    "tauri", "std", "core", "alloc",
 }
 
 
@@ -1020,7 +1024,7 @@ class AllowlistUnusable(RuntimeError):
     (cd2b55fa3, ef2058f28, 683eb1eac, 4d1a85b15) print one `error:` line and exit 2.
 
     Never exit 1, because 1 here is the VERDICT code -- main() ends on
-    `FAIL: N IPC parity violation(s)` and returns 1 -- and `apps/tablet-client/src/commands/
+    `FAIL: N IPC parity violation(s)` and returns 1 -- and `apps/mobile-tauri/src/commands/
     sync.rs:639` already cites "verify-ipc-parity.py exit 1" as evidence about real commands.
     A file that never arrived cannot be evidence about anybody's IPC surface. 2 is already
     this file's refusal code: main() returns it for a missing shell lib.
@@ -1522,7 +1526,7 @@ class AllowlistWriteRefusal(RuntimeError):
 
     Until now all three came back through `update_allowlist` as a `list[str]` and were
     printed as `FAIL: N allowlist write problem(s)` at exit 1 -- the VERDICT
-    code, the one `apps/tablet-client/src/commands/sync.rs:639` and `scripts/gates.json` read
+    code, the one `apps/mobile-tauri/src/commands/sync.rs:639` and `scripts/gates.json` read
     as evidence about real command names. So a lock collision or a mid-commit sibling was
     reportable as a finding about somebody's keys, which is the confusion this file already
     closed at its read site (`e931220d9a`, `21da42e70f`) and the same one closed in
@@ -1854,7 +1858,7 @@ def gate_in_body(body: str) -> str | None:
 
 
 def _bridge_fn_body(fn_name: str, cache={}) -> str:
-    """The body of a `pub async fn` in `crates/oz-bridge`, "" when there is none.
+    """The body of a `pub async fn` in `crates/kasirmu-bridge`, "" when there is none.
 
     Walked once per process and cached by name: this is called for every shell command that looks
     ungated, and re-reading the crate each time would make the gate slower than the thing it
@@ -1863,7 +1867,7 @@ def _bridge_fn_body(fn_name: str, cache={}) -> str:
     shape since the shells became thin.
     """
     if not cache:
-        root = REPO_ROOT / "crates" / "oz-bridge" / "src"
+        root = REPO_ROOT / "crates" / "kasirmu-bridge" / "src"
         for rs in sorted(root.rglob("*.rs")) if root.is_dir() else []:
             text = rs.read_text(encoding="utf-8", errors="replace")
             for m in re.finditer(r"\bfn\s+(\w+)\s*\(", text):
@@ -1873,7 +1877,10 @@ def _bridge_fn_body(fn_name: str, cache={}) -> str:
     return cache.get(fn_name, "")
 
 
-DELEGATION_RE = re.compile(r"\boz_bridge::[a-z_0-9]+::([a-z_0-9]+)\s*\(")
+# A shell body that delegates is not judged by its own text alone -- the permission check it
+# leans on lives in the bridge. The alternation carried `(?:oz|kasirmu)_bridge` while the
+# crate rename was in flight; it is spelled once now that no `oz_bridge::` site remains.
+DELEGATION_RE = re.compile(r"\bkasirmu_bridge::[a-z_0-9]+::([a-z_0-9]+)\s*\(")
 
 
 def orphan_permission(command: str) -> str | None:
@@ -3249,7 +3256,7 @@ def self_test() -> int:
             "/// see create_bundle(&x) above",
             "pub async fn create_bundle(",
             "    .create_bundle;",
-            "    oz_bridge::bundles::create_bundle(&ctx);",
+            "    kasirmu_bridge::bundles::create_bundle(&ctx);",
             "    crate::commands::bundles::create_bundle(&x);",
             "fn create_bundle() {",
             "async fn create_bundle() -> Result<(), E> {",
@@ -3274,9 +3281,9 @@ def self_test() -> int:
          "m.rs:13" not in call_sites and "m.rs:15" in call_sites)
     # The delegation blind spot, found 2026-09-16 by the red this leg gave the coursing lane:
     # `set_line_course_scoped` was reported as an ungated redundant twin whose caller should be
-    # allowlisted as "host-only", while `crates/oz-bridge/src/pos.rs:505` gates it on
-    # SALES_PROCESS one line below the shell's `oz_bridge::pos::set_line_course_scoped(&ctx, ...)`.
-    thin = "pub async fn x_scoped(t: String) -> R {\n    oz_bridge::pos::x_scoped(&ctx, &t, a).await\n}"
+    # allowlisted as "host-only", while `crates/kasirmu-bridge/src/pos.rs:505` gates it on
+    # SALES_PROCESS one line below the shell's `kasirmu_bridge::pos::set_line_course_scoped(&ctx, ...)`.
+    thin = "pub async fn x_scoped(t: String) -> R {\n    kasirmu_bridge::pos::x_scoped(&ctx, &t, a).await\n}"
     ungated = "pub async fn y_scoped(t: String) -> R {\n    load(&t)\n}"
     case("gate   a shell body that delegates is not judged by its own text alone",
          gate_in_body(thin) is None and DELEGATION_RE.findall(thin) == ["x_scoped"])

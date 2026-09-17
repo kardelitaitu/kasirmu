@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Apply targeted clippy lint fixes to crates/oz-api/src/pg.rs."""
+"""Apply targeted clippy lint fixes to crates/kasirmu-api/src/pg.rs."""
 import pathlib
 
 # Resolve the target from THIS script's location so it works from any
 # checkout/worktree, not just a repository-root CWD.
-path = pathlib.Path(__file__).resolve().parents[1] / "crates" / "oz-api" / "src" / "pg.rs"
+path = pathlib.Path(__file__).resolve().parents[1] / "crates" / "kasirmu-api" / "src" / "pg.rs"
 raw = path.read_bytes()
 text = raw.decode("utf-8")
 

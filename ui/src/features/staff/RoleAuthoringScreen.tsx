@@ -17,9 +17,9 @@ import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Badge } from '@/components/Badge';
 import { Skeleton } from '@/components/Skeleton';
-import { EmptyState, requiredLocalized } from '@/frontend/shared';
+import { EmptyState, requiredLocalized } from '@/components';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './RoleAuthoringScreen.css';
 

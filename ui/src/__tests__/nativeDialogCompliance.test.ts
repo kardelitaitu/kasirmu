@@ -107,7 +107,7 @@ describe('native dialog compliance (no alert/confirm/prompt)', () => {
       HITS,
       'Native dialogs render OS chrome instead of the design system. Use ' +
         '<ConfirmDialog> from @/components/ConfirmDialog (themed, localized, non-blocking) ' +
-        `or the Toast system from @/frontend/shared/Toast instead.\n${format(HITS)}`,
+        `or the Toast system from @/components/Toast instead.\n${format(HITS)}`,
     ).toEqual([]);
   });
 

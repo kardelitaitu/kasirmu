@@ -514,7 +514,7 @@ For each trigger:
 
 - [x] **Write ADR:** `docs/decisions/2026-08-18-adr39-midtrans-subscription-payments.md` (ADR #39)
   - Decision: route ID customers to Midtrans checkout for fixed-IDR QRIS subscription billing
-  - Consequences: OZ-POS becomes merchant of record for Indonesian PPN; second webhook path
+  - Consequences: kasir.mu becomes merchant of record for Indonesian PPN; second webhook path
 - [x] **License server:** Add Midtrans webhook handler in `apps/license-server/` (`midtrans_webhook.go`)
   - Parse Midtrans payment notification (non-strict; subscription_id when present)
   - Validate signature (Midtrans `SHA512(order_id + status_code + gross_amount + serverkey)`)

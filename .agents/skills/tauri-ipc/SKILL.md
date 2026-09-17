@@ -1,12 +1,12 @@
 ---
 name: tauri-ipc
-description: Tauri v2 command and front-end API conventions for OZ-POS — where Rust commands live, how they are registered, and how the React/TypeScript front-end calls them. Use when adding a new IPC surface or wiring a new feature end-to-end.
+description: Tauri v2 command and front-end API conventions for kasir.mu — where Rust commands live, how they are registered, and how the React/TypeScript front-end calls them. Use when adding a new IPC surface or wiring a new feature end-to-end.
 ---
 
 <!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — command example rewritten to the real add_line_scoped(session_token, args, state) pattern with resolve_session + permission check; registration example now uses the module-qualified commands::<mod>:: names and real reports commands (get_daily_revenue_scoped etc. — daily_summary/export_csv do not exist); api wrapper example corrected to the real sales.ts pattern: loggedInvoke from utils/logged-invoke (bare @tauri-apps imports inside api/ are allowed but unused there); TS error guidance corrected — AppError is serde-tagged with a camelCase kind discriminator, there is no AppError class to instanceof on the TS side; hook example shadowing bug fixed; test checklist item aligned with the sibling *_tests.rs convention (51 such files under commands/)) · prior: 2026-08-31 docs-auditor rev (F1 fictional payments.rs removed, ~47 modules, *_scoped ADR #7 documented, per-domain api files) · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-08-31] · docs-auditor · status: ACCURATE (F1 repaired + scoped-IPC documented) · F1 FIXED: Layout/registration examples no longer reference the fictional payments.rs (payment commands are split, e.g. void.rs/gift_cards.rs); noted ~47 command modules, not 5 · NEW: golden rule 6 documents the *_scoped convention (ADR #7 Data Scope Guard) — the dominant pattern at HEAD (101 files) previously undocumented; registration example now shows pos::start_sale_scoped/complete_sale_scoped (verified at HEAD) · FIXED: 'pos.ts is the only entry point' corrected to per-domain ui/src/api/<feature>.ts (matches rule 3; real files currency.ts/edc.ts/hardware.ts/…); sales::→pos:: · verified accurate: commands/ dir, pos.rs/inventory.rs/hardware.rs/reports.rs present, AppError in error.rs, invoke_handler(generate_handler![…]) in lib.rs, State<AppState> + async Result<T,AppError> convention -->
 # Tauri IPC & Front-end API
 
-OZ-POS uses Tauri v2 to bridge Rust and a React/TypeScript front-end. The IPC boundary is the single most important architectural seam in the app: every command is a contract, and every contract must be in the right place.
+kasir.mu uses Tauri v2 to bridge Rust and a React/TypeScript front-end. The IPC boundary is the single most important architectural seam in the app: every command is a contract, and every contract must be in the right place.
 
 ---
 
@@ -24,8 +24,8 @@ OZ-POS uses Tauri v2 to bridge Rust and a React/TypeScript front-end. The IPC bo
 
 | # | Rule | Why |
 |---|------|-----|
-| 1 | **Rust commands live in `apps/desktop-client/src/commands/<feature>.rs`.** | One folder, one feature, easy to find. |
-| 2 | **All commands are registered in `apps/desktop-client/src/lib.rs`.** | Registration lives next to `Builder::default()` in the `invoke_handler!` list. |
+| 1 | **Rust commands live in `apps/desktop-tauri/src/commands/<feature>.rs`.** | One folder, one feature, easy to find. |
+| 2 | **All commands are registered in `apps/desktop-tauri/src/lib.rs`.** | Registration lives next to `Builder::default()` in the `invoke_handler!` list. |
 | 3 | **Front-end calls go through `ui/src/api/` (per-domain files).** Components never call `invoke()` directly. |
 | 4 | **Every command is `async fn` and returns `Result<T, AppError>`.** | Errors are typed on both sides; no stringified blobs. |
 | 5 | **Every command takes its dependencies via `tauri::State<...>`.** | No globals, no thread-locals. |
@@ -35,9 +35,9 @@ OZ-POS uses Tauri v2 to bridge Rust and a React/TypeScript front-end. The IPC bo
 
 ## Layout
 
-├── apps/desktop-client/
+├── apps/desktop-tauri/
 └── src/
-    ├── main.rs                      # thin entry point — calls oz_pos_lib::run()
+    ├── main.rs                      # thin entry point — calls kasirmu_app_lib::run()
     ├── lib.rs                       # the run() function: app setup + command registration
     └── commands/
         ├── mod.rs                   # pub use for each command module
@@ -45,7 +45,7 @@ OZ-POS uses Tauri v2 to bridge Rust and a React/TypeScript front-end. The IPC bo
         ├── inventory.rs             # lookup_sku_scoped, adjust_stock_scoped
         ├── hardware.rs              # open_cash_drawer(_scoped), print_receipt(_scoped)
         ├── reports.rs               # get_daily_revenue_scoped, get_menu_engineering_scoped, …
-        └── …                        # ~47 modules total (currencies, exchange_rates,
+        └── …                        # ~64 modules total (currencies, exchange_rates,
                                      #   gift_cards, kds, license, audit, …). There is
                                      #   NO payments.rs — payment commands are split
                                      #   (e.g. void.rs, gift_cards.rs).
@@ -70,11 +70,11 @@ ui/
 ## Defining a Rust command
 
 ```rust
- // apps/desktop-client/src/commands/pos.rs
+ // apps/desktop-tauri/src/commands/pos.rs
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
-use oz_core::{Money, Sku};
+use kasirmu_core::{Money, Sku};
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -100,7 +100,7 @@ pub async fn add_line_scoped(
     // Scoped commands resolve the store from the session first (ADR #7),
     // then verify the caller holds the required permission.
     let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_PROCESS).await?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS).await?;
     let cart = /* resolve cart through state.db_manager … */;
     let line = cart.add_line(args.sku, args.qty)?;
     Ok(AddLineResult { line_id: line.id, line_total: line.total() })
@@ -111,7 +111,7 @@ pub async fn add_line_scoped(
 - Argument struct is `*Args`, return type is `*Result`. Keeps the call site readable.
 - `State<'_, AppState>` is the only way to reach the database, services, or hardware. No module-level `static`s.
 - Scoped commands take `session_token: String` **first**, call `state.resolve_session(&session_token)?`, and check the required permission before touching data.
-- Errors are `AppError`, defined once in `apps/desktop-client/src/error.rs` and re-exported. Don't return `String` errors.
+- Errors are `AppError`, defined once in `apps/desktop-tauri/src/error.rs` and re-exported. Don't return `String` errors.
 - Commands are pure: they take inputs, return outputs, and use `State` for the world. No hidden state.
 
 ---
@@ -119,19 +119,19 @@ pub async fn add_line_scoped(
 ## Registering in `lib.rs`
 
 ```rust
- // apps/desktop-client/src/main.rs
+ // apps/desktop-tauri/src/main.rs
 
 mod commands;
 mod error;
 mod state;
 
 fn main() {
-    oz_pos_lib::run();
+    kasirmu_app_lib::run();
 }
 ```
 
 ```rust
- // apps/desktop-client/src/lib.rs
+ // apps/desktop-tauri/src/lib.rs
 
 use tauri::Builder;
 use crate::state::AppState;
@@ -233,7 +233,7 @@ export function usePosState(cartId: CartId) {
 Use Tauri events for streaming or push-style updates (e.g., barcode scan, printer status, sync progress).
 
 ```rust
-// apps/desktop-client/src/commands/hardware.rs
+// apps/desktop-tauri/src/commands/hardware.rs
 
 use tauri::{AppHandle, Emitter};  // <-- Emitter trait is required for .emit()
 
@@ -292,7 +292,7 @@ export async function onBarcodeScan(
 2. **Returning `String` errors** from a command. Front-end has to string-match. Use `AppError` with variants.
 3. **Putting a command in `mod.rs` of `commands/`** instead of a sub-module. Bloats `mod.rs` and breaks the feature-folder convention.
 4. **Forgetting `tauri::generate_handler!`** — the command compiles but is not callable at runtime. Easy to miss; lint with a startup smoke test.
-5. **Reusing a domain type from `oz-core` directly in a command's `*Result`** without wrapping. Tauri serializes via JSON, and internal fields may include `i64` IDs that the JS side can't represent. Wrap with a serializable `Id(String)` or similar.
+5. **Reusing a domain type from `kasirmu-core` directly in a command's `*Result`** without wrapping. Tauri serializes via JSON, and internal fields may include `i64` IDs that the JS side can't represent. Wrap with a serializable `Id(String)` or similar.
 6. **`State<'_, T>` borrowing across an `await`** — fine on the outer `async fn`, but if you call helper functions, pass `&T` from the state, not the `State` guard.
 7. **Returning raw `Money.minor_units` into the UI without a renderer.** The number is correct but `123456` cents reads as "123,456" in the UI. Render through the front-end's `formatMoney` helper (`ui/src/types/domain.ts`).
 
@@ -300,11 +300,11 @@ export async function onBarcodeScan(
 
 ## See also
 
-- **[`rust-backend`](../rust-backend/SKILL.md)** — defines the `oz-core` types (`Money`, `CartId`, `Sku`, …) that cross this IPC boundary. Read it before adding a new command so you know how the types are meant to be constructed and serialized.
+- **[`rust-backend`](../rust-backend/SKILL.md)** — defines the `kasirmu-core` types (`Money`, `CartId`, `Sku`, …) that cross this IPC boundary. Read it before adding a new command so you know how the types are meant to be constructed and serialized.
 - **[`hal-drivers`](../hal-drivers/SKILL.md)** — the hardware drivers and `DriverRegistry` that hardware-touching commands (barcode scan, cash drawer, receipt print) reach into. The wiring pattern `State<'_, AppState>` -> `DriverRegistry::scanner(id)` lives in both skills; keep them in sync.
 - **[`ui-components`](../ui-components/SKILL.md)** — the React/TypeScript side of this contract. Every command you add here needs a `ui/src/api/<feature>.ts` wrapper and a hook in `ui/src/features/<feature>/`.
 - **[`project-scaffold`](../project-scaffold/SKILL.md)** — the CI matrix and branch policy that gate this code into release.
 
 ---
 
-> last audited 03-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat

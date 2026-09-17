@@ -1,13 +1,13 @@
 ---
 name: skill-drift-guard
-description: Meta-skill that detects and patches drift in the other OZ-POS skills. Use when a code change is made that touches a path, type, trait, or convention referenced in a skill; when onboarding a new contributor who might have added a crate or module; or as a periodic CI check. Always run before merging a change that touches `oz-*` crates, `apps/desktop-client/`, or `ui/`.
+description: Meta-skill that detects and patches drift in the other kasir.mu skills. Use when a code change is made that touches a path, type, trait, or convention referenced in a skill; when onboarding a new contributor who might have added a crate or module; or as a periodic CI check. Always run before merging a change that touches `kasirmu-*` crates, `apps/desktop-tauri/`, or `ui/`.
 ---
 
-<!-- Superseded audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE at audit time (1 noted finding, doc-staleness) · its F1 claimed crates/oz-hal did not exist — obsolete since the HAL crate landed (see rev-2 stamp above) -->
+<!-- Superseded audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE at audit time (1 noted finding, doc-staleness) · its F1 claimed crates/kasirmu-hal did not exist — obsolete since the HAL crate landed (see rev-2 stamp above) -->
 
-<!-- Superseded audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — supersedes rev-1 stamp, whose F1 claimed the oz-hal crate did not exist; the crate DOES exist with traits/{barcode,printer,cash_drawer,customer_display,weight_scale,edc}.rs, transport/, drivers/ incl. edc/, bootstrap.rs, registry.rs — that finding is obsolete) · rev-2 fixes: bare detect.sh / lib.sh / run-tests.sh references qualified to the skill-local .agents/skills/skill-drift-guard/scripts/ location; Check 7 snippets rewritten so the id-extraction pattern no longer matches the guard's own Fluent-id detector; version auto-patch example uses OLD/NEW variables (no invented 0.32); CI integration retargeted to the one active workflow dev-ci.yml (ci.yml is dormant .bak); pitfall #2's planned-path example generalized (the customer display shipped as drivers/serial_display.rs); pitfalls list re-joined (item 8 had drifted after a horizontal rule); 'seven checks' → ten · verified this pass: scripts/{detect.sh,run-tests.sh}, tests/{clean-baseline,invented-date,shape-violation,audit-date-stale}.bats, .agents/skills/skill-drift-guard/scripts/* all present; detect.sh implements Checks 1–10 with shared AUDIT_RE/audit_footer_check_in_file/batch_validate_audit_dates helpers · SUPERSEDED by rev 3: its closing claim “detect.sh implements Checks 1–10” was false — five of those checks were dead -->
+<!-- Superseded audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — supersedes rev-1 stamp, whose F1 claimed the kasirmu-hal crate did not exist; the crate DOES exist with traits/{barcode,printer,cash_drawer,customer_display,weight_scale,edc}.rs, transport/, drivers/ incl. edc/, bootstrap.rs, registry.rs — that finding is obsolete) · rev-2 fixes: bare detect.sh / lib.sh / run-tests.sh references qualified to the skill-local .agents/skills/skill-drift-guard/scripts/ location; Check 7 snippets rewritten so the id-extraction pattern no longer matches the guard's own Fluent-id detector; version auto-patch example uses OLD/NEW variables (no invented 0.32); CI integration retargeted to the one active workflow dev-ci.yml (ci.yml is dormant .bak); pitfall #2's planned-path example generalized (the customer display shipped as drivers/serial_display.rs); pitfalls list re-joined (item 8 had drifted after a horizontal rule); 'seven checks' → ten · verified this pass: scripts/{detect.sh,run-tests.sh}, tests/{clean-baseline,invented-date,shape-violation,audit-date-stale}.bats, .agents/skills/skill-drift-guard/scripts/* all present; detect.sh implements Checks 1–10 with shared AUDIT_RE/audit_footer_check_in_file/batch_validate_audit_dates helpers · SUPERSEDED by rev 3: its closing claim “detect.sh implements Checks 1–10” was false — five of those checks were dead -->
 
-<!-- Audit stamp: 2026-09-07 · skill-drift-guard · status: INACCURATE-AT-AUDIT, NOW FIXED (rev 3 — supersedes rev 2, whose closing claim "detect.sh implements Checks 1–10" was FALSE: five of the ten checks were dead) · THE FINDING: Checks 1 (paths), 3 (api), 4 (versions), 6 (refs) and 7 (fluent) accumulated into FINDINGS[cat] inside a `grep … | while read` pipeline, i.e. in a subshell, so every write was discarded on loop exit and each check reported "No drift detected" forever — exit 0, green CI, committed-clean reports (823cacf5). Symptom of the bug was success, which is why it survived an audit that "verified" the script by running it. · SECOND, INDEPENDENT BUG: batch_validate_audit_dates compared Python's output with `[ "$res" = "INVALID" ]`, but native Windows python3 writes CRLF through a pipe, so res was $'INVALID\r' and never matched — Checks 9/10's VALUE pass was silently dead on Windows only (SHAPE pass is pure grep and kept working, and Linux CI stayed green). tests/invented-date.bats had been failing on this host the whole time; it passes now. · rev-3 fixes: all five loops converted to `< <(…)`; `| tr -d '\r'` plus a defensive `${res%$'\r'}` on the value check; Check 1 now skips regex-truncation artifacts (`crates/oz-*`→`crates/oz-`, `scripts/...`) which are not paths; Check 3 scans fenced code blocks only (taxonomy #4 is about code EXAMPLES, and prose mentions of Money:: made it permanently red) and its hint path corrected to foundation/src/money.rs (crates/oz-core/src/money.rs is a 6-line `pub use` shim with no signatures in it); Check 6 now excludes tokens that resolve to a workspace member, a Cargo.toml dependency or a workflow key — 11 of its 11 findings were false positives of the "any backtick is a skill ref" heuristic; Check 6 gained an OG_FILE override mirroring Check 2's Cargo_FILE so tests need not mutate the tracked onboarding-guide · REAL DRIFT FOUND AND PATCHED once the checks worked: project-scaffold/SKILL.md pinned workspace version 0.0.36 while Cargo.toml is 0.0.37 (line 59 example + line 185 branch example); docs/plans/0.0.36-backlog.md left alone — it is a real filename, not drift · NEW: tests/dead-check-regression.bats (8 cases: behavioural inject-and-assert-fires for each dead check + a structural awk pass that fails detect.sh if ANY FINDINGS-writing loop is pipeline-fed, which is what catches the class for checks added later) · verified this pass: full bats suite 14/14 green, detect.sh exits 0 on a genuinely clean tree, and the new suite fails 6/8 when reverted to HEAD's detect.sh (a test that cannot fail is not a test) · pitfalls #9 and #10 added · SAME-DAY FOLLOW-UP (perf): Check 10 took 90s and the bats suite ~5min because it spawned one grep per *.md — 2002 files, only 104 of which carry a footer at all, so ~1900 greps produced nothing and Windows process-creation cost dominated; runs were being killed mid-suite as a result. Fixed by (a) md_footer_files, which folds `grep -l` into `find -exec … +` — chosen over xargs because BSD/macOS xargs has no `-r` and would invoke grep with no files on an empty corpus and block on stdin forever, and (b) rewriting audit_footer_check_in_file to bash builtins (`${line%…}` for the trailing-space strip, `[[ =~ $AUDIT_RE ]]` for the shape test, parameter expansion for the date) so each footer costs 0 subprocesses instead of ~8; audit_date_of was inlined and deleted. Result 90s → 6s (15x), full run ~2m20s → 20s. Verified by equivalence, not just timing: an 11-case footer matrix (valid, 30-02-26, 00-00-00, 31-04-26, 29-02-24 leap vs 29-02-25 non-leap, YYYY-MM-DD, missing by-clause, multi-word by-clause, double space, trailing whitespace) produced BYTE-IDENTICAL output against a faithful two-pass reproduction of the old helper, and the prefiltered and un-prefiltered loops were diffed over the whole corpus with identical results. Two new bats cases pin the perf shape and the shared-$FOOTER_RE invariant; both were mutation-tested (revert the prefilter → only case 1 fails; duplicate the pattern literal → only case 2 fails). Also corrected two comments naming `is_real_audit_date`, a helper this script has never defined -->
+<!-- Audit stamp: 2026-09-07 · skill-drift-guard · status: INACCURATE-AT-AUDIT, NOW FIXED (rev 3 — supersedes rev 2, whose closing claim "detect.sh implements Checks 1–10" was FALSE: five of the ten checks were dead) · THE FINDING: Checks 1 (paths), 3 (api), 4 (versions), 6 (refs) and 7 (fluent) accumulated into FINDINGS[cat] inside a `grep … | while read` pipeline, i.e. in a subshell, so every write was discarded on loop exit and each check reported "No drift detected" forever — exit 0, green CI, committed-clean reports (823cacf5). Symptom of the bug was success, which is why it survived an audit that "verified" the script by running it. · SECOND, INDEPENDENT BUG: batch_validate_audit_dates compared Python's output with `[ "$res" = "INVALID" ]`, but native Windows python3 writes CRLF through a pipe, so res was $'INVALID\r' and never matched — Checks 9/10's VALUE pass was silently dead on Windows only (SHAPE pass is pure grep and kept working, and Linux CI stayed green). tests/invented-date.bats had been failing on this host the whole time; it passes now. · rev-3 fixes: all five loops converted to `< <(…)`; `| tr -d '\r'` plus a defensive `${res%$'\r'}` on the value check; Check 1 now skips regex-truncation artifacts (`crates/oz-*`→`crates/oz-`, `scripts/...`) which are not paths; Check 3 scans fenced code blocks only (taxonomy #4 is about code EXAMPLES, and prose mentions of Money:: made it permanently red) and its hint path corrected to foundation/src/money.rs (crates/kasirmu-core/src/money.rs is a 6-line `pub use` shim with no signatures in it); Check 6 now excludes tokens that resolve to a workspace member, a Cargo.toml dependency or a workflow key — 11 of its 11 findings were false positives of the "any backtick is a skill ref" heuristic; Check 6 gained an OG_FILE override mirroring Check 2's Cargo_FILE so tests need not mutate the tracked onboarding-guide · REAL DRIFT FOUND AND PATCHED once the checks worked: project-scaffold/SKILL.md pinned workspace version 0.0.36 while Cargo.toml is 0.0.37 (line 59 example + line 185 branch example); docs/plans/0.0.36-backlog.md left alone — it is a real filename, not drift · NEW: tests/dead-check-regression.bats (8 cases: behavioural inject-and-assert-fires for each dead check + a structural awk pass that fails detect.sh if ANY FINDINGS-writing loop is pipeline-fed, which is what catches the class for checks added later) · verified this pass: full bats suite 14/14 green, detect.sh exits 0 on a genuinely clean tree, and the new suite fails 6/8 when reverted to HEAD's detect.sh (a test that cannot fail is not a test) · pitfalls #9 and #10 added · SAME-DAY FOLLOW-UP (perf): Check 10 took 90s and the bats suite ~5min because it spawned one grep per *.md — 2002 files, only 104 of which carry a footer at all, so ~1900 greps produced nothing and Windows process-creation cost dominated; runs were being killed mid-suite as a result. Fixed by (a) md_footer_files, which folds `grep -l` into `find -exec … +` — chosen over xargs because BSD/macOS xargs has no `-r` and would invoke grep with no files on an empty corpus and block on stdin forever, and (b) rewriting audit_footer_check_in_file to bash builtins (`${line%…}` for the trailing-space strip, `[[ =~ $AUDIT_RE ]]` for the shape test, parameter expansion for the date) so each footer costs 0 subprocesses instead of ~8; audit_date_of was inlined and deleted. Result 90s → 6s (15x), full run ~2m20s → 20s. Verified by equivalence, not just timing: an 11-case footer matrix (valid, 30-02-26, 00-00-00, 31-04-26, 29-02-24 leap vs 29-02-25 non-leap, YYYY-MM-DD, missing by-clause, multi-word by-clause, double space, trailing whitespace) produced BYTE-IDENTICAL output against a faithful two-pass reproduction of the old helper, and the prefiltered and un-prefiltered loops were diffed over the whole corpus with identical results. Two new bats cases pin the perf shape and the shared-$FOOTER_RE invariant; both were mutation-tested (revert the prefilter → only case 1 fails; duplicate the pattern literal → only case 2 fails). Also corrected two comments naming `is_real_audit_date`, a helper this script has never defined -->
 
 
 # Skill Drift Guard
@@ -20,8 +20,8 @@ The drift guard audits each skill against the code it describes, classifies the 
 
 ## When to run
 
-- After any PR that changes a public API in an `oz-*` crate.
-- After any rename, move, or delete in `apps/desktop-client/`, `ui/`, or any crate directory under `crates/`.
+- After any PR that changes a public API in a `kasirmu-*` crate.
+- After any rename, move, or delete in `apps/desktop-tauri/`, `ui/`, or any crate directory under `crates/`.
 - After a dependency bump (Tauri, React, `rusqlite`, etc.).
 - After a change to `AGENTS.md` (golden rules).
 - **As a CI job** that runs nightly or on changes to `.agents/skills/**`.
@@ -40,7 +40,7 @@ Eleven concrete kinds. Each has a detection strategy and a patch strategy.
 | 4 | **Public API signature changed** | `cargo doc` + AST diff vs the skill's code example | Manual (need to rewrite the example) |
 | 5 | **Dependency version outdated** | Parse `Cargo.toml` for actual versions; grep skill for quoted versions | Auto: replace the version string |
 | 6 | **Golden rule changed in `AGENTS.md`** | Diff key phrases (`Money is always i64`, `use thiserror`, …) | Manual (judgment call on impact) |
-| 7 | **Fluent ID drift** | Every `<Localized>` id reference in a skill must exist in `ui/src/locales/*.ftl` (one-way) | Manual (decide whether to add the id or remove the reference) |
+| 7 | **Fluent ID drift** | Every `<Localized>` id reference in a skill must exist in `shared-ui/locales/*.ftl` (one-way) | Manual (decide whether to add the id or remove the reference) |
 | 8 | **Cross-reference broken** | For every `\`<skill-name>\`` mention, verify the skill directory exists | Auto: remove the reference or rename |
 | 9 | **`last audited` date stale (>30 days)** | Grep the footer line | Auto: bump the date and the auditor name |
 | 10 | **`last audited` format violated** (wrong format like `YYYY-MM-DD`, or missing `by <auditor>` clause) | Grep every `> last audited` line; assert exact regex match `^> last audited [0-9]{2}-[0-9]{2}-[0-9]{2} by [^\s]+$` | Manual (format may not be safely auto-derivable when the original line is broken in subtle ways) |
@@ -54,7 +54,7 @@ If a change is **not** in this list, the drift guard does not auto-patch it. Fil
 
 Run these checks in order. Each is a fast, mechanical pass. Stop after each pass to triage the output before running the next. (Checks 1–10 are implemented in `.agents/skills/skill-drift-guard/scripts/detect.sh`. Inline Check 2 covers taxonomy kinds 2 and 3 — the "removed" and "added" cases are both detected from the same `members` diff.)**Pre-code state:** when the corresponding code does not yet exist, each check silently no-ops:
 - Checks 2–4 (crates, API, dep versions) skip if `Cargo.toml` is missing.
-- Check 7 (Fluent) skips if `ui/src/locales/` is missing.
+- Check 7 (Fluent) skips if `shared-ui/locales/` is missing.
 - Checks 1, 5, 6, 8, 9, 10 (paths, golden rules, refs, audit date + format + project-doc audit-footers) always run.
 
 Once the Rust workspace and UI scaffold land, all checks become active without any change to the script.
@@ -74,7 +74,7 @@ for skill in .agents/skills/*/SKILL.md; do
       http*|https*|file://*) continue ;;
     esac
     # skip regex-truncation artifacts: the extractor has no notion of a glob
-    # or an ellipsis, so `crates/oz-*` yields `crates/oz-` and prose
+    # or an ellipsis, so `crates/kasirmu-*` yields `crates/kasirmu-` and prose
     # `bash scripts/...` yields `scripts/...`. A real path never ends in
     # `-`, `.` or an ellipsis.
     case "$path" in
@@ -95,13 +95,13 @@ done
 ```bash
 # List all crates the skills claim exist
 for skill in .agents/skills/*/SKILL.md; do
-  grep -oE 'oz-[a-z-]+' "$skill" | sort -u
+  grep -oE 'kasirmu-[a-z-]+' "$skill" | sort -u
 done | sort -u > /tmp/skills-claim.txt
 
 # List all crates actually in the workspace
 # (listed from the crates/ directory itself, so this snippet does not
 #  carry a literal workspace glob that Check 1 would flag)
-ls crates | grep '^oz-' | sed 's|^|crates/|' > /tmp/workspace-has.txt
+ls crates | grep '^kasirmu-' | sed 's|^|crates/|' > /tmp/workspace-has.txt
 
 diff /tmp/skills-claim.txt /tmp/workspace-has.txt
 ```
@@ -130,7 +130,7 @@ grep -E '^pub (fn|struct|enum|trait) ' foundation/src/money.rs \
 **Output:** a list of types the skill references that are not in the public API (renamed, removed, or made private). Each is `CODE DRIFT`.
 
 > **Note on the canonical path.** `Money` lives in `foundation/src/money.rs`;
-> `crates/oz-core/src/money.rs` is a six-line `pub use foundation::money::*;`
+> `crates/kasirmu-core/src/money.rs` is a six-line `pub use foundation::money::*;`
 > re-export shim kept for migration compatibility. Pointing a reader at the
 > shim used to be the hint this check emitted, which sent them to a file with
 > no signatures in it.
@@ -179,7 +179,7 @@ og="${OG_FILE:-.agents/skills/onboarding-guide/SKILL.md}"
 while read -r ref; do
   [ -d ".agents/skills/$ref" ] && continue
   # A backtick token is only a SKILL reference if it resolves to nothing else
-  # real. The guide backtick-names workspace members (`oz-core`), dependencies
+  # real. The guide backtick-names workspace members (`kasirmu-core`), dependencies
   # (`mlua`, `rusqlite`, `async-trait`) and CI keys (`static-gates`,
   # `continue-on-error`) in the same voice it uses for skills, and token shape
   # cannot tell them apart — without these three exclusions the check emits a
@@ -205,15 +205,15 @@ done < <(grep -oE '`[a-z][a-z-]+`' "$og" | sort -u | tr -d '`')
 for skill in .agents/skills/*/SKILL.md; do
   # `< <(…)` not `grep | while` — see pitfall #9.
   while read -r ftl_id; do
-    if ! grep -rqE "^${ftl_id}\s*=" ui/src/locales/ 2>/dev/null; then
-      echo "MISSING: $skill references Fluent id '$ftl_id' (not in ui/src/locales/)"
+    if ! grep -rqE "^${ftl_id}\s*=" shared-ui/locales/ 2>/dev/null; then
+      echo "MISSING: $skill references Fluent id '$ftl_id' (not in shared-ui/locales/)"
     fi
   done < <(grep -hoE 'id=["][^"]+["]' "$skill" | sort -u | \
              sed 's/^id=["]//;s/["]$//')
 done
 ```
 
-**Output:** a list of `Localized id` references in skills that have no matching entry in any `.ftl` file. *One-way check (skill → FTL): the reverse is not checked so FTL files can legitimately contain ids that no skill has documented yet.* Skip silently if `ui/src/locales/` does not exist (pre-UI state).
+**Output:** a list of `Localized id` references in skills that have no matching entry in any `.ftl` file. *One-way check (skill → FTL): the reverse is not checked so FTL files can legitimately contain ids that no skill has documented yet.* Skip silently if `shared-ui/locales/` does not exist (pre-UI state).
 
 ### Check 8 — Audit-date freshness
 
@@ -354,8 +354,8 @@ After running detection, produce a single report:
 
 ## Manual review needed (<n>)
 
-- `tauri-ipc/SKILL.md`: example uses `cart.add_line(sku, qty)` but `oz-core` now exposes `Cart::add_line_with_discount(sku, qty, discount)`. The example compiles but uses the old API.
-- `hal-drivers/SKILL.md`: new device `customer-display` was added to `crates/oz-hal/src/traits/`, but the skill does not list it. Add a row to the layout diagram.
+- `tauri-ipc/SKILL.md`: example uses `cart.add_line(sku, qty)` but `kasirmu-core` now exposes `Cart::add_line_with_discount(sku, qty, discount)`. The example compiles but uses the old API.
+- `hal-drivers/SKILL.md`: new device `customer-display` was added to `crates/kasirmu-hal/src/traits/`, but the skill does not list it. Add a row to the layout diagram.
 - `AGENTS.md` now requires `cargo audit` in CI. `project-scaffold/SKILL.md` does not mention it. Add to the security workflow.
 
 ## False positives (<n>)
@@ -508,4 +508,4 @@ The drift guard should be self-extending: every discovery becomes a new check, s
 
 ---
 
-> last audited 07-09-26 by skill-drift-guard
+> last audited 18-09-26 by Budak-Korporat

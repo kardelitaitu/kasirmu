@@ -9,9 +9,9 @@ No checklist item here was ever run. -->
 
 **Document:** `todo-refactor-staff-auth-agents-1.md`  
 **Role:** Orchestrator Agent 1 (Security & Identity Architect)  
-**Goal:** Modularize authentication, PIN hashing, session generation, and lockout policy from `apps/desktop-client/src/commands/auth.rs` (1,189 lines) into headless security services.
+**Goal:** Modularize authentication, PIN hashing, session generation, and lockout policy from `apps/desktop-tauri/src/commands/auth.rs` (1,189 lines) into headless security services.
 
-**Target File:** `apps/desktop-client/src/commands/auth.rs`  
+**Target File:** `apps/desktop-tauri/src/commands/auth.rs`  
 **Sibling Documents:**
 - [`todo-refactor-staff-auth-agents-2.md`](./todo-refactor-staff-auth-agents-2.md) (Agent 2 — Staff Profile & Permissions Engine)
 - [`todo-refactor-staff-auth-agents-3.md`](./todo-refactor-staff-auth-agents-3.md) (Agent 3 — Staff Management UI Deconstruction)
@@ -22,8 +22,8 @@ No checklist item here was ever run. -->
 
 1. **Commit Subject Convention:** `refactor(auth-core): ...`
 2. **Owned Path Fence (Exclusive to Agent 1):**
-   - `apps/desktop-client/src/commands/auth.rs` & `auth_tests.rs`
-   - `apps/desktop-client/src/commands/authz.rs` & `authz_tests.rs`
+   - `apps/desktop-tauri/src/commands/auth.rs` & `auth_tests.rs`
+   - `apps/desktop-tauri/src/commands/authz.rs` & `authz_tests.rs`
 3. **Forbidden Paths (Owned by Siblings):**
    - DO NOT edit `commands/staff.rs` (Owned by Agent 2).
    - DO NOT edit `StaffManagementScreen.tsx` (Owned by Agent 3).

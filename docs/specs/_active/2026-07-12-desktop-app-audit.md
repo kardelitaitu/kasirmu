@@ -1,4 +1,4 @@
-# Desktop App Audit (OZ-POS)
+# Desktop App Audit (kasir.mu)
 
 - **Audit ID:** 2026-07-12-desktop-app-audit
 - **Status:** All CRITICAL + HIGH findings resolved — **SHIPPABLE TO RELEASE**
@@ -111,7 +111,7 @@ Tighten incrementally as the audit progresses.
 
 ### C-5 (was H-2) — License API key + machine-id stored plaintext in SQLite
 
-**Location:** `apps/desktop-client/src/commands/license.rs` writes `license.payload`, `license.signature`, `license.tenant_id`, `license.api_key` via `Settings::set_batch` into the global settings table. SQLite is plaintext at rest. ~~On Windows any user with file-system access (`%APPDATA%\com.ozpos.app\`) can read the license.~~
+**Location:** `apps/desktop-client/src/commands/license.rs` writes `license.payload`, `license.signature`, `license.tenant_id`, `license.api_key` via `Settings::set_batch` into the global settings table. SQLite is plaintext at rest. ~~On Windows any user with file-system access (`%APPDATA%\mu.kasir.app\`) can read the license.~~
 
 > **CORRECTION 2026-09-12 — true when written, incomplete now, and it understates in one direction while the fix overstates in the other. Measured:** the **database file is still not encrypted** — no whole-file layer exists (see the correction in ADR #4 §5 and the NEVER ADOPTED banner on `docs/archived/sqlcipher-migration-plan.md`) — but **some columns are**. Since `e105109f6` (2026-08-29, `security(H-5): extract oz-crypto crate + transparent secret encryption at rest`) `license.api_key` is stored as ciphertext bound to the machine id: `crates/oz-bridge/src/license.rs` encrypts before the write and decrypts on read, so a bare file read now returns sealed bytes for that one key, not the key. `license.payload`, `license.signature` and `license.tenant_id` are still plaintext in the file, as is **any `license.api_key` row written before 2026-08-29** — the read path passes legacy plaintext straight through (see ADR #4 §5), so the exposure this finding describes is closed for new writes and open for old ones. So: whole-file encryption, no; field-level encryption of named secrets, yes; and "anyone with the file can read the license" is now true only of the non-secret license fields and of pre-`e105109f6` rows.
 

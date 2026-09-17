@@ -1,11 +1,11 @@
-# OZ-POS Architecture
+# kasir.mu Architecture
 
-<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (5 structural majors repaired) · FIXED 31-08: Core Traits rewritten verbatim from foundation/src/contracts.rs (Module id/dependencies/on_load/on_start/on_stop->ModuleResult; Service id/start/stop; EventHandler<E> generic; DomainEvent added; invented `trait Integration` removed); Platform Core Services tree trimmed to the 6 real services (auth/rbac/rbac_presets/permission_registry/database/settings/terminal_profile) with a note that logging/audit/cache live elsewhere; permission delimiter domain.action -> domain:action with real keys (sales:process/view/refund); Event Flow invented names (stock.updated/customer.history.updated/points.awarded/report.data.changed) replaced with real handlers (SaleSyncEnqueuer/InventorySyncEnqueuer/AuditLogHandler/LoyaltyEarnHandler) incl. the Rule-2 diagram; ADR #31 -> #43 (react-only); foundation/ -> foundation/src/; HAL/payment/reporting device lists synced; module tree corrected to the 14 active modules (loyalty/purchasing were wrongly marked 'planned', 8 real modules omitted); apps/unified added; foundation contracts list +DomainEvent · REMAINING (minor backlog, not falsehoods): no dedicated HAL/driver-trait section (EdcTerminal detail lives in crates/oz-hal/README.md); manifest example now complete (description+permissions); scoped-IPC (ADR #7) noted at commands/; remaining: PROMO-3/CUR-11/LOY-03/COR-7 not shown in any flow · counts (35 members / 13 crates / 14 modules / 61 ADRs) verified accurate -->
+<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (5 structural majors repaired) · FIXED 31-08: Core Traits rewritten verbatim from foundation/src/contracts.rs (Module id/dependencies/on_load/on_start/on_stop->ModuleResult; Service id/start/stop; EventHandler<E> generic; DomainEvent added; invented `trait Integration` removed); Platform Core Services tree trimmed to the 6 real services (auth/rbac/rbac_presets/permission_registry/database/settings/terminal_profile) with a note that logging/audit/cache live elsewhere; permission delimiter domain.action -> domain:action with real keys (sales:process/view/refund); Event Flow invented names (stock.updated/customer.history.updated/points.awarded/report.data.changed) replaced with real handlers (SaleSyncEnqueuer/InventorySyncEnqueuer/AuditLogHandler/LoyaltyEarnHandler) incl. the Rule-2 diagram; ADR #31 -> #43 (react-only); foundation/ -> foundation/src/; HAL/payment/reporting device lists synced; module tree corrected to the 14 active modules (loyalty/purchasing were wrongly marked 'planned', 8 real modules omitted); apps/unified added; foundation contracts list +DomainEvent · REMAINING (minor backlog, not falsehoods): no dedicated HAL/driver-trait section (EdcTerminal detail lives in crates/kasirmu-hal/README.md); manifest example now complete (description+permissions); scoped-IPC (ADR #7) noted at commands/; remaining: PROMO-3/CUR-11/LOY-03/COR-7 not shown in any flow · counts (35 members / 13 crates / 14 modules / 61 ADRs) verified accurate at the time · SUPERSEDED 2026-09-18 by the P7 tree rewrite in this file (39 members / 17 crates / 14 modules / 71 ADRs) -->
 
 **Version:** 2.0 (Post-Restructuring)
 **Status:** Active — restructuring complete
 
-This document defines the long-term target architecture for OZ-POS. The 6-phase
+This document defines the long-term target architecture for kasir.mu. The 6-phase
 restructuring has been completed (tracked historically in `CHANGELOG.md`;
 `RESTRUCTURING.md` was removed when the phases closed), migrating the
 codebase from a flat monolith to the modular architecture described below.
@@ -61,7 +61,7 @@ CRM owns CRM logic.
 
 Modules communicate exclusively through an event bus. This prevents coupling
 and enables independent testing, loading, and replacement. New production
-module-to-module, upward `oz-core`, and non-composition platform dependencies
+module-to-module, upward `kasirmu-core`, and non-composition platform dependencies
 are blocked by `scripts/verify-architecture-boundaries.py`; existing
 transitional findings are explicitly baselined with owners and expiry dates.
 
@@ -107,21 +107,21 @@ the authoritative data store. Cloud sync is eventual and non-blocking.
 > current directory structure.
 
 ```
-oz-pos/
+kasir.mu/
 │
 ├─ apps/              Deployable applications
 │   ├─ cloud-server/    Cloud HTTP API (axum, for hosted tenants)
-│   ├─ desktop-client/  Windows + Linux (keyboard/mouse, Tauri v2)
+│   ├─ desktop-tauri/   Windows + Linux (keyboard/mouse, Tauri v2)
 │   ├─ license-server/  License activation & validation (Go)
-│   ├─ tablet-client/   Android + iPad (touch, Tauri v2)
+│   ├─ mobile-tauri/    Android + iPad (touch, Tauri v2)
 │   └─ unified/         Containerized all-in-one deployment (Caddy + supervisord)
 │
 ├─ platform/          System infrastructure
 │   ├─ kernel/         Module system (load, unload, lifecycle)
 │   ├─ core/           Shared services (auth, rbac, database, etc.)
 │   ├─ sync/           Offline-first sync engine
-│   ├─ api/            Backend HTTP API (today: crates/oz-api/)
-│   └─ ui/             Frontend infrastructure (today: ui/src/frontend/)
+│   ├─ api/            Backend HTTP API (today: crates/kasirmu-api/)
+│   └─ ui/             Frontend infrastructure (today: ui/src/registries/ + ui/src/app/)
 │
 ├─ modules/           Business features (14 active, all registered in the kernel)
 │   ├─ sales/
@@ -138,9 +138,9 @@ oz-pos/
 │   ├─ settings/
 │   ├─ staff/
 │   └─ terminal/
-│   (planned, not yet a crate: accounting, warehouse, restaurant, ecommerce)
+│   (planned, not yet a crate: accounting, warehouse, restaurant, ecommerce — and of the 14 on disk, purchasing/promotions/giftcards/kitchen are still stubs with no domain logic)
 │
-├─ integrations/      External adapters (planned; today in crates/oz-hal, crates/oz-payment)
+├─ integrations/      External adapters (planned; today in crates/kasirmu-hal, crates/kasirmu-payment)
 │   ├─ payments/       (cash, stripe, midtrans, xendit)
 │   ├─ hardware/       (printers, scanners, cash-drawers, customer displays, scales, EDC terminals)
 │   ├─ messaging/      (whatsapp, email, telegram)
@@ -157,9 +157,9 @@ oz-pos/
 │   ├─ constants/      Shared constants             (planned)
 │   └─ utils/          Pure utility functions       (planned)
 │
-├─ frontend/          Shared frontend infrastructure (today: ui/src/frontend/)
+├─ frontend/          Shared frontend infrastructure (today: ui/src/app/ for the shell, ui/src/components/ for shared components, ui/src/theme/ for tokens)
 │   ├─ shell/          App host (layout, sidebar, routing)
-│   ├─ shared/         Reusable UI components
+│   ├─ shared/         Reusable UI components   (P2 decision: components/ survives as the name and location — ui/src/components/)
 │   ├─ desktop/        Desktop-specific layouts
 │   ├─ tablet/         Tablet-specific layouts
 │   ├─ widgets/        Dashboard widget framework
@@ -237,8 +237,8 @@ platform/core/src/
 └─ terminal_profile.rs   Terminal profile resolution
 ```
 
-> Logging lives in `crates/oz-logging`; audit trail and caching live in
-> `crates/oz-core`. Notifications, scheduler, localization, and tenancy are
+> Logging lives in `crates/kasirmu-logging`; audit trail and caching live in
+> `crates/kasirmu-core`. Notifications, scheduler, localization, and tenancy are
 > **not** implemented as platform/core services.
 
 ### Permission Examples
@@ -347,17 +347,19 @@ Save → Restart → Load Enabled Modules Only
 ## Project Layout (Post-Restructuring) — Current State
 
 The codebase has been restructured from a flat monolith into the modular architecture
-defined above. This layout shows the **actual current state** after all 6
-restructuring phases. For the long-term target vision (with `integrations/`,
+defined above. This layout shows the **actual current state** as of 2026-09-18, after the
+6 restructuring phases **and the repository folder restructure** (`ops/`, `prototypes/`,
+`tools/`, `ui/src/app|theme|registries`, `shared-ui/locales` — see
+`todo-project-folder-restructure.md`). For the long-term target vision (with `integrations/`,
 top-level `frontend/`, additional modules, etc.), see the **Repository
 Structure (Target — Long-Term Vision)** section above.
 
 ```
-oz-pos/
+kasir.mu/
 │
 ├─ apps/              Deployable applications
 │   ├─ cloud-server/    Cloud HTTP API (axum, for hosted tenants)
-│   ├─ desktop-client/  Windows + Linux (moved from src-tauri/)
+│   ├─ desktop-tauri/   Windows + Linux (moved from src-tauri/, renamed from desktop-client/)
 │   │   └─ src/
 │   │       ├─ commands/  IPC command handlers (store-scoped `*_scoped` variants per ADR #7 Data Scope Guard)
 │   │       ├─ error.rs
@@ -365,9 +367,9 @@ oz-pos/
 │   │       ├─ main.rs
 │   │       └─ state.rs
 │   ├─ license-server/  License activation & validation (Go)
-│   └─ tablet-client/   Android + iPad (touch-optimized shell)
+│   └─ mobile-tauri/   Android + iPad (touch-optimized shell)
 │       └─ src/
-│           ├─ commands/  (shared with desktop-client)
+│           ├─ commands/  (shared with desktop-tauri)
 │           └─ same structure
 │
 ├─ platform/          System infrastructure
@@ -393,19 +395,19 @@ oz-pos/
 │   └─ purchasing/     Purchase orders & suppliers
 │
 ├─ crates/            Low-level utility crates
-│   ├─ oz-core/        Database migrations, domain types, Store, sync_client, events
-│   ├─ oz-api/         HTTP API server (axum) — now injects config via AppState
-│   ├─ oz-cli/         CLI tool for data import/export and maintenance
-│   ├─ oz-crypto/      Cryptographic primitives (key generation, hashing, encryption)
-│   ├─ oz-hal/         Hardware abstraction layer (printers, scanners, cash drawers, customer displays, scales, EDC payment terminals)
-│   ├─ oz-logging/     Structured logging setup
-│   ├─ oz-lua/         Lua scripting integration
-│   ├─ oz-media/       Media/image handling
-│   ├─ oz-notification/ Email & push notification dispatching
-│   ├─ oz-payment/     Card payment processing (Stripe, QRIS, Square, Paddle, mock)
-│   ├─ oz-plugin/      Plugin sandbox & lifecycle (Lua scripting bridge)
-│   ├─ oz-reporting/   Report generation (CSV export, daily summaries, menu engineering)
-│   └─ oz-security/    Auth, hashing, encryption
+│   ├─ kasirmu-core/        Database migrations, domain types, Store, sync_client, events
+│   ├─ kasirmu-api/         HTTP API server (axum) — now injects config via AppState
+│   ├─ kasirmu-cli/         CLI tool for data import/export and maintenance
+│   ├─ kasirmu-crypto/      Cryptographic primitives (key generation, hashing, encryption)
+│   ├─ kasirmu-hal/         Hardware abstraction layer (printers, scanners, cash drawers, customer displays, scales, EDC payment terminals)
+│   ├─ kasirmu-logging/     Structured logging setup
+│   ├─ kasirmu-lua/         Lua scripting integration
+│   ├─ kasirmu-media/       Media/image handling
+│   ├─ kasirmu-notification/ Email & push notification dispatching
+│   ├─ kasirmu-payment/     Card payment processing (Stripe, QRIS, Square, Paddle, mock)
+│   ├─ kasirmu-plugin/      Plugin sandbox & lifecycle (Lua scripting bridge)
+│   ├─ kasirmu-reporting/   Report generation (CSV export, daily summaries, menu engineering)
+│   └─ kasirmu-security/    Auth, hashing, encryption
 │
 ├─ foundation/src/    Reusable zero-business-logic code
 │   ├─ contracts.rs    Core traits (Module, Service, EventHandler, DomainEvent)
@@ -426,19 +428,25 @@ oz-pos/
 │   ├─ src/
 │   │   ├─ api/         Per-domain API files (sales.ts, products.ts, etc.)
 │   │   ├─ features/    Feature screens (sales, products, customers, etc.)
-│   │   ├─ frontend/    Shell, shared components, themes, registries
-│   │   ├─ platform/    UI registries (page, menu, widget)
-│   │   ├─ locales/     Fluent i18n (domain-split .ftl files)
+│   │   ├─ app/         Shell (AppLayout, AppShell)
+│   │   ├─ components/  Shared UI components
+│   │   ├─ theme/       Design tokens + theme CSS
+│   │   ├─ registries/  Page, menu, widget registries
 │   │   └─ main.tsx     Entry point with registrations
 │   └─ package.json
 │
+├─ ops/               Build & ship artifacts (docker/, install/, packaging/, gateway/)
+├─ prototypes/        Design-language & KDS prototypes (not product code)
+├─ tools/             Repo tooling (fuzz targets)
+├─ website/           kasir.mu marketing site (Astro)
+├─ shared-ui/         Toolkit-neutral shared UI assets (locales/ — the Fluent corpus)
 ├─ docs/
 │   ├─ decisions/      ADRs (module-system, event-bus, frontend-restructure)
 │   └─ specs/          Module manifest format spec
 │
 ├─ ARCHITECTURE.md    This file
 ├─ AGENTS.md           AI agent configuration
-└─ Cargo.toml          Workspace definition (35 members)
+└─ Cargo.toml          Workspace definition — 39 packages resolve from the glob members (17 crates, 14 modules, 4 platform dirs, foundation, 3 apps)
 ```
 
 ---
@@ -478,8 +486,8 @@ All 6 restructuring phases have been completed.
 - [x] Split `en-US.ftl` into 12 per-domain Fluent files
 
 ### Phase 5 — Tablet Client ✅
-- [x] Create `apps/tablet-client/` — Tauri v2 mobile target (oz-pos-tablet)
-- [x] Move `src-tauri/` → `apps/desktop-client/`
+- [x] Create `apps/mobile-tauri/` — Tauri v2 mobile target (dir renamed from `tablet-client/` in 2026-09; the `oz-pos-tablet` package-name rename belongs to the rebrand campaign's T3-2)
+- [x] Move `src-tauri/` → the desktop shell dir (named "desktop-client" at the time of the move; renamed to desktop-tauri/ in 2026-09)
 - [x] Build touch-optimized shell (bottom nav, larger hit targets)
 - [x] Create `platform/startup/` — shared module registration + event wiring
 
@@ -499,7 +507,7 @@ Every module must contain:
 - `CHANGELOG.md` — Version history
 
 Every architectural change must create an Architecture Decision Record (ADR).
-As of August 2026 there are 61 ADRs in `docs/decisions/`. Key documents include:
+As of September 2026 there are 71 ADRs in `docs/decisions/` (plus 2 archived). Key documents include:
 ```
 docs/decisions/2026-01-15-module-system-design.md
 docs/decisions/2026-02-01-event-bus-design.md
@@ -539,5 +547,5 @@ architecture.*
 
 > last audited 08-09-26 by docs-auditor
 
-> status: ACCURATE (5 structural majors repaired 31-08-26) · Core Traits rewritten verbatim from foundation/src/contracts.rs (invented `Integration` removed, `DomainEvent` added); Platform Core Services trimmed to the 6 real services; permission delimiter corrected to `domain:action`; Event Flow invented names replaced with real handlers; ADR #43 and foundation/src/ corrected; counts verified accurate (35 members / 13 crates / 14 modules / 61 ADRs). Minor backlog in the top audit comment (no dedicated HAL section; feature flows not shown).
+> status: ACCURATE (5 structural majors repaired 31-08-26) · Core Traits rewritten verbatim from foundation/src/contracts.rs (invented `Integration` removed, `DomainEvent` added); Platform Core Services trimmed to the 6 real services; permission delimiter corrected to `domain:action`; Event Flow invented names replaced with real handlers; ADR #43 and foundation/src/ corrected; counts verified accurate at the time (35 members / 13 crates / 14 modules / 61 ADRs — superseded 2026-09-18: 39 members / 17 crates / 14 modules / 71 ADRs). Minor backlog in the top audit comment (no dedicated HAL section; feature flows not shown).
 

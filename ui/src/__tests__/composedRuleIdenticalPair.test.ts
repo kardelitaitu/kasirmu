@@ -11,7 +11,7 @@
  * ui/src/features alone, which silently excluded src/components/** and src/frontend/**),
  * walked rule
  * including rules nested inside @media, resolved through the theme blocks of
- * ui/src/frontend/themes/tokens.css — :root (the default dark),
+ * ui/src/theme/tokens.css — :root (the default dark),
  * [data-theme='light'] and [data-theme='dark'] — each theme block cascaded ON
  * TOP of :root, because a theme block only redefines the tokens it changes.
  *
@@ -37,7 +37,7 @@
  *
  * WHY NOT AN AA THRESHOLD HERE: ui/src/__tests__/colorContrastCompliance.test.ts
  * asserts 22 hand-picked pairings over 3 themes plus one smoke case each = 69
- * cases, and it opens exactly ONE file, ../frontend/themes/tokens.css — the
+ * cases, and it opens exactly ONE file, ../theme/tokens.css — the
  * string 'features/' appears nowhere in its 399 lines. The sheets it never
  * opens compose hundreds of same-block pairs, so that gate grades roughly one
  * pair per thirty-odd composed rules, and its case count is STRUCTURE, not
@@ -85,7 +85,7 @@ const WALK_ROOT = path.resolve(process.cwd(), 'src');
 /** The old scope, kept only to measure what the widening added. */
 const FEATURES_DIR = path.resolve(WALK_ROOT, 'features');
 const WALK_LABEL = path.relative(process.cwd(), WALK_ROOT).split(path.sep).join('/');
-const TOKENS_PATH = path.resolve(process.cwd(), 'src', 'frontend', 'themes', 'tokens.css'); 
+const TOKENS_PATH = path.resolve(process.cwd(), 'src', 'theme', 'tokens.css'); 
 
 /** The same three themes the existing gate names, each cascaded over :root. */
 const THEMES = [

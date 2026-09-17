@@ -4,7 +4,7 @@
 **Role:** Orchestrator Agent 1 (License & Entitlement Architect)  
 **Goal:** Implement authoritative server-side license verification, 14-day offline grace countdowns, and capability checking in `oz-core` so tools lock deterministically when expired.
 
-**Target Crates:** `crates/oz-core/src/subscription.rs`, `apps/desktop-client/src/commands/license.rs`  
+**Target Crates:** `crates/oz-core/src/subscription.rs`, `apps/desktop-tauri/src/commands/license.rs`  
 **Sibling Documents:**
 - [`todo-tools-agents-2.md`](./todo-tools-agents-2.md) (Agent 2 — Workspace Navigation & Home Grid Categorization)
 - [`done-todo-tools-agents-3.md`](../../done-todo-tools-agents-3.md) (Agent 3 — Route Guards, Locked Badges & Upgrade Modals)
@@ -16,8 +16,8 @@
 1. **Commit Subject Convention:** `feat(tools-entitlement): ...`
 2. **Owned Path Fence (Exclusive to Agent 1):**
    - `crates/oz-core/src/subscription.rs`
-   - `apps/desktop-client/src/commands/license.rs`
-   - `apps/desktop-client/src/commands/subscription.rs`
+   - `apps/desktop-tauri/src/commands/license.rs`
+   - `apps/desktop-tauri/src/commands/subscription.rs`
 3. **Forbidden Paths (Owned by Siblings):**
    - DO NOT edit `WorkspaceHome.tsx` (Owned by Agent 2).
    - DO NOT edit upgrade modal UI (Owned by Agent 3).

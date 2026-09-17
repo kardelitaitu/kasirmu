@@ -1,6 +1,6 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
-import { useToast } from '@/frontend/shared/Toast';
-import { requiredLocalized } from '@/frontend/shared';
+import { useToast } from '@/components/Toast';
+import { requiredLocalized } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';

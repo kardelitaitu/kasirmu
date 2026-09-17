@@ -8,7 +8,7 @@
 // handler is what the gate warns about.
 //
 // Pinned against the real surface rather than against itself:
-//   - apps/desktop-client/src/commands/audit.rs — AuditExportDto (:404) and its
+//   - apps/desktop-tauri/src/commands/audit.rs — AuditExportDto (:404) and its
 //     header string (:453), MarkAuditReviewedArgs (camelCase via rename_all),
 //     ReviewCheckpointDto / AuditReviewStatusDto (both snake_case, no rename_all);
 //   - ui/src/api/audit.ts — the TS mirrors the screens actually consume.

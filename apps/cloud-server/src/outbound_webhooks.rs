@@ -667,7 +667,7 @@ fn unauthorized() -> axum::response::Response {
 }
 
 fn admin_ok(headers: &HeaderMap, state: &OutboundState) -> bool {
-    oz_api::routes::tokens::admin_key_authorised(headers, state.admin_key.as_deref())
+    kasirmu_api::routes::tokens::admin_key_authorised(headers, state.admin_key.as_deref())
 }
 
 async fn list_handler(
@@ -769,7 +769,7 @@ pub async fn fanout_from_outcomes(
     db: &Arc<Mutex<rusqlite::Connection>>,
     pg: &Option<deadpool_postgres::Pool>,
     tenant_id: &str,
-    items: &[oz_core::offline::OfflineQueueItem],
+    items: &[kasirmu_core::offline::OfflineQueueItem],
     outcomes: &[platform_sync::transport::PushOutcome],
 ) {
     let accepted: Vec<AcceptedItem<'_>> = items

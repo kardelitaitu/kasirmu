@@ -1,8 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { useToast } from '@/frontend/shared/Toast';
+import type { useToast } from '@/components/Toast';
 import type { usePosState } from '../usePosState';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { plainErrorMessage } from '@/utils/app-error';
 import { triggerInteraction } from '@/utils/interaction';
 import { useAnimatedUndoStack } from '@/hooks/useAnimatedUndoStack';

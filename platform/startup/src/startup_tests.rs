@@ -13,7 +13,7 @@ fn create_temp_db() -> (tempfile::TempDir, std::path::PathBuf) {
     let mut conn = Connection::open(&db_path).unwrap();
     conn.pragma_update(None, "foreign_keys", "ON").unwrap();
     conn.pragma_update(None, "journal_mode", "WAL").unwrap();
-    oz_core::migrations::run(&mut conn).unwrap();
+    kasirmu_core::migrations::run(&mut conn).unwrap();
     drop(conn);
     (dir, db_path)
 }

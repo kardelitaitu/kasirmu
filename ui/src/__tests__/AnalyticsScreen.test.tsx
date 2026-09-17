@@ -8,7 +8,7 @@ import {
   discriminatingStoreZone,
   expectedStoreDay,
 } from '@/__tests__/test-utils/storeZoneCase';
-import { withFluent, withFluentLocale } from '@/locales/test-utils';
+import { withFluent, withFluentLocale } from '@/i18n/test-utils';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import analyticsFtl from '@/locales/analytics.ftl?raw';
 import subscriptionFtl from '@/locales/subscription.ftl?raw';
@@ -47,7 +47,7 @@ vi.mock('@/utils/export-csv', () => ({ downloadCsv: vi.fn() }));
 // grid). Mock it to a passthrough that stamps the resolved content onto the
 // trigger cell, so tests assert the wiring without paying for 168 portals or
 // re-testing the shared Tooltip's hover timing (covered by Tooltip.test.tsx).
-vi.mock('@/frontend/shell/Tooltip', () => ({
+vi.mock('@/app/Tooltip', () => ({
   default: ({ content, children }: { content: React.ReactNode; children: React.ReactElement }) =>
     React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
       'data-tooltip-content': typeof content === 'string' ? content : undefined,
@@ -268,8 +268,8 @@ import { yearlyHeatmapColumns, rangeForGranularity, isoToday } from '@/features/
 import { analyticsDataCache, clearAnalyticsCache } from '@/features/analytics/analytics-cache';
 import { registerAnalyticsFeature } from '@/features/analytics/register';
 import { registerStaffFeature } from '@/features/staff/register';
-import { getEnabledPages, clearPages, hasGrantedPermission } from '@/platform/ui/page-registry';
-import { getNavItems, clearNavItems } from '@/platform/ui/menu-registry';
+import { getEnabledPages, clearPages, hasGrantedPermission } from '@/registries/page-registry';
+import { getNavItems, clearNavItems } from '@/registries/menu-registry';
 
 // ────────────────────────────────────────────────────────────────────
 // Layout shell tests

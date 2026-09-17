@@ -3,13 +3,13 @@
 //! SYNC-01 durable anchor + monotonic created_at advancement, snapshot
 //! recovery importing before the anchor reset, idempotent replay,
 //! dead-letter quarantine after the retry budget, ADR #6 stock_summary
-//! rebuild, SYNC-10 settings re-emit — plus outbox schema, offline
-//! queue behaviour, and status DTO shape. Extracted from the inline
-//! `mod tests` in `pg_daemon.rs` (F-018).
+//! rebuild, SYNC-10 settings re-emit, SYNC-EW wakeup coalescing — plus
+//! outbox schema, offline queue behaviour, and status DTO shape.
+//! Extracted from the inline `mod tests` in `pg_daemon.rs` (F-018).
 
 use super::*;
-use oz_core::migrations;
-use oz_core::offline::{OfflineQueueItem, OfflineQueueStatus};
+use kasirmu_core::migrations;
+use kasirmu_core::offline::{OfflineQueueItem, OfflineQueueStatus};
 
 fn setup_db() -> DbConnection {
     Arc::new(Mutex::new(migrations::fresh_db()))
@@ -855,4 +855,43 @@ fn pg_daemon_status_clone() {
     assert_eq!(cloned.last_pushed, status.last_pushed);
     assert_eq!(cloned.last_pulled, status.last_pulled);
     assert_eq!(cloned.pending_count, status.pending_count);
+}
+
+// ── SYNC-EW: the two promises `nudge` makes ───────────────────────
+//
+// Mirror of the pair in `daemon_tests.rs`. `pg_daemon.rs` documents "identical
+// semantics to `SyncDaemon::nudge`", so the same two properties are pinned here,
+// and this is the caller that `PgSyncDaemon::wakeup_handle` was added for.
+
+/// A `nudge()` before the daemon is listening must be STORED, not dropped.
+#[tokio::test]
+async fn nudge_while_stopped_stores_one_permit() {
+    let daemon = PgSyncDaemon::new();
+    daemon.nudge();
+
+    tokio::time::timeout(Duration::from_secs(2), daemon.wakeup_handle().notified())
+        .await
+        .expect("a nudge issued while stopped must be stored, not dropped");
+}
+
+/// Three nudges must leave exactly ONE pending permit — `Notify` does not queue.
+#[tokio::test]
+async fn nudge_coalesces_a_burst_into_one_permit() {
+    let daemon = PgSyncDaemon::new();
+    let handle = daemon.wakeup_handle();
+
+    daemon.nudge();
+    daemon.nudge();
+    daemon.nudge();
+
+    tokio::time::timeout(Duration::from_secs(2), handle.notified())
+        .await
+        .expect("the first permit of the burst must be observable");
+
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), handle.notified())
+            .await
+            .is_err(),
+        "three nudges must coalesce into one permit; a second permit means Notify queued"
+    );
 }

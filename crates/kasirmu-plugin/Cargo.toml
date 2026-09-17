@@ -1,0 +1,29 @@
+[package]
+name = "kasirmu-plugin"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Plugin discovery, loading, and sandboxing for kasir.mu."
+
+# Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
+[lints]
+workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+kasirmu-lua = { workspace = true }
+serde_json = { workspace = true }
+mlua = { workspace = true }
+serde = { workspace = true }
+semver = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+regex = { workspace = true }
+rusqlite = { workspace = true }
+zip = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

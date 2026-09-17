@@ -25,7 +25,7 @@
 #   bash scripts/wtree-guard.sh release           # drop the claim
 #
 # TYPICAL LOOP
-#   wtree-guard own crates/oz-core/src/cache.rs
+#   wtree-guard own crates/kasirmu-core/src/cache.rs
 #   ...edit... ; cargo test ... ; wtree-guard verify
 #   ...later...  wtree-guard check   # <- run IMMEDIATELY before committing
 #

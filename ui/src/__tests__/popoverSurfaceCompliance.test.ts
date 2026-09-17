@@ -22,7 +22,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
 const UI_SRC = resolve(__dirname, '..');
-const TOKENS_PATH = resolve(UI_SRC, 'frontend/themes/tokens.css');
+const TOKENS_PATH = resolve(UI_SRC, 'theme/tokens.css');
 
 /* ── Every floating / scroll-overlaid surface ───────────────────────
  * Add a new floating or overlay surface here (selector + CSS file) when
@@ -30,7 +30,7 @@ const TOKENS_PATH = resolve(UI_SRC, 'frontend/themes/tokens.css');
 const POPOVER_SURFACES: ReadonlyArray<{ selector: string; file: string }> = [
   { selector: '.restaurant-context-menu', file: 'features/restaurant/RestaurantMenu.css' },
   { selector: '.restaurant-hamburger-dropdown', file: 'features/restaurant/RestaurantMenu.css' },
-  { selector: '.ctx-menu', file: 'frontend/shared/ContextMenu.css' },
+  { selector: '.ctx-menu', file: 'components/ContextMenu.css' },
   { selector: '.custom-context-menu', file: 'features/auth/LicenseActivationScreen.css' },
   { selector: '.store-switcher-dropdown', file: 'components/StoreSwitcher.css' },
   { selector: '.location-picker-dropdown', file: 'features/inventory/LocationPicker.css' },

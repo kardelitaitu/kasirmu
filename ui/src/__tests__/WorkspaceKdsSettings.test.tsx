@@ -10,7 +10,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { ReactNode, ReactElement } from 'react';
 import { LocalizationProvider } from '@fluent/react';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import { WorkspaceKdsSettings } from '@/features/settings/workspace-cards/WorkspaceKdsSettings';
 import { getSettingScoped, setSettingsScoped } from '@/api/settings';
 
@@ -177,7 +177,7 @@ describe('WorkspaceKdsSettings', () => {
   //
   // The consequence was not cosmetic. setSettingsScoped takes Record<string, string> and
   // the Rust command deserializes HashMap<String, String>
-  // (apps/desktop-client/src/commands/settings.rs), so a JSON number anywhere in the map
+  // (apps/desktop-tauri/src/commands/settings.rs), so a JSON number anywhere in the map
   // fails serde for the WHOLE call. All five keys go in one batch, so saving the sound
   // toggle or a threshold failed too -- not just density -- and the user got the
   // settings-save-error toast. TypeScript caught it; the test suite would not have.

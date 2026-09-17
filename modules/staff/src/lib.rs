@@ -1,7 +1,7 @@
 /*
 last audited 31-08-26 by RSA-Agent (user-role campaign, Section E)
 crate: modules-staff | status: SAFE | lint: CLEAN
-findings: clean transitional Module registration layer — kernel-wired (platform/startup/src/lib.rs:87), types re-exported through oz-core/src/user.rs; business logic intentionally remains in oz-core db/staff.rs + session-scoped IPC (documented boundary); inline unit tests in this file predate the sibling *_tests.rs convention (low-priority convention note)
+findings: clean transitional Module registration layer — kernel-wired (platform/startup/src/lib.rs:87), types re-exported through kasirmu-core/src/user.rs; business logic intentionally remains in kasirmu-core db/staff.rs + session-scoped IPC (documented boundary); inline unit tests in this file predate the sibling *_tests.rs convention (low-priority convention note)
 next: none | perf: N/A
 */
 
@@ -17,11 +17,11 @@ next: none | perf: N/A
 //! (DB CRUD, Tauri commands) and frontend (screens, API calls,
 //! Fluent locale) still live in their original locations:
 //!
-//! - Backend: `crates/oz-core/src/user.rs` + `crates/oz-core/src/db/staff.rs`
-//! - Commands: `apps/desktop-client/src/commands/staff.rs` + `apps/desktop-client/src/commands/auth.rs`
+//! - Backend: `crates/kasirmu-core/src/user.rs` + `crates/kasirmu-core/src/db/staff.rs`
+//! - Commands: `apps/desktop-tauri/src/commands/staff.rs` + `apps/desktop-tauri/src/commands/auth.rs`
 //! - Frontend: `ui/src/features/staff/` + `ui/src/features/auth/`
 //! - API: `ui/src/api/staff.ts`
-//! - Locale: `ui/src/locales/*/staff.ftl`
+//! - Locale: `shared-ui/locales/*/staff.ftl`
 //!
 //! The module boundary is intentionally transitional: these files remain in
 //! their original locations until the module system can own the Tauri command
@@ -36,7 +36,7 @@ next: none | perf: N/A
 
 //! # Re-exports
 //!
-//! This module re-exports key staff domain types from `oz-core` so that
+//! This module re-exports key staff domain types from `kasirmu-core` so that
 //! consumers can access all staff-related types through a single crate:
 //!
 //! ```

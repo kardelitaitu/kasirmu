@@ -16,9 +16,10 @@ signing key, or a macOS/Windows runner:
 
   1. the file parses, and parses as a GitHub workflow with a `v*` tag trigger
   2. every `uses:` action is pinned to a full 40-hex commit SHA (CICD-05), and
-     that name@sha pair appears in another workflow in this repo -- so a typo'd
+     that name@sha pair appears in another workflow in this repo (retired
+     copies under .github/workflows/attic/ count) -- so a typo'd
      or fabricated commit is a finding rather than a tag-time failure
-  3. every `scripts/...` and `install/...` path it invokes exists
+  3. every `scripts/...` and `ops/install/...` path it invokes exists
   4. no residue from the docker matrix targets that were cut when this was
      restored desktop-only: a leftover `if: matrix.target == 'docker-cloud'`
      guard is dead weight, and an inventory gate demanding a `.tar` no job
@@ -93,7 +94,11 @@ def validate(text: str) -> list[str]:
 
     # ── Action pins ───────────────────────────────────────────────────
     known: set[tuple[str, str]] = set()
-    for p in sorted((ROOT / ".github" / "workflows").glob("*")):
+    # Retired workflows moved to attic/ (P4) still count as cross-references:
+    # a pin appearing only in a retired copy is weak evidence but not a typo
+    # invented out of thin air, which is what this check exists to catch.
+    workflow_dir = ROOT / ".github" / "workflows"
+    for p in sorted(workflow_dir.glob("*")) + sorted(workflow_dir.glob("attic/*")):
         if p == WF or not p.is_file():
             continue
         other = io.open(p, encoding="utf-8", errors="replace").read()
@@ -124,8 +129,14 @@ def validate(text: str) -> list[str]:
                 f"unverifiable pin (typo or fabricated SHA?)")
 
     # ── Referenced paths ──────────────────────────────────────────────
-    for pat in (r"scripts/[A-Za-z0-9_.\-]+", r"install/[A-Za-z0-9_.\-/]+",
-                r"apps/[A-Za-z0-9_.\-/]+\.json"):
+    # Each pattern is root-anchored with a lookbehind: without it, the unanchored
+    # `install/...` pattern matched the TAIL of `ops/install/...` (P3 moved
+    # install/ → ops/install/) and reported the workflow's real installer copies
+    # as missing root paths. `(?:ops/)?` keeps both spellings checkable, and the
+    # lookbehind stops a path component from claiming a shorter match mid-path.
+    for pat in (r"(?<![\w./-])scripts/[A-Za-z0-9_.\-]+",
+                r"(?<![\w./-])(?:ops/)?install/[A-Za-z0-9_./\-]+",
+                r"(?<![\w./-])apps/[A-Za-z0-9_.\-/]+\.json"):
         for ref in sorted(set(re.findall(pat, text))):
             if not (ROOT / ref).exists():
                 problems.append(f"referenced path missing: {ref}")

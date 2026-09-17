@@ -1,6 +1,6 @@
 import type { ReactNode, ReactElement } from 'react';
-import { ToastProvider } from '@/frontend/shared/Toast';
-import { withFluent, withFluentLocale } from '@/locales/test-utils';
+import { ToastProvider } from '@/components/Toast';
+import { withFluent, withFluentLocale } from '@/i18n/test-utils';
 import type { LocaleCode } from '@/i18n';
 
 /**

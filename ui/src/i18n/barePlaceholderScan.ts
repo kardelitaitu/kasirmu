@@ -53,7 +53,7 @@ export function findBarePlaceholders(
 
 /** Every locale source, en and id (the round-156 bare-placeholder glob). */
 export function loadLocaleSources(): Record<string, string> {
-  return import.meta.glob('../locales/*.ftl', {
+  return import.meta.glob('@/locales/*.ftl', {
     query: '?raw',
     import: 'default',
     eager: true,
@@ -62,16 +62,19 @@ export function loadLocaleSources(): Record<string, string> {
 
 /** EN-only sources — canonical for the var/attr contracts (round 164). */
 export function loadEnSources(): Record<string, string> {
-  return import.meta.glob(['../locales/*.ftl', '!../locales/*.id.ftl'], {
-    query: '?raw',
-    import: 'default',
-    eager: true,
-  });
+  // The id bundles are excluded in CODE rather than with a `!` glob pattern. After
+  // P9a moved the corpus to shared-ui/locales/ the negative pattern pointed at a
+  // directory that no longer exists, so it excluded nothing and the EN contract map
+  // silently gained id-only keys — caught by the `customers-add` pin below. A filter
+  // cannot rot that way, because it reads the same keys the positive glob produced.
+  return Object.fromEntries(
+    Object.entries(loadLocaleSources()).filter(([path]) => !path.endsWith('.id.ftl')),
+  );
 }
 
 /** Indonesian sources. */
 export function loadIdSources(): Record<string, string> {
-  return import.meta.glob('../locales/*.id.ftl', {
+  return import.meta.glob('@/locales/*.id.ftl', {
     query: '?raw',
     import: 'default',
     eager: true,

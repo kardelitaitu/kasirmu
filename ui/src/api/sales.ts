@@ -128,7 +128,7 @@ export const getCartDeductionLocation = (cartId: string): Promise<DeductionLocat
  * ADR #7: Get the deduction location info for a cart in the store resolved from a session token.
  *
  * Registered by BOTH shells as of this writing -- `desktop-client` has had it since the ADR #7
- * sweep and `tablet-client` gained it alongside this wrapper. The ambient `get_cart_deduction_location`
+ * sweep and `mobile-tauri` gained it alongside this wrapper. The ambient `get_cart_deduction_location`
  * above is registered by tablet only, so calling it from the desktop shell throws "command not
  * found"; that asymmetry is what this wrapper exists to route around.
  */

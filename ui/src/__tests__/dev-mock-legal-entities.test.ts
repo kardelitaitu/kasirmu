@@ -6,7 +6,7 @@
 // rendered their failure path (the gate calls this out explicitly).
 //
 // These pin the mock's contract against the real command implementation in
-// apps/desktop-client/src/commands/legal_entities.rs:
+// apps/desktop-tauri/src/commands/legal_entities.rs:
 //   - one seeded "Default Legal Entity", mirroring migration
 //     20260908_legal_entities.sql, which auto-creates exactly one per tenant;
 //   - creates and updates persist for the session, like the store mock;

@@ -113,8 +113,8 @@ if ($Fast) {
 }
 
 if ($nextestAvailable) {
-    Step -Name "test workspace (nextest)" -RetryCommand "cargo nextest run --workspace --all-features --exclude oz-pos-app --exclude oz-pos-tablet" -ScriptBlock {
-        cargo nextest run --workspace --all-features --exclude oz-pos-app --exclude oz-pos-tablet
+    Step -Name "test workspace (nextest)" -RetryCommand "cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile" -ScriptBlock {
+        cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile
     }
     Step -Name "test doctests" -RetryCommand "cargo test --doc --workspace" -ScriptBlock {
         cargo test --doc --workspace
@@ -127,9 +127,9 @@ if ($nextestAvailable) {
 }
 
 # --- Migration ----------------------------------------------------------
-Step -Name "migration smoke test" -RetryCommand "cargo run -p oz-cli -- migrate" -ScriptBlock { cargo run -p oz-cli -- migrate }
-Step -Name "migration idempotency" -RetryCommand "cargo run -p oz-cli -- migrate" -ScriptBlock { cargo run -p oz-cli -- migrate }
-Remove-Item -LiteralPath "oz-pos.db", "oz-pos.db-wal", "oz-pos.db-shm" -ErrorAction Ignore
+Step -Name "migration smoke test" -RetryCommand "cargo run -p kasirmu-cli -- migrate" -ScriptBlock { cargo run -p kasirmu-cli -- migrate }
+Step -Name "migration idempotency" -RetryCommand "cargo run -p kasirmu-cli -- migrate" -ScriptBlock { cargo run -p kasirmu-cli -- migrate }
+Remove-Item -LiteralPath "kasir.db", "kasir.db-wal", "kasir.db-shm" -ErrorAction Ignore
 
 # --- Skill drift guard --------------------------------------------------
 $gitBash = if (Test-Path "C:\Program Files\Git\bin\bash.exe") {

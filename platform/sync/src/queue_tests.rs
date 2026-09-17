@@ -7,7 +7,7 @@
 //! Extracted from the inline `mod tests` in `queue.rs` (F-018).
 
 use super::*;
-use oz_core::migrations;
+use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn setup_store() -> Store<'static> {
@@ -325,7 +325,7 @@ fn queue_apply_resolution_local_wins() {
         created_at: "2025-01-01T00:00:00.000Z".into(),
         synced_at: None,
         tenant_id: "default".into(),
-        priority: oz_core::offline::SyncPriority::Normal,
+        priority: kasirmu_core::offline::SyncPriority::Normal,
     };
 
     let resolved = ResolvedItem {
@@ -358,7 +358,7 @@ fn queue_apply_resolution_remote_wins() {
         created_at: "2025-06-01T12:00:00.000Z".into(),
         synced_at: None,
         tenant_id: "default".into(),
-        priority: oz_core::offline::SyncPriority::Normal,
+        priority: kasirmu_core::offline::SyncPriority::Normal,
     };
 
     let resolved = ResolvedItem {
@@ -675,14 +675,14 @@ fn apply_remote_atomic_settings_update_writes_row_and_delta() {
         "settings.update must apply instead of erroring as unsupported"
     );
     assert_eq!(
-        oz_core::settings::Settings::get(store.conn(), "store.name")
+        kasirmu_core::settings::Settings::get(store.conn(), "store.name")
             .unwrap()
             .as_deref(),
         Some("Remote Acme"),
         "the settings row must be updated"
     );
     assert_eq!(
-        oz_core::settings::Settings::get_version(store.conn(), "store.name", "term-remote")
+        kasirmu_core::settings::Settings::get_version(store.conn(), "store.name", "term-remote")
             .unwrap(),
         Some(1),
         "a versioned delta row must be written for the (key, terminal) pair"
@@ -740,13 +740,13 @@ fn apply_remote_settings_update_non_atomic() {
 
     queue.apply_remote(&store, &remote).unwrap();
     assert_eq!(
-        oz_core::settings::Settings::get(store.conn(), "store.name")
+        kasirmu_core::settings::Settings::get(store.conn(), "store.name")
             .unwrap()
             .as_deref(),
         Some("Remote Acme")
     );
     assert_eq!(
-        oz_core::settings::Settings::get_version(store.conn(), "store.name", "term-remote")
+        kasirmu_core::settings::Settings::get_version(store.conn(), "store.name", "term-remote")
             .unwrap(),
         Some(1)
     );
@@ -768,7 +768,7 @@ fn apply_remote_settings_change_alias() {
         Some(("store.name".to_string(), "term-remote".to_string()))
     );
     assert_eq!(
-        oz_core::settings::Settings::get(store.conn(), "store.name")
+        kasirmu_core::settings::Settings::get(store.conn(), "store.name")
             .unwrap()
             .as_deref(),
         Some("Remote Acme")
@@ -1077,7 +1077,7 @@ fn seed_two_location_stock(store: &Store<'_>) -> String {
                 &tx,
                 "LOC-TWO",
                 delta,
-                &oz_core::inventory::LocationId::from(loc),
+                &kasirmu_core::inventory::LocationId::from(loc),
                 Some("seed"),
                 None,
                 None,
@@ -1140,7 +1140,10 @@ fn assert_location_scoped_merge(store: &Store<'_>, pid: &str) {
     let default_rows: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM stock_summary WHERE item_id = ?1 AND location_id = ?2",
-            [pid, oz_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+            [
+                pid,
+                kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
+            ],
             |r| r.get(0),
         )
         .unwrap();
@@ -1220,7 +1223,7 @@ fn apply_remote_atomic_crdt_envelope_mixed_location_and_unscoped_sides() {
     );
     assert_eq!(qty_at("loc-b"), 3, "unrelated named row untouched");
     assert_eq!(
-        qty_at(oz_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID),
+        qty_at(kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID),
         5,
         "unscoped side landed at the canonical default location"
     );
@@ -1412,7 +1415,7 @@ fn legacy_apply_remote_leaves_a_refused_key_absent_from_the_database() {
 ///    a settings item (queue.rs:10-12), and the server stores a pushed payload opaquely
 ///    (apps/cloud-server/src/sync_store.rs:201), so any peer inside the tenant — or the
 ///    server operator — can name the key.
-/// 2. **The reader carries a bearer secret.** crates/oz-core/src/sync_auth.rs:72 sends
+/// 2. **The reader carries a bearer secret.** crates/kasirmu-core/src/sync_auth.rs:72 sends
 ///    `Authorization: Bearer <sync api key>` to whatever sync_server_url currently holds,
 ///    so planting that one name exfiltrates a credential without ever naming a credential
 ///    key. sync_enabled, pg_sync.host, pg_sync.user, pg_sync.dbname and redis.cache_ttl
@@ -1487,7 +1490,7 @@ fn remote_settings_update_applies_a_key_the_exclusion_list_misses() {
 /// author thought to name. Why each is worth a line despite that:
 ///
 /// * sync_server_url - the reader carries a bearer secret
-///   (crates/oz-core/src/sync_auth.rs:72 sends Authorization: Bearer <sync api key>
+///   (crates/kasirmu-core/src/sync_auth.rs:72 sends Authorization: Bearer <sync api key>
 ///   to whatever this row says), so the plant exfiltrates a credential without
 ///   ever naming a credential key.
 /// * sync_enabled - switches the transport on or off tenant-wide. The one name in
@@ -1503,10 +1506,10 @@ fn remote_settings_update_applies_a_key_the_exclusion_list_misses() {
 ///
 /// None of the six is ever a queue producer on the paths that matter, so refusing
 /// them at the ingest door drops no working traffic: sync_server_url's four writers
-/// are crates/oz-bridge/src/sync.rs:71, apps/tablet-client/src/commands/sync.rs:87,
-/// apps/desktop-client/src/sync_bootstrap.rs:83 and platform/sync/src/daemon_tick.rs:83,
+/// are crates/kasirmu-bridge/src/sync.rs:71, apps/mobile-tauri/src/commands/sync.rs:87,
+/// apps/desktop-tauri/src/sync_bootstrap.rs:83 and platform/sync/src/daemon_tick.rs:83,
 /// none of which calls Store::enqueue_settings_update_superseding
-/// (crates/oz-core/src/db/offline.rs:194). That is what makes this set safe to
+/// (crates/kasirmu-core/src/db/offline.rs:194). That is what makes this set safe to
 /// refuse while the wider allow-list is not.
 #[test]
 fn remote_settings_update_refuses_the_named_hazard_set() {
@@ -1587,7 +1590,7 @@ fn remote_settings_still_applies_the_names_normal_operation_replicates() {
         (
             "leg-backup-path",
             "updater.last_backup_path",
-            "/var/lib/oz/back.ozpkg",
+            "/var/lib/oz/back.kasirpkg",
         ),
         ("leg-low-stock", "inventory.low_stock_threshold", "5"),
         (
@@ -1681,8 +1684,8 @@ fn remote_settings_refusal_legs_stay_closed_beside_the_hazard_set() {
 /// And the honesty clause, because the count matters more than the code: this is a
 /// census of what someone thought to TRACE, not of what a caller can SEND. Both
 /// shells' setters take an arbitrary key string from the renderer
-/// (crates/oz-bridge/src/settings.rs run_set_setting / set_setting_scoped /
-/// set_settings_scoped, apps/tablet-client/src/commands/settings.rs) and hand it to
+/// (crates/kasirmu-bridge/src/settings.rs run_set_setting / set_setting_scoped /
+/// set_settings_scoped, apps/mobile-tauri/src/commands/settings.rs) and hand it to
 /// the one enqueue funnel, so the reachable egress surface is every setting the UI
 /// can write - see .agents/egress-surface.md for the enumeration and the size. A
 /// full allow-list must be built against THAT number, not against the twelve.
@@ -1786,7 +1789,7 @@ fn a_hazard_name_refused_from_the_network_still_travels_in_a_package() {
         // of them - the hazard refusal belongs to one lane only - without this
         // crate reaching across a dependency edge it does not have (platform-sync
         // deliberately has no platform-core edge; queue.rs imports the policy
-        // through the oz_core::settings facade, and reaching for
+        // through the kasirmu_core::settings facade, and reaching for
         // platform_core::settings::keys here would build one).
         //
         // The same boolean therefore carries two facts, and the pair is what a

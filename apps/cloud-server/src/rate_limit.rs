@@ -342,7 +342,7 @@ pub async fn rate_limit_middleware(
     // fall through without rate limiting (auth middleware will reject anyway).
     let tenant_id = request
         .extensions()
-        .get::<oz_api::auth::ApiTokenClaims>()
+        .get::<kasirmu_api::auth::ApiTokenClaims>()
         .and_then(|claims| claims.tenant_id.as_deref())
         .unwrap_or("default");
 

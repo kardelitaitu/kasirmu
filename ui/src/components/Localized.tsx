@@ -5,4 +5,4 @@
  * (e.g. `data-testid` propagation) can be added here without
  * rewriting every JSX call site.
  */
-export { Localized } from '@fluent/react';
+export { Localized, type LocalizedProps } from '@fluent/react';

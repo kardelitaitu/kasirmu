@@ -112,7 +112,7 @@ TAURI_CONFIGS = sorted((ROOT / "apps").glob("*/tauri.conf.json"))
 # "KNOWN LIMIT" in the module docstring for what to do when you ship one.
 SOURCE_MANIFESTS = [
     ROOT / "apps" / "cloud-server" / "app.manifest",
-    ROOT / "crates" / "oz-cli" / "app.manifest",
+    ROOT / "crates" / "kasirmu-cli" / "app.manifest",
     ROOT / "apps" / "license-server" / "app.manifest",
     ROOT / "scripts" / "updater-compat-check" / "app.manifest",
 ]
@@ -413,7 +413,7 @@ def self_test() -> int:
 
     # 2. CONTROL: a populated walk must NOT refuse, or case 1 is an always-red
     #    print that guards nothing.
-    one = [ROOT / "apps" / "desktop-client" / "tauri.conf.json"]
+    one = [ROOT / "apps" / "desktop-tauri" / "tauri.conf.json"]
     check("control: one config in the population certifies normally",
           empty_population_exit(one, list(SOURCE_MANIFESTS)) is None)
 

@@ -1,6 +1,6 @@
 //! Popularity and forecast queries for the Postgres analytics bundle.
 //!
-//! The Postgres mirror of `oz_core::db::popularity`: per-category
+//! The Postgres mirror of `kasirmu_core::db::popularity`: per-category
 //! standings, the trend query with the ADR #37 blend evaluated by the
 //! shared `score_from_raw`, cached smoothing means read through the scoped
 //! settings store, and the next-period forecast. Split from `email_pg.rs`
@@ -8,15 +8,15 @@
 
 use deadpool_postgres::Pool;
 
-use oz_core::db::popularity::{
+use kasirmu_core::db::popularity::{
     CategoryForecastRow, CategoryPopularityRow, CategoryTopProduct, CategoryTrendPoint,
 };
-use oz_core::popularity::{linear_forecast, score_from_raw, seasonal_daily_forecast};
+use kasirmu_core::popularity::{linear_forecast, score_from_raw, seasonal_daily_forecast};
 
 use super::analytics::parse_date;
 use super::settings_store::get_setting_scoped_pg;
 /// Per-category popularity standings (Postgres mirror of
-/// `oz_core::db::popularity::Store::category_popularity`).
+/// `kasirmu_core::db::popularity::Store::category_popularity`).
 pub async fn category_popularity_pg(
     pool: &Pool,
     top_per_category: i64,
@@ -132,7 +132,7 @@ pub async fn category_popularity_pg(
 }
 
 /// Per-period popularity trend for the top categories — the raw-signal
-/// queries of `oz_core::db::popularity::Store::category_popularity_trend`
+/// queries of `kasirmu_core::db::popularity::Store::category_popularity_trend`
 /// against Postgres, with the ADR #37 blend evaluated by the shared
 /// `score_from_raw` helper.
 async fn category_popularity_trend_pg(
@@ -326,7 +326,7 @@ async fn category_means_pg(
 }
 
 /// Next-period demand forecast per category — the Postgres mirror of
-/// `oz_core::db::popularity::Store::category_forecast`, reusing the shared
+/// `kasirmu_core::db::popularity::Store::category_forecast`, reusing the shared
 /// `linear_forecast` / `seasonal_daily_forecast` fits.
 pub async fn category_forecast_pg(
     pool: &Pool,

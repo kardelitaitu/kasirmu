@@ -8,7 +8,7 @@ status: Implemented (2026-08-08)
 
 **Status:** Implemented (2026-08-08)  \
 **Date:** 2026-08-08  \
-**Author:** Architecture Team & OZ-POS Contributors  \
+**Author:** Architecture Team & kasir.mu Contributors  \
 **Tags:** topology, typed-ports, semantic-gating, live-validation, node-editor, adr-34
 
 ---

@@ -1,5 +1,5 @@
 use super::*;
-use oz_core::export::email_report::SMTP_CONFIG_SETTINGS_KEY;
+use kasirmu_core::export::email_report::SMTP_CONFIG_SETTINGS_KEY;
 use serial_test::serial;
 
 /// Create a process-unique throwaway database (the established pattern for
@@ -170,7 +170,7 @@ async fn pg_integration_email_loop_reads_postgres() {
         "INSERT INTO stock_summary (item_id, location_id, qty, updated_at) VALUES ($1, $2, 4, $3)",
         &[
             &product_id,
-            &oz_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
+            &kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
             &now,
         ],
     )

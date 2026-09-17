@@ -1,10 +1,10 @@
 /**
  * Theme Token Compliance Test
  *
- * Scans every CSS file under ui/src/features/, ui/src/frontend/ and
+ * Scans every CSS file under ui/src/features/, ui/src/app/, ui/src/theme/ and
  * ui/src/components/ for hardcoded colour, font-size, border-radius,
  * box-shadow, and spacing values that should reference design tokens via
- * `var(--token)`.  Three walk targets, per SCAN_TARGETS below -- this sentence
+ * `var(--token)`.  Four walk targets, per SCAN_TARGETS below -- this sentence
  * named two of them until the font work re-read it.  `tokens.css` and
  * `components.css` are excluded inside findFeatureCssFiles: they DEFINE the
  * tokens, so grading them against themselves is circular.
@@ -461,7 +461,8 @@ interface ScanTarget {
 
 const SCAN_TARGETS: ScanTarget[] = [
   { path: 'features', label: 'Feature CSS files' },
-  { path: 'frontend', label: 'Frontend/shell CSS files' },
+  { path: 'app', label: 'App/shell CSS files' },
+  { path: 'theme', label: 'Theme CSS files' },
   { path: 'components', label: 'Shared component CSS files' },
 ];
 
@@ -576,7 +577,7 @@ const UI_ROOT = resolve(UI_SRC, '..');
 /** Boot documents that paint before any chunk or stylesheet has loaded. */
 const HTML_ENTRIES: string[] = [
   join(UI_ROOT, 'index.html'),
-  join(UI_ROOT, 'index.tablet.html'),
+  join(UI_ROOT, 'index.mobile.html'),
 ];
 
 const ABSOLUTE_URL_RE = /https?:\/\//i;
@@ -911,7 +912,7 @@ function describeBootDecls(decls: BootFontDecl[]): string {
 
 /* ── Rule 7 -- faces that arrive through an @import ─────────────────────── */
 
-const FONTS_CSS = join(UI_SRC, 'frontend', 'themes', 'fonts.css');
+const FONTS_CSS = join(UI_SRC, 'theme', 'fonts.css');
 /**
  * Three legal @import shapes must all harvest, because the third is the one a
  * remote import tends to be written in:
@@ -983,7 +984,7 @@ function resolveFaceSource(spec: string): FaceSource {
   const base: FaceSource = { spec, kind: 'missing', file: null, text: '', faces: 0 };
   if (isRemoteImport(spec)) return { ...base, kind: 'remote' };
   if (spec.startsWith('.')) {
-    const rel = resolve(UI_SRC, 'frontend', 'themes', spec);
+    const rel = resolve(UI_SRC, 'theme', spec);
     if (!existsSync(rel)) return base;
     const text = readFileSync(rel, 'utf-8');
     return { spec, kind: 'file', file: rel, text, faces: faceBlocks(text) };
@@ -1105,8 +1106,8 @@ function presentFaceUrls(block: string, baseDir: string): string[] {
 // configs and went red instead of passing on an empty population.
 const APPS_ROOT = resolve(__dirname, '..', '..', '..', 'apps');
 const SHELL_CONFIGS = [
-  { shell: 'desktop-client', file: join(APPS_ROOT, 'desktop-client', 'tauri.conf.json') },
-  { shell: 'tablet-client', file: join(APPS_ROOT, 'tablet-client', 'tauri.conf.json') },
+  { shell: 'desktop-tauri', file: join(APPS_ROOT, 'desktop-tauri', 'tauri.conf.json') },
+  { shell: 'mobile-tauri', file: join(APPS_ROOT, 'mobile-tauri', 'tauri.conf.json') },
 ];
 const CSP_KEYS = ['csp', 'devCsp'];
 /** Measured identically in all four clauses when this rule was written. */
@@ -1351,7 +1352,7 @@ describe('font-reference portability', () => {
 
   // WHY HTML_SOURCES IS EXACTLY TWO DOCUMENTS, and why widening it is a regression.
   // Six other tracked files still name these hosts and every one of them is correct:
-  //   dev/design-language.html, dev/kds-prototype.html -- dev-only pages whose whole
+  //   prototypes/design-language.html, prototypes/kds-prototype.html -- dev-only pages whose whole
   //     job is to show the typefaces; they are never shipped and no CSP governs them.
   //   website/public/admin/index.html, website/public/admin/login.html -- the
   //     deployed console, standalone pages whose face can only come from a CDN
@@ -1474,7 +1475,7 @@ describe('font-reference portability', () => {
       "  --brand-font-family: 'Inter, sans-serif';",
       '  --brand-font-family-alt: "DM Sans", "Inter", sans-serif;',
       "  --font-mixed: 'Inter', system-ui;",
-      "  --brand-company: 'OZ POS Inc.';",
+      "  --brand-company: 'kasir.mu';",
       '  --kds-font-md: 15px;',
       '  --font-weight-normal: 400;',
       '}',
@@ -1544,7 +1545,7 @@ describe('font-reference portability', () => {
 
   it('rule 6: the boot documents agree on one splash font-family', () => {
     // There are TWO boot documents (HTML_ENTRIES: index.html and
-    // index.tablet.html), and they render the same pre-CSS splash for two
+    // index.mobile.html), and they render the same pre-CSS splash for two
     // shells. Every rule above grades a document on its own, so a divergence
     // between them is structurally invisible: the desktop fallback lost an
     // unsatisfiable first position while the tablet one kept it, and rule 1
@@ -1583,18 +1584,18 @@ describe('font-reference portability', () => {
     const a = bootFontDeclarations('index.html', doc(shared));
     expect(a.length).toBe(1);
     expect(a[0]?.line).toBe(2);
-    const identical = bootFontDeclarations('index.tablet.html', doc(shared));
+    const identical = bootFontDeclarations('index.mobile.html', doc(shared));
     expect(new Set([...a, ...identical].map((d) => d.value)).size).toBe(1);
     // The historical defect, restated: an unsatisfiable first position added to
     // one shell only. Everything else byte-identical.
     const diverged = bootFontDeclarations(
-      'index.tablet.html',
+      'index.mobile.html',
       doc("  font-family: var(--font-sans, 'Inter', -apple-system, system-ui, sans-serif);"),
     );
     expect(new Set([...a, ...diverged].map((d) => d.value)).size).toBe(2);
     // An HTML comment naming a face must not count -- blankComments blanks it.
     const commented = bootFontDeclarations(
-      'index.tablet.html',
+      'index.mobile.html',
       doc(shared, '  <!-- font-family: Georgia, serif; -->'),
     );
     expect(commented.length).toBe(1);
@@ -2246,7 +2247,7 @@ describe('font-reference portability', () => {
     // And the real population is named, so a rule that quietly stopped finding a shell
     // is visible even though the case above already counts it.
     expect(shellFontSrc().map((r) => `${r.shell}.${r.key}`).sort()).toEqual([
-      'desktop-client.csp', 'desktop-client.devCsp', 'tablet-client.csp', 'tablet-client.devCsp',
+      'desktop-tauri.csp', 'desktop-tauri.devCsp', 'mobile-tauri.csp', 'mobile-tauri.devCsp',
     ]);
   });
 
@@ -2333,7 +2334,7 @@ describe('font-reference portability', () => {
  * that do not (the eight NO-FALLBACK names below) render nothing at all.
  */
 
-const TOKENS_CSS = join(UI_SRC, "frontend", "themes", "tokens.css");
+const TOKENS_CSS = join(UI_SRC, "theme", "tokens.css");
 
 /** A custom-property DECLARATION at its own boundary -- not a var() read. */
 const CUSTOM_PROP_DEF_RE = /(?:^|[;{\s])(--[A-Za-z0-9_-]+)\s*:/g;
@@ -2936,38 +2937,38 @@ const TAILED_TOKEN_REFS = ALL_VAR_REFS.filter((r) => r.hasFallback && tailRelati
  */
 const DISAGREEING_TAIL_BASELINE: Array<[string, string, number]> = [
   ["--color-accent", "ui/src/features/sales/CartPanelCourseBar.css", 5],
-  ["--color-accent", "ui/src/frontend/themes/reset.css", 1],
+  ["--color-accent", "ui/src/theme/reset.css", 1],
   ["--color-accent-hover", "ui/src/features/restaurant/RestaurantMenu.css", 1],
   ["--color-accent-hover", "ui/src/features/sales/CartPanel.brand.css", 1],
   ["--color-accent-secondary", "ui/src/features/sales/EodReportScreen.css", 1],
   ["--color-accent-secondary", "ui/src/features/sales/widgets/widgets.css", 1],
   ["--color-accent-subtle", "ui/src/features/design/DevToolbar.css", 4],
   ["--color-accent-subtle-fg", "ui/src/features/locations/MultiStoreDashboardScreen.css", 1],
-  ["--color-bg", "ui/src/frontend/themes/reset.css", 1],
+  ["--color-bg", "ui/src/theme/reset.css", 1],
   ["--color-bg-elevated", "ui/src/features/sales/PromotionsModal.css", 1],
   ["--color-bg-hover", "ui/src/components/ConnectionStatus.css", 1],
   ["--color-bg-hover", "ui/src/features/auth/SessionLockScreen.css", 1],
   ["--color-bg-hover", "ui/src/features/auth/StaffLoginScreen.css", 2],
   ["--color-bg-hover", "ui/src/features/sales/EodReportScreen.css", 2],
   ["--color-bg-hover", "ui/src/features/sales/widgets/widgets.css", 1],
-  ["--color-bg-input", "ui/src/frontend/themes/reset.css", 2],
+  ["--color-bg-input", "ui/src/theme/reset.css", 2],
   ["--color-bg-overlay", "ui/src/features/settings/WorkspaceSettingsModal.module.css", 2],
   ["--color-bg-secondary", "ui/src/features/offline/OfflineQueueScreen.css", 2],
   ["--color-bg-secondary", "ui/src/features/settings/SettingsPage.css", 2],
   ["--color-bg-subtle", "ui/src/features/staff/StaffManagementScreen.css", 1],
   ["--color-bg-surface", "ui/src/features/design/DevToolbar.css", 1],
-  ["--color-bg-surface", "ui/src/frontend/themes/reset.css", 1],
+  ["--color-bg-surface", "ui/src/theme/reset.css", 1],
   ["--color-border", "ui/src/features/design/DevToolbar.css", 5],
   ["--color-border", "ui/src/features/offline/OfflineQueueScreen.css", 2],
   ["--color-border", "ui/src/features/settings/DataManagementScreen.css", 4],
   ["--color-border", "ui/src/features/settings/FeatureToggleScreen.css", 1],
   ["--color-border", "ui/src/features/settings/SettingsPage.css", 2],
-  ["--color-border", "ui/src/frontend/themes/reset.css", 2],
+  ["--color-border", "ui/src/theme/reset.css", 2],
   ["--color-border-hover", "ui/src/features/design/DevToolbar.css", 1],
   ["--color-border-subtle", "ui/src/features/sales/ReceiptPreview.css", 1],
-  ["--color-danger", "ui/src/frontend/shared/SettingsPopup.css", 2],
-  ["--color-danger", "ui/src/frontend/shell/UpdateBanner.css", 7],
-  ["--color-danger", "ui/src/frontend/themes/components.css", 1],
+  ["--color-danger", "ui/src/components/SettingsPopup.css", 2],
+  ["--color-danger", "ui/src/app/UpdateBanner.css", 7],
+  ["--color-danger", "ui/src/theme/components.css", 1],
   ["--color-danger-bg", "ui/src/components/FastPINOverlay.css", 1],
   ["--color-danger-bg", "ui/src/features/inventory/StockCountDetail.css", 1],
   ["--color-danger-bg", "ui/src/features/products/ProductManagementScreen.css", 1],
@@ -2975,49 +2976,49 @@ const DISAGREEING_TAIL_BASELINE: Array<[string, string, number]> = [
   ["--color-danger-bg", "ui/src/features/settings/AppearanceSettings.css", 1],
   ["--color-danger-bg", "ui/src/features/settings/FeatureToggleScreen.css", 1],
   ["--color-danger-bg", "ui/src/features/settings/SettingsPage.css", 2],
-  ["--color-danger-bg", "ui/src/frontend/shared/SettingsPopup.css", 1],
-  ["--color-danger-bg", "ui/src/frontend/themes/components.css", 1],
+  ["--color-danger-bg", "ui/src/components/SettingsPopup.css", 1],
+  ["--color-danger-bg", "ui/src/theme/components.css", 1],
   ["--color-danger-border", "ui/src/features/tax/TaxConfigurationScreen.css", 1],
   ["--color-danger-dim", "ui/src/features/settings/AppearanceSettings.css", 1],
   ["--color-danger-dim", "ui/src/features/settings/SettingsPage.css", 1],
   ["--color-danger-hover", "ui/src/features/sales/SalesHistoryScreen.css", 1],
-  ["--color-danger-subtle", "ui/src/frontend/shell/UpdateBanner.css", 1],
-  ["--color-fg", "ui/src/frontend/themes/reset.css", 5],
-  ["--color-fg-inverse", "ui/src/frontend/themes/reset.css", 1],
+  ["--color-danger-subtle", "ui/src/app/UpdateBanner.css", 1],
+  ["--color-fg", "ui/src/theme/reset.css", 5],
+  ["--color-fg-inverse", "ui/src/theme/reset.css", 1],
   ["--color-fg-muted", "ui/src/features/sales/PromotionsModal.css", 4],
-  ["--color-info", "ui/src/frontend/themes/components.css", 1],
-  ["--color-info-bg", "ui/src/frontend/themes/components.css", 1],
+  ["--color-info", "ui/src/theme/components.css", 1],
+  ["--color-info-bg", "ui/src/theme/components.css", 1],
   ["--color-link", "ui/src/features/sales/EodReportScreen.css", 2],
   ["--color-link", "ui/src/features/sales/VoidOrdersScreen.css", 1],
-  ["--color-link", "ui/src/frontend/themes/reset.css", 1],
-  ["--color-link-hover", "ui/src/frontend/themes/reset.css", 1],
+  ["--color-link", "ui/src/theme/reset.css", 1],
+  ["--color-link-hover", "ui/src/theme/reset.css", 1],
   ["--color-success-bg", "ui/src/features/settings/SettingsPage.css", 1],
   ["--color-success-dim", "ui/src/features/offline/OfflineQueueScreen.css", 1],
   ["--color-success-dim", "ui/src/features/settings/SettingsPage.css", 1],
   ["--color-text", "ui/src/features/inventory/ShiftBar.css", 1],
   ["--color-warning", "ui/src/features/staff/StaffManagementScreen.css", 1],
   ["--color-warning", "ui/src/features/tax/TaxConfigurationScreen.css", 2],
-  ["--color-warning", "ui/src/frontend/shell/UpdateBanner.css", 5],
-  ["--color-warning", "ui/src/frontend/themes/components.css", 1],
+  ["--color-warning", "ui/src/app/UpdateBanner.css", 5],
+  ["--color-warning", "ui/src/theme/components.css", 1],
   ["--color-warning-bg", "ui/src/features/inventory/LocationPicker.css", 1],
   ["--color-warning-bg", "ui/src/features/offline/OfflineQueueScreen.css", 1],
   ["--color-warning-bg", "ui/src/features/settings/SettingsPage.css", 2],
   ["--color-warning-bg", "ui/src/features/staff/StaffManagementScreen.css", 1],
   ["--color-warning-bg", "ui/src/features/tax/TaxConfigurationScreen.css", 1],
-  ["--color-warning-bg", "ui/src/frontend/themes/components.css", 1],
+  ["--color-warning-bg", "ui/src/theme/components.css", 1],
   ["--color-warning-border", "ui/src/features/staff/StaffManagementScreen.css", 1],
   ["--color-warning-border", "ui/src/features/tax/TaxConfigurationScreen.css", 1],
   ["--color-warning-dim", "ui/src/features/offline/OfflineQueueScreen.css", 1],
   ["--color-warning-dim", "ui/src/features/settings/SettingsPage.css", 1],
   ["--color-warning-fg", "ui/src/features/inventory/LocationPicker.css", 1],
-  ["--color-warning-subtle", "ui/src/frontend/shell/UpdateBanner.css", 1],
+  ["--color-warning-subtle", "ui/src/app/UpdateBanner.css", 1],
   ["--modal-backdrop-blur", "ui/src/components/FastPINOverlay.css", 2],
   ["--modal-backdrop-blur", "ui/src/components/QrisQrDisplay.css", 2],
   ["--modal-backdrop-blur", "ui/src/features/kds/KdsScreen.css", 2],
   ["--modal-backdrop-blur", "ui/src/features/memo/MemoBanner.css", 2],
-  ["--modal-backdrop-blur", "ui/src/frontend/themes/components.css", 2],
-  ["--neutral-300", "ui/src/frontend/themes/reset.css", 1],
-  ["--neutral-400", "ui/src/frontend/themes/reset.css", 1],
+  ["--modal-backdrop-blur", "ui/src/theme/components.css", 2],
+  ["--neutral-300", "ui/src/theme/reset.css", 1],
+  ["--neutral-400", "ui/src/theme/reset.css", 1],
 ];
 
 describe("literal tail vs block relation", () => {
@@ -3030,7 +3031,7 @@ describe("literal tail vs block relation", () => {
     // fallback tails that no theme can reach, 218 after the 23 paid at 2374161e9, and
     // **153** after style(ui): drop the fallbacks on tokens no theme can leave undefined
     // in two shared sheets swept 65 more (49 in components/FastPINOverlay.css across 11
-    // names, 16 in frontend/themes/reset.css across 13; 218 - 65 = 153, and the assertion
+    // names, 16 in theme/reset.css across 13; 218 - 65 = 153, and the assertion
     // below failing at exactly 153 was the measurement). style(ui): drop the last three
     // fallbacks whose tokens no theme can leave undefined then took it to 150 (one site each in
     // components/ImpersonationBanner.css, PermissionDenied.css and QrisQrDisplay.css), which is
@@ -3260,12 +3261,12 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/features/warehouse/WarehouseConsole.css", 1],
   ["1", "ui/src/features/workspaces/WorkspaceHome.css", 1],
   ["1.2", "ui/src/features/workspaces/WorkspaceHome.css", 1],
-  ["1.3", "ui/src/frontend/shell/AppLayout.css", 2],
-  ["1", "ui/src/frontend/shell/StatusBar.css", 1],
-  ["1.2", "ui/src/frontend/shell/tablet/tablet.css", 1],
-  ["1.3", "ui/src/frontend/shell/tablet/tablet.css", 1],
-  ["1", "ui/src/frontend/themes/components.css", 3],
-  ["inherit", "ui/src/frontend/themes/reset.css", 2],
+  ["1.3", "ui/src/app/AppLayout.css", 2],
+  ["1", "ui/src/app/StatusBar.css", 1],
+  ["1.2", "ui/src/app/tablet/tablet.css", 1],
+  ["1.3", "ui/src/app/tablet/tablet.css", 1],
+  ["1", "ui/src/theme/components.css", 3],
+  ["inherit", "ui/src/theme/reset.css", 2],
 ];
 
 describe("leading-token freeze (line-height literals)", () => {
@@ -3342,7 +3343,7 @@ describe("leading-token freeze (line-height literals)", () => {
  * collector never parsed. Each is now red on the shape named in its own case.
  *
  * HOLE ONE, the biggest: the token half had no value check. Redefining
- *   --leading-normal from 1.5 to 1.85 in ui/src/frontend/themes/tokens.css left
+ *   --leading-normal from 1.5 to 1.85 in ui/src/theme/tokens.css left
  *   all 75 references reading the same text, left every literal untouched and
  *   left the harvest sum unchanged, and the second case above never opens a
  *   token definition at all. The definitions are now harvested the way the

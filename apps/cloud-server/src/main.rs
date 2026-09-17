@@ -1,19 +1,19 @@
 //! OZ-POS Cloud Sync Server — headless binary (no Tauri, no WebView).
 //!
-//! Serves both the REST API (`oz-api` routes) and sync-push/pull endpoints
+//! Serves both the REST API (`kasirmu-api` routes) and sync-push/pull endpoints
 //! on the same HTTP port. Run in production behind a reverse proxy.
 //!
 //! # Usage
 //!
 //! ```bash
-//! OZ_DB_PATH=/data/oz-pos.db OZ_API_PORT=3099 oz-cloud-server
+//! OZ_DB_PATH=/data/kasir.db OZ_API_PORT=3099 kasirmu-cloud
 //! ```
 //!
 //! # Environment variables
 //!
 //! | Variable | Default | Description |
 //! |---|---|---|
-//! | `OZ_DB_PATH` | `oz-pos.db` | Path to the SQLite database file |
+//! | `OZ_DB_PATH` | `kasir.db` | Path to the SQLite database file |
 //! | `OZ_API_PORT` | `3099` | HTTP server listen port |
 //! | `OZ_ADMIN_KEY` | — | Admin key gating `POST /api/v1/tokens` (ADR sync-auth-hardening P2). When unset the token endpoint stays open (dev mode); set it in production so only callers with the matching `X-Admin-Key` header can mint tokens. |
 //! | `OZ_ENFORCE_PLANS` | — | When `1`/`true`/`on`, sync requests from tenants on the `free` plan (or with no plan row) are rejected with `403 plan_required` (ADR sync-plan-gating). When unset, plan gating is off — dev mode keeps working as before. |
@@ -209,17 +209,18 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // ── Logging ──────────────────────────────────────────────────────
     match config.log_format {
         config::LogFormat::Json => {
-            oz_logging::try_init_json().map_err(|e| format!("logging init_json failed: {e}"))?;
+            kasirmu_logging::try_init_json()
+                .map_err(|e| format!("logging init_json failed: {e}"))?;
         }
         config::LogFormat::Plain => {
-            oz_logging::try_init().map_err(|e| format!("logging init failed: {e}"))?;
+            kasirmu_logging::try_init().map_err(|e| format!("logging init failed: {e}"))?;
         }
     }
 
     // One line, presence only: which portable key derivation this process
     // picked. Emitted at boot because a re-keyed deployment is silent by
     // default, and the value itself is never read or logged here.
-    if oz_core::crypto::master_key_derivation_active() {
+    if kasirmu_core::crypto::master_key_derivation_active() {
         tracing::warn!(
             "portable credential derivation: master-key path ACTIVE (see portable_derivation_uses_master_key on /health)"
         );
@@ -229,7 +230,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--validate-config") {
         info!("running config validation only (--validate-config)");
-        match oz_core::config_validator::validate_config() {
+        match kasirmu_core::config_validator::validate_config() {
             Ok(()) => {
                 info!("all configuration checks passed");
                 std::process::exit(0);
@@ -254,7 +255,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Check critical env vars before the server starts. Failures are
     // logged as warnings (non-blocking) because the server may still
     // function with SQLite defaults if DATABASE_URL is misconfigured.
-    if let Err(errors) = oz_core::config_validator::validate_config() {
+    if let Err(errors) = kasirmu_core::config_validator::validate_config() {
         for err in &errors {
             tracing::warn!(%err, "configuration warning");
         }
@@ -313,7 +314,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             // Start the background image GC loop (spec 0046b §3.4/§3.7) —
             // sweeps orphaned `image_refs` (refcount = 0, 24h grace) and
             // deletes the corresponding files from the image volume.
-            image_gc::start_image_gc_loop(conn.clone(), oz_api::image_dir_from_env());
+            image_gc::start_image_gc_loop(conn.clone(), kasirmu_api::image_dir_from_env());
 
             // P55-3: Start the scheduled report sender loop.
             email::start_report_sender_loop(conn.clone());
@@ -343,7 +344,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
         db::DbPool::Postgres(pg_pool) => {
             info!("running with PostgreSQL backend");
-            // The oz-api REST handlers dispatch on `state.pg` (Some →
+            // The kasirmu-api REST handlers dispatch on `state.pg` (Some →
             // Postgres data layer, None → the SQLite `Store` path), so the
             // API layer reads/writes Postgres here. The in-memory SQLite is
             // only a never-touched fallback for handlers that were never
@@ -601,7 +602,7 @@ async fn health_handler(
         last_sync_at,
         // Read per request, never cached: the answer describes the process
         // that is answering, and it costs one env read plus one hex decode.
-        portable_derivation_uses_master_key: oz_core::crypto::master_key_derivation_active(),
+        portable_derivation_uses_master_key: kasirmu_core::crypto::master_key_derivation_active(),
     })
 }
 
@@ -648,14 +649,14 @@ pub fn build_router(
     config: &config::CloudServerConfig,
     pg: Option<deadpool_postgres::Pool>,
 ) -> Router {
-    // CORS allowlist shared with the oz-api router
+    // CORS allowlist shared with the kasirmu-api router
     // (docs/archived/2026-08-15-unify-auth-and-sync.md
     // §11): documented defaults, overridable via OZ_CORS_ORIGINS.
-    let cors_origins = oz_api::cors_origins_from_env();
-    let cors = oz_api::build_cors(&cors_origins);
+    let cors_origins = kasirmu_api::cors_origins_from_env();
+    let cors = kasirmu_api::build_cors(&cors_origins);
 
-    // Build the oz-api router (products, categories, sales, health, tokens).
-    let api_state = oz_api::AppState {
+    // Build the kasirmu-api router (products, categories, sales, health, tokens).
+    let api_state = kasirmu_api::AppState {
         db: state.db.clone(),
         // Phase 1.2: the REST handlers read/write Postgres on the cloud
         // branch instead of the in-memory SQLite fallback.
@@ -670,9 +671,9 @@ pub fn build_router(
         cors_origins: cors_origins.clone(),
         // Spec 0046b §3.4: content-addressed image store on the Northflank
         // volume (default `/data/images` in prod, `./data/images` in dev).
-        image_dir: oz_api::image_dir_from_env(),
+        image_dir: kasirmu_api::image_dir_from_env(),
     };
-    let api_router = oz_api::router(api_state);
+    let api_router = kasirmu_api::router(api_state);
 
     // P8-3: Rate-limit token minting per client IP. This needs its own clone
     // of the limiter because /api/v1/tokens runs BEFORE auth (it mints the
@@ -746,7 +747,7 @@ pub fn build_router(
         // The Rust CompressionLayer was removed to save ~0.01 core CPU.
         .layer(cors)
         .layer(axum::middleware::from_fn(
-            oz_api::security_headers_middleware,
+            kasirmu_api::security_headers_middleware,
         ))
         .layer(axum::middleware::from_fn(request_id_middleware))
 } // ── Tests ─────────────────────────────────────────────────────────────────

@@ -30,8 +30,8 @@ Describe 'sync-branding.ps1 integration - DryRun' {
         # NOTE: No param($Path) - Pester 5 proxy function makes $Path available as automatic variable
         Mock Get-Content {
             if      ($Path -like '*manifest.json')   { return '{ "brandId": "test-brand", "appName": "Test App", "companyName": "Test Company", "description": "Integration test brand", "themeTokens": { "primaryHsl": "210, 80%, 55%", "accentHsl": "160, 75%, 45%", "fontFamily": "Inter, sans-serif" }, "assets": { "vector": { "logoFullLight": "", "logoFullDark": "", "logoMark": "", "logoMonochrome": "" }, "web": { "faviconSvg": "" }, "desktop": { "iconIco": "", "iconPng": "" }, "hardware": { "receiptLogo58mm": "", "receiptLogo80mm": "" } } }' }
-            if      ($Path -like '*tauri.conf.json')  { return '{ "productName": "OZ-POS", "identifier": "com.ozpos.app", "version": "0.0.4", "bundle": { "icon": ["icons/icon.ico"] } }' }
-            if      ($Path -like '*site.webmanifest') { return '{"name":"OZ-POS","short_name":"OZ-POS","start_url":"/"}' }
+            if      ($Path -like '*tauri.conf.json')  { return '{ "productName": "kasir.mu", "identifier": "mu.kasir.app", "version": "0.0.4", "bundle": { "icon": ["icons/icon.ico"] } }' }
+            if      ($Path -like '*site.webmanifest') { return '{"name":"kasir.mu","short_name":"kasir.mu","start_url":"/"}' }
             return $null
         }
 
@@ -134,8 +134,8 @@ Describe 'sync-branding.ps1 integration - Call verification' {
         Mock Get-Content {
             $global:getContentCount++
             if      ($Path -like '*manifest.json')   { return '{ "brandId": "test-brand", "appName": "Test App", "companyName": "Test Co", "themeTokens": { "primaryHsl": "0,0%,0%", "accentHsl": "0,0%,0%", "fontFamily": "Arial" }, "assets": { "vector": {}, "web": {}, "desktop": {}, "hardware": {} } }' }
-            if      ($Path -like '*tauri.conf.json')  { return '{ "productName": "OZ-POS", "identifier": "com.ozpos.app", "version": "0.0.4" }' }
-            if      ($Path -like '*site.webmanifest') { return '{"name":"OZ-POS","short_name":"OZ-POS"}' }
+            if      ($Path -like '*tauri.conf.json')  { return '{ "productName": "kasir.mu", "identifier": "mu.kasir.app", "version": "0.0.4" }' }
+            if      ($Path -like '*site.webmanifest') { return '{"name":"kasir.mu","short_name":"kasir.mu"}' }
             return $null
         }
 

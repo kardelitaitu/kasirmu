@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { listProductsScoped, listCategoriesScoped } from '@/api/products';
 import type { ProductDto, CategoryDto } from '@/api/products';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
@@ -110,7 +110,7 @@ export default function KioskScreen() {
     return (
       <button type="button" className="kiosk-attract" aria-label={l10n.getString('kiosk-attract-label')} onClick={resetIdle}>
         <div className="kiosk-attract-content">
-          <h1 className="kiosk-attract-title">OZ-POS</h1>
+          <h1 className="kiosk-attract-title">kasir.mu</h1>
           <p className="kiosk-attract-subtitle"><Localized id="kiosk-tap-to-start">Tap to start</Localized></p>
         </div>
       </button>

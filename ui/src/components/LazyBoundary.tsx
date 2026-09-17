@@ -1,5 +1,5 @@
 import { Suspense, type ReactNode } from 'react';
-import { Localized } from '@/frontend/shared/Localized';
+import { Localized } from '@/components/Localized';
 
 /**
  * Shared Suspense boundary for lazy-loaded screens and widgets

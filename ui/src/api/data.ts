@@ -1,4 +1,4 @@
-// ── Data Management IPC: backup, export/import .ozpkg ──────────
+// ── Data Management IPC: backup, export/import .kasirpkg ──────────
 
 import { loggedInvoke } from '@/utils/logged-invoke';
 import { open, save } from '@tauri-apps/plugin-dialog';
@@ -18,7 +18,7 @@ export interface BackupResult {
   sizeBytes: number;
 }
 
-/** Arguments for exporting store data to an .ozpkg file. */
+/** Arguments for exporting store data to an .kasirpkg file. */
 export interface ExportDataArgs {
   types: string[];
   password: string;
@@ -34,7 +34,7 @@ export interface ExportDataResult {
   types: string[];
 }
 
-/** Preview of an .ozpkg import file before actually importing. */
+/** Preview of an .kasirpkg import file before actually importing. */
 export interface ImportPreviewResult {
   storeName: string;
   appVersion: string;
@@ -63,16 +63,16 @@ export interface ImportDataResult {
 /** Open a save dialog to choose an export file path. Returns the chosen path or null. */
 export const pickExportPath = async (): Promise<string | null> => {
   const path = await save({
-    defaultPath: `ozpos_export_${new Date().toISOString().slice(0, 10)}.ozpkg`,
-    filters: [{ name: 'OZ-POS Export', extensions: ['ozpkg'] }],
+    defaultPath: `kasir_export_${new Date().toISOString().slice(0, 10)}.kasirpkg`,
+    filters: [{ name: 'kasir.mu Package', extensions: ['kasirpkg', 'ozpkg'] }],
   });
   return path;
 };
 
-/** Open a file picker dialog to select an .ozpkg import file. Returns the chosen path or null. */
+/** Open a file picker dialog to select an .kasirpkg import file. Returns the chosen path or null. */
 export const pickImportFile = async (): Promise<string | null> => {
   const path = await open({
-    filters: [{ name: 'OZ-POS Export', extensions: ['ozpkg'] }],
+    filters: [{ name: 'kasir.mu Package', extensions: ['kasirpkg', 'ozpkg'] }],
     multiple: false,
   });
   return path;
@@ -109,7 +109,7 @@ export const createBackup = (): Promise<BackupResult> =>
 export const createBackupScoped = (sessionToken: string): Promise<BackupResult> =>
   loggedInvoke<BackupResult>('create_backup_scoped', { sessionToken });
 
-/** Export store data to an encrypted .ozpkg file. */
+/** Export store data to an encrypted .kasirpkg file. */
 export const exportData = (
   sessionToken: string,
   args: ExportDataArgs,
@@ -119,7 +119,7 @@ export const exportData = (
     args,
   });
 
-/** Preview an .ozpkg import file to see its contents before importing. */
+/** Preview an .kasirpkg import file to see its contents before importing. */
 export const importPreview = (
   sessionToken: string,
   filePath: string,
@@ -130,7 +130,7 @@ export const importPreview = (
     args: { file_path: filePath, password },
   });
 
-/** Import data from an encrypted .ozpkg file. */
+/** Import data from an encrypted .kasirpkg file. */
 export const importData = (
   sessionToken: string,
   filePath: string,

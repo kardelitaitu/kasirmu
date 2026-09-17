@@ -2,7 +2,7 @@ use super::*;
 use rusqlite::Connection;
 
 fn fresh() -> Connection {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     // The generate_daily_report query references `tax_minor` which is not
     // in the base migration. Add it so the service layer can work.
     conn.execute_batch("ALTER TABLE sales ADD COLUMN tax_minor INTEGER NOT NULL DEFAULT 0")

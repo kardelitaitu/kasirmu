@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Do the paths cited by OPEN plan rows still exist in the tree?
 
-Written for `todo-refactor-oz-pos-app-agents-3.md`, whose rows carry their receipts as backticked
+Written for `todo-refactor-kasirmu-app-agents-3.md`, whose rows carry their receipts as backticked
 paths and line numbers. A row whose cited file has been renamed or deleted is a row whose premise
 has expired, and reading 14 long rows by eye to find out is not a check anyone repeats.
 
@@ -136,7 +136,7 @@ def main() -> int:
         return 1 if bad else 0
 
     plans = [pathlib.Path(a) for a in sys.argv[1:] if not a.startswith("-")] or [
-        ROOT / "todo-refactor-oz-pos-app-agents-3.md"
+        ROOT / "todo-refactor-kasirmu-app-agents-3.md"
     ]
     worst = 0
     for plan in plans:

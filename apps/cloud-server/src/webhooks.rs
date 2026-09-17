@@ -181,10 +181,10 @@ fn is_subscription_event(event_type: &str) -> bool {
 /// - `canceled` / `unpaid` / `incomplete_expired` → `Free` (no access)
 /// - anything else (e.g. `incomplete`) → `None`, meaning "leave the plan
 ///   unchanged" — the tenant keeps its current plan until a clearer state.
-fn plan_for_subscription_status(status: Option<&str>) -> Option<oz_core::TenantPlan> {
+fn plan_for_subscription_status(status: Option<&str>) -> Option<kasirmu_core::TenantPlan> {
     match status {
-        Some("active" | "trialing" | "past_due") => Some(oz_core::TenantPlan::Pro),
-        Some("canceled" | "unpaid" | "incomplete_expired") => Some(oz_core::TenantPlan::Free),
+        Some("active" | "trialing" | "past_due") => Some(kasirmu_core::TenantPlan::Pro),
+        Some("canceled" | "unpaid" | "incomplete_expired") => Some(kasirmu_core::TenantPlan::Free),
         _ => None,
     }
 }
@@ -260,7 +260,7 @@ async fn resolve_subscription_tenant(
                 })?;
             } else {
                 let conn = state.db.lock().await;
-                oz_core::Store::new(&conn)
+                kasirmu_core::Store::new(&conn)
                     .set_stripe_customer(customer, tenant)
                     .map_err(|e| {
                         (
@@ -345,7 +345,7 @@ async fn resolve_subscription_tenant(
             row.map(|r| r.get::<_, String>(0))
         } else {
             let conn = state.db.lock().await;
-            oz_core::Store::new(&conn)
+            kasirmu_core::Store::new(&conn)
                 .get_tenant_for_stripe_customer(customer)
                 .map_err(|e| {
                     (
@@ -384,8 +384,8 @@ async fn handle_subscription_event(
     // checkout.session.completed and invoice.paid imply an active
     // subscription even though their object carries no status field.
     let plan = match event.r#type.as_str() {
-        "checkout.session.completed" | "invoice.paid" => Some(oz_core::TenantPlan::Pro),
-        "customer.subscription.deleted" => Some(oz_core::TenantPlan::Free),
+        "checkout.session.completed" | "invoice.paid" => Some(kasirmu_core::TenantPlan::Pro),
+        "customer.subscription.deleted" => Some(kasirmu_core::TenantPlan::Free),
         _ => plan_for_subscription_status(event.data.object.get("status").and_then(|v| v.as_str())),
     };
 
@@ -401,7 +401,7 @@ async fn handle_subscription_event(
     };
 
     if let Some(pool) = &state.pg {
-        oz_api::pg::set_tenant_plan(pool, &tenant_id, plan)
+        kasirmu_api::pg::set_tenant_plan(pool, &tenant_id, plan)
             .await
             .map_err(|e| {
                 (
@@ -411,7 +411,7 @@ async fn handle_subscription_event(
             })?;
     } else {
         let conn = state.db.lock().await;
-        oz_core::Store::new(&conn)
+        kasirmu_core::Store::new(&conn)
             .set_tenant_plan(&tenant_id, plan)
             .map_err(|e| {
                 (

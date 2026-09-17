@@ -1,6 +1,6 @@
 {
   "meta": {
-    "description": "The offline-first POS platform for cafes, restaurants, and retail. Works without internet, syncs when you're back online."
+    "description": "The lightweight, easy, free POS app for cafes, restaurants, and retail. Runs on Android, tablets, and Windows — keeps selling with no internet."
   },
   "nav": {
     "home": "Home",
@@ -39,8 +39,10 @@
   "pageDesc": {
     "features": "Offline-first point of sale: sales, shifts, and stock that keep working with zero connectivity.",
     "pricing": "Five plans — Free forever, Plus, Pro, Premium, and Enterprise. Yearly = 2 months free.",
-    "download": "Download kasir.mu for Windows. macOS, Linux, Android, and iOS are coming soon.",
+    "download": "Download the free POS app for Windows — lightweight and easy to install. Android and tablets are coming soon.",
     "support": "Get help with kasir.mu — email support and answers to the most common questions.",
+    "cara": "Step-by-step kasir.mu how-to guides: install, first sale, QRIS, stock, and selling offline.",
+    "perbandingan": "Honest kasir.mu vs other POS apps comparison: Moka, Majoo, Olsera, Qasir, and Pawoon — price, features, and offline.",
     "login": "Sign in to your kasir.mu account with just your email.",
     "account": "Your kasir.mu license, subscription, and billing information.",
     "privacy": "How kasir.mu collects, uses, and protects your data.",
@@ -78,6 +80,26 @@
       {
         "q": "Where can I report a bug?",
         "a": "Email us at support@kasir.mu with your version number and a description of what happened."
+      },
+      {
+        "q": "Is kasir.mu cheap? How much does it cost?",
+        "a": "The Free plan is Rp0 forever for one store and one register. Plus starts at Rp49k per month — no hidden per-feature fees."
+      },
+      {
+        "q": "Does kasir.mu run on cheap Android tablets or phones?",
+        "a": "Yes. kasir.mu is lightweight and runs smoothly on Android tablets, phones, and low-spec PCs — a native Android app is coming soon."
+      },
+      {
+        "q": "Is this POS app easy for non-technical staff?",
+        "a": "Yes. kasir.mu is designed to be easy: cashiers can sell in 3 simple steps with no special training."
+      },
+      {
+        "q": "Is there a free POS app that works offline?",
+        "a": "Yes. The free kasir.mu plan runs 100% offline on your device and syncs to the cloud when you're back online."
+      },
+      {
+        "q": "Does kasir.mu accept QRIS?",
+        "a": "Yes. kasir.mu accepts dynamic QRIS and digital wallets right on screen, with no extra hardware."
       }
     ]
   },
@@ -117,8 +139,8 @@
     }
   },
   "hero": {
-    "title": "Enterprise-Grade POS, Without the Enterprise Price",
-    "subtitle": "Corporate-grade POS accessible to everyone. Keep selling through outages with a blazing-fast offline-first core, with zero hidden per-feature fees.",
+    "title": "The Lightweight, Easy, Free POS",
+    "subtitle": "Corporate-grade POS that stays cheap: runs on Android, tablets, and old PCs with a blazing-fast offline-first core, with zero hidden per-feature fees.",
     "ctaPrimary": "Download free",
     "ctaSecondary": "See Pricing",
     "carousel": {
@@ -139,7 +161,7 @@
     "subtitle": "Reliable open-source foundations, battle-tested payments, and security-first tooling."
   },
   "features": {
-    "title": "Enterprise Features, Regular Subscription",
+    "title": "Lightweight, Easy POS Features, Regular Subscription",
     "subtitle": "Core capabilities engineered for zero-latency operations, uninterrupted offline uptime, and resilient business scale.",
     "items": [
       {
@@ -455,6 +477,140 @@
     "regionIndonesia": "Indonesia",
     "regionHint": "Affects pricing and payment method"
   },
+  "landing": {
+    "qris": {
+      "title": "QRIS POS: Static + Dynamic QR on Every Plan",
+      "description": "Accept static (store sticker) and dynamic per-transaction QRIS on every kasir.mu plan, including Free. Automatic Midtrans settlement, no extra EDC.",
+      "h1": "Static + Dynamic QRIS POS",
+      "lede": "Your customers already pay by QR — kasir.mu accepts both. Show a dynamic QR with the transaction amount, or use your store's static QR sticker. Both ship on every plan, including Free.",
+      "points": [
+        "Dynamic QR: amount locked per transaction via Midtrans, settlement polled automatically",
+        "Static QR: use your store NMID sticker, reference recorded and reconciled for the receipt",
+        "No extra EDC: just the cashier screen or tablet",
+        "On every plan: Free, Plus, Pro, Premium, Enterprise"
+      ],
+      "howTitle": "How to accept QRIS at the counter",
+      "how": [
+        "Open the bill on the payment screen and choose QRIS",
+        "For dynamic: show the generated QR to the customer to scan",
+        "For static: show the store QR sticker, record the reference shown",
+        "The sale matches automatically when settlement lands — receipt ready to print"
+      ],
+      "ctaPricing": "Compare all plans",
+      "ctaDownload": "Download free",
+      "faq": [
+        {
+          "q": "Is QRIS available on the free plan?",
+          "a": "Yes. Static + dynamic QRIS ships on every kasir.mu plan, including Free forever."
+        },
+        {
+          "q": "What is the difference between static and dynamic QRIS?",
+          "a": "Static uses one store QR sticker for every amount (cashier records a manual reference). Dynamic generates a fresh QR per transaction with a locked amount and automatic verification."
+        },
+        {
+          "q": "Do I need an EDC or extra device?",
+          "a": "No. Just the cashier screen or tablet — the QR shows on screen, customers scan with any e-wallet or mobile banking app."
+        },
+        {
+          "q": "What if the internet dies during a QRIS payment?",
+          "a": "The sale is recorded locally and reconciled when the connection returns — the counter is never blocked."
+        }
+      ]
+    },
+    "gratis": {
+      "title": "Free POS App for Warung, Cafes, and Shops",
+      "description": "Free-forever POS plan: one store, one register, 3-month history. Lightweight, easy, works offline — no credit card.",
+      "h1": "Free POS, Forever",
+      "lede": "Start selling today without paying a cent. The kasir.mu Free plan gives you a lightweight, easy offline-first POS app — one store, one register, 3-month history.",
+      "points": [
+        "Rp0 forever — no credit card, no trial that suddenly ends",
+        "Lightweight: runs smoothly on phones, tablets, and old PCs",
+        "Easy: cashiers can sell in 3 steps with no training",
+        "Offline-first: keeps selling when the internet dies"
+      ],
+      "limitsTitle": "Free plan limits",
+      "limits": "One store, one register, 3-month history. Need more — multi-terminal, warehouses, scheduled reports? See Plus, Pro, and Premium.",
+      "ctaPricing": "Compare all plans",
+      "ctaDownload": "Download free",
+      "faq": [
+        {
+          "q": "Is it really free?",
+          "a": "Yes. The Free plan is Rp0 forever for one store and one register — no credit card."
+        },
+        {
+          "q": "Does the free POS work without internet?",
+          "a": "Yes. Every kasir.mu plan, including free, runs 100% offline and syncs when you're back online."
+        },
+        {
+          "q": "What happens after the 3-month history?",
+          "a": "Older data is archived; upgrade to a paid plan for longer history and scheduled reports."
+        }
+      ]
+    },
+    "murah": {
+      "title": "Cheap POS App: From Rp0, Plus at Rp49k per Month",
+      "description": "Transparent POS pricing: Free Rp0, Plus Rp49k, Pro Rp99k per month. No hidden per-feature fees — cheap for warung to restaurants.",
+      "h1": "Cheap POS With No Hidden Fees",
+      "lede": "Start free, upgrade when ready. Every kasir.mu plan includes the offline-first core, QRIS, and audit trail — only capacity differs, never locked features.",
+      "tiersTitle": "Three price steps",
+      "tiers": [
+        "Free — Rp0 forever: one store, one register",
+        "Plus — Rp49k per month: for growing warung and shops",
+        "Pro — Rp99k per month: multi-terminal, KDS, peak-hour analytics"
+      ],
+      "contrastTitle": "kasir.mu vs conventional cloud POS",
+      "contrast": [
+        "Other POS freeze when the internet dies — kasir.mu keeps selling offline",
+        "Other POS lock KDS and multi-store behind Enterprise contracts — kasir.mu includes them in regular plans",
+        "Other POS add per-feature and per-register fees — kasir.mu is transparent per plan"
+      ],
+      "ctaPricing": "Compare all plans",
+      "faq": [
+        {
+          "q": "What is the cheapest kasir.mu price?",
+          "a": "Rp0 — the Free plan, forever. The cheapest paid plan is Plus at Rp49k per month."
+        },
+        {
+          "q": "Are there hidden per-feature or per-register fees?",
+          "a": "No. Pricing is per plan and transparent — core features like offline-first, QRIS, and audit trail are in every plan."
+        },
+        {
+          "q": "Is there a yearly discount?",
+          "a": "Yes — yearly billing equals 2 months free."
+        }
+      ]
+    },
+    "android": {
+      "title": "Android & Tablet POS App: Lightweight for Cheap Phones",
+      "description": "kasir.mu is coming to Android and tablets: a lightweight, easy POS app for cheap phones that keeps selling offline. Download the Windows version today.",
+      "h1": "Android & Tablet POS, Coming Soon",
+      "lede": "Today kasir.mu runs on Windows; the native Android and tablet app is on the way. The good news: the interface is already touch-friendly — big targets, stacked portrait layouts — so your team is ready before the APK lands.",
+      "points": [
+        "Lightweight: built for cheap Android phones and tablets with little RAM",
+        "Easy: big buttons, 3-step flow, no special training",
+        "Offline-first: keeps selling in warehouses and dead zones",
+        "Tablet-optimized: responsive layout from desktop to portrait"
+      ],
+      "statusTitle": "Status today",
+      "status": "Windows is available now. Android 7.0+ and iOS are coming soon — download the Windows version to try the flow, or contact us for Android release news.",
+      "ctaDownload": "Download the Windows version",
+      "ctaSupport": "Ask about Android",
+      "faq": [
+        {
+          "q": "When does the Android POS app ship?",
+          "a": "Coming soon — minimum Android 7.0 Nougat. The Windows version is available today with the same flow."
+        },
+        {
+          "q": "Does it run on cheap tablets?",
+          "a": "Yes — kasir.mu is built lightweight for cheap Android tablets and phones, and keeps selling offline."
+        },
+        {
+          "q": "Can it be used on touchscreen cashier phones?",
+          "a": "Yes. Touch targets follow the 44px standard and the layout adapts to small screens."
+        }
+      ]
+    }
+  },
   "vertical": {
     "positioning": "kasir.mu is the QRIS-native POS with offline-first reliability — priced for the Indonesian market.",
     "whyTitle": "Why kasir.mu for your business?",
@@ -464,8 +620,8 @@
     "bundleCta": "Plus + KDS — Restaurant Starter bundle",
     "kafe": {
       "label": "Coffee shops",
-      "title": "A POS that keeps your coffee shop flowing",
-      "tagline": "KDS, analytics, and multi-terminal — working fully offline.",
+      "title": "Cafe POS App: Orders, Kitchen & QRIS in Flow",
+      "tagline": "KDS, peak-hour analytics, and multi-terminal for your cafe — working fully offline.",
       "tierAnchor": "pro",
       "ctaPrimary": "See the Pro plan",
       "leadWithTrial": true,
@@ -496,7 +652,7 @@
     },
     "minimarket": {
       "label": "Minimarkets",
-      "title": "Stock control for your minimarket",
+      "title": "POS App and Stock Control for Your Minimarket",
       "tagline": "Warehouses, multi-terminal, and live stock visibility.",
       "tierAnchor": "pro",
       "ctaPrimary": "See the Pro plan",
@@ -556,32 +712,41 @@
     },
     "restoran": {
       "label": "Restaurants",
-      "title": "From kitchen to checkout, in sync",
-      "tagline": "KDS, loyalty points, and scheduled reports for your restaurant.",
+      "title": "Restaurant POS App: Kitchen, Tables & QRIS in Sync",
+      "tagline": "KDS, table management, loyalty points, and static + dynamic QRIS for your restaurant — keeps selling with no internet.",
       "tierAnchor": "premium",
       "ctaPrimary": "See the Premium plan",
       "features": [
         {
           "title": "Kitchen display (KDS)",
-          "description": "Orders flow from POS to kitchen in seconds — ticket times drop."
+          "description": "Orders flow from POS to kitchen in seconds — per-table tickets, overdue escalation, and sound alerts. Ticket times drop, table turns rise."
+        },
+        {
+          "title": "Restaurant table management",
+          "description": "Interactive floor plan: available, occupied, reserved. Tap a table to open an order, move bills between tables, split or merge per guest."
+        },
+        {
+          "title": "Static + dynamic QRIS at the table",
+          "description": "Show a dynamic QR per bill for guests to scan, or use your store's static QR sticker. Midtrans settlement is polled automatically and matched to the sale — no extra EDC."
         },
         {
           "title": "Loyalty points",
-          "description": "Reward regulars with points and keep them coming back."
+          "description": "Reward regulars with points on every payment and keep them coming back — automatic, no physical cards."
         },
         {
           "title": "Scheduled reports",
-          "description": "Get sales reports emailed to you automatically — daily or weekly."
+          "description": "Get restaurant sales reports emailed automatically — daily or weekly: revenue, best sellers, peak hours, and voids."
         },
         {
-          "title": "Multi-store",
-          "description": "Run multiple outlets with unlimited stores and terminals."
+          "title": "Multi-outlet",
+          "description": "Run multiple outlets with unlimited stores and terminals — menus, prices, and stock stay in sync across branches."
         }
       ],
       "benefits": [
         "Faster table turns with a kitchen that stays in sync.",
-        "Built-in loyalty that increases repeat visits.",
-        "QRIS-native payments your customers already use."
+        "Split or merge bills per table with no cashier drama.",
+        "Static + dynamic QRIS payments your customers already use.",
+        "Keep taking orders when restaurant Wi-Fi dies — syncs when back online."
       ]
     },
     "warehouse": {

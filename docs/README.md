@@ -1,4 +1,4 @@
-# OZ-POS Documentation
+# kasir.mu Documentation
 
 > Created by the 2026-08-31 docs reorganization (`13b81cfa5`, reorg phase C — the
 > "docs-auditor workflow" this line used to credit is not a GitHub workflow and never
@@ -31,7 +31,7 @@
 - [Data Residency & Retention](./security/data-residency-and-retention.md) — where data lives, retention schedule, deletion/export handling
 - [Security Audit Completion](./security/security-audit-completion.md) — final report
 - [Architecture](./guides/ARCHITECTURE.md) — system overview
-- [Extending OZ-POS](./guides/EXTENDING.md) — scripting & integration surfaces (REST API, Lua plugins, CLI)
+- [Extending kasir.mu](./guides/EXTENDING.md) — scripting & integration surfaces (REST API, Lua plugins, CLI)
 - [Quickstart](./guides/QUICKSTART.md) — getting started
 
 ## Conventions

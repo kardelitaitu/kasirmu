@@ -15,7 +15,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { act } from 'react';
 import { renderInAct } from '@/test-utils/renderInAct';
-import { withFluent } from '@/locales/test-utils';
+import { withFluent } from '@/i18n/test-utils';
 import { LazyBoundary } from '@/components/LazyBoundary';
 
 // ── Controllable suspender ────────────────────────────────────────

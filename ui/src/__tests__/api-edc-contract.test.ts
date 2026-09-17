@@ -8,7 +8,7 @@ vi.mock('@/utils/logged-invoke', () => ({
 import { edcTerminalStatus, edcTerminalStatusScoped, edcSale, edcRefund, edcVoid } from '@/api/edc';
 
 // Contract pins for the EDC card-present surface. The Rust commands
-// (apps/desktop-client/src/commands/edc.rs) REQUIRE a session_token and
+// (apps/desktop-tauri/src/commands/edc.rs) REQUIRE a session_token and
 // enforce SALES_PROCESS / SALES_REFUND / SALES_VOID on the money
 // commands — these tests pin that the wrappers actually send it, so a
 // card tender cannot deserialization-fail at the IPC boundary (the

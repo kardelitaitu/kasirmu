@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { animDuration } from '@/utils/animation';
 import { listPromotionsScoped, type Promotion } from '@/api/promotions';
 import { useFocusTrap } from '@/hooks/useFocusTrap';

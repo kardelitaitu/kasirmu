@@ -1,25 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import { Skeleton as ComponentSkeleton } from '../components/Skeleton';
-import { Skeleton as SharedSkeleton } from '../frontend/shared/Skeleton';
-import { Skeleton as IndexSkeleton } from '../frontend/shared';
 
 describe('Skeleton', () => {
-  // LOAD-01: both public paths (`@/components/Skeleton` and `@/frontend/shared`)
-  // must resolve to one canonical implementation so the primitive cannot drift.
-  it('resolves both public import paths to the same canonical implementation', () => {
-    expect(ComponentSkeleton).toBe(SharedSkeleton);
-    expect(IndexSkeleton).toBe(SharedSkeleton);
-  });
-
-  it('renders identically via the compatibility re-export path', () => {
-    const viaComponents = render(<ComponentSkeleton variant="block" width="100%" height="40px" />);
-    const viaShared = render(<SharedSkeleton variant="block" width="100%" height="40px" />);
-    const a = viaComponents.container.firstElementChild as HTMLElement;
-    const b = viaShared.container.firstElementChild as HTMLElement;
-    expect(a.outerHTML).toBe(b.outerHTML);
-  });
-  it('renders with base skeleton class', () => {
+  it('renders via the canonical implementation', () => {
     const { container } = render(<ComponentSkeleton />);
     const el = container.firstElementChild as HTMLElement;
     expect(el.classList.contains('skeleton')).toBe(true);

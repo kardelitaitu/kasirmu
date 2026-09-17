@@ -186,63 +186,63 @@
   "dev_mock": [
     {
       "name": "delete_topology_template",
-      "reason": "Deletes one per-branch diagram template from the store DB (crates/oz-bridge/src/topology/commands.rs::delete_topology_template -> template_delete, behind authorize_topology_write / TOPOLOGY_WRITE). NOT hardware- or shell-bound: dev-mock already keeps a localStorage topology slice (ui/src/dev-mock/handlers/topology.ts, handlers/topology-state.ts) with graph, apply and revision handlers, so a parallel template map is writable. LIKELY OWED rather than accepted -- no rationale recorded beyond the dev-mock hot-file rule in _dev_mock_comment. NEEDS-OWNER-INPUT."
+      "reason": "Deletes one per-branch diagram template from the store DB (crates/kasirmu-bridge/src/topology/commands.rs::delete_topology_template -> template_delete, behind authorize_topology_write / TOPOLOGY_WRITE). NOT hardware- or shell-bound: dev-mock already keeps a localStorage topology slice (ui/src/dev-mock/handlers/topology.ts, handlers/topology-state.ts) with graph, apply and revision handlers, so a parallel template map is writable. LIKELY OWED rather than accepted -- no rationale recorded beyond the dev-mock hot-file rule in _dev_mock_comment. NEEDS-OWNER-INPUT."
     },
     {
       "name": "gateway_status",
-      "reason": "Returns the three configured/online gateway booleans computed server-side from deny-listed secret settings (crates/oz-bridge/src/settings.rs::gateway_status), read live by ui/src/frontend/shell/StatusBar.tsx through useGatewayStatus. NOT hardware-bound: the mock already stubs the same store with 'get_setting': () => null (ui/src/dev-mock/handlers/settings.ts:71), so an all-false three-entry handler is trivial. LIKELY OWED -- no recorded rationale beyond the _dev_mock_comment hot-file rule. NEEDS-OWNER-INPUT."
+      "reason": "Returns the three configured/online gateway booleans computed server-side from deny-listed secret settings (crates/kasirmu-bridge/src/settings.rs::gateway_status), read live by ui/src/frontend/shell/StatusBar.tsx through useGatewayStatus. NOT hardware-bound: the mock already stubs the same store with 'get_setting': () => null (ui/src/dev-mock/handlers/settings.ts:71), so an all-false three-entry handler is trivial. LIKELY OWED -- no recorded rationale beyond the _dev_mock_comment hot-file rule. NEEDS-OWNER-INPUT."
     },
     {
       "name": "list_topology_templates",
-      "reason": "Names a branch's saved templates, sorted (crates/oz-bridge/src/topology/commands.rs::list_topology_templates -> template_list; needs a session, not the write capability). NOT hardware- or shell-bound -- same localStorage topology slice already exists in dev-mock. LIKELY OWED; see delete_topology_template. NEEDS-OWNER-INPUT."
+      "reason": "Names a branch's saved templates, sorted (crates/kasirmu-bridge/src/topology/commands.rs::list_topology_templates -> template_list; needs a session, not the write capability). NOT hardware- or shell-bound -- same localStorage topology slice already exists in dev-mock. LIKELY OWED; see delete_topology_template. NEEDS-OWNER-INPUT."
     },
     {
       "name": "load_topology_template",
-      "reason": "Loads one template payload, None when absent or unreadable (crates/oz-bridge/src/topology/commands.rs::load_topology_template -> template_load). NOT hardware- or shell-bound -- dev-mock already models the topology graph it returns. LIKELY OWED; see delete_topology_template. NEEDS-OWNER-INPUT."
+      "reason": "Loads one template payload, None when absent or unreadable (crates/kasirmu-bridge/src/topology/commands.rs::load_topology_template -> template_load). NOT hardware- or shell-bound -- dev-mock already models the topology graph it returns. LIKELY OWED; see delete_topology_template. NEEDS-OWNER-INPUT."
     },
     {
       "name": "local_api_mint_token_scoped",
-      "reason": "Signs a long-lived JWT with the per-install secret read or created on the global DB (apps/desktop-client/src/commands/local_api.rs::local_api_mint_token_scoped -> local_api::load_or_create_secret + local_api::mint_token). ACCEPTED as structurally unmockable: the secret is deny-listed and deliberately never crosses IPC, so a browser mock has no key to sign with and its token would validate against nothing."
+      "reason": "Signs a long-lived JWT with the per-install secret read or created on the global DB (apps/desktop-tauri/src/commands/local_api.rs::local_api_mint_token_scoped -> local_api::load_or_create_secret + local_api::mint_token). ACCEPTED as structurally unmockable: the secret is deny-listed and deliberately never crosses IPC, so a browser mock has no key to sign with and its token would validate against nothing."
     },
     {
       "name": "local_api_rotate_secret_scoped",
-      "reason": "Replaces the per-install signing secret, immediately invalidating every minted token and changing the operator X-Admin-Key, restarting a running server on the same port (apps/desktop-client/src/commands/local_api.rs::local_api_rotate_secret_scoped -> run_rotate_secret). ACCEPTED: destructive device-secret mutation whose value the module doc states never crosses the IPC boundary -- nothing faithful for a mock to return."
+      "reason": "Replaces the per-install signing secret, immediately invalidating every minted token and changing the operator X-Admin-Key, restarting a running server on the same port (apps/desktop-tauri/src/commands/local_api.rs::local_api_rotate_secret_scoped -> run_rotate_secret). ACCEPTED: destructive device-secret mutation whose value the module doc states never crosses the IPC boundary -- nothing faithful for a mock to return."
     },
     {
       "name": "local_api_set_enabled_scoped",
-      "reason": "Enable binds 127.0.0.1:<port> against the primary store's database and persists local_api.enabled across restarts; a port conflict errors and leaves the setting off (apps/desktop-client/src/commands/local_api.rs::local_api_set_enabled_scoped -> run_set_enabled). ACCEPTED: process-bound -- a browser preview owns no server process to start or stop."
+      "reason": "Enable binds 127.0.0.1:<port> against the primary store's database and persists local_api.enabled across restarts; a port conflict errors and leaves the setting off (apps/desktop-tauri/src/commands/local_api.rs::local_api_set_enabled_scoped -> run_set_enabled). ACCEPTED: process-bound -- a browser preview owns no server process to start or stop."
     },
     {
       "name": "local_api_set_port_scoped",
-      "reason": "Persists a new listen port and restarts the running handle on it, the failed restart leaving the new port persisted (apps/desktop-client/src/commands/local_api.rs::local_api_set_port_scoped -> run_set_port). ACCEPTED: process-bound -- the port means nothing without the loopback listener this preview does not run."
+      "reason": "Persists a new listen port and restarts the running handle on it, the failed restart leaving the new port persisted (apps/desktop-tauri/src/commands/local_api.rs::local_api_set_port_scoped -> run_set_port). ACCEPTED: process-bound -- the port means nothing without the loopback listener this preview does not run."
     },
     {
       "name": "local_api_set_store_scoped",
-      "reason": "Chooses which store the local API serves (empty resets to locations.is_primary) and restarts a running server against that store's own connection via open_api_store_connection (apps/desktop-client/src/commands/local_api.rs::local_api_set_store_scoped -> run_set_store). ACCEPTED: process- and DB-bound -- the preview has neither the server nor a second store handle."
+      "reason": "Chooses which store the local API serves (empty resets to locations.is_primary) and restarts a running server against that store's own connection via open_api_store_connection (apps/desktop-tauri/src/commands/local_api.rs::local_api_set_store_scoped -> run_set_store). ACCEPTED: process- and DB-bound -- the preview has neither the server nor a second store handle."
     },
     {
       "name": "local_api_status_scoped",
-      "reason": "Reports enabled/running/port built by build_status over the live server handle plus the global DB (apps/desktop-client/src/commands/local_api.rs::local_api_status_scoped), so every field describes a process the preview is not running -- the accepted reading of this entry follows its five unmockable siblings. Weakest case in the family, though: dev-mock's get_pg_sync_settings shows a statically-off shape is possible, so whether an inert enabled:false handler is owed instead is undecided. NEEDS-OWNER-INPUT."
+      "reason": "Reports enabled/running/port built by build_status over the live server handle plus the global DB (apps/desktop-tauri/src/commands/local_api.rs::local_api_status_scoped), so every field describes a process the preview is not running -- the accepted reading of this entry follows its five unmockable siblings. Weakest case in the family, though: dev-mock's get_pg_sync_settings shows a statically-off shape is possible, so whether an inert enabled:false handler is owed instead is undecided. NEEDS-OWNER-INPUT."
     },
     {
       "name": "preview_promoted_total_from_lines_scoped",
-      "reason": "PROMO-3 preview of the engine-exact payable over caller-supplied cart lines -- cart, sale, tax (with Lua plugin overrides) and the promotion engine on a store-DB connection (crates/oz-bridge/src/pos.rs::preview_promoted_total_from_lines_scoped). Its sibling IS MOCKED: preview_promoted_total_scoped at ui/src/dev-mock/handlers/sales.ts:420 mirrors the same discount math via applyMockPromotionDiscounts, and ui/src/features/sales/PaymentModal.tsx:540 invokes this variant live, so the split is unexplained. LIKELY OWED. NEEDS-OWNER-INPUT."
+      "reason": "PROMO-3 preview of the engine-exact payable over caller-supplied cart lines -- cart, sale, tax (with Lua plugin overrides) and the promotion engine on a store-DB connection (crates/kasirmu-bridge/src/pos.rs::preview_promoted_total_from_lines_scoped). Its sibling IS MOCKED: preview_promoted_total_scoped at ui/src/dev-mock/handlers/sales.ts:420 mirrors the same discount math via applyMockPromotionDiscounts, and ui/src/features/sales/PaymentModal.tsx:540 invokes this variant live, so the split is unexplained. LIKELY OWED. NEEDS-OWNER-INPUT."
     },
     {
       "name": "products_clear_image_scoped",
-      "reason": "Removes only the product_images DB slot assignment; the content-addressed file is left for the GC sweep (apps/desktop-client/src/commands/products_images.rs::products_clear_image_scoped). Not itself filesystem-bound, but dev-mock models no image-slot state at all -- its only image-adjacent handler is 'open_product_images_scoped': () => null (ui/src/dev-mock/handlers/catalog.ts:294) -- so a handler would clear nothing. LIKELY OWED behind that missing model. NEEDS-OWNER-INPUT."
+      "reason": "Removes only the product_images DB slot assignment; the content-addressed file is left for the GC sweep (apps/desktop-tauri/src/commands/products_images.rs::products_clear_image_scoped). Not itself filesystem-bound, but dev-mock models no image-slot state at all -- its only image-adjacent handler is 'open_product_images_scoped': () => null (ui/src/dev-mock/handlers/catalog.ts:294) -- so a handler would clear nothing. LIKELY OWED behind that missing model. NEEDS-OWNER-INPUT."
     },
     {
       "name": "products_list_images_scoped",
-      "reason": "Lists a product's image assignments for slots 1..=5, ordered, which the editor calls on open (apps/desktop-client/src/commands/products_images.rs::products_list_images_scoped). Reads DB rows only, so nothing structural blocks it -- but the mock has no product_images model to list (see products_clear_image_scoped), so the gap is a missing mock data model, not an impossibility. LIKELY OWED. NEEDS-OWNER-INPUT."
+      "reason": "Lists a product's image assignments for slots 1..=5, ordered, which the editor calls on open (apps/desktop-tauri/src/commands/products_images.rs::products_list_images_scoped). Reads DB rows only, so nothing structural blocks it -- but the mock has no product_images model to list (see products_clear_image_scoped), so the gap is a missing mock data model, not an impossibility. LIKELY OWED. NEEDS-OWNER-INPUT."
     },
     {
       "name": "products_set_image_scoped",
-      "reason": "Full ingest pipeline on the authoring (desktop) device: reads the source file chosen through the native dialog plugin, sniffs magic bytes, enforces size/dimension caps, decodes, resizes to 512 px, encodes lossy WebP, SHA-256s it and atomically writes images/{hash16}.webp under app_cache_dir (apps/desktop-client/src/commands/products_images.rs::products_set_image_scoped -> oz_bridge::products_images::set_image_scoped with BridgeCtx::media_cache_dir). ACCEPTED: filesystem- and media-bound by design -- zero image bytes cross IPC, so the preview supplies neither the path's bytes nor the media root. Tablet registers no ingest surface at all."
+      "reason": "Full ingest pipeline on the authoring (desktop) device: reads the source file chosen through the native dialog plugin, sniffs magic bytes, enforces size/dimension caps, decodes, resizes to 512 px, encodes lossy WebP, SHA-256s it and atomically writes images/{hash16}.webp under app_cache_dir (apps/desktop-tauri/src/commands/products_images.rs::products_set_image_scoped -> kasirmu_bridge::products_images::set_image_scoped with BridgeCtx::media_cache_dir). ACCEPTED: filesystem- and media-bound by design -- zero image bytes cross IPC, so the preview supplies neither the path's bytes nor the media root. Tablet registers no ingest surface at all."
     },
     {
       "name": "save_topology_template",
-      "reason": "Saves one named diagram template for a branch, replacing any template of that name (crates/oz-bridge/src/topology/commands.rs::save_topology_template -> template_save, behind authorize_topology_write; the payload skips Apply validation because a template is a starting point, not a claim). NOT hardware- or shell-bound -- see delete_topology_template. LIKELY OWED. NEEDS-OWNER-INPUT."
+      "reason": "Saves one named diagram template for a branch, replacing any template of that name (crates/kasirmu-bridge/src/topology/commands.rs::save_topology_template -> template_save, behind authorize_topology_write; the payload skips Apply validation because a template is a starting point, not a claim). NOT hardware- or shell-bound -- see delete_topology_template. LIKELY OWED. NEEDS-OWNER-INPUT."
     }
   ]
 }

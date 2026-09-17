@@ -1,8 +1,8 @@
-# OZ-POS 0.0.25
+# kasir.mu 0.0.25
 
 Released 2026-08-09.
 
-OZ-POS 0.0.25 is a production-hardening release focused on reliable synchronization, safer replay handling, typed multi-store topology management, browser-preview parity, and stricter delivery gates.
+kasir.mu 0.0.25 is a production-hardening release focused on reliable synchronization, safer replay handling, typed multi-store topology management, browser-preview parity, and stricter delivery gates.
 
 ## Highlights
 

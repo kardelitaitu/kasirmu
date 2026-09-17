@@ -17,12 +17,12 @@ import { isTopologyInstance } from './topologyContract';
 import TopologyRevisionBrowser from './TopologyRevisionBrowser';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { hasGrantedPermission } from '@/platform/ui/page-registry';
+import { hasGrantedPermission } from '@/registries/page-registry';
 import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { useContext } from 'react';
-import { useToast } from '@/frontend/shared/Toast';
-import { requiredLocalized } from '@/frontend/shared';
+import { useToast } from '@/components/Toast';
+import { requiredLocalized } from '@/components';
 import { plainErrorMessage, l10nErrorMessage } from '@/utils/app-error';
 import { openUpgradePricing } from '@/utils/upgrade';
 import SettingsSelect from '@/features/settings/SettingsSelect';
@@ -110,7 +110,7 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
   }, []);
   // Determine save permission client-side, on the SAME key the write commands
   // authorize with: `topology:write` (platform/core/src/rbac.rs TOPOLOGY_WRITE)
-  // — every topology mutation gate checks it (`oz-bridge` topology
+  // — every topology mutation gate checks it (`kasirmu-bridge` topology
   // commands.rs:45 capability probe, :79 authorize_topology_write, :255
   // pin_topology_revision, :479 apply path). This block used to test
   // `staff:update`, a key the Manager preset carries (rbac_presets.rs:75) and

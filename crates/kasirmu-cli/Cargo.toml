@@ -1,0 +1,38 @@
+[package]
+name = "kasirmu-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Command-line tools for kasir.mu — migrations, backup, export, smoke tests."
+
+[[bin]]
+name = "kasir"
+path = "src/main.rs"
+
+# Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
+[lints]
+workspace = true
+
+[dependencies]
+foundation = { workspace = true }
+kasirmu-core = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+clap = { workspace = true }
+rusqlite = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+rand = { workspace = true }
+argon2 = { workspace = true }
+uuid = { workspace = true }
+csv = "1.4.0"
+
+[build-dependencies]
+# Embeds the asInvoker application manifest into the Windows `oz.exe` (see
+# build.rs + app.manifest + app.rc). No-op on non-Windows targets.
+embed-resource = { workspace = true }

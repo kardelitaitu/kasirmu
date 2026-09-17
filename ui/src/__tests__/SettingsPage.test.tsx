@@ -105,7 +105,7 @@ const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
       // currency: 'USD' matches get_default_currency below on purpose - the two
       // readers hit the SAME column (run_set_store_settings stamps
       // store.currency through Settings::set_default_currency,
-      // crates/oz-bridge/src/settings.rs:1024), so a fixture that shows them
+      // crates/kasirmu-bridge/src/settings.rs:1024), so a fixture that shows them
       // disagreeing hands Save one real diff to send on an untouched page and
       // the zero-write contract below stops being testable.
       return Promise.resolve({ name: '', address: '', taxId: '', currency: 'USD', branch: '' });

@@ -57,21 +57,21 @@ Describe 'safeId generation' {
 Describe 'site.webmanifest patching' {
 
     It "replaces the name field value" {
-        $raw   = '{"name":"OZ-POS","short_name":"OZ-POS","start_url":"/"}'
+        $raw   = '{"name":"kasir.mu","short_name":"kasir.mu","start_url":"/"}'
         $appName = 'Beta Retail'
         $result = $raw -replace $webNamePattern, "`"$appName`""
-        $result | Should -Be '{"name":"Beta Retail","short_name":"OZ-POS","start_url":"/"}'
+        $result | Should -Be '{"name":"Beta Retail","short_name":"kasir.mu","start_url":"/"}'
     }
 
     It "replaces the short_name field value independently" {
-        $raw   = '{"name":"OZ-POS","short_name":"OZ-POS","start_url":"/"}'
+        $raw   = '{"name":"kasir.mu","short_name":"kasir.mu","start_url":"/"}'
         $appName = 'ACME'
         $result = $raw -replace $webShortNamePattern, "`"$appName`""
-        $result | Should -Be '{"name":"OZ-POS","short_name":"ACME","start_url":"/"}'
+        $result | Should -Be '{"name":"kasir.mu","short_name":"ACME","start_url":"/"}'
     }
 
     It 'does not modify non-matching fields' {
-        $raw   = '{"name":"OZ-POS","description":"POS system","start_url":"/"}'
+        $raw   = '{"name":"kasir.mu","description":"POS system","start_url":"/"}'
         $appName = 'Beta'
         $result = $raw -replace $webNamePattern, "`"$appName`""
         $result | Should -Be '{"name":"Beta","description":"POS system","start_url":"/"}'
@@ -95,14 +95,14 @@ Describe 'site.webmanifest patching' {
 Describe 'tauri.conf.json productName patching' {
 
     It "replaces the productName field" {
-        $raw   = '{ "productName": "OZ-POS", "version": "0.0.4" }'
+        $raw   = '{ "productName": "kasir.mu", "version": "0.0.4" }'
         $appName = 'Beta Retail'
         $result = $raw -replace $productNamePattern, "`"$appName`""
         $result | Should -Be '{ "productName": "Beta Retail", "version": "0.0.4" }'
     }
 
     It 'handles productName with single quote inside' {
-        $raw   = '{ "productName": "OZ-POS" }'
+        $raw   = '{ "productName": "kasir.mu" }'
         $appName = "Acme's POS"
         $result = $raw -replace $productNamePattern, "`"$appName`""
         $expected = '{ "productName": "Acme' + "'" + 's POS" }'
@@ -110,14 +110,14 @@ Describe 'tauri.conf.json productName patching' {
     }
 
     It 'handles extra whitespace after colon' {
-        $raw   = '{ "productName":   "OZ-POS" }'
+        $raw   = '{ "productName":   "kasir.mu" }'
         $appName = 'Beta'
         $result = $raw -replace $productNamePattern, "`"$appName`""
         $result | Should -Be '{ "productName":   "Beta" }'
     }
 
     It 'matches compact JSON with no space after colon' {
-        $raw   = '{"productName":"OZ-POS"}'
+        $raw   = '{"productName":"kasir.mu"}'
         $appName = 'Compact Beta'
         $result = $raw -replace $productNamePattern, "`"$appName`""
         $result | Should -Be '{"productName":"Compact Beta"}'
@@ -127,60 +127,60 @@ Describe 'tauri.conf.json productName patching' {
 Describe 'tauri.conf.json identifier patching' {
 
     It 'replaces the identifier field' {
-        $raw   = '{ "identifier": "com.ozpos.app" }'
-        $desktopId = 'com.ozpos.beta-retail'
+        $raw   = '{ "identifier": "mu.kasir.app" }'
+        $desktopId = 'mu.kasir.beta-retail'
         $result = $raw -replace $identifierPattern, "`"$desktopId`""
-        $result | Should -Be '{ "identifier": "com.ozpos.beta-retail" }'
+        $result | Should -Be '{ "identifier": "mu.kasir.beta-retail" }'
     }
 
     It 'replaces tablet identifier separately' {
-        $raw   = '{ "identifier": "com.ozpos.tablet" }'
-        $tabletId = 'com.ozpos.tablet.beta-retail'
+        $raw   = '{ "identifier": "mu.kasir.mobile" }'
+        $tabletId = 'mu.kasir.mobile.beta-retail'
         $result = $raw -replace $identifierPattern, "`"$tabletId`""
-        $result | Should -Be '{ "identifier": "com.ozpos.tablet.beta-retail" }'
+        $result | Should -Be '{ "identifier": "mu.kasir.mobile.beta-retail" }'
     }
 
     It 'matches compact JSON with no space after colon' {
-        $raw   = '{"identifier":"com.ozpos.app"}'
-        $desktopId = 'com.ozpos.compact'
+        $raw   = '{"identifier":"mu.kasir.app"}'
+        $desktopId = 'mu.kasir.compact'
         $result = $raw -replace $identifierPattern, "`"$desktopId`""
-        $result | Should -Be '{"identifier":"com.ozpos.compact"}'
+        $result | Should -Be '{"identifier":"mu.kasir.compact"}'
     }
 }
 
 Describe 'tauri.conf.json title patching' {
 
     It 'replaces the window title field' {
-        $raw   = '{ "title": "OZ-POS", "identifier": "com.ozpos.app" }'
+        $raw   = '{ "title": "kasir.mu", "identifier": "mu.kasir.app" }'
         $appName = 'Beta Retail'
         $result = $raw -replace $titlePattern, "`"$appName`""
-        $result | Should -Be '{ "title": "Beta Retail", "identifier": "com.ozpos.app" }'
+        $result | Should -Be '{ "title": "Beta Retail", "identifier": "mu.kasir.app" }'
     }
 
     It "does not corrupt other fields when title is absent" {
-        $raw   = '{ "identifier": "com.ozpos.app" }'
+        $raw   = '{ "identifier": "mu.kasir.app" }'
         $appName = 'Beta'
         $result = $raw -replace $titlePattern, "`"$appName`""
-        $result | Should -Be '{ "identifier": "com.ozpos.app" }'
+        $result | Should -Be '{ "identifier": "mu.kasir.app" }'
     }
 
     It 'matches compact JSON with no space after colon' {
-        $raw   = '{"title":"OZ-POS","identifier":"com.ozpos.app"}'
+        $raw   = '{"title":"kasir.mu","identifier":"mu.kasir.app"}'
         $appName = 'Compact Title'
         $result = $raw -replace $titlePattern, "`"$appName`""
-        $result | Should -Be '{"title":"Compact Title","identifier":"com.ozpos.app"}'
+        $result | Should -Be '{"title":"Compact Title","identifier":"mu.kasir.app"}'
     }
 }
 
 Describe 'Idempotency' {
 
     It 're-applying the same replacement produces no change' {
-        $raw   = '{ "productName": "OZ-POS", "identifier": "com.ozpos.app" }'
+        $raw   = '{ "productName": "kasir.mu", "identifier": "mu.kasir.app" }'
         $appName = 'Beta Retail'
         $first  = $raw -replace $productNamePattern, "`"$appName`""
-        $first  = $first -replace $identifierPattern, "`"com.ozpos.beta-retail`""
+        $first  = $first -replace $identifierPattern, "`"mu.kasir.beta-retail`""
         $second = $first -replace $productNamePattern, "`"$appName`""
-        $second = $second -replace $identifierPattern, "`"com.ozpos.beta-retail`""
+        $second = $second -replace $identifierPattern, "`"mu.kasir.beta-retail`""
         $second | Should -Be $first
     }
 }
@@ -188,40 +188,40 @@ Describe 'Idempotency' {
 Describe 'Multi-field patching simulation' {
 
     It 'replicates the desktop config patching logic' {
-        $raw   = '{ "productName": "OZ-POS", "identifier": "com.ozpos.app", "bundle": { "icon": ["icons/icon.ico"] } }'
+        $raw   = '{ "productName": "kasir.mu", "identifier": "mu.kasir.app", "bundle": { "icon": ["icons/icon.ico"] } }'
         $appName   = 'Beta Retail'
         $brandId   = 'beta-retail'
         $safeId    = $brandId -replace $safeIdBadChars, '-'
-        $desktopId = 'com.ozpos.' + $safeId
+        $desktopId = 'mu.kasir.' + $safeId
 
         $result = $raw -replace $productNamePattern, "`"$appName`""
         $result = $result -replace $identifierPattern, "`"$desktopId`""
 
         $result | Should -Match '"productName": "Beta Retail"'
-        $result | Should -Match '"identifier": "com.ozpos.beta-retail"'
-        $result | Should -Not -Match '"identifier": "com.ozpos.app"'
+        $result | Should -Match '"identifier": "mu.kasir.beta-retail"'
+        $result | Should -Not -Match '"identifier": "mu.kasir.app"'
     }
 
     It 'replicates the tablet config patching logic' {
-        $raw   = '{ "productName": "OZ-POS", "identifier": "com.ozpos.tablet", "bundle": { "icon": ["icons/icon.ico"] } }'
+        $raw   = '{ "productName": "kasir.mu", "identifier": "mu.kasir.mobile", "bundle": { "icon": ["icons/icon.ico"] } }'
         $appName   = 'Beta Retail'
         $brandId   = 'beta-retail'
         $safeId    = $brandId -replace $safeIdBadChars, '-'
-        $tabletId  = 'com.ozpos.tablet.' + $safeId
+        $tabletId  = 'mu.kasir.mobile.' + $safeId
 
         $result = $raw -replace $productNamePattern, "`"$appName`""
         $result = $result -replace $identifierPattern, "`"$tabletId`""
 
         $result | Should -Match '"productName": "Beta Retail"'
-        $result | Should -Match '"identifier": "com.ozpos.tablet.beta-retail"'
-        $result | Should -Not -Match '"identifier": "com.ozpos.tablet","'
+        $result | Should -Match '"identifier": "mu.kasir.mobile.beta-retail"'
+        $result | Should -Not -Match '"identifier": "mu.kasir.mobile","'
     }
 
-    It 'correctly identifies default brand as com.ozpos.app' {
+    It 'correctly identifies default brand as mu.kasir.app' {
         $brandId   = 'default'
         $safeId    = $brandId -replace $safeIdBadChars, '-'
-        $desktopId = if ($brandId -eq 'default') { 'com.ozpos.app' } else { 'com.ozpos.' + $safeId }
-        $desktopId | Should -Be 'com.ozpos.app'
+        $desktopId = if ($brandId -eq 'default') { 'mu.kasir.app' } else { 'mu.kasir.' + $safeId }
+        $desktopId | Should -Be 'mu.kasir.app'
     }
 }
 

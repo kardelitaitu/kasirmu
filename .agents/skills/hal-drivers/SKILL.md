@@ -1,12 +1,12 @@
 ---
 name: hal-drivers
-description: Hardware Abstraction Layer (HAL) conventions for OZ-POS — async_trait device traits, drivers for barcode scanners, receipt printers, cash drawers, customer displays, weight scales, and EDC payment terminals, plus mandatory mock implementations. Use when adding a new device driver or wiring hardware into a feature.
+description: Hardware Abstraction Layer (HAL) conventions for kasir.mu — async_trait device traits, drivers for barcode scanners, receipt printers, cash drawers, customer displays, weight scales, and EDC payment terminals, plus mandatory mock implementations. Use when adding a new device driver or wiring hardware into a feature.
 ---
 
-<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — error.rs sample added the real Unsupported(String) variant and the HalErrorKind discriminator contract the checklist already referenced; all other structural claims re-verified) · verified this pass: traits/{barcode,printer,cash_drawer,customer_display,weight_scale,edc}.rs + *_tests.rs siblings, transport/{usb,serial,tcp}.rs (+ mod), bootstrap.rs + registry.rs + error.rs + types.rs at crate root, drivers/edc/ dir, register_serial_printer/register_bluetooth_printer/HardwareConfig/BootstrapReport/HalErrorKind/discover_never_registers_a_card_terminal symbols all present, useBarcodeScanner.ts uses scanners[0]?.id autodetect, start_scanner_scoped in apps/desktop-client/src/commands/hardware.rs, real HalError has Timeout(u32) · prior: 2026-08-31 docs-auditor rev (F1-F4 repaired + EdcTerminal documented; dc07f32a bootstrap doc; 6624df1c registry-id contract; 1c8957ac serial-printer unification) · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-08-31] · docs-auditor · status: ACCURATE (F1-F4 repaired + EdcTerminal documented) · F1 FIXED: removed the false 'embedded-hal' claim (no such dep; plain async_trait) · F2 FIXED: traits list corrected to the 6 real traits (barcode/printer/cash_drawer/customer_display/weight_scale/edc) — fictional nfc.rs/payment_terminal.rs removed · F3 FIXED: drivers are transport-named (usb/bt/serial_scanner, usb/bt/tcp_printer, escpos, receipt, kds_chit, drawer, serial_display, scale, edc/{wired,wireless,protocol}) — fictional honeywell_barcode/star_printer/acr122u_nfc/idtech_payment removed; example struct now UsbHidBarcodeScanner (real) · F4 FIXED: mocks are always compiled (no `mock` feature gate) · NEW: EdcTerminal trait (traits/edc.rs) + edc/ drivers now documented · verified accurate: BarcodeScanner signature (connect/poll/cancel/device_info), DriverRegistry + discover, mock.rs location, async Result<T,HalError> convention · NEW (31-08, dc07f32a): documented bootstrap.rs (`HardwareConfig` + `apply_config()` → `BootstrapReport`) as the production registration path; corrected `discover()` framing (auto-probe, not startup registration) · CORRECTED 31-08 by DSH-Agent: the bootstrap note had carried "registration never blocks", which 6624df1c superseded (Connection::Usb enumerates the bus); added the registry-id contract that 6624df1c proved — discover() mints hardware-derived ids while commands look up fixed strings, so wiring a driver into discover() leaves it unreachable, and the checklist said to do exactly that · F5 (31-08, DSH-Agent, 1c8957ac): the driver tree omitted serial_printer.rs and presented bt_printer.rs as a separate driver. There is one serial printer implementation; Bluetooth SPP is a serial port to the application. Note this one ran the other way: this skill already listed "serial" as an addressed transport, and it was the CODE that was wrong — bootstrap.rs rejected every serial printer as having no driver. Marked scale.rs and edc/ as stubs so nobody wires a stub into a path and calls it a feature. · F6 (01-09, DSH-Agent, 1844626d): the registry-id rule was stated as absolute ("commands look up fixed strings, so discover() never resolves") and it is only half true — it holds where a caller hardcodes the id, not where the UI lists ids and hands one back. Scanners are the second case, and applying the absolute rule to them is what left barcode input dead in both clients. Rewrote the rule as "who picks the id", recorded that discovery enumerates without opening ports, and documented discover_scanners() as the startup path. -->
+<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — error.rs sample added the real Unsupported(String) variant and the HalErrorKind discriminator contract the checklist already referenced; all other structural claims re-verified) · verified this pass: traits/{barcode,printer,cash_drawer,customer_display,weight_scale,edc}.rs + *_tests.rs siblings, transport/{usb,serial,tcp}.rs (+ mod), bootstrap.rs + registry.rs + error.rs + types.rs at crate root, drivers/edc/ dir, register_serial_printer/register_bluetooth_printer/HardwareConfig/BootstrapReport/HalErrorKind/discover_never_registers_a_card_terminal symbols all present, useBarcodeScanner.ts uses scanners[0]?.id autodetect, start_scanner_scoped in apps/desktop-tauri/src/commands/hardware.rs, real HalError has Timeout(u32) · prior: 2026-08-31 docs-auditor rev (F1-F4 repaired + EdcTerminal documented; dc07f32a bootstrap doc; 6624df1c registry-id contract; 1c8957ac serial-printer unification) · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-08-31] · docs-auditor · status: ACCURATE (F1-F4 repaired + EdcTerminal documented) · F1 FIXED: removed the false 'embedded-hal' claim (no such dep; plain async_trait) · F2 FIXED: traits list corrected to the 6 real traits (barcode/printer/cash_drawer/customer_display/weight_scale/edc) — fictional nfc.rs/payment_terminal.rs removed · F3 FIXED: drivers are transport-named (usb/bt/serial_scanner, usb/bt/tcp_printer, escpos, receipt, kds_chit, drawer, serial_display, scale, edc/{wired,wireless,protocol}) — fictional honeywell_barcode/star_printer/acr122u_nfc/idtech_payment removed; example struct now UsbHidBarcodeScanner (real) · F4 FIXED: mocks are always compiled (no `mock` feature gate) · NEW: EdcTerminal trait (traits/edc.rs) + edc/ drivers now documented · verified accurate: BarcodeScanner signature (connect/poll/cancel/device_info), DriverRegistry + discover, mock.rs location, async Result<T,HalError> convention · NEW (31-08, dc07f32a): documented bootstrap.rs (`HardwareConfig` + `apply_config()` → `BootstrapReport`) as the production registration path; corrected `discover()` framing (auto-probe, not startup registration) · CORRECTED 31-08 by DSH-Agent: the bootstrap note had carried "registration never blocks", which 6624df1c superseded (Connection::Usb enumerates the bus); added the registry-id contract that 6624df1c proved — discover() mints hardware-derived ids while commands look up fixed strings, so wiring a driver into discover() leaves it unreachable, and the checklist said to do exactly that · F5 (31-08, DSH-Agent, 1c8957ac): the driver tree omitted serial_printer.rs and presented bt_printer.rs as a separate driver. There is one serial printer implementation; Bluetooth SPP is a serial port to the application. Note this one ran the other way: this skill already listed "serial" as an addressed transport, and it was the CODE that was wrong — bootstrap.rs rejected every serial printer as having no driver. Marked scale.rs and edc/ as stubs so nobody wires a stub into a path and calls it a feature. · F6 (01-09, DSH-Agent, 1844626d): the registry-id rule was stated as absolute ("commands look up fixed strings, so discover() never resolves") and it is only half true — it holds where a caller hardcodes the id, not where the UI lists ids and hands one back. Scanners are the second case, and applying the absolute rule to them is what left barcode input dead in both clients. Rewrote the rule as "who picks the id", recorded that discovery enumerates without opening ports, and documented discover_scanners() as the startup path. -->
 # Hardware Abstraction Layer (HAL)
 
-OZ-POS runs on real hardware: barcode scanners, receipt printers, cash drawers, customer displays, weight scales, and EDC payment terminals. The HAL (`oz-hal`) is the seam between the **business logic** (which wants "scan a barcode") and the **physical device** (which sends bytes over USB, Bluetooth, or serial).
+kasir.mu runs on real hardware: barcode scanners, receipt printers, cash drawers, customer displays, weight scales, and EDC payment terminals. The HAL (`kasirmu-hal`) is the seam between the **business logic** (which wants "scan a barcode") and the **physical device** (which sends bytes over USB, Bluetooth, or serial).
 
 The HAL is implemented in Rust as plain `async_trait` traits — there is **no** `embedded-hal` dependency. The rest of the system only ever sees the trait — it never imports a specific driver.
 
@@ -27,7 +27,7 @@ The HAL is implemented in Rust as plain `async_trait` traits — there is **no**
 | # | Rule | Why |
 |---|------|-----|
 | 1 | **Every device implements a trait.** Business code never imports a specific driver. | Swap hardware without changing features. |
-| 2 | **A mock implementation lives in `crates/oz-hal/src/drivers/mock.rs` for every new trait.** | Tests must run without physical hardware. |
+| 2 | **A mock implementation lives in `crates/kasirmu-hal/src/drivers/mock.rs` for every new trait.** | Tests must run without physical hardware. |
 | 3 | **Traits are `async` and return `Result<T, HalError>`.** | Hardware fails in surprising ways. Make it explicit. |
 | 4 | **No `unwrap()` in driver code.** A flaky USB device must not panic the cashier's flow. | |
 | 5 | **Drivers register through `DriverRegistry`**, not via `static`s. | Hot-plug, multiple devices, plug-and-play. |
@@ -37,7 +37,7 @@ The HAL is implemented in Rust as plain `async_trait` traits — there is **no**
 ## Crate layout
 
 ```
-crates/oz-hal/
+crates/kasirmu-hal/
 ├── Cargo.toml
 └── src/
     ├── lib.rs
@@ -53,7 +53,7 @@ crates/oz-hal/
     ├── registry.rs             # DriverRegistry + discovery
     ├── transport/
     │   ├── usb.rs
-    │   ├── bluetooth.rs
+    │   ├── tcp.rs
     │   └── serial.rs           # platform-conditional
     └── drivers/                # transport-named, NOT vendor-named
         ├── mod.rs
@@ -82,7 +82,7 @@ separate so logs and the setup wizard report the transport the operator chose.
 ## Defining a trait
 
 ```rust
-// crates/oz-hal/src/traits/barcode.rs
+// crates/kasirmu-hal/src/traits/barcode.rs
 
 use async_trait::async_trait;
 use crate::error::HalError;
@@ -120,7 +120,7 @@ pub trait BarcodeScanner: Send + Sync {
 ## Implementing a driver
 
 ```rust
-// crates/oz-hal/src/drivers/usb_scanner.rs (illustrative — the real
+// crates/kasirmu-hal/src/drivers/usb_scanner.rs (illustrative — the real
 // `UsbHidBarcodeScanner` wraps a `rusb` device handle)
 
 use async_trait::async_trait;
@@ -180,7 +180,7 @@ impl BarcodeScanner for UsbHidBarcodeScanner {
 Every trait must have a mock. The mock is used by every test in the rest of the codebase that touches hardware.
 
 ```rust
-// crates/oz-hal/src/drivers/mock.rs
+// crates/kasirmu-hal/src/drivers/mock.rs
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};   // std::sync::Mutex — held only briefly, no .await between lock and unlock
@@ -246,7 +246,7 @@ impl BarcodeScanner for MockBarcodeScanner {
 Hardware is discovered at startup and exposed to the rest of the app through a single registry. Commands ask the registry for a device by category; the registry picks an available driver.
 
 ```rust
-// crates/oz-hal/src/registry.rs
+// crates/kasirmu-hal/src/registry.rs
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -284,7 +284,7 @@ impl DriverRegistry {
 ## Error type
 
 ```rust
-// crates/oz-hal/src/error.rs
+// crates/kasirmu-hal/src/error.rs
 
 use thiserror::Error;
 
@@ -350,20 +350,20 @@ async fn sale_completes_after_scan() {
 **Rules:**
 - Tests use `MockBarcodeScanner`, `MockReceiptPrinter`, etc. — never a real driver.
 - For driver-internal tests (e.g., parsing a USB packet), use synthetic byte buffers.
-- Mocks live in `crates/oz-hal/src/drivers/mock.rs` and are **always compiled** — there is no `mock` feature gate; just `cargo test`.
+- Mocks live in `crates/kasirmu-hal/src/drivers/mock.rs` and are **always compiled** — there is no `mock` feature gate; just `cargo test`.
 
 ---
 
 ## Adding a new device — checklist
 
-- [ ] Define the trait in `crates/oz-hal/src/traits/<device>.rs` with `async` methods returning `Result<T, HalError>`.
-- [ ] Re-export from `crates/oz-hal/src/traits/mod.rs`.
+- [ ] Define the trait in `crates/kasirmu-hal/src/traits/<device>.rs` with `async` methods returning `Result<T, HalError>`.
+- [ ] Re-export from `crates/kasirmu-hal/src/traits/mod.rs`.
 - [ ] Add the `HalError` variant(s) if needed.
-- [ ] Implement the driver in `crates/oz-hal/src/drivers/<transport>_<device>.rs` (e.g. `usb_scanner.rs`, `tcp_printer.rs`, `edc/wired.rs`) — drivers are named by transport, not by vendor.
-- [ ] Re-export the driver from `crates/oz-hal/src/drivers/mod.rs`.
-- [ ] **Add the mock to `crates/oz-hal/src/drivers/mock.rs`.** Required by the coding standard (`AGENTS.md` → *Database & Hardware* → **HAL Drivers**), enforced by review only — no CI job, no hook step and no checker under `scripts/` looks for it, so an unmocked driver reaches main and the first person to run it on a machine without that hardware finds out. That is not the reason to write it: the mock IS the harness — it is how the driver is exercised at all, in tests and on every dev machine that has no such device bolted to it.
+- [ ] Implement the driver in `crates/kasirmu-hal/src/drivers/<transport>_<device>.rs` (e.g. `usb_scanner.rs`, `tcp_printer.rs`, `edc/wired.rs`) — drivers are named by transport, not by vendor.
+- [ ] Re-export the driver from `crates/kasirmu-hal/src/drivers/mod.rs`.
+- [ ] **Add the mock to `crates/kasirmu-hal/src/drivers/mock.rs`.** Required by the coding standard (`AGENTS.md` → *Database & Hardware* → **HAL Drivers**), enforced by review only — no CI job, no hook step and no checker under `scripts/` looks for it, so an unmocked driver reaches main and the first person to run it on a machine without that hardware finds out. That is not the reason to write it: the mock IS the harness — it is how the driver is exercised at all, in tests and on every dev machine that has no such device bolted to it.
 - [ ] Make it reachable, by asking **who picks the id**. If a command looks the device up under a name the operator configured, add a `HardwareConfig` entry in `bootstrap.rs` and map the profile field in `platform_startup::hardware::config_from_profile`, registering under the **exact id the command looks up**. If instead the UI lists registered ids and hands one back, enumerate it — see `discover_scanners()`, which is that case. A fixed-string lookup will never find a discovery-minted id, and requiring an operator to name a device no screen ever asked them about is how a feature ends up unreachable with correct code behind it.
-- [ ] Add a Tauri command in `apps/desktop-client/src/commands/hardware.rs` that takes the registry from `State` and returns a `Result`. Fail closed with `HalErrorKind::NotFound` when the id is absent; never substitute a mock.
+- [ ] Add a Tauri command in `apps/desktop-tauri/src/commands/hardware.rs` that takes the registry from `State` and returns a `Result`. Fail closed with `HalErrorKind::NotFound` when the id is absent; never substitute a mock.
 - [ ] Add a TS wrapper in `ui/src/api/<feature>.ts` and a hook in `ui/src/features/<feature>/`.
 - [ ] Tests: a unit test in the driver, a feature test using the mock, and a UI test with the hook.
 
@@ -384,10 +384,10 @@ async fn sale_completes_after_scan() {
 
 ## See also
 
-- **[`tauri-ipc`](../tauri-ipc/SKILL.md)** — the Tauri command layer that reaches into `DriverRegistry`. Hardware commands (e.g. `subscribe_barcode_scans`, `open_cash_drawer`, `print_receipt`) live in `apps/desktop-client/src/commands/hardware.rs` and follow the IPC patterns in `tauri-ipc`. The mock in `crates/oz-hal/src/drivers/mock.rs` is what makes those commands testable.
+- **[`tauri-ipc`](../tauri-ipc/SKILL.md)** — the Tauri command layer that reaches into `DriverRegistry`. Hardware commands (e.g. `subscribe_barcode_scans`, `open_cash_drawer`, `print_receipt`) live in `apps/desktop-tauri/src/commands/hardware.rs` and follow the IPC patterns in `tauri-ipc`. The mock in `crates/kasirmu-hal/src/drivers/mock.rs` is what makes those commands testable.
 - **[`rust-backend`](../rust-backend/SKILL.md)** — defines the error and money patterns (`HalError`, `Money`, currency codes) that the HAL's traits and drivers must respect.
 - **[`project-scaffold`](../project-scaffold/SKILL.md)** — the workspace layout (the `hal` crate's `Cargo.toml` follows the conventions there) and CI rules that gate the HAL into release.
 
 ---
 
-> last audited 03-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat

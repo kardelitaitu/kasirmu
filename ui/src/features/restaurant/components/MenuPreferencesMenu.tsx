@@ -24,9 +24,10 @@
 // restaurant-hamburger-* class names are pinned by tests.
 
 import { useCallback, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
-import { useTheme } from '@/frontend/shell/ThemeProvider';
+import { useTheme } from '@/app/ThemeProvider';
 import { useFullscreen } from '@/hooks/useFullscreen';
 import type { Dispatch, SetStateAction } from 'react';
 import { SORT_MODES } from '../RestaurantMenu';
@@ -61,6 +62,7 @@ export interface MenuPreferencesMenuProps {
   open: boolean;
   onOpenChange: Dispatch<SetStateAction<boolean>>;
   dropdownRef: React.RefObject<HTMLDivElement>;
+  container?: HTMLElement | null;
   sortMode: SortMode;
   onSelectSort: (mode: SortMode) => void;
   cardSize: number;
@@ -75,6 +77,7 @@ export function MenuPreferencesMenu({
   open,
   onOpenChange,
   dropdownRef,
+  container,
   sortMode,
   onSelectSort,
   cardSize,
@@ -124,21 +127,17 @@ export function MenuPreferencesMenu({
   }, [open, onOpenChange]);
 
   // Close the hamburger menu on click outside, EXCEPT on the trigger
-  // itself: the trigger toggles via its own onClick, and a mousedown-driven
-  // close here would consume the toggle's open on the same press (the button
-  // is outside `hamburgerRef`'s panel subtree by construction). The panel
-  // subtree (including the Close row) still dismisses normally.
+  // itself or inside the dropdown panel.
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
       if (hamburgerButtonRef.current?.contains(e.target as Node)) return;
-      if (hamburgerRef.current && !hamburgerRef.current.contains(e.target as Node)) {
-        onOpenChange(false);
-      }
+      if (dropdownRef.current?.contains(e.target as Node)) return;
+      onOpenChange(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [open, onOpenChange]);
+  }, [open, onOpenChange, dropdownRef]);
 
   const handleHamburgerKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
@@ -167,40 +166,15 @@ export function MenuPreferencesMenu({
     items[next]?.focus();
   }, [dropdownRef]);
 
-  return (
-    <div className="restaurant-header-left" ref={hamburgerRef}>
-      <button
-        type="button"
-        className={`restaurant-hamburger-btn${open ? ' restaurant-hamburger-btn--active' : ''}`}
-        ref={hamburgerButtonRef}
-        onPointerDown={() => {
-          hamburgerOpenedWithKeyboardRef.current = false;
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            hamburgerOpenedWithKeyboardRef.current = true;
-          }
-        }}
-        onClick={() => onOpenChange((prev) => !prev)}
-        aria-label={l10n.getString('restaurant-menu-hamburger-aria')}
-        aria-expanded={open}
-        aria-controls="restaurant-hamburger-menu"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" style={{ pointerEvents: 'none' }}>
-          <rect width="18" height="18" x="3" y="3" rx="4" />
-          <line x1="9" y1="3" x2="9" y2="21" />
-        </svg>
-      </button>
-
-      {open && (
-        <aside
-          ref={dropdownRef}
-          id="restaurant-hamburger-menu"
-          className="restaurant-hamburger-dropdown restaurant-sidebar"
-          role="region"
-          tabIndex={-1}
-          aria-label={l10n.getString('restaurant-menu-hamburger-aria')}
-        >
+  const asideContent = (
+    <aside
+      ref={dropdownRef}
+      id="restaurant-hamburger-menu"
+      className="restaurant-hamburger-dropdown restaurant-sidebar"
+      role="region"
+      tabIndex={-1}
+      aria-label={l10n.getString('restaurant-menu-hamburger-aria')}
+    >
           <button
             type="button"
             className="restaurant-hamburger-item restaurant-hamburger-item--close"
@@ -404,8 +378,35 @@ export function MenuPreferencesMenu({
           >
             <Localized id="restaurant-toggle-fullscreen"><span>Toggle Fullscreen</span></Localized>
           </button>
-        </aside>
-      )}
+    </aside>
+  );
+
+  return (
+    <div className="restaurant-header-left" ref={hamburgerRef}>
+      <button
+        type="button"
+        className={`restaurant-hamburger-btn${open ? ' restaurant-hamburger-btn--active' : ''}`}
+        ref={hamburgerButtonRef}
+        onPointerDown={() => {
+          hamburgerOpenedWithKeyboardRef.current = false;
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            hamburgerOpenedWithKeyboardRef.current = true;
+          }
+        }}
+        onClick={() => onOpenChange((prev) => !prev)}
+        aria-label={l10n.getString('restaurant-menu-hamburger-aria')}
+        aria-expanded={open}
+        aria-controls="restaurant-hamburger-menu"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" style={{ pointerEvents: 'none' }}>
+          <rect width="18" height="18" x="3" y="3" rx="4" />
+          <line x1="9" y1="3" x2="9" y2="21" />
+        </svg>
+      </button>
+
+      {open && (container ? createPortal(asideContent, container) : asideContent)}
     </div>
   );
 }

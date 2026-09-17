@@ -1,0 +1,25 @@
+[package]
+name = "kasirmu-reporting"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Analytics and CSV export engine for kasir.mu — daily summaries, sales reports, inventory movement."
+
+# Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
+[lints]
+workspace = true
+
+[dependencies]
+kasirmu-core = { workspace = true }
+rusqlite = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+prometheus = { workspace = true, optional = true }
+
+[features]
+default = []
+metrics = ["dep:prometheus"]

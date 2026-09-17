@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { useToast } from '@/frontend/shared/Toast';
-import { requiredLocalized } from '@/frontend/shared';
+import { useToast } from '@/components/Toast';
+import { requiredLocalized } from '@/components';
 import { activateLicense, getHardwareFingerprint, getMachineId } from '@/api/license';
 import { detectTrialVertical } from '@/utils/trial-vertical';
 import { detectBundleId } from '@/utils/bundle';
 import { getVersion, getLocalIp } from '@/api/system';
 import StatusBar from '@/components/StatusBar';
 import { Localized, useLocalization } from '@fluent/react';
-import ThemeToggle from '@/frontend/shell/ThemeToggle';
+import ThemeToggle from '@/app/ThemeToggle';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { plainErrorMessage } from '@/utils/app-error';
 import './LicenseActivationScreen.css';
@@ -175,7 +175,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
       </div>
       <div className="license-activation-layout">
         <div className="license-activation-hero">
-          <img src="/256x256.png" alt="OZ-POS Logo" className="license-activation-logo" />
+          <img src="/256x256.png" alt="kasir.mu Logo" className="license-activation-logo" />
         </div>
         
         <div className="license-activation-card">
@@ -335,7 +335,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
           <span>IP Address : {ipAddress}</span>
         </Localized>
         <Localized id="auth-copyright" vars={{ year: new Date().getFullYear().toString() }}>
-          <span>OZ-POS © {new Date().getFullYear()} All rights reserved.</span>
+          <span>kasir.mu © {new Date().getFullYear()} All rights reserved.</span>
         </Localized>
       </div>
 

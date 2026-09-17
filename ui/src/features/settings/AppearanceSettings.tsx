@@ -15,7 +15,7 @@ import { Button } from '@/components/Button';
 import { useAppZoom } from '@/contexts/ZoomContext';
 import type { ZoomLevel } from '@/contexts/ZoomContext';
 import { useHardwareAccel } from '@/contexts/HardwareAccelContext';
-import { useToast, useContextMenu, ContextMenu, ConfirmDialog, requiredLocalized } from '@/frontend/shared';
+import { useToast, useContextMenu, ContextMenu, ConfirmDialog, requiredLocalized } from '@/components';
 import SettingsSelect from './SettingsSelect';
 import './AppearanceSettings.css';
 
@@ -413,7 +413,7 @@ export function AppearanceSettings({
         >
           <div className="appearance-preview-sample">
             <span className="appearance-preview-text">
-              {activeStoreName ? activeStoreName : <Localized id="appearance-store-name-fallback"><span>OZ-POS</span></Localized>}
+              {activeStoreName ? activeStoreName : <Localized id="appearance-store-name-fallback"><span>kasir.mu</span></Localized>}
             </span>
           </div>
           <div className="appearance-preview-elements">

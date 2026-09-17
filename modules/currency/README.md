@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (1 finding repaired) · F1: added CUR-11 exchange-rate methods to the repository list — list_latest_exchange_rates() (bounded latest-per-pair, repository.rs:84) and list_exchange_rates_for_pair() (repository.rs:121) · carried from 2026-07-25: CurrencyModule implements foundation::contracts::Module; CurrencyRepository migrated from oz-core (R2 Phase 1-6); Platform error variant for settings delegation -->
+<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (1 finding repaired) · F1: added CUR-11 exchange-rate methods to the repository list — list_latest_exchange_rates() (bounded latest-per-pair, repository.rs:84) and list_exchange_rates_for_pair() (repository.rs:121) · carried from 2026-07-25: CurrencyModule implements foundation::contracts::Module; CurrencyRepository migrated from kasirmu-core (R2 Phase 1-6); Platform error variant for settings delegation -->
 
 # Currency/Exchange Module
 
@@ -82,9 +82,9 @@ pub enum CurrencyError {
 
 Conversion from `CurrencyError` to `CoreError` is provided via `From<CurrencyError> for CoreError`.
 
-### Deprecated oz-core Wrappers
+### Deprecated kasirmu-core Wrappers
 
-The original 15 delegating Store methods in `oz-core` are marked `#[deprecated]` and direct callers to use `CurrencyRepository` directly. Tests retain `#[allow(deprecated)]` for backward compatibility.
+The original 15 delegating Store methods in `kasirmu-core` are marked `#[deprecated]` and direct callers to use `CurrencyRepository` directly. Tests retain `#[allow(deprecated)]` for backward compatibility.
 
 ## Manifest
 

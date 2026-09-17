@@ -3,10 +3,10 @@
 //! These prove the CONTRACT, not any lane's behaviour. Two of the three
 //! funnelled accessors do have production callers now — `set_with_policy` from
 //! sync ingest (`platform/sync/src/queue.rs:531` and `:702`, RemoteSync) and
-//! from the bridge restore door (`crates/oz-bridge/src/data.rs:704`,
+//! from the bridge restore door (`crates/kasirmu-bridge/src/data.rs:704`,
 //! PortablePackage), and `load_exportable` from the bridge export door
 //! (`data.rs:401`) — while `set_batch_with_policy` still has none, because the
-//! CLI `.ozpkg` lane asks the policy directly and has no platform-core
+//! CLI `.kasirpkg` lane asks the policy directly and has no platform-core
 //! dependency edge. Each of those lanes pins its own behaviour in its own
 //! suite, so the questions here are only (a) does a refusal refuse, (b) is it
 //! the POLICY doing the filtering rather than the predicate alone, and (c) does
@@ -171,11 +171,11 @@ fn set_batch_with_policy_writes_permitted_rows_and_skips_refused_ones() {
 ///
 /// Every lane asks the ONE predicate now, which is what this test pins:
 /// `Settings::load_exportable` and both ingest arms reach it through
-/// [`IngestPolicyKind::admits`] (so the GUI export, the CLI `.ozpkg` gate in
-/// `crates/oz-cli/src/commands/ozpkg.rs` and sync ingest in
+/// [`IngestPolicyKind::admits`] (so the GUI export, the CLI `.kasirpkg` gate in
+/// `crates/kasirmu-cli/src/commands/kasirpkg.rs` and sync ingest in
 /// `platform/sync/src/queue.rs` all refuse it), the tablet write funnel calls
 /// `is_manager_owned_key` directly, and the desktop bridge refuses through its
-/// `managed_key_owner` in `crates/oz-bridge/src/settings.rs` — which adds only
+/// `managed_key_owner` in `crates/kasirmu-bridge/src/settings.rs` — which adds only
 /// the owner label the refusal message shows and keeps no prefix of its own.
 /// No lane carries a prefix list, so a third manager-owned prefix joins this
 /// predicate and refuses everywhere at once. There is no bridge-local
@@ -614,7 +614,7 @@ fn manager_prefix_only_near_misses() -> Vec<&'static str> {
     ]
 }
 
-/// Lane 1 of the two untrusted lanes: `.ozpkg` ingest must refuse a variant
+/// Lane 1 of the two untrusted lanes: `.kasirpkg` ingest must refuse a variant
 /// spelling of a manager-owned key, not only the exact lowercase one.
 #[test]
 fn portable_package_ingest_refuses_a_variant_spelling_of_a_manager_key() {
@@ -790,7 +790,7 @@ fn an_ordinary_lowercase_manager_key_is_still_admitted_by_the_manager_door_and_r
 /// * Rename a CONSTANT (`keys::LAN_SERVER_PSK` → `"lan.psk"`) and the literals
 ///   stop matching what the manager actually writes, so the predicate answers
 ///   `false` for a live manager key. Both untrusted ingest lanes then ADMIT it,
-///   and `managed_key_owner` (`crates/oz-bridge/src/settings.rs:99`) answers
+///   and `managed_key_owner` (`crates/kasirmu-bridge/src/settings.rs:99`) answers
 ///   `None` for it too — the write carries neither a refusal nor a label. A
 ///   WIDENED admission, and a silent one: the failure mode this subsystem has
 ///   been treating as unforgivable all night.
@@ -809,7 +809,7 @@ fn an_ordinary_lowercase_manager_key_is_still_admitted_by_the_manager_door_and_r
 /// manager-owned, so none is excused here: `LOCAL_API_SECRET`,
 /// `LAN_SERVER_PSK`, `LAN_SERVER_BIND`. It names no others —
 /// `local_api.enabled`, `local_api.port` and `local_api.store_id` are spelled
-/// only in `crates/oz-local-api/src/lib.rs`, because platform-core must not
+/// only in `crates/kasirmu-local-api/src/lib.rs`, because platform-core must not
 /// depend on that crate (`keys.rs:215-218`: `LOCAL_API_SECRET` is its declared
 /// mirror). Those four are pinned from the side that CAN see both halves, in
 /// that crate's own suite; no dependency edge was added to make this file

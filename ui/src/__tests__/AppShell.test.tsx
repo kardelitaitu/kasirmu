@@ -10,7 +10,7 @@ import { act } from 'react';
 import type { ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
-import AppShell from '@/frontend/shell/AppShell';
+import AppShell from '@/app/AppShell';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import staffFtl from '@/locales/staff.ftl?raw';
 
@@ -161,8 +161,8 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
 // ── page-registry: register the kds route so handleNavigate works ──
 import { getLicenseStatus } from '@/api/license';
 import { getSetupStatus } from '@/api/settings';
-import { registerPage, clearPages } from '@/platform/ui/page-registry';
-import { registerNavItem, clearNavItems } from '@/platform/ui/menu-registry';
+import { registerPage, clearPages } from '@/registries/page-registry';
+import { registerNavItem, clearNavItems } from '@/registries/menu-registry';
 
 
 

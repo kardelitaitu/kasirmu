@@ -1,13 +1,13 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
 import { render, renderHook, screen } from '@testing-library/react';
-import { ThemeProvider, useTheme } from '@/frontend/shell/ThemeProvider';
+import { ThemeProvider, useTheme } from '@/app/ThemeProvider';
 import { BrandProvider } from '@/contexts/BrandContext';
 import type { ReactNode } from 'react';
 
 // ── Theme values (hardcoded from reset.css + theme files) ──────────
 
-const STORAGE_KEY = 'oz-pos-theme-v4';
+const STORAGE_KEY = 'kasirmu-theme-v4';
 
 /** Shared wrapper that provides both brand and theme context. */
 function Wrapper({ children }: { children: ReactNode }) {

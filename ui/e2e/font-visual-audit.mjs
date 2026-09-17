@@ -64,12 +64,12 @@ const distArg = path.resolve(flag('dist', path.join(HERE, '..', 'dist')));
 /**
  * Which boot document the artifact actually contains. The two shipped apps build to
  * different directories with different filenames -- desktop-client serves ui/dist with
- * index.html, tablet-client serves ui/dist-tablet with index.tablet.html -- so a probe
+ * index.html, mobile-tauri serves ui/dist-mobile with index.mobile.html -- so a probe
  * that hardcoded one could not measure the other, and until this block existed it did
  * not: every figure in this file's history came from the desktop artifact.
  */
-const BOOT_DOCS = ['index.html', 'index.tablet.html'];
-const SHELL_OF = { 'index.html': 'desktop-client', 'index.tablet.html': 'tablet-client' };
+const BOOT_DOCS = ['index.html', 'index.mobile.html'];
+const SHELL_OF = { 'index.html': 'desktop-client', 'index.mobile.html': 'mobile-tauri' };
 const presentDocs = BOOT_DOCS.filter((f) => fs.existsSync(path.join(distArg, f)));
 const pageArg = flag('page', null);
 if (pageArg && !presentDocs.includes(pageArg)) {
@@ -78,7 +78,7 @@ if (pageArg && !presentDocs.includes(pageArg)) {
 }
 if (!presentDocs.length) {
   console.error(`no boot document in ${distArg} -- looked for ${BOOT_DOCS.join(', ')}.`);
-  console.error('Build first: cd ui && npm run build (desktop) or npm run build:tablet (tablet).');
+  console.error('Build first: cd ui && npm run build (desktop) or npm run build:mobile (tablet).');
   console.error('Refusing to measure a directory that does not contain the thing under test.');
   process.exit(2);
 }
@@ -480,7 +480,7 @@ function banner(title, o, net, force, bootNet) {
 
 async function run() {
   const { csp, confPath, shellName } = shellCsp(pageName);
-  const buildCmd = pageName === 'index.tablet.html' ? 'npm run build:tablet' : 'npm run build';
+  const buildCmd = pageName === 'index.mobile.html' ? 'npm run build:mobile' : 'npm run build';
   const server = await serve(distArg, csp, pageName);
   console.log(`document      ${pageName} in ${distArg}  (the ${shellName} shell; build with: cd ui && ${buildCmd})`);
   console.log(`serving ${distArg} at ${server.url}`);

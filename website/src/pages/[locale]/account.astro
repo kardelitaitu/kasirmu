@@ -10,7 +10,7 @@ const locale = Astro.currentLocale ?? 'en';
 const pageTitle = `kasir.mu — ${t(locale, 'account.title')}`;
 ---
 
-<Base title={pageTitle} description={t(locale, 'pageDesc.account')}>
+<Base title={pageTitle} description={t(locale, 'pageDesc.account')} noindex>
   <section data-reveal class="mx-auto max-w-6xl px-4 py-20">
     <h1 class="mb-10 text-center text-3xl font-bold">{t(locale, 'account.title')}</h1>
     <AccountView client:load locale={locale} />

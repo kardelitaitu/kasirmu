@@ -10,7 +10,7 @@ import {
 } from '@/api/products';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
-import { SettingsPopup, requiredLocalized, EmptyState } from '@/frontend/shared';
+import { SettingsPopup, requiredLocalized, EmptyState } from '@/components';
 import { NoVariantsIcon } from '@/components/EmptyStateIllustrations';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { minorUnitExponent } from '@/types/domain';

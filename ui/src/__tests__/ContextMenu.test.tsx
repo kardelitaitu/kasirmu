@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen, render as rtlRender } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ContextMenu } from '@/frontend/shared/ContextMenu';
-import { withFluent } from '@/locales/test-utils';
+import { ContextMenu } from '@/components/ContextMenu';
+import { withFluent } from '@/i18n/test-utils';
 import { createRef } from 'react';
 import type { ReactElement } from 'react';
 

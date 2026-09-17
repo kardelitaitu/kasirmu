@@ -15,14 +15,14 @@ next: none | perf: N/A
 //! The TaxModule implements the [`Module`] trait and is registered
 //! with the kernel during application startup. This crate is the
 //! **contractual layer** for the tax vertical: it owns the canonical
-//! domain types (`TaxRate`, `RoundingMode`), which `oz-core` re-exports
-//! (`crates/oz-core/src/tax_rate.rs`), and the concrete implementation
+//! domain types (`TaxRate`, `RoundingMode`), which `kasirmu-core` re-exports
+//! (`crates/kasirmu-core/src/tax_rate.rs`), and the concrete implementation
 //! remains in its original locations:
 //!
-//! - Backend: `crates/oz-core/src/db/tax.rs` + `apps/desktop-client/src/commands/tax.rs`
+//! - Backend: `crates/kasirmu-core/src/db/tax.rs` + `apps/desktop-tauri/src/commands/tax.rs`
 //! - Frontend: `ui/src/features/tax/`
 //! - API: `ui/src/api/tax.ts`
-//! - Locale: `ui/src/locales/{en,fr,es,de,zh,ja}/tax.ftl`
+//! - Locale: `shared-ui/locales/{en,fr,es,de,zh,ja}/tax.ftl`
 //!
 //! The boundary between this crate and the implementation layers is
 //! pinned by the cross-layer contract tests in
@@ -37,7 +37,7 @@ next: none | perf: N/A
 
 //! # Re-exports
 //!
-//! This module re-exports key tax domain types from `oz-core` so that
+//! This module re-exports key tax domain types from `kasirmu-core` so that
 //! consumers can access all tax-related types through a single crate:
 //!
 //! ```

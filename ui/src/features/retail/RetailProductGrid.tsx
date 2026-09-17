@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, memo, useState } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { useLocalization, Localized } from '@fluent/react';
 import { DEFAULT_LOW_STOCK_THRESHOLD, DEFAULT_HIGH_STOCK_THRESHOLD, formatMoney, type Money, type Sku } from '@/types/domain';
 import type { ProductDto, CategoryDto } from '@/api/products';

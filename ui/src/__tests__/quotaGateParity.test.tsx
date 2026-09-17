@@ -13,7 +13,7 @@
 // The resolver side of this contract — the availability precedence that
 // produces `reason: 'quota'` from exceeded usage — is pinned by
 // `verdict_names_quota_at_the_cap_and_clears_one_below`
-// (apps/desktop-client/src/commands/subscription_tests.rs). This file is
+// (apps/desktop-tauri/src/commands/subscription_tests.rs). This file is
 // the UI half: it asserts the page/action layer honors that verdict.
 //
 // Does NOT touch the production page-registry gate (which gates on

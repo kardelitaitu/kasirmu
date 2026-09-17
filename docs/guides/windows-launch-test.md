@@ -1,11 +1,11 @@
-# Windows Desktop Launch Test — OZ-POS
-<!-- Audit stamp: 2026-09-09 . DSH . status: ACCURATE, 1 precision note (seed references flagged, not fixed) . Verified-true: scripts/build-exe-release.ps1 exists with -BuildConfig (line 5) and -NoInstaller (line 11) params; expected binary path apps/desktop-client/target/release/oz-pos-app.exe matches the script (scripts/build-exe-release.ps1:211); Tauri productName OZ-POS (apps/desktop-client/tauri.conf.json) so installer is OZ-POS_0.0.X_x64-setup.exe; window 1280x800 confirmed; internal doc links resolve (../releases/checklist.md; ../operations/vps-migration.md, docker-deployment.md, runbook.md tracked); Rust MSRV 1.88 (rust-toolchain.toml), Node>=22/npm>=11 (ui/package.json:80-82). FLAGGED not fixed: Option A runs cargo run --bin seeder (line 30) but no seeder binary exists in the repo (git grep name=seeder empty; apps/desktop-client/Cargo.toml defines only oz-pos-app and oz_pos_app_lib); Settings to Database to Seed Sample Data (line 34) and login error No staff accounts found (line 44) do not exist in code (absent from ui/src/features/settings/ and all .rs). Doc claims about a seed path that does not exist; left for the doc owner under code/config drift rule D. -->
+# Windows Desktop Launch Test — kasir.mu
+<!-- Audit stamp: 2026-09-09 . DSH . status: ACCURATE (re-verified 2026-09-18: binary path and lib/bin names re-pointed to kasirmu-app / kasirmu_app_lib after the T3-2 rename), 1 precision note (seed references flagged, not fixed) . Verified-true: scripts/build-exe-release.ps1 exists with -BuildConfig (line 5) and -NoInstaller (line 11) params; expected binary path apps/desktop-tauri/target/release/kasirmu-app.exe matches the script (scripts/build-exe-release.ps1:211); Tauri productName kasir.mu (apps/desktop-tauri/tauri.conf.json) so installer is kasir.mu_0.0.X_x64-setup.exe; window 1280x800 confirmed; internal doc links resolve (../releases/checklist.md; ../operations/vps-migration.md, docker-deployment.md, runbook.md tracked); Rust MSRV 1.88 (rust-toolchain.toml), Node>=22/npm>=11 (ui/package.json:80-82). FLAGGED not fixed: Option A runs cargo run --bin seeder (line 30) but no seeder binary exists in the repo (git grep name=seeder empty; apps/desktop-tauri/Cargo.toml defines only kasirmu-app and kasirmu_app_lib); Settings to Database to Seed Sample Data (line 34) and login error No staff accounts found (line 44) do not exist in code (absent from ui/src/features/settings/ and all .rs). Doc claims about a seed path that does not exist; left for the doc owner under code/config drift rule D. -->
 
 > **Status:** Implemented (2026-07-20)
 > **Target audience:** QA / developers testing on Windows 10/11
-> **Related:** [Release Checklist](../releases/checklist.md) · [Build Script](https://github.com/kardelitaitu/oz-pos/blob/main/scripts/build-exe-release.ps1) · [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-client/tauri.conf.json)
+> **Related:** [Release Checklist](../releases/checklist.md) · [Build Script](https://github.com/kardelitaitu/oz-pos/blob/main/scripts/build-exe-release.ps1) · [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-tauri/tauri.conf.json)
 
-This guide covers building the OZ-POS desktop client on Windows and
+This guide covers building the kasir.mu desktop client on Windows and
 running the core POS flow end-to-end on a physical Windows machine.
 
 ---
@@ -28,19 +28,19 @@ the login → POS → payment → receipt flow can execute:
 
 ```powershell
 # Option A: demo seeder, from the repo root (the oz CLI)
-cargo run -p oz-cli -- seed-demo --all
-cargo run -p oz-cli -- seed-demo --retail --days 30
+cargo run -p kasirmu-cli -- seed-demo --all
+cargo run -p kasirmu-cli -- seed-demo --retail --days 30
 
 # Option B: first-run default settings and feature flags on a fresh DB
-cargo run -p oz-cli -- seed
+cargo run -p kasirmu-cli -- seed
 
 > ⚠️ **Corrected 09-09-26 — the commands and menus this section listed were not real.**
 > There is no `seeder` binary in the workspace (the 11 `[[bin]]` targets are `oz`,
 > `oz-cloud-server`, `oz-pos-app`, `oz-pos-tablet`, and seven example/test bins), and
 > `--seed-staff` / `--seed-products` / `--seed-workspace` appear nowhere. `oz seed-demo` is the
-> real thing: the `SeedDemo` variant at `crates/oz-cli/src/cli.rs:95`, dispatched at
-> `crates/oz-cli/src/commands/mod.rs:90` into `run_seed_demo`
-> (`crates/oz-cli/src/seed_demo.rs:64`), with flags `--retail`, `--restaurant`, `--all` and
+> real thing: the `SeedDemo` variant at `crates/kasirmu-cli/src/cli.rs:95`, dispatched at
+> `crates/kasirmu-cli/src/commands/mod.rs:90` into `run_seed_demo`
+> (`crates/kasirmu-cli/src/seed_demo.rs:64`), with flags `--retail`, `--restaurant`, `--all` and
 > `--days <n>` (default 90) at `cli.rs:99-112`. `oz seed` (`cli.rs:39`) is the separate
 > subcommand provisioning default settings and feature flags.
 >
@@ -52,7 +52,7 @@ cargo run -p oz-cli -- seed
 > The `Settings → Database → Seed Sample Data` menu does not exist: that string occurs only in
 > these launch guides and in nothing under `ui/src`, so it cannot be offered as a fallback. Nor
 > is there a CI artifact — `test-data` appears in no workflow and in no file under `scripts/`
-> (0 hits), so `target/release/test-data/oz-pos.db` has never been produced by a build.
+> (0 hits), so `target/release/test-data/kasir.db` has never been produced by a build.
 ```
 
 > ⚠️ With no staff rows, login cannot succeed. The literal sentence once quoted here as on-screen
@@ -106,8 +106,8 @@ The script runs three phases:
 
 Expected output location:
 ```
-apps\desktop-client\target\release\oz-pos-app.exe           # Portable EXE
-apps\desktop-client\target\release\bundle\nsis\OZ-POS_0.0.X_x64-setup.exe   # Installer
+apps\desktop-tauri\target\release\oz-pos-app.exe           # Portable EXE
+apps\desktop-tauri\target\release\bundle\nsis\kasir.mu_0.0.X_x64-setup.exe   # Installer
 ```
 
 ### Option B — Manual Build
@@ -120,7 +120,7 @@ npm run build
 cd ..
 
 # Step 2: Build Tauri app (builds Rust + bundles installer)
-cd apps\desktop-client
+cd apps\desktop-tauri
 cargo tauri build
 cd ..\..
 ```
@@ -143,7 +143,7 @@ This skips the NSIS installer step and produces just `oz-pos-app.exe`.
 |------|--------|----------------|
 | 1.1 | Double-click `oz-pos-app.exe` (or launch installed app) | Splash screen appears within **5 seconds** |
 | 1.2 | Wait for full load | Main window appears (1280×800 default). Login screen visible. |
-| 1.3 | Check window chrome | Title bar shows **OZ-POS**. Window is centered. |
+| 1.3 | Check window chrome | Title bar shows **kasir.mu**. Window is centered. |
 | 1.4 | Check taskbar | Icon renders correctly (not broken/blank). |
 | 1.5 | Resize window | Drag edges — window resizes smoothly, no visual glitches. |
 
@@ -280,7 +280,7 @@ cargo tauri dev
 Standard output is captured to the Tauri log directory:
 
 ```
-%APPDATA%\com.ozpos.app\logs\
+%APPDATA%\mu.kasir.app\logs\
 ```
 
 Or check the current directory for `oz-pos-app.log`.
@@ -305,7 +305,7 @@ findstr /I "error panic fail" launch-log.txt
 
 **To build a debug EXE for verbose logging:**
 ```powershell
-# From apps/desktop-client
+# From apps/desktop-tauri
 cargo tauri build --debug
 # EXE at: target\debug\oz-pos-app.exe
 ```
@@ -329,7 +329,7 @@ If the app crashes:
 | Windows Defender SmartScreen | "Windows protected your PC" on first launch | Click "More info" → "Run anyway" | External |
 | High DPI blurry text | UI renders at wrong scale on 150%+ displays | Tauri v2 handles DPI scaling automatically — if blurry, check `tauri.conf.json` `dpi` settings | Investigate |
 | Antivirus false positive | EXE flagged as suspicious (Rust+Tauri bundle) | Submit to Microsoft Defender portal | Expected |
-| Touch-screen calibration | Touch targets offset on some devices | Check Windows touch calibration. OZ-POS targets are ≥ 44px. | Verify |
+| Touch-screen calibration | Touch targets offset on some devices | Check Windows touch calibration. kasir.mu targets are ≥ 44px. | Verify |
 | Network firewall | App can't sync to cloud server | Allow `oz-pos-app.exe` through Windows Firewall | Configure |
 
 ---
@@ -434,7 +434,7 @@ Notes:
 
 - [Build Script](https://github.com/kardelitaitu/oz-pos/blob/main/scripts/build-exe-release.ps1) — Automated Windows build
 - [Release Checklist](../releases/checklist.md) — Pre-release verification
-- [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-client/tauri.conf.json) — Window size, CSP, bundle settings
+- [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-tauri/tauri.conf.json) — Window size, CSP, bundle settings
 - [VPS Migration Guide](../operations/vps-migration.md) — Cloud server deployment
 - [Docker Deployment Guide](../operations/docker-deployment.md) — Full stack deployment
 - [Runbook](../operations/runbook.md) — Incident response procedures

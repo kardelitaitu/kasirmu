@@ -50,7 +50,7 @@ test.describe('Cloud Server API', () => {
     test.skip(!serverUp, 'Cloud server not running — skip API tests');
 
     // Rich health payload (uptime/db info) lives on the cloud-server's own
-    // /api/health handler — oz-api's /api/v1/health is intentionally minimal.
+    // /api/health handler — kasirmu-api's /api/v1/health is intentionally minimal.
     const resp = await fetch(`${CLOUD_SERVER_URL}/api/health`);
     expect(resp.ok).toBe(true);
     expect(resp.status).toBe(200);
@@ -61,7 +61,7 @@ test.describe('Cloud Server API', () => {
     expect(body).toHaveProperty('version');
 
     // The cloud-server's /api/health contract includes runtime and database
-    // health fields. The minimal oz-api route is /api/v1/health, not this URL.
+    // health fields. The minimal kasirmu-api route is /api/v1/health, not this URL.
     expect(body).toHaveProperty('uptime_seconds');
     expect(typeof body.uptime_seconds).toBe('number');
   });
@@ -182,7 +182,7 @@ test.describe('Sync API', () => {
  * The rate commands used to be IPC + dev-mock only — this suite is the
  * first REAL-CRUD coverage of the rate surface against the running
  * cloud server (SQLite fallback mode; the PG branch is covered by
- * `pg_exchange_rates_roundtrip` in crates/oz-api/src/pg_tests.rs).
+ * `pg_exchange_rates_roundtrip` in crates/kasirmu-api/src/pg_tests.rs).
  */
 test.describe('Exchange Rates API', () => {
   let serverUp = false;

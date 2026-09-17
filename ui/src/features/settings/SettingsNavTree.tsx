@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { Localized, useLocalization } from '@fluent/react';
-import Tooltip from '@/frontend/shell/Tooltip';
+import Tooltip from '@/app/Tooltip';
 import Fuse from 'fuse.js';
 import type { FuseResultMatch } from 'fuse.js';
 

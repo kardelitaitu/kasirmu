@@ -16,7 +16,7 @@ Object.defineProperty(navigator, 'clipboard', {
   writable: true,
 });
 
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast })
 }));
 
@@ -48,7 +48,7 @@ vi.mock('@fluent/react', () => ({
         'auth-error-title': 'Error',
         'auth-version': 'Version ' + (args ? args['version'] : ''),
         'auth-ip-address': 'IP Address : ' + (args ? args['ip'] : ''),
-        'auth-copyright': 'OZ-POS © ' + (args ? args['year'] : '') + ' All rights reserved.',
+        'auth-copyright': 'kasir.mu © ' + (args ? args['year'] : '') + ' All rights reserved.',
         'auth-email-placeholder': 'store@example.com',
         'auth-phone-placeholder': '08123456789',
         'auth-license-placeholder': 'OZ-PRO-XXXX-XXXX-XXXX',
@@ -76,7 +76,7 @@ vi.mock('@fluent/react', () => ({
 vi.mock('@/components/StatusBar', () => ({
   default: () => <div data-testid="status-bar">StatusBar</div>,
 }));
-vi.mock('@/frontend/shell/ThemeToggle', () => ({
+vi.mock('@/app/ThemeToggle', () => ({
   default: () => <div data-testid="theme-toggle">ThemeToggle</div>,
 }));
 
@@ -631,9 +631,9 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
       expect(screen.getByTestId('status-bar')).toBeInTheDocument();
     });
 
-    it('49. Renders the 256x256 OZ-POS logo hero image', () => {
+    it('49. Renders the 256x256 kasir.mu logo hero image', () => {
       render(<LicenseActivationScreen onActivated={mockOnActivated} />);
-      const img = screen.getByAltText('OZ-POS Logo');
+      const img = screen.getByAltText('kasir.mu Logo');
       expect(img).toBeInTheDocument();
       expect(img).toHaveAttribute('src', '/256x256.png');
     });
@@ -641,7 +641,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
     it('50. Renders the copyright footer with the current dynamic year', () => {
       render(<LicenseActivationScreen onActivated={mockOnActivated} />);
       const year = new Date().getFullYear().toString();
-      expect(screen.getByText(new RegExp(`OZ-POS © ${year} All rights reserved.`))).toBeInTheDocument();
+      expect(screen.getByText(new RegExp(`kasir.mu © ${year} All rights reserved.`))).toBeInTheDocument();
     });
   });
 

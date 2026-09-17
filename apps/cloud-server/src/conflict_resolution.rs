@@ -1,7 +1,7 @@
 //! Conflict classification for concurrent sync mutations.
 /*
 last audited 2026-09-13 by Agent 2 (sync-conflict work order)
-crate: oz-cloud-server | status: SAFE | lint: CLEAN
+crate: kasirmu-cloud | status: SAFE | lint: CLEAN
 findings: classification is driven by a version vector, not a scalar clock —
 two terminals that each advanced only their own counter are CONCURRENT and no
 scalar comparison can say so. Money entities are hard-wired to

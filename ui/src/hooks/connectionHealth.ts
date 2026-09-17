@@ -8,7 +8,7 @@
  * spellings of one concept is how a state gets handled in one indicator and
  * missed in the next.
  *
- * This mirrors `oz_core::service_health::HealthState` on the Rust side. The
+ * This mirrors `kasirmu_core::service_health::HealthState` on the Rust side. The
  * mapping is not one-to-one on purpose:
  *
  *   Rust `operational`  ->  `connected`
@@ -79,7 +79,7 @@ export function toneForBinaryHealth(state: ConnectionHealth): StatusTone {
 }
 
 /**
- * The wire form of `oz_core::service_health::HealthState`, kept as a string
+ * The wire form of `kasirmu_core::service_health::HealthState`, kept as a string
  * union rather than imported from Rust so the UI can be built against a
  * dev-mock. `fromWireHealth` is the single place that translates it.
  */

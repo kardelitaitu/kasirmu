@@ -103,11 +103,11 @@ echo
 
 # Each bucket must fire ALONE -- a router that over-triggers wastes exactly the
 # runner minutes this mechanism exists to save.
-check "rust crate"          "rust=true ui=false i18n=false website=false docs=false release=false" "crates/oz-core/src/db.rs"
+check "rust crate"          "rust=true ui=false i18n=false website=false docs=false release=false" "crates/kasirmu-core/src/db.rs"
 check "rust lockfile"       "rust=true ui=false i18n=false website=false docs=false release=false" "Cargo.lock"
 check "ui tsx"              "rust=false ui=true i18n=true website=false docs=false release=false"  "ui/src/features/reports/DashboardScreen.tsx"
 check "ui lockfile"         "rust=false ui=true i18n=false website=false docs=false release=false" "ui/package-lock.json"
-check "ftl bundle"          "rust=false ui=true i18n=true website=false docs=false release=false"  "ui/src/locales/en/reports.ftl"
+check "ftl bundle"          "rust=false ui=true i18n=true website=false docs=false release=false"  "shared-ui/locales/en/reports.ftl"
 check "website only"        "rust=false ui=false i18n=false website=true docs=false release=false" "website/src/pages/index.astro"
 check "i18n script"         "rust=false ui=false i18n=true website=false docs=false release=false" "scripts/verify-bundle-parity.py"
 # Docs must route to the drift checker: a docs-only PR is precisely the change
@@ -125,13 +125,13 @@ check "updater compat"      "rust=false ui=false i18n=false website=false docs=f
 check "release version gate" "rust=false ui=false i18n=false website=false docs=false release=true" "scripts/check-release-version.mjs"
 check "manifest generator"  "rust=false ui=false i18n=false website=false docs=false release=true" "scripts/generate-latest-json.mjs"
 # The tauri.conf.json pubkey: rotate or typo it and every client rejects the
-# signature. It also matches the `rust` rule via apps/desktop-client/, so both
+# signature. It also matches the `rust` rule via apps/desktop-tauri/, so both
 # must be true -- a single-bucket assertion here would be wrong.
-check "tauri updater pubkey" "rust=true ui=false i18n=false website=false docs=false release=true" "apps/desktop-client/tauri.conf.json"
+check "tauri updater pubkey" "rust=true ui=false i18n=false website=false docs=false release=true" "apps/desktop-tauri/tauri.conf.json"
 check "release workflow"    "rust=false ui=false i18n=false website=false docs=true release=true"  ".github/workflows/release.yml"
 # The workflow gating everything must never be able to route itself away.
 check "this workflow"       "rust=true ui=true i18n=true website=true docs=true release=true"     ".github/workflows/dev-ci.yml"
-check "mixed rust+website"  "rust=true ui=false i18n=false website=true docs=false release=false"  "$(printf 'crates/oz-api/src/lib.rs\nwebsite/src/site.css')"
+check "mixed rust+website"  "rust=true ui=false i18n=false website=true docs=false release=false"  "$(printf 'crates/kasirmu-api/src/lib.rs\nwebsite/src/site.css')"
 check "unrelated file"      "rust=false ui=false i18n=false website=false docs=false release=false" "README.md"
 # Non-PR events must always run the full matrix.
 check "dispatch event"      "rust=true ui=true i18n=true website=true docs=true release=true"     "README.md" "workflow_dispatch"

@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "OZ-POS foundation crate: Money, Currency, Sku, Cart, and shared contracts, errors, enums."
+description = "kasir.mu foundation crate: Money, Currency, Sku, Cart, and shared contracts, errors, enums."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]

@@ -1,7 +1,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (modules-terminal slice A: models deep read)
 crate: modules-terminal | status: SAFE | lint: CLEAN
-findings: MSL-9 INFO — Terminal derives Debug WITHOUT redacting terminal_secret (contrast pg_transport's redacted Debug); a logged or panic-dumped Terminal leaks the device secret; shell module (terminal logic lives in oz-core) so exposure is limited. TerminalId UUID v7 clean
+findings: MSL-9 INFO — Terminal derives Debug WITHOUT redacting terminal_secret (contrast pg_transport's redacted Debug); a logged or panic-dumped Terminal leaks the device secret; shell module (terminal logic lives in kasirmu-core) so exposure is limited. TerminalId UUID v7 clean
 next: redact terminal_secret in Debug or drop the derive | perf: N/A
 */
 //! Terminal domain models.

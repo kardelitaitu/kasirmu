@@ -4,7 +4,7 @@
  * reporting dashboard page.
  */
 import { lazy } from 'react';
-import { registerWidget } from '@/platform/ui/widget-registry';
+import { registerWidget } from '@/registries/widget-registry';
 
 // PERF-01: each widget is lazy-loaded so its chunk only downloads when
 // the reporting dashboard renders it (chart libs stay out of the entry).
@@ -63,7 +63,7 @@ export function registerSalesWidgets(): void {
     feature: 'simple-retail',
     width: 2,
     // export_daily_summary_scoped enforces permissions::REPORTS_EXPORT
-    // (tablet-client src/commands/history.rs:365). Declaring it here is what lets
+    // (mobile-tauri src/commands/history.rs:365). Declaring it here is what lets
     // the host filter the tile instead of the tile defending itself.
     requiredPermission: SALES_WIDGET_PERMISSIONS.reportsExport,
   });
@@ -76,7 +76,7 @@ export function registerSalesWidgets(): void {
     width: 2,
     height: 2,
     // export_sales_by_hour_scoped enforces permissions::REPORTS_EXPORT
-    // (tablet-client src/commands/history.rs:389).
+    // (mobile-tauri src/commands/history.rs:389).
     requiredPermission: SALES_WIDGET_PERMISSIONS.reportsExport,
   });
 

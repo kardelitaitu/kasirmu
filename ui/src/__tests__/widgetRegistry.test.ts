@@ -16,7 +16,7 @@ import {
   getDeniedWidgets,
   isWidgetAccessible,
   registerWidget,
-} from '@/platform/ui/widget-registry';
+} from '@/registries/widget-registry';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import SalesDashboardScreen from '@/features/sales/SalesDashboardScreen';
 import { registerSalesWidgets } from '@/features/sales/widgets';

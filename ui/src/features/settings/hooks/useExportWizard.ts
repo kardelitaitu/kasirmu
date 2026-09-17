@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useLocalization } from '@fluent/react';
 import { exportData, pickExportPath } from '@/api/data';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { DATA_TYPES, INITIAL_EXPORT, type DataType, type ExportState } from '../dataManagementModel';
 

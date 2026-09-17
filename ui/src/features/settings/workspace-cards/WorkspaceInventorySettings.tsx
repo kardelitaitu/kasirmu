@@ -3,7 +3,7 @@ import { Localized, useLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import ErrorBoundary from '@/components/ErrorBoundary';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { useSettings } from '@/contexts/SettingsContext';
 import { getSettingScoped, setSettingsScoped } from '@/api/settings';
 import type { WorkspaceCardProps } from './types';

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
-import { withFluent, withFluentLocale } from '@/locales/test-utils';
+import { withFluent, withFluentLocale } from '@/i18n/test-utils';
 import { TopologyRelationshipPicker } from '@/features/locations/topologyRelationshipPicker';
 import type { TopologyPickerState } from '@/features/locations/nodeTopologyEditorConnectionState';
 import type { TopologyNodeData } from '@/features/locations/NodeTopologyEditor';

@@ -1,0 +1,19 @@
+[package]
+name = "kasirmu-media"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Image processing for kasir.mu — thumbnails, compression, auto-crop. PLANNED (stubs)."
+
+# Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
+[lints]
+workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+sha2 = { workspace = true }
+tokio = { workspace = true }

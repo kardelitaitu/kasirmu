@@ -17,7 +17,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $WorkspaceRoot = Split-Path -Parent $ScriptDir
-$DesktopClientDir = Join-Path $WorkspaceRoot "apps\desktop-client"
+$DesktopClientDir = Join-Path $WorkspaceRoot "apps\desktop-tauri"
 
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host " Building OZ-POS Windows EXE (Release)" -ForegroundColor Cyan
@@ -190,7 +190,7 @@ if (Test-Path $DistPath) {
     }
 
     # Also show raw binary
-    $BinaryPath = Join-Path $DesktopClientDir "target\release\oz-pos-app.exe"
+    $BinaryPath = Join-Path $DesktopClientDir "target\release\kasirmu-app.exe"
     if (Test-Path $BinaryPath) {
         $binary = Get-Item $BinaryPath
         Write-Host "`n  Standalone Binary:" -ForegroundColor White
@@ -208,7 +208,7 @@ Write-Host "`n[VERIFICATION]" -ForegroundColor Cyan
 Write-Host "  To test standalone binary: $BinaryPath" -ForegroundColor White
 
 # Show standalone binary location
-$BinaryPath = Join-Path $DesktopClientDir "target\$($BuildConfig.ToLower())\oz-pos-app.exe"
+$BinaryPath = Join-Path $DesktopClientDir "target\$($BuildConfig.ToLower())\kasirmu-app.exe"
 if (Test-Path $BinaryPath) {
     Write-Host "`n[STANDALONE BINARY]" -ForegroundColor Cyan
     Write-Host "  Location: $BinaryPath" -ForegroundColor White

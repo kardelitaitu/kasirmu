@@ -11,7 +11,7 @@ status: Implemented (2026-07-19)
 **Status:** Implemented (2026-07-19)
 **Date:** 2026-07-19
 **Decision Record:** Implements §6 sale-deduction section of ADR-18 against the schema foundation shipped in commit `ef87dac` (migrations 078–091).
-**Author:** Architecture Team & OZ-POS Contributors
+**Author:** Architecture Team & kasir.mu Contributors
 **Tags:** inventory, pos, sales, deduction, multi-location, transactions, workspace, void, refund
 
 ---

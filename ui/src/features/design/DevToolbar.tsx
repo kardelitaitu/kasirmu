@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
-import { useTheme, type Theme } from '@/frontend/shell/ThemeProvider';
+import { useTheme, type Theme } from '@/app/ThemeProvider';
 import { useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { createMemoScoped, publishMemoScoped, type MemoDuration } from '@/api/memos';

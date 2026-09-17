@@ -6,7 +6,7 @@ import type { KdsOrder } from '@/api/kds';
 
 const mockPlayBeep = vi.fn();
 
-vi.mock('@/frontend/shared/useSound', () => ({
+vi.mock('@/components/useSound', () => ({
   useSound: () => ({ playBeep: mockPlayBeep }),
 }));
 

@@ -2,7 +2,7 @@ import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateA
 import type { useLocalization } from '@fluent/react';
 import { loadTopology } from '@/api/topology';
 import { plainErrorMessage } from '@/utils/app-error';
-import type { ToastType } from '@/frontend/shared/Toast';
+import type { ToastType } from '@/components/Toast';
 import { buildLoadedTopologyWires, buildWorkspaceTopologyNodes } from './topologyLoadModel';
 import { syncBranchLocations, syncWorkspaceInstanceNames } from './topologyBranchSync';
 import { diagramNodeToCanvas, diagramWireToCanvas } from './topologyEditorHelpers';

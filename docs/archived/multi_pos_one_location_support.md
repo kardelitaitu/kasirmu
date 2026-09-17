@@ -1,12 +1,12 @@
-# Multi-POS Architecture Plan for Single Location (OZ-POS Specific)
+# Multi-POS Architecture Plan for Single Location (kasir.mu Specific)
 
-This document outlines a concrete implementation plan for supporting multiple Point-of-Sale (POS) terminals per location in OZ-POS, grounded in the existing codebase architecture, patterns, and conventions.
+This document outlines a concrete implementation plan for supporting multiple Point-of-Sale (POS) terminals per location in kasir.mu, grounded in the existing codebase architecture, patterns, and conventions.
 
 ## Executive Summary
 
-**Current State**: OZ-POS already supports multiple POS terminals through its existing multi-store scoping (ADR #7) and terminal registration system. Each terminal registers with a unique device_id and can operate independently while sharing store-scoped data.
+**Current State**: kasir.mu already supports multiple POS terminals through its existing multi-store scoping (ADR #7) and terminal registration system. Each terminal registers with a unique device_id and can operate independently while sharing store-scoped data.
 
-**Goal**: Clarify and enhance the architecture to explicitly support multiple equivalent Retail POS terminals per location without hierarchical relationships, while leveraging existing OZ-POS patterns.
+**Goal**: Clarify and enhance the architecture to explicitly support multiple equivalent Retail POS terminals per location without hierarchical relationships, while leveraging existing kasir.mu patterns.
 
 **Key Insight**: Rather than creating new systems, we extend and clarify the existing terminal registration and multi-store scoping patterns to make it explicit that Retail POS terminals are peers within the same store.
 
@@ -465,9 +465,9 @@ No performance changes from this plan. The multi-terminal model is already the e
 - ✅ Clarifying comments in session.rs, terminals.rs, pos.rs
 - ✅ Plan document updated with all implementation results
 
-## 10. Alignment with Existing OZ-POS Principles
+## 10. Alignment with Existing kasir.mu Principles
 
-This plan strictly adheres to OZ-POS's established architectural principles by:
+This plan strictly adheres to kasir.mu's established architectural principles by:
 
 ### 10.1 Minimalism
 - Makes zero schema changes
@@ -496,15 +496,15 @@ This plan strictly adheres to OZ-POS's established architectural principles by:
 
 ## Conclusion
 
-By clarifying and enhancing the existing multi-terminal support in OZ-POS rather than adding new systems, we create a solid foundation that:
+By clarifying and enhancing the existing multi-terminal support in kasir.mu rather than adding new systems, we create a solid foundation that:
 
 1. **Requires Zero Migration**: Existing multi-terminal deployments work unchanged
 2. **Leverages Proven Infrastructure**: Uses existing, tested systems
-3. **Follows Established Patterns**: Adheres to OZ-POS's architectural principles
+3. **Follows Established Patterns**: Adheres to kasir.mu's architectural principles
 4. **Provides Clear Documentation**: Makes implicit behavior explicit for developers
 5. **Maintains Full Compatibility**: All existing integrations and deployments continue working
 
-The current OZ-POS implementation already supports multiple equivalent POS terminals per location through its terminal registration and session scoping systems. This plan focuses on clarifying this existing support, adding appropriate tests, and ensuring documentation accurately reflects the peer-terminal model that's already implemented.
+The current kasir.mu implementation already supports multiple equivalent POS terminals per location through its terminal registration and session scoping systems. This plan focuses on clarifying this existing support, adding appropriate tests, and ensuring documentation accurately reflects the peer-terminal model that's already implemented.
 
 ## Recommendation & Priority
 

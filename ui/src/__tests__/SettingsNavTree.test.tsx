@@ -66,7 +66,7 @@ vi.mock('@/hooks/useFocusTrap', () => ({
   useFocusTrap: vi.fn(),
 }));
 
-vi.mock('@/frontend/shell/Tooltip', () => ({
+vi.mock('@/app/Tooltip', () => ({
   default: ({
     children,
   }: {

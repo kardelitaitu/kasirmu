@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
 import { render } from '@testing-library/react';
-import { withFluent } from '@/locales/test-utils';
+import { withFluent } from '@/i18n/test-utils';
 import salesFtl from '@/locales/sales.ftl?raw';
 import {
   CartTaxWatcher,

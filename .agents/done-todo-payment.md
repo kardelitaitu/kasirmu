@@ -22,7 +22,7 @@ had already shipped**, and **one decision recorded as made is implemented the
 other way round**. (1) Phase 4's "Implement
 `platform_startup::hardware::register_card_terminals`" was ticked — the function
 exists at `platform/startup/src/hardware.rs:213` and is called from both clients
-(`apps/desktop-client/src/lib.rs:201`, `apps/tablet-client/src/lib.rs:146`) — with
+(`apps/desktop-tauri/src/lib.rs:201`, `apps/mobile-tauri/src/lib.rs:146`) — with
 two named deviations (chosen by `connection_type`+`transport`, not a `protocol`
 factory; first registrable row aliased to `DEFAULT_TERMINAL_ID`, which that file's
 own comment calls "interim, not design"). (2) The `qr_string` vs `qr_code_url`
@@ -36,7 +36,7 @@ SHA512 verified in constant time, no re-fetch, dedupe on the
 the handler body rather than trusting the ruling. Second class: proposals written
 in present tense — `IndonesianEcr`/`MandiriEcr` and the `edc_sale(terminal_id,
 Money)` snippet match no file or signature in the source trees (real:
-`apps/desktop-client/src/commands/edc.rs:43-48`), `POST /api/payment/edc` is not a
+`apps/desktop-tauri/src/commands/edc.rs:43-48`), `POST /api/payment/edc` is not a
 route in any source file (EDC is local Tauri IPC), the `payment:*` keys were never
 created (the rail store is what gates the tabs), and the `offlineOk` leg of the
 visibility formula has no implementation in the checkout. Third: `references/midtrans-*` is a
@@ -55,7 +55,7 @@ Overlay drift fixed too: "R4–R6 stay open" now reads R4–R7 to match
 authority. UNVERIFIED, left stated as such: the Midtrans wire-level behaviours
 (sandbox interop, per-acquirer activation, QRIS refund semantics) and every
 `references/...` line citation. The 09-14 pass below is kept exactly as written. -->
-> **AUTHORITY, dated 2026-09-15 (HEAD `d27208b27`), which of the two readings this session acted on.** `:180-190` declares this document the research artifact and names `todo-payment-agents-4.md` the canonical open set — both readings are in force, and the reconciliation is this: **thirteen boxes were closed tonight because each was measured as done, superseded, or not-a-task in the tree, not because this file became a queue.** `ui/src/frontend/themes/tokens.css`-style verification was done by command, and `todo-payment-agents-4.md` was NOT edited (another session's authority, deliberately out of fence). What the 1,408 lines actually hold, so a reader need not walk them: **30 boxes still carry an unticked glyph after this pass, and 26 of them are genuinely outstanding: 21 parked on a human, a device, a merchant account or vendor docs · 3 real code · 2 runnable-only** (`:442`, `:1298`). The other 4 are **closed by disposition while their glyph stays `- [ ]`** — two superseded and two not-a-task — because a tick claims an acceptance leg nobody ran; that gap between disposition and glyph is deliberate and is the reason both counts are printed. (`:442`, `:1298`, left open because no acceptance leg was executed here). The 21 are the plan's content; the 3 are its work; the 2 are somebody's terminal.
+> **AUTHORITY, dated 2026-09-15 (HEAD `d27208b27`), which of the two readings this session acted on.** `:180-190` declares this document the research artifact and names `todo-payment-agents-4.md` the canonical open set — both readings are in force, and the reconciliation is this: **thirteen boxes were closed tonight because each was measured as done, superseded, or not-a-task in the tree, not because this file became a queue.** `ui/src/theme/tokens.css`-style verification was done by command, and `todo-payment-agents-4.md` was NOT edited (another session's authority, deliberately out of fence). What the 1,408 lines actually hold, so a reader need not walk them: **30 boxes still carry an unticked glyph after this pass, and 26 of them are genuinely outstanding: 21 parked on a human, a device, a merchant account or vendor docs · 3 real code · 2 runnable-only** (`:442`, `:1298`). The other 4 are **closed by disposition while their glyph stays `- [ ]`** — two superseded and two not-a-task — because a tick claims an acceptance leg nobody ran; that gap between disposition and glyph is deliberate and is the reason both counts are printed. (`:442`, `:1298`, left open because no acceptance leg was executed here). The 21 are the plan's content; the 3 are its work; the 2 are somebody's terminal.
 <!-- Audit stamp: 2026-09-14 · docs-auditor (DSH) · status: FULL AUDIT,
 repaired. Method: the surviving status overlay was re-verified claim by
 claim against HEAD — the three API routes exist as literal registrations
@@ -299,11 +299,11 @@ user") while entitlements remain cloud-driven.
 > different subject (subscription payments). This section is a plan-doc decision,
 > and the 2026-09-14 rail-store correction below it is the live truth.
 
-**Reframe:** "Rust or Tauri?" — in this repo Tauri *is* Rust (`apps/desktop-client`
+**Reframe:** "Rust or Tauri?" — in this repo Tauri *is* Rust (`apps/desktop-tauri`
 is the Tauri v2 Rust side). The real axis is **device-local vs cloud**.
 
 **Rule (driven by offline-first + "saved to hardware, not user"):**
-- Show/hide flags + hardware-bound config → **on-device** (desktop-client +
+- Show/hide flags + hardware-bound config → **on-device** (desktop-tauri +
   `oz-hal` + local SQLite). Works offline, terminal-scoped, operator-set.
 - Entitlements (is a method *allowed* on this plan?) → **cloud** subscription
   `caps`.
@@ -328,7 +328,7 @@ is the Tauri v2 Rust side). The real axis is **device-local vs cloud**.
   cleaner fit for enable/disable flags).
 - Subscription `caps` — `ui/src/contexts/SubscriptionContext.tsx` (cloud).
   Today gates QRIS as Plus+ via `caps.supportsQris`.
-- `apps/desktop-client/src/commands/terminals.rs` already exposes
+- `apps/desktop-tauri/src/commands/terminals.rs` already exposes
   `set_terminal_override_scoped` / `list_terminal_overrides_scoped` /
   `get_terminal_scoped` for the IPC side.
 
@@ -437,7 +437,7 @@ graph TD
       non-existent `crate::feature_key` — code-side rot, outside this fence) —
       `payment:qris-manual`, `payment:midtrans`, `payment:edc`; verify against
       existing `feature_key` style for consistency.
-- [x] Use `TerminalFeatureOverride` for per-terminal show/hide (no new table **CLOSED AS DONE 2026-09-15 at HEAD `d27208b27` on measurement in the code, not on this plan's say-so:** `git grep -c "TerminalFeatureOverride" -- crates/oz-bridge/src/terminals.rs apps/desktop-client/src/commands/terminals.rs apps/tablet-client/src/commands/terminals.rs` → 2 / 2 / 3: the type exists and both shells' command layers use it.
+- [x] Use `TerminalFeatureOverride` for per-terminal show/hide (no new table **CLOSED AS DONE 2026-09-15 at HEAD `d27208b27` on measurement in the code, not on this plan's say-so:** `git grep -c "TerminalFeatureOverride" -- crates/oz-bridge/src/terminals.rs apps/desktop-tauri/src/commands/terminals.rs apps/mobile-tauri/src/commands/terminals.rs` → 2 / 2 / 3: the type exists and both shells' command layers use it.
       needed; reuse `set_terminal_override_scoped` / `list_terminal_overrides_scoped`).
 - [ ] Define `HardwareConfig` additions: EDC device list, QRIS merchant string,
       Midtrans endpoint id/selection.
@@ -563,7 +563,7 @@ graph TD
 
 - [ ] **Integration library:** Midtrans publishes an official Node.js client
       (https://github.com/Midtrans/midtrans-nodejs-client). Our backends are Rust
-      (cloud-server axum, desktop-client Tauri) and the UI is browser/React, so the
+      (cloud-server axum, desktop-tauri Tauri) and the UI is browser/React, so the
       Node client cannot run client-side (would expose secrets). Decide: call
       Midtrans REST directly from Rust (recommended - keeps secrets server-side, no
       new runtime) vs add a Node BFF. Use the client as a reference for the Core
@@ -783,7 +783,7 @@ refund: POST /{transaction_id}/refund (full = amount:null, partial = minor units
       config-row id (user-defined string). The UI dropdown (BCA / Mandiri / BRI)
       selects a *terminal id*; the driver knows its bank/protocol. Wire the existing
       `DEFAULT_TERMINAL_ID` and add the documented `terminal_id` argument follow-up
-      (`apps/desktop-client/src/commands/edc.rs` already notes it).
+      (`apps/desktop-tauri/src/commands/edc.rs` already notes it).
 - [ ] **Ownership & concurrency.** Store `Arc<dyn EdcTerminal>`; the lookup returns
       a cloned `Arc` so the long (multi-second) sale runs without holding the registry
       lock. `edc_sale` must be `&self` (interior mutability via `RwLock`), never
@@ -816,8 +816,8 @@ refund: POST /{transaction_id}/refund (full = amount:null, partial = minor units
       implement the single `EdcTerminal` trait.
 - [x] **Bootstrap from `HardwareConfig`.** `platform_startup::hardware::
       register_card_terminals` **exists** (`platform/startup/src/hardware.rs:213`,
-      called from `apps/desktop-client/src/lib.rs:201` and
-      `apps/tablet-client/src/lib.rs:146`): it reads the `edc_terminals` rows,
+      called from `apps/desktop-tauri/src/lib.rs:201` and
+      `apps/mobile-tauri/src/lib.rs:146`): it reads the `edc_terminals` rows,
       registers each under its own id, returns a `BootstrapReport`, and pushes
       unpairable rows into `report.rejected` instead of skipping them silently.
       **Two deviations from the design above**: the concrete driver is chosen by
@@ -865,8 +865,8 @@ refund: POST /{transaction_id}/refund (full = amount:null, partial = minor units
       and is written out in literal shape 72 times across 16 files with no
       `..Default::default()` anywhere in them; `ui/src/__tests__/api-edc-contract.test.ts:35-38`
       pins the current `edc_sale` argument shape; and the five EDC commands are registered
-      desktop-only (`apps/desktop-client/src/lib.rs:904-908`, while
-      `apps/tablet-client/src/lib.rs:122` boots the device list and registers none) — a
+      desktop-only (`apps/desktop-tauri/src/lib.rs:904-908`, while
+      `apps/mobile-tauri/src/lib.rs:122` boots the device list and registers none) — a
       one-shell change on a 453-versus-322 surface.
       **BLOCKED ON A NAMING RULING, and that is why this stays unticked:** the repo has two
       things called a terminal — `terminals`, the POS workstation, which every existing
@@ -897,7 +897,7 @@ refund: POST /{transaction_id}/refund (full = amount:null, partial = minor units
 
 ```rust
 // PROPOSAL — not the shipped shape. The real command takes no terminal_id and no
-// Money: apps/desktop-client/src/commands/edc.rs:43-48 is
+// Money: apps/desktop-tauri/src/commands/edc.rs:43-48 is
 //   pub async fn edc_sale(session_token: String, state: State<'_, AppState>,
 //                         amount_minor: i64, currency: String)
 //   -> Result<EdcResultDto, AppError>
@@ -1176,7 +1176,7 @@ checks) remain in `## Open questions`.
 - `crates/oz-core/src/terminal_profile.rs`
 - `crates/oz-hal/README.md` (EdcTerminal, HardwareConfig, apply_config)
 - `crates/oz-hal/src/traits/edc.rs`, `drivers/edc/wired.rs`, `drivers/edc/wireless.rs`
-- `apps/desktop-client/src/commands/terminals.rs` (override IPC)
+- `apps/desktop-tauri/src/commands/terminals.rs` (override IPC)
 - `ui/src/contexts/SubscriptionContext.tsx` (entitlement caps)
 - Architecture: offline-first, SQLite authoritative; cloud optional.
 

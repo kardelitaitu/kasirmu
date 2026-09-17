@@ -1,6 +1,6 @@
 <!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · crates/oz-core/benches/ exists (barcode_lookup.rs, cart_bench.rs, money_bench.rs, transaction_commit.rs); barcode_lookup bench present; criterion in oz-core/Cargo.toml; RedisCache note matches the optional redis dep (Cargo.toml cache-redis) · targets are aspirational (Measured column blank), no false code claims -->
 
-# OZ-POS — Performance Benchmarks
+# kasir.mu — Performance Benchmarks
 
 > Reference benchmarks measured on a representative POS terminal.
 > Run locally with `cargo bench -p oz-core` to get current numbers.

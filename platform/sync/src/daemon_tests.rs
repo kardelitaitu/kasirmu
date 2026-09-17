@@ -1,9 +1,10 @@
 //! Unit tests for the sync daemon: lifecycle/backoff basics, ADR #11
 //! server-migration redirects, SYNC-01 durable anchor + idempotent replay,
 //! SYNC-08 quarantine vs retryable ordering, SYNC-09 operator-rewind race,
-//! SYNC-02/05 conflict resolution via the shared ADR #21 service, and
-//! SYNC-10 remote settings-change sink. Extracted from the inline
-//! `mod tests` in `daemon.rs` (F-018).
+//! SYNC-02/05 conflict resolution via the shared ADR #21 service,
+//! SYNC-10 remote settings-change sink, and the two SYNC-EW wakeup
+//! promises (`nudge` stores while stopped; a burst coalesces to one
+//! permit). Extracted from the inline `mod tests` in `daemon.rs` (F-018).
 
 use super::*;
 use crate::transport::{PullResponse, PushOutcome, PushResponse};
@@ -14,8 +15,8 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
 };
-use oz_core::migrations;
-use oz_core::settings::Settings;
+use kasirmu_core::migrations;
+use kasirmu_core::settings::Settings;
 use tokio::sync::Notify;
 
 fn setup_db() -> DbConnection {
@@ -550,7 +551,7 @@ async fn daemon_surfaces_plan_required_without_retry_or_quarantine() {
 /// work the `spawn_blocking` closure does).
 #[test]
 fn read_config_and_pending_returns_pending_count() {
-    let conn = oz_core::migrations::fresh_db();
+    let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.enqueue_offline("test", r#"{}"#).unwrap();
 
@@ -578,7 +579,7 @@ async fn spawn_replaying_mock_sync_server() -> String {
         })
     }
     async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
-        let mut item = oz_core::offline::OfflineQueueItem::new(
+        let mut item = kasirmu_core::offline::OfflineQueueItem::new(
             "stock.adjusted",
             r#"{"sku":"COFFEE","delta":10}"#,
         );
@@ -697,7 +698,7 @@ async fn spawn_poison_remote_mock_sync_server() -> String {
     let port = listener.local_addr().unwrap().port();
 
     async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
-        let mut item = oz_core::offline::OfflineQueueItem::new(
+        let mut item = kasirmu_core::offline::OfflineQueueItem::new(
             "complete_sale",
             r#"{"line_items":[{"sku":"MISSING","qty":1}]}"#,
         );
@@ -801,7 +802,7 @@ async fn spawn_slow_mock_sync_server() -> (String, Arc<Notify>, Arc<Notify>) {
         // then block until the test rewinds the anchor and releases us.
         arrived.notify_one();
         release.notified().await;
-        let mut item = oz_core::offline::OfflineQueueItem::new(
+        let mut item = kasirmu_core::offline::OfflineQueueItem::new(
             "stock.adjusted",
             r#"{"sku":"COFFEE","delta":10}"#,
         );
@@ -927,13 +928,13 @@ async fn spawn_poison_remote_mock_server_with_two_items() -> String {
     let port = listener.local_addr().unwrap().port();
 
     async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
-        let mut dead = oz_core::offline::OfflineQueueItem::new(
+        let mut dead = kasirmu_core::offline::OfflineQueueItem::new(
             "complete_sale",
             r#"{"line_items":[{"sku":"MISSING-DEAD","qty":1}]}"#,
         );
         dead.id = "remote-poison-dead".into();
         dead.created_at = "2026-01-03T00:00:00.000Z".into();
-        let mut retry = oz_core::offline::OfflineQueueItem::new(
+        let mut retry = kasirmu_core::offline::OfflineQueueItem::new(
             "complete_sale",
             r#"{"line_items":[{"sku":"MISSING-RETRY","qty":1}]}"#,
         );
@@ -1033,7 +1034,7 @@ async fn spawn_conflict_mock_sync_server() -> String {
         let results = items
             .iter()
             .map(|_| {
-                PushOutcome::Conflict(oz_core::offline::OfflineQueueItem::new(
+                PushOutcome::Conflict(kasirmu_core::offline::OfflineQueueItem::new(
                     "product.update",
                     r#"{"version":3,"name":"Server Stale"}"#,
                 ))
@@ -1104,7 +1105,10 @@ async fn daemon_resolves_push_conflict_via_shared_service() {
     // be re-enqueued (old behavior re-enqueued the server's stale v3).
     assert_eq!(all.len(), 1, "no remote winner may be re-enqueued");
     assert!(pending.is_empty(), "local winner must not stay pending");
-    assert_eq!(all[0].status, oz_core::offline::OfflineQueueStatus::Synced);
+    assert_eq!(
+        all[0].status,
+        kasirmu_core::offline::OfflineQueueStatus::Synced
+    );
     assert!(
         all[0]
             .last_error
@@ -1199,7 +1203,7 @@ async fn daemon_marks_duplicate_id_replay_synced_not_failed() {
     assert!(pending.is_empty(), "duplicate-id replay must leave pending");
     assert_eq!(
         all[0].status,
-        oz_core::offline::OfflineQueueStatus::Synced,
+        kasirmu_core::offline::OfflineQueueStatus::Synced,
         "a duplicate-id replay is an idempotent success, not a failure"
     );
     assert_eq!(summary.failed_count, 0, "failed_count must not be polluted");
@@ -1222,7 +1226,7 @@ async fn spawn_crdt_conflict_mock_sync_server() -> String {
         let results = items
             .iter()
             .map(|_| {
-                PushOutcome::Conflict(oz_core::offline::OfflineQueueItem::new(
+                PushOutcome::Conflict(kasirmu_core::offline::OfflineQueueItem::new(
                     "stock.adjusted",
                     r#"{"sku":"COFFEE","delta":-3}"#,
                 ))
@@ -1231,7 +1235,7 @@ async fn spawn_crdt_conflict_mock_sync_server() -> String {
         Json(PushResponse { results })
     }
     async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
-        let mut winner = oz_core::offline::OfflineQueueItem::new(
+        let mut winner = kasirmu_core::offline::OfflineQueueItem::new(
             "stock.adjusted",
             r#"{"local":{"sku":"COFFEE","delta":10},"remote":{"sku":"COFFEE","delta":-3},"merge_type":"crdt_delta"}"#,
         );
@@ -1358,7 +1362,7 @@ async fn spawn_settings_mock_sync_server() -> String {
         })
     }
     async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
-        let mut item = oz_core::offline::OfflineQueueItem::new(
+        let mut item = kasirmu_core::offline::OfflineQueueItem::new(
             "settings.update",
             r#"{"key":"store.name","value":"Remote Acme","terminal_id":"term-remote","version":3}"#,
         );
@@ -1634,4 +1638,50 @@ async fn daemon_migration_redirect_persists_an_unshaped_target_pin() {
 
     daemon.stop().await;
     tokio::time::sleep(Duration::from_millis(200)).await;
+}
+
+// ── SYNC-EW: the two promises `nudge` makes ───────────────────────
+//
+// `nudge`'s doc comment commits to two observable properties, and neither had a
+// test: a wakeup issued while the daemon is stopped is *stored*, and a burst
+// coalesces into a *single* permit. `wakeup_handle` exists to make both
+// observable — it was added with the feature and had no caller, so rustc
+// reported it as dead code in both daemons. These two tests are its callers.
+
+/// A `nudge()` before the daemon is listening must be STORED, not dropped — the
+/// documented "if the daemon is not running the notification is stored and
+/// consumed on the next `start`". A listener attached afterwards therefore finds
+/// the permit already set and completes without waiting.
+#[tokio::test]
+async fn nudge_while_stopped_stores_one_permit() {
+    let daemon = SyncDaemon::new();
+    daemon.nudge();
+
+    tokio::time::timeout(Duration::from_secs(2), daemon.wakeup_handle().notified())
+        .await
+        .expect("a nudge issued while stopped must be stored, not dropped");
+}
+
+/// Three nudges must leave exactly ONE pending permit, because `Notify` does not
+/// queue. The second `notified()` is the discriminator: if the burst had queued,
+/// it would complete immediately instead of waiting out the timeout.
+#[tokio::test]
+async fn nudge_coalesces_a_burst_into_one_permit() {
+    let daemon = SyncDaemon::new();
+    let handle = daemon.wakeup_handle();
+
+    daemon.nudge();
+    daemon.nudge();
+    daemon.nudge();
+
+    tokio::time::timeout(Duration::from_secs(2), handle.notified())
+        .await
+        .expect("the first permit of the burst must be observable");
+
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), handle.notified())
+            .await
+            .is_err(),
+        "three nudges must coalesce into one permit; a second permit means Notify queued"
+    );
 }

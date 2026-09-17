@@ -34,7 +34,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { minorUnitExponent } from '@/types/domain';
-import type { useToast } from '@/frontend/shared/Toast';
+import type { useToast } from '@/components/Toast';
 import {
   listCurrenciesScoped,
   listLatestExchangeRatesScoped,

@@ -1,18 +1,18 @@
 ---
 name: onboarding-guide
-description: Meta-skill that routes tasks to the right OZ-POS skill. Use when starting a new task and unsure which specialized skill applies. Read this first when joining the project or picking up an unfamiliar area.
+description: Meta-skill that routes tasks to the right kasir.mu skill. Use when starting a new task and unsure which specialized skill applies. Read this first when joining the project or picking up an unfamiliar area.
 ---
 
 <!-- Audit stamp: 2026-09-15 · Budak-Korporat · status: PARTIAL — router only. Added the `database` row to the skill router, pointing at the new `.agents/skills/database/SKILL.md`. Verified this pass: `.agents/skills/database/SKILL.md` exists and declares `name: database`; `bash .agents/skills/skill-drift-guard/scripts/detect.sh --check=paths` reports no drift with the new skill present, and that check was confirmed live first by injecting a probe skill holding a nonexistent crates path (it fired) and then removing it (it went clean). Nothing else in this file was re-audited this pass; the 08-09-26 stamp below still stands for the rest. -->
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: PARTIAL — router only. Added the `codebase-memory` row and the standing graph-first-discovery note under the router table; verified `.agents/skills/codebase-memory/` exists and that `AGENTS.md` really does mandate graph-first discovery. Nothing else in this file was re-audited this pass; the 03-09-26 rev-2 stamp below still stands for the rest. · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-09-03] · DSH · status: ACCURATE (rev 2 — pre-commit gate count corrected: the hook now runs six gates (cargo fmt, i18n lint, bundle parity, FTL dedupe, migration column-type lint, PG schema drift guard) plus LF normalization and a conditional Go gate for apps/license-server; verified against .githooks/pre-commit itself) · verified this pass: the oz-lua, oz-payment, oz-security and oz-reporting crate READMEs, crates/oz-core/src/db/reports.rs, platform/sync, apps/cloud-server, scripts/test-tdd.sh, .agents/skills/skill-drift-guard/scripts/detect.sh all exist · prior: 2026-08-31 docs-auditor rev (obsolete-defer section rewritten; EdcTerminal/mlua/per-domain api fixes; embedded-hal removed)  ·· [2026-08-31] · docs-auditor · status: ACCURATE (obsolete-defer + convention refs repaired) · FIXED 31-08: 'Skills to defer (no code yet)' was obsolete — oz-lua/oz-payment/oz-security/cloud-sync/oz-reporting all ship code now; rewritten to 'Areas with code but no dedicated skill yet' pointing at each crate README; nonexistent PaymentTerminal trait -> EdcTerminal (hal-drivers); rlua -> mlua; pos.ts -> per-domain ui/src/api/<feature>.ts (router + workflow); device list NFC -> real (customer display, weight scale, EDC); embedded-hal -> async-trait · verified accurate: exit-animation-pattern skill exists, scripts verify-bundle-parity.py + dedupe-ftl.py + lint-i18n.sh + check.sh exist, .githooks/pre-commit 4-gate description matches -->
-# OZ-POS Onboarding Guide
+<!-- Audit stamp: 2026-09-08 · DSH · status: PARTIAL — router only. Added the `codebase-memory` row and the standing graph-first-discovery note under the router table; verified `.agents/skills/codebase-memory/` exists and that `AGENTS.md` really does mandate graph-first discovery. Nothing else in this file was re-audited this pass; the 03-09-26 rev-2 stamp below still stands for the rest. · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-09-03] · DSH · status: ACCURATE (rev 2 — pre-commit gate count corrected: the hook now runs six gates (cargo fmt, i18n lint, bundle parity, FTL dedupe, migration column-type lint, PG schema drift guard) plus LF normalization and a conditional Go gate for apps/license-server; verified against .githooks/pre-commit itself) · verified this pass: the kasirmu-lua, kasirmu-payment, kasirmu-security and kasirmu-reporting crate READMEs, crates/kasirmu-core/src/db/reports.rs, platform/sync, apps/cloud-server, scripts/test-tdd.sh, .agents/skills/skill-drift-guard/scripts/detect.sh all exist · prior: 2026-08-31 docs-auditor rev (obsolete-defer section rewritten; EdcTerminal/mlua/per-domain api fixes; embedded-hal removed)  ·· [2026-08-31] · docs-auditor · status: ACCURATE (obsolete-defer + convention refs repaired) · FIXED 31-08: 'Skills to defer (no code yet)' was obsolete — kasirmu-lua/kasirmu-payment/kasirmu-security/cloud-sync/kasirmu-reporting all ship code now; rewritten to 'Areas with code but no dedicated skill yet' pointing at each crate README; nonexistent PaymentTerminal trait -> EdcTerminal (hal-drivers); rlua -> mlua; pos.ts -> per-domain ui/src/api/<feature>.ts (router + workflow); device list NFC -> real (customer display, weight scale, EDC); embedded-hal -> async-trait · verified accurate: exit-animation-pattern skill exists, scripts verify-bundle-parity.py + dedupe-ftl.py + lint-i18n.sh + check.sh exist, .githooks/pre-commit 4-gate description matches -->
+# kasir.mu Onboarding Guide
 
-OZ-POS is a Rust + Tauri v2 POS framework. The codebase is organized into clear layers, and each layer has a dedicated skill. This guide routes you to the right skill for the work you want to do.
+kasir.mu is a Rust + Tauri v2 POS framework. The codebase is organized into clear layers, and each layer has a dedicated skill. This guide routes you to the right skill for the work you want to do.
 
 > *"Pay no attention to the man behind the curtain."* — The Wizard of Oz
 >
-> The OZ-POS philosophy: keep the **merchant's** experience effortless by hiding complexity behind a lean Rust engine. Skills are how we keep the engine clean.
+> The kasir.mu philosophy: keep the **merchant's** experience effortless by hiding complexity behind a lean Rust engine. Skills are how we keep the engine clean.
 
 ## First-time setup
 
@@ -31,13 +31,13 @@ For comprehensive local validation that mirrors the entire CI matrix (not just t
 
 ## 30-second tour
 
-- **Domain types and money**: `oz-core` (Rust library, no I/O).
+- **Domain types and money**: `kasirmu-core` (Rust library, no I/O).
 - **Database**: SQLite via `rusqlite`, all writes in transactions.
-- **Hardware**: `oz-hal` (drivers behind `async` traits, mandatory mocks).
+- **Hardware**: `kasirmu-hal` (drivers behind `async` traits, mandatory mocks).
 - **UI**: Tauri v2 + React 18 + TypeScript, strict, accessible, localized.
-- **IPC**: Rust commands in `apps/desktop-client/src/commands/`, front-end wrappers in `ui/src/api/` (per-domain files).
-- **Scripting**: `mlua` runtime in `oz-lua` for runtime business rules.
-- **Payment**: PCI-aware, swappable processors in `oz-payment`.
+- **IPC**: Rust commands in `apps/desktop-tauri/src/commands/`, front-end wrappers in `ui/src/api/` (per-domain files).
+- **Scripting**: `mlua` runtime in `kasirmu-lua` for runtime business rules.
+- **Payment**: PCI-aware, swappable processors in `kasirmu-payment`.
 - **CI**: GitHub Actions matrix (Linux, Windows, macOS), blocking fmt/clippy/test/UI lint.
 
 If a change touches more than one layer, you will use more than one skill. That's normal.
@@ -50,7 +50,7 @@ What do you want to do?
 
 | If you want to… | Read this skill first |
 |---|---|
-| Add or change Rust code in any `oz-*` crate, work with the `Money` struct, write SQL transactions, define error types, or add a `#[cfg(test)]` block | **`rust-backend`** |
+| Add or change Rust code in any `kasirmu-*` crate, work with the `Money` struct, write SQL transactions, define error types, or add a `#[cfg(test)]` block | **`rust-backend`** |
 | Add or change a database migration, edit connection setup or a `PRAGMA`, write SQL against money or rate columns, regenerate the PostgreSQL replica, or debug a startup failure that mentions migrations, checksums, or drift | **`database`** |
 | Write or review tests, drive a change test-first (red-green-refactor), or run the fast TDD loop (`scripts/test-tdd.sh`) | **`tdd`** |
 | Add a new Tauri command on the backend, register it, and call it from the front-end via a per-domain `ui/src/api/<feature>.ts` wrapper | **`tauri-ipc`** |
@@ -79,11 +79,11 @@ If your task touches more than one layer, read each relevant skill in the order 
 
 These crates now ship real code (they were "pre-code" when this guide was first written). There is still no dedicated skill for each, so read **`rust-backend`** plus the crate's own `README.md` for conventions:
 
-- **`oz-lua` scripting** — `mlua` runtime; discount/tax/validation rules. See the oz-lua crate README (`crates/oz-lua/README.md`).
-- **`oz-payment` processors** — Stripe, Square, QRIS, Paddle, mock. Card-present terminals are the `oz-hal` **`EdcTerminal`** trait (see `hal-drivers`). See `crates/oz-payment/README.md`.
-- **`oz-security`** — encryption, PAN masking, platform keychains. See `crates/oz-security/README.md`.
+- **`kasirmu-lua` scripting** — `mlua` runtime; discount/tax/validation rules. See the kasirmu-lua crate README (`crates/kasirmu-lua/README.md`).
+- **`kasirmu-payment` processors** — Stripe, Square, QRIS, Paddle, mock. Card-present terminals are the `kasirmu-hal` **`EdcTerminal`** trait (see `hal-drivers`). See `crates/kasirmu-payment/README.md`.
+- **`kasirmu-security`** — encryption, PAN masking, platform keychains. See `crates/kasirmu-security/README.md`.
 - **Cloud sync** — `platform/sync` + `apps/cloud-server` (PostgreSQL). See `ARCHITECTURE.md`.
-- **Reporting / analytics** — `crates/oz-reporting` + `crates/oz-core/src/db/reports.rs` (REP-03: store-timezone bucketing). See `crates/oz-reporting/README.md`.
+- **Reporting / analytics** — `crates/kasirmu-reporting` + `crates/kasirmu-core/src/db/reports.rs` (REP-03: store-timezone bucketing). See `crates/kasirmu-reporting/README.md`.
 
 When one of these grows a dedicated skill, add it to the router table above.
 
@@ -102,7 +102,7 @@ When one of these grows a dedicated skill, add it to the router table above.
 ### "I'm adding a new device"
 
 1. Read `hal-drivers`. Define the trait, implement the driver.
-2. Add the **mock** in `crates/oz-hal/src/drivers/mock.rs` — required by the coding standard (`AGENTS.md` → *Database & Hardware* → **HAL Drivers**), enforced by review only — no CI job, no hook step and no checker under `scripts/` looks for it, so an unmocked driver reaches main and the first person to run it on a machine without that hardware finds out. Write it for the harness reason, not the threat: it is how you and every machine without that device can test the driver at all.
+2. Add the **mock** in `crates/kasirmu-hal/src/drivers/mock.rs` — required by the coding standard (`AGENTS.md` → *Database & Hardware* → **HAL Drivers**), enforced by review only — no CI job, no hook step and no checker under `scripts/` looks for it, so an unmocked driver reaches main and the first person to run it on a machine without that hardware finds out. Write it for the harness reason, not the threat: it is how you and every machine without that device can test the driver at all.
 3. If the device has a user-facing setup screen, read `ui-components` for the screen.
 4. If the device is invoked from a Tauri command, read `tauri-ipc` for the wiring.
 
@@ -125,13 +125,13 @@ When one of these grows a dedicated skill, add it to the router table above.
 
 ## When NOT to use these skills
 
-These skills are scoped to the OZ-POS codebase. They do **not** apply if you are working on:
+These skills are scoped to the kasir.mu codebase. They do **not** apply if you are working on:
 
-- A different project (the skills reference `oz-core`, `oz-hal`, etc. by name).
+- A different project (the skills reference `kasirmu-core`, `kasirmu-hal`, etc. by name).
 - A feature that has nothing to do with a POS (a CLI for a totally different domain, a web app, a game).
-- An LLM-driven workflow (OZ-POS does not use LLMs at the framework level).
-- A browser-automation workflow (OZ-POS does not drive browsers; it is a desktop app).
-- A social-media automation workflow (OZ-POS is not a Twitter/X bot; it runs cash registers).
+- An LLM-driven workflow (kasir.mu does not use LLMs at the framework level).
+- A browser-automation workflow (kasir.mu does not drive browsers; it is a desktop app).
+- A social-media automation workflow (kasir.mu is not a Twitter/X bot; it runs cash registers).
 
 If any of those describe the task, the right move is to ask the user which codebase they meant, or to spawn a skill-discovery workflow rather than applying these skills.
 
@@ -142,9 +142,9 @@ If any of those describe the task, the right move is to ask the user which codeb
 | Question | Where to ask |
 |---|---|
 | "What does this Rust trait do?" | Read the `///` docs on the trait itself. The skills are guides, not the source of truth — the code is. |
-| "How should this work in OZ-POS?" | Read the matching skill. If the skill doesn't cover it, ask Buffy (the AI agent) to extend the skill. |
-| "How should this work in general?" | The relevant upstream docs (`async-trait`, `rusqlite`, Tauri, React, Fluent). The skills assume familiarity with these. |
-| "Is this a security concern?" | Read `AGENTS.md` first. If still unclear, spawn a security review — OZ-POS handles money and (eventually) card data. |
+| "How should this work in kasir.mu?" | Read the matching skill. If the skill doesn't cover it, ask Budak Korporat (the AI agent) to extend the skill. |
+| "How should this work in general?" | The relevant upstream docs (async-trait, rusqlite, Tauri, React, Fluent). The skills assume familiarity with these. |
+| "Is this a security concern?" | Read `AGENTS.md` first. If still unclear, spawn a security review — kasir.mu handles money and (eventually) card data. |
 
 ---
 
@@ -169,4 +169,4 @@ If this passes locally, the PR is ready.
 
 ---
 
-> last audited 08-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat

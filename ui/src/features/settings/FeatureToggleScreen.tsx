@@ -11,7 +11,7 @@ import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { Skeleton } from '@/components/Skeleton';
 import { Localized, useLocalization } from '@fluent/react';
-import { useToast, useContextMenu, ContextMenu } from '@/frontend/shared';
+import { useToast, useContextMenu, ContextMenu } from '@/components';
 import LiveSetupPreview from '@/features/setup/components/LiveSetupPreview';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { useWorkspace } from '@/contexts/WorkspaceContext';

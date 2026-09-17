@@ -16,7 +16,7 @@
 // 86'd item cannot be added but can still be pinned/colourised. The
 // restaurant-grid / restaurant-empty class names are pinned by tests.
 
-import { requiredLocalized, LoadingStatus } from '@/frontend/shared';
+import { requiredLocalized, LoadingStatus } from '@/components';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
 import type { Product } from '@/types/domain';

@@ -27,11 +27,11 @@ import { readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, relative, basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// OZPOS_RECORDS_ROOT points the whole generator at a throwaway docs tree; it exists
+// KASIRMU_RECORDS_ROOT points the whole generator at a throwaway docs tree; it exists
 // so scripts/test-records-index-escaping.sh can drive the live code instead of a
 // copy of it. Unset, this is the repository root and nothing about a normal run changes.
-const ROOT = process.env.OZPOS_RECORDS_ROOT
-  ? resolve(process.env.OZPOS_RECORDS_ROOT)
+const ROOT = process.env.KASIRMU_RECORDS_ROOT
+  ? resolve(process.env.KASIRMU_RECORDS_ROOT)
   : join(dirname(fileURLToPath(import.meta.url)), '..');
 const RECORDS = join(ROOT, 'docs', 'records');
 const OUT = join(RECORDS, 'README.md');

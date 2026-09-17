@@ -1,9 +1,9 @@
-# Release Process — OZ-POS
+# Release Process — kasir.mu
 
 <!-- Audit stamp: 2026-09-04 · DSH · status: ACCURATE · version lock: 0.0.36 · supersedes the same-day STALE-BY-INFRA-CHANGE stamp. Its central claim ("as of 2026-09-02 this triggers nothing") was accurate when written and was overtaken by R36-11: release.yml is live again, desktop-only. Step 3 rewritten to describe what the restored pipeline actually does, including the two failure modes that are easy to miss -- a missing UPDATER_PRIVATE_KEY hard-fails by design, and unsigned Windows installers only WARN. Mobile (android.yml/ios.yml) and release-time Docker images remain unautomated and are called out as such rather than implied -->
 
 This document captures the operational runbook for shipping a release of
-OZ-POS. It exists because the updater pubkey is a security-critical value
+kasir.mu. It exists because the updater pubkey is a security-critical value
 that operators must know how to rotate safely (audit finding **L-4**).
 
 ## Publishing a release

@@ -30,7 +30,7 @@ vi.mock('@/api/data', () => ({
 
 const mockAddToast = vi.fn();
 
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
 
@@ -88,11 +88,11 @@ const defaultImportDataResult = {
 beforeEach(() => {
   mockGetBackupStatus.mockResolvedValue(defaultBackupStatus);
   mockCreateBackup.mockResolvedValue({ path: '/backups/backup_2026.db', sizeBytes: 12_582_912 });
-  mockExportData.mockResolvedValue({ path: '/exports/export_2026.ozpkg', sizeBytes: 524_288, types: [] });
+  mockExportData.mockResolvedValue({ path: '/exports/export_2026.kasirpkg', sizeBytes: 524_288, types: [] });
   mockImportPreview.mockResolvedValue(defaultImportPreviewResult);
   mockImportData.mockResolvedValue(defaultImportDataResult);
-  mockPickExportPath.mockResolvedValue('/exports/test.ozpkg');
-  mockPickImportFile.mockResolvedValue('/imports/test.ozpkg');
+  mockPickExportPath.mockResolvedValue('/exports/test.kasirpkg');
+  mockPickImportFile.mockResolvedValue('/imports/test.kasirpkg');
   mockAddToast.mockReturnValue(undefined);
 });
 
@@ -139,7 +139,7 @@ describe('DataManagement — Import', () => {
     await user.click(screen.getByText('Browse files…'));
     await waitFor(() => {
       expect(screen.getByText('Analyse backup file')).toBeInTheDocument();
-      expect(screen.getByText('/imports/test.ozpkg')).toBeInTheDocument();
+      expect(screen.getByText('/imports/test.kasirpkg')).toBeInTheDocument();
     });
   });
 

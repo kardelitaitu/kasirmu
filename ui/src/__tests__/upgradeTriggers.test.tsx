@@ -7,7 +7,7 @@
 
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { withFluent } from '@/locales/test-utils';
+import { withFluent } from '@/i18n/test-utils';
 import TierLockedFeature from '@/components/TierLockedFeature';
 import { upgradePricingUrl, openUpgradePricing, type UpgradeTarget } from '@/utils/upgrade';
 

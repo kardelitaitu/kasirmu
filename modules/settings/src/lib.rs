@@ -18,11 +18,11 @@ next: none | perf: N/A
 //! (Settings struct, Tauri commands) and frontend (screens, API calls,
 //! Fluent locale) still live in their original locations:
 //!
-//! - Backend: `crates/oz-core/src/settings.rs` + `crates/oz-core/src/db/settings.rs`
-//! - Commands: `apps/desktop-client/src/commands/settings.rs`, `setup.rs`, `sync.rs`
+//! - Backend: `crates/kasirmu-core/src/settings.rs` + `crates/kasirmu-core/src/db/settings.rs`
+//! - Commands: `apps/desktop-tauri/src/commands/settings.rs`, `setup.rs`, `sync.rs`
 //! - Frontend: `ui/src/features/settings/` + `ui/src/features/setup/`
 //! - API: `ui/src/api/settings.ts`
-//! - Locale: `ui/src/locales/{en,fr,es,de,zh,ja}/settings.ftl`
+//! - Locale: `shared-ui/locales/{en,fr,es,de,zh,ja}/settings.ftl`
 //!
 //! In subsequent phases, these files will be physically moved into
 //! `modules/settings/` as the module system matures.
@@ -33,7 +33,7 @@ next: none | perf: N/A
 
 //! # Re-exports
 //!
-//! This module re-exports key settings domain types from `oz-core` so that
+//! This module re-exports key settings domain types from `kasirmu-core` so that
 //! consumers can access all settings-related types through a single crate:
 //!
 //! ```

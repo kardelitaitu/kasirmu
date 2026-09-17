@@ -130,8 +130,8 @@ emojis in part titles are fine.
 
 ```toml
 [book]
-title = "OZ-POS Documentation"
-authors = ["OZ-POS contributors"]
+title = "kasir.mu Documentation"
+authors = ["kasir.mu contributors"]
 language = "en"
 
 [build]

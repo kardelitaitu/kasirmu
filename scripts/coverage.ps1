@@ -57,8 +57,8 @@ try {
             cargo llvm-cov `
                 --workspace `
                 --all-features `
-                --exclude oz-pos-app `
-                --exclude oz-pos-tablet `
+                --exclude kasirmu-app `
+                --exclude kasirmu-mobile `
                 --html `
                 --json `
                 --output-dir (Join-Path $root "coverage/rust")

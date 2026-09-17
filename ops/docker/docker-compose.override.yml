@@ -1,0 +1,34 @@
+# ── Docker Compose Override — Local Development ──────────────────────
+#
+# Merged EXPLICITLY, second, by every entry point that wants dev defaults
+# (scripts/dev-up.sh, scripts/dev-up.ps1, scripts/start-local-sync.bat):
+#
+#   docker compose --project-directory . -f ops/docker/docker-compose.yml -f ops/docker/docker-compose.override.yml up -d
+#
+# Compose auto-merges an override file only when it sits beside the DEFAULT
+# file name in the project directory. This file now lives under ops/docker/
+# and is always named with -f, so the merge must be asked for. Adds
+# dev-friendly defaults (log verbosity only; the bind-mount and extra-port
+# ideas in the original header were never actually uncommented here, so do not
+# claim them):
+#   • Higher log levels (RUST_LOG=debug, PB_LOG_LEVEL=debug)
+
+# The deployment guide in docs/operations/docker-deployment.md deliberately
+# does NOT merge this file: a production stack wants the base file alone.
+#
+# To disable: drop the second -f (or point COMPOSE_FILE at the base file alone)
+
+services:
+  pos-cloud-server:
+    environment:
+      # Verbose logging for development
+      RUST_LOG: "${RUST_LOG:-debug,hyper=info,reqwest=info,tower=info}"
+    # Mount local source for faster iteration (requires rebuild)
+    # Uncomment to mount the local binary:
+    # volumes:
+    #   - ./target/release/oz-cloud-server:/app/oz-cloud-server
+
+  license-server:
+    environment:
+      # More verbose PocketBase logging
+      PB_LOG_LEVEL: "${PB_LOG_LEVEL:-debug}"

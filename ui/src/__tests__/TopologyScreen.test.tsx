@@ -111,7 +111,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 }));
 
 const mockAddToast = vi.fn();
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
 
@@ -1477,12 +1477,12 @@ describe('TopologyScreen', () => {
   // ── The key the kernel actually checks (regression) ──────────────
   //
   // `topology:write` (platform/core/src/rbac.rs TOPOLOGY_WRITE) is what every
-  // topology write command authorizes with — `crates/oz-bridge/src/topology/
+  // topology write command authorizes with — `crates/kasirmu-bridge/src/topology/
   // commands.rs:45, :79, :255, :479`. Among the built-in presets ONLY Admin
   // carries it (rbac_presets.rs:253), plus Owner implicitly via `permissions:
   // &["*"]` (rbac_presets.rs:46). Manager holds `staff:update`
   // (rbac_presets.rs:75) but NOT topology:write, and the kernel refuses a
-  // manager topology write (apps/desktop-client/.../topology_command_tests.rs:
+  // manager topology write (apps/desktop-tauri/.../topology_command_tests.rs:
   // 1399-1415 asserts exactly that). The gate used to test `staff:update`, so a
   // manager reached `#/settings/topology` — the route gate is role-based,
   // ui/src/features/settings/register.tsx:10 requiredRole 'manager' — and got
@@ -1545,7 +1545,7 @@ describe('TopologyScreen', () => {
   // audit-read commands authorize with — `audit:view` (rbac.rs AUDIT_VIEW) —
   // but matched it with two raw `Array.includes` calls: the literal `*` and
   // the literal `audit:view`. The backend matcher (platform/core/src/rbac.rs
-  // :259-266, mirrored in TS at ui/src/platform/ui/page-registry/index.ts
+  // :259-266, mirrored in TS at ui/src/registries/page-registry/index.ts
   // :163-172) accepts THREE forms: exact, `*`, and `<domain>:*`. So a custom
   // role holding `audit:*` — which the kernel would serve — was denied the
   // control. Same helper as canSaveTopology above, same three forms, asserted

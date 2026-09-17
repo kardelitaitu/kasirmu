@@ -3,7 +3,7 @@
 # One public port (:80) path-routes to the two functions inside the
 # container. TLS is terminated at the platform edge (Northflank) for the
 # one-deployment shape; add a `tls` directive here when running the image
-# self-managed with a reachable domain (see gateway/Caddyfile.example).
+# self-managed with a reachable domain (see ops/gateway/Caddyfile.example).
 #
 # Routing — first matching `handle` wins, so most-specific paths come
 # first:

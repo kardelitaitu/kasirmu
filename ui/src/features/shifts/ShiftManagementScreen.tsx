@@ -6,15 +6,15 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { useToast } from '@/frontend/shared/Toast';
-import { requiredLocalized } from '@/frontend/shared';
+import { useToast } from '@/components/Toast';
+import { requiredLocalized } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { useAnimatedModal } from '@/hooks/useAnimatedModal';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
-import { EmptyState } from '@/frontend/shared';
+import { EmptyState } from '@/components';
 import { NoShiftsIcon } from '@/components/EmptyStateIllustrations';
 import { Skeleton } from '@/components/Skeleton';
 import { formatMoney } from '@/types/domain';

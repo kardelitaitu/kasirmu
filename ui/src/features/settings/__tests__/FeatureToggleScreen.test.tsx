@@ -23,7 +23,7 @@ vi.mock('@tauri-apps/api/event', () => ({
   emitTo: vi.fn(() => Promise.resolve()),
 }));
 
-vi.mock('@/frontend/shared', () => ({
+vi.mock('@/components', () => ({
   useToast: () => ({ addToast: mockAddToast }),
   useContextMenu: () => ({
     menu: null,

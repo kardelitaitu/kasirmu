@@ -69,7 +69,7 @@
   > `TaxRateDependencyCounts`, `MAX_TAX_RATE_BPS`), and `#[cfg(test)]` re-exports
   > for what `tax_tests.rs` resolves through `use super::*` (`parse_effective_date`
   > + parent-use bindings). `crate::db::tax::<Name>` paths did not move — verified
-  > compiling from `oz-api`, `oz-bridge`, `tablet-client`, `platform/sync` callers.
+  > compiling from `oz-api`, `oz-bridge`, `mobile-tauri`, `platform/sync` callers.
   > `db/mod.rs` untouched (submodule dirs hang off the `tax.rs` root — the module
   > system never forced the edit). `tax_tests.rs` untouched.
 - [x] Verify `cargo test -p oz-core tax` passes.

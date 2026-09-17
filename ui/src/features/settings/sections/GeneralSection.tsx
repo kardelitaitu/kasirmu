@@ -72,7 +72,7 @@ export default function GeneralSection({
                   id="settings-field-store-name"
                   required
                   maxLength={100}
-                  placeholder="OZ-POS Store"
+                  placeholder="kasir.mu Store"
                   value={store.name}
                   onChange={(e) => { setStore({ ...store, name: e.target.value }); clearFieldError('store-name'); markDirty(); }}
                   onBlur={() => validateField('store-name', store.name)}

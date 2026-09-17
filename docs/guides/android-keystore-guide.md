@@ -1,5 +1,5 @@
 # Android Keystore Management
-<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (2 major, 2 minor) · First machine-readable stamp this guide ever carried; its footer dates to 08-08-26, before `23c963303` (09-02) renamed `android.yml` to `.bak`, so every CI step in §4/§5 quietly became a dead entrypoint. · §3 note and secrets table: "The workflows write keystore.properties" was true of `android.yml.bak:119-132` only — no live workflow reads `ANDROID_KEYSTORE_BASE64`/`KEYSTORE_PASSWORD`/`KEY_ALIAS` (grep count 0 in both of dev-ci.yml and release.yml); now says so and marks the secrets conditional. · §4: the "Android Build → Run workflow" walkthrough has no button to click — replaced with a retirement banner + the local signed-build path, mirroring `apps/tablet-client/AGENTS.md:92-98`; "~20 minutes" timing removed with it (nothing live left to time). · §4 verify-locally: `oz-pos-tablet-aarch64.apk` is an upload-artifact *label* (`android.yml.bak:160`), never a filename — now points at the gradle output glob. · §5 step 5: same dead entrypoint, now a local build. · §1 command: `-keypass` placeholder now says same-as-storepass up front, because `build.gradle.kts:44,46` feeds ONE `password` key to both `keyPassword` and `storePassword` (the §3 table already warned; the command invited entering two different ones). · Unverifiable and left alone: prereq tooling on operator machines (JDK/OpenSSL/GitHub admin), the keytool/base64 command semantics themselves (verified syntactically against the only decoder in-repo, `android.yml.bak:126`). · Dirty-tree check: none of this guide's anchors intersect the in-flight `ui/` edits; all facts read identically at HEAD and on disk. -->
+<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (2 major, 2 minor) · First machine-readable stamp this guide ever carried; its footer dates to 08-08-26, before `23c963303` (09-02) renamed `android.yml` to `.bak`, so every CI step in §4/§5 quietly became a dead entrypoint. · §3 note and secrets table: "The workflows write keystore.properties" was true of `android.yml.bak:119-132` only — no live workflow reads `ANDROID_KEYSTORE_BASE64`/`KEYSTORE_PASSWORD`/`KEY_ALIAS` (grep count 0 in both of dev-ci.yml and release.yml); now says so and marks the secrets conditional. · §4: the "Android Build → Run workflow" walkthrough has no button to click — replaced with a retirement banner + the local signed-build path, mirroring `apps/mobile-tauri/AGENTS.md:92-98`; "~20 minutes" timing removed with it (nothing live left to time). · §4 verify-locally: `oz-pos-tablet-aarch64.apk` is an upload-artifact *label* (`android.yml.bak:160`), never a filename — now points at the gradle output glob. · §5 step 5: same dead entrypoint, now a local build. · §1 command: `-keypass` placeholder now says same-as-storepass up front, because `build.gradle.kts:44,46` feeds ONE `password` key to both `keyPassword` and `storePassword` (the §3 table already warned; the command invited entering two different ones). · Unverifiable and left alone: prereq tooling on operator machines (JDK/OpenSSL/GitHub admin), the keytool/base64 command semantics themselves (verified syntactically against the only decoder in-repo, `android.yml.bak:126`). · Dirty-tree check: none of this guide's anchors intersect the in-flight `ui/` edits; all facts read identically at HEAD and on disk. -->
 
 > **Purpose:** Generate a release keystore, configure GitHub Actions secrets,
 > and verify APK signing works end-to-end.
@@ -24,7 +24,7 @@ keytool -genkey -v \
   -validity 1825 \
   -storepass <your-keystore-password> \
   -keypass <same-as-storepass> \
-  -dname "CN=OZ-POS, OU=Engineering, O=OZ Systems, L=Jakarta, ST=DKI Jakarta, C=ID"
+  -dname "CN=kasir.mu, OU=Engineering, O=OZ Systems, L=Jakarta, ST=DKI Jakarta, C=ID"
 ```
 
 This creates a keystore valid for 5 years (1825 days). The store and key
@@ -67,7 +67,7 @@ Add these secrets to the repository (Settings → Secrets and variables → Acti
 
 > ⚠️ **No live workflow reads these secrets today.** The retired `android.yml`
 > workflow wrote `keystore.properties` (password / keyAlias / storeFile) into
-> `apps/tablet-client/gen/android/` (`android.yml.bak:119-132`); `23c963303`
+> `apps/mobile-tauri/gen/android/` (`android.yml.bak:119-132`); `23c963303`
 > (2026-09-02) renamed it to `.bak` and nothing replaced it. Locally, you write
 > that file yourself. The tracked `build.gradle.kts` `signingConfigs` block still
 > reads it. The Tauri CLI has no keystore flags, so this file is the only
@@ -79,16 +79,16 @@ Add these secrets to the repository (Settings → Secrets and variables → Acti
 > "GitHub → Actions → Android Build → Run workflow". That workflow has been
 > `.github/workflows/android.yml.bak` since `23c963303` (2026-09-02) and GitHub
 > never executes `.bak` files; `release.yml` is desktop-only. The steps below are
-> the local equivalent (mirrors `apps/tablet-client/AGENTS.md:92-98`), valid once
+> the local equivalent (mirrors `apps/mobile-tauri/AGENTS.md:92-98`), valid once
 > the workflow is restored with only its trigger changed.
 
 ### Build a signed release APK locally
 
-1. Write `apps/tablet-client/gen/android/keystore.properties` with the three
+1. Write `apps/mobile-tauri/gen/android/keystore.properties` with the three
    keys (`storeFile` pointing at your keystore, `password`, `keyAlias`).
-2. `cargo tauri android build --apk --target aarch64` from `apps/tablet-client/`.
+2. `cargo tauri android build --apk --target aarch64` from `apps/mobile-tauri/`.
 3. The signed artifact lands under
-   `apps/tablet-client/gen/android/app/build/outputs/apk/` (glob for `*.apk`
+   `apps/mobile-tauri/gen/android/app/build/outputs/apk/` (glob for `*.apk`
    under the `aarch64`/`release` tree — gradle names it like
    `app-aarch64-release.apk`, not the old CI artifact label).
 

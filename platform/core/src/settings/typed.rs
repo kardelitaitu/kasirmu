@@ -2,7 +2,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (platform-core slice C: settings/typed deep read)
 crate: platform-core | status: SAFE | lint: CLEAN
-findings: clean typed accessors with documented defaults; sync API key, terminal secret, and PG password transparently ENCRYPTED at rest via oz_crypto with legacy-plaintext read fallback (corrects the broader COR-17/30 note: these secrets are not plaintext); decrypt-failure falls back to raw value silently rather than erroring (INFO — corrupted ciphertext yields garbage, no alert); currency default has documented old-key migration fallback
+findings: clean typed accessors with documented defaults; sync API key, terminal secret, and PG password transparently ENCRYPTED at rest via kasirmu_crypto with legacy-plaintext read fallback (corrects the broader COR-17/30 note: these secrets are not plaintext); decrypt-failure falls back to raw value silently rather than erroring (INFO — corrupted ciphertext yields garbage, no alert); currency default has documented old-key migration fallback
 next: surface decrypt failures | perf: N/A
 */
 
@@ -331,12 +331,12 @@ impl Settings {
     /// Get the sync API key (transparently decrypted).
     pub fn get_sync_api_key(conn: &Connection) -> Result<Option<String>, PlatformError> {
         let raw = Self::get(conn, keys::SYNC_API_KEY)?;
-        Ok(raw.map(|v| oz_crypto::decrypt_sync_api_key(&v).unwrap_or(v)))
+        Ok(raw.map(|v| kasirmu_crypto::decrypt_sync_api_key(&v).unwrap_or(v)))
     }
 
     /// Set the sync API key (transparently encrypted at rest).
     pub fn set_sync_api_key(conn: &Connection, key: &str) -> Result<(), PlatformError> {
-        let encrypted = oz_crypto::encrypt_sync_api_key(key)
+        let encrypted = kasirmu_crypto::encrypt_sync_api_key(key)
             .map_err(|e| PlatformError::Internal(e.to_string()))?;
         Self::set(conn, keys::SYNC_API_KEY, &encrypted)
     }
@@ -358,13 +358,13 @@ impl Settings {
         let raw = Self::get(conn, keys::SYNC_TERMINAL_SECRET)?;
         Ok(raw
             .filter(|s| !s.is_empty())
-            .map(|v| oz_crypto::decrypt_sync_terminal_secret(&v).unwrap_or(v)))
+            .map(|v| kasirmu_crypto::decrypt_sync_terminal_secret(&v).unwrap_or(v)))
     }
 
     /// Set the registered sync terminal device secret (ADR sync-auth-hardening P3).
     /// Transparently encrypted at rest.
     pub fn set_sync_terminal_secret(conn: &Connection, secret: &str) -> Result<(), PlatformError> {
-        let encrypted = oz_crypto::encrypt_sync_terminal_secret(secret)
+        let encrypted = kasirmu_crypto::encrypt_sync_terminal_secret(secret)
             .map_err(|e| PlatformError::Internal(e.to_string()))?;
         Self::set(conn, keys::SYNC_TERMINAL_SECRET, &encrypted)
     }
@@ -434,12 +434,12 @@ impl Settings {
     /// Get the PostgreSQL password (transparently decrypted).
     pub fn get_pg_sync_password(conn: &Connection) -> Result<Option<String>, PlatformError> {
         let raw = Self::get(conn, keys::PG_SYNC_PASSWORD)?;
-        Ok(raw.map(|v| oz_crypto::decrypt_pg_sync_password(&v).unwrap_or(v)))
+        Ok(raw.map(|v| kasirmu_crypto::decrypt_pg_sync_password(&v).unwrap_or(v)))
     }
 
     /// Set the PostgreSQL password (transparently encrypted at rest).
     pub fn set_pg_sync_password(conn: &Connection, password: &str) -> Result<(), PlatformError> {
-        let encrypted = oz_crypto::encrypt_pg_sync_password(password)
+        let encrypted = kasirmu_crypto::encrypt_pg_sync_password(password)
             .map_err(|e| PlatformError::Internal(e.to_string()))?;
         Self::set(conn, keys::PG_SYNC_PASSWORD, &encrypted)
     }
@@ -550,12 +550,12 @@ impl Settings {
     /// Get the exchange rate API key (transparently decrypted).
     pub fn get_rate_sync_api_key(conn: &Connection) -> Result<Option<String>, PlatformError> {
         let raw = Self::get(conn, keys::RATE_SYNC_API_KEY)?;
-        Ok(raw.map(|v| oz_crypto::decrypt_rate_api_key(&v).unwrap_or(v)))
+        Ok(raw.map(|v| kasirmu_crypto::decrypt_rate_api_key(&v).unwrap_or(v)))
     }
 
     /// Set the exchange rate API key (transparently encrypted at rest).
     pub fn set_rate_sync_api_key(conn: &Connection, key: &str) -> Result<(), PlatformError> {
-        let encrypted = oz_crypto::encrypt_rate_api_key(key)
+        let encrypted = kasirmu_crypto::encrypt_rate_api_key(key)
             .map_err(|e| PlatformError::Internal(e.to_string()))?;
         Self::set(conn, keys::RATE_SYNC_API_KEY, &encrypted)
     }
@@ -636,13 +636,13 @@ impl Settings {
     /// Get the LAN server pre-shared key (transparently decrypted).
     pub fn get_lan_server_psk(conn: &Connection) -> Result<Option<String>, PlatformError> {
         let raw = Self::get(conn, keys::LAN_SERVER_PSK)?;
-        Ok(raw.map(|v| oz_crypto::decrypt_lan_psk(&v).unwrap_or(v)))
+        Ok(raw.map(|v| kasirmu_crypto::decrypt_lan_psk(&v).unwrap_or(v)))
     }
 
     /// Set the LAN server pre-shared key (transparently encrypted at rest).
     pub fn set_lan_server_psk(conn: &Connection, psk: &str) -> Result<(), PlatformError> {
-        let encrypted =
-            oz_crypto::encrypt_lan_psk(psk).map_err(|e| PlatformError::Internal(e.to_string()))?;
+        let encrypted = kasirmu_crypto::encrypt_lan_psk(psk)
+            .map_err(|e| PlatformError::Internal(e.to_string()))?;
         Self::set(conn, keys::LAN_SERVER_PSK, &encrypted)
     }
 }

@@ -10,14 +10,14 @@ status: Implemented (2026-07-26)
 
 **Status:** Implemented (2026-07-26)
 **Date:** 2026-07-18
-**Author:** Architecture Team & OZ-POS Contributors
+**Author:** Architecture Team & kasir.mu Contributors
 **Tags:** shadows, banding, css, dithering, gpu, rendering, dark-theme, glassmorphism
 
 ---
 
 ## Context
 
-OZ-POS uses CSS `box-shadow` tokens across all themes to communicate elevation depth on cards, modals, menus, and other UI surfaces. On **dark backgrounds** (the default Steel Blue Glassmorphism theme and the Dark Solid theme), users reported visible **color banding** — concentric rings of abrupt brightness transitions within shadow falloffs rather than smooth gradients.
+kasir.mu uses CSS `box-shadow` tokens across all themes to communicate elevation depth on cards, modals, menus, and other UI surfaces. On **dark backgrounds** (the default Steel Blue Glassmorphism theme and the Dark Solid theme), users reported visible **color banding** — concentric rings of abrupt brightness transitions within shadow falloffs rather than smooth gradients.
 
 ### Root Cause
 

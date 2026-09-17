@@ -2,7 +2,7 @@ use super::*;
 use rusqlite::Connection;
 
 fn fresh() -> Connection {
-    oz_core::migrations::fresh_db()
+    kasirmu_core::migrations::fresh_db()
 }
 
 #[test]

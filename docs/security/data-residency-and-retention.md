@@ -1,4 +1,4 @@
-# Data Residency & Retention Policy — OZ-POS
+# Data Residency & Retention Policy — kasir.mu
 
 <!-- Audit stamp: 2026-09-09 · DSH · status: VERIFIED-TRUE, 2 precision notes (0 errors) · Every load-bearing claim re-checked against code rather than against the document's own confidence, and the page held: legal_entities has no region column (20260908_legal_entities.sql carries id, tenant_id, name, legal_name, registration_number, tax_id, status, created_at, updated_at - so §K residency really is decided-not-built); crates/oz-api contains ZERO references to customers, which is stronger than the claimed 'no write path'; the pin_hash citation is exact (pg.rs:421 INSERT INTO users (... pin_hash ...)); hash_pin is Argon2id (platform/core/src/auth.rs:9,18 with m=19456,t=2,p=1); the audit-delete trigger exists in BOTH engines (20260813_init.pg.sql:1468/1480 and 20260813_init.sql:1046); stripe_customers is real; create_backup_scoped (data.rs:605) writes .backup.db (:574) behind a DATA_EXPORT gate (:599/611); telemetry is genuinely absent (0 of 38 ui dependencies, 0 in ui/src); and every retention number holds - RETENTION_DAYS=90 (prune.rs:20), hourly via from_secs(3600) (:45), PRUNE_BATCH_SIZE=500 (:22), start_prune_loop_pg real (prune.rs:165, wired at cloud-server/main.rs:347), the 30-day memo commits c8d2a54fd and 5ee1064a1 both exist, and 20260914_memo_retention.sql exists. Two cited migrations looked missing only because an ls|head -4 truncated the list. · PRECISION NOTE 1 (metrics): the page said the license server exposes no metrics, which is true of that process while the deployed image still answers /metrics on the same origin - Caddy sends it to :3099, which is oz-cloud-server. For a residency policy the distinction is load-bearing: an auditor checking whether auth data leaves via metrics must look at the sync server, not at the absence of a route in apps/license-server. · PRECISION NOTE 2 (the headline gap): 'no per-tenant DELETE in crates/oz-api' was true in spirit and false to a grep, because pg.rs:1975 deletes memos by tenant_id during snapshot reconciliation. Restated as no per-tenant ERASURE, naming the reconciliation line and noting that the tenant-wide shapes exist only in pg_tests.rs cleanup - so nobody cites one as evidence of the other. · This is the strongest page of its kind in the repo: it already separates implemented / decided-not-built / open-gap and cites sources inline. Nothing was softened and no gap was closed on paper. -->
 
@@ -9,7 +9,7 @@
      Backup/restore *procedures* live in docs/operations/runbook.md §4 — this
      document governs, the runbook operates. -->
 
-This document states where OZ-POS data is stored, how long each class of data
+This document states where kasir.mu data is stored, how long each class of data
 is kept, and how deletion and export requests are handled. It separates three
 honesties the reader needs: what is **implemented today**, what is **decided
 but not yet built** (adopted policy §K, todo-global-saas-1.md), and what is an
@@ -29,7 +29,7 @@ Client devices (desktop + tablet) each hold a **complete local SQLite
 database** — the system is offline-first, so the device copy is the working
 copy and the cloud copy is partial (only what syncs — see §2). Client backups
 are local files written beside the database (`<db>.backup.db`,
-`create_backup_scoped`, `DATA_EXPORT`-gated, `apps/desktop-client/src/commands/data.rs`);
+`create_backup_scoped`, `DATA_EXPORT`-gated, `apps/desktop-tauri/src/commands/data.rs`);
 they never leave the device unless the operator copies them.
 
 **Residency.** Deployment is **single-region**: region is a property of the
@@ -107,7 +107,7 @@ leave via metrics has to look at the sync server, not at the absence of a route 
 | `offline_queue` (cloud) | **90 days**, enforced | hourly prune, 500-row batches (`start_prune_loop_pg`; runbook §3.6) |
 | `sent_reports` dedup claims (cloud) | **90 days**, enforced | same prune |
 | Memos (device) | archived → purged at **30 days** | retention sweep (`c8d2a54f` enforced via `archived_at`; daemon `5ee1064a`; `20260914_memo_retention.sql`) |
-| `audit_log` (tenant-facing) | **tier window**, enforced | hourly daemon sweep: `Store::sweep_audit_retention` (`db/audit.rs:162`), called from `apps/desktop-client/src/lib.rs:614`/`:639` and `apps/tablet-client/src/lib.rs:284`. Plus 90d / Pro 180d / Premium 365d / Enterprise 1095d / Free & OneTime no entitlement (`subscription.rs:243-251`) |
+| `audit_log` (tenant-facing) | **tier window**, enforced | hourly daemon sweep: `Store::sweep_audit_retention` (`db/audit.rs:162`), called from `apps/desktop-tauri/src/lib.rs:614`/`:639` and `apps/mobile-tauri/src/lib.rs:284`. Plus 90d / Pro 180d / Premium 365d / Enterprise 1095d / Free & OneTime no entitlement (`subscription.rs:243-251`) |
 | `audit_log` rows within the window | **infinite**, immutable by trigger | the sweep only deletes PAST the window; see the trigger exception in §2 |
 | Sales, catalog, inventory, users, memos (cloud) | **no expiry** — kept while the tenant exists | no purge path in `crates/oz-api` (verified: no per-tenant `DELETE`) |
 | Local device DB | kept until operator action (backup/restore) | — |
@@ -149,7 +149,7 @@ deleted after 90 days" answer to a customer should say.
 Implemented today:
 
 - **Client data export** — `export_data` (session + `SETTINGS_EDIT`, path
-  contained, `apps/desktop-client/src/commands/data.rs`) writes an `.ozpkg`
+  contained, `apps/desktop-tauri/src/commands/data.rs`) writes an `.ozpkg`
   payload (`crates/oz-core/src/ozpkg.rs`): products, categories, settings,
   and *optionally* sale **headers only** ("no lines for privacy"), customers,
   and users **without PIN hashes**. `import_preview`/`import_data` restore it.

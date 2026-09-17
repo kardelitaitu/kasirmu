@@ -44,6 +44,6 @@ if errorlevel 1 (
 )
 
 echo.
-echo Next: check the partial report with  cd fuzz/hfuzz ^&^& ./triage_crashes.sh
+echo Next: check the partial report with  cd tools/fuzz/hfuzz ^&^& ./triage_crashes.sh
 pause
 endlocal

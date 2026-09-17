@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useDeviceIp } from '@/hooks/useDeviceIp';
 import { useSyncConnection } from '@/hooks/useSyncConnection';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 
 /** "dd Month hh:mm" — the prototype footer clock format. */
 export function formatClock(date: Date, locale: string): string {

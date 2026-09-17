@@ -103,7 +103,7 @@ export function deleteMockLocation(args: unknown): null {
  */
 const mockTicketPrefixes = new Map<string, string>();
 
-/** Normalize exactly as oz_core's ticket-prefix setter does: trim + upper. */
+/** Normalize exactly as kasirmu_core's ticket-prefix setter does: trim + upper. */
 function normalizeMockTicketPrefix(raw: string | undefined): string {
   return (raw ?? '').trim().toUpperCase();
 }

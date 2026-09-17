@@ -38,7 +38,7 @@
  */
 import { Localized, useLocalization } from '@fluent/react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 
 export interface KdsHeaderTabsProps {
   /** Which tab is active — read for the class + aria-selected, never written here. */

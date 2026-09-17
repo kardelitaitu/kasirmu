@@ -19,7 +19,7 @@ vi.mock('@fluent/react', () => ({
 }));
 
 // Mock requiredLocalized
-vi.mock('@/frontend/shared', () => ({
+vi.mock('@/components', () => ({
   requiredLocalized: (_l10n: unknown, id: string) => id,
 }));
 

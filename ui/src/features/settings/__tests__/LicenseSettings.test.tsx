@@ -7,7 +7,7 @@ import { getLicenseStatus, checkLicenseStatus } from '@/api/license';
 
 const mockAddToast = vi.fn();
 
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
 

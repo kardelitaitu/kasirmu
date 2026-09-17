@@ -87,7 +87,7 @@ not for manager review.
    - `crates/oz-core/migrations/<date>_sync_conflicts.sql` (NEW)
 3. **Forbidden Paths (owned by siblings):**
    - `platform/sync/src/crdt/**` (Agent 1)
-   - `ui/src/**`, `apps/desktop-client/**` (Agent 3)
+   - `ui/src/**`, `apps/desktop-tauri/**` (Agent 3)
 
 ### Shared seams — who owns the join
 
@@ -191,5 +191,5 @@ as an additive numeric field. They are not.
 
 - No UI. Agent 3 owns all of `ui/src/**`.
 - No clock implementation. Consume Agent 1's.
-- No changes to `apps/desktop-client/**`.
+- No changes to `apps/desktop-tauri/**`.
 - No new branches, no version bump (locked at `0.0.37`), no `git push`.

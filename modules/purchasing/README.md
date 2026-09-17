@@ -19,7 +19,7 @@ purchase orders, goods receipt, and supplier returns. It is the counterpart to
 | Version      | `0.1.0` |
 | Dependencies | `["inventory"]` — receiving a PO increments stock |
 | Permissions  | `purchasing:view`, `purchasing:order`, `purchasing:receive`, `purchasing:manage` |
-| Feature flag | `purchase-orders` (`crates/oz-core/src/features.rs`) |
+| Feature flag | `purchase-orders` (`crates/kasirmu-core/src/features.rs`) |
 
 ## Currently Owns
 

@@ -1,13 +1,13 @@
 ---
 name: ui-components
-description: React + TypeScript UI conventions for the OZ-POS front-end — @fluent/react for all user-visible strings, ARIA labels, eslint-plugin-jsx-a11y, strict TypeScript, and dev/design-language.html as the visual reference. Use when adding or reviewing React components, hooks, or screens.
+description: React + TypeScript UI conventions for the kasir.mu front-end — @fluent/react for all user-visible strings, ARIA labels, eslint-plugin-jsx-a11y, strict TypeScript, and prototypes/design-language.html as the visual reference. Use when adding or reviewing React components, hooks, or screens.
 ---
 
-<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2) · fixes over rev 1: F1 locale paths (per-feature bundles, en|id), F2 token path (ui/src/frontend/themes/tokens.css), F3 state libs (no TanStack/Zustand — removed), F4 ci.yml act-gate reference removed (file does not exist; renderInAct guidance kept on its own merits) · added: design-language reference section, real token families, motion & feedback rules, real test render helpers, data-testid convention · verified this pass: per-feature .ftl/.id.ftl bundles + shared.ftl/bundles.ftl + locales/index.ts, LocaleCode 'en'|'id' in ui/src/i18n/index.ts, dark-default tokens.css (:root dark / [data-theme="light"]), --color-*/--space-*/--radius-*/--shadow-*/--duration-*/--ease-*/--z-*/--font-* token families, api/tauri.ts sole @tauri-apps re-export + utils/logged-invoke.ts, ~40 per-domain ui/src/api/ modules (pos.ts is one of many), formatMoney in types/domain.ts (id-ID default), flat ui/src/__tests__/ with renderWithFluentSync/renderWithFluent/renderWithProviders(Sync)/rerenderWithProviders + renderInAct + withFluent, React 18.3.1, @fluent/react, strict tsconfig, no external state library in package.json, all FTL ids used in examples exist in sales.ftl -->
+<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2) · fixes over rev 1: F1 locale paths (per-feature bundles, en|id), F2 token path (ui/src/theme/tokens.css), F3 state libs (no TanStack/Zustand — removed), F4 ci.yml act-gate reference removed (file does not exist; renderInAct guidance kept on its own merits) · added: design-language reference section, real token families, motion & feedback rules, real test render helpers, data-testid convention · verified this pass: per-feature .ftl/.id.ftl bundles + shared.ftl/bundles.ftl + locales/index.ts, LocaleCode 'en'|'id' in ui/src/i18n/index.ts, dark-default tokens.css (:root dark / [data-theme="light"]), --color-*/--space-*/--radius-*/--shadow-*/--duration-*/--ease-*/--z-*/--font-* token families, api/tauri.ts sole @tauri-apps re-export + utils/logged-invoke.ts, ~40 per-domain ui/src/api/ modules (pos.ts is one of many), formatMoney in types/domain.ts (id-ID default), flat ui/src/__tests__/ with renderWithFluentSync/renderWithFluent/renderWithProviders(Sync)/rerenderWithProviders + renderInAct + withFluent, React 18.3.1, @fluent/react, strict tsconfig, no external state library in package.json, all FTL ids used in examples exist in sales.ftl -->
 
 # React UI & Front-end Conventions
 
-The OZ-POS front-end is a Tauri v2 webview running React 18 + TypeScript. The UI must be **accessible** (a cashier with a screen reader is a real user), **internationalized** (we ship in many locales), and **strictly typed** (a missing `prop` should be a compile error, not a runtime crash). Visually, it must follow one design language — see the next section.
+The kasir.mu front-end is a Tauri v2 webview running React 18 + TypeScript. The UI must be **accessible** (a cashier with a screen reader is a real user), **internationalized** (we ship in many locales), and **strictly typed** (a missing `prop` should be a compile error, not a runtime crash). Visually, it must follow one design language — see the next section.
 
 ---
 
@@ -23,7 +23,7 @@ The OZ-POS front-end is a Tauri v2 webview running React 18 + TypeScript. The UI
 
 ## Design language reference
 
-**`dev/design-language.html` is the visual source of truth.** Before building or restyling any screen — colors, buttons, typography, spacing, icons, layout, components, forms, motion — consult it. Resolve it dynamically from the repo root (`git rev-parse --show-toplevel` + `dev/design-language.html`) and open it in a browser; never hardcode an absolute checkout path (the repo is a multi-root worktree layout).
+**`prototypes/design-language.html` is the visual source of truth.** Before building or restyling any screen — colors, buttons, typography, spacing, icons, layout, components, forms, motion — consult it. Resolve it dynamically from the repo root (`git rev-parse --show-toplevel` + `prototypes/design-language.html`) and open it in a browser; never hardcode an absolute checkout path (the repo is a multi-root worktree layout).
 
 It is a self-contained, tabbed reference with a worked example and a "Fallback & Accessibility" rules list per tab:
 
@@ -40,7 +40,7 @@ It is a self-contained, tabbed reference with a worked example and a "Fallback &
 | **Motion & Feedback** | Every action has **Before · Feedback · After** — the after-state must differ from the before, provable from pixels alone. Press feedback ≤120ms, before the work finishes. Motion tokens: instant 0ms · fast 120ms (press/hover/error shake) · base 200ms (toggles, state transitions) · slow 350ms (entrances, removals). Never animate instant flips (theme, filters, selected tabs). Animate **only `transform` and `opacity`**. Success = green **+ checkmark**; error = shake + red border + caption (never one alone). `prefers-reduced-motion` collapses durations to 0 but the after-state stays. Old POS hardware is the performance floor. |
 | **Audit** | Every interactive element carries a `data-testid` — `feature-element[-action]`, kebab-case, feature scope first, describes meaning (never position like `button-3`), stable across locales, unique per screen. Tests select by testid, never by CSS class, DOM position, or visible text. |
 
-**Token-name caveat:** the design-language page uses shorthand demo tokens in its own stylesheet (`--bg`, `--text`, `--primary`, `--r-sm`). Those names are for reading the doc. The production source of truth for token *names* is `ui/src/frontend/themes/tokens.css` — copy the **rules** from the design language and the **names** from `tokens.css`.
+**Token-name caveat:** the design-language page uses shorthand demo tokens in its own stylesheet (`--bg`, `--text`, `--primary`, `--r-sm`). Those names are for reading the doc. The production source of truth for token *names* is `ui/src/theme/tokens.css` — copy the **rules** from the design language and the **names** from `tokens.css`.
 
 ---
 
@@ -53,13 +53,13 @@ It is a self-contained, tabbed reference with a worked example and a "Fallback &
 | 3 | **Strict TypeScript is on.** No `any`, no `// @ts-ignore` without a `// FIXME: ...` comment. | We catch mistakes at compile time, not in production. |
 | 4 | **Components are presentational; hooks own behavior.** | Easy to test, easy to reuse. |
 | 5 | **No `invoke()` in components.** Components and hooks import per-domain wrappers from `ui/src/api/` — never `@tauri-apps/api/*` directly. | `ui/src/api/tauri.ts` is the single sanctioned re-export surface; API modules route calls through `loggedInvoke` (`ui/src/utils/logged-invoke.ts`) for timing/telemetry. Mockable, testable, discoverable. |
-| 6 | **Every visual decision comes from the design language (`dev/design-language.html`) expressed through `tokens.css` tokens.** | Consistency at a glance; one rebrand touches one `:root` block. |
+| 6 | **Every visual decision comes from the design language (`prototypes/design-language.html`) expressed through `tokens.css` tokens.** | Consistency at a glance; one rebrand touches one `:root` block. |
 
 ---
 
 ## I18n with `@fluent/react`
 
-Every user-visible string lives in a per-feature Fluent bundle under `ui/src/locales/`: `<feature>.ftl` is English, `<feature>.id.ftl` is Indonesian (currently the only additional locale — the `LocaleCode` union is `'en' | 'id'`). `shared.ftl` and `bundles.ftl` hold cross-feature strings. The component uses `<Localized>` or `useLocalization()` — never a string literal.
+Every user-visible string lives in a per-feature Fluent bundle under `shared-ui/locales/`: `<feature>.ftl` is English, `<feature>.id.ftl` is Indonesian (currently the only additional locale — the `LocaleCode` union is `'en' | 'id'`). `shared.ftl` and `bundles.ftl` hold cross-feature strings. The component uses `<Localized>` or `useLocalization()` — never a string literal.
 
 ```tsx
 import { Localized } from '@fluent/react';
@@ -76,7 +76,7 @@ export function PayButton({ onPay, disabled }: { onPay: () => void; disabled: bo
 ```
 
 ```fluent
-# ui/src/locales/sales.ftl
+# shared-ui/locales/sales.ftl
 sale-pay-button = Pay
 ```
 
@@ -99,7 +99,7 @@ payment-tendered-input =
 
 ## Accessibility (ARIA + a11y)
 
-OZ-POS passes `eslint-plugin-jsx-a11y` in CI. The plugin catches the most common mistakes; the rest is up to you.
+kasir.mu passes `eslint-plugin-jsx-a11y` in CI. The plugin catches the most common mistakes; the rest is up to you.
 
 ### Forms & inputs
 
@@ -242,7 +242,7 @@ There is **no external state library** (no TanStack Query, Zustand, Jotai, or Re
 
 ## Styling
 
-All design tokens live in `ui/src/frontend/themes/tokens.css` — the single source of truth for every visual property. **Dark is the default**: `:root` holds the dark theme and `[data-theme="light"]` overrides it. Components reference semantic tokens via `var(--token)` **only** — never a raw hex, never the design-language demo token names.
+All design tokens live in `ui/src/theme/tokens.css` — the single source of truth for every visual property. **Dark is the default**: `:root` holds the dark theme and `[data-theme="light"]` overrides it. Components reference semantic tokens via `var(--token)` **only** — never a raw hex, never the design-language demo token names.
 
 | Family | Tokens | Notes |
 |---|---|---|
@@ -305,7 +305,7 @@ Follow the design language's **Before · Feedback · After** contract: the contr
 
 ## Testing
 
-Component tests live in `ui/src/__tests__/` as **flat** `<Component>.test.tsx` files (417+ files, e.g. `CartScreen.test.tsx`, `PaymentModal.test.tsx`). Shared render helpers are in `ui/src/__tests__/test-utils/render.tsx`:
+Component tests live in `ui/src/__tests__/` as **flat** `<Component>.test.tsx` files (297 files, plus 255 `.test.ts`, e.g. `CartScreen.test.tsx`, `PaymentModal.test.tsx`). Shared render helpers are in `ui/src/__tests__/test-utils/render.tsx`:
 
 | Helper | When |
 |---|---|
@@ -314,7 +314,7 @@ Component tests live in `ui/src/__tests__/` as **flat** `<Component>.test.tsx` f
 | `renderWithProvidersSync(ui, ...ftl)` / `renderWithProviders(ui, ...ftl)` | Same, plus Brand/Theme/Toast/Zoom providers. |
 | `rerenderWithProviders(result, ui, ...ftl)` | Re-render while keeping the provider stack intact. |
 | `renderInAct` / `renderHookInAct` (`ui/src/test-utils/renderInAct.ts`) | Direct async-act boundary; also for isolated hook tests. |
-| `withFluent(ui, ...ftl)` (`@/locales/test-utils`) | Wrap an element in Fluent providers only. |
+| `withFluent(ui, ...ftl)` (`@/i18n/test-utils`) | Wrap an element in Fluent providers only. |
 
 FTL bundles are imported raw and passed in: `import salesFtl from '@/locales/sales.ftl?raw';`
 
@@ -366,11 +366,11 @@ ui/
     ├── contexts/                 # app-wide providers (SettingsContext, CurrencyContext, WorkspaceContext, …)
     ├── hooks/                    # cross-feature hooks
     ├── i18n/                     # LocaleContext, locale registration (index.ts)
-    ├── locales/                  # per-feature bundles: sales.ftl, sales.id.ftl, shared.ftl, bundles.ftl, …
+    │                           # (the .ftl corpus lives OUTSIDE ui/ at shared-ui/locales/;
+    │                           #  `@/locales/...` is aliased there by ui/vite.config.ts)
     ├── types/
     │   └── domain.ts             # CartId, Sku, Money, AppError, formatMoney
-    ├── frontend/
-    │   └── themes/               # tokens.css (source of truth), components.css, reset.css, responsive.css
+    ├── theme/                   # tokens.css (source of truth), components.css, reset.css, responsive.css, fonts.css
     ├── utils/
     │   └── logged-invoke.ts      # invoke wrapper with timing/telemetry
     └── __tests__/                # flat <Component>.test.tsx + test-utils/
@@ -389,8 +389,8 @@ ui/
 7. **Forgetting `aria-busy` during async commands.** The button looks clickable while the request is in flight; the user clicks again.
 8. **Styling with `px` everywhere** — the app must scale for tablets, large touch screens, and high-DPI. Use the rem-based `--space-*` tokens; px only for hairline borders.
 9. **Rendering a component whose `useEffect` fires async IPC with a plain sync `render()`.** Use `renderWithFluent` / `renderInAct` so the mount update is inside act() — see the Testing section.
-10. **Hardcoding a hex, or copying the design-language demo token names** (`--bg`, `--text`, `--r-sm`) into component CSS. Reference the real semantic tokens from `ui/src/frontend/themes/tokens.css`, or dark mode and rebrands break.
+10. **Hardcoding a hex, or copying the design-language demo token names** (`--bg`, `--text`, `--r-sm`) into component CSS. Reference the real semantic tokens from `ui/src/theme/tokens.css`, or dark mode and rebrands break.
 
 ---
 
-> last audited 03-09-26 by DSH
+> last audited 18-09-26 by Budak-Korporat
