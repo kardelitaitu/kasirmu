@@ -1,5 +1,5 @@
 //! Unit tests for the accounts-payable command bodies (Wave-C test
-//! relocation: moved out of `apps/desktop-client/src/commands/payables_tests.rs`).
+//! relocation: moved out of `apps/desktop-tauri/src/commands/payables_tests.rs`).
 //!
 //! The desktop file booted a Tauri mock app over `AppState::for_test_with_conn`
 //! and inserted sessions into `session_store`; the same seeds here go into a

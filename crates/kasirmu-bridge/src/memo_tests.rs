@@ -1,7 +1,7 @@
 //! Unit tests for the memo command surface (DTO wire shapes and the
 //! 2026-09-07 stop-gate ruling).
 //!
-//! Relocated from `apps/desktop-client/src/commands/memo_tests.rs`
+//! Relocated from `apps/desktop-tauri/src/commands/memo_tests.rs`
 //! (Wave F); the tauri `test_state` mock becomes `TestBridge::with_conn`
 //! over the seeded global identity DB.
 

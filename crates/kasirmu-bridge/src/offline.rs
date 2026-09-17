@@ -1,5 +1,5 @@
 //! Offline-queue command bodies (Wave F) — the tauri-free half of
-//! `apps/desktop-client/src/commands/offline.rs`.
+//! `apps/desktop-tauri/src/commands/offline.rs`.
 //!
 //! Key items: the nine ADR #7 scoped offline-queue commands (enqueue, list,
 //! list-all, status summary, count, retry-sync, delete, and the dead-letter

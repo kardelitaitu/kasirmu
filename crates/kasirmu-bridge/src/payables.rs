@@ -1,5 +1,5 @@
 //! Accounts-payable command bodies (Wave C / C5) — the tauri-free half of
-//! `apps/desktop-client/src/commands/payables.rs`.
+//! `apps/desktop-tauri/src/commands/payables.rs`.
 //!
 //! Key functions: the session-scoped [`list_payables_scoped`],
 //! [`create_payable_scoped`], [`record_payable_payment_scoped`] and

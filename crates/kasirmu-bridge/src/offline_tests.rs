@@ -1,5 +1,5 @@
 //! Unit tests for the offline-queue command helpers (test relocation:
-//! moved out of `apps/desktop-client/src/commands/offline_tests.rs`).
+//! moved out of `apps/desktop-tauri/src/commands/offline_tests.rs`).
 //!
 //! Mounted at the foot of `offline.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the `run_*` helpers and DTOs from the bridge
