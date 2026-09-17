@@ -1,8 +1,8 @@
-# OZ-POS 0.0.31
+# kasir.mu 0.0.31
 
 Released 2026-08-28.
 
-OZ-POS 0.0.31 is a major infrastructure and security release focused on eliminating legacy settings duplication, introducing the website admin + user dashboard subdomains, completing the security audit remediation (H-1/H-2/H-5/H-6/C-1/C-2), and hardening the KDS runtime.
+kasir.mu 0.0.31 is a major infrastructure and security release focused on eliminating legacy settings duplication, introducing the website admin + user dashboard subdomains, completing the security audit remediation (H-1/H-2/H-5/H-6/C-1/C-2), and hardening the KDS runtime.
 
 ## Highlights
 

@@ -1,4 +1,4 @@
-# OZ-POS Tauri Security Audit
+# kasir.mu Tauri Security Audit
 
 **Date:** 2026-07 (session audit)
 **Scope:** `apps/desktop-client` + `apps/tablet-client` (Tauri v2)
@@ -9,7 +9,7 @@
 
 ## 1. Executive Summary
 
-OZ-POS is a well-structured Tauri v2 codebase with strong conventions: parameterised SQL everywhere (no SQL injection found in the command layer), a scoped/session-token authorization model (`_scoped` commands via `resolve_session` → `require_permission_for_user`), uniform login-error responses, persistent login rate limiting (STAFF-07), an in-memory session store with TTL, and a hardware-fingerprint-bound license key encryption scheme. The updater pipeline is a genuine positive: committed public key, private key held as a CI secret, manifest signatures verified against the pubkey in CI (`release.yml`), and `oz-pos-updater.key` correctly gitignored.
+kasir.mu is a well-structured Tauri v2 codebase with strong conventions: parameterised SQL everywhere (no SQL injection found in the command layer), a scoped/session-token authorization model (`_scoped` commands via `resolve_session` → `require_permission_for_user`), uniform login-error responses, persistent login rate limiting (STAFF-07), an in-memory session store with TTL, and a hardware-fingerprint-bound license key encryption scheme. The updater pipeline is a genuine positive: committed public key, private key held as a CI secret, manifest signatures verified against the pubkey in CI (`release.yml`), and `oz-pos-updater.key` correctly gitignored.
 
 However, the audit found a **large dual-surface authorization problem** and several **unauthenticated sensitive operations**:
 

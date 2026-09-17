@@ -11,7 +11,7 @@ status: Implemented (2026-07-15)
 **Status:** Implemented (2026-07-15)
 **Date:** 2026-07-10
 **Updated:** 2026-07-15 (all phases complete — Q1-Q4 resolved, daemon wiring shipped)
-**Author:** Architecture Team & OZ-POS Contributors
+**Author:** Architecture Team & kasir.mu Contributors
 **Tags:** crdt, offline, sync, inventory, uuidv7, ulid, concurrency
 
 ---

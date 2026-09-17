@@ -1,4 +1,4 @@
-# Docker Deployment Guide — Full-Stack OZ-POS
+# Docker Deployment Guide — Full-Stack kasir.mu
 
 <!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (structural claims + all references verified) · verified against HEAD: all 4 services defined in docker-compose*.yml (pos-cloud-server/license-server/redis/pos-cloud-db); ports 3099/8080 match prod compose; scripts/generate-license-keys.{sh,ps1}, Dockerfile.server, apps/license-server/Dockerfile exist; ADR #10 + #11 links resolve with correct numbers. Scope: structural/reference claims verified; step-by-step deployment procedures not exhaustively executed · Repaired 12-09-26 (DSH, consistency vs 14a31a31f + license-server auth code): OZ_ADMIN_KEY added to every required-vars list (the compose `:?` default made the old "empty = dev mode open" row false); new admin-key / dev-fallback / OZ_PRODUCTION section — OZ_PRODUCTION is read by the cloud server only and appears in no compose artifact -->
 
@@ -6,7 +6,7 @@
 > **Status:** Implemented (2026-07-20)
 > **Target audience:** DevOps / system administrators
 
-This guide covers deploying the complete OZ-POS backend stack using Docker
+This guide covers deploying the complete kasir.mu backend stack using Docker
 Compose: cloud server, license server, Redis cache, and optional PostgreSQL.
 
 ---
@@ -191,7 +191,7 @@ is merged.
 
 ## Reverse Proxy & TLS (Caddy)
 
-OZ-POS services speak **plain HTTP** — they are designed to sit behind a
+kasir.mu services speak **plain HTTP** — they are designed to sit behind a
 reverse proxy that terminates TLS. This is the supported production
 pattern; the stack itself never terminates TLS:
 
@@ -286,7 +286,7 @@ needed.
 |----------|---------|---------|-------------|
 | `OZ_API_PORT` | `3099` | pos-cloud-server | HTTP listen port |
 | `RUST_LOG` | `info` | pos-cloud-server | Log level (debug, info, warn, error) |
-| `OZ_DB_PATH` | `/data/oz-pos.db` | pos-cloud-server | SQLite database path |
+| `OZ_DB_PATH` | `/data/kasir.db` | pos-cloud-server | SQLite database path |
 | `REDIS_URL` | `redis://redis:6379` | pos-cloud-server | Redis connection string |
 | `REDIS_CACHE_TTL` | `300` | pos-cloud-server | Redis cache TTL (seconds) |
 | `DATABASE_URL` | _(empty)_ | pos-cloud-server | PostgreSQL connection string |
@@ -407,7 +407,7 @@ Key design decisions:
 ```bash
 # Backup SQLite database
 docker run --rm -v oz_cloud_data:/data -v $(pwd):/backup alpine \
-  cp /data/oz-pos.db /backup/oz-pos-$(date +%Y%m%d).db
+  cp /data/kasir.db /backup/oz-pos-$(date +%Y%m%d).db
 
 # Backup PocketBase database
 docker run --rm -v pb_data:/pb -v $(pwd):/backup alpine \
@@ -538,7 +538,7 @@ path-looking argument.
 | Avoid `docker run` entirely | Use `docker compose` — YAML values are never shell-mangled |
 
 > Note: `docker-compose.yml` values are **not** affected — Compose passes
-> them through directly, so the shipped `OZ_DB_PATH=/data/oz-pos.db`
+> them through directly, so the shipped `OZ_DB_PATH=/data/kasir.db`
 > (see the environment table above) works from any shell. The gotcha only
 > bites ad-hoc `docker run` invocations typed into Git Bash. Prefer
 > `MSYS_NO_PATHCONV=1` as the one-shot fix.

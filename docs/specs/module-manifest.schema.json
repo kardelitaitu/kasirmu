@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "$id": "https://oz-pos.dev/schemas/module-manifest.json",
-  "title": "OZ-POS Module Manifest",
-  "description": "Schema for validating module manifest.json files in the OZ-POS module system.",
+  "title": "kasir.mu Module Manifest",
+  "description": "Schema for validating module manifest.json files in the kasir.mu module system.",
   "type": "object",
   "properties": {
     "id": {

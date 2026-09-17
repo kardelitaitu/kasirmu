@@ -13,7 +13,7 @@
 > **Design principle: cheapest server wins.** Every architecture decision is evaluated
 > through one lens: *how many POS terminals can we serve for $0/month?*
 
-The OZ-POS server is a **single Docker container** running three processes under supervisord:
+The kasir.mu server is a **single Docker container** running three processes under supervisord:
 
 | Process | Runtime | Port | Role | CPU Cost |
 |---------|---------|------|------|----------|

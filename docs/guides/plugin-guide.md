@@ -1,8 +1,8 @@
 <!-- Audit stamp: 2026-07-31 · Buffy-Agent · status: SYNCED (PLG-10 parity rewrite) · verified against crates/oz-plugin (manager.rs, manifest.rs, loader.rs, package.rs) and crates/oz-lua (lib.rs, bridge.rs) · corrected: oz table surface (get_time/log/apply_discount/register_hook/on/off only), mandatory required_permissions + manifest validation (kebab-case name, strict SemVer, unknown-permission rejection), register_hook(string) signature, per-plugin env isolation, HAL traits table (no NfcReader), oz-cli commands (no run-script/validate-plugins), sandbox limits (100k instr / 10 MiB) · RE-AUDITED 31-08 by docs-auditor: re-verified limits against crates/oz-lua (INSTRUCTION_LIMIT=100_000 at lib.rs:53, 10 MiB via set_memory_limit) — accurate; PLG-11 (cbe01ace) hardened the internal SQL validator (ensure_no_quoted_identifiers) but that API is Rust-side (manager namespace setup), not a plugin Lua global, so no guide change needed; aligned '10 MB' -> '10 MiB' to match the oz-lua README + the actual 10*1024*1024 constant; normalized the non-standard 3-line footer to the single-line standard -->
 
-# OZ-POS Plugin System
+# kasir.mu Plugin System
 
-Plugins extend OZ-POS with custom business logic, hardware drivers,
+Plugins extend kasir.mu with custom business logic, hardware drivers,
 and integrations — all without modifying the core codebase.
 
 ## Plugin Manifest (`plugin.toml`)
@@ -65,7 +65,7 @@ plugins/
 
 Plugins are loaded from the `plugins/` directory at startup:
 
-1. OZ-POS scans `plugins/` (relative to the app data directory)
+1. kasir.mu scans `plugins/` (relative to the app data directory)
 2. Each subdirectory with a `plugin.toml` is loaded; manifest schema violations
    fail loudly instead of silently skipping
 3. Each plugin's Lua scripts load into **its own isolated environment** — plugin
@@ -193,7 +193,7 @@ Key requirements:
 1. Create a directory in `plugins/`
 2. Write your `plugin.toml` (including at least one `required_permissions`)
 3. Write your Lua scripts
-4. Restart OZ-POS to load the plugin
+4. Restart kasir.mu to load the plugin
 5. Check the logs for any load errors
 
 ## Testing Plugins

@@ -91,7 +91,7 @@ Browser → admin.ozpos.my.id
 
 ### H3 — Hardcoded English Strings (No i18n)
 
-**File**: `admin.js` — every label, tooltip, error message, button text, and table header is hardcoded English. The rest of the OZ-POS ecosystem uses `@fluent/react` and `.ftl` files for i18n. The admin dashboard has no locale support.
+**File**: `admin.js` — every label, tooltip, error message, button text, and table header is hardcoded English. The rest of the kasir.mu ecosystem uses `@fluent/react` and `.ftl` files for i18n. The admin dashboard has no locale support.
 
 **Severity**: **HIGH** — inconsistent with the rest of the platform. If the admin needs to be localized in the future, every string must be extracted.
 

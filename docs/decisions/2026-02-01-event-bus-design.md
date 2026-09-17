@@ -17,7 +17,7 @@ status: Implemented (2026-07-15)
 
 ## Context
 
-OZ-POS requires modules to communicate without direct imports to maintain loose coupling. The primary use cases are:
+kasir.mu requires modules to communicate without direct imports to maintain loose coupling. The primary use cases are:
 
 1. **Sale completed** → Inventory decrements stock → CRM updates customer history → Loyalty awards points → Reporting logs the transaction.
 2. **Product created** → Audit log records the creation → Sync engine queues the change.

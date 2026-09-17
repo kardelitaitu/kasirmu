@@ -1,4 +1,4 @@
-# OZ-POS Incident Response Plan
+# kasir.mu Incident Response Plan
 
 <!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (3 findings) · first stamp this page ever carried, and it had none: the header read "Status: Implemented · Last updated: 2026-07-20", which is both a shadow status line (no <!-- Audit stamp --> comment, no `last audited` footer, so invisible to check-audit-stamps.py and detect.sh) and the wrong word for a runbook — you do not implement a plan. · REPAIRED: (1) §10 claimed the audit log "uses" an `incident.report` action type across five lifecycle outcomes; the string exists nowhere in the sources and the real vocabulary is five SECURITY_ACTION_*/SECURITY_REASON_* consts (login, login.failed, logout, user.create, user.update) in crates/oz-core/src/db/audit_security.rs, so §10 is now labelled a specification; (2) §4.2 step 5 sends the on-call engineer to docs/incidents/, which has never existed and is referenced by no other file; (3) the status line rewritten. · VERIFIED HONEST, not assumed: this document already flags its own gaps where the gap is a file — COMMS_TEMPLATES.md, EMERGENCY_CONTACTS.md, INCIDENT_RESPONSE_QUICKREF.md, business_continuity.md, audit_log_specifications.md, security_checklist.md all carry "⚠️ Pending" markers naming the date they were found missing. That is good practice and it is why the two repaired items are the interesting ones: both were claimed in present tense with no marker, and both are the kind of claim a reader follows during an actual incident. -->
 
@@ -30,11 +30,11 @@ describes an audit action that does not exist.
 
 ### 1.1 Purpose
 
-This document defines the incident response procedures for the OZ-POS point-of-sale system. It ensures that security incidents are detected, contained, investigated, and remediated in a consistent and timely manner, minimising impact on business operations and cardholder data.
+This document defines the incident response procedures for the kasir.mu point-of-sale system. It ensures that security incidents are detected, contained, investigated, and remediated in a consistent and timely manner, minimising impact on business operations and cardholder data.
 
 ### 1.2 Scope
 
-This plan covers all OZ-POS components:
+This plan covers all kasir.mu components:
 
 - **Desktop client** (`apps/desktop-client/`) — retail POS terminals
 - **Tablet client** (`apps/tablet-client/`) — mobile POS terminals
@@ -46,7 +46,7 @@ This plan covers all OZ-POS components:
 - **Hardware** — printers, scanners, scales, payment terminals
 - **Build & deployment** — CI/CD pipeline, Docker images, release artifacts
 
-> **Out of scope:** Network infrastructure (firewalls, switches), physical security of premises, and third-party services not operated by OZ-POS (payment gateways, cloud hosting). These are the responsibility of the deployment environment.
+> **Out of scope:** Network infrastructure (firewalls, switches), physical security of premises, and third-party services not operated by kasir.mu (payment gateways, cloud hosting). These are the responsibility of the deployment environment.
 
 ---
 
@@ -171,7 +171,7 @@ Conduct a post-mortem meeting within 5 business days of closure. See §9 for the
 |------|--------|----------------|
 | 1 | Identify the scope of exposure (which terminals, transactions, time period) | Security Lead |
 | 2 | Disable the affected payment terminal(s) via the cloud server | Operations Lead |
-| 3 | Verify that OZ-POS does **not** store PAN/CVV/PIN (confirm with audit log + DB inspection) | Security Lead |
+| 3 | Verify that kasir.mu does **not** store PAN/CVV/PIN (confirm with audit log + DB inspection) | Security Lead |
 | 4 | Notify the payment gateway (Stripe/Square) of the potential compromise | Communications Lead |
 | 5 | Engage external forensics if cardholder data is confirmed exposed | Legal / Compliance |
 

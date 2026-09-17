@@ -17,7 +17,7 @@ When merchants generate dynamic QRIS codes directly from their NMID / Merchant P
 4. However, the bank's mobile/merchant app installed on the store's Android POS device receives an **instant, free push notification** (within 1-2 seconds) upon settlement.
 
 ### The Solution
-Embed an Android **`NotificationListenerService`** plugin directly into the OZ-POS Android APK.
+Embed an Android **`NotificationListenerService`** plugin directly into the kasir.mu Android APK.
 When the bank's merchant app emits a notification matching a QRIS transaction, the service parses the amount, matches the pending invoice, and automatically transitions the POS checkout to **PAID** without requiring manual cashier verification.
 
 ---
@@ -29,7 +29,7 @@ When the bank's merchant app emits a notification matching a QRIS transaction, t
 |                               Android Device / Tablet                         |
 |                                                                               |
 |  +---------------------------+             +-------------------------------+  |
-|  | Bank Merchant App         |             | OZ-POS Tauri v2 Android App   |  |
+|  | Bank Merchant App         |             | kasir.mu Tauri v2 Android App   |  |
 |  | (Bank Jatim / BCA / etc.) |             |                               |  |
 |  +-------------+-------------+             |  +-------------------------+  |  |
 |                |                           |  | Android Native (Kotlin) |  |  |
@@ -63,7 +63,7 @@ To receive notifications from other apps on Android 5.0+ (API 21 to API 35), the
 ```xml
 <service
     android:name=".qris.QrisNotificationListener"
-    android:label="OZ-POS QRIS Payment Listener"
+    android:label="kasir.mu QRIS Payment Listener"
     android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
     android:exported="true">
     <intent-filter>
@@ -77,7 +77,7 @@ To receive notifications from other apps on Android 5.0+ (API 21 to API 35), the
 1. Check permission via:
    `NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)`.
 2. If false, show an intuitive setup dialog:  
-   *"Untuk mendeteksi pembayaran QRIS otomatis tanpa cek mutasi manual, aktifkan izin Notifikasi untuk OZ-POS di Pengaturan Android."*
+   *"Untuk mendeteksi pembayaran QRIS otomatis tanpa cek mutasi manual, aktifkan izin Notifikasi untuk kasir.mu di Pengaturan Android."*
 3. Direct the merchant with an intent:
    ```kotlin
    val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
@@ -86,7 +86,7 @@ To receive notifications from other apps on Android 5.0+ (API 21 to API 35), the
 
 ### 3.3 Kotlin Listener Implementation
 ```kotlin
-package com.ozpos.tablet.qris
+package mu.kasir.tablet.qris
 
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification

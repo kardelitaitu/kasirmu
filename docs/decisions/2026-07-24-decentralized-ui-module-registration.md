@@ -17,7 +17,7 @@ status: Accepted (2026-07-24)
 
 ## Context
 
-In the OZ-POS React/TypeScript UI (`ui/src`), feature components live in modular directories under `ui/src/features/<feature>/` (e.g. `sales`, `inventory`, `customers`, `staff`, `reports`).
+In the kasir.mu React/TypeScript UI (`ui/src`), feature components live in modular directories under `ui/src/features/<feature>/` (e.g. `sales`, `inventory`, `customers`, `staff`, `reports`).
 
 However, page and navigation registration was previously centralized inside `ui/src/App.tsx`. `App.tsx` imported over 35 screen components directly and contained ~40 sequential calls to `registerPage(...)` and `registerNavItem(...)`.
 

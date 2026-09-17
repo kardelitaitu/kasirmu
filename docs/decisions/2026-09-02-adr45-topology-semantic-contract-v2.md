@@ -8,7 +8,7 @@ status: Accepted — §1–§3, §4.1, §5, §4.2 storage + IPC + migration func
 
 **Status:** Accepted — §1–§3, §4.1, §5, §4.2 storage + IPC + migration function, §4.3 ordering rule + backend parity implemented (2026-09-02); §4.2 UI swap and §4.3 checklist UI proposed
 **Date:** 2026-09-02
-**Author:** Architecture Team & OZ-POS Contributors
+**Author:** Architecture Team & kasir.mu Contributors
 **Tags:** topology, semantic-contract, cross-language-parity, node-kind-registry, cold-start, theming
 
 ---

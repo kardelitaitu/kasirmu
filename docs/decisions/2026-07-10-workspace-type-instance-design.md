@@ -10,14 +10,14 @@ status: Implemented (2026-07-10)
 
 **Status:** Implemented (2026-07-10)
 **Date:** 2026-07-10
-**Author:** Architecture Team & OZ-POS Contributors
+**Author:** Architecture Team & kasir.mu Contributors
 **Tags:** architecture, tenancy, workspaces, multi-store, data-isolation, device-binding
 
 ---
 
 ## Context
 
-OZ-POS currently defines workspaces as a flat set of unique keys:
+kasir.mu currently defines workspaces as a flat set of unique keys:
 
 ```
 restaurant-pos  → fullscreen PosScreen with table management

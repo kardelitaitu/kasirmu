@@ -312,7 +312,7 @@ flip the status, and delete the `_note`.
 
 ---
 
-*Generated and maintained by the OZ-POS team. Last verified by `verify-ci-docs-drift.py`.*
+*Generated and maintained by the kasir.mu team. Last verified by `verify-ci-docs-drift.py`.*
 
 > last audited 09-09-26 by docs-auditor
 >

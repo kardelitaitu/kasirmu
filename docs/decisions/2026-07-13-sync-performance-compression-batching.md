@@ -10,14 +10,14 @@ status: Implemented (all 3 phases complete as of 2026-07-15)
 
 **Status:** Implemented (all 3 phases complete as of 2026-07-15)
 **Date:** 2026-07-13 (strategy), 2026-07-15 (implemented)
-**Author:** Architecture Team & OZ-POS Contributors
+**Author:** Architecture Team & kasir.mu Contributors
 **Tags:** sync, compression, batching, performance, network, low-bandwidth, hosting-cost, sqlite, retention
 
 ---
 
 ## Context
 
-OZ-POS is designed to support low-end hardware (e.g., Android 9 tablets, Core2Duo PCs) operating in low-bandwidth, unstable, or offline environments.
+kasir.mu is designed to support low-end hardware (e.g., Android 9 tablets, Core2Duo PCs) operating in low-bandwidth, unstable, or offline environments.
 
 Additionally, the project has a strict cost target: **the cloud sync server must cost no more than $2–$3 a month to host** (typically a tiny shared-core VPS with 512MB–1GB RAM and 1 shared vCPU), yet be capable of handling synchronization for thousands of active stores.
 

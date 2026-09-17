@@ -1,7 +1,7 @@
 id: 0045-sync-conflict-dead-letter-recovery
 title: Sync conflict and dead-letter recovery
 status: needs-human-approval
-owner: OZ-POS maintainers
+owner: kasir.mu maintainers
 implementer: Buffy
 priority: P0
 scope:

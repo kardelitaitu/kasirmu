@@ -1,4 +1,4 @@
-# UI Wiring & Element Audit Report — Settings (OZ-POS Desktop App)
+# UI Wiring & Element Audit Report — Settings (kasir.mu Desktop App)
 
 - **Audit ID:** 2026-07-23-ui-wiring-audit
 - **Status:** Findings resolved — fixes implemented and committed

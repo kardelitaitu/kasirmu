@@ -1,6 +1,6 @@
-# OZ-POS Documentation
+# kasir.mu Documentation
 
-Welcome to the OZ-POS documentation portal — a single place for hand-written
+Welcome to the kasir.mu documentation portal — a single place for hand-written
 guides, architecture decision records, and API references for the Rust
 workspace and the TypeScript frontend.
 

@@ -24,7 +24,7 @@ keytool -genkey -v \
   -validity 1825 \
   -storepass <your-keystore-password> \
   -keypass <same-as-storepass> \
-  -dname "CN=OZ-POS, OU=Engineering, O=OZ Systems, L=Jakarta, ST=DKI Jakarta, C=ID"
+  -dname "CN=kasir.mu, OU=Engineering, O=OZ Systems, L=Jakarta, ST=DKI Jakarta, C=ID"
 ```
 
 This creates a keystore valid for 5 years (1825 days). The store and key

@@ -1,9 +1,9 @@
 <!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (4 findings) · Carries forward the 2026-08-31/09-01 work, which was real and mostly still true: crate tree +oz-crypto/oz-media/oz-notification/oz-plugin; rlua→mlua; oz-payment +Paddle; HAL 'NFC' → the five real device traits; IPC 618→505 (superseded again — see api-reference.md; the registered surface is 451 as measured 08-09-26); module count 14 (re-verified today: 14 dirs under modules/ with a Cargo.toml); ui/api 'pos.ts is the only invoke() caller' → per-domain wrappers; Registry/platform-startup updated for apply_config()/HardwareConfig and discover(); 3 of 6 device traits → 6. · REPAIRED TODAY: (1) §Migrations said '19 embedded SQL files … squashed into init.sql … executed on startup by platform-startup' — all three clauses are wrong now. There are 44 SQLite .sql files embedded via include_str! in crates/oz-core/src/migrations.rs (45 entries incl. the generated PG one); the squash target is 20260813_init.sql; and migrations run at AppState construction (desktop state.rs:212, tablet state.rs:117, cloud db.rs:134, oz-api lib.rs:457) — platform/startup only calls the fresh_db() test helper. (2) The .github/workflows tree still named ci.yml and security.yml as live ten days after 23c963303 retired them; now it names the two live workflows and marks the rest retired. (3) '5 store presets' → 6. · THE INTERESTING PART about (1): the previous stamp records the fix 'migrations 98 -> 19 SQL files (131 squashed into init.sql)' and a second pass 'crate-tree 20 migrations -> 19, consistent with §Migrations'. The auditor did the work, twice, carefully — and wrote down a precise count that was true for exactly one day before the next migration landed. The count is 44 today. That is why §Migrations now cites the file it counts and the call sites that run it rather than asserting a number nobody can refresh. · CODE FINDING FLAGGED NOT PATCHED: features.rs's own //! says 'all 32 toggleable features' while the enum has 39 variants — the doc comment is what rotted here, not the doc. -->
 
-# OZ-POS – Codebase Architecture
+# kasir.mu – Codebase Architecture
 
 ## Overview
-This document describes the directory layout and module responsibilities for **OZ-POS**. The design supports:
+This document describes the directory layout and module responsibilities for **kasir.mu**. The design supports:
 - Rust core engine (transaction handling, persistence)
 - Hardware Abstraction Layer (HAL) for barcode scanners, receipt printers, cash drawers, customer displays, weight scales, and EDC payment terminals
 - Embedded Lua scripting for dynamic business rules
@@ -274,7 +274,7 @@ cargo tauri dev          # launches Tauri dev window
 ---
 ## License & Commercial Governance
 - **Proprietary & Confidential (`All Rights Reserved`)**: See [`LICENSE`](../../LICENSE) for terms.
-- No commercial deployment, redistribution, or modification is permitted without an executed commercial license agreement from OZ-POS Contributors.
+- No commercial deployment, redistribution, or modification is permitted without an executed commercial license agreement from kasir.mu Contributors.
 - Internal developer contributions are governed under proprietary contributor agreements; all code strictly adheres to quality gates enforced at pre-commit and beyond (pre-commit: LF normalization, bundle parity, FTL dedupe, migration column-type lint, PG drift guard, Go, FTL orphan lint; pre-push/CI additionally check `cargo fmt` and clippy — fmt left pre-commit on 2026-09-13).
 
 ---

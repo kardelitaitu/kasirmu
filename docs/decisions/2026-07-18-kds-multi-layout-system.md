@@ -10,7 +10,7 @@ status: Implemented (2026-07-26)
 
 **Status:** Implemented (2026-07-26)
 **Date:** 2026-07-18
-**Author:** Architecture Team & OZ-POS Contributors
+**Author:** Architecture Team & kasir.mu Contributors
 **Tags:** kds, kitchen-display, layout, ux, preference, workspace
 
 ---

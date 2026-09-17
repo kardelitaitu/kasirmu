@@ -10,11 +10,11 @@
 > policy while iOS has never been generated. So **every `gen/apple/...` path below
 > describes output of `cargo tauri ios init`, which must be run on a macOS host first.**
 > The project filename is also not stable: this guide says `oz-pos-tablet.xcodeproj`
-> while `docs/guides/ios-build-guide.md` says `OZ-POS.xcodeproj`, and neither can be
+> while `docs/guides/ios-build-guide.md` says `kasir.mu.xcodeproj`, and neither can be
 > verified until the scaffold exists. Prefer discovery over a hardcoded name:
 > `find apps/tablet-client/gen/apple -maxdepth 1 -name "*.xcodeproj"`.
 
-> **Purpose:** Build, sign, and distribute OZ-POS tablet client for iOS/iPad.
+> **Purpose:** Build, sign, and distribute kasir.mu tablet client for iOS/iPad.
 >
 > **Related:** [iOS Install Test](./ios-install-test.md) · [Android Keystore Guide](./android-keystore-guide.md)
 > · [Mobile Release Checklist](https://github.com/kardelitaitu/oz-pos/blob/main/docs/releases/mobile-checklist.md)
@@ -88,7 +88,7 @@ ls -la gen/apple/
 
 1. Open the generated Xcode project:
    ```bash
-   open apps/tablet-client/gen/apple/OZ-POS.xcodeproj
+   open apps/tablet-client/gen/apple/kasir.mu.xcodeproj
    ```
 2. Select the target → **Signing & Capabilities**
 3. Check **Automatically manage signing**
@@ -195,7 +195,7 @@ Or trigger manually:
    - Go to [App Store Connect](https://appstoreconnect.apple.com)
    - → Apps → [+] → New App
    - Platform: **iOS/iPadOS**
-   - Name: **OZ-POS Tablet**
+   - Name: **kasir.mu Tablet**
    - Bundle ID: Match the `APPLE_BUNDLE_ID` secret
 
 2. **Upload IPA via Transporter**:

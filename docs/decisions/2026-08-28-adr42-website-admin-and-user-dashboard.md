@@ -8,7 +8,7 @@ status: Partially Implemented — subdomain routing + auth gate + password rotat
 
 **Status:** Partially Implemented — subdomain routing + auth gate + password rotation + dashboard/admin SPAs complete (2026-08-28); invoice history and webhook delivery log remain future work (see §5 Open Questions)  
 **Date:** 2026-08-28  
-**Author:** Architecture Team & OZ-POS Contributors  
+**Author:** Architecture Team & kasir.mu Contributors  
 **Tags:** website, dashboard, admin, subdomain, auth, license-server, billing, tenant-management, password-rotation
 
 > **Deviation (2026-08-28):** the customer dashboard subdomain
@@ -25,18 +25,18 @@ status: Partially Implemented — subdomain routing + auth gate + password rotat
 
 ## 1. Context & Motivation
 
-The OZ-POS website (`ozpos.my.id` — Astro static site on Cloudflare Workers) currently has a single **account page** (`/account`, `AccountView.tsx`) after login that shows license status, subscription tier, and basic settings. It is a single-card-stack page with no dedicated subdomain, no dashboard, no admin panel.
+The kasir.mu website (`ozpos.my.id` — Astro static site on Cloudflare Workers) currently has a single **account page** (`/account`, `AccountView.tsx`) after login that shows license status, subscription tier, and basic settings. It is a single-card-stack page with no dedicated subdomain, no dashboard, no admin panel.
 
 As the platform grows, two distinct authenticated web surfaces are needed:
 
-1. **User Dashboard** — for the tenant/customer after purchasing OZ-POS. Shows:
+1. **User Dashboard** — for the tenant/customer after purchasing kasir.mu. Shows:
    - Subscription status, billing history, invoices
    - License activation, device management
    - Usage metrics (stores, terminals, staff count)
    - Upgrade/downgrade subscription
    - Support contact
 
-2. **Admin Dashboard** — for OZ-POS internal operations. Shows:
+2. **Admin Dashboard** — for kasir.mu internal operations. Shows:
    - Tenant list with search/filter (email, tier, status, date range)
    - Per-tenant drill-down: license, subscription, device count, usage
    - Manual license activation, renewal, revocation
@@ -118,7 +118,7 @@ flowchart TD
 | Subdomain | Purpose | Target | Auth |
 |-----------|---------|--------|------|
 | `dashboard.ozpos.my.id` | User dashboard (tenant-facing) | Cloudflare Workers — Astro SPA | JWT session (cookie or localStorage + short-lived token) |
-| `admin.ozpos.my.id` | Admin dashboard (internal OZ-POS) | Cloudflare Workers — Astro SPA | JWT session + `role: admin` claim |
+| `admin.ozpos.my.id` | Admin dashboard (internal kasir.mu) | Cloudflare Workers — Astro SPA | JWT session + `role: admin` claim |
 | `ozpos.my.id` | Marketing site (public) | Current Astro site — unchanged | Public (login page handled here) |
 
 All three subdomains share the same Cloudflare Workers deployment (route-based routing) or separate Workers with a shared auth domain.

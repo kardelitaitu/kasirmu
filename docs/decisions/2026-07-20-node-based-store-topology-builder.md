@@ -8,7 +8,7 @@ status: Implemented (2026-07-22) — Amended (2026-07-23)
 
 **Status:** Implemented (2026-07-22) — Amended (2026-07-23)  
 **Date:** 2026-07-20  
-**Author:** Architecture Team & OZ-POS Contributors  
+**Author:** Architecture Team & kasir.mu Contributors  
 **Tags:** store-topology, node-editor, multi-store, workspaces, inventory-routing, ux  
 
 ---

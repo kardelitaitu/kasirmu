@@ -1,8 +1,8 @@
-# Extending OZ-POS — Scripting & Integration Guide
+# Extending kasir.mu — Scripting & Integration Guide
 
 <!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (3 findings, all repaired) · re-verified the 2026-09-03 audit rather than trusting it, and it held on ~20 claims: READ_KEY_MAP in crates/oz-api/src/read_tiers.rs, require_admin_write at routes/tokens.rs:134, ApiTokenClaims at auth.rs:58, DEFAULT_EXPIRY_HOURS=24, JWT_CACHE_TTL_SECS=60, OZ_TERMINAL_READ_TIER at routes/tokens.rs:205, plan endpoint really is free|pro only (plans.rs:111; enterprise -> 400 unknown_plan), the six-event vocabulary matches EVENT_ACTIONS exactly and in order (apps/cloud-server/src/outbound_webhooks.rs:36-43), 10 s receiver timeout, backoff 120*2^attempt capped at 3600 s (outbox.rs:45-48), Lua INSTRUCTION_LIMIT=100_000 and MEMORY_LIMIT=10 MiB (crates/oz-lua/src/lib.rs:53-57), sale.before_complete at crates/oz-plugin/src/manager.rs:411, ErrorEnvelope forward-declared while handlers emit flat errors, all six reserved tags still declare zero paths so §10.2 stands five days on · REPAIRED: §2.2 resolved the served store via store_profiles.is_primary but the query is SELECT id FROM locations WHERE is_primary = 1 (apps/desktop-client/src/local_api.rs:95-98), the store->location rename; §1 said 505 IPC commands, registered is 450 (425 desktop / 297 tablet / 272 both); §3.2 omitted the three /api/v1/memos/* routes from the 2026-09-07 cloud-read ruling, which spec/paths.rs already declared · EVIDENCE CORRECTION: the previous stamp claimed §7 is executed verbatim by target/smoke-local-api.ps1 (22/22) — that file is untracked inside a gitignored build dir (.gitignore:2 /target/), so the claim was true once and is unreproducible by anyone else; promote it to scripts/ before citing it as proof · original 2026-09-03 anchors retained: crates/oz-api/src/{lib.rs,auth.rs,read_tiers.rs,api_audit.rs,spec/mod.rs}, crates/oz-api/src/routes/{tokens.rs,terminals.rs,sales.rs,settings.rs,products.rs,tax_rates.rs,exchange_rates.rs,users.rs,images.rs}, apps/cloud-server/src/{main.rs,openapi.rs,openapi_tests.rs,sync_api.rs,outbound_webhooks.rs,outbox.rs}, apps/desktop-client/src/{local_api.rs,commands/local_api.rs}, foundation/src/money.rs, docs/specs/_active/0047-openapi-drift-guard-and-read-tiers.md -->
 
-This guide is for people writing **their own scripts** against an OZ-POS
+This guide is for people writing **their own scripts** against an kasir.mu
 installation — automation on the counter machine, a dashboard against the
 cloud, or an in-process business-rule extension. It maps the extension
 surfaces, the auth model, the wire conventions, and the honest current
@@ -75,7 +75,7 @@ deployment, by design:
 ```bash
 # SQLite-backed dev server, admin key unset => token minting is OPEN (dev mode)
 cargo run -p oz-cloud-server
-# env knobs: OZ_API_PORT (default 3099), OZ_DB_PATH (default oz-pos.db),
+# env knobs: OZ_API_PORT (default 3099), OZ_DB_PATH (default kasir.db),
 #            OZ_ADMIN_KEY, OZ_API_SECRET, OZ_CORS_ORIGINS, OZ_PRODUCTION
 ```
 
@@ -315,10 +315,10 @@ over HTTP as in the recipes below (open in the dev playground; with
 **Generate Token** in Settings → Local API — HTTP minting there requires
 the per-install secret as `X-Admin-Key`, and the panel deliberately
 never displays it. Scripts that need a *setting value* read it from the global
-database (the desktop `oz-pos.db`, the same file `--db` targets):
+database (the desktop `kasir.db`, the same file `--db` targets):
 
 ```bash
-sqlite3 "$APPDATA/com.ozpos.app/oz-pos.db" \
+sqlite3 "$APPDATA/mu.kasir.app/kasir.db" \
   "SELECT key, value FROM settings WHERE key='currency.default'"
 ```
 

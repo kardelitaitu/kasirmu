@@ -17,7 +17,7 @@ status: Implemented (2026-07-15)
 
 ## Context
 
-OZ-POS is migrating from a flat, monolithic crate structure to a modular architecture where every business feature is a self-contained module. This ADR captures the design decisions for the module system.
+kasir.mu is migrating from a flat, monolithic crate structure to a modular architecture where every business feature is a self-contained module. This ADR captures the design decisions for the module system.
 
 The target architecture, defined in `ARCHITECTURE.md`, requires:
 

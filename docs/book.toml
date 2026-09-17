@@ -1,12 +1,12 @@
-# OZ-POS documentation portal — mdBook configuration.
+# kasir.mu documentation portal — mdBook configuration.
 #
 # The portal aggregates hand-written guides (docs/), ADRs (docs/decisions/),
 # rustdoc output (target/doc/) and TypeDoc output (ui/src). Generated content
 # is copied into docs/src/ before building — see the plan at
 # docs/plans/documentation-portal-plan.md for the full layout.
 [book]
-title = "OZ-POS Documentation"
-authors = ["OZ-POS contributors"]
+title = "kasir.mu Documentation"
+authors = ["kasir.mu contributors"]
 language = "en"
 
 [build]

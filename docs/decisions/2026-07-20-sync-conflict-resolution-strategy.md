@@ -8,7 +8,7 @@ status: Approved — Phase 1 implemented (2026-07-20; re-audited 2026-08-08 by d
 
 **Status:** Approved — Phase 1 implemented (2026-07-20; re-audited 2026-08-08 by docs-auditor)
 **Date:** 2026-07-20
-**Author:** OZ-POS Contributors
+**Author:** kasir.mu Contributors
 **Tags:** conflict, sync, lww, crdt, offline, reconciliation
 
 ---

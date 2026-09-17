@@ -1,4 +1,4 @@
-# Coverage Report — OZ-POS
+# Coverage Report — kasir.mu
 
 > Generated: 2026-07-20
 

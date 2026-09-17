@@ -1,10 +1,10 @@
-# Android APK Install Test — OZ-POS
+# Android APK Install Test — kasir.mu
 
 > **Status:** Implemented (2026-07-21)
 > **Target audience:** QA / developers testing on Android 10+ physical tablets
 > **Related:** [Mobile Build Guide](https://github.com/kardelitaitu/oz-pos/tree/main/packaging/mobile) · [Tauri Tablet Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/tablet-client/tauri.conf.json) · [Windows Launch Test](./windows-launch-test.md) · [Linux Launch Test](./linux-launch-test.md)
 
-This guide covers building, installing, and testing the OZ-POS tablet app
+This guide covers building, installing, and testing the kasir.mu tablet app
 on a physical Android device (phone or tablet).
 
 ---
@@ -205,7 +205,7 @@ adb install -r apps/tablet-client/gen/android/app/build/outputs/apk/release/oz-p
 
 # Verify installation
 adb shell pm list packages | grep ozpos
-# Expected: package:com.ozpos.tablet
+# Expected: package:mu.kasir.tablet
 ```
 
 ### Via USB Transfer (No ADB)
@@ -226,7 +226,7 @@ adb shell pm list packages | grep ozpos
 
 | Step | Action | Expected Result |
 |------|--------|----------------|
-| 1.1 | Tap the **OZ-POS Tablet** icon (launcher label from `res/values/strings.xml`) | App icon renders correctly (not missing/blank) |
+| 1.1 | Tap the **kasir.mu Tablet** icon (launcher label from `res/values/strings.xml`) | App icon renders correctly (not missing/blank) |
 | 1.2 | Wait for splash screen | Splash screen appears within **8 seconds** |
 | 1.3 | Full load | Login screen appears in landscape orientation |
 | 1.4 | Check orientation | App locks to **landscape-primary** — rotating to portrait keeps landscape |
@@ -241,7 +241,7 @@ permission prompt to expect** — the tracked `AndroidManifest.xml` declares onl
 - **"App not installed"** — APK architecture mismatch. Ensure you built for
   `aarch64` (most modern devices) or `armeabi-v7a` (older 32-bit tablets).
 - **"INSTALL_FAILED_UPDATE_INCOMPATIBLE"** — Previous version installed.
-  Uninstall first: `adb uninstall com.ozpos.tablet`.
+  Uninstall first: `adb uninstall mu.kasir.tablet`.
 - **"App keeps stopping" on launch** — Missing Android SDK/NDK version mismatch.
   Rebuild with `cargo tauri android build --apk --target aarch64`.
 - **Black bars on sides** — orientation is locked in the UI layer
@@ -417,7 +417,7 @@ or visual corruption.
 | Memory usage (loaded) | < 300 MB | < 200 MB | Android Studio Profiler |
 | Battery drain | < 5%/hour | < 2%/hour | Battery settings |
 | APK size (arm64) | < 80 MB | < 50 MB | File explorer |
-| App data size (fresh install) | < 30 MB | < 20 MB | Settings → Apps → OZ-POS → Storage |
+| App data size (fresh install) | < 30 MB | < 20 MB | Settings → Apps → kasir.mu → Storage |
 
 ### Measuring Performance
 
@@ -425,19 +425,19 @@ or visual corruption.
 
 1. Connect device via USB
 2. Open Android Studio → **View** → **Tool Windows** → **Profiler**
-3. Select `com.ozpos.tablet` from the device dropdown
+3. Select `mu.kasir.tablet` from the device dropdown
 4. Monitor **CPU**, **Memory**, **Network**, and **Energy** in real time
 
 **Using `adb`:**
 
 ```bash
 # Memory (RSS/PSS in KB)
-adb shell dumpsys meminfo com.ozpos.tablet
+adb shell dumpsys meminfo mu.kasir.tablet
 
 # Battery stats
-adb shell dumpsys batterystats --charged com.ozpos.tablet
+adb shell dumpsys batterystats --charged mu.kasir.tablet
 
-# CPU usage — the Android process name is the applicationId `com.ozpos.tablet`
+# CPU usage — the Android process name is the applicationId `mu.kasir.tablet`
 # (build.gradle.kts:34), so grep on `ozpos` WITHOUT the hyphen; `grep oz-pos`
 # silently returns nothing.
 adb shell top -n 1 | grep ozpos
@@ -456,7 +456,7 @@ adb logcat -b events | grep "am_proc_start"
 # Continuous log stream (filter by app)
 adb logcat -v time -s "oz-pos-tablet" "Tauri" "Rust" "chromium" "WebView"
 
-# Filter to only errors — match `ozpos` (the process is `com.ozpos.tablet`,
+# Filter to only errors — match `ozpos` (the process is `mu.kasir.tablet`,
 # the Rust lib is `oz_pos_tablet_lib`; neither contains "oz-pos")
 adb logcat -v time *:E | grep -i "ozpos\|oz_pos\|rust\|panic"
 

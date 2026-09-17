@@ -1,7 +1,7 @@
 id: 0047-rbac-centralized-enforcement-gate
 title: RBAC centralized fail-closed enforcement gate
 status: implemented
-owner: OZ-POS maintainers
+owner: kasir.mu maintainers
 implementer: Buffy
 priority: P1
 scope:

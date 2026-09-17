@@ -10,14 +10,14 @@ status: Implemented (2026-07-15)
 
 **Status:** Implemented (2026-07-15)
 **Date:** 2026-07-15
-**Author:** Architecture Team & OZ-POS Contributors
+**Author:** Architecture Team & kasir.mu Contributors
 **Tags:** branding, whitelabel, theming, multi-tenant, pwa, icons, desktop, manifest
 
 ---
 
 ## Context
 
-OZ-POS is designed as a white-label POS platform that can be rebranded for different tenants, resellers, or enterprise customers. Each tenant requires:
+kasir.mu is designed as a white-label POS platform that can be rebranded for different tenants, resellers, or enterprise customers. Each tenant requires:
 
 - A **custom app name** and **company name** displayed throughout the UI
 - **Theme colours** (primary, accent) injected as CSS variables
@@ -26,17 +26,17 @@ OZ-POS is designed as a white-label POS platform that can be rebranded for diffe
 - **Web/PWA icons** (`favicon.ico`, `favicon.svg`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`) for the web frontend and progressive web app
 - **Vector logos** (light, dark, monochrome, and mark variants) for UI components
 - **Hardware assets** (receipt logos at 58mm/80mm, invoice watermarks) for thermal printers and PDF generation
-- **Tauri configuration patches** — `productName`, `identifier` (e.g., `com.ozpos.app` → `com.ozpos.acme-tenant`), and window `title`
+- **Tauri configuration patches** — `productName`, `identifier` (e.g., `mu.kasir.app` → `mu.kasir.acme-tenant`), and window `title`
 - **PWA manifest updates** — `name` and `short_name` in `site.webmanifest`, plus standardized icon references
 
-Previously, all branding was hardcoded for the default "OZ-POS" identity. Adding a new tenant required manual edits across multiple config files, icon directories, and build outputs. There was no repeatable process, no dry-run preview, and no automated testing for branding consistency.
+Previously, all branding was hardcoded for the default kasir.mu identity. Adding a new tenant required manual edits across multiple config files, icon directories, and build outputs. There was no repeatable process, no dry-run preview, and no automated testing for branding consistency.
 
 ### Requirements
 
 - **Manifest-driven**: Each brand has a single `manifest.json` that declares all assets and tokens. The sync script reads this manifest and distributes assets to the correct locations.
 - **Idempotent**: Running the sync script multiple times produces the same result. Re-applying the same brand configuration is a no-op.
 - **Dry-run support**: Preview all changes without modifying any files, to verify correct asset resolution before committing.
-- **Multiple brand templates**: A `default` brand for OZ-POS itself, plus templates for tenant onboarding (e.g., `acme-tenant`, `beta-retail`).
+- **Multiple brand templates**: A `default` brand for kasir.mu itself, plus templates for tenant onboarding (e.g., `acme-tenant`, `beta-retail`).
 - **Asset fallback**: The default brand is the canonical source. Tenant brands override only what they need — missing assets are detected at sync time (not runtime) with clear [SKIP] warnings.
 - **Automated testing**: Integration tests verify the full sync pipeline, and unit tests verify the regex-based config patching patterns in isolation.
 - **macOS .icns generation**: Auto-generate the Apple IconFamily format from a source PNG using ImageMagick + binary packing, without requiring macOS tools.
@@ -80,7 +80,7 @@ assets/branding/
 │       ├── receipt-logo-80mm.png  # 1-bit bitmap for 80mm thermal printers
 │       ├── invoice-watermark.png  # Subtle watermark for PDF invoices
 │       └── README.md              # Generation instructions
-└── default/                   # Canonical OZ-POS brand — reference implementation
+└── default/                   # Canonical kasir.mu brand — reference implementation
 ```
 
 ### 2. The Brand Manifest (`manifest.json`)
@@ -126,7 +126,7 @@ Every brand declares its identity in `manifest.json`:
 ```
 
 Key fields:
-- **`brandId`**: Used for reverse-DNS Tauri identifiers (`com.ozpos.<brandId>`). Sanitized to `[a-zA-Z0-9.-]` for safe iOS/Android bundle IDs.
+- **`brandId`**: Used for reverse-DNS Tauri identifiers (`mu.kasir.<brandId>`). Sanitized to `[a-zA-Z0-9.-]` for safe iOS/Android bundle IDs.
 - **`appName`**: Displayed in window titles, PWA manifests, About screens, and Tauri `productName`.
 - **`companyName`**: Legal entity name for licensing, copyright notices, and the About dialog.
 - **`themeTokens`**: HSL values injected into `brand-tokens.css` at sync time. Font family string is passed through verbatim.
@@ -186,11 +186,11 @@ The sync script (`scripts/sync-branding.ps1`) is the single entry point for bran
 | Field | Desktop | Tablet |
 |-------|---------|--------|
 | `productName` | `<appName>` | `<appName>` |
-| `identifier` | `com.ozpos.<safeId>` | `com.ozpos.tablet.<safeId>` |
+| `identifier` | `mu.kasir.<safeId>` | `mu.kasir.tablet.<safeId>` |
 | `title` | `<appName>` | — (tablet has no window title) |
 
 - **`safeId` generation**: `brandId` sanitized to `[a-zA-Z0-9.-]` (replaces invalid characters with `-`)
-- **Default brand special case**: `default` always resolves to `com.ozpos.app` / `com.ozpos.tablet` (no suffix)
+- **Default brand special case**: `default` always resolves to `mu.kasir.app` / `mu.kasir.tablet` (no suffix)
 - Regex patterns match both compact JSON (`{"key":"val"}`) and formatted JSON (`{ "key": "val" }`) with flexible whitespace
 
 #### Step 8: Brand CSS Token Generation
@@ -218,12 +218,12 @@ Tauri identifiers follow a consistent reverse-DNS pattern:
 
 | Brand | Desktop Identifier | Tablet Identifier |
 |-------|-------------------|-------------------|
-| `default` | `com.ozpos.app` | `com.ozpos.tablet` |
-| `acme-tenant` | `com.ozpos.acme-tenant` | `com.ozpos.tablet.acme-tenant` |
-| `beta-retail` | `com.ozpos.beta-retail` | `com.ozpos.tablet.beta-retail` |
+| `default` | `mu.kasir.app` | `mu.kasir.tablet` |
+| `acme-tenant` | `mu.kasir.acme-tenant` | `mu.kasir.tablet.acme-tenant` |
+| `beta-retail` | `mu.kasir.beta-retail` | `mu.kasir.tablet.beta-retail` |
 
 This convention ensures:
-- All app identifiers are namespaced under `com.ozpos.`
+- All app identifiers are namespaced under `mu.kasir.`
 - Tablet builds are clearly distinguished from desktop builds
 - No identifier conflicts across tenants
 - macOS/iOS code signing profiles can be pre-configured per tenant
@@ -246,7 +246,7 @@ Three brand templates are provided:
 
 | Brand ID | App Name | Primary HSL | Accent HSL | Font Family |
 |----------|----------|-------------|------------|-------------|
-| `default` | OZ-POS | `210, 80%, 55%` (blue) | `160, 75%, 45%` (teal) | `Inter, sans-serif` |
+| `default` | kasir.mu | `210, 80%, 55%` (blue) | `160, 75%, 45%` (teal) | `Inter, sans-serif` |
 | `acme-tenant` | ACME POS | `14, 100%, 53%` (orange) | `38, 92%, 50%` (amber) | `"DM Sans", "Inter", sans-serif` |
 | `beta-retail` | Beta Retail | `175, 70%, 40%` (teal) | `200, 80%, 50%` (blue) | `"Plus Jakarta Sans", "Inter", sans-serif` |
 
@@ -271,8 +271,8 @@ End-to-end tests that run the full sync pipeline against all three brands (13 te
 - **Web icons** (1 test): all expected files (favicon.ico, favicon.svg, apple-touch-icon.png, icon-192.png, icon-512.png) appear in `ui/public/`
 - **Vector logos** (1 test): SVGs copied to `ui/public/branding/`
 - **Web manifest** (1 test): `name` and `short_name` updated to brand's `appName` via regex
-- **Tauri desktop config** (2 tests): `productName`, `identifier`, and `title` patched correctly; default brand gets `com.ozpos.app`
-- **Tauri tablet config** (2 tests): `productName` and `identifier` patched (no title); default gets `com.ozpos.tablet`
+- **Tauri desktop config** (2 tests): `productName`, `identifier`, and `title` patched correctly; default brand gets `mu.kasir.app`
+- **Tauri tablet config** (2 tests): `productName` and `identifier` patched (no title); default gets `mu.kasir.tablet`
 - **Brand CSS** (1 test): token file generated with correct HSL values for each brand
 - **Hardware README** (1 test): created if missing
 - **Idempotency** (1 test): re-running the sync produces the same output (no double-patching)

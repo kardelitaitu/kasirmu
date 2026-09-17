@@ -11,7 +11,7 @@ status: Implemented (2026-07-15)
 **Status:** Implemented (2026-07-15)
 **Date:** 2026-07-13
 **Updated:** 2026-07-15 (all layers shipped — 22 tests, 6 commits, redirect-only mode, deployment docs)
-**Author:** Architecture Team & OZ-POS Contributors
+**Author:** Architecture Team & kasir.mu Contributors
 **Tags:** vps, migration, dns, routing, fallback, server-redirection, client-config
 
 ---

@@ -90,7 +90,7 @@ fallback rather than failing the release.
 
 1. Sign in at **app.signpath.io** (create an account first if needed).
 2. On the organization screen, create the **organization** for the project:
-   - Name it after the project/org (e.g. `OZ-POS`).
+   - Name it after the project/org (e.g. `kasir.mu`).
    - The portal assigns an **organization ID** (a UUID). Note it — this is
      the value of `SIGNPATH_ORGANIZATION_ID` later.
 
@@ -98,7 +98,7 @@ fallback rather than failing the release.
 
 1. In the organization, go to **Projects → Create Project**.
 2. Fill in:
-   - **Name** — e.g. `OZ-POS Desktop`.
+   - **Name** — e.g. `kasir.mu Desktop`.
    - **Slug** — a short URL-safe identifier (e.g. `oz-pos`). Note it — this
      is the value of `SIGNPATH_PROJECT_SLUG`.
    - **Repository URL** — the GitHub repo.

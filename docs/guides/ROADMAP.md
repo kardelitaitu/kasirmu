@@ -1,10 +1,10 @@
 <!-- Audit stamp: 2026-07-25 · Hermes-Agent · status: ACCURATE (0 findings) · resolved F1: styles/tokens.css -> ui/src/frontend/themes/ (no ui/src/styles/) · resolved F2: ui/src/locales/en-US.ftl -> per-feature English bundles (*.ftl) · resolved F3: ui/src/i18n/id.ftl -> per-feature Bahasa Indonesia bundles (*.id.ftl) · resolved F4: "25 translation files" -> 24 per-feature bundles × 2 locales = 48 .ftl files · resolved F5: "48 Fluent bundles" -> 24 per-feature bundles, each with en + id variants · verified accurate: oz-reporting implemented (Phase 5 daily/weekly/monthly engines present in src/), oz-payment Square+QRIS/Midtrans (square.rs+qris.rs exist), redis optional dep present (line 375), i18n-gap self-note (line 486: EmailReportSettings.tsx + SettingsPage.tsx still hardcoded English) matches the settings audit finding · re-audited 2026-08-08 by docs-auditor: 3 stale checkboxes flipped (scheduled email, Android APK CI, CRDT sync), counts refreshed (39 Feature variants, 265 UI test files, 5,800+ Rust tests), rlua->mlua, i18n note narrowed to EmailReportSettings.tsx · RE-AUDITED 2026-08-31 by docs-auditor: .ftl count refreshed 24→25 bundles / 48→50 files (one per-feature bundle added since 08-08; canonical ui/src/locales/ = 25 bare + 25 .id.ftl, matching ARCHITECTURE.md + ui/README "50 .ftl files"); RESOLVED 2026-09-03 by the Fluent page audit: the stray files ui/locales/sales.ftl + ui/locales/sales.id.ftl are deleted (proven unreferenced by any code; their only keys absent from the canonical bundle (receipt-preview-barcode-visual, receipt-preview-qr-visual) are CSS class names in ReceiptPreview.tsx, not Fluent message ids); UI test count refreshed 265 files / 3,476 tests -> 405 files / ~6,700 tests (matches ui/README 08-29; grew with the test campaign); mock_integration.rs test count corrected 25 -> 21 (file has 21 #[test]/#[tokio::test] fns, no parameterized cases, unchanged since 06-30); init-db role seed corrected owner/manager/cashier -> owner/manager/staff (db.rs:104-108 seeds role-owner/role-manager/role-staff — 'cashier' is never seeded by the CLI); repointed 3 stale inline-code path refs to docs archived in d0fe7481 (a11y.md x2, benchmarks.md) -> docs/archived/; crates/oz-core/benches/ (4 files) re-confirmed -->
 
-# OZ-POS — Roadmap
+# kasir.mu — Roadmap
 
 > *Small codebase. Limitless possibilities.*
 
-This document defines the phased delivery plan for OZ-POS. Each phase has a clear goal, an ordered task list, and acceptance criteria. Phases build on one another — no phase begins until the previous one's criteria are met.
+This document defines the phased delivery plan for kasir.mu. Each phase has a clear goal, an ordered task list, and acceptance criteria. Phases build on one another — no phase begins until the previous one's criteria are met.
 
 **Status legend:**
 - `[x]` Completed
@@ -241,7 +241,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
       present. The Event Log API is a different thing (`RegisterEventSource` /
       `ReportEvent`), and `git grep` for either returns nothing in this crate.
       That is why a machine inspection of registered EventLog sources shows no
-      OZ-POS entry: nothing ever wrote one, so the surface cannot be diagnosed
+      kasir.mu entry: nothing ever wrote one, so the surface cannot be diagnosed
       by looking for our source name. The sub-bullet below was always honest —
       it says "debug output", not "event log" — the heading oversold it. (b) The
       sink itself is never installed: `git grep` `init_eventlog` returns its

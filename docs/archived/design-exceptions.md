@@ -1,4 +1,4 @@
-# OZ-POS Design Exceptions Register
+# kasir.mu Design Exceptions Register
 
 <!-- Audit stamp: 2026-07-26 · Hermes-Agent · status: ACCURATE (2 observations) · O1: "83 violations remain" (line 9) vs themeTokenCompliance.test.ts KNOWN_VIOLATIONS_BASELINE = 0 (test fails if count exceeds 193 drift-guard baseline); the doc's 83 is stale vs the test's baseline model (test is the SOT, doc is a human guide) · O2: spot-checked 2 line-numbered entries (#11 hsl(0 0% 100%) @CartPanelLineItem.css:135, #37 rgba(34,197,94,0.3) @QrisQrDisplay.css:135) — values not found at cited lines, expected register-line drift as CSS evolves · verified accurate: themeTokenCompliance.test.ts exists; structure (8 sections + Adjustable Candidates + Maintenance Protocol) coherent; reset.css:18 root 16px present; doc self-identifies test as single source of truth -->
 

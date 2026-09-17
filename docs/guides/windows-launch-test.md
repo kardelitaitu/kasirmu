@@ -1,11 +1,11 @@
-# Windows Desktop Launch Test — OZ-POS
-<!-- Audit stamp: 2026-09-09 . DSH . status: ACCURATE, 1 precision note (seed references flagged, not fixed) . Verified-true: scripts/build-exe-release.ps1 exists with -BuildConfig (line 5) and -NoInstaller (line 11) params; expected binary path apps/desktop-client/target/release/oz-pos-app.exe matches the script (scripts/build-exe-release.ps1:211); Tauri productName OZ-POS (apps/desktop-client/tauri.conf.json) so installer is OZ-POS_0.0.X_x64-setup.exe; window 1280x800 confirmed; internal doc links resolve (../releases/checklist.md; ../operations/vps-migration.md, docker-deployment.md, runbook.md tracked); Rust MSRV 1.88 (rust-toolchain.toml), Node>=22/npm>=11 (ui/package.json:80-82). FLAGGED not fixed: Option A runs cargo run --bin seeder (line 30) but no seeder binary exists in the repo (git grep name=seeder empty; apps/desktop-client/Cargo.toml defines only oz-pos-app and oz_pos_app_lib); Settings to Database to Seed Sample Data (line 34) and login error No staff accounts found (line 44) do not exist in code (absent from ui/src/features/settings/ and all .rs). Doc claims about a seed path that does not exist; left for the doc owner under code/config drift rule D. -->
+# Windows Desktop Launch Test — kasir.mu
+<!-- Audit stamp: 2026-09-09 . DSH . status: ACCURATE, 1 precision note (seed references flagged, not fixed) . Verified-true: scripts/build-exe-release.ps1 exists with -BuildConfig (line 5) and -NoInstaller (line 11) params; expected binary path apps/desktop-client/target/release/oz-pos-app.exe matches the script (scripts/build-exe-release.ps1:211); Tauri productName kasir.mu (apps/desktop-client/tauri.conf.json) so installer is kasir.mu_0.0.X_x64-setup.exe; window 1280x800 confirmed; internal doc links resolve (../releases/checklist.md; ../operations/vps-migration.md, docker-deployment.md, runbook.md tracked); Rust MSRV 1.88 (rust-toolchain.toml), Node>=22/npm>=11 (ui/package.json:80-82). FLAGGED not fixed: Option A runs cargo run --bin seeder (line 30) but no seeder binary exists in the repo (git grep name=seeder empty; apps/desktop-client/Cargo.toml defines only oz-pos-app and oz_pos_app_lib); Settings to Database to Seed Sample Data (line 34) and login error No staff accounts found (line 44) do not exist in code (absent from ui/src/features/settings/ and all .rs). Doc claims about a seed path that does not exist; left for the doc owner under code/config drift rule D. -->
 
 > **Status:** Implemented (2026-07-20)
 > **Target audience:** QA / developers testing on Windows 10/11
 > **Related:** [Release Checklist](../releases/checklist.md) · [Build Script](https://github.com/kardelitaitu/oz-pos/blob/main/scripts/build-exe-release.ps1) · [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-client/tauri.conf.json)
 
-This guide covers building the OZ-POS desktop client on Windows and
+This guide covers building the kasir.mu desktop client on Windows and
 running the core POS flow end-to-end on a physical Windows machine.
 
 ---
@@ -52,7 +52,7 @@ cargo run -p oz-cli -- seed
 > The `Settings → Database → Seed Sample Data` menu does not exist: that string occurs only in
 > these launch guides and in nothing under `ui/src`, so it cannot be offered as a fallback. Nor
 > is there a CI artifact — `test-data` appears in no workflow and in no file under `scripts/`
-> (0 hits), so `target/release/test-data/oz-pos.db` has never been produced by a build.
+> (0 hits), so `target/release/test-data/kasir.db` has never been produced by a build.
 ```
 
 > ⚠️ With no staff rows, login cannot succeed. The literal sentence once quoted here as on-screen
@@ -107,7 +107,7 @@ The script runs three phases:
 Expected output location:
 ```
 apps\desktop-client\target\release\oz-pos-app.exe           # Portable EXE
-apps\desktop-client\target\release\bundle\nsis\OZ-POS_0.0.X_x64-setup.exe   # Installer
+apps\desktop-client\target\release\bundle\nsis\kasir.mu_0.0.X_x64-setup.exe   # Installer
 ```
 
 ### Option B — Manual Build
@@ -143,7 +143,7 @@ This skips the NSIS installer step and produces just `oz-pos-app.exe`.
 |------|--------|----------------|
 | 1.1 | Double-click `oz-pos-app.exe` (or launch installed app) | Splash screen appears within **5 seconds** |
 | 1.2 | Wait for full load | Main window appears (1280×800 default). Login screen visible. |
-| 1.3 | Check window chrome | Title bar shows **OZ-POS**. Window is centered. |
+| 1.3 | Check window chrome | Title bar shows **kasir.mu**. Window is centered. |
 | 1.4 | Check taskbar | Icon renders correctly (not broken/blank). |
 | 1.5 | Resize window | Drag edges — window resizes smoothly, no visual glitches. |
 
@@ -280,7 +280,7 @@ cargo tauri dev
 Standard output is captured to the Tauri log directory:
 
 ```
-%APPDATA%\com.ozpos.app\logs\
+%APPDATA%\mu.kasir.app\logs\
 ```
 
 Or check the current directory for `oz-pos-app.log`.
@@ -329,7 +329,7 @@ If the app crashes:
 | Windows Defender SmartScreen | "Windows protected your PC" on first launch | Click "More info" → "Run anyway" | External |
 | High DPI blurry text | UI renders at wrong scale on 150%+ displays | Tauri v2 handles DPI scaling automatically — if blurry, check `tauri.conf.json` `dpi` settings | Investigate |
 | Antivirus false positive | EXE flagged as suspicious (Rust+Tauri bundle) | Submit to Microsoft Defender portal | Expected |
-| Touch-screen calibration | Touch targets offset on some devices | Check Windows touch calibration. OZ-POS targets are ≥ 44px. | Verify |
+| Touch-screen calibration | Touch targets offset on some devices | Check Windows touch calibration. kasir.mu targets are ≥ 44px. | Verify |
 | Network firewall | App can't sync to cloud server | Allow `oz-pos-app.exe` through Windows Firewall | Configure |
 
 ---

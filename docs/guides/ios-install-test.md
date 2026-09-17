@@ -1,4 +1,4 @@
-# iPad (iOS) Install Test — OZ-POS
+# iPad (iOS) Install Test — kasir.mu
 <!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (2 findings) · Both were the same retirement: "Option D — Via CI" asserted that .github/workflows/ios.yml builds a signed IPA on tag or manual trigger, and the Related links pointed at the live blob URL for that file. Reality verified from the files: GitHub only executes *.yml, ios.yml has been .github/workflows/ios.yml.bak since 23c963303 on 2026-09-02 (git log --name-status shows the R100 rename), and the sole tag-triggered live workflow is release.yml, which is desktop-only by its own admission at .github/workflows/release.yml:24 · Repaired by marking Option D unavailable, keeping the secret manifest as revival documentation (cited at .github/workflows/ios.yml.bak:13-19) and retargeting the link to the .bak path, which is the only one that resolves · NOT WEAKENED: no claim here was upgraded — the guide's own 08-09-26 prerequisite note at the top still stands (no gen/apple/ scaffold is committed), and that is the deeper reason this option cannot work: even restoring the workflow needs the scaffold first · LEFT ALONE: Options A–C, TestFlight and provisioning steps — third-party Xcode/Apple behaviour, unverifiable from this Windows workstation, so they were not re-checked and must not be read as verified. -->
 <!-- dead-ref-prefix-ok: apps/tablet-client/gen/ -->
 
@@ -10,7 +10,7 @@
 > policy while iOS has never been generated. So **every `gen/apple/...` path below
 > describes output of `cargo tauri ios init`, which must be run on a macOS host first.**
 > The project filename is also not stable: this guide says `oz-pos-tablet.xcodeproj`
-> while `docs/guides/ios-build-guide.md` says `OZ-POS.xcodeproj`, and neither can be
+> while `docs/guides/ios-build-guide.md` says `kasir.mu.xcodeproj`, and neither can be
 > verified until the scaffold exists. Prefer discovery over a hardcoded name:
 > `find apps/tablet-client/gen/apple -maxdepth 1 -name "*.xcodeproj"`.
 
@@ -18,7 +18,7 @@
 > **Target audience:** QA / developers testing on iPadOS 16+ physical iPads
 > **Related:** [Mobile Build Guide](https://github.com/kardelitaitu/oz-pos/tree/main/packaging/mobile) · [Tauri Tablet Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/tablet-client/tauri.conf.json) · [Android Install Test](./android-install-test.md) · [Windows Launch Test](./windows-launch-test.md)
 
-This guide covers building, installing, and testing the OZ-POS tablet app
+This guide covers building, installing, and testing the kasir.mu tablet app
 on a physical iPad device via TestFlight or direct sideloading.
 
 ---
@@ -86,7 +86,7 @@ For TestFlight or direct deployment, your iPad's UDID must be registered:
 ```bash
 # Get the UDID by connecting the iPad via USB
 xcrun xctrace list devices 2>&1 | grep -i ipad
-# Example output: OZ-POS iPad (00008030-XXXXXXXXXXXX) ...
+# Example output: kasir.mu iPad (00008030-XXXXXXXXXXXX) ...
 
 # Or find UDID in Xcode: Window → Devices and Simulators → select iPad
 ```
@@ -197,7 +197,7 @@ names are the ones its retired header declares
    | Secret | Purpose |
    |--------|---------|
    | `APPLE_TEAM_ID` | Your Apple Developer Team ID |
-   | `APPLE_BUNDLE_ID` | Bundle identifier (e.g., `com.ozpos.tablet`) |
+   | `APPLE_BUNDLE_ID` | Bundle identifier (e.g., `mu.kasir.tablet`) |
    | `APPLE_PROV_PROFILE_BASE64` | Base64-encoded provisioning profile |
    | `APPLE_CERT_BASE64` | Base64-encoded distribution certificate p12 |
    | `APPLE_CERT_PASSWORD` | Certificate password |
@@ -229,8 +229,8 @@ manual UDID registration.
 2. **Apps** → **+** → **New App**
 3. Fill in:
    - **Platform:** iOS
-   - **Name:** OZ-POS Tablet
-   - **Bundle ID:** `com.ozpos.tablet` (must match Xcode)
+   - **Name:** kasir.mu Tablet
+   - **Bundle ID:** `mu.kasir.tablet` (must match Xcode)
    - **SKU:** `OZPOS_TABLET_001`
 4. Submit (app does not need to be "complete" for TestFlight)
 
@@ -266,7 +266,7 @@ xcrun altool --upload-app \
 1. Install **TestFlight** from the App Store
 2. Tap the invitation link (or open TestFlight → **Redeem** → enter code)
 3. Tap **Install** → wait for download
-4. Tap **Open** to launch OZ-POS
+4. Tap **Open** to launch kasir.mu
 
 ### Via Direct Sideloading (Free Account, 7-Day Limit)
 
@@ -302,7 +302,7 @@ TestFlight handles updates seamlessly:
 
 | Step | Action | Expected Result |
 |------|--------|----------------|
-| 1.1 | Tap OZ-POS icon | App icon renders correctly (no broken placeholder) |
+| 1.1 | Tap kasir.mu icon | App icon renders correctly (no broken placeholder) |
 | 1.2 | Splash screen | Launch screen appears within **8 seconds** |
 | 1.3 | Full load | Login screen in **landscape** orientation |
 | 1.4 | Orientation lock | Rotating iPad keeps landscape. Status bar matches orientation. |
@@ -317,12 +317,12 @@ landscape, no visual glitches on different iPad models.
 - **"Unable to install"** — Device UDID not registered in Apple Developer Portal.
 - **"This app cannot be installed because its integrity could not be verified"** —
   Code signing issue. Rebuild with correct certificate and provisioning profile.
-- **"OZ-POS" would like to access the camera** — First-launch permission dialog.
+- **"kasir.mu" would like to access the camera** — First-launch permission dialog.
   Must be accepted for barcode scanning.
-- **"OZ-POS" Would Like to Send You Notifications** — KDS ticket alerts.
+- **"kasir.mu" Would Like to Send You Notifications** — KDS ticket alerts.
   Accept for full functionality.
 - **App crashes on launch** — Check **Settings → Privacy → Analytics & Improvements →
-  Analytics Data** for crash logs prefixed with `OZ-POS`.
+  Analytics Data** for crash logs prefixed with `kasir.mu`.
 - **Split-screen causes crash** — iPadOS 16+ split-screen compatibility issue.
 
 ### Phase 2: Login Flow (Touch + Apple Pencil)
@@ -544,7 +544,7 @@ xcrun symbolicatecrash -v crashlog.crash
 
 # Download crash logs from device
 # Settings → Privacy → Analytics & Improvements → Analytics Data
-# Look for OZ-POS_*.ips → Share → save to Files
+# Look for kasir.mu_*.ips → Share → save to Files
 ```
 
 ### App Store Connect Crash Data

@@ -11,7 +11,7 @@ status: Implemented (2026-07-19)
 **Status:** Implemented (2026-07-19)
 **Date:** 2026-07-18
 **Decision Record:** Reviewed and audited against current codebase (see §13)
-**Author:** Architecture Team & OZ-POS Contributors
+**Author:** Architecture Team & kasir.mu Contributors
 **Tags:** inventory, multi-location, stock, wholesale, workspace, retail-pos, warehouse
 
 ---

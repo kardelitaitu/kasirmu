@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-08-31 · docs-auditor · status: MAJOR-DRIFT REPAIRED (supersedes Hermes-Agent 07-24 "0 findings") · the PostgreSQL section had gone stale against apps/cloud-server/src/db.rs: (1) "TLS is not currently supported / tokio_postgres::NoTls / all connections unencrypted / planned future enhancement" was FALSE — TLS now ships via rustls (db.rs:205-226), honouring `sslmode` in DATABASE_URL, with OZ_DB_REQUIRE_TLS=1 (implied by OZ_PRODUCTION=1) enforcing sslmode=require fail-closed (config.rs resolve_require_tls); Neon/Supabase/RDS are therefore supported, so the provider table's "not supported yet" rows were corrected; (2) "pool size: 8 connections" is now configurable via OZ_DB_POOL_SIZE (default 8). Still accurate: OZ_DB_PATH defaults oz-pos.db, DATABASE_URL postgres://|postgresql:// detection, /health + /metrics, and the DuckDNS terminal↔server TLS note (a separate concern). The old stamp's line-number citations (90/87/52) had all shifted and were dropped. -->
+<!-- Audit stamp: 2026-08-31 · docs-auditor · status: MAJOR-DRIFT REPAIRED (supersedes Hermes-Agent 07-24 "0 findings") · the PostgreSQL section had gone stale against apps/cloud-server/src/db.rs: (1) "TLS is not currently supported / tokio_postgres::NoTls / all connections unencrypted / planned future enhancement" was FALSE — TLS now ships via rustls (db.rs:205-226), honouring `sslmode` in DATABASE_URL, with OZ_DB_REQUIRE_TLS=1 (implied by OZ_PRODUCTION=1) enforcing sslmode=require fail-closed (config.rs resolve_require_tls); Neon/Supabase/RDS are therefore supported, so the provider table's "not supported yet" rows were corrected; (2) "pool size: 8 connections" is now configurable via OZ_DB_POOL_SIZE (default 8). Still accurate: OZ_DB_PATH defaults kasir.db, DATABASE_URL postgres://|postgresql:// detection, /health + /metrics, and the DuckDNS terminal↔server TLS note (a separate concern). The old stamp's line-number citations (90/87/52) had all shifted and were dropped. -->
 
 # VPS Migration Guide — Zero-Downtime Server Migration
 
@@ -170,7 +170,7 @@ differ depending on which one you use.
 
 | Backend | Env var | Default | Migration step |
 |---------|---------|---------|---------------|
-| **SQLite** | `OZ_DB_PATH` | `/data/oz-pos.db` | `scp` the `.db` file to the new VPS |
+| **SQLite** | `OZ_DB_PATH` | `/data/kasir.db` | `scp` the `.db` file to the new VPS |
 | **PostgreSQL** | `DATABASE_URL` | (none) | Point the new server at the same PG instance — no file copy needed |
 
 ### SQLite (default)
@@ -183,7 +183,7 @@ docker run -d \
   --name oz-cloud-server \
   -p 3099:3099 \
   -v oz-data:/data \
-  -e OZ_DB_PATH=/data/oz-pos.db \
+  -e OZ_DB_PATH=/data/kasir.db \
   oz-pos-cloud:latest
 ```
 
@@ -222,7 +222,7 @@ postgresql://<user>:<password>@<host>:<port>/<database>
 > silent plaintext fallback. TLS-required providers (Neon, Supabase, RDS) are
 > therefore supported.
 
-**Managed PostgreSQL providers compatible with OZ-POS:**
+**Managed PostgreSQL providers compatible with kasir.mu:**
 
 | Provider | Free tier | Connection string (example) |
 |----------|-----------|----------------------------|
@@ -270,26 +270,26 @@ copying a live database file from a running process.
 docker stop oz-cloud-server
 ```
 
-**Flush WAL to the main database file.** OZ-POS enables SQLite WAL mode
+**Flush WAL to the main database file.** kasir.mu enables SQLite WAL mode
 (`journal_mode=WAL`), which means recent writes may be in separate `-wal`
 and `-shm` files. Run a checkpoint to merge them into the `.db` file:
 
 ```bash
 # On the old VPS
-sqlite3 /data/oz-pos.db "PRAGMA wal_checkpoint(TRUNCATE);"
+sqlite3 /data/kasir.db "PRAGMA wal_checkpoint(TRUNCATE);"
 # Expected output: 0|0|0 (all pages checkpointed, WAL truncated)
 ```
 
 After this, you only need to copy the `.db` file — the `-wal` and `-shm`
 files (if they exist) can be ignored.
 
-**Locate the database file.** The default path is `/data/oz-pos.db`. If you
+**Locate the database file.** The default path is `/data/kasir.db`. If you
 used a custom `OZ_DB_PATH`, check your `docker run` command or env file.
 
 ```bash
 # Confirm the file exists and note its size
-ls -lh /data/oz-pos.db
-# Example: -rw-r--r-- 1 ozpos ozpos 142M Jul 15 10:30 /data/oz-pos.db
+ls -lh /data/kasir.db
+# Example: -rw-r--r-- 1 ozpos ozpos 142M Jul 15 10:30 /data/kasir.db
 ```
 
 ### Step 2: Transfer the Database
@@ -300,28 +300,28 @@ Choose one of the methods below.
 
 ```bash
 # On the old VPS: push the database to the new VPS
-scp /data/oz-pos.db user@<new-vps-ip>:/data/oz-pos.db
+scp /data/kasir.db user@<new-vps-ip>:/data/kasir.db
 ```
 
 **Method B — Pull via SCP from the new VPS:**
 
 ```bash
 # On the new VPS: pull the database from the old VPS
-scp user@<old-vps-ip>:/data/oz-pos.db /data/oz-pos.db
+scp user@<old-vps-ip>:/data/kasir.db /data/kasir.db
 ```
 
 **Method C — Rsync (faster for large databases, supports resume):**
 
 ```bash
 # On the old VPS — rsync with progress and compression
-rsync -avz --progress /data/oz-pos.db user@<new-vps-ip>:/data/oz-pos.db
+rsync -avz --progress /data/kasir.db user@<new-vps-ip>:/data/kasir.db
 ```
 
 **Method D — Compressed tar over SSH (largest databases, slow connections):**
 
 ```bash
 # On the old VPS: tar + gzip the database and pipe it directly to the new VPS
-tar czf - /data/oz-pos.db | ssh user@<new-vps-ip> "tar xzf - -C /"
+tar czf - /data/kasir.db | ssh user@<new-vps-ip> "tar xzf - -C /"
 ```
 
 This compresses the file in transit — useful for databases over 500 MB or
@@ -334,20 +334,20 @@ S3 bucket, Google Drive, or Dropbox as a temporary transfer point.
 
 ```bash
 # On the old VPS: upload to S3
-aws s3 cp /data/oz-pos.db s3://my-bucket/oz-pos-backup.db
+aws s3 cp /data/kasir.db s3://my-bucket/oz-pos-backup.db
 
 # On the new VPS: download from S3
-aws s3 cp s3://my-bucket/oz-pos-backup.db /data/oz-pos.db
+aws s3 cp s3://my-bucket/oz-pos-backup.db /data/kasir.db
 ```
 
 Or with `rclone` (supports Google Drive, Dropbox, S3, and 40+ providers):
 
 ```bash
 # On the old VPS
-rclone copy /data/oz-pos.db gdrive:/backups/
+rclone copy /data/kasir.db gdrive:/backups/
 
 # On the new VPS
-rclone copy gdrive:/backups/oz-pos.db /data/
+rclone copy gdrive:/backups/kasir.db /data/
 ```
 
 ### Step 3: Verify Database Integrity
@@ -365,17 +365,17 @@ Run these checks on **both** the old VPS (before transfer) and the new VPS
 
 ```bash
 # On both VPSes — compare file sizes
-ls -lh /data/oz-pos.db
+ls -lh /data/kasir.db
 
 # Generate a SHA-256 checksum on the old VPS, then compare on the new VPS
 # On the old VPS:
-sha256sum /data/oz-pos.db | tee /tmp/old-checksum.txt
+sha256sum /data/kasir.db | tee /tmp/old-checksum.txt
 # Copy the checksum file alongside the database
 scp /tmp/old-checksum.txt user@<new-vps-ip>:/tmp/
 
 # On the new VPS:
 sha256sum -c /tmp/old-checksum.txt
-# Expected: /data/oz-pos.db: OK
+# Expected: /data/kasir.db: OK
 ```
 
 If the checksums don't match, the file was corrupted during transfer —
@@ -385,10 +385,10 @@ try a different transfer method (rsync or tar+SSH).
 
 ```bash
 # Run on both VPSes — must return "ok"
-sqlite3 /data/oz-pos.db "PRAGMA integrity_check;"
+sqlite3 /data/kasir.db "PRAGMA integrity_check;"
 
 # Check foreign key integrity
-sqlite3 /data/oz-pos.db "PRAGMA foreign_key_check;"
+sqlite3 /data/kasir.db "PRAGMA foreign_key_check;"
 # Expected: (no rows — zero violations)
 ```
 
@@ -402,7 +402,7 @@ exactly.
 
 ```bash
 # On the old VPS — dump counts to a file
-sqlite3 /data/oz-pos.db <<'EOF' > /tmp/old-counts.txt
+sqlite3 /data/kasir.db <<'EOF' > /tmp/old-counts.txt
 .mode column
 .headers on
 SELECT 'products'        AS tbl, COUNT(*) AS cnt FROM products
@@ -424,7 +424,7 @@ EOF
 scp /tmp/old-counts.txt user@<new-vps-ip>:/tmp/
 
 # On the new VPS — generate the same report and diff
-sqlite3 /data/oz-pos.db <<'EOF' > /tmp/new-counts.txt
+sqlite3 /data/kasir.db <<'EOF' > /tmp/new-counts.txt
 .mode column
 .headers on
 SELECT 'products'        AS tbl, COUNT(*) AS cnt FROM products
@@ -457,7 +457,7 @@ Quick queries that verify key business data is readable and consistent.
 > custom modules installed.
 
 ```bash
-sqlite3 /data/oz-pos.db <<'EOF'
+sqlite3 /data/kasir.db <<'EOF'
 -- Every stock_movement must reference a valid product
 SELECT COUNT(*) FROM stock_movements sm
   LEFT JOIN products p ON sm.sku = p.sku
@@ -483,8 +483,8 @@ EOF
 
 ```bash
 # On the new VPS — ensure container user can read/write
-chown 1000:1000 /data/oz-pos.db   # if UID 1000 is the ozpos user
-chmod 644 /data/oz-pos.db
+chown 1000:1000 /data/kasir.db   # if UID 1000 is the ozpos user
+chmod 644 /data/kasir.db
 ```
 
 #### F. Quick Start & Health Check
@@ -523,7 +523,7 @@ restart it. For Scenario A (same domain), you can leave it stopped.
 |-------|-------|---------|
 | `PRAGMA integrity_check` returns errors | Copy was interrupted or file was in use | Re-checkpoint WAL and re-copy |
 | File size is 0 on new VPS | Transfer failed silently | Retry with `rsync -avz --progress` to see progress |
-| "Permission denied" on new VPS | Container user (ozpos, UID 1000) can't read the file | `chown 1000:1000 /data/oz-pos.db` |
+| "Permission denied" on new VPS | Container user (ozpos, UID 1000) can't read the file | `chown 1000:1000 /data/kasir.db` |
 | `scp` connection refused | Firewall blocking port 22 | Use Method E (cloud storage) or open firewall temporarily |
 | Database has `-wal` file > 0 bytes | WAL wasn't checkpointed | Run `PRAGMA wal_checkpoint(TRUNCATE);` before copying |
 
@@ -701,7 +701,7 @@ prevents a common failure mode.
 
 ```bash
 # On the old VPS — create a dated backup
-cp /data/oz-pos.db /data/oz-pos-backup-$(date +%Y%m%d-%H%M%S).db
+cp /data/kasir.db /data/oz-pos-backup-$(date +%Y%m%d-%H%M%S).db
 ls -lh /data/oz-pos-backup-*.db
 ```
 
@@ -820,7 +820,7 @@ docker run -d \
   oz-pos-cloud:latest
 ```
 
-> **Note:** If running without Docker, the binary is built via `cargo build --package oz-cloud-server --release` and produces `target/release/oz-cloud-server`. Defaults: `OZ_API_PORT=3099`, `OZ_DB_PATH=/data/oz-pos.db`.
+> **Note:** If running without Docker, the binary is built via `cargo build --package oz-cloud-server --release` and produces `target/release/oz-cloud-server`. Defaults: `OZ_API_PORT=3099`, `OZ_DB_PATH=/data/kasir.db`.
 
 **2. Verify the new server is healthy**
 
@@ -1021,7 +1021,7 @@ docker stop oz-cloud-redirect && docker rm oz-cloud-redirect
 For any terminal that was powered off or offline during the entire
 migration window, a store manager can restore connectivity manually:
 
-1. Open OZ-POS → **Settings** → **Cloud Sync**
+1. Open kasir.mu → **Settings** → **Cloud Sync**
 2. Enter the new server URL in the **Server URL** field
 3. Click **Save**
 4. Click **Sync Now** to verify connectivity
@@ -1035,7 +1035,7 @@ This is the safety net — it always works regardless of Layers 1 and 2.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `OZ_DB_PATH` | `/data/oz-pos.db` | Path to the SQLite database file |
+| `OZ_DB_PATH` | `/data/kasir.db` | Path to the SQLite database file |
 | `OZ_API_PORT` | `3099` | HTTP server listen port |
 | `OZ_REDIRECT_ONLY` | (unset) | Run in redirect-only mode. Requires `OZ_SYNC_REDIRECT_URL`. |
 | `OZ_SYNC_REDIRECT_URL` | (unset) | New server URL for migration redirect. |
@@ -1112,7 +1112,7 @@ This is the safety net — it always works regardless of Layers 1 and 2.
 |---------|-------------|-----|
 | `PRAGMA integrity_check` returns errors | Copy was interrupted or file was in use | Re-checkpoint WAL and re-copy |
 | File size is 0 on new VPS | Transfer failed silently | Retry with `rsync -avz --progress` |
-| "Permission denied" on new VPS | Container user can't read the file | `chown 1000:1000 /data/oz-pos.db` |
+| "Permission denied" on new VPS | Container user can't read the file | `chown 1000:1000 /data/kasir.db` |
 | `scp` connection refused | Firewall blocking port 22 | Use cloud storage method or open firewall temporarily |
 | `-wal` file > 0 bytes after checkpoint | Server was still writing during checkpoint | `docker stop` first, then checkpoint |
 | `pg_restore` fails with "already exists" | Target DB has existing tables | Use `--clean --if-exists` or restore to a fresh DB |

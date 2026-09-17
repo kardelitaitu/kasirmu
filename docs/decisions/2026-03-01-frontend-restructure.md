@@ -43,7 +43,7 @@ modules are already decoupled from the shell via the registry pattern.
 
 ## Context
 
-The original OZ-POS frontend in `ui/src/` had a flat structure where all features, components, API calls, and styles lived in top-level directories. The primary goals were:
+The original kasir.mu frontend in `ui/src/` had a flat structure where all features, components, API calls, and styles lived in top-level directories. The primary goals were:
 
 - Replace the hardcoded navigation, routing, and menu structures in `App.tsx`.
 - Extract shared components into `frontend/shared/`.

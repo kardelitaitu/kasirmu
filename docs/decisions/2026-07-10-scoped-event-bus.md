@@ -10,7 +10,7 @@ status: Implemented (2026-07-10)
 
 **Status:** Implemented (2026-07-10)
 **Date:** 2026-07-10
-**Author:** Architecture Team & OZ-POS Contributors
+**Author:** Architecture Team & kasir.mu Contributors
 **Tags:** events, scoping, multi-store, lan-forwarder, kds
 
 ---

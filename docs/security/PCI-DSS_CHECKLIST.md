@@ -3,11 +3,11 @@
 # PCI-DSS Compliance Checklist
 
 > **Status:** Planning / Review
-> This checklist documents OZ-POS's alignment with PCI Data Security Standard v4.0 requirements applicable to a point-of-sale application.
+> This checklist documents kasir.mu's alignment with PCI Data Security Standard v4.0 requirements applicable to a point-of-sale application.
 
 ## Scope
 
-OZ-POS processes, transmits, and stores cardholder data when processing credit/debit card payments. This checklist covers the application-level requirements.
+kasir.mu processes, transmits, and stores cardholder data when processing credit/debit card payments. This checklist covers the application-level requirements.
 
 ---
 
@@ -17,7 +17,7 @@ OZ-POS processes, transmits, and stores cardholder data when processing credit/d
 |-------------|--------|-------|
 | 1.1.1 Firewall between POS terminals and untrusted networks | N/A | Handled by network infrastructure |
 | 1.2.2 No direct public access between cardholder data environment and internet | N/A | Handled by infrastructure |
-| 1.3.2 DMZ for public-facing services | N/A | OZ-POS API can be deployed behind reverse proxy |
+| 1.3.2 DMZ for public-facing services | N/A | kasir.mu API can be deployed behind reverse proxy |
 
 ## Protect Cardholder Data
 
@@ -81,7 +81,7 @@ OZ-POS processes, transmits, and stores cardholder data when processing credit/d
 
 ---
 
-## Quick Reference — OZ-POS PCI-DSS Features
+## Quick Reference — kasir.mu PCI-DSS Features
 
 | Feature | Implementation |
 |---------|----------------|

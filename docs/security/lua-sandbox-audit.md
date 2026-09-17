@@ -3,7 +3,7 @@
 <!-- Audit stamp: 2026-07-26 · Hermes-Agent · status: STALE (dated 2026-07-19 security snapshot — 6 of 7 findings now remediated in code) · F1: "No instruction limit" -> REMEDIATED; crates/oz-lua/src/lib.rs now sets INSTRUCTION_LIMIT=100_000 via mlua HookTriggers (line 169) + test instruction_limit_aborts_infinite_loop (line 843) · F2: "No memory limit" -> REMEDIATED; set_memory_limit(10 MiB) at lib.rs:120 + collectgarbage exposed · F3: "Plugin permissions not enforced" -> REMEDIATED; oz-plugin/src/manager.rs:57-73 enforces required_permissions whitelist, rejects empty/unknown perms · F4: "Unvalidated discount %" -> REMEDIATED; oz.apply_discount validates 0-100 at manager.rs:144 · F-OPEN: "No execution timeout" (tokio::time::timeout wrapper) + "per-plugin VM isolation" still not evidenced in current code · O1: doc cites crates/oz-lua/src/lib.rs:33 instruction-limit claim + rlua crate; code migrated rlua->mlua 0.9 (lib.rs:4), so line/dep refs are stale · verified: crates/oz-lua + crates/oz-plugin exist; PluginPermissions struct (manifest.rs:143); oz.on/off/get_time/log present (manager.rs:115-198) · treat as a historical audit, not current security posture -->
 
 **Date:** 2026-07-19
-**Auditor:** OZ-POS Architecture Team
+**Auditor:** kasir.mu Architecture Team
 **Scope:** `crates/oz-lua/`, `crates/oz-plugin/`, example plugins under `plugins/` and `scripts/examples/`
 **Status:** 🔴 7 findings (3 critical, 2 high, 2 medium)
 

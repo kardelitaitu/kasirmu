@@ -3,7 +3,7 @@
 
 - **Document ID:** 20260822-tests-efficiency-improvement
 - **Status:** Active — A01–A17, A35, A36 done (nextest canonical; #1 strategy = cut delays/waits/samples/retries)
-- **Owner:** OZ-POS engineering (test-focused agent sessions)
+- **Owner:** kasir.mu engineering (test-focused agent sessions)
 - **Version locked at:** 0.0.29
 - **Goal:** Reduce the wall-clock time of every test area in the repo **without reducing test quality** (same assertions, same coverage, same failure-detection power). One area at a time, measure → improve → re-measure → record, until no further gain is worth taking.
 

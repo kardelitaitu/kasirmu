@@ -8,7 +8,7 @@ status: Proposed
 
 **Status:** Proposed  
 **Date:** 2026-08-07  
-**Author:** Architecture Team & OZ-POS Contributors  
+**Author:** Architecture Team & kasir.mu Contributors  
 **Tags:** topology, business-logic-builder, node-editor, typed-ports, parent-child, branch-location
 
 ---

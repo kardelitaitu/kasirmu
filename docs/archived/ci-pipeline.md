@@ -1,4 +1,4 @@
-# CI Pipeline Dashboard — OZ-POS
+# CI Pipeline Dashboard — kasir.mu
 
 <!-- Audit stamp: 2026-08-03 · AUDIT-27 remediation · status: REWRITTEN — matrix and gate policy reconciled with current workflows (ci.yml, e2e-pr.yml, nightly.yml, release.yml, security.yml, docs.yml) and local runners (check.sh, check-ui.mjs). Updated 2026-08-16: website.yml added to workflow inventory. Updated 2026-08-17: website.yml check job catalog (docs portal build + internal-link audit). Updated 2026-08-17: docs.yml REMOVED - the GitHub Pages deploy is retired; the docs portal now ships exclusively via website.yml -> Cloudflare. Updated 2026-08-17: deploy.yml added (Northflank auto-deploy of the unified image on main push). -->
 

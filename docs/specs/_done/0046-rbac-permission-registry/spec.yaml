@@ -1,7 +1,7 @@
 id: 0046-rbac-permission-registry
 title: RBAC code-resident permission registry
 status: implemented
-owner: OZ-POS maintainers
+owner: kasir.mu maintainers
 implementer: Buffy
 priority: P1
 scope:

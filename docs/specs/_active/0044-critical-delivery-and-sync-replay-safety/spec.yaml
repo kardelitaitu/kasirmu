@@ -1,7 +1,7 @@
 id: 0044-critical-delivery-and-sync-replay-safety
 title: Critical delivery and sync replay safety
 status: needs-human-approval
-owner: OZ-POS maintainers
+owner: kasir.mu maintainers
 implementer: Buffy
 priority: P0
 scope:

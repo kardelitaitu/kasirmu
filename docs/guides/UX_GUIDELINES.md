@@ -4,14 +4,14 @@
 
 ## 1. The Scaling Strategy
 
-To support a wide range of devices—from small 1366x768 checkout laptops to massive 4K self-service kiosks—OZ-POS employs **Adaptive Fluid Scaling**.
+To support a wide range of devices—from small 1366x768 checkout laptops to massive 4K self-service kiosks—kasir.mu employs **Adaptive Fluid Scaling**.
 
 Instead of writing dozens of CSS media queries with rigid break points (e.g., changing sizes suddenly at 1080p, 1440p, etc.), we map the entire application's sizing to a single root value, and smoothly interpolate that value based on the exact width of the user's browser window.
 
 ### How It Works
 
 1. **Relative Units (`rem`)**: 
-   All typography, padding, margins, and layout widths in OZ-POS must be defined using `rem` units (where `1rem` equals the root `html` font size). 
+   All typography, padding, margins, and layout widths in kasir.mu must be defined using `rem` units (where `1rem` equals the root `html` font size). 
    
    *Rule of thumb:* Never use hardcoded `px` values for large layout containers (e.g., `width: 500px`), because they will not scale. Use `rem` (e.g., `width: 31.25rem`) instead.
 
@@ -32,7 +32,7 @@ Instead of writing dozens of CSS media queries with rigid break points (e.g., ch
 
 ## 2. Best Practices for Developers
 
-When building UI components for OZ-POS, adhere to these guidelines to ensure they play nicely with the Adaptive Rendering engine:
+When building UI components for kasir.mu, adhere to these guidelines to ensure they play nicely with the Adaptive Rendering engine:
 
 - **Do not fight the browser zoom:** Because we scale based on `window.innerWidth`, native browser zoom (`Ctrl + / -`) is intentionally preserved and supported, as zooming physically shrinks or expands the reported `innerWidth` of the document.
 - **Use `rem` everywhere:** Borders (1px) are the only exception. Everything else—fonts, padding, shadows, border-radii, container widths and heights—should be built using `rem` so they scale synchronously. Never use fixed `px` for layout containers (e.g., `width: 500px`); use `rem` (e.g., `width: 31.25rem`) instead.

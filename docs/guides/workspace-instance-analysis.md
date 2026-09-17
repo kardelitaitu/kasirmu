@@ -10,7 +10,7 @@
 
 ## 1. The Problem
 
-OZ-POS currently defines workspaces as a flat set of unique keys:
+kasir.mu currently defines workspaces as a flat set of unique keys:
 
 ```
 restaurant-pos  → renders PosScreen (fullscreen)

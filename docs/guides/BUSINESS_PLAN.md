@@ -1,11 +1,11 @@
 <!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings on code-claim basis — business/strategy doc) · market-facing feature descriptions match implemented capabilities verified in prior turns: Embedded Lua VM (oz-lua), Midtrans QRIS + Stripe (oz-payment qris.rs/stripe.rs), HAL peripherals (oz-hal), PostgreSQL outbox sync (platform/sync), offline-first SQLite · §2 rewritten 2026-08-26 to the approved 5-tier lineup per subscription-tiers.md / website pricing -->
 
-# Business Plan: OZ-POS Platform
+# Business Plan: kasir.mu Platform
 
 ## 1. Executive Summary
 
-**OZ-POS** is a modular, high-performance, and offline-first Point-of-Sale (POS) software framework built using Rust and Tauri v2.
-Unlike legacy cloud-reliant POS systems, OZ-POS utilizes a local-first architecture (SQLite edge databases coupled with an asynchronous cloud sync daemon) to provide sub-millisecond barcode scan latency and 100% uptime, even during internet outages.
+**kasir.mu** is a modular, high-performance, and offline-first Point-of-Sale (POS) software framework built using Rust and Tauri v2.
+Unlike legacy cloud-reliant POS systems, kasir.mu utilizes a local-first architecture (SQLite edge databases coupled with an asynchronous cloud sync daemon) to provide sub-millisecond barcode scan latency and 100% uptime, even during internet outages.
 
 ### Mission Statement
 To democratize enterprise-grade, zero-downtime point-of-sale infrastructure for Indonesian retail merchants, food & beverage outlets, and franchises, bridging the gap between local reliability and cloud intelligence.
@@ -24,7 +24,7 @@ To democratize enterprise-grade, zero-downtime point-of-sale infrastructure for 
 
 ```mermaid
 graph TD
-    A[OZ-POS Platform] --> B[Free Tier: Rp 0 — free forever]
+    A[kasir.mu Platform] --> B[Free Tier: Rp 0 — free forever]
     A --> C[Plus Tier: Rp 49.000 / mo]
     A --> D[Pro Tier: Rp 99.000 / mo]
     A --> E[Premium Tier: Rp 399.000 / mo]
@@ -39,7 +39,7 @@ graph TD
 | **USD price** | $0 | $4.99/mo · $49.99/yr | $9.99/mo · $99.99/yr | $39.99/mo · $399.99/yr | Custom |
 | **Billing Frequency** | Free forever | Monthly / Yearly (2 months free) | Monthly / Yearly (2 months free) | Monthly / Yearly (2 months free) | Annual Contract |
 | **Trial** | — | 14-day Plus trial (general) | 14-day Pro trial (restaurant/cafe); 30-day (enterprise referral) | — | Dedicated Sandbox |
-| **Target Audience** | Warung / kios trying OZ-POS | Single-store shops ready to grow | Cafes, toko, growing multi-store businesses | Multi-store chains needing loyalty & automation | Large Chains & Corporates |
+| **Target Audience** | Warung / kios trying kasir.mu | Single-store shops ready to grow | Cafes, toko, growing multi-store businesses | Multi-store chains needing loyalty & automation | Large Chains & Corporates |
 | **Core Platform & Hardware** | | | | | |
 | **Offline-First Edge SQLite Engine** | ✓ (Sub-ms latency) | ✓ (Sub-ms latency) | ✓ (Sub-ms latency) | ✓ (Sub-ms latency) | ✓ (Sub-ms latency) |
 | **HAL Hardware Integrations** | ✓ (Scanner, Printer, Drawer) | ✓ (Scanner, Printer, Drawer) | ✓ (+ Customer Display, KDS) | ✓ (+ Customer Display, KDS) | ✓ (+ Custom HAL Drivers) |
@@ -90,7 +90,7 @@ screen lists exactly what the user loses, with a one-click upgrade path.
 
 #### Free Tier (Free Forever)
 *   **Pricing:** **Rp 0** — free forever (no license key needed; begins at first launch)
-*   **Target Market:** Warung / kios, solo retailers evaluating OZ-POS
+*   **Target Market:** Warung / kios, solo retailers evaluating kasir.mu
 *   **Core Offerings:** 1 store / 1 register / 1 warehouse / 1 staff, 3-month sales history, offline-first SQLite engine, local HAL peripherals (scanner, printer, drawer), community forum support. QRIS, cloud sync, and the Daily Sales Dashboard are locked with blurred upgrade teasers.
 
 #### Plus Tier (Entry Paid — Daily Sales Dashboard)
@@ -120,9 +120,9 @@ screen lists exactly what the user loses, with a one-click upgrade path.
 Indonesia hosts over **64 million Micro, Small, and Medium Enterprises (MSMEs / UMKM)**, contributing more than 61% of the national GDP.
 
 ### 3.1 Pain Points Addressed
-1.  **Internet Instability:** Many cloud-only POS systems crash or lock up when cellular or fiber connections drop. OZ-POS's offline-first architecture allows sales to process continuously.
-2.  **Exorbitant Platform Fees:** Competitors often charge transactional commissions or high monthly fees. OZ-POS offers predictable flat-rate subscription pricing (plus a free-forever tier).
-3.  **Hardware Lock-in & Forced Upgrades:** Many POS competitors lock merchants into buying proprietary tablets or expensive modern registers. Furthermore, legacy systems built on heavy frameworks (like Electron/Java) run sluggishly on budget hardware, forcing hardware upgrade CAPEX. The native Rust + Tauri v2 core of OZ-POS is extremely lightweight, extending the lifecycle of legacy and budget terminals.
+1.  **Internet Instability:** Many cloud-only POS systems crash or lock up when cellular or fiber connections drop. kasir.mu's offline-first architecture allows sales to process continuously.
+2.  **Exorbitant Platform Fees:** Competitors often charge transactional commissions or high monthly fees. kasir.mu offers predictable flat-rate subscription pricing (plus a free-forever tier).
+3.  **Hardware Lock-in & Forced Upgrades:** Many POS competitors lock merchants into buying proprietary tablets or expensive modern registers. Furthermore, legacy systems built on heavy frameworks (like Electron/Java) run sluggishly on budget hardware, forcing hardware upgrade CAPEX. The native Rust + Tauri v2 core of kasir.mu is extremely lightweight, extending the lifecycle of legacy and budget terminals.
 
 ### 3.2 Competitive Landscape Matrix
 
@@ -134,15 +134,15 @@ Indonesia hosts over **64 million Micro, Small, and Medium Enterprises (MSMEs / 
 | **Pawoon** | SaaS (IDR 2.5jt - 4jt / yr) | Medium (Offline mode with sync limit) | Limited (Preset API partners only) | Medium (Recommended tablet bundles) | Partner-channel payment MDR | Standard tax/discount templates | Small/mid F&B, retail |
 | **Olsera** | SaaS (IDR 1.8jt - 3.5jt / yr) | Medium (Basic offline checkout) | Limited (Basic webhook access) | Low (Multi-platform app support) | Partner-channel payment MDR | Standard promo rule templates | Boutique retail, cafes |
 | **ESB POS** | SaaS (IDR 6jt - 15jt+ / yr) | Good (Requires local hub server install) | Custom (Paid enterprise integrations) | High (Requires enterprise hardware) | Negotiated enterprise MDR | Complex templates (ERP-coupled) | Large F&B chains, fine dining |
-| **OZ-POS** | **Five-Tier SaaS (Free / Plus / Pro / Premium / Enterprise)** | **Excellent (Offline-first SQLite engine)** | **Unlimited (Open source core + Lua scripting)** | **None (Runs on legacy Windows/Android/iOS)** | **0% app fees (Direct Midtrans/Stripe)** | **Dynamic programmable Lua VM engine** | Micro to Enterprise retail/F&B |
+| **kasir.mu** | **Five-Tier SaaS (Free / Plus / Pro / Premium / Enterprise)** | **Excellent (Offline-first SQLite engine)** | **Unlimited (Open source core + Lua scripting)** | **None (Runs on legacy Windows/Android/iOS)** | **0% app fees (Direct Midtrans/Stripe)** | **Dynamic programmable Lua VM engine** | Micro to Enterprise retail/F&B |
 
 ### 3.3 Ultra-Lightweight Footprint & Legacy Hardware Support (CAPEX Reduction)
 
-A primary barrier to POS adoption for Indonesian MSMEs (UMKM) is the upfront Capital Expenditure (CAPEX) required for modern touch terminals. Many local merchants operate legacy checkout terminals or entry-level mobile devices. OZ-POS solves this by supporting ultra-low-spec hardware:
+A primary barrier to POS adoption for Indonesian MSMEs (UMKM) is the upfront Capital Expenditure (CAPEX) required for modern touch terminals. Many local merchants operate legacy checkout terminals or entry-level mobile devices. kasir.mu solves this by supporting ultra-low-spec hardware:
 
-*   **Sub-50MB RAM Footprint:** Legacy Windows POS registers (e.g., ex-thin clients like HP T628 or generic POS terminals commonly sold on Tokopedia) often have only **2GB to 4GB of DDR3 RAM**. While Electron-based POS applications require **500MB to 1GB of RAM** (causing severe OS memory thrashing and slow disk swapping), OZ-POS runs on Tauri v2. By utilizing the OS-native webview (WebView2 on Windows, WebKit on Linux, WebKit/Safari on iOS) and a native Rust backend, memory consumption is kept **under 50MB of RAM**.
+*   **Sub-50MB RAM Footprint:** Legacy Windows POS registers (e.g., ex-thin clients like HP T628 or generic POS terminals commonly sold on Tokopedia) often have only **2GB to 4GB of DDR3 RAM**. While Electron-based POS applications require **500MB to 1GB of RAM** (causing severe OS memory thrashing and slow disk swapping), kasir.mu runs on Tauri v2. By utilizing the OS-native webview (WebView2 on Windows, WebKit on Linux, WebKit/Safari on iOS) and a native Rust backend, memory consumption is kept **under 50MB of RAM**.
 *   **Legacy CPU Optimization:** Budget POS hardware typically uses low-power, older x86 processors (such as the **Intel Celeron J1900 / J1800** or Atom D525) or entry-level mobile ARM chips (such as the quad-core **ARM Cortex-A53** found in budget Android tablets and older Sunmi V1/V2 handheld terminals). Because Rust compiles directly to highly optimized native machine code with **no runtime virtual machine and no garbage collection**, it avoids CPU spikes. Database read/write operations on SQLite execute in under a millisecond, preventing UI stuttering and input lag during peak checkout hours.
-*   **Cellular-Friendly Installer (15MB):** Standard Java or Electron-based POS installers exceed 150MB–300MB. OZ-POS's native desktop installer is **under 15MB**. This allows field operators and merchants in rural or semi-urban areas to install and update the application via standard 3G/4G cellular modems or mobile hotspots without consuming high data quotas.
+*   **Cellular-Friendly Installer (15MB):** Standard Java or Electron-based POS installers exceed 150MB–300MB. kasir.mu's native desktop installer is **under 15MB**. This allows field operators and merchants in rural or semi-urban areas to install and update the application via standard 3G/4G cellular modems or mobile hotspots without consuming high data quotas.
 *   **Maximized CAPEX Protection:** Merchants can continue running their existing Windows 10/11 terminals or Android 8+ devices. By eliminating forced hardware upgrades, the customer acquisition friction is drastically reduced, enabling immediate software adoption.
 
 ---
@@ -165,7 +165,7 @@ gantt
 
 1.  **Hardware Bundling:** Partner with local POS hardware distributors in Jakarta, Surabaya, and Bandung to bundle the Plus plan license pre-installed on cash registers and touch terminals.
 2.  **SME Franchise Focus:** Target growing local franchise chains (*Kopi Susu* outlets, local fashion brands) that require multi-outlet syncing but find enterprise software cost-prohibitive.
-3.  **Developer Ecosystem:** Leverage the Rust-based plugin architecture and Lua scripting layer to attract local software agencies. Agencies can build customized themes or localized modules for clients while running on the OZ-POS core.
+3.  **Developer Ecosystem:** Leverage the Rust-based plugin architecture and Lua scripting layer to attract local software agencies. Agencies can build customized themes or localized modules for clients while running on the kasir.mu core.
 
 ---
 
@@ -194,7 +194,7 @@ Due to the **local‑first edge database architecture** (SQLite processes >99 
 ### 6.1 Server Hosting & Network Load Comparison
 
 * **Traditional Cloud POS Model:** Every item scan, transaction calculation, and report query triggers a cloud API call. Hosting expenses for databases and app servers therefore scale linearly (averaging IDR 15 000 / month / active terminal).
-* **OZ-POS Edge Model:** Data is persisted locally; the cloud database is only contacted during compact outbox synchronization cycles. This yields > 90 % reduction in CPU and bandwidth usage, keeping cloud hosting and telemetry costs below IDR 1 200 / month / active terminal.
+* **kasir.mu Edge Model:** Data is persisted locally; the cloud database is only contacted during compact outbox synchronization cycles. This yields > 90 % reduction in CPU and bandwidth usage, keeping cloud hosting and telemetry costs below IDR 1 200 / month / active terminal.
 
 ### 6.2 Detailed OpEx Breakdown per Terminal (5‑Year Horizon)
 

@@ -16,7 +16,7 @@
 `license.payload`, `license.signature`, `license.tenant_id`, and
 `license.api_key` via `Settings::set_batch` into the global SQLite
 settings table. SQLite is plaintext at rest; on Windows any user with
-file-system access to `%APPDATA%\com.ozpos.app\` can read the
+file-system access to `%APPDATA%\mu.kasir.app\` can read the
 license. Combined with a 60-bit-entropy machine-id that is
 guessable, this is a one-step credential-exfiltration primitive
 yielding tenant-API takeover. Encrypt the SQLite database at rest
@@ -107,10 +107,10 @@ injection, but the entropy is too low).
 4. **Add `keyring` crate** to `apps/desktop-client/Cargo.toml`
    and the tablet client. Store the per-install DB key AND
    the license API key in the OS credential store under
-   service-name `com.ozpos.app`.
+   service-name `mu.kasir.app`.
 5. **Move `license.api_key` out of the settings table**:
    - On `set_license(...)`, store the API key in
-     `keyring::Entry::new("com.ozpos.app", "license.api_key")`.
+     `keyring::Entry::new("mu.kasir.app", "license.api_key")`.
    - On `get_license(...)`, read from the same keyring entry.
    - Delete the `license.api_key` row from the settings table
      on first run after the upgrade.
@@ -161,9 +161,9 @@ xxd -l 16 target/test-data/test.db
 sqlite3 target/test-data/test.db "SELECT key FROM settings WHERE key = 'license.api_key';"
 # expect: 0 rows
 # And via the OS credential store:
-# Windows: `cmdkey /list:com.ozpos.app`
-# macOS:   `security find-generic-password -s com.ozpos.app`
-# Linux:   `secret-tool search service com.ozpos.app`
+# Windows: `cmdkey /list:mu.kasir.app`
+# macOS:   `security find-generic-password -s mu.kasir.app`
+# Linux:   `secret-tool search service mu.kasir.app`
 # expect: license.api_key is present
 
 # 3. Machine-id is ≥128 bits

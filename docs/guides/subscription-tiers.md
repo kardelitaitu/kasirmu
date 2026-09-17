@@ -104,7 +104,7 @@ Final pricing determined by: number of locations, terminals, users, support leve
   for in-store payments. **Without Phase 2, the Indonesian TAM is effectively limited
   to card-holding customers — a fraction of the 65M MSME market. This is not optional
   for Indonesian revenue growth.**
-- **Costs of Phase 2:** OZ-POS becomes merchant of record for ID payments
+- **Costs of Phase 2:** kasir.mu becomes merchant of record for ID payments
   (Indonesian PPN, refunds, disputes); a second webhook + provisioning path
   in the license server; local-method subscriptions are less mature than
   card auto-renew.
@@ -161,13 +161,13 @@ field in `apps/license-server/main.go`.
 
 ### Quick Reference: Best For
 
-> **Positioning statement:** OZ-POS is the QRIS-native POS with offline-first reliability,
+> **Positioning statement:** kasir.mu is the QRIS-native POS with offline-first reliability,
 > priced for the Indonesian market. Lead every ad, landing page, and sales conversation
 > with this — not tier names.
 
 | Tier | Best For | Hero Feature |
 | :--- | :--- | :--- |
-| **Free** | Warung / kios trying OZ-POS — limited to 3 months of sales history | Cash POS + receipt printing |
+| **Free** | Warung / kios trying kasir.mu — limited to 3 months of sales history | Cash POS + receipt printing |
 | **Plus** | Single-location shops ready to grow from manual to smart | **Daily Sales Dashboard** (Laporan Harian) + QRIS |
 | **Pro** ⭐ | Cafes, toko, growing businesses ready for full analytics & KDS | Analytics + KDS + multi-terminal |
 | **Premium** | Multi-location chains needing loyalty & automation | Loyalty program + 5 locations + 1h support |

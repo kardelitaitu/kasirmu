@@ -8,14 +8,14 @@ status: Accepted (2026-08-28)
 
 **Status:** Accepted (2026-08-28)  
 **Date:** 2026-08-28  
-**Author:** Architecture Team & OZ-POS Contributors  
+**Author:** Architecture Team & kasir.mu Contributors  
 **Tags:** lifecycle, device-onboarding, setup-wizard, rbac, subscription-entitlements, topology-editor, workspaces, tools-gating, audit-log
 
 ---
 
 ## 1. Context & Motivation
 
-OZ-POS operates as a hybrid architecture: an **offline-first, local-database runtime** (embedded SQLite on each desktop/tablet device) connected to a **multi-tenant cloud control plane** (licensing, sync, backups, and central management).
+kasir.mu operates as a hybrid architecture: an **offline-first, local-database runtime** (embedded SQLite on each desktop/tablet device) connected to a **multi-tenant cloud control plane** (licensing, sync, backups, and central management).
 
 To provide enterprise-grade security, deterministic multi-terminal synchronization, and sustainable self-serve SaaS monetization without compromising offline resilience, the application requires an unambiguous architectural policy governing:
 

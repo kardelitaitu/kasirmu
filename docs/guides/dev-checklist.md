@@ -1,4 +1,4 @@
-# Development Checklist — OZ-POS Desktop
+# Development Checklist — kasir.mu Desktop
 
 <!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (5 findings) · SUPERSEDES the 2026-08-31 stamp, whose verification was sound when made — has_users (commands/auth.rs:615, registered in lib.rs, ui/src/api/staff.ts:76 hasUsers(), mock at ui/src/dev-mock/tauri-api.ts:1920) and the eight gate/quota screens all still resolve. What changed underneath it is three refactors in eight days, one of them today: 10260a035 + c9d0ec95f (2026-09-06) renamed store->location through oz-core, 54470e277 (2026-09-07) renamed the caps wire field max_stores->maxLocations, and 1b3e71798 (2026-09-08) landed the entitlement consolidation that turned the dev override into Entitlements::apply_debug_upgrade(). Repaired: (1) dev-mock path was written dev-mock/tauri-api.ts, it is ui/src/dev-mock/tauri-api.ts; (2) §2a described the Free->Premium upgrade as a #[cfg(debug_assertions)] block in subscription.rs — it is a named method in crates/oz-core/src/entitlements.rs:102 with three runtime predicates, it promotes ONLY an Active Free row so expired/canceled/paused stay testable in dev, and it is desktop-only because the tablet never passes debug_upgrade; (3) §2a quota field list said max_stores, now max_locations; (4) §2b's mock block was hand-rewritten and had drifted from the shipped handler — it lacked state:'active' and used maxStores/storeCount, now quoted verbatim from tauri-api.ts:2089; (5) §2d's TopologyScreen row gated on caps.storeCount >= caps.maxStores, now caps.locationCount >= caps.maxLocations, and the screen lives in features/locations/. The lesson is not that the audit was sloppy: a repo-wide rename with no docs sweep silently invalidates every checklist that names the renamed fields, and nothing in CI catches it. get_license_status and check_license_status mock returns re-verified accurate. -->
 
@@ -131,7 +131,7 @@ cargo check -p oz-pos-app
 cd ui && npx vitest run
 
 # 3. App starts fresh
-#    - Delete or rename oz-pos.db to test fresh DB flow
+#    - Delete or rename kasir.db to test fresh DB flow
 #    - App should show CreatePinScreen (not StaffLoginScreen)
 #    - Bootstrap owner with username "owner" / PIN "1234"
 #    - After bootstrap, workspace picker appears with demo workspaces

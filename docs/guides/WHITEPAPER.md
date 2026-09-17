@@ -1,10 +1,10 @@
 <!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (0 findings, re-verified) · Replaces the 2026-07-25 Hermes-Agent stamp, whose one repair still stands: the platform stack is oz-hal's #[async_trait] device traits (BarcodeScanner, ReceiptPrinter, CashDrawer, CustomerDisplay, WeightScale, EdcTerminal) plus the optional ProtocolCodec, not embedded-hal. · Checked today rather than assumed, because this page is the one most likely to be read by someone who will never open the code: minSdk 26 is confirmed twice, in apps/tablet-client/gen/android/app/build.gradle.kts:35 and as tauri.conf.json:38 minSdkVersion, and API 26 is Android 8.0 as claimed; Tauri v2 (workspace dependency, v2 conventions throughout); SQLite local storage with a sync module; the five-layer stack description matches docs/guides/ARCHITECTURE.md. · Note the incidental evidence: gen/android IS committed (49 tracked files), which is what makes a claim like minSdk checkable at all - and the reason its iOS counterpart in docs/guides/ios-*.md is not is that gen/apple was never generated. Same document family, opposite verifiability. -->
 
-# Whitepaper: OZ-POS Software Framework
+# Whitepaper: kasir.mu Software Framework
 
 ## Introduction
 
-**OZ-POS** is a modular, extensible, and high-performance Point-of-Sale software framework built with Rust and Tauri v2. It provides a battle-tested foundation for retail stores, restaurants, and any merchant environment — abstracting inventory management, transaction handling, device integration, reporting, and cloud sync so that developers can focus on delivering unique business value.
+**kasir.mu** is a modular, extensible, and high-performance Point-of-Sale software framework built with Rust and Tauri v2. It provides a battle-tested foundation for retail stores, restaurants, and any merchant environment — abstracting inventory management, transaction handling, device integration, reporting, and cloud sync so that developers can focus on delivering unique business value.
 
 ---
 
@@ -17,7 +17,7 @@ The name **OZ** is a deliberate reference to *The Wizard of Oz* — and it captu
 
 ### The Wizard Metaphor
 
-In the story, the Wizard of Oz is a small, ordinary man who — from behind a curtain — creates the appearance of limitless, magical power. OZ-POS works the same way:
+In the story, the Wizard of Oz is a small, ordinary man who — from behind a curtain — creates the appearance of limitless, magical power. kasir.mu works the same way:
 
 - The **merchant** sees a fast, beautiful, effortless checkout experience.
 - The **developer** integrates a clean, composable API.
@@ -135,7 +135,7 @@ These choices balance performance, reliability, and scalability across small bou
 
 ## Conclusion
 
-OZ-POS is more than a POS system — it is a **platform**. Like the wizard behind the curtain, it hides extraordinary complexity behind a simple, magical interface. Rust guarantees safety and speed. Tauri v2 delivers a native experience on every target. The feature-flag system ensures every merchant — from a solo warung owner to an enterprise chain operator — gets exactly the tool they need, nothing more and nothing less.
+kasir.mu is more than a POS system — it is a **platform**. Like the wizard behind the curtain, it hides extraordinary complexity behind a simple, magical interface. Rust guarantees safety and speed. Tauri v2 delivers a native experience on every target. The feature-flag system ensures every merchant — from a solo warung owner to an enterprise chain operator — gets exactly the tool they need, nothing more and nothing less.
 
 > *Small codebase. Limitless possibilities.*
 

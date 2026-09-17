@@ -90,7 +90,7 @@ status: Re-scoped — superseded by subscription-tiers.md §4 (FINAL, approved 2
 
 ## 1. Context and Problem Statement
 
-OZ-POS provides a **90-day Free Trial** for new merchants to test POS, register checkout, store management, and inventory features without requiring an upfront credit card or license key.
+kasir.mu provides a **90-day Free Trial** for new merchants to test POS, register checkout, store management, and inventory features without requiring an upfront credit card or license key.
 
 However, to support commercial viability and prevent trial abuse (e.g., users repeatedly reinstalling the software or clearing local storage to reset trial timers), the system requires:
 1. A **hardware-bound trial lock** enforced by the PocketBase Auth Server.
@@ -180,7 +180,7 @@ When a merchant enters a purchased license key:
 ## 4. Consequences and Compliance
 
 ### 4.1 Positive Impact
-- **Zero Friction Onboarding**: Merchants can evaluate OZ-POS for 90 days without payment details.
+- **Zero Friction Onboarding**: Merchants can evaluate kasir.mu for 90 days without payment details.
 - **Hardware Abuse Anti-Lock**: Prevents trial reset abuse via reinstallation using OS hardware fingerprinting (`SPEC-2026-TRIAL-LOCK`).
 - **Store Continuity**: Store checkout never crashes or locks abruptly during operating hours due to the 14-day offline grace period.
 - **Seamless Upgrade**: Upgrading from Trial to Standard/Pro takes < 2 seconds and preserves all historical store data.

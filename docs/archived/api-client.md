@@ -1,6 +1,6 @@
-# OZ-POS API Client SDK
+# kasir.mu API Client SDK
 
-TypeScript SDK for the OZ-POS cloud server REST API. Provides fully typed
+TypeScript SDK for the kasir.mu cloud server REST API. Provides fully typed
 access to all 20+ endpoints with Bearer token authentication.
 
 ## Quick Start

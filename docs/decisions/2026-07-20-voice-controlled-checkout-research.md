@@ -2,7 +2,7 @@
 
 **Status:** Research (Recommended: Defer to post-2.0)
 **Date:** 2026-07-20
-**Author:** OZ-POS Engineering
+**Author:** kasir.mu Engineering
 
 ---
 

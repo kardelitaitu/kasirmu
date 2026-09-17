@@ -3,7 +3,7 @@
 <!-- dead-ref-prefix-ok: docs/benchmarks/baseline -->
 <!-- dead-ref-prefix-ok: target/criterion/ -->
 
-> Historical tracking of all OZ-POS Criterion.rs benchmarks. Each entry
+> Historical tracking of all kasir.mu Criterion.rs benchmarks. Each entry
 > records the baseline, deltas since previous measurement, and any
 > relevant commit/change context.
 

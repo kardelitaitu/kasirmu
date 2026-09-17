@@ -9,7 +9,7 @@
 
 ## Context
 
-OZ-POS currently uses a **Last-Write-Wins (LWW)** conflict resolution strategy
+kasir.mu currently uses a **Last-Write-Wins (LWW)** conflict resolution strategy
 with version vectors (ADR #21, `2026-07-20-sync-conflict-resolution-strategy.md`).
 The strategy is entity-type-dispatch:
 
@@ -26,7 +26,7 @@ library would improve the current hybrid approach.
 
 ## Current Approach (LWW Hybrid)
 
-OZ-POS already implements a **practical CRDT** for inventory — the delta ledger
+kasir.mu already implements a **practical CRDT** for inventory — the delta ledger
 is mathematically equivalent to a G-Counter (grow-only counter with positive and
 negative deltas summing to a PN-Counter). This is described in ADR #6.
 

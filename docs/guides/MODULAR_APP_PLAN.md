@@ -23,7 +23,7 @@
 
 ## 1. Executive Summary & Vision
 
-The core philosophy of **OZ-POS** is to provide a **zero-bloat, highly adaptable Point-of-Sale system** where the store administrator controls exactly what capabilities are enabled. Whether the business is a quick-service cafe, a full-service restaurant ("Resto"), a multi-terminal retail store, or a franchise chain, the interface and underlying services adapt dynamically.
+The core philosophy of **kasir.mu** is to provide a **zero-bloat, highly adaptable Point-of-Sale system** where the store administrator controls exactly what capabilities are enabled. Whether the business is a quick-service cafe, a full-service restaurant ("Resto"), a multi-terminal retail store, or a franchise chain, the interface and underlying services adapt dynamically.
 
 Instead of presenting every user with a complex, monolithic interface, the administrator selects the active features (or picks a template preset like **Restaurant** or **Simple Retail**). The system then:
 1. Activates only the necessary backend **Rust modules and event handlers**.
@@ -212,7 +212,7 @@ Every phase and high-level objective is broken down below into actionable, atomi
   - Stage 1 (`builder`): `FROM rust:1.88-slim`, `cargo build --release --package oz-cloud-server`.
   - Stage 2 (`runtime`): `FROM debian:bookworm-slim`, copy binary to `/app/oz-cloud-server`, expose `3099`, set `VOLUME ["/data"]`, and `ENTRYPOINT ["/app/oz-cloud-server"]`.
 - [x] **5.3.2 [Docker Compose Topology]**: Create `docker-compose.yml` defining two services:
-  - `pos-cloud-server`: built from `Dockerfile.server`, port `3099:3099`, environment `OZ_DB_PATH=/data/oz-pos.db` (or `DATABASE_URL=postgres://...`), volume `oz_cloud_data:/data`.
+  - `pos-cloud-server`: built from `Dockerfile.server`, port `3099:3099`, environment `OZ_DB_PATH=/data/kasir.db` (or `DATABASE_URL=postgres://...`), volume `oz_cloud_data:/data`.
   - `pos-cloud-db` (optional): `postgres:16-alpine` container with health checks and persistent storage volume for enterprises using PostgreSQL replication (`pg_transport.rs`).
 - [x] **5.3.3 [Automated Container CI Build Test]**: Add CI workflow step in `.github/workflows/` (`or scripts/check.sh --docker-dry-run`) executing `docker build -f Dockerfile.server -t oz-pos-cloud:test .` ensuring clean container build and binary size verification (`< 50MB`).
 

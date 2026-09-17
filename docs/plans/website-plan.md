@@ -1,4 +1,4 @@
-# OZ-POS Website Plan
+# kasir.mu Website Plan
 <!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (2 findings) · Undated plan written in present tense, so its §10 Deployment rows read as current fact; corrected to what the workflows do today. Verified from the files: (a) the live website job is dev-ci.yml:137-163 — "Website Check + Build", needs changes, if needs.changes.outputs.website == 'true', steps asset hygiene / npm ci / playwright chromium (for Mermaid) / npm run check / npm test / npm run build and NOT a deploy; (b) git grep -l wrangler .github/workflows matches only website.yml.bak, so no live workflow deploys; (c) website/package.json:17 is the deploy route, "deploy": "bash ../scripts/wrangler-deploy.sh", which fails closed at scripts/wrangler-deploy.sh:42-43 when CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID are unset. FLAGGED, NOT FIXED (config, out of doc-repair scope): that npm script invokes bare bash, which root AGENTS.md records as resolving to WSL on this workstation and hanging or running the Linux node against Windows-built node_modules; the runbook records the same and gives the explicit Git-bash form. ALSO FLAGGED, NOT FIXED: the §0 blurb says "hosted on Cloudflare Pages" while §10 and website/wrangler.toml say Workers static assets — a contradiction internal to this plan, not a CI claim, so it is left for whoever owns the site. LEFT ALONE: the Pages-alternative note under §10 and all env-var semantics (verified against wrangler.toml bindings by the rows themselves, and untouched by this pass). -->
 
 > Static marketing site hosted on Cloudflare Pages — two locales, Paddle checkout,
@@ -268,8 +268,8 @@ on the owned domain is the real inbox-not-spam fix — see
 >
 > | Product | Price (USD) |
 > |---------|-------------|
-> | OZ-POS Pro — `pro_01m05gdcbasdrc6wczkdc1bn3v` | `pri_01m05gdnqp30xze6db73qcracp` — $19/mo |
-> | OZ-POS Premium — `pro_01m05gdctj4qcph8a957xwm9nw` | `pri_01m05gdpk4hmnm0k8e6vxm8cec` — $49/mo |
+> | kasir.mu Pro — `pro_01m05gdcbasdrc6wczkdc1bn3v` | `pri_01m05gdnqp30xze6db73qcracp` — $19/mo |
+> | kasir.mu Premium — `pro_01m05gdctj4qcph8a957xwm9nw` | `pri_01m05gdpk4hmnm0k8e6vxm8cec` — $49/mo |
 >
 > ⚠️ **Superseded by the 5-tier lineup** (subscription-tiers.md §2): the
 > prices above are the OLD $19/$49 sandbox prices. The six real Paddle
@@ -484,7 +484,7 @@ Data comes from `/api/v1/web/me` — the account page is read-only.
 
 ### Vertical Landing Pages (`/[locale]/untuk-{kafe,minimarket,warung,restoran}`)
 
-Lead with vertical language + the OZ-POS positioning statement, never tier
+Lead with vertical language + the kasir.mu positioning statement, never tier
 names (subscription-tiers.md §5). Each page deep-links to its natural tier
 on the pricing page via the `#plus` / `#pro` / `#premium` card anchors:
 

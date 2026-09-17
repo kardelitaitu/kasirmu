@@ -8,14 +8,14 @@ status: Implemented (2026-08-20)
 
 **Status:** Implemented (2026-08-20)
 **Date:** 2026-08-20
-**Author:** Architecture Team & OZ-POS Contributors
+**Author:** Architecture Team & kasir.mu Contributors
 **Tags:** multi-terminal, peer-model, session, topology, KDS
 
 ---
 
 ## Context
 
-OZ-POS already supports multiple POS terminals through its existing
+kasir.mu already supports multiple POS terminals through its existing
 multi-store scoping (ADR #7) and terminal registration system. However,
 the peer-terminal model was implicit — documented only through code
 conventions rather than an explicit architectural record.
