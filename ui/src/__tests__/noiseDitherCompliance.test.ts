@@ -19,7 +19,7 @@ import { join, resolve } from 'path';
 /* ── Paths ───────────────────────────────────────────────────── */
 
 const UI_SRC = resolve(__dirname, '..');
-const COMPONENTS_CSS = resolve(UI_SRC, 'frontend/themes/components.css');
+const COMPONENTS_CSS = resolve(UI_SRC, 'theme/components.css');
 
 /* ── Drift-guard baseline: expected noise-dither selectors ──────── */
 // When a new shadow-using component is added, its CSS class selector
@@ -396,7 +396,7 @@ function walkShadowPopulation(): void {
   sheetsRefused = 0; unparseableSheets = [];
   sheetsOpened = 0; sheetsParsed.length = 0; dirsUnreadable.length = 0;
 
-  for (const dir of ['features', 'app', 'frontend', 'components']) {
+  for (const dir of ['features', 'app', 'theme', 'components']) {
     const files = findCssFiles(dir);
     allCssFiles.push(...files);
 
@@ -550,7 +550,7 @@ function applySelectorWaivers(): void {
     // element. Restricting it to the tail compound is measured to move exactly one
     // selector out of the waiver -- '.kds-slider-track:hover .kds-slider-knob'
     // (features/kds/KdsScreen.css) -- and that surface needs an entry in the
-    // noise-dither block of ui/src/frontend/themes/components.css plus
+    // noise-dither block of ui/src/theme/components.css plus
     // KNOWN_NOISE_SELECTORS to pass once it is graded. A stylesheet is outside this
     // file's fence, so the door stays open here and its population is printed below.
     if (/:hover|:focus|:active|:disabled|:visited/.test(sel)) { waiverPseudoState++; waivedByPseudoNames.push(sel); continue; }
@@ -644,7 +644,7 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
               `  ${i + 1}. ${u.file}\n`
               + `     Selector: ${u.selector}\n`
               + `     Fix: Add \`${u.selector}::after,\` to the noise-dither block in\n`
-              + `       ui/src/frontend/themes/components.css and add '${u.selector}'\n`
+              + `       ui/src/theme/components.css and add '${u.selector}'\n`
               + `       to KNOWN_NOISE_SELECTORS in this test.\n`
           ).join('\n')
       : 'All shadow-using selectors are covered by noise-dither. ✅';

@@ -242,7 +242,7 @@ const CSS_FILES = [
   'components/MachineIdStatus.css',
   'components/ConnectionStatus.css',
   'components/UpdateBanner.css',
-  'frontend/themes/components.css',
+  'theme/components.css',
 ];
 
 /* ── Tests ───────────────────────────────────────────────────── */

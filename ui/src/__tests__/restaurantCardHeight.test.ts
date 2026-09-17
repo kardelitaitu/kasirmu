@@ -59,7 +59,7 @@ describe('RestaurantMenu card uniform height', () => {
     const baseMatch = body?.match(/var\(--space-14\)\s*\+\s*var\(--space-8\)\s*\+\s*var\(--space-1\)/);
     expect(baseMatch).toBeTruthy();
     // Sanity: the two space tokens resolve to known sizes in tokens.css.
-    const tokens = readFileSync(resolve(__dirname, '../frontend/themes/tokens.css'), 'utf-8');
+    const tokens = readFileSync(resolve(__dirname, '../theme/tokens.css'), 'utf-8');
     expect(tokens).toMatch(/--space-14:\s*3\.5rem/);
     expect(tokens).toMatch(/--space-8:\s*2rem/);
     expect(tokens).toMatch(/--space-1:\s*0\.25rem/);

@@ -22,7 +22,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
 const UI_SRC = resolve(__dirname, '..');
-const TOKENS_PATH = resolve(UI_SRC, 'frontend/themes/tokens.css');
+const TOKENS_PATH = resolve(UI_SRC, 'theme/tokens.css');
 
 /* ── Every floating / scroll-overlaid surface ───────────────────────
  * Add a new floating or overlay surface here (selector + CSS file) when

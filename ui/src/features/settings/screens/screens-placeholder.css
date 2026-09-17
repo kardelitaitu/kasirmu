@@ -5,7 +5,7 @@
  * migration of a real screen should replace markup, never invent styling.
  *
  * Design-token values only - no raw colours, no px font sizes, no invented
- * spacing. src/frontend/themes/tokens.css is the source of truth and
+ * spacing. src/theme/tokens.css is the source of truth and
  * themeTokenCompliance.test.ts enforces it over every file under features/.
  */
 

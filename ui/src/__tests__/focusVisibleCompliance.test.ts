@@ -392,7 +392,7 @@ const CSS_FILES = [
   'components/MachineIdStatus.css',
   'components/ConnectionStatus.css',
   'components/UpdateBanner.css',
-  'frontend/themes/components.css',
+  'theme/components.css',
 ];
 
 describe('Focus-visible compliance', () => {
@@ -527,7 +527,7 @@ const BOUNDARY_WAIVED_BASELINE: string[] = [
   });
 
   it('reset.css properly disables outline on bare mouse focus via :focus:not(:focus-visible)', () => {
-    const resetPath = resolve(UI_SRC, 'frontend/themes/reset.css');
+    const resetPath = resolve(UI_SRC, 'theme/reset.css');
     const css = readFileSync(resetPath, 'utf-8');
     expect(css).toMatch(/:focus:not\(:focus-visible\)\s*\{\s*outline:\s*none;?\s*\}/);
   });

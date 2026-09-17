@@ -4,7 +4,7 @@
  * Registered as its own screenExtraction.test.ts entry (ExpoScreen).
  * Ticket cards themselves are styled by KdsScreen.css (imported by the
  * screen); everything named kds-expo-* lives here. Tokens from
- * ui/src/frontend/themes/tokens.css only.
+ * ui/src/theme/tokens.css only.
  */
 
 .kds-expo {

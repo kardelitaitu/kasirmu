@@ -1,7 +1,7 @@
 /* ── Retail POS — classic minimarket terminal ──────────────── */
 
 /* POS-surface visual layer. All colors and tokens resolve via
- * frontend/themes/tokens.css. POS-domain extensions (navy
+ * theme/tokens.css. POS-domain extensions (navy
  * primary, bronzy warning, F-key yellow) live in that tokens
  * file so retail-pos and the cousin tablet-pos keep a single
  * source of truth. There is intentionally no local :root here. */

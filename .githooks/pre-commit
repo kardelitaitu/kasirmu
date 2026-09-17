@@ -130,7 +130,7 @@ if [ -f scripts/verify-bundle-parity.py ]; then
         if ! "$PYTHON" scripts/verify-bundle-parity.py --staged-only \
                 --include-getstring --include-nav-keys --include-key-fields \
                 --include-dynamic-literals --include-id-maps --check-domain-pairs \
-                --scan-dirs features,components,frontend,contexts,hooks,platform \
+                --scan-dirs features,components,app,theme,contexts,hooks \
                 "${STAGED_FILES[@]}"; then
             printf '%s\n' "error: bundle parity — staged files reference keys missing from one or both .ftl bundles. See verify-bundle-parity.py output above." >&2
             exit 1

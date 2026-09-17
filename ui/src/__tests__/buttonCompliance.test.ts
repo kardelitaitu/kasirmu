@@ -81,7 +81,7 @@ describe('Button component state lifecycle', () => {
 // ── CSS-level tests ───────────────────────────────────────────────
 
 describe('Button CSS implements design language', () => {
-  const cssPath = resolve(UI_SRC, 'frontend/themes/components.css');
+  const cssPath = resolve(UI_SRC, 'theme/components.css');
   const css = readFileSync(cssPath, 'utf-8');
 
   it('has press animation: scale(.97) on :active', () => {

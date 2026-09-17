@@ -633,10 +633,10 @@ describe('popup surfaces have visible backgrounds', () => {
       ["app/Tooltip.css",30],
       ["app/UpdateBanner.css",23],
       ["app/tablet/tablet.css",32],
-      ["frontend/themes/components.css",140],
-      ["frontend/themes/reset.css",28],
-      ["frontend/themes/responsive.css",4],
-      ["frontend/themes/tokens.css",5],
+      ["theme/components.css",140],
+      ["theme/reset.css",28],
+      ["theme/responsive.css",4],
+      ["theme/tokens.css",5],
     ];
     // FLOOR THE BASELINE ITSELF, mirroring the graded-identity floor below: goneSheets is a filter
     // over this literal, so deleting all 137 entries is ONE motion that turns the membership guard
@@ -752,8 +752,8 @@ describe('popup surfaces have visible backgrounds', () => {
       // green here because the per-class merge hands it the `background:
       // var(--color-toast-bg)` its own top-level rule already declares. Deleting the
       // merge, or the descent, or that declaration, each fails this list.
-      { file: 'frontend/themes/components.css', selector: '.toast', at: '' },
-      { file: 'frontend/themes/components.css', selector: '.toast', at: '@media (prefers-reduced-motion: no-preference)' },
+      { file: 'theme/components.css', selector: '.toast', at: '' },
+      { file: 'theme/components.css', selector: '.toast', at: '@media (prefers-reduced-motion: no-preference)' },
     ];
     // A subset check over an EMPTY baseline is a green with no population: toEqual([]) of
     // a filter that had nothing to look for passes when nothing is required to stay graded.
