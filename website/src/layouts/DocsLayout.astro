@@ -24,6 +24,8 @@ interface Props {
 }
 
 const { locale, title, description, updated, entries, currentSlug, headings } = Astro.props;
+const ogLocale = locale === 'id' ? 'id_ID' : 'en_US';
+const ogAltLocale = locale === 'id' ? 'en_US' : 'id_ID';
 const toc = (headings ?? []).filter((h) => h.depth >= 2 && h.depth <= 3);
 // hreflang alternates for the same doc in the other locale. DocsLayout is
 // never rendered on the 404 page, but keep the same fallback for safety.
@@ -55,9 +57,11 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
     {locales.map((code) => (
       <link rel="alternate" hreflang={code} href={getAbsoluteLocaleUrl(code, path)} />
     ))}
+    <link rel="alternate" hreflang="x-default" href={getAbsoluteLocaleUrl('id', path)} />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="kasir.mu" />
-    <meta property="og:locale" content={locale} />
+    <meta property="og:locale" content={ogLocale} />
+    <meta property="og:locale:alternate" content={ogAltLocale} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description ?? t(locale, 'docs.title')} />
     <meta property="og:url" content={new URL(Astro.url.pathname, Astro.site)} />
@@ -67,6 +71,9 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description ?? t(locale, 'docs.title')} />
+    <meta name="twitter:image" content={new URL('/og-image.png', Astro.site)} />
     <title>{title} — {t(locale, 'docs.title')}</title>
   </head>
   <body class="flex min-h-screen flex-col bg text-ink antialiased">

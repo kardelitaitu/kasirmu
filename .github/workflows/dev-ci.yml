@@ -160,6 +160,8 @@ jobs:
         run: cd website && npm test
       - name: Build
         run: cd website && npm run build
+      - name: Internal link check
+        run: cd website && npm run check:links
 
   # ── 2. Cargo Check: Fast compilation check ────────────────────────────
   cargo-check:
