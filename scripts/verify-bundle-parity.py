@@ -163,14 +163,30 @@ LOCALE_DIR = SHARED_UI_DIR / "locales"
 
 # rev 2: which ui/src subdirectories are walked. `features` alone
 # reproduces the rev-1 contract exactly.
+#
+# rev 3 (2026-09-18): `frontend` and `platform` were DELETED from ui/src by the
+# restructure campaign's P2 ("Fold `frontend/` and `platform/` out of ui/src",
+# commits 3bb5bc98c / a22003c9b / 7866197c7, all pushed 2026-09-17). A listed
+# directory that does not exist makes this gate exit 2 ("scan dir not found"),
+# so BOTH the pre-push hook's `--full-census` and CI's explicit `--scan-dirs`
+# could not run at all -- the gate was unpassable, not merely red, and had been
+# since 14:57 on 09-17. The dead names are replaced by their live successors per
+# P2's own mapping: `frontend/shell` -> `app/`, `frontend/themes` -> `theme/`,
+# `platform/` -> `registries/` (`frontend/shared` -> `components/`, already
+# listed). Coverage went UP, not down -- measured 2026-09-18: 428 files for
+# `features` alone, 536 for this list.
+#
+# This tuple and dev-ci.yml's `--scan-dirs` flag are two copies of one list and
+# must move together; the hook reaches this one via `--full-census`.
 DEFAULT_SCAN_DIRS: tuple[str, ...] = ("features",)
 CENSUS_SCAN_DIRS: tuple[str, ...] = (
     "features",
     "components",
-    "frontend",
+    "app",
+    "theme",
+    "registries",
     "contexts",
     "hooks",
-    "platform",
 )
 
 # Matcher for each literal `<Localized id="...">` site. Multi-line via
