@@ -3316,6 +3316,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kasirmu-media"
+version = "0.0.39"
+dependencies = [
+ "async-trait",
+ "image 0.25.10",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
 name = "keyboard-types"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4783,17 +4794,6 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tracing",
-]
-
-[[package]]
-name = "oz-media"
-version = "0.0.39"
-dependencies = [
- "async-trait",
- "image 0.25.10",
- "sha2 0.10.9",
- "thiserror 1.0.69",
- "tokio",
 ]
 
 [[package]]

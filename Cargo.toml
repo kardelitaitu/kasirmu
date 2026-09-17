@@ -60,7 +60,7 @@ oz-notification = { path = "crates/oz-notification" }
 oz-payment = { path = "crates/oz-payment" }
 oz-reporting = { path = "crates/oz-reporting" }
 oz-logging = { path = "crates/oz-logging" }
-oz-media = { path = "crates/oz-media" }
+kasirmu-media = { path = "crates/kasirmu-media" }
 oz-cli = { path = "crates/oz-cli" }
 qris-core = { path = "crates/qris-core" }
 foundation = { path = "foundation" }

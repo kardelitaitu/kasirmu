@@ -1,11 +1,11 @@
 [package]
-name = "oz-media"
+name = "kasirmu-media"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Image processing for OZ-POS — thumbnails, compression, auto-crop. PLANNED (stubs)."
+description = "Image processing for kasir.mu — thumbnails, compression, auto-crop. PLANNED (stubs)."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]
