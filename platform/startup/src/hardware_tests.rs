@@ -6,7 +6,7 @@ use platform_core::terminal_profile::TerminalProfile;
 use rusqlite::Connection;
 
 use super::*;
-use oz_hal::bootstrap::Connection as HalConnection;
+use kasirmu_hal::bootstrap::Connection as HalConnection;
 
 /// Build a profile from a partial JSON object. Every field carries a serde
 /// default, so this also pins forward-compatibility: an old profile missing
@@ -395,7 +395,7 @@ async fn a_registered_terminal_still_fails_closed() {
     };
     assert!(matches!(
         terminal.authorize(money).await,
-        Err(oz_hal::HalError::Unsupported(_))
+        Err(kasirmu_hal::HalError::Unsupported(_))
     ));
 }
 

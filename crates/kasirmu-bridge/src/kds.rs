@@ -155,11 +155,11 @@ pub fn build_kds_chit_jobs(
 /// Some(app)` guard around `app.emit(...)`.
 async fn print_kds_chit_with_printer(
     order: &KdsOrder,
-    printer: Arc<dyn oz_hal::ReceiptPrinter>,
+    printer: Arc<dyn kasirmu_hal::ReceiptPrinter>,
     emitter: Option<&Arc<dyn EventSink>>,
     target_instance_id: Option<&str>,
 ) -> bool {
-    let chit = oz_hal::drivers::kds_chit::format_kds_chit(
+    let chit = kasirmu_hal::drivers::kds_chit::format_kds_chit(
         order.display_number,
         order.table_number.as_deref(),
         &order.items_summary,
@@ -210,7 +210,7 @@ async fn print_kds_chit_with_printer(
 /// Returns `true` when the chit was printed, `false` when skipped.
 pub async fn print_kds_chit_for_order(
     order: &KdsOrder,
-    registry: &oz_hal::DriverRegistry,
+    registry: &kasirmu_hal::DriverRegistry,
     emitter: Option<&Arc<dyn EventSink>>,
 ) -> bool {
     // Find the best available printer - try "kitchen" first, then "default".
@@ -232,7 +232,7 @@ pub async fn print_kds_chit_for_order(
 async fn print_kds_chit_job(
     job: &KdsChitJob,
     order: &KdsOrder,
-    registry: &oz_hal::DriverRegistry,
+    registry: &kasirmu_hal::DriverRegistry,
     emitter: Option<&Arc<dyn EventSink>>,
 ) -> bool {
     // Hardware node IDs are the registry IDs. Accept the conventional
@@ -263,7 +263,7 @@ pub async fn try_auto_print_kds_chit_jobs(
     orders: &[KdsOrder],
     kds_instance_ids: &[String],
     plan: &Value,
-    registry: &oz_hal::DriverRegistry,
+    registry: &kasirmu_hal::DriverRegistry,
     emitter: Option<&Arc<dyn EventSink>>,
 ) {
     let jobs = build_kds_chit_jobs(orders, kds_instance_ids, plan);
@@ -281,7 +281,7 @@ pub async fn try_auto_print_kds_chit_jobs(
 /// Called automatically after KDS order creation.
 pub async fn try_auto_print_kds_chits(
     orders: &[KdsOrder],
-    registry: &oz_hal::DriverRegistry,
+    registry: &kasirmu_hal::DriverRegistry,
     emitter: Option<&Arc<dyn EventSink>>,
 ) {
     if orders.is_empty() {

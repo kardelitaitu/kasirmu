@@ -24,12 +24,12 @@ use std::path::Path;
 use platform_core::terminal_profile::TerminalProfile;
 use rusqlite::Connection;
 
-use oz_hal::DriverRegistry;
-use oz_hal::bootstrap::{
+use kasirmu_hal::DriverRegistry;
+use kasirmu_hal::bootstrap::{
     BootstrapReport, Connection as HalConnection, HardwareConfig, PrinterConfig, TerminalConfig,
 };
-use oz_hal::drivers::edc::WirelessTarget;
-use oz_hal::types::DeviceInfo;
+use kasirmu_hal::drivers::edc::WirelessTarget;
+use kasirmu_hal::types::DeviceInfo;
 
 use oz_core::db::edc_terminals::EdcTerminalConfig;
 
@@ -160,7 +160,7 @@ pub async fn register_hardware(
     registry: &DriverRegistry,
     profile: &TerminalProfile,
 ) -> BootstrapReport {
-    oz_hal::apply_config(registry, &config_from_profile(profile)).await
+    kasirmu_hal::apply_config(registry, &config_from_profile(profile)).await
 }
 
 /// The registry id the EDC commands resolve when no terminal is named.
@@ -173,11 +173,11 @@ pub const DEFAULT_TERMINAL_ID: &str = "default";
 /// Map a stored row onto the HAL's terminal connection.
 ///
 /// A wired row needs a baud rate that `edc_terminals` does not record, so it
-/// gets [`oz_hal::drivers::edc::wired::DEFAULT_BAUD`]. Adding a `baud_rate`
+/// gets [`kasirmu_hal::drivers::edc::wired::DEFAULT_BAUD`]. Adding a `baud_rate`
 /// column is the known follow-up; inferring one from the address would be
 /// worse than using the documented default.
-fn terminal_connection(row: &EdcTerminalConfig) -> Option<oz_hal::bootstrap::TerminalConnection> {
-    use oz_hal::bootstrap::TerminalConnection;
+fn terminal_connection(row: &EdcTerminalConfig) -> Option<kasirmu_hal::bootstrap::TerminalConnection> {
+    use kasirmu_hal::bootstrap::TerminalConnection;
     match (
         row.connection_type.as_str(),
         row.transport.as_str(),
@@ -186,7 +186,7 @@ fn terminal_connection(row: &EdcTerminalConfig) -> Option<oz_hal::bootstrap::Ter
         (_, _, "") => None,
         ("wired", "serial" | "usb", address) => Some(TerminalConnection::Wired {
             port: address.to_owned(),
-            baud: oz_hal::drivers::edc::wired::DEFAULT_BAUD,
+            baud: kasirmu_hal::drivers::edc::wired::DEFAULT_BAUD,
         }),
         ("wireless", "bluetooth", address) => Some(TerminalConnection::Wireless {
             target: WirelessTarget::Bluetooth(address.to_owned()),
@@ -217,7 +217,7 @@ pub async fn register_card_terminals(
     let mut report = BootstrapReport::default();
     // Carries the identity alongside the connection so the alias registers
     // the same device, not rows[0] which may have been rejected.
-    let mut default_terminal: Option<(oz_hal::bootstrap::TerminalConnection, DeviceInfo)> = None;
+    let mut default_terminal: Option<(kasirmu_hal::bootstrap::TerminalConnection, DeviceInfo)> = None;
 
     for row in rows {
         let Some(connection) = terminal_connection(row) else {
@@ -250,7 +250,7 @@ pub async fn register_card_terminals(
             }],
             ..HardwareConfig::default()
         };
-        merge(&mut report, oz_hal::apply_config(registry, &config).await);
+        merge(&mut report, kasirmu_hal::apply_config(registry, &config).await);
     }
 
     if let Some((connection, info)) = default_terminal {
@@ -262,7 +262,7 @@ pub async fn register_card_terminals(
             }],
             ..HardwareConfig::default()
         };
-        merge(&mut report, oz_hal::apply_config(registry, &config).await);
+        merge(&mut report, kasirmu_hal::apply_config(registry, &config).await);
     }
 
     report

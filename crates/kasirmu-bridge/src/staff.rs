@@ -35,7 +35,7 @@ use oz_core::entitlements::Entitlements;
 use oz_core::permissions;
 use oz_core::subscription::TenantSubscription;
 use oz_core::{Role, User};
-use oz_security::mask::mask_token;
+use kasirmu_security::mask::mask_token;
 use rusqlite::Connection;
 
 use foundation::{validate_min_length, validate_not_empty};

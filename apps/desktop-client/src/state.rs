@@ -10,7 +10,7 @@ next: SQLCipher (carried) | perf: Arc-clones on checkout hot path (carried)
 //!
 //! Holds:
 //! - A `rusqlite::Connection` (behind a `tokio::sync::Mutex`) for DB access.
-//! - A `DriverRegistry` from `oz_hal` for hardware access.
+//! - A `DriverRegistry` from `kasirmu_hal` for hardware access.
 //! - The Tauri `AppHandle` for emitting events back to the front-end.
 //!
 //! `AppState::new` opens the local SQLite database, runs migrations, and
@@ -49,11 +49,11 @@ use std::sync::RwLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use oz_security::mask::mask_token;
+use kasirmu_security::mask::mask_token;
 
 use notify::Watcher as _;
 use oz_core::cache::Cache;
-use oz_plugin::PluginManager;
+use kasirmu_plugin::PluginManager;
 
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
@@ -63,7 +63,7 @@ use tokio::sync::{Mutex, oneshot};
 
 use oz_core::migrations;
 use oz_core::session::SessionContext;
-use oz_hal::DriverRegistry;
+use kasirmu_hal::DriverRegistry;
 use platform_core::StoreDatabaseManager;
 use platform_kernel::Kernel;
 use platform_sync::daemon::SyncDaemon;

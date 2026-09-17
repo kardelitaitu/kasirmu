@@ -407,7 +407,7 @@ fn update_terminal_result_serialize() {
 
 #[test]
 fn sign_binding_roundtrip_matches() {
-    let keyring = oz_security::InMemoryKeyring::new();
+    let keyring = kasirmu_security::InMemoryKeyring::new();
     let sig = sign_binding(&keyring, "term-1", "store-a", "ws-a-1").unwrap();
     assert!(!sig.is_empty());
     assert_eq!(
@@ -419,8 +419,8 @@ fn sign_binding_roundtrip_matches() {
 
 #[test]
 fn sign_binding_different_secret_differs() {
-    let signer = oz_security::InMemoryKeyring::new();
-    let other = oz_security::InMemoryKeyring::new();
+    let signer = kasirmu_security::InMemoryKeyring::new();
+    let other = kasirmu_security::InMemoryKeyring::new();
     let sig = sign_binding(&signer, "term-1", "store-a", "ws-a-1").unwrap();
     assert_ne!(
         sign_binding(&other, "term-1", "store-a", "ws-a-1").unwrap(),
@@ -431,7 +431,7 @@ fn sign_binding_different_secret_differs() {
 
 #[test]
 fn sign_binding_differs_for_wrong_payload() {
-    let keyring = oz_security::InMemoryKeyring::new();
+    let keyring = kasirmu_security::InMemoryKeyring::new();
     let sig = sign_binding(&keyring, "term-1", "store-a", "ws-a-1").unwrap();
     assert_ne!(
         sign_binding(&keyring, "term-1", "store-a", "ws-a-2").unwrap(),
@@ -456,7 +456,7 @@ fn run_set_device_binding_writes_verifiable_binding() {
     )
     .unwrap();
 
-    let keyring = oz_security::InMemoryKeyring::new();
+    let keyring = kasirmu_security::InMemoryKeyring::new();
     run_set_device_binding(
         &conn,
         &keyring,

@@ -31,7 +31,7 @@ use oz_core::session::SessionContext;
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
 use oz_core::subscription::TenantSubscription;
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
-use oz_security::mask::mask_token;
+use kasirmu_security::mask::mask_token;
 
 #[allow(unused_imports)] // sibling *_tests.rs depends on it
 use foundation::validate_not_empty;

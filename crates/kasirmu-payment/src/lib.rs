@@ -14,7 +14,7 @@ next: give refund an idempotency key (PAY-2), partial refund (PAY-3), Stripe dec
 //!
 //! Card-present terminals are not part of this crate. An EDC terminal is a
 //! device, so its trait and drivers live in `oz-hal` beside every other
-//! device class — `oz_hal::EdcTerminal`, `oz_hal::drivers::edc`, and a
+//! device class — `kasirmu_hal::EdcTerminal`, `kasirmu_hal::drivers::edc`, and a
 //! registry category to hold them. This crate keeps the layer above: the
 //! acquirers and gateways.
 //!

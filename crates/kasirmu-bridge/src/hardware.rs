@@ -3,7 +3,7 @@
 //!
 //! Key functions: the cash-drawer, receipt-printing, barcode-scanner and
 //! pole-display operations, each consuming a [`BridgeCtx`]. Device access
-//! goes through [`BridgeCtx::registry`] (`oz_hal` mock drivers per the repo
+//! goes through [`BridgeCtx::registry`] (`kasirmu_hal` mock drivers per the repo
 //! rule) — this module never constructs a concrete driver, exactly like the
 //! shell it was extracted from.
 //!
@@ -32,9 +32,9 @@ use tokio::sync::oneshot;
 
 use oz_core::permissions;
 use oz_core::{Currency, Money, Settings};
-use oz_hal::drivers::receipt;
-use oz_hal::transport::usb::{UsbDeviceInfo, probe_all};
-use oz_hal::{BarcodeScanner, DisplayContent};
+use kasirmu_hal::drivers::receipt;
+use kasirmu_hal::transport::usb::{UsbDeviceInfo, probe_all};
+use kasirmu_hal::{BarcodeScanner, DisplayContent};
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -118,7 +118,7 @@ pub async fn print_receipt(
             "Printer is not ready: check paper supply and cover".into(),
         ));
     }
-    if status.paper != oz_hal::PaperStatus::Ok {
+    if status.paper != kasirmu_hal::PaperStatus::Ok {
         // Low paper — warn but continue
         tracing::warn!(
             paper = ?status.paper,
@@ -325,7 +325,7 @@ pub async fn run_print_receipt_inner(
             "Printer is not ready: check paper supply and cover".into(),
         ));
     }
-    if status.paper != oz_hal::PaperStatus::Ok {
+    if status.paper != kasirmu_hal::PaperStatus::Ok {
         tracing::warn!(
             paper = ?status.paper,
             "printer paper is low, continuing"
@@ -457,7 +457,7 @@ pub async fn print_receipt_scoped(
             "Printer is not ready: check paper supply and cover".into(),
         ));
     }
-    if status.paper != oz_hal::PaperStatus::Ok {
+    if status.paper != kasirmu_hal::PaperStatus::Ok {
         tracing::warn!(paper = ?status.paper, "printer paper is low, continuing");
     }
     let lines: Vec<&str> = args.body.lines().collect();

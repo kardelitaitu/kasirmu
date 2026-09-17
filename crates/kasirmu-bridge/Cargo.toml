@@ -25,11 +25,11 @@ image = { workspace = true }
 lettre = { workspace = true }
 modules-currency = { workspace = true }
 oz-core = { workspace = true }
-oz-hal = { workspace = true }
+kasirmu-hal = { workspace = true }
 kasirmu-lua = { workspace = true }
-oz-plugin = { workspace = true }
+kasirmu-plugin = { workspace = true }
 kasirmu-reporting = { workspace = true }
-oz-security = { workspace = true }
+kasirmu-security = { workspace = true }
 platform-core = { workspace = true }
 platform-kernel = { workspace = true }
 rusqlite = { workspace = true }

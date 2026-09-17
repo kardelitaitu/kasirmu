@@ -33,7 +33,7 @@ use async_trait::async_trait;
 
 use crate::error::PaymentError;
 use crate::types::{PaymentReceipt, PaymentRequest, PaymentResult};
-use oz_hal::types::DeviceInfo;
+use kasirmu_hal::types::DeviceInfo;
 
 /// A processor that can authorize, capture, refund, and void payments.
 ///

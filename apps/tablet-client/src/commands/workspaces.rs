@@ -172,7 +172,7 @@ pub async fn resolve_boot_store(
             })
     };
     let keyring = if binding_info.is_some() {
-        oz_security::default_keyring().ok()
+        kasirmu_security::default_keyring().ok()
     } else {
         None
     };
@@ -192,7 +192,7 @@ fn resolve_boot_store_core(
     conn: &rusqlite::Connection,
     db_manager: &StoreDatabaseManager,
     device_id: &str,
-    keyring: Option<&dyn oz_security::Keyring>,
+    keyring: Option<&dyn kasirmu_security::Keyring>,
 ) -> Result<BootResolution, AppError> {
     let primary_store = |conn: &rusqlite::Connection| -> Result<BootResolution, AppError> {
         let store = Store::new(conn);

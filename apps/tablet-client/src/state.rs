@@ -9,7 +9,7 @@ next: none | perf: N/A
 //!
 //! Holds:
 //! - A `rusqlite::Connection` (behind a `tokio::sync::Mutex`) for DB access.
-//! - A `DriverRegistry` from `oz_hal` for hardware access.
+//! - A `DriverRegistry` from `kasirmu_hal` for hardware access.
 //! - The Tauri `AppHandle` for emitting events back to the front-end.
 //!
 //! `AppState::new` opens the local SQLite database, runs migrations, and
@@ -29,7 +29,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
 
-use oz_security::mask::mask_token;
+use kasirmu_security::mask::mask_token;
 use rusqlite::Connection;
 use tauri::AppHandle;
 use tauri::Manager;
@@ -38,8 +38,8 @@ use tokio::sync::{Mutex, oneshot};
 use oz_core::cache::{Cache, create_cache};
 use oz_core::migrations;
 use oz_core::session::SessionContext;
-use oz_hal::DriverRegistry;
-use oz_plugin::PluginManager;
+use kasirmu_hal::DriverRegistry;
+use kasirmu_plugin::PluginManager;
 use platform_core::StoreDatabaseManager;
 use platform_kernel::Kernel;
 

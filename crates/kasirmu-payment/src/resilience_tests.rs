@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use foundation::Money;
-use oz_hal::types::DeviceInfo;
+use kasirmu_hal::types::DeviceInfo;
 
 use super::*;
 use crate::error::PaymentError;

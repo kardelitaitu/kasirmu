@@ -52,10 +52,10 @@ oz-bridge = { package = "kasirmu-bridge", path = "crates/kasirmu-bridge" }
 kasirmu-crypto = { path = "crates/kasirmu-crypto" }
 kasirmu-lan = { path = "crates/kasirmu-lan" }
 kasirmu-local-api = { path = "crates/kasirmu-local-api" }
-oz-hal = { package = "kasirmu-hal", path = "crates/kasirmu-hal" }
+kasirmu-hal = { path = "crates/kasirmu-hal" }
 kasirmu-lua = { path = "crates/kasirmu-lua" }
-oz-plugin = { package = "kasirmu-plugin", path = "crates/kasirmu-plugin" }
-oz-security = { package = "kasirmu-security", path = "crates/kasirmu-security" }
+kasirmu-plugin = { path = "crates/kasirmu-plugin" }
+kasirmu-security = { path = "crates/kasirmu-security" }
 kasirmu-notification = { path = "crates/kasirmu-notification" }
 kasirmu-payment = { path = "crates/kasirmu-payment" }
 kasirmu-reporting = { path = "crates/kasirmu-reporting" }

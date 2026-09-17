@@ -321,7 +321,7 @@ async fn resolve_boot_store_returns_primary_store() {
 // ── Device binding auto-boot (parity with desktop client) ───────────
 
 use oz_core::Terminal;
-use oz_security::Keyring as _;
+use kasirmu_security::Keyring as _;
 
 /// HMAC-SHA256 hex over `{terminal}:{store}:{instance}` with a fixed
 /// secret — mirrors `sign_binding` so tests can forge bindings.
@@ -338,10 +338,10 @@ fn hmac_hex(secret: &str, terminal_id: &str, store_id: &str, instance_id: &str) 
 /// Global DB with a bound terminal (device "tablet-1" → store-a/ws-a-1,
 /// signed with a known in-memory keyring secret) + a store-a DB with the
 /// instance. Primary store row exists in the global DB for fallbacks.
-fn binding_state() -> (AppState, tempfile::TempDir, oz_security::InMemoryKeyring) {
+fn binding_state() -> (AppState, tempfile::TempDir, kasirmu_security::InMemoryKeyring) {
     let conn = migrations::fresh_db();
     let store = Store::new(&conn);
-    let keyring = oz_security::InMemoryKeyring::new();
+    let keyring = kasirmu_security::InMemoryKeyring::new();
     keyring
         .set_secret(
             crate::commands::terminals::DEVICE_BINDING_KEYRING_NAME,
@@ -397,7 +397,7 @@ async fn resolve_boot_store_tampered_binding_falls_back_to_primary() {
     let (state, _dir, _keyring) = binding_state();
     // A DIFFERENT keyring secret — the DB row was not signed by this
     // device's secret, so the HMAC must fail and resolution degrades.
-    let other = oz_security::InMemoryKeyring::new();
+    let other = kasirmu_security::InMemoryKeyring::new();
     other
         .set_secret(
             crate::commands::terminals::DEVICE_BINDING_KEYRING_NAME,

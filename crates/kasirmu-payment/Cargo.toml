@@ -13,7 +13,7 @@ workspace = true
 
 [dependencies]
 oz-core = { workspace = true }
-oz-hal = { workspace = true }
+kasirmu-hal = { workspace = true }
 foundation = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }

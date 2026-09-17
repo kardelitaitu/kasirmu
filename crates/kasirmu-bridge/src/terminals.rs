@@ -42,7 +42,7 @@ pub const DEVICE_BINDING_KEYRING_NAME: &str = "oz-pos/device-binding-hmac-key";
 /// using a secret stored in the OS keyring. If no secret exists yet, one is
 /// generated and stored.
 fn sign_binding(
-    keyring: &dyn oz_security::Keyring,
+    keyring: &dyn kasirmu_security::Keyring,
     terminal_id: &str,
     store_id: &str,
     instance_id: &str,
@@ -76,7 +76,7 @@ fn sign_binding(
 
 /// Verify a device binding HMAC signature.
 fn verify_binding(
-    keyring: &dyn oz_security::Keyring,
+    keyring: &dyn kasirmu_security::Keyring,
     terminal_id: &str,
     store_id: &str,
     instance_id: &str,
@@ -352,7 +352,7 @@ fn build_device_binding_dto(
             signature_valid: false,
         }),
         Some((store_id, instance_id, signature)) => {
-            let keyring = oz_security::default_keyring()
+            let keyring = kasirmu_security::default_keyring()
                 .map_err(|e| BridgeError::Internal(format!("keyring unavailable: {e}")))?;
             let valid = verify_binding(
                 keyring.as_ref(),
@@ -743,7 +743,7 @@ pub async fn set_device_binding_scoped(
         .await?;
 
     let signature = {
-        let keyring = oz_security::default_keyring()
+        let keyring = kasirmu_security::default_keyring()
             .map_err(|e| BridgeError::Internal(format!("keyring unavailable: {e}")))?;
         sign_binding(
             keyring.as_ref(),

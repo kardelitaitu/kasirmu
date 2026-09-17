@@ -12,9 +12,9 @@ use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State, command};
 
 use oz_core::{Currency, Money, Settings};
-use oz_hal::DisplayContent;
-use oz_hal::drivers::receipt;
-use oz_hal::transport::usb::{UsbDeviceInfo, probe_all};
+use kasirmu_hal::DisplayContent;
+use kasirmu_hal::drivers::receipt;
+use kasirmu_hal::transport::usb::{UsbDeviceInfo, probe_all};
 
 use crate::error::AppError;
 use crate::state::AppState;

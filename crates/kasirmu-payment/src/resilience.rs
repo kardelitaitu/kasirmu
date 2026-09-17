@@ -21,7 +21,7 @@ use crate::error::{ErrorClass, PaymentError};
 use crate::processor::PaymentProcessor;
 use crate::types::{PaymentReceipt, PaymentRequest, PaymentResult};
 use foundation::Money;
-use oz_hal::types::DeviceInfo;
+use kasirmu_hal::types::DeviceInfo;
 
 /// State of the circuit breaker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

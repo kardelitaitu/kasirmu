@@ -18,7 +18,7 @@ oz-core = { workspace = true }
 # hardware.rs maps the persisted TerminalProfile onto the HAL's own
 # HardwareConfig and registers the result. platform-core owns the profile
 # type; neither depends on platform-startup, so this adds no cycle.
-oz-hal = { workspace = true }
+kasirmu-hal = { workspace = true }
 platform-core = { workspace = true }
 modules-crm = { workspace = true }
 modules-inventory = { workspace = true }

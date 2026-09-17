@@ -17,7 +17,7 @@ next: none | perf: N/A
 //! parsing the message string.
 
 use oz_core::CoreErrorKind;
-use oz_hal::HalErrorKind;
+use kasirmu_hal::HalErrorKind;
 use thiserror::Error;
 
 /// Discriminated error returned by every `#[tauri::command]`.
@@ -33,7 +33,7 @@ pub enum AppError {
         message: String,
     },
 
-    /// Wraps any `oz_hal::HalError` (device not found, USB timeout, …).
+    /// Wraps any `kasirmu_hal::HalError` (device not found, USB timeout, …).
     #[error("hardware error: {message}")]
     Hardware {
         /// Typed sub-discriminator mirroring the `HalError` variant.
@@ -91,8 +91,8 @@ impl From<oz_core::CoreError> for AppError {
     }
 }
 
-impl From<oz_hal::HalError> for AppError {
-    fn from(e: oz_hal::HalError) -> Self {
+impl From<kasirmu_hal::HalError> for AppError {
+    fn from(e: kasirmu_hal::HalError) -> Self {
         Self::Hardware {
             sub_kind: e.kind(),
             message: e.to_string(),
@@ -171,8 +171,8 @@ impl From<tauri::Error> for AppError {
     }
 }
 
-impl From<oz_security::SecurityError> for AppError {
-    fn from(e: oz_security::SecurityError) -> Self {
+impl From<kasirmu_security::SecurityError> for AppError {
+    fn from(e: kasirmu_security::SecurityError) -> Self {
         Self::Internal(e.to_string())
     }
 }

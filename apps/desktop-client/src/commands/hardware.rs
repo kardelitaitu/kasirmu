@@ -14,7 +14,7 @@
 
 use tauri::State;
 
-use oz_hal::transport::usb::UsbDeviceInfo;
+use kasirmu_hal::transport::usb::UsbDeviceInfo;
 
 use crate::error::AppError;
 use crate::state::AppState;
@@ -46,8 +46,8 @@ pub async fn print_sales_receipt_scoped(
 /// rule; the body lives in `oz_bridge::hardware::run_print_receipt_inner`.
 pub async fn run_print_receipt_inner(
     args: PrintSalesReceiptArgs,
-    config: oz_hal::drivers::receipt::ReceiptConfig,
-    store_info: oz_hal::drivers::receipt::StoreInfo,
+    config: kasirmu_hal::drivers::receipt::ReceiptConfig,
+    store_info: kasirmu_hal::drivers::receipt::StoreInfo,
     state: State<'_, AppState>,
 ) -> Result<PrintSalesReceiptResult, AppError> {
     let ctx = state.bridge_ctx();

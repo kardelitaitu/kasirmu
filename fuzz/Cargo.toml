@@ -35,7 +35,7 @@ cargo-fuzz = true
 #   lua-fuzz            - enables lua_sandbox (oz-lua already in base deps).
 [features]
 oz-core-fuzz   = ["dep:oz-core"]
-oz-plugin-fuzz = ["oz-core-fuzz", "dep:oz-plugin", "dep:toml"]
+oz-plugin-fuzz = ["oz-core-fuzz", "dep:kasirmu-plugin", "dep:toml"]
 lua-fuzz       = []
 
 [dependencies]
@@ -44,7 +44,7 @@ arbitrary = { version = "1", features = ["derive"] }
 foundation = { path = "../foundation" }
 kasirmu-lua = { path = "../crates/kasirmu-lua" }
 oz-core   = { path = "../crates/oz-core",   optional = true }
-oz-plugin = { path = "../crates/oz-plugin", optional = true }
+kasirmu-plugin = { path = "../crates/kasirmu-plugin", optional = true }
 # oz-lua migrated from rlua to mlua 0.9; the lua_sandbox target inspects
 # the sandbox via mlua types, so mlua must be a direct dep with the same
 # features oz-lua enables (lua54, vendored, send).

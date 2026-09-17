@@ -86,9 +86,9 @@ fn runtime_plan_maps_each_kds_target_to_its_hardware() {
 
 #[tokio::test]
 async fn target_aware_chit_jobs_print_to_separate_registered_printers() {
-    let registry = oz_hal::DriverRegistry::default();
-    let grill = Arc::new(oz_hal::drivers::mock::MockReceiptPrinter::new());
-    let pass = Arc::new(oz_hal::drivers::mock::MockReceiptPrinter::new());
+    let registry = kasirmu_hal::DriverRegistry::default();
+    let grill = Arc::new(kasirmu_hal::drivers::mock::MockReceiptPrinter::new());
+    let pass = Arc::new(kasirmu_hal::drivers::mock::MockReceiptPrinter::new());
     registry
         .register_printer("printer-grill", grill.clone())
         .await;

@@ -298,7 +298,7 @@ pub async fn get_kds_order_scoped(
 /// Returns `true` when the chit was printed, `false` when skipped.
 pub async fn print_kds_chit_for_order(
     order: &KdsOrder,
-    registry: &oz_hal::DriverRegistry,
+    registry: &kasirmu_hal::DriverRegistry,
     app: Option<&tauri::AppHandle>,
 ) -> bool {
     let sink = sink_for(app);
@@ -402,7 +402,7 @@ pub async fn update_kds_line_item_status_scoped(
 /// Tauri state borrows before the first `.await`.
 pub async fn try_auto_print_kds_chits(
     orders: &[KdsOrder],
-    registry: &oz_hal::DriverRegistry,
+    registry: &kasirmu_hal::DriverRegistry,
     app: Option<&tauri::AppHandle>,
 ) {
     let sink = sink_for(app);

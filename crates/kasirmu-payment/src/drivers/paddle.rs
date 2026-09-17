@@ -34,7 +34,7 @@ next: none until Paddle integration | perf: N/A
 use async_trait::async_trait;
 
 use foundation::Money;
-use oz_hal::types::DeviceInfo;
+use kasirmu_hal::types::DeviceInfo;
 
 use crate::PaymentProcessor;
 use crate::error::PaymentError;

@@ -23,7 +23,7 @@ use oz_core::db::audit_security::{
 use oz_core::permissions;
 use oz_core::session::SessionContext;
 use oz_core::subscription::TenantSubscription;
-use oz_security::mask::mask_token;
+use kasirmu_security::mask::mask_token;
 
 use crate::commands::authz::require_permission_for_session;
 use crate::commands::picker_ticket;

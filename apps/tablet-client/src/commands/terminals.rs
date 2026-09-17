@@ -31,7 +31,7 @@ pub const DEVICE_BINDING_KEYRING_NAME: &str = "oz-pos/device-binding-hmac-key";
 /// using a secret stored in the OS keyring. If no secret exists yet, one is
 /// generated and stored. Parity with the desktop client's `sign_binding`.
 fn sign_binding(
-    keyring: &dyn oz_security::Keyring,
+    keyring: &dyn kasirmu_security::Keyring,
     terminal_id: &str,
     store_id: &str,
     instance_id: &str,
@@ -187,7 +187,7 @@ pub async fn set_device_binding_scoped(
     let db = state.db.lock().await;
     // Acquire the (non-Send) keyring only after the lock so no `.await`
     // point holds it — Tauri requires command futures to be Send.
-    let keyring = oz_security::default_keyring()
+    let keyring = kasirmu_security::default_keyring()
         .map_err(|e| AppError::Internal(format!("keyring unavailable: {e}")))?;
     let store = Store::new(&db);
     require_permission_for_user(
@@ -212,7 +212,7 @@ pub async fn set_device_binding_scoped(
 /// caller-named `user_id`, was registered in neither shell, and no production UI code named it.
 fn run_set_device_binding(
     conn: &rusqlite::Connection,
-    keyring: &dyn oz_security::Keyring,
+    keyring: &dyn kasirmu_security::Keyring,
     args: &SetDeviceBindingArgs,
 ) -> Result<(), AppError> {
     validate_not_empty("terminal_id", &args.terminal_id)

@@ -140,7 +140,7 @@ pub fn run() {
                                     terminal_id = %terminal_id,
                                     "no hardware profile saved yet; nothing to register"
                                 );
-                                oz_hal::BootstrapReport::default()
+                                kasirmu_hal::BootstrapReport::default()
                             }
                         };
                         let terminals = platform_startup::hardware::register_card_terminals(

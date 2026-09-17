@@ -8,7 +8,7 @@ next: commands should take a terminal_id once more than one terminal is configur
 //!
 //! Backs the `edc_terminals` table from migration `20260824_media_edc.sql`.
 //! This is the configuration source the HAL reads at startup: rows become
-//! `oz_hal::TerminalConfig` entries through `platform_startup::hardware`,
+//! `kasirmu_hal::TerminalConfig` entries through `platform_startup::hardware`,
 //! which is what lets a card tender reach real hardware instead of failing
 //! closed with `NotFound`.
 //!

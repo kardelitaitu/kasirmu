@@ -14,7 +14,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use foundation::{Currency, Money};
-use oz_hal::types::DeviceInfo;
+use kasirmu_hal::types::DeviceInfo;
 
 use crate::PaymentProcessor;
 use crate::error::PaymentError;

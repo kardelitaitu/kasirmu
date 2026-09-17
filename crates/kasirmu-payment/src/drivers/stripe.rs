@@ -25,7 +25,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use foundation::{Currency, Money};
-use oz_hal::types::DeviceInfo;
+use kasirmu_hal::types::DeviceInfo;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 
 use crate::PaymentProcessor;

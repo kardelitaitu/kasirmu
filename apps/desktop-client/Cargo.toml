@@ -36,13 +36,13 @@ kasirmu-api = { workspace = true }
 oz-core = { workspace = true }
 oz-bridge = { workspace = true }
 reqwest = { workspace = true }
-oz-hal = { workspace = true }
+kasirmu-hal = { workspace = true }
 kasirmu-lan = { workspace = true }
 kasirmu-local-api = { workspace = true }
 kasirmu-logging = { workspace = true }
 kasirmu-lua = { workspace = true }
-oz-plugin = { workspace = true }
-oz-security = { workspace = true }
+kasirmu-plugin = { workspace = true }
+kasirmu-security = { workspace = true }
 modules-crm = { workspace = true }
 modules-inventory = { workspace = true }
 modules-settings = { workspace = true }

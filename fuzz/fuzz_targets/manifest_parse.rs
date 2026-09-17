@@ -21,7 +21,7 @@ use libfuzzer_sys::fuzz_target;
 // When oz-plugin-fuzz feature is not enabled, compile a no-op stub so the
 // binary still links cleanly without pulling in oz-plugin's C deps.
 #[cfg(feature = "oz-plugin-fuzz")]
-use oz_plugin::manifest::PluginManifest;
+use kasirmu_plugin::manifest::PluginManifest;
 
 #[cfg(feature = "oz-plugin-fuzz")]
 fuzz_target!(|data: &[u8]| {

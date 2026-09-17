@@ -7,7 +7,7 @@ next: implement build_from_config when registry wiring lands | perf: N/A
 //! Payment processor registry — PLANNED (stub).
 //!
 //! The runtime catalogue of available payment processors, mirroring
-//! `oz_hal::DriverRegistry`. Commands reach a processor through the
+//! `kasirmu_hal::DriverRegistry`. Commands reach a processor through the
 //! registry (e.g. `registry.processor("stripe")`) and never construct a
 //! specific driver directly, so switching gateways is a config change
 //! (see the `payment_gateways` table), not a code change.

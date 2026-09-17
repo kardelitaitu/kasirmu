@@ -21,12 +21,12 @@ pub enum BridgeError {
         /// Human-readable message.
         message: String,
     },
-    /// Wraps any `oz_hal::HalError` (device not found, USB timeout, …)
+    /// Wraps any `kasirmu_hal::HalError` (device not found, USB timeout, …)
     /// (mirrors `AppError::Hardware`).
     #[error("hardware error: {message}")]
     Hardware {
         /// Typed sub-discriminator mirroring the `HalError` variant.
-        sub_kind: oz_hal::HalErrorKind,
+        sub_kind: kasirmu_hal::HalErrorKind,
         /// Human-readable error message.
         message: String,
     },
@@ -90,8 +90,8 @@ impl From<platform_core::error::PlatformError> for BridgeError {
     }
 }
 
-impl From<oz_hal::HalError> for BridgeError {
-    fn from(e: oz_hal::HalError) -> Self {
+impl From<kasirmu_hal::HalError> for BridgeError {
+    fn from(e: kasirmu_hal::HalError) -> Self {
         Self::Hardware {
             sub_kind: e.kind(),
             message: e.to_string(),

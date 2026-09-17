@@ -18,7 +18,7 @@
 use serde::Serialize;
 
 use oz_core::permissions;
-use oz_security::Keyring;
+use kasirmu_security::Keyring;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -44,13 +44,13 @@ pub struct KeyRotationStatus {
 /// The desktop shell's `From<SecurityError> for AppError` lands on
 /// `AppError::Internal(e.to_string())`; this local mirror keeps the exact
 /// same variant and message text across the shim's remap.
-fn keyring_error(e: oz_security::SecurityError) -> BridgeError {
+fn keyring_error(e: kasirmu_security::SecurityError) -> BridgeError {
     BridgeError::Internal(e.to_string())
 }
 
 /// Build the platform default keyring with the shell's error text.
 fn default_keyring() -> Result<Box<dyn Keyring>, BridgeError> {
-    oz_security::default_keyring()
+    kasirmu_security::default_keyring()
         .map_err(|e| BridgeError::Internal(format!("keyring unavailable: {e}")))
 }
 
@@ -125,7 +125,7 @@ pub fn key_rotation_status(keyring: &dyn Keyring) -> Result<KeyRotationStatus, B
 }
 
 /// Rotate the encryption key on an open keyring (pure, synchronous).
-fn rotate_key(keyring: &dyn Keyring) -> Result<oz_security::RotationInfo, BridgeError> {
+fn rotate_key(keyring: &dyn Keyring) -> Result<kasirmu_security::RotationInfo, BridgeError> {
     let info = keyring
         .rotate_key(ENCRYPTION_KEY_NAME)
         .map_err(keyring_error)?;
@@ -151,9 +151,9 @@ pub async fn get_key_rotation_info() -> Result<KeyRotationStatus, BridgeError> {
 ///
 /// Generates a new random 256-bit AES key, archives the previous key,
 /// and stores the creation timestamp. Returns the
-/// [`oz_security::RotationInfo`] with the new key's metadata. Takes no
+/// [`kasirmu_security::RotationInfo`] with the new key's metadata. Takes no
 /// context, exactly as the shell command.
-pub async fn rotate_encryption_key() -> Result<oz_security::RotationInfo, BridgeError> {
+pub async fn rotate_encryption_key() -> Result<kasirmu_security::RotationInfo, BridgeError> {
     with_keyring(default_keyring, rotate_key).await
 }
 
@@ -189,7 +189,7 @@ pub async fn get_key_rotation_info_scoped(
 pub async fn rotate_encryption_key_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
-) -> Result<oz_security::RotationInfo, BridgeError> {
+) -> Result<kasirmu_security::RotationInfo, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
     // F-017: rotating the at-rest key invalidates every archived key —
     // crypto administration — sensitive key, explicit permission.

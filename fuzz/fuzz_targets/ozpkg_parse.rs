@@ -29,7 +29,7 @@ fuzz_target!(|data: &[u8]| {
     // resource-limit checks, and manifest.json validation. Errors are the
     // expected outcome for most inputs — the invariant is that any input
     // either parses cleanly or fails with an error, never a panic.
-    let _ = oz_plugin::package::OzpkArchive::from_bytes(data, "fuzz.ozpkg");
+    let _ = kasirmu_plugin::package::OzpkArchive::from_bytes(data, "fuzz.ozpkg");
 });
 
 #[cfg(not(feature = "oz-plugin-fuzz"))]

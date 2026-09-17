@@ -804,7 +804,7 @@ pub async fn resolve_boot_store(
 
     if let Some((terminal_id, bound_store_id, bound_instance_id, signature)) = binding_info {
         let signature_valid = {
-            let keyring = oz_security::default_keyring()
+            let keyring = kasirmu_security::default_keyring()
                 .map_err(|e| BridgeError::Internal(format!("keyring unavailable: {e}")))?;
             let secret = keyring
                 .get_secret(DEVICE_BINDING_KEYRING_NAME)

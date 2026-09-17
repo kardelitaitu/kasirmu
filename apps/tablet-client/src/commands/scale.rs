@@ -11,7 +11,7 @@
 
 use tauri::{State, command};
 
-use oz_hal::WeightReading;
+use kasirmu_hal::WeightReading;
 
 use crate::error::AppError;
 use crate::state::AppState;

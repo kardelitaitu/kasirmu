@@ -6,7 +6,7 @@
 //! variant.
 
 use super::{DEFAULT_TERMINAL_ID, EdcResultDto, EdcStatusDto};
-use oz_hal::{EdcPaymentResult, TerminalStatus};
+use kasirmu_hal::{EdcPaymentResult, TerminalStatus};
 
 fn result() -> EdcPaymentResult {
     EdcPaymentResult {
@@ -79,7 +79,7 @@ async fn a_fresh_registry_has_no_terminal_so_the_tender_fails_closed() {
     // The precondition every EDC command depends on. Before this change the
     // commands read an AppState field holding an armed mock, so this state
     // produced a fake approval instead of an error.
-    let registry = oz_hal::DriverRegistry::default();
+    let registry = kasirmu_hal::DriverRegistry::default();
     assert!(
         registry.terminal(DEFAULT_TERMINAL_ID).await.is_none(),
         "an unconfigured register must not resolve a card terminal"
@@ -91,7 +91,7 @@ async fn the_profile_bootstrap_alone_never_invents_a_card_terminal() {
     // register_hardware reads TerminalProfile, which has no EDC fields. A
     // terminal must come from an edc_terminals row, so the printer path
     // working must not be enough to make the tender resolve.
-    let registry = oz_hal::DriverRegistry::default();
+    let registry = kasirmu_hal::DriverRegistry::default();
     let profile = serde_json::from_str::<platform_core::terminal_profile::TerminalProfile>(
         r#"{"printer_connection":"network","printer_device_path":"10.0.0.5:9100"}"#,
     )
@@ -120,7 +120,7 @@ async fn a_configured_terminal_row_makes_the_tender_resolve() {
     // the id the commands ask for. Reachable is not the same as working —
     // the driver is still a stub, so it must fail closed rather than
     // approve a card.
-    let registry = oz_hal::DriverRegistry::default();
+    let registry = kasirmu_hal::DriverRegistry::default();
     let rows = [oz_core::db::edc_terminals::EdcTerminalConfig {
         id: "row-1".into(),
         name: "Front counter".into(),
@@ -146,6 +146,6 @@ async fn a_configured_terminal_row_makes_the_tender_resolve() {
     };
     assert!(matches!(
         terminal.authorize(money).await,
-        Err(oz_hal::HalError::Unsupported(_))
+        Err(kasirmu_hal::HalError::Unsupported(_))
     ));
 }

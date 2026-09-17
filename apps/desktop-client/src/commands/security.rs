@@ -1,7 +1,7 @@
 //! Security commands — key rotation, key age, and related PCI-DSS
 //! compliance operations.
 //!
-//! These commands expose the [`oz_security::Keyring`] trait to the
+//! These commands expose the [`kasirmu_security::Keyring`] trait to the
 //! front-end so users can rotate encryption keys and monitor key age
 //! from the Settings page.
 //!
@@ -15,7 +15,7 @@
 //! test module, which drives the thread-isolated path with an in-memory
 //! keyring through the same generic the bridge owns.
 
-use oz_security::{Keyring, RotationInfo};
+use kasirmu_security::{Keyring, RotationInfo};
 use tauri::State;
 
 use crate::error::AppError;

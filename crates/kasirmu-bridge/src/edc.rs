@@ -10,7 +10,7 @@
 
 use serde::Serialize;
 
-use oz_hal::{EdcPaymentResult, EdcTerminal, HalErrorKind, TerminalStatus};
+use kasirmu_hal::{EdcPaymentResult, EdcTerminal, HalErrorKind, TerminalStatus};
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -104,7 +104,7 @@ fn parse_amount(amount_minor: i64, currency: &str) -> Result<foundation::Money, 
 /// # Errors
 ///
 /// Returns [`BridgeError::Hardware`] (`NotFound`) when no terminal is
-/// registered and propagates terminal [`oz_hal::HalError`]s.
+/// registered and propagates terminal [`kasirmu_hal::HalError`]s.
 pub async fn edc_terminal_status(ctx: &BridgeCtx<'_>) -> Result<EdcStatusDto, BridgeError> {
     let terminal = resolve_terminal(ctx).await?;
     Ok(EdcStatusDto {

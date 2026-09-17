@@ -7,7 +7,7 @@
 
 use serde::Serialize;
 
-use oz_hal::WeightReading;
+use kasirmu_hal::WeightReading;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -28,7 +28,7 @@ pub struct ScaleDeviceInfo {
 /// # Errors
 ///
 /// Returns [`BridgeError::InvalidSession`] for an unknown token and
-/// propagates scale [`oz_hal::HalError`]s; a register with no scale yields
+/// propagates scale [`kasirmu_hal::HalError`]s; a register with no scale yields
 /// `Ok(None)` by design.
 pub async fn read_scale_weight_scoped(
     ctx: &BridgeCtx<'_>,

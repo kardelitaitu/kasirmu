@@ -45,7 +45,7 @@ pub enum CryptoError {
 /// target, and domain separation (see the `*_DOMAIN` prefixes) prevents
 /// cross-domain key reuse. The machine ID's entropy is not verified by
 /// this crate — deployments should pass a UUID-grade fingerprint
-/// (`oz_hal` device id), not a guessable name.
+/// (`kasirmu_hal` device id), not a guessable name.
 fn derive_key(domain: &[u8], machine_id: &str) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(domain);

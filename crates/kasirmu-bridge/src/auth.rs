@@ -32,7 +32,7 @@ use oz_core::db::audit_security::{
 };
 use oz_core::session::SessionContext;
 use oz_core::subscription::TenantSubscription;
-use oz_security::mask::mask_token;
+use kasirmu_security::mask::mask_token;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;

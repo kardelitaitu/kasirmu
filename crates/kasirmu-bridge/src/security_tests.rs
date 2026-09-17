@@ -12,7 +12,7 @@
 //! design, and the keyring ops deliberately run on their own OS thread.
 
 use super::*;
-use oz_security::Keyring;
+use kasirmu_security::Keyring;
 
 #[test]
 fn key_name_is_constant() {
@@ -22,7 +22,7 @@ fn key_name_is_constant() {
 #[test]
 fn rotation_status_defaults() {
     // When there's no key, status should reflect that.
-    let keyring = oz_security::InMemoryKeyring::new();
+    let keyring = kasirmu_security::InMemoryKeyring::new();
     assert_eq!(keyring.key_created_at("test").unwrap(), None);
 }
 
@@ -31,7 +31,7 @@ async fn get_key_rotation_info_returns_status() {
     // Exercise the async thread-isolation bridge without platform
     // dependencies or a Secret Service/D-Bus session.
     let status = with_keyring(
-        || Ok(Box::new(oz_security::InMemoryKeyring::new()) as Box<dyn Keyring>),
+        || Ok(Box::new(kasirmu_security::InMemoryKeyring::new()) as Box<dyn Keyring>),
         key_rotation_status,
     )
     .await
@@ -43,7 +43,7 @@ async fn get_key_rotation_info_returns_status() {
 
 #[test]
 fn key_rotation_info_reports_created_key() {
-    let keyring = oz_security::InMemoryKeyring::new();
+    let keyring = kasirmu_security::InMemoryKeyring::new();
     keyring.rotate_key(ENCRYPTION_KEY_NAME).unwrap();
 
     let status = key_rotation_status(&keyring).unwrap();

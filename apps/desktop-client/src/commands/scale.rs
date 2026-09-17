@@ -6,7 +6,7 @@
 //! re-exported so the sibling test module still resolves it via the parent
 //! module.
 
-use oz_hal::WeightReading;
+use kasirmu_hal::WeightReading;
 use tauri::State;
 
 use crate::error::AppError;

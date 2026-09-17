@@ -82,7 +82,7 @@ static TEST_MANIFEST_DIRECTIVES: [u8; 168] = *b" /MANIFESTDEPENDENCY:\"type='win
 
 use crate::error::AppError;
 use crate::state::AppState;
-use oz_security::mask::mask_token;
+use kasirmu_security::mask::mask_token;
 use tauri::{Emitter, Manager};
 
 /// Application entry point, called by `main.rs`.
@@ -196,7 +196,7 @@ pub fn run() {
                             terminal_id = %terminal_id,
                             "no hardware profile saved yet; nothing to register"
                         );
-                        oz_hal::BootstrapReport::default()
+                        kasirmu_hal::BootstrapReport::default()
                     }
                 };
                 let terminals =

@@ -230,7 +230,7 @@ async fn starting_a_scanner_without_an_event_sink_fails_closed() {
         .registry()
         .register_scanner(
             "scanner-1",
-            std::sync::Arc::new(oz_hal::drivers::mock::MockBarcodeScanner::default()),
+            std::sync::Arc::new(kasirmu_hal::drivers::mock::MockBarcodeScanner::default()),
         )
         .await;
     bridge.sessions().write().unwrap().insert(
