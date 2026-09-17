@@ -44,8 +44,8 @@ const STRIPE_API_BASE: &str = "https://api.stripe.com/v1";
 /// # Example
 ///
 /// ```no_run
-/// # use oz_payment::drivers::stripe::StripePaymentProcessor;
-/// # use oz_payment::PaymentProcessor;
+/// # use kasirmu_payment::drivers::stripe::StripePaymentProcessor;
+/// # use kasirmu_payment::PaymentProcessor;
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// # let request = unimplemented!();
 /// let proc = StripePaymentProcessor::from_env()?;

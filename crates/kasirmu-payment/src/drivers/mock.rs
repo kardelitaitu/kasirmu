@@ -25,7 +25,7 @@ use crate::types::{PaymentMethod, PaymentReceipt, PaymentRequest, PaymentResult}
 /// # Example
 ///
 /// ```
-/// # use oz_payment::drivers::mock::MockPaymentProcessor;
+/// # use kasirmu_payment::drivers::mock::MockPaymentProcessor;
 /// let proc = MockPaymentProcessor::builder()
 ///     .decline_next(true)
 ///     .build();

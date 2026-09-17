@@ -25,7 +25,7 @@
 //!   requests to the same endpoint), the last-mounted mock will match all.
 //!   Design multi-exchange scenarios with distinct paths per step.
 
-use oz_payment::drivers::stripe::StripePaymentProcessor;
+use kasirmu_payment::drivers::stripe::StripePaymentProcessor;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
     matchers::{method, path},

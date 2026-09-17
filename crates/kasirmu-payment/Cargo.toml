@@ -1,11 +1,11 @@
 [package]
-name = "oz-payment"
+name = "kasirmu-payment"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Payment processor abstraction for OZ-POS — Stripe, Square, EMV terminals behind a single trait."
+description = "Payment processor abstraction for kasir.mu — Stripe, Square, EMV terminals behind a single trait."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]

@@ -12,9 +12,9 @@
 //! ```
 
 use foundation::{Currency, Money};
-use oz_payment::PaymentProcessor;
-use oz_payment::drivers::qris::QrisPaymentProcessor;
-use oz_payment::types::{PaymentMethod, PaymentRequest};
+use kasirmu_payment::PaymentProcessor;
+use kasirmu_payment::drivers::qris::QrisPaymentProcessor;
+use kasirmu_payment::types::{PaymentMethod, PaymentRequest};
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
     matchers::{body_partial_json, method, path},

@@ -80,8 +80,8 @@ const QRIS_EXPIRY_SECS: u64 = 300; // 5 minutes
 /// # Example
 ///
 /// ```no_run
-/// # use oz_payment::drivers::qris::QrisPaymentProcessor;
-/// # use oz_payment::PaymentProcessor;
+/// # use kasirmu_payment::drivers::qris::QrisPaymentProcessor;
+/// # use kasirmu_payment::PaymentProcessor;
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// # let request = unimplemented!();
 /// let proc = QrisPaymentProcessor::from_env()?;

@@ -15,9 +15,9 @@
 //! ```
 
 use foundation::{Currency, Money};
-use oz_payment::PaymentProcessor;
-use oz_payment::drivers::mock::MockPaymentProcessor;
-use oz_payment::types::PaymentRequest;
+use kasirmu_payment::PaymentProcessor;
+use kasirmu_payment::drivers::mock::MockPaymentProcessor;
+use kasirmu_payment::types::PaymentRequest;
 
 /// Helper: construct a USD currency.
 fn usd() -> Currency {

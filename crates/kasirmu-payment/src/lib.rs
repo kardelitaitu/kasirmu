@@ -53,7 +53,7 @@ next: give refund an idempotency key (PAY-2), partial refund (PAY-3), Stripe dec
 //! timeouts.
 //!
 //! ```
-//! use oz_payment::{PaymentProcessor, drivers::mock::MockPaymentProcessor};
+//! use kasirmu_payment::{PaymentProcessor, drivers::mock::MockPaymentProcessor};
 //! ```
 
 pub mod drivers;

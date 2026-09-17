@@ -38,8 +38,8 @@ const SQUARE_API_BASE: &str = "https://connect.squareup.com/v2";
 /// # Example
 ///
 /// ```no_run
-/// # use oz_payment::drivers::square::SquarePaymentProcessor;
-/// # use oz_payment::PaymentProcessor;
+/// # use kasirmu_payment::drivers::square::SquarePaymentProcessor;
+/// # use kasirmu_payment::PaymentProcessor;
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// # let request = unimplemented!();
 /// let proc = SquarePaymentProcessor::new("api_key", "location_id");

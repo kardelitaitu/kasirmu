@@ -16,11 +16,11 @@
 //! ```
 
 use foundation::{Currency, Money};
-use oz_payment::PaymentProcessor;
-use oz_payment::drivers::{
+use kasirmu_payment::PaymentProcessor;
+use kasirmu_payment::drivers::{
     qris::QrisPaymentProcessor, square::SquarePaymentProcessor, stripe::StripePaymentProcessor,
 };
-use oz_payment::types::PaymentRequest;
+use kasirmu_payment::types::PaymentRequest;
 
 mod fixtures;
 use fixtures::{load_scenario, start_replay_server};
