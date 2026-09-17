@@ -1,5 +1,5 @@
 //! Terminal management command bodies (Wave F) — the tauri-free half of
-//! `apps/desktop-client/src/commands/terminals.rs`.
+//! `apps/desktop-tauri/src/commands/terminals.rs`.
 //!
 //! Key items: the terminal / terminal-profile / device-binding commands, the
 //! HMAC-SHA256 binding signer and verifier over the OS keyring, and the DTOs

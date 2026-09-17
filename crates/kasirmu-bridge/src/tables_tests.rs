@@ -1,5 +1,5 @@
 //! Unit tests for the table command bodies (Wave-F test relocation:
-//! moved out of `apps/desktop-client/src/commands/tables_tests.rs`).
+//! moved out of `apps/desktop-tauri/src/commands/tables_tests.rs`).
 //!
 //! Mounted at the foot of `tables.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the nine bridge command bodies and the

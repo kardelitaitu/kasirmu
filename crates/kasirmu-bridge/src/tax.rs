@@ -1,5 +1,5 @@
 //! Tax-rate command bodies (Wave A / S5) — the tauri-free half of
-//! `apps/desktop-client/src/commands/tax.rs`.
+//! `apps/desktop-tauri/src/commands/tax.rs`.
 //!
 //! Key types: the rate/scope/window DTOs the TaxConfigurationScreen consumes.
 //! Key functions: the pure `&Connection` bodies (`run_list_tax_rates`,

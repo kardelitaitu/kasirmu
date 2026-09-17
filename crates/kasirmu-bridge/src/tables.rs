@@ -1,7 +1,7 @@
 //! Restaurant table and section command bodies.
 //!
 //! Wave F: extracted byte-for-byte from
-//! `apps/desktop-client/src/commands/tables.rs`. Only the mechanical
+//! `apps/desktop-tauri/src/commands/tables.rs`. Only the mechanical
 //! `state.*` → `ctx.*` receiver swaps and `AppError::` → `BridgeError::`
 //! renames were applied; the ungated reads (no session gate by design),
 //! gate kinds on writes, lock order and count, and all error strings are

@@ -1,5 +1,5 @@
 //! Unit tests for the tax-rate command bodies (Wave-A test relocation:
-//! moved out of `apps/desktop-client/src/commands/tax_tests.rs`).
+//! moved out of `apps/desktop-tauri/src/commands/tax_tests.rs`).
 //!
 //! Mounted at the foot of `tax.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the DTOs, the five `run_*` bodies and the
