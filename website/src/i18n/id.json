@@ -78,6 +78,30 @@
       {
         "q": "Di mana saya bisa melaporkan bug?",
         "a": "Email kami di support@kasir.mu dengan nomor versi Anda dan deskripsi kejadian."
+      },
+      {
+        "q": "Apakah kasir.mu murah? Berapa harganya?",
+        "a": "Paket Gratis selamanya Rp0 untuk satu toko dan satu register. Paket Plus mulai Rp49rb per bulan — tanpa biaya per-fitur tersembunyi."
+      },
+      {
+        "q": "Apakah kasir.mu jalan di tablet atau HP Android murah?",
+        "a": "Ya. kasir.mu ringan dan berjalan mulus di tablet Android, HP, dan PC spesifikasi rendah — aplikasi Android native segera hadir."
+      },
+      {
+        "q": "Apakah aplikasi kasir ini mudah dipakai orang gaptek?",
+        "a": "Ya. kasir.mu dirancang agar gampang dipakai: kasir bisa jualan dalam 3 langkah mudah tanpa pelatihan khusus."
+      },
+      {
+        "q": "Apakah ada aplikasi kasir gratis tanpa internet?",
+        "a": "Ya. Paket gratis kasir.mu berjalan 100% offline di perangkat Anda dan tersinkron ke cloud saat koneksi kembali."
+      },
+      {
+        "q": "Apakah kasir.mu bisa terima QRIS?",
+        "a": "Ya. kasir.mu menerima QRIS dinamis dan dompet digital langsung di layar, tanpa perangkat tambahan."
+      },
+      {
+        "q": "Apakah kasir.mu sama dengan kasirmu atau kasir mu?",
+        "a": "Ya, sama. kasir.mu juga sering ditulis kasirmu atau kasir mu — semuanya aplikasi kasir offline-first ini."
       }
     ]
   },

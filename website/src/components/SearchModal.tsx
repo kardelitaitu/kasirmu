@@ -31,17 +31,17 @@ export default function SearchModal({ isOpen, onClose, locale }: Props) {
     () => [
       // Core pages
       { id: 'home', title: locale === 'id' ? 'Beranda' : 'Home', category: 'pages', url: `/${locale}` },
-      { id: 'pricing', title: locale === 'id' ? 'Harga & Paket' : 'Pricing & Plans', category: 'pages', url: `/${locale}/pricing`, keywords: 'plans subscription pro plus free enterprise cost' },
-      { id: 'download', title: locale === 'id' ? 'Unduh Aplikasi' : 'Download Application', category: 'pages', url: `/${locale}/download`, keywords: 'windows macos linux android ios tablet pos terminal installer' },
-      { id: 'features', title: locale === 'id' ? 'Fitur Lengkap' : 'Features & Architecture', category: 'pages', url: `/${locale}/features`, keywords: 'offline kds multi store shifts inventory payments' },
+      { id: 'pricing', title: locale === 'id' ? 'Harga & Paket' : 'Pricing & Plans', category: 'pages', url: `/${locale}/pricing`, keywords: 'plans subscription pro plus free enterprise cost gratis murah harga' },
+      { id: 'download', title: locale === 'id' ? 'Unduh Aplikasi' : 'Download Application', category: 'pages', url: `/${locale}/download`, keywords: 'windows macos linux android ios tablet pos terminal installer hp gampang mudah gratis ringan' },
+      { id: 'features', title: locale === 'id' ? 'Fitur Lengkap' : 'Features & Architecture', category: 'pages', url: `/${locale}/features`, keywords: 'offline kds multi store shifts inventory payments kasir mudah ringan gampang' },
       { id: 'account', title: locale === 'id' ? 'Dashboard Akun & Lisensi' : 'Account & License Dashboard', category: 'pages', url: `/${locale}/account`, keywords: 'profile subscription license terminals' },
       { id: 'support', title: locale === 'id' ? 'Bantuan & Kontak' : 'Support & Contact', category: 'pages', url: `/${locale}/support`, keywords: 'faq contact discord email help' },
       
       // Vertical Solutions
-      { id: 'cafe', title: locale === 'id' ? 'Solusi untuk Kafe & Kedai Kopi' : 'Solutions for Cafes & Coffee Shops', category: 'pages', url: `/${locale}/cafe`, keywords: 'cafe coffee table orders kds modifiers' },
-      { id: 'restaurant', title: locale === 'id' ? 'Solusi untuk Restoran & F&B' : 'Solutions for Restaurants', category: 'pages', url: `/${locale}/restaurant`, keywords: 'restaurant kitchen display split bill service charge' },
-      { id: 'minimarket', title: locale === 'id' ? 'Solusi untuk Minimarket & Ritel' : 'Solutions for Minimarkets & Retail', category: 'pages', url: `/${locale}/minimarket`, keywords: 'barcode scanning sku inventory fast retail' },
-      { id: 'warung', title: locale === 'id' ? 'Solusi untuk Warung & UMKM' : 'Solutions for Warung & Small Business', category: 'pages', url: `/${locale}/warung`, keywords: 'umkm warung simple affordable fast cash qris' },
+      { id: 'cafe', title: locale === 'id' ? 'Solusi untuk Kafe & Kedai Kopi' : 'Solutions for Cafes & Coffee Shops', category: 'pages', url: `/${locale}/cafe`, keywords: 'cafe coffee table orders kds modifiers kasir kafe' },
+      { id: 'restaurant', title: locale === 'id' ? 'Solusi untuk Restoran & F&B' : 'Solutions for Restaurants', category: 'pages', url: `/${locale}/restaurant`, keywords: 'restaurant kitchen display split bill service charge kasir restoran' },
+      { id: 'minimarket', title: locale === 'id' ? 'Solusi untuk Minimarket & Ritel' : 'Solutions for Minimarkets & Retail', category: 'pages', url: `/${locale}/minimarket`, keywords: 'barcode scanning sku inventory fast retail kasir toko' },
+      { id: 'warung', title: locale === 'id' ? 'Solusi untuk Warung & UMKM' : 'Solutions for Warung & Small Business', category: 'pages', url: `/${locale}/warung`, keywords: 'umkm warung simple affordable fast cash qris kasir murah gratis mudah gampang ringan' },
       { id: 'warehouse', title: locale === 'id' ? 'Solusi Manajemen & Sinkronisasi Gudang' : 'Solutions for Warehouse Sync & Stock Management', category: 'pages', url: `/${locale}/warehouse`, keywords: 'warehouse stock inventory 3pl transfer logistics offline' },
 
       // Documentation

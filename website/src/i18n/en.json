@@ -78,6 +78,26 @@
       {
         "q": "Where can I report a bug?",
         "a": "Email us at support@kasir.mu with your version number and a description of what happened."
+      },
+      {
+        "q": "Is kasir.mu cheap? How much does it cost?",
+        "a": "The Free plan is Rp0 forever for one store and one register. Plus starts at Rp49k per month — no hidden per-feature fees."
+      },
+      {
+        "q": "Does kasir.mu run on cheap Android tablets or phones?",
+        "a": "Yes. kasir.mu is lightweight and runs smoothly on Android tablets, phones, and low-spec PCs — a native Android app is coming soon."
+      },
+      {
+        "q": "Is this POS app easy for non-technical staff?",
+        "a": "Yes. kasir.mu is designed to be easy: cashiers can sell in 3 simple steps with no special training."
+      },
+      {
+        "q": "Is there a free POS app that works offline?",
+        "a": "Yes. The free kasir.mu plan runs 100% offline on your device and syncs to the cloud when you're back online."
+      },
+      {
+        "q": "Does kasir.mu accept QRIS?",
+        "a": "Yes. kasir.mu accepts dynamic QRIS and digital wallets right on screen, with no extra hardware."
       }
     ]
   },
