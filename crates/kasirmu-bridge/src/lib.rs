@@ -124,7 +124,7 @@ pub mod branding;
 pub mod browser;
 /// Product-bundle command bodies (Wave F).
 pub mod bundles;
-/// Data-management command bodies (backup, restore, .ozpkg export / import) (Wave F). Stub: the bodies land with its lane.
+/// Data-management command bodies (backup, restore, .kasirpkg export / import) (Wave F). Stub: the bodies land with its lane.
 pub mod data;
 /// Email command bodies (SMTP settings and test-report sending) (Wave F). Stub: the bodies land with its lane.
 pub mod email;

@@ -1587,7 +1587,7 @@ fn remote_settings_still_applies_the_names_normal_operation_replicates() {
         (
             "leg-backup-path",
             "updater.last_backup_path",
-            "/var/lib/oz/back.ozpkg",
+            "/var/lib/oz/back.kasirpkg",
         ),
         ("leg-low-stock", "inventory.low_stock_threshold", "5"),
         (

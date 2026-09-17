@@ -21,7 +21,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use kasirmu_core::db::Store;
-use kasirmu_core::ozpkg::{export_ozpkg, import_ozpkg};
+use kasirmu_core::kasirpkg::{export_kasirpkg, import_kasirpkg};
 use kasirmu_core::permissions;
 use kasirmu_core::settings::{IngestPolicy, IngestPolicyKind};
 
@@ -372,7 +372,7 @@ pub async fn export_data(
         .await?;
     // C-1: Contain output path — reject path traversal.
     validate_contained_path(&args.output_path)?;
-    use kasirmu_core::ozpkg::OzpkgPayload;
+    use kasirmu_core::kasirpkg::KasirpkgPayload;
 
     let conn = ctx.lock_global().await;
     let store = Store::new(&conn);
@@ -471,7 +471,7 @@ pub async fn export_data(
         data_types.push("settings".into());
     }
 
-    let payload = OzpkgPayload {
+    let payload = KasirpkgPayload {
         products,
         categories,
         sales,
@@ -490,7 +490,7 @@ pub async fn export_data(
         .unwrap_or_default();
 
     let data_types_for_result = data_types.clone();
-    let ozpkg_bytes = export_ozpkg(
+    let kasirpkg_bytes = export_kasirpkg(
         &args.password,
         &store_name,
         "0.0.1",
@@ -505,10 +505,10 @@ pub async fn export_data(
             .map_err(|e| BridgeError::Internal(format!("creating directory: {e}")))?;
     }
 
-    std::fs::write(&args.output_path, &ozpkg_bytes)
+    std::fs::write(&args.output_path, &kasirpkg_bytes)
         .map_err(|e| BridgeError::Internal(format!("writing export file: {e}")))?;
 
-    let size_bytes = ozpkg_bytes.len() as u64;
+    let size_bytes = kasirpkg_bytes.len() as u64;
     Ok(ExportDataResult {
         path: args.output_path,
         size_bytes,
@@ -529,7 +529,7 @@ pub async fn import_preview(
     validate_contained_path(&args.file_path)?;
     let data = std::fs::read(&args.file_path)
         .map_err(|e| BridgeError::Internal(format!("reading file: {e}")))?;
-    let (header, payload) = import_ozpkg(&data, &args.password)?;
+    let (header, payload) = import_kasirpkg(&data, &args.password)?;
 
     Ok(ImportPreviewResult {
         store_name: header.store_name,
@@ -558,7 +558,7 @@ pub async fn import_data(
     validate_contained_path(&args.file_path)?;
     let data = std::fs::read(&args.file_path)
         .map_err(|e| BridgeError::Internal(format!("reading file: {e}")))?;
-    let (_header, payload) = import_ozpkg(&data, &args.password)?;
+    let (_header, payload) = import_kasirpkg(&data, &args.password)?;
 
     let conn = ctx.lock_global().await;
     let store = Store::new(&conn);

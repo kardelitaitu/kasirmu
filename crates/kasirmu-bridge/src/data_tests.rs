@@ -246,7 +246,7 @@ fn export_drops_secret_and_managed_keys() {
         ("lan_server.psk".into(), "psk".into()),
         // C-2 typo regression: the stored key is UNDERSCORED, while the deny
         // list carried only the dotted "sync.terminal_secret", so the terminal
-        // secret rode out in every .ozpkg. The device-bound identity keys are
+        // secret rode out in every .kasirpkg. The device-bound identity keys are
         // export-barred too (they fingerprint this install), even though they
         // stay readable through get_setting.
         ("sync_terminal_secret".into(), "enc:v1:ciphertext".into()),
@@ -347,7 +347,7 @@ fn export_data_result_debug() {
 #[test]
 fn export_data_result_serialize() {
     let result = ExportDataResult {
-        path: "/o/e.ozpkg".into(),
+        path: "/o/e.kasirpkg".into(),
         size_bytes: 256,
         types: vec![],
     };
@@ -360,9 +360,9 @@ fn export_data_result_serialize() {
 
 #[test]
 fn import_preview_args_deserialize() {
-    let json = r#"{"file_path":"/data/import.ozpkg","password":"pw123"}"#;
+    let json = r#"{"file_path":"/data/import.kasirpkg","password":"pw123"}"#;
     let args: ImportPreviewArgs = serde_json::from_str(json).unwrap();
-    assert_eq!(args.file_path, "/data/import.ozpkg");
+    assert_eq!(args.file_path, "/data/import.kasirpkg");
     assert_eq!(args.password, "pw123");
 }
 

@@ -97,7 +97,7 @@ impl Settings {
     /// caller's own transaction.
     ///
     /// Delegates to platform-core. Takes `&rusqlite::Transaction` so a lane
-    /// that already owns one (the sync dispatcher, a `.ozpkg` import) does not
+    /// that already owns one (the sync dispatcher, a `.kasirpkg` import) does not
     /// open a nested transaction. Refused rows are warned about and skipped and
     /// the call still returns `Ok(())` — there is no counter by design.
     pub fn set_batch_with_policy(

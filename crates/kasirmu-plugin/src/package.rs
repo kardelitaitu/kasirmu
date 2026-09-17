@@ -4,9 +4,9 @@ crate: kasirmu-plugin | status: SAFE | lint: CLEAN
 findings: clean — PLG-01 entry-name sanitization (rejects absolute, drive/UNC prefixes, empty/dot/dotdot components), PLG-06 zip-bomb defenses (entry count 512, per-entry compressed 8 MiB and uncompressed 16 MiB caps, 64 MiB total, 100x compression-ratio cap)
 next: none | perf: N/A
 */
-//! `.ozpkg` archive reader.
+//! `.kasirpkg` archive reader.
 //!
-//! An `.ozpkg` file is a zip archive containing:
+//! An `.kasirpkg` file is a zip archive containing:
 //!
 //! - `manifest.json` — required, validates against module manifest schema
 //! - `*.lua` files — Lua scripts
@@ -15,9 +15,9 @@ next: none | perf: N/A
 //! # Example
 //!
 //! ```no_run
-//! # use kasirmu_plugin::package::OzpkArchive;
+//! # use kasirmu_plugin::package::KasirpkArchive;
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let archive = OzpkArchive::open("path/to/plugin.ozpkg")?;
+//! let archive = KasirpkArchive::open("path/to/plugin.kasirpkg")?;
 //! let manifest = archive.manifest();
 //! let scripts = archive.scripts();
 //! # Ok(())
@@ -31,7 +31,7 @@ use serde_json::Value;
 
 use crate::error::PluginError;
 
-/// Maximum number of entries allowed in an `.ozpkg` archive (PLG-06).
+/// Maximum number of entries allowed in an `.kasirpkg` archive (PLG-06).
 const MAX_ARCHIVE_ENTRIES: usize = 512;
 /// Maximum compressed size of a single entry, in bytes (PLG-06).
 const MAX_ENTRY_COMPRESSED_SIZE: u64 = 8 * 1024 * 1024; // 8 MiB
@@ -86,9 +86,9 @@ pub(crate) fn sanitise_entry_name(name: &str) -> Result<String, PluginError> {
     Ok(normalised)
 }
 
-/// The recognised entry types inside an `.ozpkg` archive.
+/// The recognised entry types inside an `.kasirpkg` archive.
 #[derive(Debug, Clone, PartialEq)]
-pub enum OzpkEntry {
+pub enum KasirpkEntry {
     /// The parsed `manifest.json` value.
     Manifest(Value),
     /// A Lua script — filename stored as canonical path inside archive.
@@ -99,37 +99,37 @@ pub enum OzpkEntry {
     Other(String),
 }
 
-impl OzpkEntry {
+impl KasirpkEntry {
     /// The filename (last component) of this entry.
     pub fn filename(&self) -> &str {
         match self {
-            OzpkEntry::Manifest(_) => "manifest.json",
-            OzpkEntry::Script(name) | OzpkEntry::Migration(name) | OzpkEntry::Other(name) => name,
+            KasirpkEntry::Manifest(_) => "manifest.json",
+            KasirpkEntry::Script(name) | KasirpkEntry::Migration(name) | KasirpkEntry::Other(name) => name,
         }
     }
 
     /// Returns `true` if this entry is a Lua script.
     pub fn is_script(&self) -> bool {
-        matches!(self, OzpkEntry::Script(_))
+        matches!(self, KasirpkEntry::Script(_))
     }
 
     /// Returns `true` if this entry is a migration.
     pub fn is_migration(&self) -> bool {
-        matches!(self, OzpkEntry::Migration(_))
+        matches!(self, KasirpkEntry::Migration(_))
     }
 }
 
-/// An opened `.ozpkg` archive.
+/// An opened `.kasirpkg` archive.
 #[derive(Debug, Clone)]
-pub struct OzpkArchive {
+pub struct KasirpkArchive {
     path: PathBuf,
     parsed_manifest: Option<Value>,
-    entries: Vec<(String, OzpkEntry)>,
+    entries: Vec<(String, KasirpkEntry)>,
     entry_contents: HashMap<String, Vec<u8>>,
 }
 
-impl OzpkArchive {
-    /// Open and parse an `.ozpkg` archive from a file path.
+impl KasirpkArchive {
+    /// Open and parse an `.kasirpkg` archive from a file path.
     ///
     /// Reads the entire archive into memory, validates that `manifest.json`
     /// exists and is valid JSON, and classifies all entries by extension.
@@ -140,7 +140,7 @@ impl OzpkArchive {
         Self::from_reader(&mut reader, path)
     }
 
-    /// Open an `.ozpkg` archive from an in-memory byte buffer.
+    /// Open an `.kasirpkg` archive from an in-memory byte buffer.
     ///
     /// Used primarily in tests and when loading from a network source.
     pub fn from_bytes(bytes: &[u8], name: impl Into<PathBuf>) -> Result<Self, PluginError> {
@@ -158,7 +158,7 @@ impl OzpkArchive {
             zip::ZipArchive::new(reader).map_err(|e| PluginError::Archive(e.to_string()))?;
 
         let mut parsed_manifest: Option<Value> = None;
-        let mut entries: Vec<(String, OzpkEntry)> = Vec::new();
+        let mut entries: Vec<(String, KasirpkEntry)> = Vec::new();
         let mut entry_contents: HashMap<String, Vec<u8>> = HashMap::new();
         let mut manifest_found = false;
         let mut total_uncompressed: u64 = 0;
@@ -236,13 +236,13 @@ impl OzpkArchive {
                 let value: Value = serde_json::from_slice(&data)
                     .map_err(|e| PluginError::Archive(format!("invalid manifest.json: {e}")))?;
                 parsed_manifest = Some(value.clone());
-                OzpkEntry::Manifest(value)
+                KasirpkEntry::Manifest(value)
             } else if filename.ends_with(".lua") {
-                OzpkEntry::Script(filename.clone())
+                KasirpkEntry::Script(filename.clone())
             } else if filename.ends_with(".sql") {
-                OzpkEntry::Migration(filename.clone())
+                KasirpkEntry::Migration(filename.clone())
             } else {
-                OzpkEntry::Other(filename.clone())
+                KasirpkEntry::Other(filename.clone())
             };
 
             entries.push((name.clone(), entry));
@@ -251,7 +251,7 @@ impl OzpkArchive {
 
         if !manifest_found {
             return Err(PluginError::Archive(
-                "missing manifest.json in .ozpkg archive".into(),
+                "missing manifest.json in .kasirpkg archive".into(),
             ));
         }
 
@@ -278,7 +278,7 @@ impl OzpkArchive {
         self.entries
             .iter()
             .filter_map(|(_, e)| match e {
-                OzpkEntry::Script(name) => Some(name.as_str()),
+                KasirpkEntry::Script(name) => Some(name.as_str()),
                 _ => None,
             })
             .collect()
@@ -289,14 +289,14 @@ impl OzpkArchive {
         self.entries
             .iter()
             .filter_map(|(_, e)| match e {
-                OzpkEntry::Migration(name) => Some(name.as_str()),
+                KasirpkEntry::Migration(name) => Some(name.as_str()),
                 _ => None,
             })
             .collect()
     }
 
     /// Returns all entries in insertion order.
-    pub fn entries(&self) -> &[(String, OzpkEntry)] {
+    pub fn entries(&self) -> &[(String, KasirpkEntry)] {
         &self.entries
     }
 
@@ -355,7 +355,7 @@ impl OzpkArchive {
         // Canonicalise the destination so every written file can be verified to
         // remain inside it (PLG-01). Entry names are already sanitised at parse
         // time; this containment check is defense in depth for any future code
-        // path that constructs an `OzpkArchive` with raw names.
+        // path that constructs an `KasirpkArchive` with raw names.
         let canonical_dest = std::fs::canonicalize(dest)?;
 
         for (name, data) in &self.entry_contents {
@@ -391,14 +391,14 @@ impl OzpkArchive {
 
         for (_, entry) in &self.entries {
             match entry {
-                OzpkEntry::Script(name) => {
+                KasirpkEntry::Script(name) => {
                     if let Some(data) = self.read_entry(name) {
                         let safe = sanitise_entry_name(name)?;
                         std::fs::create_dir_all(&scripts_dir)?;
                         std::fs::write(scripts_dir.join(safe), data)?;
                     }
                 }
-                OzpkEntry::Migration(name) => {
+                KasirpkEntry::Migration(name) => {
                     if let Some(data) = self.read_entry(name) {
                         let safe = sanitise_entry_name(name)?;
                         std::fs::create_dir_all(&migrations_dir)?;

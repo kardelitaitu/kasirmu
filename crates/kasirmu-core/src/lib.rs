@@ -86,8 +86,8 @@ pub mod migrations;
 pub mod money;
 /// Offline queue — queued mutations for sync when connectivity returns.
 pub mod offline;
-/// OZ-POS package metadata reader (`.ozpkg` bundles).
-pub mod ozpkg;
+/// OZ-POS package metadata reader (`.kasirpkg` bundles).
+pub mod kasirpkg;
 /// Accounts Payable (Hutang) domain model — status machine and row shapes.
 pub mod payable;
 /// Payment processing and split-tender allocation.

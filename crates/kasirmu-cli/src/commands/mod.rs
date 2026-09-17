@@ -1,13 +1,13 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-cli slice A: commands deep read; CLI-1 + CLI-2 + CLI-3 + CLI-4 FIXED, CLI-5 FIXED 25-07-26 via this split)
 crate: kasirmu-cli | status: SAFE | lint: CLEAN
-findings: CLI-1 FIXED — run_import_ozpkg sale imports now use the new tx-aware Store::create_sale_in_tx (the previous store.create_sale opened a nested transaction inside the import transaction and failed with cannot-start-a-transaction-within-a-transaction, rolling back sale imports). CLI-2 FIXED — init-db seeds the admin user with a real argon2 hash of the documented default PIN 1234 (never-verifying hashed_pin_placeholder locked the first-run admin out) and prints a change-it-now warning. CLI-3 FIXED — run_user_create validates the --pin-hash argument as an argon2 PHC string (argon2 PHC parse + algorithm check, new argon2 workspace dep; placeholder/garbage/foreign-algorithm values are rejected up front). CLI-4 FIXED — run_restore checkpoints the WAL (TRUNCATE) then deletes stale -wal/-shm sidecars before the backup copy (simulated-crash test; hot sidecars would otherwise win the next open and resurrect pre-restore data). CLI-5 FIXED — the 1,290-line commands.rs is split into per-command-family modules under commands/ (db, backup, catalog, product, sale, customer, user, ozpkg), each well under the 600-line guideline; behavior is unchanged and commands_tests.rs keeps exercising every family through the mod.rs re-exports. Otherwise clean: parameterized SQL, single-tx import for other types, recoverable currency UTF-8 handling per RUST-07, Argon2id + AES-256-GCM export path, dry-run support
+findings: CLI-1 FIXED — run_import_kasirpkg sale imports now use the new tx-aware Store::create_sale_in_tx (the previous store.create_sale opened a nested transaction inside the import transaction and failed with cannot-start-a-transaction-within-a-transaction, rolling back sale imports). CLI-2 FIXED — init-db seeds the admin user with a real argon2 hash of the documented default PIN 1234 (never-verifying hashed_pin_placeholder locked the first-run admin out) and prints a change-it-now warning. CLI-3 FIXED — run_user_create validates the --pin-hash argument as an argon2 PHC string (argon2 PHC parse + algorithm check, new argon2 workspace dep; placeholder/garbage/foreign-algorithm values are rejected up front). CLI-4 FIXED — run_restore checkpoints the WAL (TRUNCATE) then deletes stale -wal/-shm sidecars before the backup copy (simulated-crash test; hot sidecars would otherwise win the next open and resurrect pre-restore data). CLI-5 FIXED — the 1,290-line commands.rs is split into per-command-family modules under commands/ (db, backup, catalog, product, sale, customer, user, kasirpkg), each well under the 600-line guideline; behavior is unchanged and commands_tests.rs keeps exercising every family through the mod.rs re-exports. Otherwise clean: parameterized SQL, single-tx import for other types, recoverable currency UTF-8 handling per RUST-07, Argon2id + AES-256-GCM export path, dry-run support
 next: none | perf: N/A
 */
 //! Command implementations for the `oz` CLI.
 //!
 //! Subcommand handlers live in per-family modules (`db`, `backup`,
-//! `catalog`, `product`, `sale`, `customer`, `user`, `ozpkg`); this
+//! `catalog`, `product`, `sale`, `customer`, `user`, `kasirpkg`); this
 //! module owns database opening, the clap dispatch entry point, and the
 //! re-exports that keep the sibling `commands_tests.rs` family-wide.
 
@@ -24,7 +24,7 @@ pub(crate) mod catalog;
 pub(crate) mod credential_deltas;
 pub(crate) mod customer;
 pub(crate) mod db;
-pub(crate) mod ozpkg;
+pub(crate) mod kasirpkg;
 pub(crate) mod product;
 pub(crate) mod sale;
 pub(crate) mod user;
@@ -37,7 +37,7 @@ pub(crate) use catalog::*;
 pub(crate) use credential_deltas::*;
 pub(crate) use customer::*;
 pub(crate) use db::*;
-pub(crate) use ozpkg::*;
+pub(crate) use kasirpkg::*;
 pub(crate) use product::*;
 pub(crate) use sale::*;
 pub(crate) use user::*;
@@ -114,16 +114,16 @@ pub fn run() -> Result<()> {
         Some(Command::Customer(args)) => run_customer(&conn, args),
         Some(Command::User(args)) => run_user(&conn, args),
         Some(Command::Restore { input }) => run_restore(conn, &input),
-        Some(Command::ExportOzpkg {
+        Some(Command::ExportKasirpkg {
             output,
             types,
             password,
-        }) => run_export_ozpkg(&conn, &output, &types, &password),
-        Some(Command::ImportOzpkg {
+        }) => run_export_kasirpkg(&conn, &output, &types, &password),
+        Some(Command::ImportKasirpkg {
             input,
             password,
             dry_run,
-        }) => run_import_ozpkg(&conn, &input, &password, dry_run),
+        }) => run_import_kasirpkg(&conn, &input, &password, dry_run),
         Some(Command::SeedDemo(args)) => run_seed_demo(&conn, &args),
         Some(Command::CredentialDeltas(args)) => run_credential_deltas(&conn, &args),
         None => {

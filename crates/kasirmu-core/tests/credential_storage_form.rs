@@ -831,8 +831,8 @@ fn auth_token_is_non_exportable_through_the_secret_list_and_not_the_device_list(
 /// Refused by the predicate is not the same as refused by the LANE, so this asks
 /// the lane. `is_non_exportable_setting_key` is what `Settings::load_exportable`
 /// filters on for the GUI settings export (`crates/kasirmu-bridge/src/data.rs`) and
-/// `IngestPolicy::PortablePackage` is what the `.ozpkg` lane asks
-/// (`crates/kasirmu-cli/src/commands/ozpkg.rs`, plus `set_batch_with_policy` on
+/// `IngestPolicy::PortablePackage` is what the `.kasirpkg` lane asks
+/// (`crates/kasirmu-cli/src/commands/kasirpkg.rs`, plus `set_batch_with_policy` on
 /// restore). Lift `keys::AUTH_TOKEN` out of `SECRET_KEY_DENY_LIST` and a
 /// credential-bearing key becomes packageable in cleartext through BOTH doors, in
 /// every folded spelling at once — the exact state the tree was in before
@@ -844,7 +844,7 @@ fn a_removal_from_the_secret_list_would_make_auth_token_exportable_through_both_
         assert!(
             !IngestPolicy::PortablePackage.admits(&spelling)
                 && !IngestPolicy::RemoteSync.admits(&spelling),
-            "{spelling:?} is admitted by an untrusted ingest lane, which happens the day keys::AUTH_TOKEN is removed from SECRET_KEY_DENY_LIST: a credential-bearing key then travels in cleartext through the .ozpkg package AND the GUI settings export, in both directions"
+            "{spelling:?} is admitted by an untrusted ingest lane, which happens the day keys::AUTH_TOKEN is removed from SECRET_KEY_DENY_LIST: a credential-bearing key then travels in cleartext through the .kasirpkg package AND the GUI settings export, in both directions"
         );
         assert!(
             keys::is_non_exportable_setting_key(&spelling),

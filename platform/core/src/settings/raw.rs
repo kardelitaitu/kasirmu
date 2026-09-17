@@ -119,7 +119,7 @@ impl Settings {
     /// The batch form of [`Settings::set_with_policy`]: refused rows are
     /// warned about and skipped, every other row is written, and the call still
     /// returns `Ok(())`. It takes `&rusqlite::Transaction` so a lane that
-    /// already owns a transaction (the sync dispatcher, the `.ozpkg` import)
+    /// already owns a transaction (the sync dispatcher, the `.kasirpkg` import)
     /// does not open a nested one.
     pub fn set_batch_with_policy(
         tx: &rusqlite::Transaction<'_>,
@@ -617,7 +617,7 @@ mod sealed {
 ///   owns the database: the settings UI, first-run seeding, the lifecycle
 ///   managers that mint per-install secrets, and every typed setter in this
 ///   crate. Nothing is filtered; this is what `Settings::set` does today.
-/// * [`IngestPolicy::PortablePackage`] — the `.ozpkg` lane, in both
+/// * [`IngestPolicy::PortablePackage`] — the `.kasirpkg` lane, in both
 ///   directions. A package is written to a file, carried to another install
 ///   and opened with a shared password, so per-install credentials and
 ///   device-bound identities must not cross it (the invariant documented on
@@ -637,7 +637,7 @@ mod sealed {
 pub enum IngestPolicy {
     /// Local, on-device write by code that owns the database: no filtering.
     TrustedLocal,
-    /// `.ozpkg` export/import: credentials and device-bound ids are refused.
+    /// `.kasirpkg` export/import: credentials and device-bound ids are refused.
     PortablePackage,
     /// Settings arriving from the sync server: the refusals a package makes,
     /// PLUS the peer-named hazard set (`keys::PEER_NAMED_HAZARD_KEYS`) - the one
@@ -684,7 +684,7 @@ impl IngestPolicyKind for IngestPolicy {
             // the doc on the list for why sync_server_url is the serious one.
             //
             // THE ASYMMETRY IS THE DEBT, stated so it does not read as a rule:
-            // these names still leave this install in a .ozpkg, and the egress
+            // these names still leave this install in a .kasirpkg, and the egress
             // gate in crates/kasirmu-bridge/src/settings.rs and
             // apps/tablet-client/src/commands/settings.rs asks admits(), so
             // either list can still be OFFERED to the network and is now simply
@@ -725,10 +725,10 @@ impl IngestPolicyKind for IngestPolicy {
 /// callers are recorded here and nowhere else):
 ///
 /// * The sealed policy above — [`IngestPolicyKind::admits`] ORs it in for BOTH
-///   untrusted directions, so `.ozpkg` and remote-sync ingest refuse these
+///   untrusted directions, so `.kasirpkg` and remote-sync ingest refuse these
 ///   prefixes alongside the deny list. [`Settings::load_exportable`] and
 ///   `crates/kasirmu-bridge/src/data.rs` reach it that way, and so does
-///   `crates/kasirmu-cli/src/commands/ozpkg.rs`, which asks `PortablePackage` rather
+///   `crates/kasirmu-cli/src/commands/kasirpkg.rs`, which asks `PortablePackage` rather
 ///   than the bare predicate — non-credential but manager-owned rows like
 ///   `local_api.enabled` and `lan_server.bind` therefore travel in neither a
 ///   CLI package nor a GUI one.

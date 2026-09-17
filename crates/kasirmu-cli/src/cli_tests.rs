@@ -139,10 +139,10 @@ fn cli_parse_custom_db() {
 }
 
 #[test]
-fn cli_parse_export_ozpkg() {
+fn cli_parse_export_kasirpkg() {
     let cli = Cli::try_parse_from([
         "oz",
-        "export-ozpkg",
+        "export-kasirpkg",
         "-o",
         "data.kasirpkg",
         "-p",
@@ -150,21 +150,21 @@ fn cli_parse_export_ozpkg() {
     ])
     .unwrap();
     match cli.command {
-        Some(Command::ExportOzpkg {
+        Some(Command::ExportKasirpkg {
             output, password, ..
         }) => {
             assert_eq!(output, "data.kasirpkg");
             assert_eq!(password, "secret123");
         }
-        _ => panic!("expected ExportOzpkg"),
+        _ => panic!("expected ExportKasirpkg"),
     }
 }
 
 #[test]
-fn cli_parse_import_ozpkg() {
+fn cli_parse_import_kasirpkg() {
     let cli = Cli::try_parse_from([
         "oz",
-        "import-ozpkg",
+        "import-kasirpkg",
         "-i",
         "data.kasirpkg",
         "-p",
@@ -173,7 +173,7 @@ fn cli_parse_import_ozpkg() {
     ])
     .unwrap();
     match cli.command {
-        Some(Command::ImportOzpkg {
+        Some(Command::ImportKasirpkg {
             input,
             password,
             dry_run,
@@ -182,7 +182,7 @@ fn cli_parse_import_ozpkg() {
             assert_eq!(password, "secret123");
             assert!(dry_run);
         }
-        _ => panic!("expected ImportOzpkg"),
+        _ => panic!("expected ImportKasirpkg"),
     }
 }
 
@@ -296,9 +296,9 @@ fn cli_parse_export_csv() {
 fn cli_parse_export_with_types_and_password() {
     let cli = Cli::try_parse_from([
         "oz",
-        "export-ozpkg",
+        "export-kasirpkg",
         "-o",
-        "backup.ozpkg",
+        "backup.kasirpkg",
         "-p",
         "secret",
         "-t",
@@ -306,16 +306,16 @@ fn cli_parse_export_with_types_and_password() {
     ])
     .unwrap();
     match cli.command {
-        Some(Command::ExportOzpkg {
+        Some(Command::ExportKasirpkg {
             output,
             password,
             types,
             ..
         }) => {
-            assert_eq!(output, "backup.ozpkg");
+            assert_eq!(output, "backup.kasirpkg");
             assert_eq!(password, "secret");
             assert_eq!(types, "products,customers");
         }
-        _ => panic!("expected ExportOzpkg"),
+        _ => panic!("expected ExportKasirpkg"),
     }
 }

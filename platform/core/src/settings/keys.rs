@@ -91,7 +91,7 @@ pub const SYNC_API_KEY: &str = "sync_api_key";
 /// not in Rust outside tests - so refusing it breaks nothing that works
 /// today. What it was costing was egress: on no deny list, it left the
 /// device on BOTH untrusted lanes (the `settings.update` sync queue and the
-/// portable `.ozpkg` package) as a duplicate cleartext secret.
+/// portable `.kasirpkg` package) as a duplicate cleartext secret.
 pub const AUTH_TOKEN: &str = "sync.auth_token";
 /// Whether cloud sync is enabled. `"1"` or `"0"`. Default `"0"`.
 pub const SYNC_ENABLED: &str = "sync_enabled";
@@ -210,7 +210,7 @@ pub const UI_LOCALE: &str = "ui.locale";
 // so renaming a key value moves the guard with it instead of silently
 // dropping coverage (the original `sync.terminal_secret` typo left the
 // stored key `sync_terminal_secret` readable through `get_setting` and
-// exportable in a `.ozpkg` for exactly that reason).
+// exportable in a `.kasirpkg` for exactly that reason).
 
 /// Per-install Local API JWT signing secret. Mirrors
 /// `kasirmu_local_api::SETTINGS_SECRET`; declared as a literal here because

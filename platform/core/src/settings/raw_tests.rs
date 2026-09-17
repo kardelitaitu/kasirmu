@@ -6,7 +6,7 @@
 //! from the bridge restore door (`crates/kasirmu-bridge/src/data.rs:704`,
 //! PortablePackage), and `load_exportable` from the bridge export door
 //! (`data.rs:401`) — while `set_batch_with_policy` still has none, because the
-//! CLI `.ozpkg` lane asks the policy directly and has no platform-core
+//! CLI `.kasirpkg` lane asks the policy directly and has no platform-core
 //! dependency edge. Each of those lanes pins its own behaviour in its own
 //! suite, so the questions here are only (a) does a refusal refuse, (b) is it
 //! the POLICY doing the filtering rather than the predicate alone, and (c) does
@@ -171,8 +171,8 @@ fn set_batch_with_policy_writes_permitted_rows_and_skips_refused_ones() {
 ///
 /// Every lane asks the ONE predicate now, which is what this test pins:
 /// `Settings::load_exportable` and both ingest arms reach it through
-/// [`IngestPolicyKind::admits`] (so the GUI export, the CLI `.ozpkg` gate in
-/// `crates/kasirmu-cli/src/commands/ozpkg.rs` and sync ingest in
+/// [`IngestPolicyKind::admits`] (so the GUI export, the CLI `.kasirpkg` gate in
+/// `crates/kasirmu-cli/src/commands/kasirpkg.rs` and sync ingest in
 /// `platform/sync/src/queue.rs` all refuse it), the tablet write funnel calls
 /// `is_manager_owned_key` directly, and the desktop bridge refuses through its
 /// `managed_key_owner` in `crates/kasirmu-bridge/src/settings.rs` — which adds only
@@ -614,7 +614,7 @@ fn manager_prefix_only_near_misses() -> Vec<&'static str> {
     ]
 }
 
-/// Lane 1 of the two untrusted lanes: `.ozpkg` ingest must refuse a variant
+/// Lane 1 of the two untrusted lanes: `.kasirpkg` ingest must refuse a variant
 /// spelling of a manager-owned key, not only the exact lowercase one.
 #[test]
 fn portable_package_ingest_refuses_a_variant_spelling_of_a_manager_key() {

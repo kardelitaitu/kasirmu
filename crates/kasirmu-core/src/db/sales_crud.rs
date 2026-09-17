@@ -244,7 +244,7 @@ impl Store<'_> {
     }
 
     /// Tx-aware variant of [`Self::create_sale`] for callers already inside
-    /// a transaction (CLI `.ozpkg` import — CLI-1 fix).
+    /// a transaction (CLI `.kasirpkg` import — CLI-1 fix).
     ///
     /// The caller's transaction wraps the sale insert plus its line rows,
     /// so a multi-type import commits atomically and the pre-fix nested

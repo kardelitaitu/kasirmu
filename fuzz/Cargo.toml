@@ -31,7 +31,7 @@ cargo-fuzz = true
 #                         money_parse (no C-lib initialization conflicts).
 #   kasirmu-core-fuzz   - adds kasirmu-core + bundled SQLite; needed for cart_deser.
 #   kasirmu-plugin-fuzz - adds kasirmu-plugin (implies kasirmu-core-fuzz); needed for
-#                         ozpkg_parse + manifest_parse.
+#                         kasirpkg_parse + manifest_parse.
 #   lua-fuzz            - enables lua_sandbox (kasirmu-lua already in base deps).
 [features]
 kasirmu-core-fuzz   = ["dep:kasirmu-core"]
@@ -83,8 +83,8 @@ doc = false
 bench = false
 
 [[bin]]
-name = "ozpkg_parse"
-path = "fuzz_targets/ozpkg_parse.rs"
+name = "kasirpkg_parse"
+path = "fuzz_targets/kasirpkg_parse.rs"
 test = false
 doc = false
 bench = false

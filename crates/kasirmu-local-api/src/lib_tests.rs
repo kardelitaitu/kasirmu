@@ -535,7 +535,7 @@ async fn api_writes_land_in_the_audit_log_of_the_served_store() {
 /// [`SETTINGS_PORT`] and [`SETTINGS_STORE`] have no name at all down there.
 ///
 /// So if a spelling here moves and the literal does not, the live key of the
-/// manager stops being refused at `.ozpkg` and remote-sync ingest, and
+/// manager stops being refused at `.kasirpkg` and remote-sync ingest, and
 /// `managed_key_owner` in the desktop bridge answers `None` for it too: the
 /// write carries neither refusal nor label. That is a WIDENED admission, the
 /// direction this subsystem does not forgive, and it would be silent. Red the
