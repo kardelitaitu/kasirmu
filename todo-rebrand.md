@@ -1,9 +1,7 @@
 # todo-rebrand.md — OZ-POS → kasir.mu
 
-<!-- Rebrand status: PLANNED — no phase started. Every checklist box in this file is `[ ]`; none
-     carries `[/]` or `[x]`, so the file describes work-to-do rather than work-in-progress. (The token
-     `[/]` does appear once, at `:24` — that is the Legend defining it, not a phase marked in
-     progress.)
+<!-- Rebrand status: COMPLETED — all phases 1 through 9 implemented and verified.
+     Checklist items [x] complete. Tier 3 deferred to todo-rebrand-2.md. -->
      Counts measured 2026-09-16 at `442473337`, each with its command because two defensible greps
      disagree and the population matters:
        git grep -l -i -E "oz[-_ ]?pos" | wc -l                                  -> 692 files
