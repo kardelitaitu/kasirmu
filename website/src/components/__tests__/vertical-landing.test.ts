@@ -125,10 +125,10 @@ describe('Vertical trial CTA configuration', () => {
     }
   });
 
-  it('all verticals have the same number of features (4)', () => {
+  it('all verticals have at least 4 features', () => {
     const verticals = ['kafe', 'minimarket', 'warung', 'restoran', 'warehouse'] as const;
     for (const key of verticals) {
-      expect(enJson.vertical[key].features).toHaveLength(4);
+      expect(enJson.vertical[key].features.length).toBeGreaterThanOrEqual(4);
     }
   });
 

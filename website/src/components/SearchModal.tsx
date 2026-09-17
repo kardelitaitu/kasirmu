@@ -40,6 +40,7 @@ export default function SearchModal({ isOpen, onClose, locale }: Props) {
       // Vertical Solutions
       { id: 'kasir-gratis', title: locale === 'id' ? 'Kasir Gratis Selamanya' : 'Free POS Forever', category: 'pages', url: `/${locale}/kasir-gratis`, keywords: 'kasir gratis free umkm warung murah mudah ringan offline' },
       { id: 'kasir-murah', title: locale === 'id' ? 'Kasir Murah Tanpa Biaya Tersembunyi' : 'Cheap POS With No Hidden Fees', category: 'pages', url: `/${locale}/kasir-murah`, keywords: 'kasir murah harga price cheap affordable plus pro gratis' },
+      { id: 'kasir-qris', title: locale === 'id' ? 'Kasir QRIS Statis + Dinamis' : 'Static + Dynamic QRIS POS', category: 'pages', url: `/${locale}/kasir-qris`, keywords: 'kasir qris qr statis dinamis midtrans ewallet dompet digital scan barcode' },
       { id: 'kasir-android', title: locale === 'id' ? 'Kasir Android & Tablet' : 'Android & Tablet POS', category: 'pages', url: `/${locale}/aplikasi-kasir-android`, keywords: 'kasir android tablet hp ringan mudah offline apk' },
       { id: 'cafe', title: locale === 'id' ? 'Solusi untuk Kafe & Kedai Kopi' : 'Solutions for Cafes & Coffee Shops', category: 'pages', url: `/${locale}/cafe`, keywords: 'cafe coffee table orders kds modifiers kasir kafe' },
       { id: 'restaurant', title: locale === 'id' ? 'Solusi untuk Restoran & F&B' : 'Solutions for Restaurants', category: 'pages', url: `/${locale}/restaurant`, keywords: 'restaurant kitchen display split bill service charge kasir restoran' },

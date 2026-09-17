@@ -480,6 +480,45 @@
     "regionHint": "Menentukan harga dan metode pembayaran"
   },
   "landing": {
+    "qris": {
+      "title": "Kasir QRIS: QR Statis + Dinamis di Semua Paket",
+      "description": "Terima QRIS statis (stiker toko) dan QR dinamis per transaksi di semua paket kasir.mu, termasuk Gratis. Settlement Midtrans otomatis, tanpa EDC tambahan.",
+      "h1": "Kasir QRIS Statis + Dinamis",
+      "lede": "Pelanggan Anda sudah bayar pakai QR — kasir.mu menerima keduanya. Tampilkan QR dinamis dengan nominal transaksi, atau pakai stiker QR statis toko Anda. Keduanya tersedia di semua paket, termasuk Gratis.",
+      "points": [
+        "QR dinamis: nominal terkunci per transaksi via Midtrans, settlement dipolling otomatis",
+        "QR statis: pakai stiker NMID toko Anda, referensi dicatat dan direkonsiliasi untuk struk",
+        "Tanpa EDC tambahan: cukup layar kasir atau tablet",
+        "Masuk semua paket: Gratis, Plus, Pro, Premium, Enterprise"
+      ],
+      "howTitle": "Cara terima QRIS di kasir",
+      "how": [
+        "Buka tagihan di layar pembayaran dan pilih QRIS",
+        "Untuk dinamis: tunjukkan QR yang muncul ke pelanggan untuk dipindai",
+        "Untuk statis: tunjukkan stiker QR toko, catat referensi yang muncul",
+        "Transaksi cocok otomatis saat settlement masuk — struk siap cetak"
+      ],
+      "ctaPricing": "Lihat semua paket",
+      "ctaDownload": "Unduh gratis",
+      "faq": [
+        {
+          "q": "Apakah QRIS tersedia di paket gratis?",
+          "a": "Ya. QRIS statis + dinamis tersedia di semua paket kasir.mu, termasuk Gratis selamanya."
+        },
+        {
+          "q": "Apa bedanya QRIS statis dan dinamis?",
+          "a": "Statis memakai satu stiker QR toko untuk semua nominal (kasir mencatat referensi manual). Dinamis membuat QR baru per transaksi dengan nominal terkunci dan verifikasi otomatis."
+        },
+        {
+          "q": "Perlu EDC atau alat tambahan?",
+          "a": "Tidak. Cukup layar kasir atau tablet — QR tampil di layar, pelanggan pindai pakai e-wallet atau m-banking apa pun."
+        },
+        {
+          "q": "Bagaimana jika internet mati saat bayar QRIS?",
+          "a": "Transaksi tercatat lokal dan direkonsiliasi saat koneksi kembali — kasir tidak pernah terblokir."
+        }
+      ]
+    },
     "gratis": {
       "title": "Aplikasi Kasir Gratis untuk Warung, Kafe, dan Toko",
       "description": "Paket kasir gratis selamanya: satu toko, satu register, riwayat 30 hari. Ringan, mudah dipakai, jalan offline — tanpa kartu kredit.",
@@ -675,32 +714,41 @@
     },
     "restoran": {
       "label": "Restoran",
-      "title": "Dari dapur hingga kasir, tetap sinkron",
-      "tagline": "KDS, poin loyalitas, dan laporan terjadwal untuk restoran Anda.",
+      "title": "Aplikasi Kasir Restoran: Dapur, Meja & QRIS Tetap Sinkron",
+      "tagline": "KDS, manajemen meja, poin loyalitas, dan QRIS statis + dinamis untuk restoran Anda — tetap jualan saat internet mati.",
       "tierAnchor": "premium",
       "ctaPrimary": "Lihat paket Premium",
       "features": [
         {
           "title": "Layar dapur (KDS)",
-          "description": "Pesanan mengalir dari kasir ke dapur dalam hitungan detik — waktu antar berkurang."
+          "description": "Pesanan mengalir dari kasir ke dapur dalam hitungan detik — tiket per meja, eskalasi keterlambatan, dan bunyi peringatan. Waktu antar berkurang, perputaran meja naik."
+        },
+        {
+          "title": "Manajemen meja restoran",
+          "description": "Denah lantai interaktif: status tersedia, terisi, reservasi. Ketuk meja untuk buka order, pindah tagihan antar meja, gabung atau bagi tagihan per pelanggan."
+        },
+        {
+          "title": "QRIS statis + dinamis di meja",
+          "description": "Tampilkan QR dinamis per tagihan untuk dipindai pelanggan, atau pakai stiker QR statis toko. Settlement Midtrans dipolling otomatis dan cocok ke transaksi — tanpa EDC tambahan."
         },
         {
           "title": "Poin loyalitas",
-          "description": "Berikan poin kepada pelanggan tetap dan pertahankan mereka kembali."
+          "description": "Berikan poin kepada pelanggan tetap di setiap pembayaran dan pertahankan mereka kembali — otomatis tanpa kartu fisik."
         },
         {
           "title": "Laporan terjadwal",
-          "description": "Terima laporan penjualan otomatis via email — harian atau mingguan."
+          "description": "Terima laporan penjualan restoran otomatis via email — harian atau mingguan: omzet, menu terlaris, jam sibuk, dan void."
         },
         {
-          "title": "Multi-toko",
-          "description": "Kelola banyak outlet dengan toko dan terminal tanpa batas."
+          "title": "Multi-outlet",
+          "description": "Kelola banyak outlet dengan toko dan terminal tanpa batas — menu, harga, dan stok tersinkron antar cabang."
         }
       ],
       "benefits": [
         "Perputaran meja lebih cepat dengan dapur yang tetap sinkron.",
-        "Loyalitas bawaan yang meningkatkan kunjungan berulang.",
-        "Pembayaran native QRIS yang sudah dipakai pelanggan Anda."
+        "Tagihan terpisah atau gabung per meja tanpa drama di kasir.",
+        "Pembayaran QRIS statis + dinamis yang sudah dipakai pelanggan Anda.",
+        "Tetap terima pesanan saat Wi-Fi restoran mati — sinkron saat online."
       ]
     },
     "warehouse": {

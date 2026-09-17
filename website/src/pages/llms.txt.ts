@@ -15,7 +15,7 @@ export const GET: APIRoute = () => {
   const meta = (id as { meta: { description: string } }).meta.description;
   const support = (id as { support: { faq: Faq[] } }).support.faq;
   const landing = id as unknown as {
-    landing: Record<'gratis' | 'murah' | 'android', { title: string; description: string }>;
+    landing: Record<'gratis' | 'murah' | 'android' | 'qris', { title: string; description: string }>;
   };
   const tiers = pricingFor('id')
     .map((t: PricingTier) => `- ${t.name}: ${t.prices.monthly.price} ${t.prices.monthly.period} — ${t.description}`)
@@ -31,6 +31,7 @@ export const GET: APIRoute = () => {
 - Unduh: https://kasir.mu/id/download
 - Kasir gratis: https://kasir.mu/id/kasir-gratis
 - Kasir murah: https://kasir.mu/id/kasir-murah
+- Kasir QRIS: https://kasir.mu/id/kasir-qris
 - Kasir Android dan tablet: https://kasir.mu/id/aplikasi-kasir-android
 
 ## Bisnis
@@ -43,6 +44,7 @@ export const GET: APIRoute = () => {
 ## Halaman arahan
 - ${landing.landing.gratis.title}: https://kasir.mu/id/kasir-gratis — ${landing.landing.gratis.description}
 - ${landing.landing.murah.title}: https://kasir.mu/id/kasir-murah — ${landing.landing.murah.description}
+- ${landing.landing.qris.title}: https://kasir.mu/id/kasir-qris — ${landing.landing.qris.description}
 - ${landing.landing.android.title}: https://kasir.mu/id/aplikasi-kasir-android — ${landing.landing.android.description}
 
 ## Harga (IDR)
