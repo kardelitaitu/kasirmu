@@ -16,8 +16,8 @@ next: none | perf: N/A
 //! # Wiring
 //!
 //! ```ignore
-//! use oz_notification::handlers::*;
-//! use oz_notification::mock::MockNotificationClient;
+//! use kasirmu_notification::handlers::*;
+//! use kasirmu_notification::mock::MockNotificationClient;
 //! use std::sync::Arc;
 //!
 //! let client = Arc::new(MockNotificationClient::new());

@@ -12,7 +12,7 @@ next: none | perf: N/A
 //! # Quick start
 //!
 //! ```ignore
-//! use oz_notification::{NotificationClient, WhatsAppClient, MockNotificationClient};
+//! use kasirmu_notification::{NotificationClient, WhatsAppClient, MockNotificationClient};
 //!
 //! // Production
 //! let client = WhatsAppClient::new("PHONE_NUMBER_ID", "ACCESS_TOKEN");
