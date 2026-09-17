@@ -21,7 +21,9 @@ services:
     image: e2e-cloud-server:latest
     build:
       context: .
-      dockerfile: Dockerfile.server
+      # dockerfile is relative to the CONTEXT (the repo root), not to this
+      # file, so it carries the ops/docker/ prefix.
+      dockerfile: ops/docker/Dockerfile.server
     ports:
       - "3099:3099"
     environment:

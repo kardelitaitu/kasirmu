@@ -41,7 +41,9 @@ services:
   pos-cloud-server:
     build:
       context: .
-      dockerfile: Dockerfile.server
+      # dockerfile is relative to the CONTEXT (the repo root), not to this
+      # file, so it carries the ops/docker/ prefix.
+      dockerfile: ops/docker/Dockerfile.server
     ports:
       - "${OZ_API_PORT:-3099}:${OZ_API_PORT:-3099}"
     environment:
