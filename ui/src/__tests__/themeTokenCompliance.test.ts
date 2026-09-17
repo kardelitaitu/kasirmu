@@ -1,10 +1,10 @@
 /**
  * Theme Token Compliance Test
  *
- * Scans every CSS file under ui/src/features/, ui/src/frontend/ and
+ * Scans every CSS file under ui/src/features/, ui/src/app/, ui/src/theme/ and
  * ui/src/components/ for hardcoded colour, font-size, border-radius,
  * box-shadow, and spacing values that should reference design tokens via
- * `var(--token)`.  Three walk targets, per SCAN_TARGETS below -- this sentence
+ * `var(--token)`.  Four walk targets, per SCAN_TARGETS below -- this sentence
  * named two of them until the font work re-read it.  `tokens.css` and
  * `components.css` are excluded inside findFeatureCssFiles: they DEFINE the
  * tokens, so grading them against themselves is circular.
@@ -2334,7 +2334,7 @@ describe('font-reference portability', () => {
  * that do not (the eight NO-FALLBACK names below) render nothing at all.
  */
 
-const TOKENS_CSS = join(UI_SRC, "frontend", "themes", "tokens.css");
+const TOKENS_CSS = join(UI_SRC, "theme", "tokens.css");
 
 /** A custom-property DECLARATION at its own boundary -- not a var() read. */
 const CUSTOM_PROP_DEF_RE = /(?:^|[;{\s])(--[A-Za-z0-9_-]+)\s*:/g;
