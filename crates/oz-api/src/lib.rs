@@ -439,7 +439,7 @@ fn validate_production_secrets(
 
 /// Start the server, binding to the port from `OZ_API_PORT` (default 3099).
 ///
-/// Opens the SQLite database at `OZ_DB_PATH` (default `oz-pos.db`), runs
+/// Opens the SQLite database at `OZ_DB_PATH` (default `kasir.db`), runs
 /// migrations, and blocks on the server loop. Spawn in a background
 /// `tokio::task` if the caller needs to continue.
 ///
@@ -447,7 +447,7 @@ fn validate_production_secrets(
 /// [`Result`] instead of panicking, so the caller can log and exit with a
 /// structured error rather than a process-fatal panic.
 pub async fn serve() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let db_path = std::env::var("OZ_DB_PATH").unwrap_or_else(|_| "oz-pos.db".into());
+    let db_path = std::env::var("OZ_DB_PATH").unwrap_or_else(|_| "kasir.db".into());
     let mut conn = Connection::open(&db_path)
         .map_err(|e| format!("failed to open API database at {db_path}: {e}"))?;
     conn.pragma_update(None, "foreign_keys", "ON")

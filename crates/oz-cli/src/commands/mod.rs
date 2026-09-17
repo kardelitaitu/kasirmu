@@ -83,7 +83,7 @@ pub(crate) fn open_db(path: &str) -> Result<Connection> {
 pub(crate) fn open_store_for_credential_deltas(path: &str) -> Result<Connection> {
     if !std::path::Path::new(path).is_file() {
         anyhow::bail!(
-            "oz credential-deltas never opens a store it would have to create: no database exists at {path}. --db defaults to ./oz-pos.db in the CURRENT directory, so a mistyped or relative path lands here as a file that is not there, and this command inspects an existing store rather than provisioning one (unlike migrate / init-db / restore, which do create). If you meant to inspect a live store, take a copy first and run against the copy: oz backup --output <copy.db>, then oz credential-deltas --db <copy.db>. Nothing was created, read, or deleted."
+            "oz credential-deltas never opens a store it would have to create: no database exists at {path}. --db defaults to ./kasir.db in the CURRENT directory, so a mistyped or relative path lands here as a file that is not there, and this command inspects an existing store rather than provisioning one (unlike migrate / init-db / restore, which do create). If you meant to inspect a live store, take a copy first and run against the copy: oz backup --output <copy.db>, then oz credential-deltas --db <copy.db>. Nothing was created, read, or deleted."
         );
     }
     open_db(path)

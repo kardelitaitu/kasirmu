@@ -215,7 +215,7 @@ async fn pg_integration_migrate_and_verify() {
 
     // Seed a second SQLite DB whose tenant/settings rows are namespaced.
     let dir2 = tempfile::tempdir().unwrap();
-    let path2 = dir2.path().join("oz-pos.db");
+    let path2 = dir2.path().join("kasir.db");
     {
         let conn = Connection::open(&path2).unwrap();
         conn.execute_batch(&format!(

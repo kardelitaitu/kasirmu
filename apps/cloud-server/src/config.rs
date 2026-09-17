@@ -29,7 +29,7 @@ pub enum LogFormat {
 /// every module that needs environment-derived settings.
 #[derive(Debug, Clone)]
 pub struct CloudServerConfig {
-    /// Path to the SQLite database file (default: `oz-pos.db`).
+    /// Path to the SQLite database file (default: `kasir.db`).
     /// Ignored when `database_url` points to a PostgreSQL server.
     pub db_path: String,
 

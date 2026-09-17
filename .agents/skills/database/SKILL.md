@@ -62,7 +62,7 @@ Two different resolution stories, and they do not share code:
   variant on this path** — if you need a different file in a test, construct the state
   directly rather than looking for a switch that does not exist.
 - **Server and CLI processes** — the `OZ_DB_PATH` environment variable, defaulting to
-  the relative `oz-pos.db`. The Dockerfiles set it to `/data/oz-pos.db`.
+  the relative `kasir.db`. The Dockerfiles set it to `/data/kasir.db`.
 - **Per-store files** — `store-<store_id>.sqlite`, beside the global database, via
   `store_db_path` in `platform/core/src/database/manager.rs`. Each store gets its own
   connection, lazily opened and cached.

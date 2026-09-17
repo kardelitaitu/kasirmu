@@ -328,7 +328,7 @@ Write-Host ""
 Write-Host "-- Tauri config (desktop) --" -ForegroundColor White
 $tauriConfigPath = "apps/desktop-client/tauri.conf.json"
 if (Test-Path $tauriConfigPath) {
-    $desktopId = if ($brandId -eq "default") { "com.ozpos.app" } else { "com.ozpos.$safeId" }
+    $desktopId = if ($brandId -eq "default") { "mu.kasir.app" } else { "mu.kasir.$safeId" }
     if (-not $DryRun) {
         $raw = Get-Content $tauriConfigPath -Raw
         $raw = $raw -replace '(?<="productName":\s*)"[^"]*"', "`"$appName`""
@@ -345,7 +345,7 @@ Write-Host ""
 Write-Host "-- Tauri config (tablet) --" -ForegroundColor White
 $tabletConfigPath = "apps/tablet-client/tauri.conf.json"
 if (Test-Path $tabletConfigPath) {
-    $tabletId = if ($brandId -eq "default") { "com.ozpos.tablet" } else { "com.ozpos.tablet.$safeId" }
+    $tabletId = if ($brandId -eq "default") { "mu.kasir.tablet" } else { "mu.kasir.tablet.$safeId" }
     if (-not $DryRun) {
         $raw = Get-Content $tabletConfigPath -Raw
         $raw = $raw -replace '(?<="productName":\s*)"[^"]*"', "`"$appName`""
