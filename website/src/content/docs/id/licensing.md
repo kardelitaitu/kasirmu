@@ -20,7 +20,7 @@ pembayaran QRIS, sinkron cloud, dan skrip — ditampilkan di
 | Gudang              | 1      | 2    | 3   | Tanpa batas | Tanpa batas |
 | Staf pengguna       | 1      | 5    | 20  | 50      | Tanpa batas |
 | Riwayat penjualan   | 3 bulan | 1 tahun | 5 tahun | Tanpa batas | Tanpa batas |
-| Pembayaran QRIS     | Tidak  | ✓    | ✓   | ✓       | ✓         |
+| Pembayaran QRIS     | ✓ (statis + dinamis) | ✓ (statis + dinamis) | ✓ | ✓ | ✓ |
 | Sinkron cloud       | Tidak  | ✓    | ✓   | ✓       | ✓         |
 | Skrip (Lua)         | Tidak  | Tidak | Tidak | ✓     | ✓         |
 

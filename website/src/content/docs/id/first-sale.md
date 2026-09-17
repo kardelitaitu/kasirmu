@@ -45,10 +45,11 @@ terverifikasi PIN tersedia di tingkat kasir.
 
 ## Terima pembayaran
 
-Tekan **Bayar**. Tunai adalah satu-satunya metode yang tersedia saat ini —
-masukkan jumlah yang dibayarkan dan kembalian dihitung otomatis. QRIS,
-kartu debit dan kredit, serta e-wallet segera hadir dan akan muncul sebagai
-pilihan di sini. Melampirkan pelanggan untuk loyalitas juga didukung.
+Tekan **Bayar**. Tunai dan QRIS tersedia — masukkan jumlah tunai yang
+dibayarkan dan kembalian dihitung otomatis, atau tampilkan QR dinamis
+untuk dipindai pelanggan (atau QR statis toko Anda). Kartu debit dan
+kredit, serta e-wallet segera hadir dan akan muncul sebagai pilihan di
+sini. Melampirkan pelanggan untuk loyalitas juga didukung.
 
 ## Struk dan catatan
 

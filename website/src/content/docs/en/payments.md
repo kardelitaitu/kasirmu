@@ -1,9 +1,9 @@
 ---
 title: Payments & QRIS
-description: Accept cash today — QRIS, cards, and e-wallets are coming soon.
+description: Accept cash and QRIS on every plan — static and dynamic QR, no extra hardware.
 category: guides
 order: 3
-updated: "2026-08-16"
+updated: "2026-09-17"
 ---
 
 ## Payment methods
@@ -12,8 +12,13 @@ updated: "2026-08-16"
   calculated for you.
 - **Debit** — coming soon.
 - **Credit** — coming soon.
-- **QRIS** — coming soon. Indonesian QR payments: the checkout will show a QR
-  code for the customer to scan, matched back to the sale automatically.
+- **QRIS** — available on every plan, including Free. Two ways to use it:
+  - **Dynamic QR** — the checkout shows a QR code with the transaction amount
+    (via Midtrans); the customer scans it, settlement status is polled
+    automatically and matched back to the sale.
+  - **Static QR (manual)** — show your own store QR sticker (stored NMID
+    payload); the cashier records a cashier-asserted reference and the
+    server read-back reconciles it for the receipt.
 - **E-wallet** — coming soon.
 
 Debit, credit, and e-wallets follow the same pattern as QRIS: the sale is

@@ -114,8 +114,8 @@ describe('tier shape invariants', () => {
     // local — cloud sync is a paid-tier differentiator. Drift between the
     // tier.features list and featureRows previously showed ✓ on the home
     // card while the table said ✗ (and vice versa), contradicting itself.
-    const LABEL_EN = { card: 'QRIS payments', table: 'QRIS payments' };
-    const LABEL_ID = { card: 'Pembayaran QRIS', table: 'Pembayaran QRIS' };
+    const LABEL_EN = { card: 'Static + dynamic QRIS', table: 'Static + dynamic QRIS' };
+    const LABEL_ID = { card: 'QRIS statis + dinamis', table: 'QRIS statis + dinamis' };
     for (const locale of LOCALES) {
       const pricing = locale === 'en' ? enPricing : idPricing;
       const rows = featureRowsFor(locale);

@@ -1,9 +1,9 @@
 ---
 title: Pembayaran & QRIS
-description: Terima tunai hari ini — QRIS, kartu, dan e-wallet segera hadir.
+description: Terima tunai dan QRIS di semua paket — QR statis dan QR dinamis, tanpa perangkat tambahan.
 category: guides
 order: 3
-updated: "2026-08-16"
+updated: "2026-09-17"
 ---
 
 ## Metode pembayaran
@@ -12,9 +12,13 @@ updated: "2026-08-16"
   kembalian dihitung otomatis.
 - **Debit** — segera hadir.
 - **Kredit** — segera hadir.
-- **QRIS** — segera hadir. Pembayaran QR Indonesia: kasir akan menampilkan
-  kode QR untuk dipindai pelanggan, dicocokkan kembali ke transaksi secara
-  otomatis.
+- **QRIS** — tersedia di semua paket, termasuk Gratis. Dua cara pakai:
+  - **QR dinamis** — kasir menampilkan kode QR dengan nominal transaksi
+    (via Midtrans), pelanggan pindai, status settlement dipolling otomatis
+    dan dicocokkan kembali ke transaksi.
+  - **QR statis (manual)** — tampilkan stiker QR toko Anda sendiri
+    (payload NMID tersimpan); kasir mencatat referensi yang ditegaskan
+    kasir dan merekonsiliasi dari server untuk struk.
 - **E-wallet** — segera hadir.
 
 Debit, kredit, dan e-wallet mengikuti pola yang sama seperti QRIS: transaksi
