@@ -72,7 +72,7 @@ let cleanupDone = false;
 // (the observed `toomanyrequests` CI failures). Keep in sync with the
 // digest in docker-compose.e2e.yml.
 const E2E_REDIS_IMAGE =
-  'public.ecr.aws/docker/library/redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2';
+  'public.ecr.aws/docker/library/redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf';
 
 /** Synchronous cross-platform sleep (Node has no sync sleep built in). */
 function sleepSync(ms) {
