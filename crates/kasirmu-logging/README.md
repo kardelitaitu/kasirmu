@@ -16,8 +16,8 @@ Structured logging facade wrapping the `tracing` ecosystem.
 All four read `RUST_LOG` (default `info`). File appender rotates hourly; files older than `retention_days` are cleaned up.
 
 ```rust
-oz_logging::init();                                      // dev
-oz_logging::init_json_with_file("logs", "oz-pos", 30);   // production
+kasirmu_logging::init();                                      // dev
+kasirmu_logging::init_json_with_file("logs", "oz-pos", 30);   // production
 ```
 
 ### Platform modules

@@ -207,7 +207,7 @@ fn cleanup_old_log_files(dir: &str, file_prefix: &str, retention_days: u32) {
 /// # Example
 ///
 /// ```no_run
-/// oz_logging::init_with_file("logs", "oz-pos", 30);
+/// kasirmu_logging::init_with_file("logs", "oz-pos", 30);
 /// ```
 pub fn init_with_file(log_dir: &str, file_prefix: &str, retention_days: u32) {
     try_init_with_file(log_dir, file_prefix, retention_days)

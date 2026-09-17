@@ -1,11 +1,11 @@
 [package]
-name = "oz-logging"
+name = "kasirmu-logging"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Structured logging facade for OZ-POS — context-tagged log records, file + stdout output, log rotation, syslog, Event Log."
+description = "Structured logging facade for kasir.mu — context-tagged log records, file + stdout output, log rotation, syslog, Event Log."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]
