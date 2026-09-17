@@ -399,7 +399,7 @@ the OSes the Tauri shell already covers.
 `AGENTS.md`, `.gitignore`, `.github/workflows/release.yml`, `scripts/*` ·
 `python scripts/verify-ipc-parity.py` exits 0 · `cargo check --workspace --all-targets`
 
-### [ ] P12 — Root directory budget: 28 entries down to 23
+### [x] P12 — Root directory budget: 28 entries down to 23
 
 **Commit:** `refactor(repo): consolidate root satellites into ops/ and tools/`
 
@@ -436,6 +436,51 @@ turns out live it becomes `prototypes/`, and if dead the count drops one further
 `cargo metadata --no-deps --format-version 1` still lists **39** packages ·
 `cargo check --workspace --all-targets` · `python scripts/verify-architecture-boundaries.py` exits 0 ·
 `test ! -d fuzz && test ! -d plugins && test ! -d install && test ! -d packaging && test ! -d gateway`
+
+**Completed 2026-09-17** (commit `920b1762f`, 27 files, 40 insertions / 40 deletions, 11 renames).
+Root tracked directories measured **20 → 19**; `cargo metadata --no-deps` still **39** packages;
+`verify-dockerfile-workspace.py`, `verify-architecture-boundaries.py` and `verify-ci-docs-drift.py`
+all exit 0; `cargo check --workspace --all-targets` exits 0; `cargo test -p kasirmu-plugin --lib`
+reports **180 passed / 0 failed**.
+
+`git mv fuzz tools/fuzz` carried the ignored `tools/fuzz/target/` (551 MB) and `Cargo.lock` with it.
+`git mv plugins/example-discount scripts/examples/example-discount` then `rmdir plugins` — git tracks
+no empty directories, so the emptied `plugins/` had to be removed explicitly or it would have survived
+as an invisible ghost of exactly the §5 class.
+
+**Three corrections found by re-deriving this phase's own numbers:**
+
+1. **"19 live files reference `fuzz/`" undercounts.** 49 tracked files contain the token and 21 contain
+   a *path* reference. Re-pointed: root `Cargo.toml` `exclude`, `.gitignore`, `.cbmignore`,
+   `.githooks/pre-push`, `.github/workflows/dev-ci.yml`, `scripts/gates.json`,
+   `scripts/verify-dockerfile-workspace.py`, the three hfuzz/campaign scripts,
+   `scripts/updater-compat-check/Cargo.toml`, `docs/operations/ci-pipeline.md` and
+   `.agents/skills/project-scaffold/SKILL.md`. Deliberately left stale, because they are records rather
+   than statements about the current tree: `ci.yml.bak` (retired — P4's to attic), `CHANGELOG.md`,
+   `docs/archived/**`, `docs/records/JOURNAL.md` and `todo-rebrand-2.md`.
+2. **"6 live files reference `plugins/`" missed the two that actually execute — and they would not have
+   failed.** `plugins/` names two different directories: the repo one, and the *runtime* one the app
+   reads from `app_data_dir().join("plugins")` (`apps/desktop-client/src/state.rs:326`). Most of the
+   ~20 prose references are the runtime one and correctly did **not** move. But two tests load the repo
+   directory by hardcoded relative path — `crates/kasirmu-plugin/src/manager_tests.rs:294,308`:
+   `PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins")`. They are invisible to a
+   `git grep 'plugins/'` sweep because the string carries **no trailing slash**.
+   `load_plugins` returns `Ok(empty registry)` when the directory does not exist
+   (`crates/kasirmu-plugin/src/loader.rs:115-117`), and both tests assert only that nothing panics — so
+   a missed rename would have left them **silently vacuous under a green build**, which is worse than a
+   red test. They now resolve `../../scripts/examples`, which `load_plugins` accepts as a plugins root
+   because it `continue`s on non-directory entries (`:122-124`) and `example-discount/` is its only
+   subdirectory. **Still open:** neither test asserts the registry is non-empty, so the vacuity hazard
+   survives any *future* path error. Closing it needs a public accessor on `PluginManager` (it has none
+   — `manager.rs` exposes behaviour only), then `assert_eq!(count, 1)`. Outside this phase's fence.
+3. **Two numbers in this plan are stale, and one item is deferred.** The
+   `.github/workflows/*.yml.bak` count is **11, not 13** (P4). `fuzz/hfuzz/` **does not exist on disk**,
+   so its `exclude` / `.gitignore` entries are pre-emptive; both were still re-pointed so the rule keeps
+   working if that crate is ever created. And the optional second half of item 1 — moving
+   `scripts/updater-compat-check` — was **declined**: it has **16** referrers, including both
+   `ops/docker` Dockerfiles, three sites in `dev-ci.yml` (one a `rust-cache` `workspaces:` value) and
+   `scripts/check-updater-compat.mjs`. That is disproportionate for an explicitly optional move that
+   kills no duplicate, so it fails principle 3.
 
 ### [ ] P13 — Execute the `tablet` → `mobile` rename
 
