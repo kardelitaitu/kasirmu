@@ -4,7 +4,7 @@
 # supervisor behind a single caddy reverse proxy:
 #
 #   caddy  :80 ──► /api/v1/license/*, /_/*, /api/collections/* → PocketBase :8080
-#               └─► everything else (sync/REST/webhooks/tokens) → oz-cloud-server :3099
+#               └─► everything else (sync/REST/webhooks/tokens) → kasirmu-cloud :3099
 #
 # Usage:
 #
@@ -146,10 +146,10 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
     && echo "// dummy" > modules/purchasing/src/lib.rs \
     && echo "// dummy" > apps/cloud-server/src/main.rs \
     && echo "// dummy" > apps/desktop-client/src/main.rs \
-    && printf '[package]\nname = "oz-pos-app"\nversion = "0.0.39"\nedition = "2024"\n' > apps/desktop-client/Cargo.toml \
+    && printf '[package]\nname = "kasirmu-app"\nversion = "0.0.39"\nedition = "2024"\n' > apps/desktop-client/Cargo.toml \
     && echo "// dummy" > apps/tablet-client/src/main.rs \
-    && printf '[package]\nname = "oz-pos-tablet"\nversion = "0.0.39"\nedition = "2024"\n' > apps/tablet-client/Cargo.toml \
-    && (cargo build --package oz-cloud-server --release > /tmp/prime.log 2>&1 \
+    && printf '[package]\nname = "kasirmu-tablet"\nversion = "0.0.39"\nedition = "2024"\n' > apps/tablet-client/Cargo.toml \
+    && (cargo build --package kasirmu-cloud --release > /tmp/prime.log 2>&1 \
         || { echo "WARN: dependency cache-priming build did not complete (best-effort; see /tmp/prime.log)"; }) \
     && true
 
@@ -162,7 +162,7 @@ COPY platform/ platform/
 COPY modules/ modules/
 COPY apps/ apps/
 
-RUN cargo build --package oz-cloud-server --release
+RUN cargo build --package kasirmu-cloud --release
 
 # ── Stage 3: caddy binary (copied out of its official image) ─────────
 # DOCKER-02: pinned to an immutable digest (refreshed 2026-08-14).
@@ -194,7 +194,7 @@ RUN groupadd --system ozpos && \
 
 WORKDIR /app
 
-COPY --from=builder /build/target/release/oz-cloud-server /app/oz-cloud-server
+COPY --from=builder /build/target/release/kasirmu-cloud /app/kasirmu-cloud
 COPY --from=gobuilder /out/pocketbase /app/pocketbase
 COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
 

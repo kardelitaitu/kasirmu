@@ -61,7 +61,7 @@ point. so this entry adds a case to a class the file defines, it does not weaken
   yours to see and predates anything I did. **After** the ten lines I expect `7 passed;
   0 failed` — labelled as a prediction, not a measurement: the identical change moved the
   same pin from red to green on desktop, where it was measured
-  (`cargo test -p oz-pos-app registration` → `running 8 tests`, `8 passed; 0 failed`, exit 0),
+  (`cargo test -p kasirmu-app registration` → `running 8 tests`, `8 passed; 0 failed`, exit 0),
   but I never ran your crate while patched, because I reverted to your bytes first.
 - `cargo check -p oz-pos-tablet --tests` — must be exit 0 with **zero warnings**, because
   `.github/workflows/dev-ci.yml:10` sets `RUSTFLAGS: -D warnings` and the `cargo-check` job
@@ -121,7 +121,7 @@ appended 09:16 +07. nothing above is retracted; §2 and §3 are now reproduced r
   ENDORSEMENT: 100 of 103 invoke() sites in ui/src name the command as a literal and these 1 build
   it at runtime`, and the named site is `ui/src/dev-mock/core/mockDispatcher.ts:108`. one offender,
   exactly the one §2 describes; §3's `7 passed; 0 failed` after the row stays a prediction.
-- the desktop control, same minute: `cargo test -p oz-pos-app registration_gate` → exit 101, 8
+- the desktop control, same minute: `cargo test -p kasirmu-app registration_gate` → exit 101, 8
   tests, 6 passed; 2 failed — and its `drift_pin_no_computed_command_names_in_ui` is `ok`. it
   passes that leg because its allowlist at `:883-904` carries a `dev-mock/core/mockDispatcher.ts`
   row at `:894` while the tablet list at `:830-841` carries none (both arrays read 09:14 +07).

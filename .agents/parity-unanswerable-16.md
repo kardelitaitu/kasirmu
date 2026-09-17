@@ -196,7 +196,7 @@ parity gate; that is the asymmetry, and it has nothing to do with the localApi s
     git grep -c ::local_api_status_scoped -- apps/desktop-client/src/lib.rs         apps/tablet-client/src/lib.rs                                 # which shells register it
 
     # the pins, run for real rather than mirrored:
-    cargo test -p oz-pos-app registration
+    cargo test -p kasirmu-app registration
     cargo test -p oz-pos-tablet registration
 
 timing, because the branch is moving under the reader as well as it moved under me: gate

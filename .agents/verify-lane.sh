@@ -222,13 +222,13 @@ if printf '%s' "${*:-}" | grep -q -- '--head'; then
   exit "$FAIL"
 fi
 
-run "clippy tablet (lib+tests, -D warnings)" cargo clippy -p oz-pos-tablet --all-targets -- -D warnings
-run "clippy desktop (lib+tests, -D warnings)" cargo clippy -p oz-pos-app --all-targets -- -D warnings
-run "tablet lib tests" cargo test -p oz-pos-tablet --lib
-run "desktop lib tests" cargo test -p oz-pos-app --lib
-run "tablet registration gate" cargo test -p oz-pos-tablet --lib registration_gate -- --exact \
+run "clippy tablet (lib+tests, -D warnings)" cargo clippy -p kasirmu-tablet --all-targets -- -D warnings
+run "clippy desktop (lib+tests, -D warnings)" cargo clippy -p kasirmu-app --all-targets -- -D warnings
+run "tablet lib tests" cargo test -p kasirmu-tablet --lib
+run "desktop lib tests" cargo test -p kasirmu-app --lib
+run "tablet registration gate" cargo test -p kasirmu-tablet --lib registration_gate -- --exact \
   commands::registration_gate_tests::drift_pin_debt_ceilings_only_shrink
-run "desktop registration gate" cargo test -p oz-pos-app --lib registration_gate
+run "desktop registration gate" cargo test -p kasirmu-app --lib registration_gate
 run "ipc parity" python scripts/verify-ipc-parity.py
 run "ipc parity self-test" python scripts/verify-ipc-parity.py --self-test
 run "scoped coverage" bash scripts/verify-scoped-coverage.sh

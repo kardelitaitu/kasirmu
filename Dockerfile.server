@@ -1,7 +1,7 @@
 # ── OZ-POS Cloud Server ──────────────────────────────────────────────
 #
 # Multi-stage Dockerfile that builds the headless cloud-sync binary
-# (oz-cloud-server) and packages it into a minimal runtime image.
+# (kasirmu-cloud) and packages it into a minimal runtime image.
 #
 # Usage:
 #
@@ -80,7 +80,7 @@ COPY apps/cloud-server/Cargo.toml apps/cloud-server/
 # or lockfile changes.
 #
 # NOTE (DOCKER-09): the priming build below is BEST-EFFORT and its failure is
-# intentionally non-fatal: `cargo build --package oz-cloud-server` can
+# intentionally non-fatal: `cargo build --package kasirmu-cloud` can
 # legitimately fail here when a dependency target is not yet built (the
 # dummy sources are placeholders, not a real program). The real build at
 # line ~119 is the source of truth and fails the image on any error. The
@@ -141,10 +141,10 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
     && echo "// dummy" > modules/purchasing/src/lib.rs \
     && echo "// dummy" > apps/cloud-server/src/main.rs \
     && echo "// dummy" > apps/desktop-client/src/main.rs \
-    && printf '[package]\nname = "oz-pos-app"\nversion = "0.0.39"\nedition = "2024"\n' > apps/desktop-client/Cargo.toml \
+    && printf '[package]\nname = "kasirmu-app"\nversion = "0.0.39"\nedition = "2024"\n' > apps/desktop-client/Cargo.toml \
     && echo "// dummy" > apps/tablet-client/src/main.rs \
-    && printf '[package]\nname = "oz-pos-tablet"\nversion = "0.0.39"\nedition = "2024"\n' > apps/tablet-client/Cargo.toml \
-    && (cargo build --package oz-cloud-server --release > /tmp/prime.log 2>&1 \
+    && printf '[package]\nname = "kasirmu-tablet"\nversion = "0.0.39"\nedition = "2024"\n' > apps/tablet-client/Cargo.toml \
+    && (cargo build --package kasirmu-cloud --release > /tmp/prime.log 2>&1 \
         || { echo "WARN: dependency cache-priming build did not complete (best-effort; see /tmp/prime.log)"; }) \
     && true
 
@@ -160,7 +160,7 @@ COPY modules/ modules/
 COPY apps/ apps/
 
 # Build for real.
-RUN cargo build --package oz-cloud-server --release
+RUN cargo build --package kasirmu-cloud --release
 
 # ── Stage 2: Runtime ────────────────────────────────────────────────
 # debian:bookworm-slim tag — multi-arch index digest (refreshed 2026-08-17).
@@ -186,7 +186,7 @@ RUN groupadd --system ozpos && \
 
 WORKDIR /app
 
-COPY --from=builder /build/target/release/oz-cloud-server /app/oz-cloud-server
+COPY --from=builder /build/target/release/kasirmu-cloud /app/kasirmu-cloud
 COPY scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
@@ -201,4 +201,4 @@ ENV RUST_LOG=info
 EXPOSE 3099
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
-CMD ["/app/oz-cloud-server"]
+CMD ["/app/kasirmu-cloud"]

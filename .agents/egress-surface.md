@@ -156,7 +156,7 @@ unbounded and the ceiling is still ~100 names, not twelve.
    position-sensitive to anything that moves those two declarations or their
    terminators - a third list declared BETWEEN them, or a reflow that puts the
    device list on one line, changes what that harness counts. Measured after this
-   change: cargo test -p oz-pos-tablet registration is green (7 passed), because
+   change: cargo test -p kasirmu-tablet registration is green (7 passed), because
    the new list sits BELOW both and touches neither region.
 
 An honest allow-list is therefore in the 60-100 band, built by walking keys.rs and

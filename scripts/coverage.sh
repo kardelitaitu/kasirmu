@@ -67,8 +67,8 @@ if [[ "$target" == "all" || "$target" == "rust" ]]; then
         cargo llvm-cov \
             --workspace \
             --all-features \
-            --exclude oz-pos-app \
-            --exclude oz-pos-tablet \
+            --exclude kasirmu-app \
+            --exclude kasirmu-tablet \
             --text \
             --output-dir "$ROOT/coverage/rust"
         step "rust done → coverage/rust/index.html (text summary above)"

@@ -160,7 +160,7 @@ const LOCAL_BUILD_CONTEXTS = [
     image: 'e2e-cloud-server:latest',
     // Dockerfile.server: context is the repo root, but .dockerignore drops
     // ui/, docs/, apps/desktop-client and apps/tablet-client, and cargo only
-    // builds the oz-cloud-server package — so apps/license-server and
+    // builds the kasirmu-cloud package — so apps/license-server and
     // apps/unified cannot change this binary.
     paths: [
       'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml',

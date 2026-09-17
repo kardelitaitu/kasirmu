@@ -112,7 +112,7 @@ step "test shadow copies" "python3 scripts/verify-test-shadow-copies.py" python3
 # is not installed.
 cpu_count=$(nproc --all 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 if command -v cargo-nextest &>/dev/null || cargo nextest --version &>/dev/null 2>&1; then
-    step "test workspace (nextest)" "cargo nextest run --workspace --all-features --exclude oz-pos-app --exclude oz-pos-tablet" cargo nextest run --workspace --all-features --exclude oz-pos-app --exclude oz-pos-tablet
+    step "test workspace (nextest)" "cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-tablet" cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-tablet
     step "test doctests" "cargo test --doc --workspace" cargo test --doc --workspace
     # Grade the run's JUnit report, not its summary line. A retry-rescued flake is
     # invisible to every other reader: nextest turns a genuine failure into
@@ -528,7 +528,7 @@ if [ "${1:-}" = "--docker-dry-run" ]; then
     if command -v docker &>/dev/null; then
         step "docker build" "docker build -f Dockerfile.server -t kasir-cloud:local ." docker build -f Dockerfile.server -t kasir-cloud:local .
 
-        SIZE=$(docker run --rm --entrypoint stat kasir-cloud:local --format=%s /app/oz-cloud-server 2>/dev/null || echo "0")
+        SIZE=$(docker run --rm --entrypoint stat kasir-cloud:local --format=%s /app/kasirmu-cloud 2>/dev/null || echo "0")
         if [ "$SIZE" -gt "0" ]; then
             MAX=$((50 * 1024 * 1024))
             if [ "$SIZE" -gt "$MAX" ]; then

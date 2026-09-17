@@ -146,7 +146,7 @@ jobs:
       # commit before shipping (matches the original workflow's behavior).
       - name: Run tests (desktop targets)
         if: matrix.tauri
-        run: cargo nextest run --workspace --all-features --exclude oz-pos-app --exclude oz-pos-tablet --profile ci
+        run: cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-tablet --profile ci
 
       - name: Install system deps (Linux)
         if: runner.os == 'Linux' && matrix.tauri
@@ -240,7 +240,7 @@ jobs:
       - name: Verify Windows exe embeds asInvoker manifest
         if: matrix.target == 'desktop-windows'
         shell: bash
-        run: python scripts/verify-windows-config.py --exe apps/desktop-client/target/release/oz-pos-app.exe
+        run: python scripts/verify-windows-config.py --exe apps/desktop-client/target/release/kasirmu-app.exe
 
       # Windows only: FREE end-user code signing via SignPath (signpath.org).
       # Self-signed certs only remove the "unknown publisher" label on machines

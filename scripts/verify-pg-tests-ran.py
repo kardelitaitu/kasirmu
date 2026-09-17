@@ -5,7 +5,7 @@ Postgres-gated test does not use `#[ignore]`.  It probes for a database, prints
 an "… test skipped …" line through `eprintln!`, and then `return`s.  A `return`
 is a PASS to the runner, so `cargo test` exits 0 and the summary reads
 `347 passed; 0 failed` on a machine with no container.  Measured 2026-09-15 at
-tip `8eec36261`: of 354 reported-ok cases in `oz-cloud-server`, 36 printed a skip
+tip `8eec36261`: of 354 reported-ok cases in `kasirmu-cloud`, 36 printed a skip
 and therefore verified nothing -- 10.2% of a clean-looking green.
 
 It is worse than merely quiet.  The skip line cannot be grepped out of a default
@@ -48,7 +48,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-CRATES = ["oz-cloud-server", "kasirmu-api", "platform-sync"]
+CRATES = ["kasirmu-cloud", "kasirmu-api", "platform-sync"]
 
 # Source trees the arm census walks. Deliberately a filesystem walk, not
 # `git ls-files`: subprocess with captured stdio is denied under some agent
@@ -797,7 +797,7 @@ def self_test() -> int:
 
     buf = io.StringIO()
     with redirect_stdout(buf):
-        rc_empty = grade("Compiling oz-cloud-server v0.0.39\n", arms, per_file, proven=True)
+        rc_empty = grade("Compiling kasirmu-cloud v0.0.39\n", arms, per_file, proven=True)
     out = buf.getvalue()
     expect("an empty/build-only log fails", rc_empty == 1)
     expect("  ...without falsely blaming nextest", "nextest" not in out)

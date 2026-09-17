@@ -11,7 +11,7 @@
     When omitted with no other target, lists available benchmarks.
 
 .PARAMETER Binary
-    Binary package name to profile (e.g. "oz-pos-app", "oz-cloud-server", "oz-pos-tablet").
+    Binary package name to profile (e.g. "kasirmu-app", "kasirmu-cloud", "kasirmu-tablet").
 
 .PARAMETER PID
     Process ID of a running OZ-POS process to attach to. Requires Administrator privileges.
@@ -36,7 +36,7 @@
     Profile the transaction_commit benchmark.
 
 .EXAMPLE
-    powershell -File scripts/profile.ps1 -Binary oz-cloud-server
+    powershell -File scripts/profile.ps1 -Binary kasirmu-cloud
     Profile the cloud-server binary.
 
 .EXAMPLE

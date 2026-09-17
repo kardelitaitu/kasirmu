@@ -46,6 +46,6 @@ fi
 
 echo ""
 echo "Setup complete. Next:"
-echo "  1. Run a cold build:  cargo clean && time cargo check --workspace --exclude oz-pos-app"
-echo "  2. Run a warm build:  time cargo check --workspace --exclude oz-pos-app"
+echo "  1. Run a cold build:  cargo clean && time cargo check --workspace --exclude kasirmu-app"
+echo "  2. Run a warm build:  time cargo check --workspace --exclude kasirmu-app"
 echo "  3. Check stats:       sccache --show-stats"

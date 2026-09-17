@@ -7,14 +7,14 @@
 #
 # Usage:
 #   bash scripts/profile.sh --bench transaction_commit
-#   bash scripts/profile.sh --bin oz-cloud-server
+#   bash scripts/profile.sh --bin kasirmu-cloud
 #   bash scripts/profile.sh --pid 1234 --freq 1999
 #   bash scripts/profile.sh --list
 #   bash scripts/profile.sh --help
 #
 # Flags:
 #   --bench <name>    Benchmark target (e.g. transaction_commit, barcode_lookup)
-#   --bin <name>      Binary package name (e.g. oz-pos-app, oz-cloud-server)
+#   --bin <name>      Binary package name (e.g. kasirmu-app, kasirmu-cloud)
 #   --pid <pid>       Attach to running process by PID (requires root/sudo)
 #   --freq <hz>       Sampling frequency in Hz (default: 997)
 #   --output <path>   Output SVG path (auto-named if omitted)
@@ -24,7 +24,7 @@
 #
 # Examples:
 #   bash scripts/profile.sh --bench transaction_commit
-#   bash scripts/profile.sh --bin oz-pos-app
+#   bash scripts/profile.sh --bin kasirmu-app
 #   bash scripts/profile.sh --pid 1234 --freq 1999 --root
 #   bash scripts/profile.sh --list
 

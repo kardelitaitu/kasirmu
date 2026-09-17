@@ -8,7 +8,7 @@
 > contributors don't need the Tauri CLI installed to build"* — and Android follows that
 > policy while iOS has never been generated. So **every `gen/apple/...` path below
 > describes output of `cargo tauri ios init`, which must be run on a macOS host first.**
-> The project filename is also not stable: this guide says `oz-pos-tablet.xcodeproj`
+> The project filename is also not stable: this guide says `kasirmu-tablet.xcodeproj`
 > while `docs/guides/ios-build-guide.md` says `OZ-POS.xcodeproj`, and neither can be
 > verified until the scaffold exists. Prefer discovery over a hardcoded name:
 > `find apps/tablet-client/gen/apple -maxdepth 1 -name "*.xcodeproj"`.
@@ -102,7 +102,7 @@ cd ui && npx vite build --config vite.tablet.config.ts
 cd apps/tablet-client && cargo tauri ios init
 
 # 4. Open in Xcode and configure signing
-open apps/tablet-client/gen/apple/oz-pos-tablet.xcodeproj
+open apps/tablet-client/gen/apple/kasirmu-tablet.xcodeproj
 #    Set Team + Bundle Identifier in Signing & Capabilities
 
 # 5. Run in iOS simulator
@@ -151,8 +151,8 @@ cd apps/tablet-client && cargo tauri android build --aab
 ### Output Locations
 
 ```
-APK:  apps/tablet-client/gen/android/app/build/outputs/apk/release/oz-pos-tablet-arm64-v8a.apk
-AAB:  apps/tablet-client/gen/android/app/build/outputs/bundle/release/oz-pos-tablet.aab
+APK:  apps/tablet-client/gen/android/app/build/outputs/apk/release/kasirmu-tablet-arm64-v8a.apk
+AAB:  apps/tablet-client/gen/android/app/build/outputs/bundle/release/kasirmu-tablet.aab
 ```
 
 ---
@@ -172,14 +172,14 @@ cd apps/tablet-client && cargo tauri ios build --release
 ### Output Location
 
 ```
-IPA:  apps/tablet-client/gen/apple/build/oz-pos-tablet.ipa
+IPA:  apps/tablet-client/gen/apple/build/kasirmu-tablet.ipa
 ```
 
 ### Code Signing Setup
 
 1. Open the Xcode project:
    ```bash
-   open apps/tablet-client/gen/apple/oz-pos-tablet.xcodeproj
+   open apps/tablet-client/gen/apple/kasirmu-tablet.xcodeproj
    ```
 2. Select the target → **Signing & Capabilities**
 3. Choose your **Team** from the dropdown

@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=OZ-POS
 Comment=Point-of-sale framework
-Exec=oz-pos-app
+Exec=kasirmu-app
 Icon=oz-pos
 Type=Application
 Categories=Office;Finance;

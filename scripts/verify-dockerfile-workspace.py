@@ -4,7 +4,7 @@
 DOCKER-09: each Dockerfile (server and unified) manually copies every
 workspace member's Cargo.toml into the builder stage to prime the
 dependency cache, and creates dummy src dirs so `cargo build -p
-oz-cloud-server` can resolve the whole workspace. If a member is added to
+kasirmu-cloud` can resolve the whole workspace. If a member is added to
 the root Cargo.toml but forgotten in a Dockerfile, the priming build
 silently fails (it is best-effort) and the cache layer is dead weight —
 every image build then recompiles the full dependency tree.
@@ -38,7 +38,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CARGO_TOML = ROOT / "Cargo.toml"
 
 # Dockerfiles to validate, with members they are ALLOWED to omit. Both images
-# build `oz-cloud-server`; currently both carry the full member list so the
+# build `kasirmu-cloud`; currently both carry the full member list so the
 # exclusion sets are empty — kept so a future image can intentionally prune
 # members without breaking the check.
 DOCKERFILES: dict[str, set[str]] = {

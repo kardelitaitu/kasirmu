@@ -131,7 +131,7 @@ step -Label "demo data seed" -Block {
 
 # Step 7: cargo check (quick verify)
 step -Label "cargo check (quick verify)" -Block {
-    cargo check --workspace --all-features --exclude oz-pos-app --exclude oz-pos-tablet
+    cargo check --workspace --all-features --exclude kasirmu-app --exclude kasirmu-tablet
     Write-Host "  Workspace compiles cleanly"
 }
 

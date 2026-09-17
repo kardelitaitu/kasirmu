@@ -95,7 +95,7 @@
       "label": "Rust tests",
       "status": "required",
       "runners": { "check.sh": ["test workspace", "test doctests"] },
-      "_note": "Was ci.yml#rust-test-fast. dev-ci.yml runs `cargo nextest run --workspace --all-features` with NO excludes, so it covers this more broadly than check.sh, whose own nextest step excludes oz-pos-app. nextest does not run doctests, so that part remains check.sh-only.",
+      "_note": "Was ci.yml#rust-test-fast. dev-ci.yml runs `cargo nextest run --workspace --all-features` with NO excludes, so it covers this more broadly than check.sh, whose own nextest step excludes kasirmu-app. nextest does not run doctests, so that part remains check.sh-only.",
       "ci": { "workflow": "dev-ci.yml", "job": "cargo-nextest" }
     },
     {
@@ -311,7 +311,7 @@
       "id": "rust-test-apps",
       "label": "Rust test apps",
       "status": "required",
-      "_note": "Was ci.yml#rust-test-apps. dev-ci.yml's nextest carries no --exclude flags, so the app crates are in scope; check.sh's equivalent DOES exclude oz-pos-app, which is why this looked uncovered.",
+      "_note": "Was ci.yml#rust-test-apps. dev-ci.yml's nextest carries no --exclude flags, so the app crates are in scope; check.sh's equivalent DOES exclude kasirmu-app, which is why this looked uncovered.",
       "ci": { "workflow": "dev-ci.yml", "job": "cargo-nextest" }
     },
     {
