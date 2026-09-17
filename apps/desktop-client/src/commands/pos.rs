@@ -308,9 +308,24 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     state: State<'_, AppState>,
 ) -> Result<CompleteSaleResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::complete_sale_with_resolved_shortfalls_scoped(&ctx, &session_token, args)
-        .await
-        .map_err(Into::into)
+    let result = oz_bridge::pos::complete_sale_with_resolved_shortfalls_scoped(
+        &ctx,
+        &session_token,
+        args,
+    )
+    .await
+    .map_err(Into::into);
+
+    // SYNC-EW: wake the sync daemons so a completed sale reaches the cloud
+    // portal within seconds rather than waiting up to 120 s for the next
+    // periodic tick. The nudge is fire-and-forget: if the daemon is offline
+    // the enqueued item stays in offline_queue and the normal backoff retries.
+    if result.is_ok() {
+        state.sync_daemon.nudge();
+        state.pg_sync_daemon.nudge();
+    }
+
+    result
 }
 
 /// Complete a sale within the store resolved from a session token.
@@ -327,7 +342,18 @@ pub async fn complete_sale_scoped(
     state: State<'_, AppState>,
 ) -> Result<CompleteSaleResult, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::complete_sale_scoped(&ctx, &session_token, args)
+    let result = oz_bridge::pos::complete_sale_scoped(&ctx, &session_token, args)
         .await
-        .map_err(Into::into)
+        .map_err(Into::into);
+
+    // SYNC-EW: wake the sync daemons so a completed sale reaches the cloud
+    // portal within seconds rather than waiting up to 120 s for the next
+    // periodic tick.
+    if result.is_ok() {
+        state.sync_daemon.nudge();
+        state.pg_sync_daemon.nudge();
+    }
+
+    result
 }
+
