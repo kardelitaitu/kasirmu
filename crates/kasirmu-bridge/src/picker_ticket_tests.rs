@@ -1,5 +1,5 @@
 //! Unit tests for the picker-ticket primitives (test relocation: moved
-//! out of `apps/desktop-client/src/commands/picker_ticket_tests.rs`).
+//! out of `apps/desktop-tauri/src/commands/picker_ticket_tests.rs`).
 //!
 //! Mounted at the foot of `picker.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves `sign_picker_ticket`, `verify_picker_ticket`

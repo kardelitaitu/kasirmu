@@ -1,5 +1,5 @@
 //! POS cart and held-bill bridge module (Wave D / D1a) - the tauri-free half of
-//! apps/desktop-client/src/commands/pos.rs.
+//! apps/desktop-tauri/src/commands/pos.rs.
 //!
 //! Key functions: the session-scoped cart operations set_cart_discount_scoped,
 //! start_sale_scoped, add_line_scoped, override_line_price_scoped,

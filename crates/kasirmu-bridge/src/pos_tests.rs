@@ -1,6 +1,6 @@
 //! Unit tests for the POS bridge module.
 //!
-//! Relocated from `apps/desktop-client/src/commands/pos_tests.rs` (Wave D /
+//! Relocated from `apps/desktop-tauri/src/commands/pos_tests.rs` (Wave D /
 //! D-rel-1). The shell's `tauri::test` mock app is replaced by the headless
 //! `TestBridge` harness ([`crate::testing`]) and every scoped command call
 //! targets `kasirmu_bridge::pos` directly through a borrowed `BridgeCtx` — the

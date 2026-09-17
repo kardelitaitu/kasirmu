@@ -1,5 +1,5 @@
 //! Picker-ticket primitives (Wave B / B4a) — the tauri-free half of
-//! `apps/desktop-client/src/commands/picker_ticket.rs`.
+//! `apps/desktop-tauri/src/commands/picker_ticket.rs`.
 //!
 //! A ticket is `{user_id}.{expiry_ts}.{hex_hmac}` where the HMAC covers
 //! `picker:{user_id}:{expiry_ts}` with the per-process secret carried by

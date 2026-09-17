@@ -1,5 +1,5 @@
 //! Product-variant command bodies (Wave A / S7) — the tauri-free half of
-//! `apps/desktop-client/src/commands/product_variants.rs`.
+//! `apps/desktop-tauri/src/commands/product_variants.rs`.
 //!
 //! Key functions: the session-scoped [`list_scoped`], [`get_scoped`],
 //! [`create_scoped`], [`update_scoped`] and [`delete_scoped`] operations,
