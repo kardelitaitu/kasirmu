@@ -22,15 +22,15 @@ cargo tarpaulin --workspace --out Html --output-dir coverage/rust
 
 | Crate | Target | Status |
 |-------|--------|--------|
-| `oz-core` | ≥ 70% | ✅ 1,669 tests, high coverage |
-| `oz-hal` | ≥ 60% | ✅ 232 tests |
-| `oz-payment` | ≥ 60% | ✅ 122 tests |
-| `oz-lua` | ≥ 50% | ⚠️ 62 tests, narrow surface |
-| `oz-security` | ≥ 50% | ⚠️ Keyring + rotation tests |
-| `oz-reporting` | ≥ 50% | ⚠️ Menu engineering + metrics |
-| `oz-api` | ≥ 40% | ⚠️ Thin API wrapper |
-| `oz-cli` | ≥ 40% | ⚠️ CLI entry points |
-| `oz-plugin` | ≥ 40% | ⚠️ Manifest parsing |
+| `kasirmu-core` | ≥ 70% | ✅ 1,669 tests, high coverage |
+| `kasirmu-hal` | ≥ 60% | ✅ 232 tests |
+| `kasirmu-payment` | ≥ 60% | ✅ 122 tests |
+| `kasirmu-lua` | ≥ 50% | ⚠️ 62 tests, narrow surface |
+| `kasirmu-security` | ≥ 50% | ⚠️ Keyring + rotation tests |
+| `kasirmu-reporting` | ≥ 50% | ⚠️ Menu engineering + metrics |
+| `kasirmu-api` | ≥ 40% | ⚠️ Thin API wrapper |
+| `kasirmu-cli` | ≥ 40% | ⚠️ CLI entry points |
+| `kasirmu-plugin` | ≥ 40% | ⚠️ Manifest parsing |
 | `platform/sync` | ≥ 60% | ✅ 262 tests |
 | `workspace` | ≥ 50% | Target for CI gate |
 

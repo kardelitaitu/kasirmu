@@ -74,7 +74,7 @@ ui/
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
-use oz_core::{Money, Sku};
+use kasirmu_core::{Money, Sku};
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -100,7 +100,7 @@ pub async fn add_line_scoped(
     // Scoped commands resolve the store from the session first (ADR #7),
     // then verify the caller holds the required permission.
     let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_PROCESS).await?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SALES_PROCESS).await?;
     let cart = /* resolve cart through state.db_manager … */;
     let line = cart.add_line(args.sku, args.qty)?;
     Ok(AddLineResult { line_id: line.id, line_total: line.total() })
@@ -292,7 +292,7 @@ export async function onBarcodeScan(
 2. **Returning `String` errors** from a command. Front-end has to string-match. Use `AppError` with variants.
 3. **Putting a command in `mod.rs` of `commands/`** instead of a sub-module. Bloats `mod.rs` and breaks the feature-folder convention.
 4. **Forgetting `tauri::generate_handler!`** — the command compiles but is not callable at runtime. Easy to miss; lint with a startup smoke test.
-5. **Reusing a domain type from `oz-core` directly in a command's `*Result`** without wrapping. Tauri serializes via JSON, and internal fields may include `i64` IDs that the JS side can't represent. Wrap with a serializable `Id(String)` or similar.
+5. **Reusing a domain type from `kasirmu-core` directly in a command's `*Result`** without wrapping. Tauri serializes via JSON, and internal fields may include `i64` IDs that the JS side can't represent. Wrap with a serializable `Id(String)` or similar.
 6. **`State<'_, T>` borrowing across an `await`** — fine on the outer `async fn`, but if you call helper functions, pass `&T` from the state, not the `State` guard.
 7. **Returning raw `Money.minor_units` into the UI without a renderer.** The number is correct but `123456` cents reads as "123,456" in the UI. Render through the front-end's `formatMoney` helper (`ui/src/types/domain.ts`).
 
@@ -300,7 +300,7 @@ export async function onBarcodeScan(
 
 ## See also
 
-- **[`rust-backend`](../rust-backend/SKILL.md)** — defines the `oz-core` types (`Money`, `CartId`, `Sku`, …) that cross this IPC boundary. Read it before adding a new command so you know how the types are meant to be constructed and serialized.
+- **[`rust-backend`](../rust-backend/SKILL.md)** — defines the `kasirmu-core` types (`Money`, `CartId`, `Sku`, …) that cross this IPC boundary. Read it before adding a new command so you know how the types are meant to be constructed and serialized.
 - **[`hal-drivers`](../hal-drivers/SKILL.md)** — the hardware drivers and `DriverRegistry` that hardware-touching commands (barcode scan, cash drawer, receipt print) reach into. The wiring pattern `State<'_, AppState>` -> `DriverRegistry::scanner(id)` lives in both skills; keep them in sync.
 - **[`ui-components`](../ui-components/SKILL.md)** — the React/TypeScript side of this contract. Every command you add here needs a `ui/src/api/<feature>.ts` wrapper and a hook in `ui/src/features/<feature>/`.
 - **[`project-scaffold`](../project-scaffold/SKILL.md)** — the CI matrix and branch policy that gate this code into release.

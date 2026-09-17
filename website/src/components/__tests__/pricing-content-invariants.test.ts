@@ -221,7 +221,7 @@ describe('numeric quota matrix (Phase 1 §E verification anchor)', () => {
   // Canonical values, in enforcement order:
   // - locations: tierQuotas() in apps/license-server/paddle_webhook.go
   //   (free 1, plus 1, pro 2, premium 5, enterprise 0=unlimited) mirrored by
-  //   SubscriptionTier::max_locations() in crates/oz-core/src/subscription.rs.
+  //   SubscriptionTier::max_locations() in crates/kasirmu-core/src/subscription.rs.
   // - terminals/location: tierQuotas max_pos_instances ↔ max_pos_instances().
   // - warehouse workspaces: max_warehouses() (client-side per the Go comment).
   // - KDS screens: max_kds_screens() + the kds branch of

@@ -137,9 +137,9 @@ describe('verify-architecture-boundaries.py', () => {
     assert.match(result.output, /module-to-module/);
   });
 
-  it('reports oz-core upward dependencies', () => {
+  it('reports kasirmu-core upward dependencies', () => {
     const dir = fixture({
-      packages: [{ name: 'oz-core', dependencies: [{ name: 'modules-sales' }] }, { name: 'modules-sales' }],
+      packages: [{ name: 'kasirmu-core', dependencies: [{ name: 'modules-sales' }] }, { name: 'modules-sales' }],
     });
     const result = run(dir);
     assert.equal(result.code, 1, result.output);
@@ -263,10 +263,10 @@ describe('verify-architecture-boundaries.py', () => {
     assert.equal(json.tracked_transitional[0].path, 'ui/src/hooks/useKnown.ts');
   });
 
-  it('accepts a toolkit-free oz-bridge and ignores the crate own purity comments', () => {
+  it('accepts a toolkit-free kasirmu-bridge and ignores the crate own purity comments', () => {
     const dir = fixture({
       uiFiles: {
-        'crates/kasirmu-bridge/Cargo.toml': '[package]\nname = "oz-bridge"\n\n[dependencies]\nserde = "1"\n',
+        'crates/kasirmu-bridge/Cargo.toml': '[package]\nname = "kasirmu-bridge"\n\n[dependencies]\nserde = "1"\n',
         'crates/kasirmu-bridge/src/lib.rs': '// depends on no tauri, gtk or webkit type\npub struct Ctx;\n',
       },
     });
@@ -274,10 +274,10 @@ describe('verify-architecture-boundaries.py', () => {
     assert.equal(result.code, 0, result.output);
   });
 
-  it('reports a UI toolkit dependency or reference inside oz-bridge', () => {
+  it('reports a UI toolkit dependency or reference inside kasirmu-bridge', () => {
     const dir = fixture({
       uiFiles: {
-        'crates/kasirmu-bridge/Cargo.toml': '[package]\nname = "oz-bridge"\n\n[dependencies]\ntauri = "2"\n',
+        'crates/kasirmu-bridge/Cargo.toml': '[package]\nname = "kasirmu-bridge"\n\n[dependencies]\ntauri = "2"\n',
         'crates/kasirmu-bridge/src/lib.rs': '// no tauri here\nuse tauri::Manager;\n',
       },
     });
@@ -354,7 +354,7 @@ describe('verify-architecture-boundaries.py', () => {
   }
   const CORE_CRM = {
     packages: [
-      { name: 'oz-core', dependencies: [{ name: 'modules-crm', path: 'crates/modules-crm' }] },
+      { name: 'kasirmu-core', dependencies: [{ name: 'modules-crm', path: 'crates/modules-crm' }] },
       { name: 'modules-crm', manifest: 'crates/modules-crm/Cargo.toml' },
     ],
   };
@@ -362,7 +362,7 @@ describe('verify-architecture-boundaries.py', () => {
   it('tracks a suppression recorded under a different spelling of the same root', () => {
     const dir = fixture(CORE_CRM);
     // Same file, spelled through a redundant ".." and as an absolute path.
-    baselineFor(dir, [baselineEntry('core-upward-dependency', join(dir, 'crates', '..', 'crates', 'oz-core', 'Cargo.toml'), 'modules-crm')]);
+    baselineFor(dir, [baselineEntry('core-upward-dependency', join(dir, 'crates', '..', 'crates', 'kasirmu-core', 'Cargo.toml'), 'modules-crm')]);
     const result = run(dir, ['--strict', '--json']);
     assert.equal(result.code, 0, result.output);
     const json = JSON.parse(result.output);
@@ -398,7 +398,7 @@ describe('verify-architecture-boundaries.py', () => {
   }
 
   it('refuses to substitute the cached cargo graph when cargo metadata fails', () => {
-    const dir = fixture({ packages: [{ name: 'oz-core' }] });
+    const dir = fixture({ packages: [{ name: 'kasirmu-core' }] });
     // A manifest cargo cannot read, plus a cache that names ANOTHER root.
     writeFileSync(join(dir, 'Cargo.toml'), '[package]\nname = \"broken this is not valid toml\n');
     writeFileSync(
@@ -426,7 +426,7 @@ describe('verify-architecture-boundaries.py', () => {
     // containment must NOT be accepted here -- release checkouts live inside this
     // root by design. The second half proves the honest case still passes: a fixture
     // that declares its own mkdtemp directory is exactly what --metadata-file is for.
-    const foreign = fixture({ packages: [{ name: 'oz-core', dependencies: [{ name: 'modules-crm', kind: 'normal' }] }] });
+    const foreign = fixture({ packages: [{ name: 'kasirmu-core', dependencies: [{ name: 'modules-crm', kind: 'normal' }] }] });
     const sibling = join(foreign, '..', '0.0.35', 'oz-pos');
     writeFileSync(join(foreign, 'scripts', 'metadata.json'), JSON.stringify({ workspace_root: sibling, packages: [] }, null, 2));
     const refused = run(foreign, ['--strict']);
@@ -434,7 +434,7 @@ describe('verify-architecture-boundaries.py', () => {
     assert.match(refused.output, /workspace_root/, refused.output);
     assert.match(refused.output, /cannot score this one/, 'the message must say why: ' + refused.output);
     assert.doesNotMatch(refused.output, /stale baseline entry/, 'it must not report findings it never verified: ' + refused.output);
-    const own = fixture({ packages: [{ name: 'oz-core', dependencies: [{ name: 'modules-crm', kind: 'normal' }] }] });
+    const own = fixture({ packages: [{ name: 'kasirmu-core', dependencies: [{ name: 'modules-crm', kind: 'normal' }] }] });
     const ownMeta = JSON.parse(readFileSync(join(own, 'scripts', 'metadata.json'), 'utf8'));
     ownMeta.workspace_root = own;
     writeFileSync(join(own, 'scripts', 'metadata.json'), JSON.stringify(ownMeta, null, 2));

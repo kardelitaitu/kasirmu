@@ -1,6 +1,6 @@
 <!-- Audit stamp: 2026-08-29 · docs-auditor · status: ACCURATE (2 findings repaired) · F1: "35 unit tests pass" -> 136 in src/ (incl. drivers/) · F2: "Next: real adapters (Stripe, Square, EMV terminal)" -> Stripe, Square, QRIS, Paddle already exist; EMV terminal not present · verified accurate: PaymentProcessor trait in processor.rs:37 with authorize/capture/refund/void/sale lifecycle + receipt/device_info; MockPaymentProcessor in drivers/mock.rs -->
 
-# oz-payment
+# kasirmu-payment
 
 Payment processor abstraction for OZ-POS.
 

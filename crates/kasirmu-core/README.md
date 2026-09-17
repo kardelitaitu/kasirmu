@@ -1,4 +1,4 @@
-# oz-core
+# kasirmu-core
 
 <!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (12 findings) · SUPERSEDES the 2026-08-31 stamp, whose fix is carried forward: it added the missing promotion_engine row (PROMO-3 discount engine, compute_discount / compute_discount_unscoped). · RECONCILED the module table against src/*.rs: 67 rows, 0 dead, 2 modules deliberately unlisted (lib, features_proptests). Repaired: store_profile -> location_profile (the store→location rename, 10260a035 + c9d0ec95f on 2026-09-06), and 10 modules that exist and were absent from the crate's own README — availability, downgrade, entitlements, legal_entity, memo, payable, regional, service_health, sync_auth, sync_pull. Two of those absences matter more than a missing row: entitlements.rs is now the single read model where tier, quota, add-on grant and the dev Free→Premium upgrade resolve (the consolidation landed 2026-09-08 in 1b3e71798), and downgrade.rs holds the QuotaDimension enum that docs/guides/subscription-tiers.md documents enforcement for. A reader learning the crate from its README would not find either. -->
 

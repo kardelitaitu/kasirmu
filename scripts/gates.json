@@ -102,7 +102,7 @@
       "id": "release-bridge-tests",
       "label": "Release-profile bridge tests",
       "status": "required",
-      "_note": "CI-ONLY by design: no check.sh runner, because a release build would add minutes to every local run. dev-ci.yml#release-bridge-test runs `cargo nextest run -p oz-bridge --release` on push to main only (not PR, not scheduled): a release compile is much colder than the debug one, and taxing every PR with it was ruled not worth the guarantee. Landable because release went green at 2dc500382 - never land a gate red. Flag trap: `-P release` is the NEXTEST profile and would silently re-run the debug build; `-r`/`--release` is the cargo profile.",
+      "_note": "CI-ONLY by design: no check.sh runner, because a release build would add minutes to every local run. dev-ci.yml#release-bridge-test runs `cargo nextest run -p kasirmu-bridge --release` on push to main only (not PR, not scheduled): a release compile is much colder than the debug one, and taxing every PR with it was ruled not worth the guarantee. Landable because release went green at 2dc500382 - never land a gate red. Flag trap: `-P release` is the NEXTEST profile and would silently re-run the debug build; `-r`/`--release` is the cargo profile.",
       "ci": { "workflow": "dev-ci.yml", "job": "release-bridge-test" }
     },
     {
@@ -140,7 +140,7 @@
       "id": "topology-parity",
       "label": "Topology contract parity",
       "status": "required",
-      "_note": "Added 0.0.37. scripts/verify-topology-parity.py keeps the vendored oz-core copy and the UI copy of topologySemantics.json byte-identical, since both sides of the IPC boundary read it. Local-only: check.sh is its only runner.",
+      "_note": "Added 0.0.37. scripts/verify-topology-parity.py keeps the vendored kasirmu-core copy and the UI copy of topologySemantics.json byte-identical, since both sides of the IPC boundary read it. Local-only: check.sh is its only runner.",
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["topology contract parity"] }
     },
@@ -207,7 +207,7 @@
       "label": "Migration smoke",
       "status": "required",
       "runners": { "check.sh": ["migration"] },
-      "_note": "Local-only. check.sh:98-99 run `cargo run -p oz-cli -- migrate` twice (smoke + idempotency). No CI job does. ⚠ The section comment at check.sh:97 says 'mirrors CI `migration` job' and that is FALSE -- dev-ci.yml's ten jobs are changes, website, cargo-check, cargo-nextest, ui-test, i18n, ci-docs-drift, static-gates, release-readiness, northflank-deploy; none is named `migration`. Distinct from pg-schema-drift and migration-column-types, which ARE CI-backed in static-gates since 0.0.37; this entry is the SQLite migrate-up path, which never is."
+      "_note": "Local-only. check.sh:98-99 run `cargo run -p kasirmu-cli -- migrate` twice (smoke + idempotency). No CI job does. ⚠ The section comment at check.sh:97 says 'mirrors CI `migration` job' and that is FALSE -- dev-ci.yml's ten jobs are changes, website, cargo-check, cargo-nextest, ui-test, i18n, ci-docs-drift, static-gates, release-readiness, northflank-deploy; none is named `migration`. Distinct from pg-schema-drift and migration-column-types, which ARE CI-backed in static-gates since 0.0.37; this entry is the SQLite migrate-up path, which never is."
     },
     {
       "id": "skill-drift",

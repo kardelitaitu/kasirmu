@@ -199,7 +199,7 @@ if ($GeneratedSecrets.Count -gt 0) {
 }
 
 # ── Check license key ─────────────────────────────────────────────
-$licenseKeyPath = "crates\oz-core\oz-license-private.pem"
+$licenseKeyPath = "crates\kasirmu-core\oz-license-private.pem"
 if (-not $env:OZ_LICENSE_PRIVATE_KEY) {
   if (Test-Path $licenseKeyPath) {
     $env:OZ_LICENSE_PRIVATE_KEY = (Get-Content $licenseKeyPath -Raw).Trim()

@@ -6,7 +6,7 @@
 #
 # Usage:
 #   bash scripts/report-flaky.sh                    # full suite × 3
-#   bash scripts/report-flaky.sh -p oz-core         # single crate × 3
+#   bash scripts/report-flaky.sh -p kasirmu-core         # single crate × 3
 #   bash scripts/report-flaky.sh --runs 5           # full suite × 5
 #   bash scripts/report-flaky.sh --filter test_name # pattern match
 #

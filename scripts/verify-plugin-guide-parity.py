@@ -8,7 +8,7 @@ WHY
 
 `docs/plugin-guide.md` historically advertised APIs that were never
 implemented: `oz.api_version`, `oz.get_setting`, `oz.get_product`,
-`oz.get_cart`, `oz.calc_line_tax`, plus `cargo run -p oz-cli --
+`oz.get_cart`, `oz.calc_line_tax`, plus `cargo run -p kasirmu-cli --
 run-script` / `validate-plugins`. Developers built against nonexistent
 surfaces and received misleading instructions. PLG-10 recommended adding
 "a documentation/API parity check that compares documented bindings and
@@ -28,7 +28,7 @@ It verifies, in both directions:
      failure — the gate is fail-closed on *aspirational* docs, the
      expensive direction, while missing-doc is informational.
 
-  3. **CLI commands:** any `cargo run -p oz-cli -- <cmd>` line in the
+  3. **CLI commands:** any `cargo run -p kasirmu-cli -- <cmd>` line in the
      guide must reference a real subcommand in
      `crates/kasirmu-cli/src/cli.rs` (the `Command` enum). Also, the two
      historic phantom commands (`run-script`, `validate-plugins`) are
@@ -83,13 +83,13 @@ OZ_SET = re.compile(r'oz\.set\("([a-z][a-z0-9_]*)",')
 # `[^\]]`) is deliberate: the declaration itself contains `&[&str]`, so
 # a negated-`]` class would stop at the wrong bracket.
 LEGACY_HEAD = re.compile(r"LEGACY_HOOK_NAMES\b[^\n]*?=\s*&\s*\[")
-# CLI subcommands documented in the guide: `cargo run -p oz-cli -- name`
-CLI_DOC = re.compile(r"cargo run -p oz-cli --\s+([a-z][a-z0-9-]*)", re.I)
+# CLI subcommands documented in the guide: `cargo run -p kasirmu-cli -- name`
+CLI_DOC = re.compile(r"cargo run -p kasirmu-cli --\s+([a-z][a-z0-9-]*)", re.I)
 # Phantom commands that historically never existed and must not return.
 PHANTOM_CLI = {"run-script", "validate-plugins"}
 
 DESCRIPTION = (
-    "Verify every oz.* binding and oz-cli subcommand documented in "
+    "Verify every oz.* binding and kasirmu-cli subcommand documented in "
     "docs/plugin-guide.md is actually implemented in the Rust source. "
     "See the module docstring for rationale."
 )
@@ -181,7 +181,7 @@ def main() -> int:
         f"oz.* binding(s); source registers {len(oz_impl)} table binding(s) "
         f"+ {len(legacy_impl)} legacy hook(s)."
     )
-    print(f"  guide documents {len(cli_documented)} oz-cli subcommand(s); "
+    print(f"  guide documents {len(cli_documented)} kasirmu-cli subcommand(s); "
           f"source defines {len(cli_impl)} subcommand(s).")
     print()
 
@@ -193,12 +193,12 @@ def main() -> int:
     if missing_cli:
         print(f"  MISSING CLI (documented but not implemented) — {len(missing_cli)}:")
         for name in missing_cli:
-            print(f"    oz-cli {name}")
+            print(f"    kasirmu-cli {name}")
         print()
     if phantom:
         print(f"  PHANTOM CLI (documented but must never exist) — {len(phantom)}:")
         for name in phantom:
-            print(f"    oz-cli {name}")
+            print(f"    kasirmu-cli {name}")
         print()
     if undocumented:
         print(

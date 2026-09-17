@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings on code-claim basis — business/strategy doc) · market-facing feature descriptions match implemented capabilities verified in prior turns: Embedded Lua VM (oz-lua), Midtrans QRIS + Stripe (oz-payment qris.rs/stripe.rs), HAL peripherals (oz-hal), PostgreSQL outbox sync (platform/sync), offline-first SQLite · §2 rewritten 2026-08-26 to the approved 5-tier lineup per subscription-tiers.md / website pricing -->
+<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings on code-claim basis — business/strategy doc) · market-facing feature descriptions match implemented capabilities verified in prior turns: Embedded Lua VM (kasirmu-lua), Midtrans QRIS + Stripe (kasirmu-payment qris.rs/stripe.rs), HAL peripherals (kasirmu-hal), PostgreSQL outbox sync (platform/sync), offline-first SQLite · §2 rewritten 2026-08-26 to the approved 5-tier lineup per subscription-tiers.md / website pricing -->
 
 # Business Plan: kasir.mu Platform
 
@@ -223,7 +223,7 @@ Operating a commercial point-of-sale system in Indonesia requires adherence to B
 
 1.  **Dynamic QRIS Generation:** Integration with Midtrans enables the dynamically generated QRIS (Standard QR Code Indonesia) to be displayed on terminals, validating payments against the central BI merchant network instantly.
 2.  **Local Taxation Engine:** The embedded Lua VM allows restaurants and retail outlets to dynamically configure PPN (Pajak Pertambahan Nilai) at the national 11% rate, PB1 restaurant tax (10%), and customizable local service charges dynamically without app store updates.
-3.  **Encrypted Local Audit Trails:** Transactions stored in SQLite utilize `oz-security`'s AES encryption before sync logs are compiled, keeping sales audit records compliant with PDP (Personal Data Protection / UU PDP) data-residency provisions.
+3.  **Encrypted Local Audit Trails:** Transactions stored in SQLite utilize `kasirmu-security`'s AES encryption before sync logs are compiled, keeping sales audit records compliant with PDP (Personal Data Protection / UU PDP) data-residency provisions.
 
 > last audited 09-08-26 by buffy
 > audit: Phase 1 Core Architecture & API Docs Audit

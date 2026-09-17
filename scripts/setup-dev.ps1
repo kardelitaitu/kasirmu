@@ -104,13 +104,13 @@ step -Label "npm install" -Block {
 
 # Step 4: Database migration
 step -Label "database migration" -Block {
-    cargo run -p oz-cli -- migrate
+    cargo run -p kasirmu-cli -- migrate
     Write-Host "  Schema up to date"
 }
 
 # Step 5: Migration idempotency
 step -Label "migration idempotency" -Block {
-    cargo run -p oz-cli -- migrate
+    cargo run -p kasirmu-cli -- migrate
     Write-Host "  Idempotent -- second run succeeds"
             Remove-Item -LiteralPath "kasir.db", "kasir.db-wal", "kasir.db-shm" -ErrorAction Ignore
 }
@@ -120,7 +120,7 @@ step -Label "demo data seed" -Block {
     # Try to seed demo data; skip gracefully if subcommand unavailable.
     # Run via cmd.exe to suppress PowerShell error records from 2>&1
     # that would otherwise become terminating errors under $ErrorActionPreference = "Stop".
-    $output = & cmd /c "cargo run -p oz-cli -- seed-demo 2>nul"
+    $output = & cmd /c "cargo run -p kasirmu-cli -- seed-demo 2>nul"
     if ($LASTEXITCODE -eq 0) {
         Write-Host "  Demo data loaded"
     } else {

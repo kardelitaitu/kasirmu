@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-08-29 · docs-auditor · status: ACCURATE (1 finding repaired + 1 minor note) · F1: usage snippet used `platform_sync::SyncConfig` but SyncConfig is NOT re-exported from platform_sync — correct path is `oz_core::SyncConfig` (re-exported at oz_core/src/lib.rs:236) · note: the directory tree (queue/, transport/, replication/, conflict/) is illustrative — actual layout is flat src/ files queue.rs, transport.rs, replication.rs, conflict.rs (+ daemon.rs, pg_daemon.rs, pg_transport.rs) · crate is platform-sync (Cargo.toml name); SyncEngine (src/lib.rs:1518) and run_sync_cycle (lib.rs:1784) verified; offline-first + LWW conflict resolution matches implementation -->
+<!-- Audit stamp: 2026-08-29 · docs-auditor · status: ACCURATE (1 finding repaired + 1 minor note) · F1: usage snippet used `platform_sync::SyncConfig` but SyncConfig is NOT re-exported from platform_sync — correct path is `kasirmu_core::SyncConfig` (re-exported at kasirmu_core/src/lib.rs:236) · note: the directory tree (queue/, transport/, replication/, conflict/) is illustrative — actual layout is flat src/ files queue.rs, transport.rs, replication.rs, conflict.rs (+ daemon.rs, pg_daemon.rs, pg_transport.rs) · crate is platform-sync (Cargo.toml name); SyncEngine (src/lib.rs:1518) and run_sync_cycle (lib.rs:1784) verified; offline-first + LWW conflict resolution matches implementation -->
 
 # platform-sync
 
@@ -41,7 +41,7 @@ removed by the caller after the run (`docker stop oz-pos-pg-sync-tdd`).
 
 ```
 platform/sync/
-├── queue/       — Local change log (wraps oz-core offline_queue table)
+├── queue/       — Local change log (wraps kasirmu-core offline_queue table)
 ├── transport/   — HTTP client for communicating with remote sync server
 ├── replication/ — Push + pull orchestration
 └── conflict/    — Conflict resolution strategies (LWW initially)
@@ -51,7 +51,7 @@ platform/sync/
 
 ```rust
 use platform_sync::SyncEngine;
-use oz_core::{SyncConfig, db::Store};
+use kasirmu_core::{SyncConfig, db::Store};
 
 let engine = SyncEngine::new(config);
 let result = engine.run_sync_cycle(&store).await?;

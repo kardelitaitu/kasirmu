@@ -5,8 +5,8 @@
 **SQLite is the source of truth. Postgres is a generated replica.**
 
 - Every schema change is a migration file under
-  `crates/oz-core/migrations/` plus a registry entry in
-  `crates/oz-core/src/migrations.rs` (registry order is canonical — not
+  `crates/kasirmu-core/migrations/` plus a registry entry in
+  `crates/kasirmu-core/src/migrations.rs` (registry order is canonical — not
   filename order). Terminals (desktop/tablet) run SQLite only.
 - `20260813_init.pg.sql` is **generated** from the fully-migrated SQLite
   schema by `scripts/generate-pg-migration.py`. Never hand-edit it — pre-commit
@@ -29,6 +29,6 @@
   MONEY-01).
 - After changing the PG schema, re-sync the shared dev container:
   `bash scripts/reset-dev-pg.sh` (or the `.ps1` twin), then
-  `cargo test -p oz-api --lib pg`.
+  `cargo test -p kasirmu-api --lib pg`.
 
 > last audited 08-09-26 by docs-auditor

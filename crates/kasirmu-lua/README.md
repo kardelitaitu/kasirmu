@@ -1,4 +1,4 @@
-# oz-lua
+# kasirmu-lua
 
 <!-- Audit stamp: 2026-07-24 · Antigravity · status: ACCURATE · Migrated to mlua 0.9 (Lua 5.4 vendored). Memory limit (10 MiB) natively enforced via set_memory_limit. -->
 
@@ -44,7 +44,7 @@ end
 ## Tests
 
 ```bash
-cargo test -p oz-lua
+cargo test -p kasirmu-lua
 ```
 
 > last audited 24-07-26 by Antigravity

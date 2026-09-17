@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (1 minor finding) · concrete claims verified: apps/cloud-server/ + crates/oz-plugin/ crates exist; crates/oz-reporting/src/menu_engineering.rs, crates/oz-core/src/recipe.rs + db/recipes.rs, crates/oz-core/src/sync/lan_discovery.rs, Dockerfile.server, docker-compose.yml all present; crates/oz-core/src/features.rs has cafe() (line 362) + franchise() (line 378) presets with tests · FINDING (minor): line 221 references version lock "0.0.4" — branch is 0.0.19 / docs say 0.0.18, so 0.0.4 is a stale version string in the plan text (not a code divergence). All 46/46 phase tasks reference real, existing code · master plan is internally consistent with the implemented modular architecture -->
+<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (1 minor finding) · concrete claims verified: apps/cloud-server/ + crates/kasirmu-plugin/ crates exist; crates/kasirmu-reporting/src/menu_engineering.rs, crates/kasirmu-core/src/recipe.rs + db/recipes.rs, crates/kasirmu-core/src/sync/lan_discovery.rs, Dockerfile.server, docker-compose.yml all present; crates/kasirmu-core/src/features.rs has cafe() (line 362) + franchise() (line 378) presets with tests · FINDING (minor): line 221 references version lock "0.0.4" — branch is 0.0.19 / docs say 0.0.18, so 0.0.4 is a stale version string in the plan text (not a code divergence). All 46/46 phase tasks reference real, existing code · master plan is internally consistent with the implemented modular architecture -->
 
 # Modular Application Master Plan: Feature-Based Configuration & Execution Roadmap
 
@@ -39,7 +39,7 @@ We have already established the foundational architecture across the Rust backen
 
 | Layer | Component / Location | Current Capability |
 | :--- | :--- | :--- |
-| **Backend Core Flags** | `crates/oz-core/src/features.rs` | Enforces **32 granular feature flags** across 8 logical groups (`Core`, `Payments`, `Products`, `Staff`, `Hardware`, `Business Rules`, `Restaurant`, `Scaling`, `Reporting`, `Advanced`). Includes automatic bottom-up dependency resolution (`FeatureRegistry::enable`). |
+| **Backend Core Flags** | `crates/kasirmu-core/src/features.rs` | Enforces **32 granular feature flags** across 8 logical groups (`Core`, `Payments`, `Products`, `Staff`, `Hardware`, `Business Rules`, `Restaurant`, `Scaling`, `Reporting`, `Advanced`). Includes automatic bottom-up dependency resolution (`FeatureRegistry::enable`). |
 | **Setup Wizard & Presets** | `ui/src/features/setup/SetupWizard.tsx` | Provides **4 built-in presets**: `Simple Retail` (🛒), `Restaurant` (🍽️), `Full Store` (🏪), and `Custom` (⚙️). Presets pre-check exact bundles of feature flags during initial store setup. |
 | **Admin Feature Toggles** | `ui/src/features/settings/FeatureToggleScreen.tsx`<br>`apps/desktop-client/src/commands/features.rs` | Admin can toggle flags post-setup via IPC (`list_all_features`, `set_feature`). Persists directly to SQLite `settings` table (`feature.<key> = "1"`). Auto-enables dependencies and cascades terminal auto-registration (`MultiTerminal`). |
 | **UI Registry System** | `ui/src/platform/ui/page-registry/index.ts`<br>`ui/src/platform/ui/menu-registry/index.ts` | Screens and sidebar items register with an optional `feature` requirement (e.g. `registerPage({ route: 'kds', feature: 'kitchen-display' })`). |
@@ -88,10 +88,10 @@ Every phase and high-level objective is broken down below into actionable, atomi
 
 #### 1.1 Expand Preset Templates (`Quick Service Cafe / Bakery`, `Franchise Restaurant`)
 
-- [x] **1.1.1 [Rust Core Presets]**: In `crates/oz-core/src/features.rs`, add `cafe()` and `franchise()` constructors to `FeatureRegistry`. Define their exact feature sets:
+- [x] **1.1.1 [Rust Core Presets]**: In `crates/kasirmu-core/src/features.rs`, add `cafe()` and `franchise()` constructors to `FeatureRegistry`. Define their exact feature sets:
   - `cafe()`: `SimpleRetail`, `CashPayment`, `CardPayment`, `ReceiptPrinting`, `CustomerDisplay`, `DiscountEngine`, `TaxEngine`, `KitchenDisplay`, `PromotionsEngine`.
   - `franchise()`: `Restaurant`, `CashPayment`, `CardPayment`, `MultiCurrency`, `InventoryTracking`, `ProductVariants`, `CategoriesEnabled`, `StaffLogin`, `StaffRoles`, `ShiftManagement`, `AuditLog`, `ReceiptPrinting`, `DiscountEngine`, `TaxEngine`, `KitchenDisplay`, `TableManagement`, `CloudSync`, `MultiStore`, `MultiTerminal`, `Reporting`, `Analytics`.
-- [x] **1.1.2 [Rust Preset Unit Tests]**: Add unit tests in `crates/oz-core/src/features.rs` ensuring `FeatureRegistry::cafe()` and `FeatureRegistry::franchise()` pass dependency closure validation (`from_set` assert).
+- [x] **1.1.2 [Rust Preset Unit Tests]**: Add unit tests in `crates/kasirmu-core/src/features.rs` ensuring `FeatureRegistry::cafe()` and `FeatureRegistry::franchise()` pass dependency closure validation (`from_set` assert).
 - [x] **1.1.3 [Setup Wizard UI Types]**: In `ui/src/features/setup/SetupWizard.tsx`, expand `Preset` union type to `Preset = 'simple-retail' | 'restaurant' | 'full-store' | 'cafe' | 'franchise' | 'custom'`. Update `PRESETS` array with option objects (`emoji`, `name`, `description`). Update `PRESET_FEATURES` mapping with exact kebab-case keys.
 - [x] **1.1.4 [i18n Localization]**: Add Fluent strings for the store presets. **The key names and path here were wrong** — there is no ui/src/locales/en-US/ directory (bundles are flat: ui/src/locales/<domain>.ftl plus <domain>.id.ftl), and the card-label keys carry no -name suffix. What actually ships, in ui/src/locales/settings.ftl: setup-preset-cafe, setup-preset-cafe-desc, setup-preset-franchise, setup-preset-franchise-desc, plus simple-retail, restaurant, full-store, custom and their -desc siblings (30 setup-preset* keys in total). The wizard composes the label key dynamically from the preset id, so a wrong suffix fails silently instead of tripping the literal-key check.
 
@@ -121,14 +121,14 @@ Every phase and high-level objective is broken down below into actionable, atomi
 
 #### 2.2 Active Operation Guards (Safe Disabling Validation)
 
-- [x] **2.2.1 [Guard Trait & Error Structure]**: In `crates/oz-core/src/features.rs` (or `platform/kernel/`), define `pub trait FeatureGuard: Send + Sync { fn can_disable(&self, feature: Feature, conn: &Connection) -> Result<(), String>; }`.
+- [x] **2.2.1 [Guard Trait & Error Structure]**: In `crates/kasirmu-core/src/features.rs` (or `platform/kernel/`), define `pub trait FeatureGuard: Send + Sync { fn can_disable(&self, feature: Feature, conn: &Connection) -> Result<(), String>; }`.
 - [x] **2.2.2 [KDS Tickets Safety Guard]**: Implement `KdsFeatureGuard`. When `feature == Feature::KitchenDisplay`, query `SELECT COUNT(*) FROM kds_orders WHERE status IN ('pending', 'preparing')`. If count > 0, return `Err(format!("Cannot disable Kitchen Display while {} tickets are actively in progress", count))`.
 - [x] **2.2.3 [Shift Reconciliation Safety Guard]**: Implement `ShiftFeatureGuard`. When `feature == Feature::ShiftManagement`, query `SELECT COUNT(*) FROM shifts WHERE closed_at IS NULL`. If count > 0, return `Err("Cannot disable Shift Management while a shift is actively open and unreconciled")`.
 - [x] **2.2.4 [IPC Guard Integration]**: In `set_feature` (`apps/desktop-client/src/commands/features.rs`), run all registered `FeatureGuard` checks before mutating `FeatureRegistry`. If any guard returns an `Err`, abort the transaction and return the actionable error string.
 
 #### 2.3 Terminal Profiles & Kiosk Lock
 
-- [x] **2.3.1 [SQLite Schema Migration]**: In `crates/oz-core/migrations/` (the SQL lives there, with the registry in `crates/oz-core/src/migrations.rs` — there is no `src/db/migrations/`), add migration table `terminal_profiles` (`terminal_id TEXT PRIMARY KEY, profile_type TEXT NOT NULL, locked_screen TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`). Profile types: `'counter_pos' | 'kds_kiosk' | 'customer_display' | 'unrestricted'`.
+- [x] **2.3.1 [SQLite Schema Migration]**: In `crates/kasirmu-core/migrations/` (the SQL lives there, with the registry in `crates/kasirmu-core/src/migrations.rs` — there is no `src/db/migrations/`), add migration table `terminal_profiles` (`terminal_id TEXT PRIMARY KEY, profile_type TEXT NOT NULL, locked_screen TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`). Profile types: `'counter_pos' | 'kds_kiosk' | 'customer_display' | 'unrestricted'`.
 - [x] **2.3.2 [Terminal Profile IPC Commands]**: Implement `get_terminal_profile(terminal_id: String) -> Result<TerminalProfileDto, AppError>` and `set_terminal_profile(terminal_id: String, profile_type: String)` in `apps/desktop-client/src/commands/terminals.rs`.
 - [x] **2.3.3 [UI Kiosk Lockdown Guard]**: In `ui/src/frontend/shell/AppShell.tsx`, load `activeTerminalProfile` via hook `useTerminalProfile()`. If `profile_type === 'kds_kiosk'`, bypass the workspace picker (`WorkspaceHome`), force `currentRoute = 'kds'`, and hide the top header and back buttons to prevent leaving KDS mode.
 
@@ -139,7 +139,7 @@ Every phase and high-level objective is broken down below into actionable, atomi
 #### 3.1 Recipe / Bill of Materials (BOM) Stock Deduction
 
 - [x] **3.1.1 [SQLite BOM Schema]**: Create migration adding table `product_recipes` (`id TEXT PRIMARY KEY, parent_product_id TEXT NOT NULL, ingredient_product_id TEXT NOT NULL, quantity_required INTEGER NOT NULL, unit TEXT NOT NULL, FOREIGN KEY(parent_product_id) REFERENCES products(id), FOREIGN KEY(ingredient_product_id) REFERENCES products(id))`.
-- [x] **3.1.2 [Recipe Repository & Domain]**: In `crates/oz-core/src/recipe.rs` + `crates/oz-core/src/db/recipes.rs`, implement `RecipeItem` domain type and `Store::get_recipe_ingredients(parent_product_id) -> Result<Vec<RecipeItem>, CoreError>`.
+- [x] **3.1.2 [Recipe Repository & Domain]**: In `crates/kasirmu-core/src/recipe.rs` + `crates/kasirmu-core/src/db/recipes.rs`, implement `RecipeItem` domain type and `Store::get_recipe_ingredients(parent_product_id) -> Result<Vec<RecipeItem>, CoreError>`.
 - [x] **3.1.3 [InventoryStockHandler Upgrade]**: Upgrade `modules/inventory/src/handlers.rs` (`InventoryStockHandler::handle`). When processing `SaleCompleted`, check each sold SKU's recipe. If BOM ingredients exist, deduct `qty × quantity_required` from each ingredient; otherwise deduct the product directly.
 
 #### 3.2 Order Modifiers & Coursing Engine
@@ -156,13 +156,13 @@ Every phase and high-level objective is broken down below into actionable, atomi
 
 #### 3.4 LAN / mDNS Peer-to-Peer KDS Discovery
 
-- [x] **3.4.1 [mDNS Service Broadcaster]**: In `crates/oz-core/src/sync/lan_discovery.rs`, implement `LanDiscoverer` advertising service `_oz-pos._tcp.local.` with TXT records `terminal_id`, `role`, and `tcp_port`.
+- [x] **3.4.1 [mDNS Service Broadcaster]**: In `crates/kasirmu-core/src/sync/lan_discovery.rs`, implement `LanDiscoverer` advertising service `_oz-pos._tcp.local.` with TXT records `terminal_id`, `role`, and `tcp_port`.
 - [x] **3.4.2 [Local TCP/WebSocket Event Forwarder]**: Implement a lightweight TCP/WebSocket server inside `apps/desktop-client` (`port 9180`). When `sale.completed` or `order.course_fired` is emitted on Resto POS, forward the JSON event directly over LAN TCP to all connected KDS tablet peers.
 - [x] **3.4.3 [LAN Offline Buffer & Reconnection]**: Add heartbeat ping (`every 5s`) between Resto POS desktop and KDS tablets. If LAN Wi-Fi drops, buffer fired tickets locally in `offline_lan_queue` and flush immediately upon TCP reconnection.
 
 #### 3.5 Menu Engineering Analytics Matrix
 
-- [x] **3.5.1 [Analytics Aggregation Query]**: In `crates/oz-reporting/src/menu_engineering.rs`, write SQL aggregation calculating total volume (`SUM(quantity)`) and total contribution margin (`SUM((unit_price - unit_cost) * quantity)`) per product over a selected date range.
+- [x] **3.5.1 [Analytics Aggregation Query]**: In `crates/kasirmu-reporting/src/menu_engineering.rs`, write SQL aggregation calculating total volume (`SUM(quantity)`) and total contribution margin (`SUM((unit_price - unit_cost) * quantity)`) per product over a selected date range.
 - [x] **3.5.2 [Quadrants Calculator Engine]**: Calculate median volume and median margin across all sold items with `classify_quadrant()`, `median_of()`, and `quadrant_recommendation()` functions. Assign classification:
   - **Star**: Volume ≥ Median AND Margin ≥ Median.
   - **Plowhorse**: Volume ≥ Median AND Margin < Median.
@@ -179,15 +179,15 @@ Every phase and high-level objective is broken down below into actionable, atomi
 - [x] **4.1.1 [JSON Schema Spec Definition]**: Create formal JSON schema `docs/specs/module-manifest.schema.json` defining mandatory properties (`id`, `name`, `version`, `author`, `dependencies`, `permissions`, `database_namespace`).
 - [x] **4.1.2 [Manifest Validator in Kernel]**: In `platform/kernel/src/manifest.rs`, validate `manifest.json` against `module-manifest.schema.json` during `kernel.register()`. Return structured `ManifestError` if validation fails.
 
-#### 4.2 Sandboxed Plugin Loader (`crates/oz-plugin` + `crates/oz-lua`)
+#### 4.2 Sandboxed Plugin Loader (`crates/kasirmu-plugin` + `crates/kasirmu-lua`)
 
-- [x] **4.2.1 [.ozpkg Archive Reader]**: Implement `.ozpkg` file parser in `crates/oz-plugin/src/package.rs` (reading zip archives containing `manifest.json`, SQLite migrations, and Lua scripts).
+- [x] **4.2.1 [.ozpkg Archive Reader]**: Implement `.ozpkg` file parser in `crates/kasirmu-plugin/src/package.rs` (reading zip archives containing `manifest.json`, SQLite migrations, and Lua scripts).
 - [x] **4.2.2 [Isolated Database Namespace]**: Enforce prefix restrictions (`plugin_<id>_*`) on all SQLite statements executed by plugins to prevent modifying core `sales` or `users` tables directly.
-- [x] **4.2.3 [Lua Event Bus Bridge]**: In `crates/oz-lua/src/bridge.rs`, expose event subscription callbacks to Lua scripts (`oz.on("sale.completed", function(event) ... end)`) for custom peripheral hardware drivers or local accounting hooks.
+- [x] **4.2.3 [Lua Event Bus Bridge]**: In `crates/kasirmu-lua/src/bridge.rs`, expose event subscription callbacks to Lua scripts (`oz.on("sale.completed", function(event) ... end)`) for custom peripheral hardware drivers or local accounting hooks.
 
 #### 4.3 Feature Matrix Automated Testing
 
-- [x] **4.3.1 [Rust Preset Integration Test Suite]**: In `crates/oz-core/tests/feature_matrix_tests.rs`, iterate over all 6 built-in presets verifying `from_set` succeeds, `count()` matches expected, and settings roundtrips.
+- [x] **4.3.1 [Rust Preset Integration Test Suite]**: In `crates/kasirmu-core/tests/feature_matrix_tests.rs`, iterate over all 6 built-in presets verifying `from_set` succeeds, `count()` matches expected, and settings roundtrips.
 - [x] **4.3.2 [Frontend Registry Parity CI Gate]**: Create validation script `scripts/verify-feature-registry.py` and register it inside `scripts/check.sh`.
 
 ---
@@ -196,13 +196,13 @@ Every phase and high-level objective is broken down below into actionable, atomi
 
 #### 5.1 Headless Cloud Server Binary (`apps/cloud-server`)
 
-- [x] **5.1.1 [Crate Scaffolding]**: Create new Cargo crate `apps/cloud-server/` (`Cargo.toml`) depending on `oz-api`, `oz-core`, `platform-sync`, and `tokio`. Ensure no Tauri or WebView UI crates are linked.
+- [x] **5.1.1 [Crate Scaffolding]**: Create new Cargo crate `apps/cloud-server/` (`Cargo.toml`) depending on `kasirmu-api`, `kasirmu-core`, `platform-sync`, and `tokio`. Ensure no Tauri or WebView UI crates are linked.
 - [x] **5.1.2 [Sync Transport Receiver Endpoints]**: In `apps/cloud-server/src/sync_api.rs`, wire `POST /api/sync/push` and `POST /api/sync/pull` handlers accepting `PushResponse` / `PullRequest` bodies (`platform/sync/src/transport.rs`) and persisting to the central server database.
-- [x] **5.1.3 [Main Async Entrypoint]**: In `apps/cloud-server/src/main.rs`, initialize structured logging (`oz-logging`), open central database pool (`OZ_DB_PATH` / PostgreSQL connection string), run pending schema migrations, and spawn `oz_api::serve()` alongside `sync_api` routes on `OZ_API_PORT` (default `3099`).
+- [x] **5.1.3 [Main Async Entrypoint]**: In `apps/cloud-server/src/main.rs`, initialize structured logging (`kasirmu-logging`), open central database pool (`OZ_DB_PATH` / PostgreSQL connection string), run pending schema migrations, and spawn `kasirmu_api::serve()` alongside `sync_api` routes on `OZ_API_PORT` (default `3099`).
 
 #### 5.2 Tenant ID / Store ID Scoping (Multi-Store Cloud Separation)
 
-- [x] **5.2.1 [Store ID Schema & Auth Claim]**: Add `tenant_id TEXT NOT NULL DEFAULT 'default'` column to `offline_queue` and central mutations log. Update JWT token generator/validator (`crates/oz-api/src/auth.rs`) to embed `tenant_id` claim in `Bearer` tokens.
+- [x] **5.2.1 [Store ID Schema & Auth Claim]**: Add `tenant_id TEXT NOT NULL DEFAULT 'default'` column to `offline_queue` and central mutations log. Update JWT token generator/validator (`crates/kasirmu-api/src/auth.rs`) to embed `tenant_id` claim in `Bearer` tokens.
 - [x] **5.2.2 [Scoped Sync Queries]**: Update `/api/sync/push` and `/api/sync/pull` endpoint queries (`apps/cloud-server/src/sync_api.rs`) to filter all incoming and outgoing items strictly by `WHERE tenant_id = ?1` extracted from the caller's JWT token.
 - [x] **5.2.3 [Multi-Tenant Isolation Tests]**: Add integration test spinning up `cloud-server` with two distinct tokens (`Tenant A` and `Tenant B`). Assert mutations pushed by Tenant A are completely invisible when Tenant B calls `pull`.
 

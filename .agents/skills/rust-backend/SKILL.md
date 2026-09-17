@@ -12,7 +12,7 @@ The kasir.mu framework is built on Rust. This skill enforces the project's codin
 
 ## When to use
 
-- Adding or modifying code in any `oz-*` crate (`oz-core`, `oz-hal`, `oz-lua`, `oz-security`, `oz-payment`, `oz-reporting`, `oz-logging`, `oz-cli`).
+- Adding or modifying code in any `oz-*` crate (`kasirmu-core`, `kasirmu-hal`, `kasirmu-lua`, `kasirmu-security`, `kasirmu-payment`, `kasirmu-reporting`, `kasirmu-logging`, `kasirmu-cli`).
 - Writing a new module, struct, or public function in Rust.
 - Working with the `Money` struct, currency codes, or pricing.
 - Writing or reviewing SQL migrations and `rusqlite` calls.
@@ -132,7 +132,7 @@ pub fn record_sale(
 **Rules:**
 - A function that writes must take `&mut Connection` (or `&Transaction`) — never `&Connection`.
 - Use `?` everywhere; let `tx.commit()` happen only on the happy path. A `?` before `commit()` triggers `Drop`, which rolls back automatically.
-- Migrations live in `crates/kasirmu-core/migrations/<timestamp>_<name>.sql` and are run by `oz-cli migrate`.
+- Migrations live in `crates/kasirmu-core/migrations/<timestamp>_<name>.sql` and are run by `kasirmu-cli migrate`.
 - The Tauri runtime shares a single `Arc<Mutex<Connection>>` (see `apps/desktop-client/src/state.rs`); there is no connection pool (no `r2d2`/`deadpool` in the workspace).
 - For read-only queries, you may use `&Connection` and skip the transaction.
 
@@ -140,7 +140,7 @@ pub fn record_sale(
 
 ## Error handling
 
-### Library crates (`oz-core`, `oz-hal`, `oz-payment`, `oz-reporting`)
+### Library crates (`kasirmu-core`, `kasirmu-hal`, `kasirmu-payment`, `kasirmu-reporting`)
 
 Use `thiserror` and define a domain error enum. Mark the enum `#[non_exhaustive]` so you can add variants without breaking semver.
 
@@ -164,7 +164,7 @@ pub enum CoreError {
 }
 ```
 
-### Application layer (`oz-cli`, Tauri `main.rs`, scripts)
+### Application layer (`kasirmu-cli`, Tauri `main.rs`, scripts)
 
 Use `anyhow` for ergonomic error propagation and context chaining.
 
@@ -236,7 +236,7 @@ cargo test --workspace --all-features
 ## Module layout conventions
 
 - One public type per file when it's a major domain entity (`money.rs`, `currency.rs`, `cart.rs`).
-- Re-export from `mod.rs` so external code can do `use oz_core::Money;`.
+- Re-export from `mod.rs` so external code can do `use kasirmu_core::Money;`.
 - **Unit tests never live inside production `.rs` files** (AGENTS.md rule). Place them in a sibling `*_tests.rs` (e.g. `sales.rs` → `sales_tests.rs`) and wire at the bottom of the production file:
   ```rust
   #[cfg(test)]
@@ -261,7 +261,7 @@ cargo test --workspace --all-features
 
 ## See also
 
-- **[`tauri-ipc`](../tauri-ipc/SKILL.md)** — the Tauri command layer that exposes `oz-core` types (`Money`, `CartId`, `Sku`, …) to the front-end. Every new domain type you add here eventually crosses the IPC boundary; read `tauri-ipc` to see how it should be wrapped for JSON.
+- **[`tauri-ipc`](../tauri-ipc/SKILL.md)** — the Tauri command layer that exposes `kasirmu-core` types (`Money`, `CartId`, `Sku`, …) to the front-end. Every new domain type you add here eventually crosses the IPC boundary; read `tauri-ipc` to see how it should be wrapped for JSON.
 - **[`project-scaffold`](../project-scaffold/SKILL.md)** — the Cargo workspace, CI, and Git conventions that govern where this code lives and how it's released.
 - **[`skill-drift-guard`](../skill-drift-guard/SKILL.md)** — run after a public-API change to confirm this skill still matches the code.
 

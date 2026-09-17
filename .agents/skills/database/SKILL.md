@@ -76,14 +76,14 @@ entry point must set the PRAGMAs itself. The full set observed in the repository
 
 | Opener | PRAGMAs |
 |---|---|
-| `oz_core::migrations::run` (`crates/kasirmu-core/src/migrations.rs:352-362`) | `journal_mode=WAL`, `busy_timeout=5000`, `synchronous=NORMAL`, `foreign_keys=ON` |
+| `kasirmu_core::migrations::run` (`crates/kasirmu-core/src/migrations.rs:352-362`) | `journal_mode=WAL`, `busy_timeout=5000`, `synchronous=NORMAL`, `foreign_keys=ON` |
 | Desktop `AppState::new` (`apps/desktop-client/src/state.rs:225-227`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | Tablet `AppState::new` (`apps/tablet-client/src/state.rs:112-114`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | `platform/startup` (`platform/startup/src/lib.rs:62-63`, `:293-294`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | `Pool::open` (`platform/core/src/database/pool.rs:42-43`) | `journal_mode=WAL`, `foreign_keys=ON` |
 | `Pool::open_in_memory` (`platform/core/src/database/pool.rs:52`) | `foreign_keys=ON` only — no WAL |
 | `StoreDatabaseManager::open_or_create_connection` (`platform/core/src/database/manager.rs:106-111`) | `foreign_keys=ON` always; `journal_mode=WAL` **only when the file is new** |
-| `oz_api::serve` (`crates/kasirmu-api/src/lib.rs:453-456`) | `foreign_keys=ON`, `journal_mode=WAL` |
+| `kasirmu_api::serve` (`crates/kasirmu-api/src/lib.rs:453-456`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | CLI `open_db` (`crates/kasirmu-cli/src/commands/mod.rs:57-60`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | Cloud `DbPool::connect_sqlite` (`apps/cloud-server/src/db.rs:131-133`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | `open_api_store_connection` (`crates/kasirmu-local-api/src/lib.rs:162-167`) | `foreign_keys=ON`, `journal_mode=WAL`, `busy_timeout` 5s |
@@ -119,7 +119,7 @@ There is **no `cache_size` PRAGMA anywhere** in the repository.
 
 Tauri commands receive `State<'_, AppState>` and reach the database through
 `state.db.lock().await`, or through `AppState::resolve_scope` / `resolve_store` when the
-work is store-scoped. Most domain work is then delegated to `oz_bridge`.
+work is store-scoped. Most domain work is then delegated to `kasirmu_bridge`.
 
 ---
 
@@ -168,7 +168,7 @@ runner adds it and backfills once.
 ### What `run` does
 
 `platform_core::database::run(conn, migrations)` — note it takes `&mut Connection`,
-because `Connection::transaction` requires it. `oz_core::migrations::run` wraps it and
+because `Connection::transaction` requires it. `kasirmu_core::migrations::run` wraps it and
 then applies the runtime PRAGMAs of §3.
 
 For each migration, in registry order:
@@ -353,7 +353,7 @@ logged without masking the original error.
   mod tests;
   ```
   Never inline. This is a repository-wide rule, not a database one.
-- **Use `oz_core::migrations::fresh_db()`** for a migrated in-memory database. It builds
+- **Use `kasirmu_core::migrations::fresh_db()`** for a migrated in-memory database. It builds
   a `LazyLock` snapshot once, runs all 58 migrations into it, then clones it per test
   through the SQLite `backup::Backup` API — orders of magnitude faster than re-running
   `execute_batch` per test. It is `#[doc(hidden)]` and test-only.
@@ -372,7 +372,7 @@ logged without masking the original error.
 Fast, targeted:
 
 ```bash
-cargo test -p oz-core migrations
+cargo test -p kasirmu-core migrations
 python scripts/verify-migration-column-types.py
 python scripts/generate-pg-migration.py --check
 ```

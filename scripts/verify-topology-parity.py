@@ -20,7 +20,7 @@ BOTH sides of the IPC boundary:
 If a developer edits the contract on one side and forgets the other, the
 Rust and TS validation engines silently disagree about the same topology
 graph — exactly the class of drift this script exists to catch before it
-reaches production. The `oz-core` unit test
+reaches production. The `kasirmu-core` unit test
 (`vendored_contract_matches_ui_canonical`) enforces the same invariant at
 test time; this script makes it enforceable from CI and `scripts/check.sh`
 without compiling anything.
@@ -47,7 +47,7 @@ in a context where neither test binary is available.
 
 Regenerate the corpus deliberately:
 
-    TOPOLOGY_MATRIX_UPDATE=1 cargo test -p oz-core --lib topology_matrix
+    TOPOLOGY_MATRIX_UPDATE=1 cargo test -p kasirmu-core --lib topology_matrix
 
 USAGE
 =====
@@ -59,7 +59,7 @@ EXIT CODES
 
   0  — contract copies are byte-identical AND the corpus is consistent with
        the contract — or there is no `ui/` tree at all, which is legal in a
-       server-only build context (oz-core vendors its own). The second case is
+       server-only build context (kasirmu-core vendors its own). The second case is
        never silent: it prints `SKIP —` where the `OK —` would have been and
        closes the run with `NOT FULLY VERIFIED`, so a comparison that did not
        happen cannot be read as a comparison that passed.
@@ -67,7 +67,7 @@ EXIT CODES
        `ui/src` EXISTING while the expected contract path does not: a moved
        file (this one went `features/stores/` -> `features/locations/`) is
        exactly the drift this script exists to catch, so it fails instead of
-       skipping. Same rule the `oz-core` test now enforces.
+       skipping. Same rule the `kasirmu-core` test now enforces.
 """
 
 from __future__ import annotations
@@ -170,7 +170,7 @@ def check_corpus(contract: dict) -> int:
         print(
             f"verify-topology-parity: missing corpus {MATRIX}\n"
             "  Regenerate it:\n"
-            "    TOPOLOGY_MATRIX_UPDATE=1 cargo test -p oz-core --lib topology_matrix"
+            "    TOPOLOGY_MATRIX_UPDATE=1 cargo test -p kasirmu-core --lib topology_matrix"
         )
         return 1
 
@@ -245,7 +245,7 @@ def check_corpus(contract: dict) -> int:
             print(f"  - {problem}")
         print(
             "  Regenerate deliberately and review the matrix diff:\n"
-            "    TOPOLOGY_MATRIX_UPDATE=1 cargo test -p oz-core --lib topology_matrix"
+            "    TOPOLOGY_MATRIX_UPDATE=1 cargo test -p kasirmu-core --lib topology_matrix"
         )
         return 1
 

@@ -3,7 +3,7 @@
 # Merged with the base stack when PostgreSQL is required (DOCKER-04):
 #
 #   export OZ_API_SECRET=$(openssl rand -hex 32)
-#   export OZ_LICENSE_PRIVATE_KEY="$(cat crates/oz-core/oz-license-private.pem)"
+#   export OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)"
 #   export PG_PASSWORD=$(openssl rand -hex 32)
 #   docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d
 #

@@ -14,7 +14,7 @@ import (
 // set through the D2 feature-grants authoring endpoint. It contains ONLY the
 // FIVE boolean supports_* AvailabilityFeature names, mirroring the client's
 // AvailabilityFeature::as_str() vocabulary in
-// crates/oz-core/src/availability.rs.
+// crates/kasirmu-core/src/availability.rs.
 //
 // Quota-named features (sales_history_days, locations, staff_users,
 // pos_instances, warehouses) are DELIBERATELY EXCLUDED: the wire field is

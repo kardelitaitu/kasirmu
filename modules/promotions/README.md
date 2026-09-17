@@ -9,7 +9,7 @@ computes Fixed / buy-X-get-Y discounts, and `compute_checkout_promotions` applie
 them at checkout (PROMO-3). This module crate is the *eventual* home for that
 logic — percentage and fixed-amount discounts, buy-X-get-Y, bundle pricing,
 time-windowed campaigns, and coupon codes — but the working engine currently
-lives in `oz-core`, not here. It answers one question for the cart: given these
+lives in `kasirmu-core`, not here. It answers one question for the cart: given these
 lines, which discounts apply and what do they subtract?
 
 ## Module Info
@@ -43,7 +43,7 @@ plus `db/promotions.rs` and the checkout application in `db/sales_checkout.rs`.
 
 ## Promotion Checklist
 
-> The engine already exists in `oz-core` (PROMO-3); these are **migration**
+> The engine already exists in `kasirmu-core` (PROMO-3); these are **migration**
 > tasks to lift it into this module, not greenfield work.
 
 - [ ] `models.rs` — `PromotionRule`, `RuleKind`, `DiscountLine`, `Coupon`

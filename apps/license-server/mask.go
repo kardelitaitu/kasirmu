@@ -30,7 +30,7 @@ package main
 // rendered as "...23456789" would show 8 of its 10 characters — that is not
 // masking, and the result is longer than the secret.
 //
-// This mirrors mask_token in crates/oz-security/src/mask.rs deliberately: one
+// This mirrors mask_token in crates/kasirmu-security/src/mask.rs deliberately: one
 // convention across the Rust and Go halves of the product, so auditing logs
 // means learning one shape rather than two.
 func maskLicenseKey(key string) string {

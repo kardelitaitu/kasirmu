@@ -85,20 +85,20 @@ the login → POS → payment → receipt flow can execute:
 
 ```bash
 # Option A: demo seeder, from the repo root (the oz CLI)
-cargo run -p oz-cli -- seed-demo --all
-cargo run -p oz-cli -- seed-demo --restaurant --days 30
+cargo run -p kasirmu-cli -- seed-demo --all
+cargo run -p kasirmu-cli -- seed-demo --restaurant --days 30
 
 # Option B: first-run default settings and feature flags on a fresh DB
-cargo run -p oz-cli -- seed
+cargo run -p kasirmu-cli -- seed
 
 > ⚠️ **Corrected 09-09-26.** Neither option listed here existed as written. The `Settings →
 > Database → Seed Sample Data` menu is not in the app — that string appears only in these
 > launch guides, in nothing under `ui/src`. There is no CI-produced seeded database either:
 > `test-data` is absent from every workflow and from `scripts/` (0 hits), so
 > `target/release/test-data/kasir.db` has never existed as a build artifact. What is real is
-> the `oz` CLI: `seed-demo` (`crates/oz-cli/src/cli.rs:95`, dispatched at
-> `crates/oz-cli/src/commands/mod.rs:90`, implemented at
-> `crates/oz-cli/src/seed_demo.rs:64`) with `--retail` / `--restaurant` / `--all` /
+> the `oz` CLI: `seed-demo` (`crates/kasirmu-cli/src/cli.rs:95`, dispatched at
+> `crates/kasirmu-cli/src/commands/mod.rs:90`, implemented at
+> `crates/kasirmu-cli/src/seed_demo.rs:64`) with `--retail` / `--restaurant` / `--all` /
 > `--days <n>` (`cli.rs:99-112`), and `seed` for default settings and feature flags
 > (`cli.rs:39`). Read the module header before relying on it: it writes ~10k time-series
 > sales rows for analytics/report development, which is not a minimal first-launch dataset.

@@ -256,7 +256,7 @@ The tablet client (`apps/tablet-client`) shares most code with the desktop clien
 
 | Layer | Shared? | Details |
 |-------|---------|---------|
-| Rust crates | ✅ Full | `oz-core`, `oz-payment`, `oz-hal`, `oz-security`, etc. |
+| Rust crates | ✅ Full | `kasirmu-core`, `kasirmu-payment`, `kasirmu-hal`, `kasirmu-security`, etc. |
 | React components | ✅ Full | All feature screens, shared components |
 | API layer | ✅ Full | `ui/src/api/*` — works with both desktop and tablet |
 | Hooks | ✅ Full | `useOrientation`, `useSwipe`, `usePosState`, etc. |

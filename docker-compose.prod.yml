@@ -3,7 +3,7 @@
 # Merge with the base stack for a deployment-grade posture:
 #
 #   export OZ_API_SECRET=$(openssl rand -hex 32)
-#   export OZ_LICENSE_PRIVATE_KEY="$(cat crates/oz-core/oz-license-private.pem)"
+#   export OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)"
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
 # (For PostgreSQL, also merge docker-compose.pg.yml and set PG_PASSWORD.)

@@ -1,6 +1,6 @@
 <!-- Audit stamp: 2026-08-29 · docs-auditor · status: ACCURATE (stale description repaired) · F1: "Scaffold only" -> IMPLEMENTED: src/ contains daily_summary.rs, menu_engineering.rs, metrics.rs, margin.rs (real report engines) plus error.rs/lib.rs; ReportingError still present · verified: error.rs + ReportingError exist, lib.rs declares pub mod daily_summary/margin/menu_engineering/metrics/error -->
 
-# oz-reporting
+# kasirmu-reporting
 
 Analytics and CSV export engine for OZ-POS.
 

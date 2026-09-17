@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (0 findings, re-verified) · Replaces the 2026-07-25 Hermes-Agent stamp, whose one repair still stands: the platform stack is oz-hal's #[async_trait] device traits (BarcodeScanner, ReceiptPrinter, CashDrawer, CustomerDisplay, WeightScale, EdcTerminal) plus the optional ProtocolCodec, not embedded-hal. · Checked today rather than assumed, because this page is the one most likely to be read by someone who will never open the code: minSdk 26 is confirmed twice, in apps/tablet-client/gen/android/app/build.gradle.kts:35 and as tauri.conf.json:38 minSdkVersion, and API 26 is Android 8.0 as claimed; Tauri v2 (workspace dependency, v2 conventions throughout); SQLite local storage with a sync module; the five-layer stack description matches docs/guides/ARCHITECTURE.md. · Note the incidental evidence: gen/android IS committed (49 tracked files), which is what makes a claim like minSdk checkable at all - and the reason its iOS counterpart in docs/guides/ios-*.md is not is that gen/apple was never generated. Same document family, opposite verifiability. -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (0 findings, re-verified) · Replaces the 2026-07-25 Hermes-Agent stamp, whose one repair still stands: the platform stack is kasirmu-hal's #[async_trait] device traits (BarcodeScanner, ReceiptPrinter, CashDrawer, CustomerDisplay, WeightScale, EdcTerminal) plus the optional ProtocolCodec, not embedded-hal. · Checked today rather than assumed, because this page is the one most likely to be read by someone who will never open the code: minSdk 26 is confirmed twice, in apps/tablet-client/gen/android/app/build.gradle.kts:35 and as tauri.conf.json:38 minSdkVersion, and API 26 is Android 8.0 as claimed; Tauri v2 (workspace dependency, v2 conventions throughout); SQLite local storage with a sync module; the five-layer stack description matches docs/guides/ARCHITECTURE.md. · Note the incidental evidence: gen/android IS committed (49 tracked files), which is what makes a claim like minSdk checkable at all - and the reason its iOS counterpart in docs/guides/ios-*.md is not is that gen/apple was never generated. Same document family, opposite verifiability. -->
 
 # Whitepaper: kasir.mu Software Framework
 
@@ -28,7 +28,7 @@ In the story, the Wizard of Oz is a small, ordinary man who — from behind a cu
 | Pillar | What It Means |
 |--------|---------------|
 | 🧙 **Magical** | Complex operations — barcode scanning, payment processing, encrypted export, cloud sync — feel effortless. The hard parts are hidden. |
-| 🧵 **Small Core** | The `oz-core` crate stays minimal and focused. Every capability is a composable module; you only carry what you need. |
+| 🧵 **Small Core** | The `kasirmu-core` crate stays minimal and focused. Every capability is a composable module; you only carry what you need. |
 | ♾️ **Limitless Possibilities** | Lua scripting, plugin drivers, multi-store, analytics, cloud DB — all grow on top of the same foundation without re-architecture. |
 | 📈 **Scalable** | From a single warung to a nationwide chain, the same codebase scales horizontally. No migration. No rewrite. |
 
@@ -38,19 +38,19 @@ Every crate in the workspace follows the `oz-*` prefix, making the ecosystem imm
 
 ```
 oz-pos          →  root workspace / meta-crate
-oz-core         →  transaction engine & data models
-oz-hal          →  hardware abstraction layer (barcode, printer, drawer, display, scale, EDC)
-oz-lua          →  embedded Lua scripting runtime (mlua)
-oz-security     →  encryption, secrets, PCI-DSS helpers
-oz-payment      →  payment processor abstraction (Stripe, Square, QRIS, mock)
-oz-reporting    →  analytics & CSV export engine
-oz-logging      →  structured logging (tracing)
-oz-api          →  HTTP API server (axum)
-oz-notification →  email & push notification dispatching
-oz-plugin       →  plugin sandbox & lifecycle (Lua scripting bridge)
-oz-cli          →  command-line tools (migrations, backup, export)
-oz-crypto       →  AES-256-GCM encryption helpers (data at rest)
-oz-media        →  image processing (thumbnails, compression, auto-crop) — stubs
+kasirmu-core         →  transaction engine & data models
+kasirmu-hal          →  hardware abstraction layer (barcode, printer, drawer, display, scale, EDC)
+kasirmu-lua          →  embedded Lua scripting runtime (mlua)
+kasirmu-security     →  encryption, secrets, PCI-DSS helpers
+kasirmu-payment      →  payment processor abstraction (Stripe, Square, QRIS, mock)
+kasirmu-reporting    →  analytics & CSV export engine
+kasirmu-logging      →  structured logging (tracing)
+kasirmu-api          →  HTTP API server (axum)
+kasirmu-notification →  email & push notification dispatching
+kasirmu-plugin       →  plugin sandbox & lifecycle (Lua scripting bridge)
+kasirmu-cli          →  command-line tools (migrations, backup, export)
+kasirmu-crypto       →  AES-256-GCM encryption helpers (data at rest)
+kasirmu-media        →  image processing (thumbnails, compression, auto-crop) — stubs
 ```
 
 The `oz-` prefix is short, memorable, and signals: *this is part of the wizard's toolkit.*

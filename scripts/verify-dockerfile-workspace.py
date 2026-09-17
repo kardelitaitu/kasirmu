@@ -10,7 +10,7 @@ silently fails (it is best-effort) and the cache layer is dead weight —
 every image build then recompiles the full dependency tree.
 
 P2: the unified image (Dockerfile.unified) had drifted from Dockerfile.server
-— missing oz-crypto / oz-media (both in cloud-server's dependency graph),
+— missing kasirmu-crypto / kasirmu-media (both in cloud-server's dependency graph),
 scripts/updater-compat-check (a workspace member cargo must resolve), and
 four modules (giftcards/kitchen/promotions/purchasing — not in the
 cloud-server graph, but cargo still parses every member manifest). Its

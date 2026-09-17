@@ -10,7 +10,7 @@
 #
 #   export OZ_API_SECRET=$(openssl rand -hex 32)
 #   export OZ_ADMIN_KEY=$(openssl rand -hex 32)
-#   export OZ_LICENSE_PRIVATE_KEY="$(cat crates/oz-core/oz-license-private.pem)"
+#   export OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)"
 #   docker compose up -d
 #   curl http://localhost:3099/api/v1/health
 #   curl http://localhost:8080/api/v1/license/status
@@ -19,7 +19,7 @@
 #
 #   export OZ_API_SECRET=$(openssl rand -hex 32)
 #   export OZ_ADMIN_KEY=$(openssl rand -hex 32)
-#   export OZ_LICENSE_PRIVATE_KEY="$(cat crates/oz-core/oz-license-private.pem)"
+#   export OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)"
 #   export PG_PASSWORD=$(openssl rand -hex 32)
 #   docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d
 #
@@ -102,7 +102,7 @@ services:
   #   bash scripts/generate-license-keys.sh                # Linux/macOS
   #
   # Then set OZ_LICENSE_PRIVATE_KEY to the contents of
-  # crates/oz-core/oz-license-private.pem.
+  # crates/kasirmu-core/oz-license-private.pem.
   license-server:
     build:
       context: ./apps/license-server

@@ -28,19 +28,19 @@ the login → POS → payment → receipt flow can execute:
 
 ```powershell
 # Option A: demo seeder, from the repo root (the oz CLI)
-cargo run -p oz-cli -- seed-demo --all
-cargo run -p oz-cli -- seed-demo --retail --days 30
+cargo run -p kasirmu-cli -- seed-demo --all
+cargo run -p kasirmu-cli -- seed-demo --retail --days 30
 
 # Option B: first-run default settings and feature flags on a fresh DB
-cargo run -p oz-cli -- seed
+cargo run -p kasirmu-cli -- seed
 
 > ⚠️ **Corrected 09-09-26 — the commands and menus this section listed were not real.**
 > There is no `seeder` binary in the workspace (the 11 `[[bin]]` targets are `oz`,
 > `oz-cloud-server`, `oz-pos-app`, `oz-pos-tablet`, and seven example/test bins), and
 > `--seed-staff` / `--seed-products` / `--seed-workspace` appear nowhere. `oz seed-demo` is the
-> real thing: the `SeedDemo` variant at `crates/oz-cli/src/cli.rs:95`, dispatched at
-> `crates/oz-cli/src/commands/mod.rs:90` into `run_seed_demo`
-> (`crates/oz-cli/src/seed_demo.rs:64`), with flags `--retail`, `--restaurant`, `--all` and
+> real thing: the `SeedDemo` variant at `crates/kasirmu-cli/src/cli.rs:95`, dispatched at
+> `crates/kasirmu-cli/src/commands/mod.rs:90` into `run_seed_demo`
+> (`crates/kasirmu-cli/src/seed_demo.rs:64`), with flags `--retail`, `--restaurant`, `--all` and
 > `--days <n>` (default 90) at `cli.rs:99-112`. `oz seed` (`cli.rs:39`) is the separate
 > subcommand provisioning default settings and feature flags.
 >

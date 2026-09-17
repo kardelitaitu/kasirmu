@@ -1,6 +1,6 @@
 # Extending kasir.mu — Scripting & Integration Guide
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (3 findings, all repaired) · re-verified the 2026-09-03 audit rather than trusting it, and it held on ~20 claims: READ_KEY_MAP in crates/oz-api/src/read_tiers.rs, require_admin_write at routes/tokens.rs:134, ApiTokenClaims at auth.rs:58, DEFAULT_EXPIRY_HOURS=24, JWT_CACHE_TTL_SECS=60, OZ_TERMINAL_READ_TIER at routes/tokens.rs:205, plan endpoint really is free|pro only (plans.rs:111; enterprise -> 400 unknown_plan), the six-event vocabulary matches EVENT_ACTIONS exactly and in order (apps/cloud-server/src/outbound_webhooks.rs:36-43), 10 s receiver timeout, backoff 120*2^attempt capped at 3600 s (outbox.rs:45-48), Lua INSTRUCTION_LIMIT=100_000 and MEMORY_LIMIT=10 MiB (crates/oz-lua/src/lib.rs:53-57), sale.before_complete at crates/oz-plugin/src/manager.rs:411, ErrorEnvelope forward-declared while handlers emit flat errors, all six reserved tags still declare zero paths so §10.2 stands five days on · REPAIRED: §2.2 resolved the served store via store_profiles.is_primary but the query is SELECT id FROM locations WHERE is_primary = 1 (apps/desktop-client/src/local_api.rs:95-98), the store->location rename; §1 said 505 IPC commands, registered is 450 (425 desktop / 297 tablet / 272 both); §3.2 omitted the three /api/v1/memos/* routes from the 2026-09-07 cloud-read ruling, which spec/paths.rs already declared · EVIDENCE CORRECTION: the previous stamp claimed §7 is executed verbatim by target/smoke-local-api.ps1 (22/22) — that file is untracked inside a gitignored build dir (.gitignore:2 /target/), so the claim was true once and is unreproducible by anyone else; promote it to scripts/ before citing it as proof · original 2026-09-03 anchors retained: crates/oz-api/src/{lib.rs,auth.rs,read_tiers.rs,api_audit.rs,spec/mod.rs}, crates/oz-api/src/routes/{tokens.rs,terminals.rs,sales.rs,settings.rs,products.rs,tax_rates.rs,exchange_rates.rs,users.rs,images.rs}, apps/cloud-server/src/{main.rs,openapi.rs,openapi_tests.rs,sync_api.rs,outbound_webhooks.rs,outbox.rs}, apps/desktop-client/src/{local_api.rs,commands/local_api.rs}, foundation/src/money.rs, docs/specs/_active/0047-openapi-drift-guard-and-read-tiers.md -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (3 findings, all repaired) · re-verified the 2026-09-03 audit rather than trusting it, and it held on ~20 claims: READ_KEY_MAP in crates/kasirmu-api/src/read_tiers.rs, require_admin_write at routes/tokens.rs:134, ApiTokenClaims at auth.rs:58, DEFAULT_EXPIRY_HOURS=24, JWT_CACHE_TTL_SECS=60, OZ_TERMINAL_READ_TIER at routes/tokens.rs:205, plan endpoint really is free|pro only (plans.rs:111; enterprise -> 400 unknown_plan), the six-event vocabulary matches EVENT_ACTIONS exactly and in order (apps/cloud-server/src/outbound_webhooks.rs:36-43), 10 s receiver timeout, backoff 120*2^attempt capped at 3600 s (outbox.rs:45-48), Lua INSTRUCTION_LIMIT=100_000 and MEMORY_LIMIT=10 MiB (crates/kasirmu-lua/src/lib.rs:53-57), sale.before_complete at crates/kasirmu-plugin/src/manager.rs:411, ErrorEnvelope forward-declared while handlers emit flat errors, all six reserved tags still declare zero paths so §10.2 stands five days on · REPAIRED: §2.2 resolved the served store via store_profiles.is_primary but the query is SELECT id FROM locations WHERE is_primary = 1 (apps/desktop-client/src/local_api.rs:95-98), the store->location rename; §1 said 505 IPC commands, registered is 450 (425 desktop / 297 tablet / 272 both); §3.2 omitted the three /api/v1/memos/* routes from the 2026-09-07 cloud-read ruling, which spec/paths.rs already declared · EVIDENCE CORRECTION: the previous stamp claimed §7 is executed verbatim by target/smoke-local-api.ps1 (22/22) — that file is untracked inside a gitignored build dir (.gitignore:2 /target/), so the claim was true once and is unreproducible by anyone else; promote it to scripts/ before citing it as proof · original 2026-09-03 anchors retained: crates/kasirmu-api/src/{lib.rs,auth.rs,read_tiers.rs,api_audit.rs,spec/mod.rs}, crates/kasirmu-api/src/routes/{tokens.rs,terminals.rs,sales.rs,settings.rs,products.rs,tax_rates.rs,exchange_rates.rs,users.rs,images.rs}, apps/cloud-server/src/{main.rs,openapi.rs,openapi_tests.rs,sync_api.rs,outbound_webhooks.rs,outbox.rs}, apps/desktop-client/src/{local_api.rs,commands/local_api.rs}, foundation/src/money.rs, docs/specs/_active/0047-openapi-drift-guard-and-read-tiers.md -->
 
 This guide is for people writing **their own scripts** against an kasir.mu
 installation — automation on the counter machine, a dashboard against the
@@ -12,10 +12,10 @@ status of each (what is live today vs. wired-but-not-started).
 
 | You want to… | Surface | Status |
 |---|---|---|
-| Change discounts / tax / order validation **inside** the register flow | Lua plugin (`crates/oz-lua` + `crates/oz-plugin`) | Stable — see [plugin-guide.md](./plugin-guide.md) |
-| Read/write products, stock, sales, rates from an **external process** (KDS, scanner, dashboard, sync job) | REST API (`crates/oz-api`) | Live on **cloud-server**; on the **desktop app** it runs loopback-only behind Settings → Local API (off by default, §2.1); tablet: not started |
-| Batch maintenance against the local SQLite DB (migrations, backup, import/export, CRUD) | `oz` CLI (`crates/oz-cli`) | Stable — see [oz-cli README](../../crates/oz-cli/README.md) |
-| Drive custom hardware (printer, scanner, drawer, display) | Rust HAL traits (`crates/oz-hal`) | Stable — plugin-guide §HAL |
+| Change discounts / tax / order validation **inside** the register flow | Lua plugin (`crates/kasirmu-lua` + `crates/kasirmu-plugin`) | Stable — see [plugin-guide.md](./plugin-guide.md) |
+| Read/write products, stock, sales, rates from an **external process** (KDS, scanner, dashboard, sync job) | REST API (`crates/kasirmu-api`) | Live on **cloud-server**; on the **desktop app** it runs loopback-only behind Settings → Local API (off by default, §2.1); tablet: not started |
+| Batch maintenance against the local SQLite DB (migrations, backup, import/export, CRUD) | `oz` CLI (`crates/kasirmu-cli`) | Stable — see [kasirmu-cli README](../../crates/kasirmu-cli/README.md) |
+| Drive custom hardware (printer, scanner, drawer, display) | Rust HAL traits (`crates/kasirmu-hal`) | Stable — plugin-guide §HAL |
 | Call the app's internals (Tauri IPC commands — 450 registered as measured 08-09-26: 425 desktop, 297 tablet, 272 in both — a point-in-time record; **478 distinct as measured 2026-09-14: 453 desktop, 322 tablet, 297 in both**, which is the figure [api-reference.md](./api-reference.md) now carries as current and the set `AGENTS.md` and `README.md` carry). **This moves with every command**; re-run `.agents/skills/docs-auditor/scripts/check-api-surface.py`, which prints `registered   desktop=453 tablet=322 distinct=478`, or `python scripts/verify-ipc-parity.py` for the per-shell totals (458 UI command strings / 453 registered desktop / 322 registered tablet, EXIT 0) — and note the 297 "in both" figure is neither tool's output: it comes from intersecting the two `generate_handler!` lists (`apps/desktop-client/src/lib.rs:845-1340`, `apps/tablet-client/src/lib.rs:445`) | **Not an extension surface** — internal front-end↔backend contract, no stability guarantee for third parties | — |
 
 ## 2. REST API at a glance
@@ -29,8 +29,8 @@ status of each (what is live today vs. wired-but-not-started).
 
 | Host | What it serves | Evidence |
 |---|---|---|
-| **Cloud server** (`oz-cloud-server`, the unified deployment) | The full surface: `oz-api` router + sync + webhooks + docs + metrics | `apps/cloud-server/src/main.rs` `build_router()` merges `oz_api::router(...)` with `sync_router`, `webhooks_router`, `docs_router` |
-| **Desktop app** (`oz-pos-app`) | The `oz-api` router **only**, bound to `127.0.0.1` (default port 3099), **off by default** — enable in Settings → Local API. Tokens are minted in that panel; the server signs with a per-install secret generated on first enable | `apps/desktop-client/src/local_api.rs` (embeds `oz_api::router()`; never `serve()`, which binds 0.0.0.0) |
+| **Cloud server** (`oz-cloud-server`, the unified deployment) | The full surface: `kasirmu-api` router + sync + webhooks + docs + metrics | `apps/cloud-server/src/main.rs` `build_router()` merges `kasirmu_api::router(...)` with `sync_router`, `webhooks_router`, `docs_router` |
+| **Desktop app** (`oz-pos-app`) | The `kasirmu-api` router **only**, bound to `127.0.0.1` (default port 3099), **off by default** — enable in Settings → Local API. Tokens are minted in that panel; the server signs with a per-install secret generated on first enable | `apps/desktop-client/src/local_api.rs` (embeds `kasirmu_api::router()`; never `serve()`, which binds 0.0.0.0) |
 | **Tablet app** | Nothing yet — no `local_api` module | grep `local_api` → only `apps/desktop-client` |
 
 Production cloud origin: `https://license.ozpos.my.id` (the Northflank
@@ -82,7 +82,7 @@ cargo run -p oz-cloud-server
 Never expose a dev-mode server (no `OZ_ADMIN_KEY`, no `OZ_API_SECRET`) to a
 network: it falls back to a hard-coded dev signing secret and an open token
 mint. `OZ_PRODUCTION=1` refuses to boot unless both are set
-(`validate_production_secrets` in `crates/oz-api/src/lib.rs`).
+(`validate_production_secrets` in `crates/kasirmu-api/src/lib.rs`).
 
 ### 2.3 Interactive documentation & the shared spec
 
@@ -93,7 +93,7 @@ mint. `OZ_PRODUCTION=1` refuses to boot unless both are set
 | `GET /api/docs/scalar` | Scalar API reference | — |
 
 These are public (no auth). Since 2026-09-03 the spec has a **single
-source of truth**: `crates/oz-api/src/spec/` (`mod.rs` + `paths.rs` +
+source of truth**: `crates/kasirmu-api/src/spec/` (`mod.rs` + `paths.rs` +
 `schemas.rs`) builds the shared
 document; `apps/cloud-server/src/openapi.rs` merges its cloud-only
 paths (sync, webhooks, docs UI, host health/metrics) on top. Every
@@ -125,7 +125,7 @@ undocumented).
 
 ### 3.2 JWT-protected endpoints
 
-`oz-api` crate routes (served by the cloud today; the intended local-terminal
+`kasirmu-api` crate routes (served by the cloud today; the intended local-terminal
 subset when it is wired):
 
 | Method | Path | Read key (GET) | Write tier |
@@ -157,12 +157,12 @@ subset when it is wired):
 
 > The three `memos` routes were added by the 2026-09-07 cloud-read ruling, four days
 > after this page's last audit, and were missing from it until 08-09-26. Note that
-> `crates/oz-api/src/spec/paths.rs` already declared them: the machine-readable
+> `crates/kasirmu-api/src/spec/paths.rs` already declared them: the machine-readable
 > contract stayed current while the prose table drifted. When the two disagree,
 > `GET /api/openapi.json` wins — that is what the router→spec coverage guard enforces,
 > and it has no reason to police a Markdown table.
 
-Cloud-only additions (not part of the `oz-api` crate):
+Cloud-only additions (not part of the `kasirmu-api` crate):
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
@@ -227,7 +227,7 @@ secret (§2.2).
 
 ### 4.2 Token shape and lifecycle
 
-Claims (`ApiTokenClaims` in `crates/oz-api/src/auth.rs`):
+Claims (`ApiTokenClaims` in `crates/kasirmu-api/src/auth.rs`):
 `sub` (label) · `jti` (token id, UUID v7) · `iat` / `exp` · `tenant_id?` ·
 `terminal_id?` · `permissions?` (read-tier keys).
 
@@ -251,7 +251,7 @@ All 401s carry `WWW-Authenticate: Bearer`.
 ### 5.1 Read tiers (spec 0047)
 
 When a token carries `permissions`, every GET is checked against a static
-route→key map (`READ_KEY_MAP` in `crates/oz-api/src/read_tiers.rs`); a
+route→key map (`READ_KEY_MAP` in `crates/kasirmu-api/src/read_tiers.rs`); a
 missing key returns **403 `insufficient_scope`**. A token *without* the
 claim keeps full read (legacy).
 
@@ -294,7 +294,7 @@ sale status; that is the device's job.
 - **Timestamps** ISO-8601 / RFC-3339. **IDs** UUID v7 strings.
 - **Errors are currently flat:** `{"error": "machine_readable_or_message"}`.
   The spec declares a target `ErrorEnvelope`
-  (`{"error":{"code","message","details"}}`) but the `oz-api` handlers all
+  (`{"error":{"code","message","details"}}`) but the `kasirmu-api` handlers all
   emit the flat form today — treat the flat string as the live contract and
   match on the stable codes seen in §4.3/§5.2.
 - **No pagination yet.** List endpoints return flat arrays. The
@@ -474,7 +474,7 @@ order validation), don't use the REST API — write a plugin. Sandboxed
 (Lua 5.4, 100 000-instruction / 10 MiB limits, no fs/network), permission-
 gated `oz` table, hooks like `sale.before_complete`, loaded from `plugins/`
 at startup. Full reference: [plugin-guide.md](./plugin-guide.md); runtime
-details: [crates/oz-lua/README.md](../../crates/oz-lua/README.md).
+details: [crates/kasirmu-lua/README.md](../../crates/kasirmu-lua/README.md).
 
 ## 9. `oz` CLI (local batch scripting)
 
@@ -482,7 +482,7 @@ Migrations, backup/restore, CSV export, encrypted `.ozpkg` export/import,
 and product/category/inventory/sale/customer/user CRUD straight against the
 SQLite DB — the right tool for cron-style maintenance on the terminal
 itself. Subcommand table and conventions (minor units, `--db`):
-[crates/oz-cli/README.md](../../crates/oz-cli/README.md).
+[crates/kasirmu-cli/README.md](../../crates/kasirmu-cli/README.md).
 
 ## 10. Known gaps (verified 2026-09-03)
 
@@ -518,10 +518,10 @@ Documented so scripts don't build on sand:
 > retry/backoff/dead-letter, and the PG outbox drainer wired (previously
 > built but never started);
 > the local terminal API is now **wired** — the desktop app embeds
-> `oz_api::router()` on loopback behind Settings → Local API (§2.2), with
+> `kasirmu_api::router()` on loopback behind Settings → Local API (§2.2), with
 > stateful JWT validation (`auth_middleware_with_state`) so it signs with
 > a per-install secret instead of the process env; the OpenAPI document
-> moved to a **single source of truth** (`crates/oz-api/src/spec/`)
+> moved to a **single source of truth** (`crates/kasirmu-api/src/spec/`)
 > with per-operation `x-oz-scope` tagging, served by the local API at
 > `/api/openapi.json` and merged with cloud paths by the cloud server
 > (§2.3);
@@ -539,6 +539,6 @@ Documented so scripts don't build on sand:
 **Related:** [plugin-guide.md](./plugin-guide.md) ·
 [ARCHITECTURE.md](./ARCHITECTURE.md) ·
 [spec 0047](../specs/_active/0047-openapi-drift-guard-and-read-tiers.md) ·
-[oz-api README](../../crates/oz-api/README.md)
+[kasirmu-api README](../../crates/kasirmu-api/README.md)
 
 > last audited 08-09-26 by DSH

@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-07-31 · Buffy-Agent · status: SYNCED (PLG-10 parity rewrite) · verified against crates/oz-plugin (manager.rs, manifest.rs, loader.rs, package.rs) and crates/oz-lua (lib.rs, bridge.rs) · corrected: oz table surface (get_time/log/apply_discount/register_hook/on/off only), mandatory required_permissions + manifest validation (kebab-case name, strict SemVer, unknown-permission rejection), register_hook(string) signature, per-plugin env isolation, HAL traits table (no NfcReader), oz-cli commands (no run-script/validate-plugins), sandbox limits (100k instr / 10 MiB) · RE-AUDITED 31-08 by docs-auditor: re-verified limits against crates/oz-lua (INSTRUCTION_LIMIT=100_000 at lib.rs:53, 10 MiB via set_memory_limit) — accurate; PLG-11 (cbe01ace) hardened the internal SQL validator (ensure_no_quoted_identifiers) but that API is Rust-side (manager namespace setup), not a plugin Lua global, so no guide change needed; aligned '10 MB' -> '10 MiB' to match the oz-lua README + the actual 10*1024*1024 constant; normalized the non-standard 3-line footer to the single-line standard -->
+<!-- Audit stamp: 2026-07-31 · Buffy-Agent · status: SYNCED (PLG-10 parity rewrite) · verified against crates/kasirmu-plugin (manager.rs, manifest.rs, loader.rs, package.rs) and crates/kasirmu-lua (lib.rs, bridge.rs) · corrected: oz table surface (get_time/log/apply_discount/register_hook/on/off only), mandatory required_permissions + manifest validation (kebab-case name, strict SemVer, unknown-permission rejection), register_hook(string) signature, per-plugin env isolation, HAL traits table (no NfcReader), kasirmu-cli commands (no run-script/validate-plugins), sandbox limits (100k instr / 10 MiB) · RE-AUDITED 31-08 by docs-auditor: re-verified limits against crates/kasirmu-lua (INSTRUCTION_LIMIT=100_000 at lib.rs:53, 10 MiB via set_memory_limit) — accurate; PLG-11 (cbe01ace) hardened the internal SQL validator (ensure_no_quoted_identifiers) but that API is Rust-side (manager namespace setup), not a plugin Lua global, so no guide change needed; aligned '10 MB' -> '10 MiB' to match the kasirmu-lua README + the actual 10*1024*1024 constant; normalized the non-standard 3-line footer to the single-line standard -->
 
 # kasir.mu Plugin System
 
@@ -144,37 +144,37 @@ in `plugin.toml` (see `plugins/example-discount/` for a complete example).
 
 ## HAL Driver API Surface
 
-Third-party hardware drivers implement the traits defined in `crates/oz-hal/`.
+Third-party hardware drivers implement the traits defined in `crates/kasirmu-hal/`.
 
 ### Available Driver Traits
 
-`crates/oz-hal/src/traits/` declares **seven** public traits. This table listed four
+`crates/kasirmu-hal/src/traits/` declares **seven** public traits. This table listed four
 until 08-09-26 — the two device traits that shipped later (weight scale, EDC payment
 terminal) were never added, even though both have a mock driver in
-`crates/oz-hal/src/drivers/mock.rs` (`MockWeightScale`, `MockEdcTerminal`) and a real
+`crates/kasirmu-hal/src/drivers/mock.rs` (`MockWeightScale`, `MockEdcTerminal`) and a real
 one (`drivers/scale.rs`, `drivers/edc/`), which is what the "v1.0" heading concealed.
 
 | Trait | Where | Description |
 |-------|-------|-------------|
-| `BarcodeScanner` | `oz-hal` | Connect, poll for scans, cancel pending reads |
-| `ReceiptPrinter` | `oz-hal` | Print receipts, barcodes, QR codes, cash drawer kick |
-| `CashDrawer` | `oz-hal` | Open drawer, detect drawer state |
-| `CustomerDisplay` | `oz-hal` | Show/hide messages, update totals |
+| `BarcodeScanner` | `kasirmu-hal` | Connect, poll for scans, cancel pending reads |
+| `ReceiptPrinter` | `kasirmu-hal` | Print receipts, barcodes, QR codes, cash drawer kick |
+| `CashDrawer` | `kasirmu-hal` | Open drawer, detect drawer state |
+| `CustomerDisplay` | `kasirmu-hal` | Show/hide messages, update totals |
 | `WeightScale` | `traits/weight_scale.rs:26` | USB HID weight scale; a reading carries a `stable` flag so the caller can wait for the item to settle |
 | `EdcTerminal` | `traits/edc.rs:76` | Card-present payment terminal. `authorize` and `capture` are **separate** because a terminal can hold a funds authorisation without taking the money; `sale` covers the common case in one call |
 | `ProtocolCodec` | `drivers/edc/protocol/mod.rs:61` | **PLANNED — do not implement against it.** Encodes/decodes a vendor-specific EDC protocol, and every method currently returns `HalError::Unsupported` until a real vendor protocol lands |
 
 ### Implementing a Custom Driver
 
-See `crates/oz-hal/examples/custom_barcode_scanner.rs` for a complete,
+See `crates/kasirmu-hal/examples/custom_barcode_scanner.rs` for a complete,
 tested example of implementing the `BarcodeScanner` trait for custom hardware.
 
 Key requirements:
 1. Implement the trait methods (`connect`, `poll`, `cancel`, `device_info`)
-2. Return `oz_hal::HalError` for all error paths
+2. Return `kasirmu_hal::HalError` for all error paths
 
 > **Note:** Native driver loading from `plugin.toml` is not yet wired into the
-> Lua runtime. Drivers are implemented in Rust against the `oz-hal` traits; the
+> Lua runtime. Drivers are implemented in Rust against the `kasirmu-hal` traits; the
 > `capabilities.drivers` manifest field is currently informational.
 
 ## Security
@@ -198,11 +198,11 @@ Key requirements:
 
 ## Testing Plugins
 
-The `oz-plugin` crate includes an integration test that loads the real
+The `kasirmu-plugin` crate includes an integration test that loads the real
 `plugins/example-discount` plugin end-to-end:
 
 ```bash
-cargo test -p oz-plugin --lib
+cargo test -p kasirmu-plugin --lib
 ```
 
 ## Troubleshooting

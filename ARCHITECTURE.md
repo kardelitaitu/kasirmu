@@ -1,6 +1,6 @@
 # OZ-POS Architecture
 
-<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (5 structural majors repaired) · FIXED 31-08: Core Traits rewritten verbatim from foundation/src/contracts.rs (Module id/dependencies/on_load/on_start/on_stop->ModuleResult; Service id/start/stop; EventHandler<E> generic; DomainEvent added; invented `trait Integration` removed); Platform Core Services tree trimmed to the 6 real services (auth/rbac/rbac_presets/permission_registry/database/settings/terminal_profile) with a note that logging/audit/cache live elsewhere; permission delimiter domain.action -> domain:action with real keys (sales:process/view/refund); Event Flow invented names (stock.updated/customer.history.updated/points.awarded/report.data.changed) replaced with real handlers (SaleSyncEnqueuer/InventorySyncEnqueuer/AuditLogHandler/LoyaltyEarnHandler) incl. the Rule-2 diagram; ADR #31 -> #43 (react-only); foundation/ -> foundation/src/; HAL/payment/reporting device lists synced; module tree corrected to the 14 active modules (loyalty/purchasing were wrongly marked 'planned', 8 real modules omitted); apps/unified added; foundation contracts list +DomainEvent · REMAINING (minor backlog, not falsehoods): no dedicated HAL/driver-trait section (EdcTerminal detail lives in crates/oz-hal/README.md); manifest example now complete (description+permissions); scoped-IPC (ADR #7) noted at commands/; remaining: PROMO-3/CUR-11/LOY-03/COR-7 not shown in any flow · counts (35 members / 13 crates / 14 modules / 61 ADRs) verified accurate -->
+<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (5 structural majors repaired) · FIXED 31-08: Core Traits rewritten verbatim from foundation/src/contracts.rs (Module id/dependencies/on_load/on_start/on_stop->ModuleResult; Service id/start/stop; EventHandler<E> generic; DomainEvent added; invented `trait Integration` removed); Platform Core Services tree trimmed to the 6 real services (auth/rbac/rbac_presets/permission_registry/database/settings/terminal_profile) with a note that logging/audit/cache live elsewhere; permission delimiter domain.action -> domain:action with real keys (sales:process/view/refund); Event Flow invented names (stock.updated/customer.history.updated/points.awarded/report.data.changed) replaced with real handlers (SaleSyncEnqueuer/InventorySyncEnqueuer/AuditLogHandler/LoyaltyEarnHandler) incl. the Rule-2 diagram; ADR #31 -> #43 (react-only); foundation/ -> foundation/src/; HAL/payment/reporting device lists synced; module tree corrected to the 14 active modules (loyalty/purchasing were wrongly marked 'planned', 8 real modules omitted); apps/unified added; foundation contracts list +DomainEvent · REMAINING (minor backlog, not falsehoods): no dedicated HAL/driver-trait section (EdcTerminal detail lives in crates/kasirmu-hal/README.md); manifest example now complete (description+permissions); scoped-IPC (ADR #7) noted at commands/; remaining: PROMO-3/CUR-11/LOY-03/COR-7 not shown in any flow · counts (35 members / 13 crates / 14 modules / 61 ADRs) verified accurate -->
 
 **Version:** 2.0 (Post-Restructuring)
 **Status:** Active — restructuring complete
@@ -61,7 +61,7 @@ CRM owns CRM logic.
 
 Modules communicate exclusively through an event bus. This prevents coupling
 and enables independent testing, loading, and replacement. New production
-module-to-module, upward `oz-core`, and non-composition platform dependencies
+module-to-module, upward `kasirmu-core`, and non-composition platform dependencies
 are blocked by `scripts/verify-architecture-boundaries.py`; existing
 transitional findings are explicitly baselined with owners and expiry dates.
 
@@ -120,7 +120,7 @@ oz-pos/
 │   ├─ kernel/         Module system (load, unload, lifecycle)
 │   ├─ core/           Shared services (auth, rbac, database, etc.)
 │   ├─ sync/           Offline-first sync engine
-│   ├─ api/            Backend HTTP API (today: crates/oz-api/)
+│   ├─ api/            Backend HTTP API (today: crates/kasirmu-api/)
 │   └─ ui/             Frontend infrastructure (today: ui/src/frontend/)
 │
 ├─ modules/           Business features (14 active, all registered in the kernel)
@@ -140,7 +140,7 @@ oz-pos/
 │   └─ terminal/
 │   (planned, not yet a crate: accounting, warehouse, restaurant, ecommerce)
 │
-├─ integrations/      External adapters (planned; today in crates/oz-hal, crates/oz-payment)
+├─ integrations/      External adapters (planned; today in crates/kasirmu-hal, crates/kasirmu-payment)
 │   ├─ payments/       (cash, stripe, midtrans, xendit)
 │   ├─ hardware/       (printers, scanners, cash-drawers, customer displays, scales, EDC terminals)
 │   ├─ messaging/      (whatsapp, email, telegram)
@@ -237,8 +237,8 @@ platform/core/src/
 └─ terminal_profile.rs   Terminal profile resolution
 ```
 
-> Logging lives in `crates/oz-logging`; audit trail and caching live in
-> `crates/oz-core`. Notifications, scheduler, localization, and tenancy are
+> Logging lives in `crates/kasirmu-logging`; audit trail and caching live in
+> `crates/kasirmu-core`. Notifications, scheduler, localization, and tenancy are
 > **not** implemented as platform/core services.
 
 ### Permission Examples
@@ -393,19 +393,19 @@ oz-pos/
 │   └─ purchasing/     Purchase orders & suppliers
 │
 ├─ crates/            Low-level utility crates
-│   ├─ oz-core/        Database migrations, domain types, Store, sync_client, events
-│   ├─ oz-api/         HTTP API server (axum) — now injects config via AppState
-│   ├─ oz-cli/         CLI tool for data import/export and maintenance
-│   ├─ oz-crypto/      Cryptographic primitives (key generation, hashing, encryption)
-│   ├─ oz-hal/         Hardware abstraction layer (printers, scanners, cash drawers, customer displays, scales, EDC payment terminals)
-│   ├─ oz-logging/     Structured logging setup
-│   ├─ oz-lua/         Lua scripting integration
-│   ├─ oz-media/       Media/image handling
-│   ├─ oz-notification/ Email & push notification dispatching
-│   ├─ oz-payment/     Card payment processing (Stripe, QRIS, Square, Paddle, mock)
-│   ├─ oz-plugin/      Plugin sandbox & lifecycle (Lua scripting bridge)
-│   ├─ oz-reporting/   Report generation (CSV export, daily summaries, menu engineering)
-│   └─ oz-security/    Auth, hashing, encryption
+│   ├─ kasirmu-core/        Database migrations, domain types, Store, sync_client, events
+│   ├─ kasirmu-api/         HTTP API server (axum) — now injects config via AppState
+│   ├─ kasirmu-cli/         CLI tool for data import/export and maintenance
+│   ├─ kasirmu-crypto/      Cryptographic primitives (key generation, hashing, encryption)
+│   ├─ kasirmu-hal/         Hardware abstraction layer (printers, scanners, cash drawers, customer displays, scales, EDC payment terminals)
+│   ├─ kasirmu-logging/     Structured logging setup
+│   ├─ kasirmu-lua/         Lua scripting integration
+│   ├─ kasirmu-media/       Media/image handling
+│   ├─ kasirmu-notification/ Email & push notification dispatching
+│   ├─ kasirmu-payment/     Card payment processing (Stripe, QRIS, Square, Paddle, mock)
+│   ├─ kasirmu-plugin/      Plugin sandbox & lifecycle (Lua scripting bridge)
+│   ├─ kasirmu-reporting/   Report generation (CSV export, daily summaries, menu engineering)
+│   └─ kasirmu-security/    Auth, hashing, encryption
 │
 ├─ foundation/src/    Reusable zero-business-logic code
 │   ├─ contracts.rs    Core traits (Module, Service, EventHandler, DomainEvent)

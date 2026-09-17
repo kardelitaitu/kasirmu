@@ -3,7 +3,7 @@
 #
 # Usage:
 #   cargo nextest run                    # all tests
-#   cargo nextest run -p oz-core         # single crate
+#   cargo nextest run -p kasirmu-core         # single crate
 #   cargo nextest run --changed          # only changed files (git diff)
 #   cargo nextest run --partition 1/4    # shard 1 of 4 (CI)
 

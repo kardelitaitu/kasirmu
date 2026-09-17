@@ -203,7 +203,7 @@ for. (`languages`, `packages` and `entry_points` were never requested on their o
 | `dependencies` | The 26 edge types with counts — same block `overview` already prints. |
 | `hotspots` | Top 10 by fan-in. Cheap and genuinely useful. |
 | `clusters` | 12 Leiden communities over CALLS edges — the real seams, which cut across the folder layout. Membership shifts between index generations. |
-| `boundaries` | 10 cross-package call counts (`sync → oz-core` 346, `src → public` 89). Small and useful. |
+| `boundaries` | 10 cross-package call counts (`sync → kasirmu-core` 346, `src → public` 89). Small and useful. |
 | `layers` | 37 rows; every script lands as `internal` with fan-in 0. Low signal. |
 | `routes` | 20 rows, several of them false positives (see the noise section). |
 | `cycles` | 14 circular CALLS groups over 47,467 edges, in 113 ms. Opt-in only — never implied by `all` or `overview`. |
@@ -217,7 +217,7 @@ for. (`languages`, `packages` and `entry_points` were never requested on their o
 `<project>.<path segments joined by dots, dashes preserved>.<Symbol>[.<Member>]`
 
 ```text
-oz-pos.crates.oz-core.src.kds.KdsOrder
+oz-pos.crates.kasirmu-core.src.kds.KdsOrder
 oz-pos.foundation.src.cart.Cart.add_line
 oz-pos.ui.src.features.tables.register.registerTablesFeature
 oz-pos.agents.skills.docs-auditor.scripts.check-orphans.main
@@ -226,7 +226,7 @@ oz-pos.agents.skills.docs-auditor.scripts.check-orphans.main
 The last one is `.agents/skills/docs-auditor/scripts/check-orphans.py`: a leading dot in
 a path segment is dropped, so `.agents` becomes `agents` in the qualified name while
 `file_path` keeps the real dotted directory. Dashes survive untouched
-(`oz-core`, `check-orphans`). Never guess a qualified name from a path — get it from
+(`kasirmu-core`, `check-orphans`). Never guess a qualified name from a path — get it from
 `search_graph` or from `entry_points` in `get_architecture`.
 
 The tree format **groups** rows to save tokens: a header line carries the shared
@@ -242,7 +242,7 @@ tool when the group prefix was carrying meaning.
 
 ```ts
 const hit = await tools.mcp__cbm__search_graph({ project: 'oz-pos', name_pattern: 'KdsOrder', label: 'Struct', limit: 5 });
-const src = await tools.mcp__cbm__get_code_snippet({ project: 'oz-pos', qualified_name: 'oz-pos.crates.oz-core.src.kds.KdsOrder' });
+const src = await tools.mcp__cbm__get_code_snippet({ project: 'oz-pos', qualified_name: 'oz-pos.crates.kasirmu-core.src.kds.KdsOrder' });
 const callers = await tools.mcp__cbm__trace_path({ project: 'oz-pos', function_name: 'oz-pos.foundation.src.cart.Cart.add_line', direction: 'inbound', depth: 2 });
 ```
 

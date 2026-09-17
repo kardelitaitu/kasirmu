@@ -262,7 +262,7 @@ jobs:
   # this workflow costs ~75 runner-minutes per run (measured on PR #95). That
   # is far too much to spend every night to test one crate.
   #
-  # WHY NO SYSTEM DEPS: `oz-bridge` is headless by contract — no tauri / gtk /
+  # WHY NO SYSTEM DEPS: `kasirmu-bridge` is headless by contract — no tauri / gtk /
   # webkit2gtk dependency (see its Cargo.toml) — so unlike `cargo-nextest` this
   # job skips the apt-get layer and the frontend dist stubs.
   #
@@ -286,7 +286,7 @@ jobs:
         with:
           tool: cargo-nextest
       - name: Run bridge tests in the release profile
-        run: cargo nextest run -p oz-bridge --release
+        run: cargo nextest run -p kasirmu-bridge --release
 
   # ── 4. UI Test: Frontend Vitest suite ─────────────────────────────────
   ui-test:

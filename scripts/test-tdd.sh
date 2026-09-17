@@ -152,7 +152,7 @@ fi
 MANIFEST="$TARGET_CRATE/Cargo.toml"
 if [ ! -f "$MANIFEST" ]; then
   echo "test-tdd: no Cargo.toml at $TARGET_CRATE/" >&2
-  echo "  -p takes a crate DIRECTORY (crates/kasirmu-core, platform/sync), not a package name (oz-core)." >&2
+  echo "  -p takes a crate DIRECTORY (crates/kasirmu-core, platform/sync), not a package name (kasirmu-core)." >&2
   exit 1
 fi
 

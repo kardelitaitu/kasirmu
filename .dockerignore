@@ -16,7 +16,7 @@
 # Documentation & design docs (not needed at compile time)
 docs
 
-# Front-end (Node.js / Tauri) — not needed for cloud-server. oz-core
+# Front-end (Node.js / Tauri) — not needed for cloud-server. kasirmu-core
 # vendors its copy of topologySemantics.json (crates/kasirmu-core/src/), so the
 # server build never touches the UI tree at all.
 ui

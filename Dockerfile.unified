@@ -154,7 +154,7 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
     && true
 
 # Copy the actual source and rebuild. ui/ is intentionally NOT copied:
-# oz-core vendors its topologySemantics.json contract and the server build
+# kasirmu-core vendors its topologySemantics.json contract and the server build
 # must never depend on the UI tree (.dockerignore excludes ui entirely).
 COPY crates/ crates/
 COPY foundation/ foundation/

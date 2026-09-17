@@ -499,7 +499,7 @@ All point at the unified host; each also has an env-var override:
 
 | File | Change | Override |
 |------|--------|----------|
-| `crates/oz-core/src/license_verification.rs` | `LICENSE_SERVER_URL` const | `OZ_LICENSE_SERVER_URL` |
+| `crates/kasirmu-core/src/license_verification.rs` | `LICENSE_SERVER_URL` const | `OZ_LICENSE_SERVER_URL` |
 | `apps/desktop-client/tauri.conf.json` | CSP `connect-src` | — |
 | `apps/tablet-client/tauri.conf.json` | CSP `connect-src` | — |
 | `ui/src/features/auth/LicenseActivationScreen.tsx` | `AUTH_SERVICE_URL` fallback | `VITE_AUTH_SERVICE_URL` |
@@ -616,13 +616,13 @@ captures and surfaces in **Dashboard → service → Logs**.
 
 **Everything below is a hosted-service diagnostic, and that is a limitation of
 the clients, not of this page.** No shipped binary writes a persistent local
-log: both Tauri apps initialise logging with `oz_logging::try_init()`
+log: both Tauri apps initialise logging with `kasirmu_logging::try_init()`
 (`apps/desktop-client/src/lib.rs:99`, `apps/tablet-client/src/lib.rs:69`),
 which installs an `EnvFilter` + `fmt` subscriber and **no writer**
-(`crates/oz-logging/src/lib.rs:78-89`, no `.with_writer`), so stdout goes wherever the OS puts it
+(`crates/kasirmu-logging/src/lib.rs:78-89`, no `.with_writer`), so stdout goes wherever the OS puts it
 — which for a double-clicked desktop build is nowhere. The two entry points
 that would have created a file, `init_with_file` and `init_json_with_file`
-(`crates/oz-logging/src/lib.rs:184`, `:238`), have **zero callers outside their
+(`crates/kasirmu-logging/src/lib.rs:184`, `:238`), have **zero callers outside their
 own tests**; `log_dir` / `LogRoot` / `app_log` / `path_resolver` return **0
 matches across `apps/`**, and the EventLog backend is never wired by any
 binary either. So there is no on-device log file to open, and nothing in this
@@ -663,10 +663,10 @@ anyway because the type could not be mapped`
 (`modules/inventory/src/handlers.rs`, `operation` =
 `InventoryStockHandler::handle_line`). Search the prefix, so that finding
 nothing for one never reads as health for the other — and know which half the
-lane you are reading can even produce: `oz-cloud-server` links `oz-api` and
-`oz-core` only (`apps/cloud-server/Cargo.toml:19-20`), so container logs can
+lane you are reading can even produce: `oz-cloud-server` links `kasirmu-api` and
+`kasirmu-core` only (`apps/cloud-server/Cargo.toml:19-20`), so container logs can
 carry the fallback line (its `operation` there is
-`pg_row_to_product_with_details`, `crates/oz-api/src/pg.rs:1064`) but **never**
+`pg_row_to_product_with_details`, `crates/kasirmu-api/src/pg.rs:1064`) but **never**
 the sale-line one, which lives in `modules/inventory` — its absence from a
 hosted log is architecture, not health. On a device both can fire and neither
 is recorded anywhere (see the scope note above). Each line carries
@@ -877,7 +877,7 @@ That key list is `SECRET_KEY_DENY_LIST` in `platform/core/src/settings/keys.rs` 
 copy it from there if it has moved since this section was written, and note that
 the comparison in `is_non_exportable_setting_key` is trim-then-ASCII-case-fold,
 so an oddly spelled row is judged on its folded form. The 38-character floor comes
-from `looks_like_ciphertext` in `crates/oz-crypto/src/lib.rs`: a 12-byte nonce and
+from `looks_like_ciphertext` in `crates/kasirmu-crypto/src/lib.rs`: a 12-byte nonce and
 a 16-byte GCM tag minimum, base64url without padding. On PostgreSQL the same
 thinking applies but `GLOB` does not exist — use `value !~ '^[A-Za-z0-9_-]+$'` for
 the inverted class.
@@ -898,7 +898,7 @@ than it sounds:
 > `encrypt_sync_api_key` and its siblings derive through `portable_key`, whose
 > fallback is `derive_key` over SHA-256 of the domain prefix concatenated with the
 > literal `"static"` — not machine-bound. The crate says so about itself, plainly,
-> in the threat-model note on `derive_static_key` in `crates/oz-crypto/src/lib.rs`:
+> in the threat-model note on `derive_static_key` in `crates/kasirmu-crypto/src/lib.rs`:
 > that key is a public constant, anyone with the repository can derive it and
 > decrypt every portable at-rest value in any deployment's database, and what the
 > encoding buys is protection against opportunistic inspection of the file, not
@@ -912,7 +912,7 @@ than it sounds:
 > that variable is absent — a shaped row that fails to decrypt is therefore not
 > evidence of tampering and not evidence of cleartext either; it may simply be a
 > different derivation. For the process in front of you, ask the code rather than
-> guessing: `oz_crypto::master_key_derivation_active()` reports which derivation
+> guessing: `kasirmu_crypto::master_key_derivation_active()` reports which derivation
 > this process selected, and nothing else — a historical install may have had the
 > variable set and be long gone. Whether these families should move to
 > machine-bound derivation is a rewrap decision, and it is deliberately not taken
@@ -939,17 +939,17 @@ not before.
 
 **Which of those saves is wired today, measured at HEAD, because three are and two
 are not.** `set_sync_api_key` is called from command lanes both shells reach
-(`crates/oz-bridge/src/sync.rs:76`, `apps/tablet-client/src/commands/sync.rs:92`), from
+(`crates/kasirmu-bridge/src/sync.rs:76`, `apps/tablet-client/src/commands/sync.rs:92`), from
 the sync daemon (`platform/sync/src/daemon.rs:170`), from terminal auth
-(`crates/oz-core/src/sync_auth.rs:472`) and from desktop auto-provisioning
+(`crates/kasirmu-core/src/sync_auth.rs:472`) and from desktop auto-provisioning
 (`apps/desktop-client/src/sync_bootstrap.rs:84`); `set_sync_terminal_secret` from the
 pairing path at `apps/desktop-client/src/sync_bootstrap.rs:248`; `set_pg_sync_password` from
-`crates/oz-bridge/src/sync.rs:161`. Those three keys have a walkable ladder.
+`crates/kasirmu-bridge/src/sync.rs:161`. Those three keys have a walkable ladder.
 `set_rate_sync_api_key` (`platform/core/src/settings/typed.rs:557`) and
 `set_lan_server_psk` (`platform/core/src/settings/typed.rs:643`) have **no production
 caller at all** — the only hits are their own definitions, the never-invoked
-`crates/oz-core/src/settings.rs:570` facade wrapper, tests and comments, and
-`crates/oz-core/tests/credential_storage_form.rs:258` already records one of them in
+`crates/kasirmu-core/src/settings.rs:570` facade wrapper, tests and comments, and
+`crates/kasirmu-core/tests/credential_storage_form.rs:258` already records one of them in
 those terms. So the only production write of `rate_sync.api_key` and `lan_server.psk`
 is `platform/core/src/settings/typed.rs:560` and
 `platform/core/src/settings/typed.rs:646`, inside setters nobody invokes, while both
@@ -961,9 +961,9 @@ after anything in this section — it is the only evidence either way.
 `smtp_config` is in step 1's list and is **not** written by any of those setters, so
 here is the chain instead of a sentence of prose to trust:
 `ui/src/features/settings/EmailReportSettings.tsx:163` (`setSettingScoped`) →
-`run_set_setting` in `crates/oz-bridge/src/settings.rs:500` (batch door `:593`; tablet
+`run_set_setting` in `crates/kasirmu-bridge/src/settings.rs:500` (batch door `:593`; tablet
 `apps/tablet-client/src/commands/settings.rs:623`) → `Store::merged_smtp_password_json`
-(`crates/oz-core/src/export/email_report.rs:316`) → `crate::crypto::encrypt_smtp_at_rest`
+(`crates/kasirmu-core/src/export/email_report.rs:316`) → `crate::crypto::encrypt_smtp_at_rest`
 at `:207` of that file. Note what that chain does and does not seal: it replaces the
 `password` **field of a JSON blob**, and only when a password was supplied
 (`:204-206`) — a value the keep-on-blank merge merely carried over is never
@@ -971,8 +971,8 @@ re-encrypted (`:202`), which is the second limit above stated exactly. And name 
 shape honestly, because the family names invite the wrong reading: the
 credential-sealed-inside-its-own-settings-value pattern this section recommends is
 live through the **portable** family (`encrypt_smtp_at_rest`,
-`crates/oz-crypto/src/lib.rs:227`), while the machine-bound sibling it resembles,
-`encrypt_smtp_password` (`crates/oz-crypto/src/lib.rs:193`), has no caller left in the
+`crates/kasirmu-crypto/src/lib.rs:227`), while the machine-bound sibling it resembles,
+`encrypt_smtp_password` (`crates/kasirmu-crypto/src/lib.rs:193`), has no caller left in the
 tree at all. A reader who looks for that function as the exemplar lane will not find
 one; what they can follow is the seam above, and that seam is a recommendation about
 an envelope shape, not a conversion any of the four surfaces above performs.

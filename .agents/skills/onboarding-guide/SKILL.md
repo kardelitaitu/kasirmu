@@ -5,7 +5,7 @@ description: Meta-skill that routes tasks to the right kasir.mu skill. Use when 
 
 <!-- Audit stamp: 2026-09-15 · Budak-Korporat · status: PARTIAL — router only. Added the `database` row to the skill router, pointing at the new `.agents/skills/database/SKILL.md`. Verified this pass: `.agents/skills/database/SKILL.md` exists and declares `name: database`; `bash .agents/skills/skill-drift-guard/scripts/detect.sh --check=paths` reports no drift with the new skill present, and that check was confirmed live first by injecting a probe skill holding a nonexistent crates path (it fired) and then removing it (it went clean). Nothing else in this file was re-audited this pass; the 08-09-26 stamp below still stands for the rest. -->
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: PARTIAL — router only. Added the `codebase-memory` row and the standing graph-first-discovery note under the router table; verified `.agents/skills/codebase-memory/` exists and that `AGENTS.md` really does mandate graph-first discovery. Nothing else in this file was re-audited this pass; the 03-09-26 rev-2 stamp below still stands for the rest. · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-09-03] · DSH · status: ACCURATE (rev 2 — pre-commit gate count corrected: the hook now runs six gates (cargo fmt, i18n lint, bundle parity, FTL dedupe, migration column-type lint, PG schema drift guard) plus LF normalization and a conditional Go gate for apps/license-server; verified against .githooks/pre-commit itself) · verified this pass: the oz-lua, oz-payment, oz-security and oz-reporting crate READMEs, crates/kasirmu-core/src/db/reports.rs, platform/sync, apps/cloud-server, scripts/test-tdd.sh, .agents/skills/skill-drift-guard/scripts/detect.sh all exist · prior: 2026-08-31 docs-auditor rev (obsolete-defer section rewritten; EdcTerminal/mlua/per-domain api fixes; embedded-hal removed)  ·· [2026-08-31] · docs-auditor · status: ACCURATE (obsolete-defer + convention refs repaired) · FIXED 31-08: 'Skills to defer (no code yet)' was obsolete — oz-lua/oz-payment/oz-security/cloud-sync/oz-reporting all ship code now; rewritten to 'Areas with code but no dedicated skill yet' pointing at each crate README; nonexistent PaymentTerminal trait -> EdcTerminal (hal-drivers); rlua -> mlua; pos.ts -> per-domain ui/src/api/<feature>.ts (router + workflow); device list NFC -> real (customer display, weight scale, EDC); embedded-hal -> async-trait · verified accurate: exit-animation-pattern skill exists, scripts verify-bundle-parity.py + dedupe-ftl.py + lint-i18n.sh + check.sh exist, .githooks/pre-commit 4-gate description matches -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: PARTIAL — router only. Added the `codebase-memory` row and the standing graph-first-discovery note under the router table; verified `.agents/skills/codebase-memory/` exists and that `AGENTS.md` really does mandate graph-first discovery. Nothing else in this file was re-audited this pass; the 03-09-26 rev-2 stamp below still stands for the rest. · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-09-03] · DSH · status: ACCURATE (rev 2 — pre-commit gate count corrected: the hook now runs six gates (cargo fmt, i18n lint, bundle parity, FTL dedupe, migration column-type lint, PG schema drift guard) plus LF normalization and a conditional Go gate for apps/license-server; verified against .githooks/pre-commit itself) · verified this pass: the kasirmu-lua, kasirmu-payment, kasirmu-security and kasirmu-reporting crate READMEs, crates/kasirmu-core/src/db/reports.rs, platform/sync, apps/cloud-server, scripts/test-tdd.sh, .agents/skills/skill-drift-guard/scripts/detect.sh all exist · prior: 2026-08-31 docs-auditor rev (obsolete-defer section rewritten; EdcTerminal/mlua/per-domain api fixes; embedded-hal removed)  ·· [2026-08-31] · docs-auditor · status: ACCURATE (obsolete-defer + convention refs repaired) · FIXED 31-08: 'Skills to defer (no code yet)' was obsolete — kasirmu-lua/kasirmu-payment/kasirmu-security/cloud-sync/kasirmu-reporting all ship code now; rewritten to 'Areas with code but no dedicated skill yet' pointing at each crate README; nonexistent PaymentTerminal trait -> EdcTerminal (hal-drivers); rlua -> mlua; pos.ts -> per-domain ui/src/api/<feature>.ts (router + workflow); device list NFC -> real (customer display, weight scale, EDC); embedded-hal -> async-trait · verified accurate: exit-animation-pattern skill exists, scripts verify-bundle-parity.py + dedupe-ftl.py + lint-i18n.sh + check.sh exist, .githooks/pre-commit 4-gate description matches -->
 # kasir.mu Onboarding Guide
 
 kasir.mu is a Rust + Tauri v2 POS framework. The codebase is organized into clear layers, and each layer has a dedicated skill. This guide routes you to the right skill for the work you want to do.
@@ -31,13 +31,13 @@ For comprehensive local validation that mirrors the entire CI matrix (not just t
 
 ## 30-second tour
 
-- **Domain types and money**: `oz-core` (Rust library, no I/O).
+- **Domain types and money**: `kasirmu-core` (Rust library, no I/O).
 - **Database**: SQLite via `rusqlite`, all writes in transactions.
-- **Hardware**: `oz-hal` (drivers behind `async` traits, mandatory mocks).
+- **Hardware**: `kasirmu-hal` (drivers behind `async` traits, mandatory mocks).
 - **UI**: Tauri v2 + React 18 + TypeScript, strict, accessible, localized.
 - **IPC**: Rust commands in `apps/desktop-client/src/commands/`, front-end wrappers in `ui/src/api/` (per-domain files).
-- **Scripting**: `mlua` runtime in `oz-lua` for runtime business rules.
-- **Payment**: PCI-aware, swappable processors in `oz-payment`.
+- **Scripting**: `mlua` runtime in `kasirmu-lua` for runtime business rules.
+- **Payment**: PCI-aware, swappable processors in `kasirmu-payment`.
 - **CI**: GitHub Actions matrix (Linux, Windows, macOS), blocking fmt/clippy/test/UI lint.
 
 If a change touches more than one layer, you will use more than one skill. That's normal.
@@ -79,9 +79,9 @@ If your task touches more than one layer, read each relevant skill in the order 
 
 These crates now ship real code (they were "pre-code" when this guide was first written). There is still no dedicated skill for each, so read **`rust-backend`** plus the crate's own `README.md` for conventions:
 
-- **`oz-lua` scripting** — `mlua` runtime; discount/tax/validation rules. See the oz-lua crate README (`crates/kasirmu-lua/README.md`).
-- **`oz-payment` processors** — Stripe, Square, QRIS, Paddle, mock. Card-present terminals are the `oz-hal` **`EdcTerminal`** trait (see `hal-drivers`). See `crates/kasirmu-payment/README.md`.
-- **`oz-security`** — encryption, PAN masking, platform keychains. See `crates/kasirmu-security/README.md`.
+- **`kasirmu-lua` scripting** — `mlua` runtime; discount/tax/validation rules. See the kasirmu-lua crate README (`crates/kasirmu-lua/README.md`).
+- **`kasirmu-payment` processors** — Stripe, Square, QRIS, Paddle, mock. Card-present terminals are the `kasirmu-hal` **`EdcTerminal`** trait (see `hal-drivers`). See `crates/kasirmu-payment/README.md`.
+- **`kasirmu-security`** — encryption, PAN masking, platform keychains. See `crates/kasirmu-security/README.md`.
 - **Cloud sync** — `platform/sync` + `apps/cloud-server` (PostgreSQL). See `ARCHITECTURE.md`.
 - **Reporting / analytics** — `crates/kasirmu-reporting` + `crates/kasirmu-core/src/db/reports.rs` (REP-03: store-timezone bucketing). See `crates/kasirmu-reporting/README.md`.
 
@@ -127,7 +127,7 @@ When one of these grows a dedicated skill, add it to the router table above.
 
 These skills are scoped to the kasir.mu codebase. They do **not** apply if you are working on:
 
-- A different project (the skills reference `oz-core`, `oz-hal`, etc. by name).
+- A different project (the skills reference `kasirmu-core`, `kasirmu-hal`, etc. by name).
 - A feature that has nothing to do with a POS (a CLI for a totally different domain, a web app, a game).
 - An LLM-driven workflow (kasir.mu does not use LLMs at the framework level).
 - A browser-automation workflow (kasir.mu does not drive browsers; it is a desktop app).

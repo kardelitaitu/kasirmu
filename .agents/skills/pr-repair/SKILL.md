@@ -131,7 +131,7 @@ When PG tests like `crates/kasirmu-api/src/pg_tests.rs` or `apps/cloud-server/sr
 bash scripts/reset-dev-pg.sh
 
 # Re-run the failing test
-cargo test -p oz-api --test pg_tests
+cargo test -p kasirmu-api --test pg_tests
 ```
 
 #### 3. Rust Formatting & Linter
@@ -269,7 +269,7 @@ python scripts/diagnose-pr.py <PR_NUMBER>
 | CI Check Name | Root Cause Indicator | Local Reproduction Command |
 |---|---|---|
 | `Rust Test / test-workspace` | Rust assertion or panic | `cargo test -p <crate> <test_name> -- --nocapture` |
-| `PG Integration / pg_tests` | `Db("db error")` drift | `bash scripts/reset-dev-pg.sh && cargo test -p oz-api --test pg_tests` |
+| `PG Integration / pg_tests` | `Db("db error")` drift | `bash scripts/reset-dev-pg.sh && cargo test -p kasirmu-api --test pg_tests` |
 | `Rust Lint / cargo fmt` | Formatting discrepancy | `cargo fmt --all` |
 | `Rust Lint / clippy` | Compiler/clippy warning | `cargo clippy -p <crate> --all-targets --all-features -- -D warnings` |
 | `UI Test / vitest` | Component/unit test failure | `cd ui && npm run test -- <test_name_fragment>` |

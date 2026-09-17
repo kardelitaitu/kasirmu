@@ -119,7 +119,7 @@ cargo test --workspace --all-features
 cd ui && npm run test
 ```
 
-The Rust test suite is fully offline — no browser, no network, no hardware. Mocks live in `crates/oz-hal/src/drivers/mock.rs` and are always compiled (there is no `mock` feature gate).
+The Rust test suite is fully offline — no browser, no network, no hardware. Mocks live in `crates/kasirmu-hal/src/drivers/mock.rs` and are always compiled (there is no `mock` feature gate).
 
 ---
 
@@ -203,24 +203,24 @@ If you only want the i18n quality gate as a quick pre-flight, run `bash scripts/
 oz-pos/
 ├── Cargo.toml                  # workspace root
 ├── crates/                     # Rust workspace members (one per oz-* responsibility)
-│   ├── oz-core/                # money, currency, cart, sale, inventory
-│   ├── oz-crypto/              # cryptographic primitives (secret encryption at rest)
-│   ├── oz-hal/                 # hardware abstraction + drivers
-│   ├── oz-lua/                 # mlua runtime + script bindings
-│   ├── oz-media/               # media pipeline (compress, crop, thumbnail)
-│   ├── oz-security/            # encryption, secrets, PCI helpers
-│   ├── oz-payment/             # Stripe, Square, QRIS, Paddle, mock
-│   ├── oz-reporting/           # analytics + CSV export
-│   ├── oz-logging/             # structured logging
-│   ├── oz-api/                 # HTTP API server (axum)
-│   ├── oz-notification/        # email & push notification dispatching
-│   ├── oz-plugin/              # plugin sandbox & lifecycle
-│   └── oz-cli/                 # migrations, backup, export CLI
+│   ├── kasirmu-core/                # money, currency, cart, sale, inventory
+│   ├── kasirmu-crypto/              # cryptographic primitives (secret encryption at rest)
+│   ├── kasirmu-hal/                 # hardware abstraction + drivers
+│   ├── kasirmu-lua/                 # mlua runtime + script bindings
+│   ├── kasirmu-media/               # media pipeline (compress, crop, thumbnail)
+│   ├── kasirmu-security/            # encryption, secrets, PCI helpers
+│   ├── kasirmu-payment/             # Stripe, Square, QRIS, Paddle, mock
+│   ├── kasirmu-reporting/           # analytics + CSV export
+│   ├── kasirmu-logging/             # structured logging
+│   ├── kasirmu-api/                 # HTTP API server (axum)
+│   ├── kasirmu-notification/        # email & push notification dispatching
+│   ├── kasirmu-plugin/              # plugin sandbox & lifecycle
+│   └── kasirmu-cli/                 # migrations, backup, export CLI
 ├── apps/desktop-client/        # the desktop Tauri shell
 │   └── src/commands/           # Tauri commands (one folder per feature)
 ├── ui/                         # React + TypeScript front-end
 │   └── src/api/                # per-domain invoke() wrappers
-├── crates/oz-core/migrations/  # SQL migration files
+├── crates/kasirmu-core/migrations/  # SQL migration files
 ├── docs/                       # project documentation
 ├── .agents/skills/             # agent skills (read these when contributing)
 └── .github/workflows/          # CI pipelines
@@ -274,7 +274,7 @@ All green? Open the PR.
 
 ## Troubleshooting
 
-### "error: package `oz-core` cannot be built because it requires rustc 1.88 or newer"
+### "error: package `kasirmu-core` cannot be built because it requires rustc 1.88 or newer"
 
 (The version in that message is whatever the workspace is currently locked at — the
 sentence is about the toolchain floor, not the release.)

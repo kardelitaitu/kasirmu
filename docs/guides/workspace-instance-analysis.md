@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: AUDITED (draft, superseded by ADR #4) · pre-decision analysis doc; all referenced files verified present: crates/oz-core/src/db/workspaces.rs, apps/desktop-client/src/commands/workspaces.rs, ui/src/contexts/WorkspaceContext.tsx, ui/src/features/workspaces/WorkspaceHome.tsx, ui/src/frontend/shell/AppShell.tsx; StoreProfile (crates/oz-core/src/store_profile.rs:14) + MultiStoreDashboardScreen (ui/src/App.tsx:37) confirmed · note: its Phase 3 recommended query-level WHERE store_id=? scoping was NOT the mechanism adopted — ADR #4 (2026-07-10-workspace-type-instance-design.md) chose store-scoped SQLite DBs (filesystem isolation) instead; treat as historical draft, not as-built claim · CURRENCY 08-09-26: two paths this stamp says it verified are now dead, which is what a dated verification looks like when nobody re-runs it. `crates/oz-core/src/store_profile.rs` is `crates/oz-core/src/location_profile.rs` and `StoreProfile` is `LocationProfile` (line 15); `ui/src/features/stores/` is `ui/src/features/locations/`. The stamp is left as written because it records what was true on 2026-07-22, not what is true now -->
+<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: AUDITED (draft, superseded by ADR #4) · pre-decision analysis doc; all referenced files verified present: crates/kasirmu-core/src/db/workspaces.rs, apps/desktop-client/src/commands/workspaces.rs, ui/src/contexts/WorkspaceContext.tsx, ui/src/features/workspaces/WorkspaceHome.tsx, ui/src/frontend/shell/AppShell.tsx; StoreProfile (crates/kasirmu-core/src/store_profile.rs:14) + MultiStoreDashboardScreen (ui/src/App.tsx:37) confirmed · note: its Phase 3 recommended query-level WHERE store_id=? scoping was NOT the mechanism adopted — ADR #4 (2026-07-10-workspace-type-instance-design.md) chose store-scoped SQLite DBs (filesystem isolation) instead; treat as historical draft, not as-built claim · CURRENCY 08-09-26: two paths this stamp says it verified are now dead, which is what a dated verification looks like when nobody re-runs it. `crates/kasirmu-core/src/store_profile.rs` is `crates/kasirmu-core/src/location_profile.rs` and `StoreProfile` is `LocationProfile` (line 15); `ui/src/features/stores/` is `ui/src/features/locations/`. The stamp is left as written because it records what was true on 2026-07-22, not what is true now -->
 
 # Workspace Instance Architecture — Analysis & Recommendation
 
@@ -223,9 +223,9 @@ This is a significant UX change for product management.
 
 | Step | What | Files |
 |---|---|---|
-| 1 | Create `workspace_instances` table + migration | `crates/oz-core/migrations/` |
+| 1 | Create `workspace_instances` table + migration | `crates/kasirmu-core/migrations/` |
 | 2 | Seed default instances from existing workspace keys | Migration SQL |
-| 3 | Add `list_workspace_instances`, `create_instance`, `delete_instance` APIs | `crates/oz-core/src/db/workspaces.rs` + `apps/desktop-client/src/commands/workspaces.rs` |
+| 3 | Add `list_workspace_instances`, `create_instance`, `delete_instance` APIs | `crates/kasirmu-core/src/db/workspaces.rs` + `apps/desktop-client/src/commands/workspaces.rs` |
 | 4 | Migrate `user_workspaces` → `user_workspace_instances` | DB migration + Rust logic |
 | 5 | Add `list_all_workspace_types` API (for admin dropdowns) | Same files |
 | 6 | Update `WorkspaceContext` to fetch instances | `ui/src/contexts/WorkspaceContext.tsx` |
@@ -336,7 +336,7 @@ Data scoping (`store_id` on tables) is **not** part of Phase 1. All instances sh
 ## 9. Related Documents
 
 - `docs/decisions/2026-07-10-workspace-type-instance-design.md` — ADR with full schema design
-- `crates/oz-core/src/db/workspaces.rs` — Current workspace queries
+- `crates/kasirmu-core/src/db/workspaces.rs` — Current workspace queries
 - `apps/desktop-client/src/commands/workspaces.rs` — Current workspace IPC commands
 - `ui/src/contexts/WorkspaceContext.tsx` — Current workspace state management
 - `ui/src/features/workspaces/WorkspaceHome.tsx` — Workspace picker UI

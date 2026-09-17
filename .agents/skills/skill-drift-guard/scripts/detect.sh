@@ -318,7 +318,7 @@ if should_run api; then
     # claim and produced a permanent stream of un-actionable findings.
     # `< <(…)` not `grep | while`: see the subshell note in Check 1.
     while read -r line; do
-      FINDINGS[api]+="${skill}: ${line} (verify signature in foundation/src/money.rs, re-exported by oz-core/src/money.rs)"$'\n'
+      FINDINGS[api]+="${skill}: ${line} (verify signature in foundation/src/money.rs, re-exported by kasirmu-core/src/money.rs)"$'\n'
     done < <(awk '/^```/{f=!f; next} f && /Money::(from_major|checked_add|zero|new)/{print NR": "$0}' "$skill" 2>/dev/null)
   done < <(find .agents/skills -name SKILL.md 2>/dev/null)
 fi
@@ -384,7 +384,7 @@ if should_run refs; then
       # Heuristic: anything else in backticks inside the router table is a skill reference
       if [ -d ".agents/skills/$ref" ]; then continue; fi
       # …but only if it resolves to NOTHING else real. The guide backtick-names
-      # workspace members (`oz-core`), dependencies (`mlua`, `rusqlite`,
+      # workspace members (`kasirmu-core`), dependencies (`mlua`, `rusqlite`,
       # `async-trait`) and CI keys (`static-gates`, `continue-on-error`) in the
       # same voice it uses for skills, and token shape cannot tell them apart.
       # Without this, every one of those is a permanent false positive and the

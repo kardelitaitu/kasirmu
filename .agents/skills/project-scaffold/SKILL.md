@@ -3,7 +3,7 @@ name: project-scaffold
 description: Project scaffolding, Cargo workspace layout, CI configuration, and Git conventions for kasir.mu. Use when setting up the initial repo, adding a new crate, configuring GitHub Actions, or committing changes.
 ---
 
-<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — version lock corrected 0.0.33 → 0.0.35; branch policy aligned with the never-create-branches repo rule; CI section rewritten against the real single active workflow .github/workflows/dev-ci.yml (website/cargo-check/cargo-nextest/ui-test/northflank-deploy, ubuntu, node 24, PG 17 service, RUSTFLAGS -D warnings; ci.yml/security.yml/release.yml exist only as .bak); workspace tree fixed — ARCHITECTURE.md at root, no ROADMAP/WHITEPAPER, docs/ carries guides|specs|decisions|records; spec workflow fixed — the phantom spec `_template` dir removed (does not exist; drafts go straight into `_active`), example swapped to the real 0043-architecture-boundary-checker; lockfile guidance corrected to single committed root Cargo.lock) · verified this pass: Cargo.toml (members globs, exclude, workspace.package, workspace.lints missing_docs, rusqlite 0.31 bundled+backup, thiserror/anyhow/tracing), scripts/check.sh + check.ps1, docs/specs/_active/0043-architecture-boundary-checker (spec.yaml + plan.md + validation.md), .gitignore · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-08-31] · docs-auditor · status: ACCURATE (workspace-layout example repaired) · FIXED 31-08: license MIT -> "SEE LICENSE IN LICENSE" (proprietary — an agent scaffolding with MIT would mislicense the codebase); version 0.0.1 -> 0.0.33 (locked); rust-version 1.85 -> 1.88 (axum/time require >=1.88); members explicit-8 -> real globs (crates/*, modules/*, platform/*, foundation, apps listed explicitly since Go license-server breaks an apps/* glob); rusqlite features +backup; migrations moved from phantom repo-root to crates/kasirmu-core/migrations/; oz-lua rlua -> mlua · verified against HEAD Cargo.toml + ui/package.json · F6 (node-version) not present in skill body (it lives in .github/workflows) -->
+<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — version lock corrected 0.0.33 → 0.0.35; branch policy aligned with the never-create-branches repo rule; CI section rewritten against the real single active workflow .github/workflows/dev-ci.yml (website/cargo-check/cargo-nextest/ui-test/northflank-deploy, ubuntu, node 24, PG 17 service, RUSTFLAGS -D warnings; ci.yml/security.yml/release.yml exist only as .bak); workspace tree fixed — ARCHITECTURE.md at root, no ROADMAP/WHITEPAPER, docs/ carries guides|specs|decisions|records; spec workflow fixed — the phantom spec `_template` dir removed (does not exist; drafts go straight into `_active`), example swapped to the real 0043-architecture-boundary-checker; lockfile guidance corrected to single committed root Cargo.lock) · verified this pass: Cargo.toml (members globs, exclude, workspace.package, workspace.lints missing_docs, rusqlite 0.31 bundled+backup, thiserror/anyhow/tracing), scripts/check.sh + check.ps1, docs/specs/_active/0043-architecture-boundary-checker (spec.yaml + plan.md + validation.md), .gitignore · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-08-31] · docs-auditor · status: ACCURATE (workspace-layout example repaired) · FIXED 31-08: license MIT -> "SEE LICENSE IN LICENSE" (proprietary — an agent scaffolding with MIT would mislicense the codebase); version 0.0.1 -> 0.0.33 (locked); rust-version 1.85 -> 1.88 (axum/time require >=1.88); members explicit-8 -> real globs (crates/*, modules/*, platform/*, foundation, apps listed explicitly since Go license-server breaks an apps/* glob); rusqlite features +backup; migrations moved from phantom repo-root to crates/kasirmu-core/migrations/; kasirmu-lua rlua -> mlua · verified against HEAD Cargo.toml + ui/package.json · F6 (node-version) not present in skill body (it lives in .github/workflows) -->
 # Project Scaffold, CI & Git
 
 kasir.mu is a multi-crate Cargo workspace with a Tauri front-end, a strict style policy, and a CI pipeline that catches mistakes before they merge. This skill covers the workspace layout, the CI matrix, and the Git workflow.
@@ -59,7 +59,7 @@ rust-version = "1.88"       # axum/tower-http deps (time 0.3.47+) require ≥ 1.
 license = "SEE LICENSE IN LICENSE"   # proprietary — NOT open source
 
 [workspace.dependencies]
-# all crates import from here: oz-core = { workspace = true }
+# all crates import from here: kasirmu-core = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.31", features = ["bundled", "backup"] }
@@ -74,15 +74,15 @@ oz-pos/
 ├── Cargo.toml                  # workspace root (single committed Cargo.lock)
 ├── AGENTS.md · ARCHITECTURE.md · CONTRIBUTING.md · README.md   # root docs
 ├── crates/
-│   ├── oz-core/                # money, currency, cart, sale, inventory domain; migrations/ (init.sql + init.pg.sql, embedded via include_str!)
-│   ├── oz-hal/                 # hardware abstraction + drivers
-│   ├── oz-lua/                 # mlua runtime + script bindings
-│   ├── oz-security/            # encryption, secrets, PCI helpers
-│   ├── oz-payment/             # Stripe, Square, EMV abstraction
-│   ├── oz-reporting/           # analytics + CSV export
-│   ├── oz-logging/             # structured logging
-│   └── oz-cli/                 # migrations, backup, export CLI
-│   (also: oz-api, oz-crypto, oz-plugin, oz-notification, oz-media — globbed via crates/*)
+│   ├── kasirmu-core/                # money, currency, cart, sale, inventory domain; migrations/ (init.sql + init.pg.sql, embedded via include_str!)
+│   ├── kasirmu-hal/                 # hardware abstraction + drivers
+│   ├── kasirmu-lua/                 # mlua runtime + script bindings
+│   ├── kasirmu-security/            # encryption, secrets, PCI helpers
+│   ├── kasirmu-payment/             # Stripe, Square, EMV abstraction
+│   ├── kasirmu-reporting/           # analytics + CSV export
+│   ├── kasirmu-logging/             # structured logging
+│   └── kasirmu-cli/                 # migrations, backup, export CLI
+│   (also: kasirmu-api, kasirmu-crypto, kasirmu-plugin, kasirmu-notification, kasirmu-media — globbed via crates/*)
 ├── apps/desktop-client/        # the desktop shell
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
@@ -132,7 +132,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-oz-core = { workspace = true }
+kasirmu-core = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 ```
@@ -169,7 +169,7 @@ subdirectory is a Cargo crate.
 **Rules:**
 - `missing_docs = "warn"` comes from the root `[workspace.lints]` and applies through `[lints] workspace = true`; do not add a per-crate `#![warn(missing_docs)]`. Public items without `///` produce warnings; fix them, don't suppress.
 - Cargo rejects a manifest that has both `[lints] workspace = true` and a local `[lints.rust]` override, so a crate-level need for a different lint level must use an inner attribute in `lib.rs` (as `#![deny(unsafe_code)]` does).
-- `#![deny(unsafe_code)]` unless the crate is `oz-hal` (drivers may need `unsafe` for FFI). Even then, wrap `unsafe` blocks with `// SAFETY:` comments.
+- `#![deny(unsafe_code)]` unless the crate is `kasirmu-hal` (drivers may need `unsafe` for FFI). Even then, wrap `unsafe` blocks with `// SAFETY:` comments.
 - Each crate has a `README.md` with a one-paragraph summary, public API overview, and example.
 - The crate's `mod.rs` re-exports the public surface so users can `use oz_<name>::Type;`.
 
@@ -281,7 +281,7 @@ Run these before pushing. The CI workflow is the merge gate, but a local pass ca
 - `*.db`, `*.sqlite`, `*.sqlite3` — local databases.
 - `target/` and per-crate `target/` trees, `dist/` outputs (including the ui build outputs), `node_modules/` — build artifacts.
 - `*.key`, `*.pem`, `secrets/` — credentials.
-- **Cargo.lock:** the workspace keeps a **single `Cargo.lock` at the root and it is committed** (kasir.mu ships binaries — `oz-cli`, the Tauri app). Do not add per-crate lockfiles; the only exception is the standalone `fuzz/` workspace, whose lockfile is a dev-only artifact and is ignored.
+- **Cargo.lock:** the workspace keeps a **single `Cargo.lock` at the root and it is committed** (kasir.mu ships binaries — `kasirmu-cli`, the Tauri app). Do not add per-crate lockfiles; the only exception is the standalone `fuzz/` workspace, whose lockfile is a dev-only artifact and is ignored.
 
 A `.gitignore` template (matches the repo's real one):
 

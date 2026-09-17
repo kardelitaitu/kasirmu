@@ -30,7 +30,7 @@ and logs its lifecycle transitions.
 
 The KDS today is frontend-only: `KdsScreen` plus the LAN sync path in
 `platform/sync`. No Rust module owns ticket state, which is why the
-`kitchen-display` disable guard in `oz_core::features` reaches into tables
+`kitchen-display` disable guard in `kasirmu_core::features` reaches into tables
 directly to refuse turning the flag off while tickets are open. When this stub
 is promoted, that guard should ask this module instead.
 

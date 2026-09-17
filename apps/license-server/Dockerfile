@@ -3,7 +3,7 @@
 #
 # Build:  docker build -t oz-pos/license-server apps/license-server
 # Run:    docker run -p 8080:8080 -v pb_data:/pb/pb_data \
-#           -e OZ_LICENSE_PRIVATE_KEY="$(cat crates/oz-core/oz-license-private.pem)" \
+#           -e OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)" \
 #           oz-pos/license-server
 #
 # Multi-stage build: compile the custom Go binary, then copy into a

@@ -206,24 +206,24 @@ pub fn course_sort_key(course: Option<&str>) -> i64 {
 
 | Step | Files | Changes |
 |------|-------|---------|
-| 1. Migration 105 | squashed into `crates/oz-core/migrations/20260813_init.sql` | New `kds_line_items` table |
+| 1. Migration 105 | squashed into `crates/kasirmu-core/migrations/20260813_init.sql` | New `kds_line_items` table |
 | 2. Migration 106 | squashed into the same `20260813_init.sql` | ALTER TABLE for `course` + `modifiers_json` on `sale_lines` |
 
-The 131 pre-Aug-2026 migrations were squashed into `20260813_init.sql`, so numbered files 105 and 106 no longer exist as files. The schema they created does — `kds_line_items` and `modifiers_json` are both in the init baseline. Registry order in `crates/oz-core/src/migrations.rs` is canonical, not filename order.
-| 3. Rust types | `crates/oz-core/src/kds.rs` | Add `KdsLineItem`, `KdsModifier`, `CreateKdsLineItemInput` structs |
+The 131 pre-Aug-2026 migrations were squashed into `20260813_init.sql`, so numbered files 105 and 106 no longer exist as files. The schema they created does — `kds_line_items` and `modifiers_json` are both in the init baseline. Registry order in `crates/kasirmu-core/src/migrations.rs` is canonical, not filename order.
+| 3. Rust types | `crates/kasirmu-core/src/kds.rs` | Add `KdsLineItem`, `KdsModifier`, `CreateKdsLineItemInput` structs |
 | 4. Enrich SaleLine | `modules/sales/src/models.rs` (not `models/sale.rs`) | Add `course: Option<String>` and `modifiers_json: Option<String>` to `SaleLine` — both present, at lines 65 and 71 |
-| 5. Update `CreateKdsOrderInput` | `crates/oz-core/src/kds.rs` | Replace `items_summary`/`item_count` with `items: Vec<CreateKdsLineItemInput>` |
-| 6. DB: insert line items | `crates/oz-core/src/db/kds.rs` | New `create_kds_line_items` method + update `create_kds_order` to call it |
+| 5. Update `CreateKdsOrderInput` | `crates/kasirmu-core/src/kds.rs` | Replace `items_summary`/`item_count` with `items: Vec<CreateKdsLineItemInput>` |
+| 6. DB: insert line items | `crates/kasirmu-core/src/db/kds.rs` | New `create_kds_line_items` method + update `create_kds_order` to call it |
 
 ### Phase 2 — KDS Pipeline (Day 2)
 
 | Step | Files | Changes |
 |------|-------|---------|
-| 7. Rewrite `complete_sale_to_kds` | `crates/oz-core/src/db/kds.rs` | Build structured `CreateKdsLineItemInput` per line with course + modifiers from sale lines; still group by zone |
-| 8. Derive `items_summary` | `crates/oz-core/src/db/kds.rs` | After inserting line items, derive the flat summary by joining display names |
-| 9. Update `row_to_kds_order` | `crates/oz-core/src/db/kds.rs` | Remove items_summary derivation; keep legacy field but set from derived |
-| 10. Update `get_kds_order` | `crates/oz-core/src/db/kds.rs` | Load line items alongside the order (or lazy via `with_lines()`) |
-| 11. New API: `get_kds_order_lines` | `crates/oz-core/src/db/kds.rs` | Query kds_line_items by kds_order_id, ordered by course_sort_key + line_position |
+| 7. Rewrite `complete_sale_to_kds` | `crates/kasirmu-core/src/db/kds.rs` | Build structured `CreateKdsLineItemInput` per line with course + modifiers from sale lines; still group by zone |
+| 8. Derive `items_summary` | `crates/kasirmu-core/src/db/kds.rs` | After inserting line items, derive the flat summary by joining display names |
+| 9. Update `row_to_kds_order` | `crates/kasirmu-core/src/db/kds.rs` | Remove items_summary derivation; keep legacy field but set from derived |
+| 10. Update `get_kds_order` | `crates/kasirmu-core/src/db/kds.rs` | Load line items alongside the order (or lazy via `with_lines()`) |
+| 11. New API: `get_kds_order_lines` | `crates/kasirmu-core/src/db/kds.rs` | Query kds_line_items by kds_order_id, ordered by course_sort_key + line_position |
 | 12. New Tauri command | `apps/desktop-client/src/commands/kds.rs` | `get_kds_order_lines_scoped` returning `Vec<KdsLineItem>` |
 
 ### Phase 3 — Frontend Display (Day 3)
@@ -243,8 +243,8 @@ The 131 pre-Aug-2026 migrations were squashed into `20260813_init.sql`, so numbe
 |------|-------|---------|
 | 19. Cart: course assignment | `ui/src/features/retail/RetailCartPanel.tsx` + `ui/src/features/sales/PosScreen.tsx` | UI to assign course per line item in restaurant mode. **There is no `ui/src/features/pos/` directory and no `PosCartPanel.tsx` anywhere in the tree** — the course bar is `pos-cart-course-bar`, rendered from `COURSES` inside `PosScreen.tsx` (around line 1542) and styled by `ui/src/features/sales/CartPanelCourseBar.css` |
 | 20. Cart: modifiers | `ui/src/features/retail/RetailCartPanel.tsx` | "Add modifier" button per line → modal with modifier groups from product |
-| 21. Cart → SaleLine | `crates/oz-core/src/cart.rs` | Carry `course` and `modifiers` through CartLine → SaleLine |
-| 22. Sale completion | `crates/oz-core/src/db/sales.rs` | Write `course` + `modifiers_json` on `sale_lines` INSERT |
+| 21. Cart → SaleLine | `crates/kasirmu-core/src/cart.rs` | Carry `course` and `modifiers` through CartLine → SaleLine |
+| 22. Sale completion | `crates/kasirmu-core/src/db/sales.rs` | Write `course` + `modifiers_json` on `sale_lines` INSERT |
 
 ---
 

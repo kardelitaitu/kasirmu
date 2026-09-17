@@ -25,7 +25,7 @@ The CRM module owns the customer relationship management vertical. It handles cu
 - **API** — TypeScript API client (`ui/src/api/customers.ts`)
 - **Locale** — Fluent translation strings (`ui/src/locales/customers.ftl`)
 
-In the current phase the runtime customer CRUD still runs through the files above (notably `crates/kasirmu-core/src/db/customers.rs`). The crate also contains `repository.rs` (`CrmRepository`) and `service.rs` (`CrmService`) as a not-yet-wired mirror (no `tests/boundary_contract.rs`), so the module remains a thin wrapper over the `oz-core` implementation. A subsequent phase will move the implementation fully into `modules/crm/`.
+In the current phase the runtime customer CRUD still runs through the files above (notably `crates/kasirmu-core/src/db/customers.rs`). The crate also contains `repository.rs` (`CrmRepository`) and `service.rs` (`CrmService`) as a not-yet-wired mirror (no `tests/boundary_contract.rs`), so the module remains a thin wrapper over the `kasirmu-core` implementation. A subsequent phase will move the implementation fully into `modules/crm/`.
 
 ## Lifecycle
 

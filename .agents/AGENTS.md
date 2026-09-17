@@ -134,16 +134,16 @@ npm ci --no-audit --no-fund
 ### 3. Tauri & UI Standards
 - Tauri IPC commands live in `apps/desktop-client/src/commands/` or `apps/tablet-client/src/commands/` and are registered in their respective `lib.rs`.
 - Front-end API calls must route through `ui/src/api/` (per-domain files). **Never call `invoke(...)` directly inside React components.**
-- **"Settings" disambiguation:** "The Tauri Settings page" means `ui/src/features/settings/SettingsPage.tsx` — the master–detail UI (route `settings`) with the top-right Save button. Not `ui/src/api/settings.ts` (IPC client), `ui/src/contexts/SettingsContext.tsx` (shared state), the `settings.rs` IPC commands, the `oz-core` settings service/DB, or `modules/settings/` (a kernel lifecycle stub, not the UI).
+- **"Settings" disambiguation:** "The Tauri Settings page" means `ui/src/features/settings/SettingsPage.tsx` — the master–detail UI (route `settings`) with the top-right Save button. Not `ui/src/api/settings.ts` (IPC client), `ui/src/contexts/SettingsContext.tsx` (shared state), the `settings.rs` IPC commands, the `kasirmu-core` settings service/DB, or `modules/settings/` (a kernel lifecycle stub, not the UI).
 - **⚠️ "Is this screen dead code?" needs three greps, not one.** Feature screens register **lazily** (`lazy(() => import(...))` + `registerPage`/`registerNavItem` in `ui/src/features/*/register.tsx`), so an import search finds nothing on a live screen. Check the screen name, then `route: '<route>'`, across `ui/src` — and never trust a truncated (`head`-cut) hit list, since `ui/src/__tests__/` sorts before `ui/src/features/`.
 - **⚠️ A `:!` pathspec built by inline string concatenation silently matches nothing** in PowerShell argument position. Build exclusion pathspecs as their own variable, and sanity-check any zero-reference dead-code claim with one unfiltered `git grep`.
 - **Accessibility:** All React components must have ARIA labels and pass `eslint-plugin-jsx-a11y` checks.
 - **Localization:** All user-visible strings must use `@fluent/react`. No hardcoded English strings in JSX.
 
 ### 4. Database & Hardware
-- **HAL Drivers:** Hardware drivers must have a mock implementation in `crates/oz-hal/src/drivers/mock.rs`.
-- **SQLite is the schema source of truth:** `crates/oz-core/migrations/*.sql` + the registry in `migrations.rs` (registry order is canonical). See `../docs/records/sqlite-pg-roles.md`.
-- **`init.pg.sql` is generated, never hand-edited:** after any migration change run `python3 scripts/generate-pg-migration.py` and re-stage `crates/oz-core/migrations/20260813_init.pg.sql`. Pre-commit step 5 and `dev-ci.yml#static-gates` fail on drift.
+- **HAL Drivers:** Hardware drivers must have a mock implementation in `crates/kasirmu-hal/src/drivers/mock.rs`.
+- **SQLite is the schema source of truth:** `crates/kasirmu-core/migrations/*.sql` + the registry in `migrations.rs` (registry order is canonical). See `../docs/records/sqlite-pg-roles.md`.
+- **`init.pg.sql` is generated, never hand-edited:** after any migration change run `python3 scripts/generate-pg-migration.py` and re-stage `crates/kasirmu-core/migrations/20260813_init.pg.sql`. Pre-commit step 5 and `dev-ci.yml#static-gates` fail on drift.
 - **PostgreSQL Drift:** When modifying Postgres schemas, run `bash scripts/reset-dev-pg.sh` to re-synchronize the shared dev container schema.
 
 ---

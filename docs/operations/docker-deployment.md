@@ -62,7 +62,7 @@ powershell -File scripts/generate-license-keys.ps1   # Windows
 # 2. Export required secrets (Compose fails closed if absent — DOCKER-04)
 export OZ_API_SECRET=$(openssl rand -hex 32)
 export OZ_ADMIN_KEY=$(openssl rand -hex 32)
-export OZ_LICENSE_PRIVATE_KEY="$(cat crates/oz-core/oz-license-private.pem)"
+export OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)"
 
 # 3. Start all services
 docker compose up -d
@@ -90,7 +90,7 @@ an empty or well-known authentication secret.
 
 1. **Generate license signing keys** — These are required by the license
    server to sign subscription tokens. The script saves the private key
-   to `crates/oz-core/oz-license-private.pem`.
+   to `crates/kasirmu-core/oz-license-private.pem`.
 
 2. **Export secrets** — `OZ_API_SECRET` (JWT signing), `OZ_ADMIN_KEY`
    (admin/mint gate) and `OZ_LICENSE_PRIVATE_KEY` (license signing) are
@@ -133,7 +133,7 @@ bash scripts/generate-license-keys.sh
 # 2. Set required env vars
 export OZ_API_SECRET=$(openssl rand -hex 32)
 export OZ_ADMIN_KEY=$(openssl rand -hex 32)
-export OZ_LICENSE_PRIVATE_KEY="$(cat crates/oz-core/oz-license-private.pem)"
+export OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)"
 export PG_PASSWORD=$(openssl rand -hex 32)
 
 # 3. Start with the pg override (PG_PASSWORD is required — DOCKER-04)
@@ -168,7 +168,7 @@ profile that only applies when explicitly requested:
 ```bash
 export OZ_API_SECRET=$(openssl rand -hex 32)
 export OZ_ADMIN_KEY=$(openssl rand -hex 32)
-export OZ_LICENSE_PRIVATE_KEY="$(cat crates/oz-core/oz-license-private.pem)"
+export OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)"
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
@@ -320,7 +320,7 @@ needed.
 The fallback exists for local development: with `OZ_API_SECRET` unset and
 `OZ_PRODUCTION` not enabled, the cloud server signs JWTs with the hard-coded
 `oz-pos-dev-secret-change-in-production` constant
-(`crates/oz-api/src/auth.rs`) and prints a one-time WARNING containing
+(`crates/kasirmu-api/src/auth.rs`) and prints a one-time WARNING containing
 "dev signing secret" to its log. In the Compose stack the fallback is
 unreachable (`OZ_API_SECRET` is parse-time required) — but verify the running
 deployment rather than trusting the compose file:
@@ -345,7 +345,7 @@ curl -s http://localhost:8080/api/health | jq '.admin.source'
 
 ### `OZ_PRODUCTION`
 
-`OZ_PRODUCTION` is read by the cloud server (`crates/oz-api/src/lib.rs`,
+`OZ_PRODUCTION` is read by the cloud server (`crates/kasirmu-api/src/lib.rs`,
 `apps/cloud-server/src/config.rs` — fail-closed boot unless both secrets are
 set, implies DB TLS) but it appears in **no artifact of this guide**:
 `docker-compose.yml` does not pass it through (neither does

@@ -40,7 +40,7 @@ lighthouse*
 .cargo_*.txt
 
 # Cargo workspaces have a single Cargo.lock at the workspace root, not
-# one per crate. OZ-POS ships binaries (oz-cli, and the Tauri app in
+# one per crate. OZ-POS ships binaries (kasirmu-cli, and the Tauri app in
 # src-tauri/) so the lockfile is committed for reproducible builds.
 # Do NOT add a per-crate `Cargo.lock` line — they don't exist and the
 # pattern would never match.

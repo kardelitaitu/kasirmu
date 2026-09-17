@@ -143,8 +143,8 @@ fi
 # 0.0.37 (pg-schema-drift and migration-column-types, both in static-gates), but this
 # one is the SQLite migrate-up path and nothing enforces it off a developer machine.
 # Recorded in scripts/gates.json -> "migration".
-step "migration smoke test" "cargo run -p oz-cli -- migrate" cargo run -p oz-cli -- migrate
-step "migration idempotency" "cargo run -p oz-cli -- migrate" cargo run -p oz-cli -- migrate
+step "migration smoke test" "cargo run -p kasirmu-cli -- migrate" cargo run -p kasirmu-cli -- migrate
+step "migration idempotency" "cargo run -p kasirmu-cli -- migrate" cargo run -p kasirmu-cli -- migrate
 rm -f kasir.db kasir.db-wal kasir.db-shm
 
 # ── Skill drift guard (blocking in CI too: dev-ci.yml#static-gates) -------
@@ -318,7 +318,7 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
     step "ftl orphans" "python3 scripts/verify-ftl-orphans.py --self-test" \
         python3 scripts/verify-ftl-orphans.py --self-test
     step "feature registry parity" "python3 scripts/verify-feature-registry.py" python3 scripts/verify-feature-registry.py
-    # Topology contract parity — the vendored oz-core copy and the UI copy
+    # Topology contract parity — the vendored kasirmu-core copy and the UI copy
     # must stay byte-identical (both sides of the IPC boundary read it).
     step "topology contract parity" "python3 scripts/verify-topology-parity.py" python3 scripts/verify-topology-parity.py
     # npm run build skipped — typecheck + vitest already cover correctness;
