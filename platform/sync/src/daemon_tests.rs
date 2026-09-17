@@ -1,9 +1,10 @@
 //! Unit tests for the sync daemon: lifecycle/backoff basics, ADR #11
 //! server-migration redirects, SYNC-01 durable anchor + idempotent replay,
 //! SYNC-08 quarantine vs retryable ordering, SYNC-09 operator-rewind race,
-//! SYNC-02/05 conflict resolution via the shared ADR #21 service, and
-//! SYNC-10 remote settings-change sink. Extracted from the inline
-//! `mod tests` in `daemon.rs` (F-018).
+//! SYNC-02/05 conflict resolution via the shared ADR #21 service,
+//! SYNC-10 remote settings-change sink, and the two SYNC-EW wakeup
+//! promises (`nudge` stores while stopped; a burst coalesces to one
+//! permit). Extracted from the inline `mod tests` in `daemon.rs` (F-018).
 
 use super::*;
 use crate::transport::{PullResponse, PushOutcome, PushResponse};

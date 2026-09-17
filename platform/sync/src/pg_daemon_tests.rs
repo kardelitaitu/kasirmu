@@ -3,9 +3,9 @@
 //! SYNC-01 durable anchor + monotonic created_at advancement, snapshot
 //! recovery importing before the anchor reset, idempotent replay,
 //! dead-letter quarantine after the retry budget, ADR #6 stock_summary
-//! rebuild, SYNC-10 settings re-emit — plus outbox schema, offline
-//! queue behaviour, and status DTO shape. Extracted from the inline
-//! `mod tests` in `pg_daemon.rs` (F-018).
+//! rebuild, SYNC-10 settings re-emit, SYNC-EW wakeup coalescing — plus
+//! outbox schema, offline queue behaviour, and status DTO shape.
+//! Extracted from the inline `mod tests` in `pg_daemon.rs` (F-018).
 
 use super::*;
 use kasirmu_core::migrations;
