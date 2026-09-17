@@ -325,12 +325,14 @@ def cargo_findings(metadata: dict[str, Any], root: Path, scope: dict[str, int]) 
             target_is_business = target.startswith(BUSINESS_PREFIX)
             owner_is_business = owner.startswith(BUSINESS_PREFIX)
             rule = None
-            # Both spellings are accepted deliberately: the package is named
-            # `kasirmu-core` since the Tier-3 rename, while a cached graph captured
-            # before it (the `--metadata-file` path the tests use) still calls it
-            # `oz-core`. Matching either widens coverage; matching one would let the
-            # rule stop firing the moment the two disagree.
-            if owner in ("kasirmu-core", "oz-core") and target_is_business:
+            # Spelled once, not as an `oz-core`/`kasirmu-core` pair: the package has
+            # been named `kasirmu-core` since the Tier-3 rename and every graph this
+            # gate accepts now comes from `cargo metadata` on this tree (the tracked
+            # `scripts/architecture-cargo-metadata.json` snapshot is no longer a
+            # fallback -- see `metadata_from_cargo`). A second spelling that no input
+            # can produce is a branch nothing exercises, i.e. a rule that would go
+            # unfelt the day it silently stopped matching.
+            if owner == "kasirmu-core" and target_is_business:
                 rule = "core-upward-dependency"
             elif owner_is_business and target_is_business:
                 rule = "module-to-module"

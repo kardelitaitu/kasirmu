@@ -365,10 +365,9 @@ TYPE_QUALIFIER_RE = re.compile(r"[A-Z]|^Self$")
 # shim reaching the bridge's version of the same name. `crate::` is deliberately absent -- a
 # same-crate path call really is this shell's function.
 FOREIGN_PATH_ROOTS = {
-    # Both spellings while the crate rename is in flight (todo-rebrand-2.md T3-3); the `oz_`
-    # entries go once no `oz_x::` site remains. Missing one of these silently grades a
-    # delegation shim as a load-bearing command, so the list is deliberately wide here.
-    "oz_bridge", "oz_core", "oz_lan", "oz_local_api",
+    # Missing one of these silently grades a delegation shim as a load-bearing command, so
+    # the list is deliberately wide where it is real. The four `oz_` roots that sat here
+    # during the crate rename were dropped once no `oz_x::` site remained on the tree.
     "kasirmu_bridge", "kasirmu_core", "kasirmu_lan", "kasirmu_local_api",
     "tauri", "std", "core", "alloc",
 }
@@ -1878,10 +1877,10 @@ def _bridge_fn_body(fn_name: str, cache={}) -> str:
     return cache.get(fn_name, "")
 
 
-# Accepts both the pre-rename (`oz_bridge`) and post-rename (`kasirmu_bridge`) spelling so this
-# gate keeps seeing delegation across the crate rename; the old branch is dropped once no
-# `oz_bridge::` site remains (todo-rebrand-2.md T3-3).
-DELEGATION_RE = re.compile(r"\b(?:oz|kasirmu)_bridge::[a-z_0-9]+::([a-z_0-9]+)\s*\(")
+# A shell body that delegates is not judged by its own text alone -- the permission check it
+# leans on lives in the bridge. The alternation carried `(?:oz|kasirmu)_bridge` while the
+# crate rename was in flight; it is spelled once now that no `oz_bridge::` site remains.
+DELEGATION_RE = re.compile(r"\bkasirmu_bridge::[a-z_0-9]+::([a-z_0-9]+)\s*\(")
 
 
 def orphan_permission(command: str) -> str | None:
