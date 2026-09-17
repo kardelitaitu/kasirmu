@@ -1,11 +1,11 @@
 [package]
-name = "oz-cli"
+name = "kasirmu-cli"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Command-line tools for OZ-POS — migrations, backup, export, smoke tests."
+description = "Command-line tools for kasir.mu — migrations, backup, export, smoke tests."
 
 [[bin]]
 name = "oz"
