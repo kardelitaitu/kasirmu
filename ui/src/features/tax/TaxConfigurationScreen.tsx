@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef, type KeyboardEvent } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import {
   listTaxRatesScoped,
   createTaxRateScoped,
@@ -24,7 +24,7 @@ import { Button } from '@/components/Button';
 import { Badge } from '@/components/Badge';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Skeleton } from '@/components/Skeleton';
-import { SettingsPopup, requiredLocalized } from '@/frontend/shared';
+import { SettingsPopup, requiredLocalized } from '@/components';
 import { parseAppError } from '@/utils/app-error';
 import './TaxConfigurationScreen.css';
 

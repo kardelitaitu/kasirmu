@@ -23,7 +23,7 @@ import { LocalizationProvider, ReactLocalization } from '@fluent/react';
 import { BrandProvider } from '@/contexts/BrandContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { ThemeProvider } from '@/frontend/shell/ThemeProvider';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 
 // `renderWithProviders` mounts the REAL BrandProvider and CurrencyProvider, and both
 // hit IPC on mount: CurrencyContext.tsx:51/:70/:71 calls getDefaultCurrency (and the

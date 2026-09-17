@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { useToast } from '@/frontend/shared/Toast';
-import { requiredLocalized } from '@/frontend/shared';
+import { useToast } from '@/components/Toast';
+import { requiredLocalized } from '@/components';
 import {
   listProductsScoped,
   adjustStockScoped,

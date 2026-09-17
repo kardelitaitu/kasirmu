@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { useLocalization } from '@fluent/react';
 import { parseAppError, redactedDiagnostic, userErrorKey, errorDetail } from '@/utils/app-error';
 

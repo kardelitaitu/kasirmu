@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, memo, useCallback, useMemo } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { useTicketSla, type SlaThresholds } from '@/features/kds/hooks/useTicketSla';
-import { useSound } from '@/frontend/shared/useSound';
-import { requiredLocalized } from '@/frontend/shared';
+import { useSound } from '@/components/useSound';
+import { requiredLocalized } from '@/components';
 import { getKdsOrderLinesScoped, type KdsOrder, type KdsLineItem } from '@/api/kds';
 import { createCooldownWrapper } from '@/features/kds/hooks/useActionCooldown';
 import { contrastText } from '@/features/kds/kdsCardColors';

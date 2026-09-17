@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { Localized, useLocalization } from '@fluent/react';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import {

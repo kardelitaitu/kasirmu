@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { SettingsPopup, useToast, requiredLocalized, EmptyState } from '@/frontend/shared';
+import { SettingsPopup, useToast, requiredLocalized, EmptyState } from '@/components';
 import { NoTerminalsIcon } from '@/components/EmptyStateIllustrations';
 import {
   listTerminalsScoped,

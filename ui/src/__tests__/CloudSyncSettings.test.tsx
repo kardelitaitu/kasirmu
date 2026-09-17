@@ -28,7 +28,7 @@ import SyncSection from '@/features/settings/sections/SyncSection';
 import { withSyncDefaults } from '@/contexts/SettingsContext';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { Button } from '@/components/Button';
 import { useBrand } from '@/contexts/BrandContext';
 import { useCurrency } from '@/contexts/CurrencyContext';

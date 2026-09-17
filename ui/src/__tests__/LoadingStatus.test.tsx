@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
-import { LoadingStatus } from '@/frontend/shared/LoadingStatus';
+import { LoadingStatus } from '@/components/LoadingStatus';
 
 describe('LoadingStatus', () => {
   it('renders the label inside a status region', () => {

@@ -38,7 +38,7 @@ const mocks = vi.hoisted(() => ({
 // The provider surfaces the failure through the shared toast queue. Mocking the
 // Toast module (the repo's dominant pattern for toast assertions) also keeps
 // this harness from needing a ToastProvider ancestor.
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: (...args: unknown[]) => mocks.addToast(...args) }),
 }));
 
@@ -175,7 +175,7 @@ describe('WorkspaceContext - rejected create_session', () => {
       );
     });
 
-    // Toast payload shape (frontend/shared/Toast.tsx) — typed locally rather
+    // Toast payload shape (components/Toast.tsx) — typed locally rather
     // than as Record<string, unknown>, which trips noPropertyAccessFromIndexSignature.
     type ToastPayload = { type: string; message: string; detail: string };
     expect(mocks.addToast).toHaveBeenCalledTimes(1);

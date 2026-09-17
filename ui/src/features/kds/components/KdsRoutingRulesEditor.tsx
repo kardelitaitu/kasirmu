@@ -22,7 +22,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import {

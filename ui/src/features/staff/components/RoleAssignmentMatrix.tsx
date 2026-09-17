@@ -29,7 +29,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { WorkspaceTypeDto } from '@/api/workspaces';
 import type { LocationProfile } from '@/api/locations';
 import type { LegalEntity } from '@/api/legalEntities';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import type { FormData } from './StaffDetailDrawer';
 
 // ── SVG icon props ────────────────────────────────────────────────

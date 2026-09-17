@@ -6,7 +6,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { Localized, useLocalization } from "@fluent/react";
-import { requiredLocalized } from "@/frontend/shared";
+import { requiredLocalized } from "@/components";
 import { useGatewayStatus } from "@/hooks/useGatewayStatus";
 import { useWorkspaceNav } from "@/hooks/useWorkspaceNav";
 import { useAuth } from "@/contexts/AuthContext";

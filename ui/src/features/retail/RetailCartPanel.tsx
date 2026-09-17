@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { useLocalization, Localized } from '@fluent/react';
 import { formatMoney, type Money, type LineId, type Sku, type CourseId, type ModifierSelection } from '@/types/domain';
 import { COURSES, courseLabel, courseEmoji } from '@/types/domain';

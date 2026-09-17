@@ -31,7 +31,7 @@
  */
 import { Localized, useLocalization } from '@fluent/react';
 import type { Dispatch, SetStateAction } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import type { KdsPreferences } from '@/features/kds/hooks/useKdsPreferences';
 import type { KdsSettings } from '@/features/kds/kdsSettingsModel';
 import { clampYellowThreshold, clampRedThreshold, clampYellowFollowingRed } from '@/features/kds/kdsThresholdMinutes';

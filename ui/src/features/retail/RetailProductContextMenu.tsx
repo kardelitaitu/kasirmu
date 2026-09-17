@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { useLocalization } from '@fluent/react';
 import type { ProductDto } from '@/api/products';
 

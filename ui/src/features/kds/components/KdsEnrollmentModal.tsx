@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { useLocalization } from '@fluent/react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { animDuration } from '@/utils/animation';

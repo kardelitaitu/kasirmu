@@ -16,7 +16,7 @@
 //     rename them here.
 
 import { useCallback, useEffect, useRef } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import Tooltip from '@/frontend/shell/Tooltip';
 import { Localized } from '@/components/Localized';
 import { formatMoney, type Product } from '@/types/domain';

@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useLocalization } from '@fluent/react';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import {
   getBackupStatus,
   getBackupStatusScoped,

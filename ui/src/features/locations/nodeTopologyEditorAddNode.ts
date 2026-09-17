@@ -26,7 +26,7 @@
 import { useEffect, useRef } from 'react';
 import type { SetStateAction } from 'react';
 import type { useLocalization } from '@fluent/react';
-import type { ToastType } from '@/frontend/shared/Toast';
+import type { ToastType } from '@/components/Toast';
 import {
   clampNodeToViewport,
   findFreeSpawnSpot,

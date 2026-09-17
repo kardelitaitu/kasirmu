@@ -24,7 +24,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, waitFor } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent } from '@/locales/test-utils';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import salesFtl from '@/locales/sales.ftl?raw';
 import PaymentModal from '@/features/sales/PaymentModal';
 import { minorUnitExponent, type CartLine, type LineId, type Money, type Sku } from '@/types/domain';

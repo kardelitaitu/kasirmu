@@ -15,7 +15,7 @@ import { Button } from '@/components/Button';
 import { useAppZoom } from '@/contexts/ZoomContext';
 import type { ZoomLevel } from '@/contexts/ZoomContext';
 import { useHardwareAccel } from '@/contexts/HardwareAccelContext';
-import { useToast, useContextMenu, ContextMenu, ConfirmDialog, requiredLocalized } from '@/frontend/shared';
+import { useToast, useContextMenu, ContextMenu, ConfirmDialog, requiredLocalized } from '@/components';
 import SettingsSelect from './SettingsSelect';
 import './AppearanceSettings.css';
 

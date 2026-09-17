@@ -7,7 +7,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import userEvent from '@testing-library/user-event';
 import TransactionLogScreen from '@/features/inventory/TransactionLogScreen';
 import type { InventoryTransaction, InventoryLocation, InventoryTransactionLine } from '@/api/inventory';

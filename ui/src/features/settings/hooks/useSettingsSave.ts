@@ -27,7 +27,7 @@
  * comment at saveTasks before ever simplifying it back to results[i].
  */
 import type { Dispatch, SetStateAction } from 'react';
-import type { useToast } from '@/frontend/shared/Toast';
+import type { useToast } from '@/components/Toast';
 import {
   getReceiptSettingsScoped,
   getStoreSettingsScoped,

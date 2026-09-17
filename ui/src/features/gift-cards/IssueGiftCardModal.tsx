@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { animDuration } from '@/utils/animation';
 import { Localized, useLocalization } from '@fluent/react';
 import { issueGiftCard, type IssueGiftCardInput } from '@/api/giftCards';

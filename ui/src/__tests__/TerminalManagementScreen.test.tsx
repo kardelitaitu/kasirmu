@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import TerminalManagementScreen from '@/features/terminals/TerminalManagementScreen';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';

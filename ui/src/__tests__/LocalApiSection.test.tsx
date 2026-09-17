@@ -30,7 +30,7 @@ const storesApi = vi.hoisted(() => ({
 vi.mock('@/api/locations', () => storesApi);
 
 const addToast = vi.hoisted(() => vi.fn());
-vi.mock('@/frontend/shared/Toast', () => ({ useToast: () => ({ addToast }) }));
+vi.mock('@/components/Toast', () => ({ useToast: () => ({ addToast }) }));
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({ sessionToken: 'test-token' }),
 }));

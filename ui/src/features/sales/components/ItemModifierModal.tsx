@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { formatMoney } from '@/types/domain';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { animDuration } from '@/utils/animation';
 import './ItemModifierModal.css';
 

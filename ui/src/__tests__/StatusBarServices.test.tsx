@@ -49,7 +49,7 @@ vi.mock('@/frontend/shell/Tooltip', () => ({
 }));
 
 const mockAddToast = vi.fn();
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
 

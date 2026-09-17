@@ -1,5 +1,5 @@
 import { useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { formatMoney } from '@/types/domain';
 import type { StoreSettingsDto } from '@/api/settings';
 import type { ShiftDto } from '@/api/shifts';

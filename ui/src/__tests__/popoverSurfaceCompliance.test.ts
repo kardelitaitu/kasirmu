@@ -30,7 +30,7 @@ const TOKENS_PATH = resolve(UI_SRC, 'frontend/themes/tokens.css');
 const POPOVER_SURFACES: ReadonlyArray<{ selector: string; file: string }> = [
   { selector: '.restaurant-context-menu', file: 'features/restaurant/RestaurantMenu.css' },
   { selector: '.restaurant-hamburger-dropdown', file: 'features/restaurant/RestaurantMenu.css' },
-  { selector: '.ctx-menu', file: 'frontend/shared/ContextMenu.css' },
+  { selector: '.ctx-menu', file: 'components/ContextMenu.css' },
   { selector: '.custom-context-menu', file: 'features/auth/LicenseActivationScreen.css' },
   { selector: '.store-switcher-dropdown', file: 'components/StoreSwitcher.css' },
   { selector: '.location-picker-dropdown', file: 'features/inventory/LocationPicker.css' },

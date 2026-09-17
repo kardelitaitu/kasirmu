@@ -9,7 +9,7 @@ import {
   recordUnmatchedInvoke,
   resetUnmatchedInvokes,
 } from '@/__tests__/test-utils/invokeCoverage';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import taxFtl from '@/locales/tax.ftl?raw';
 import TaxConfigurationScreen from '@/features/tax/TaxConfigurationScreen';
 

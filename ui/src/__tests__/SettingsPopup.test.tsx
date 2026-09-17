@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { SettingsPopup } from '@/frontend/shared/SettingsPopup';
+import { SettingsPopup } from '@/components/SettingsPopup';
 
 vi.mock('@fluent/react', () => ({
   useLocalization: () => ({

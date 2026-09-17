@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import AdminLockedFeature from '@/components/AdminLockedFeature';
 import { useAdminGate } from '@/contexts/SubscriptionContext';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { Localized, useLocalization } from '@fluent/react';
 import {
   listAuditLogScoped,

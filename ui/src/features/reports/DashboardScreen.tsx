@@ -11,7 +11,7 @@ import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { Card } from '@/components/Card';
 import { Spinner } from '@/components/Spinner';

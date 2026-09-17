@@ -4,8 +4,8 @@ import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { useTerminalHardware } from '@/hooks/useTerminalHardware';
-import { useToast } from '@/frontend/shared/Toast';
-import { requiredLocalized } from '@/frontend/shared';
+import { useToast } from '@/components/Toast';
+import { requiredLocalized } from '@/components';
 import type { WorkspaceCardProps } from './types';
 import { hasChanges } from './helpers';
 

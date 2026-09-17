@@ -11,7 +11,7 @@ import { WorkspaceProvider } from '@/contexts/WorkspaceContext';
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { ZoomProvider } from '@/contexts/ZoomContext';
 import { HardwareAccelProvider } from '@/contexts/HardwareAccelContext';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import TabletAppShell from '@/frontend/shell/tablet/TabletAppShell';
 import { registerAllFeatures } from '@/features';
 import { installPerfProbe } from './utils/perf-metrics';

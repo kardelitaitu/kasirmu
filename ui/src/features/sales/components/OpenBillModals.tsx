@@ -17,7 +17,7 @@
 // by PosScreen.tsx - their only caller. No CSS moved here.
 import { useLocalization } from '@fluent/react';
 import type { Dispatch, SetStateAction } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { formatMoney } from '@/types/domain';
 import type { HeldCartRow } from '@/api/sales';
 import type { UseExitAnimationResult } from '@/hooks/useExitAnimation';

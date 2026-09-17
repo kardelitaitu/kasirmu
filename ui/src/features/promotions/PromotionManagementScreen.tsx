@@ -12,8 +12,8 @@ import {
   type CreatePromotionArgs,
 } from '@/api/promotions';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
-import { useToast } from '@/frontend/shared/Toast';
-import { requiredLocalized, EmptyState } from '@/frontend/shared';
+import { useToast } from '@/components/Toast';
+import { requiredLocalized, EmptyState } from '@/components';
 import { NoPromotionsIcon } from '@/components/EmptyStateIllustrations';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { useWorkspace } from '@/contexts/WorkspaceContext';

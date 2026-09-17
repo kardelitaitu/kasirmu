@@ -11,7 +11,7 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import type { useSound as UseSoundHook } from '@/frontend/shared/useSound';
+import type { useSound as UseSoundHook } from '@/components/useSound';
 
 /**
  * `useSound` holds a module-level `audioCtx` singleton, so each test must
@@ -90,7 +90,7 @@ beforeEach(async () => {
 
   // Re-import the hook after the module reset so its `audioCtx` singleton
   // starts null.
-  ({ useSound } = await import('@/frontend/shared/useSound'));
+  ({ useSound } = await import('@/components/useSound'));
 });
 
 afterEach(() => {

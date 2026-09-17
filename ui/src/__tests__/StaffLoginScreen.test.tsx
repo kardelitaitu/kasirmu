@@ -6,7 +6,7 @@ import { LocalizationProvider, ReactLocalization } from '@fluent/react';
 import type { ReactElement, ReactNode } from 'react';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import StaffLoginScreen from '@/features/auth/StaffLoginScreen';
 import { BrandProvider } from '@/contexts/BrandContext';
 import { checkUsername } from '@/api/staff';

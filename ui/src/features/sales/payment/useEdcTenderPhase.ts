@@ -51,8 +51,8 @@
  */
 import { useCallback, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
-import type { useToast } from '@/frontend/shared/Toast';
+import { requiredLocalized } from '@/components';
+import type { useToast } from '@/components/Toast';
 import { edcSale, edcTerminalStatusScoped } from '@/api/edc';
 import type { CompleteSaleResult } from '@/api/sales';
 import { plainErrorMessage } from '@/utils/app-error';

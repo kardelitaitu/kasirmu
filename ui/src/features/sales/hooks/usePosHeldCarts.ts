@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
 import {
   holdCartScoped,

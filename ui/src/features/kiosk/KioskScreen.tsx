@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { listProductsScoped, listCategoriesScoped } from '@/api/products';
 import type { ProductDto, CategoryDto } from '@/api/products';
 import { useWorkspace } from '@/contexts/WorkspaceContext';

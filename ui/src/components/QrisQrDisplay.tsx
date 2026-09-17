@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Localized, useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { minorUnitExponent } from '@/types/domain';

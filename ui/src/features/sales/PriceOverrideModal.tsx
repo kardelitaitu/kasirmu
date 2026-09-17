@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { animDuration } from '@/utils/animation';
 import { staffLogin } from '@/api/staff';
 import { formatMoney, type Money } from '@/types/domain';

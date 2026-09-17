@@ -7,7 +7,7 @@ import productsFtl from '@/locales/products.ftl?raw';
 import productsId from '@/locales/products.id.ftl?raw';
 import sharedId from '@/locales/shared.id.ftl?raw';
 
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import { ScannerError } from '@/api/hardware';
 import * as bundlesApi from '@/api/bundles';
 import ProductLookupScreen from '@/features/products/ProductLookupScreen';

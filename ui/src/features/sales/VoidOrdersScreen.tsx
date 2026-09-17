@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useLocalization } from '@fluent/react';
-import { Localized } from '@/frontend/shared/Localized';
+import { Localized } from '@/components/Localized';
 import {
   listSales,
   getSale,

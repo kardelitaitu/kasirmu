@@ -31,7 +31,7 @@ import { StockAlertPanel } from '@/features/inventory/StockAlertPanel';
 import { getActiveStockAlerts } from '@/api/inventory';
 import LocationPicker from '@/features/inventory/LocationPicker';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
-import { EmptyState, requiredLocalized } from '@/frontend/shared';
+import { EmptyState, requiredLocalized } from '@/components';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { NoProductsIcon } from '@/components/EmptyStateIllustrations';
 import './ProductManagementScreen.css';

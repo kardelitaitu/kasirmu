@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { useToast } from '@/frontend/shared/Toast';
-import { requiredLocalized, EmptyState } from '@/frontend/shared';
+import { useToast } from '@/components/Toast';
+import { requiredLocalized, EmptyState } from '@/components';
 import { NoPurchaseOrdersIcon } from '@/components/EmptyStateIllustrations';
 import {
   listPurchaseOrdersScoped,

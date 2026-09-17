@@ -5,7 +5,7 @@ import { Spinner } from '@/components/Spinner';
 import { Skeleton } from '@/components/Skeleton';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
-import { ToastProvider, useToast } from '@/frontend/shared/Toast';
+import { ToastProvider, useToast } from '@/components/Toast';
 import { Button } from '@/components/Button';
 
 /**

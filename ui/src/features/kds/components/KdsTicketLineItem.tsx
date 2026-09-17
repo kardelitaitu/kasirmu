@@ -11,7 +11,7 @@
  */
 import { memo } from 'react';
 import { useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import type { KdsLineItem } from '@/api/kds';
 import { createCooldownWrapper } from '@/features/kds/hooks/useActionCooldown';
 import { ModifierBadge } from '@/features/kds/components/ModifierBadge';

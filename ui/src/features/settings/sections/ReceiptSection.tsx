@@ -6,7 +6,7 @@
 // Comment only — the code below is deliberately untouched.
 import { Localized } from '@fluent/react';
 import type { ReactLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { Card } from '@/components/Card';
 import SettingsSelect from '../SettingsSelect';
 import type { ReceiptSettingsDto } from '@/api/settings';

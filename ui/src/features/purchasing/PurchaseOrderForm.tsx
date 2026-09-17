@@ -7,8 +7,8 @@ import {
   type CreatePurchaseOrderArgs,
 } from '@/api/purchasing';
 import { Button } from '@/components/Button';
-import { useToast } from '@/frontend/shared/Toast';
-import { requiredLocalized } from '@/frontend/shared';
+import { useToast } from '@/components/Toast';
+import { requiredLocalized } from '@/components';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { useCurrency } from '@/contexts/CurrencyContext';

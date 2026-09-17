@@ -1,5 +1,5 @@
 import type { RefObject } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { useLocalization } from '@fluent/react';
 import { useFeatures, FEATURES } from '@/hooks/useFeatures';
 import { getRetailShortcut } from './retailShortcuts';

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useLocalization } from '@fluent/react';
 import ErrorBoundary from './ErrorBoundary';
-import { requiredLocalized } from '@/frontend/shared/requiredLocalized';
+import { requiredLocalized } from '@/components/requiredLocalized';
 
 interface LocalizedErrorBoundaryProps {
   children: ReactNode;

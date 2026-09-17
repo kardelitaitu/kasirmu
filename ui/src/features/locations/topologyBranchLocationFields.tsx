@@ -13,7 +13,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Localized } from '@fluent/react';
 import type { useLocalization } from '@fluent/react';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { updateLocationProfileScoped, getLocationProfileScoped, type LocationProfile } from '@/api/locations';
 
 /** Bounded preset list the slice-4 regional editor offers for

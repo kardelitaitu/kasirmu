@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useToast } from '@/frontend/shared/Toast';
-import { requiredLocalized } from '@/frontend/shared';
+import { useToast } from '@/components/Toast';
+import { requiredLocalized } from '@/components';
 import { activateLicense, getHardwareFingerprint, getMachineId } from '@/api/license';
 import { detectTrialVertical } from '@/utils/trial-vertical';
 import { detectBundleId } from '@/utils/bundle';

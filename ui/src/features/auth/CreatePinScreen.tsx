@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { bootstrapOwner } from '@/api/staff';
 import { useAuth } from '@/contexts/AuthContext';
 import { Localized, useLocalization } from '@fluent/react';

@@ -37,7 +37,7 @@
  */
 import { useLocalization } from '@fluent/react';
 import type { HTMLAttributes } from 'react';
-import { LoadingStatus, requiredLocalized } from '@/frontend/shared';
+import { LoadingStatus, requiredLocalized } from '@/components';
 import { KdsLayoutMasonry } from '@/features/kds/KdsLayoutMasonry';
 import { KdsCompletedView } from '@/features/kds/KdsCompletedView';
 import type { KdsLineItem, KdsOrder } from '@/api/kds';

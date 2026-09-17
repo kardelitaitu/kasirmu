@@ -18,7 +18,7 @@
 import { useCallback, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 
 /** One selectable station row. `zone` is never empty (empty = the All row). */
 export interface StationOption {

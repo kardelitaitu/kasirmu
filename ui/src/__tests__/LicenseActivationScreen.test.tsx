@@ -41,7 +41,7 @@ vi.mock('@/frontend/shell/ThemeToggle', () => ({
 }));
 
 const mockAddToast = vi.fn();
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
 

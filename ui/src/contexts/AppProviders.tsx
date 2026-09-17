@@ -9,7 +9,7 @@ import { ThemeProvider } from '@/frontend/shell/ThemeProvider';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import CurrencyWorkspaceSync from '@/contexts/CurrencyWorkspaceSync';
 import { AuthProvider } from '@/contexts/AuthContext';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import { WorkspaceProvider } from '@/contexts/WorkspaceContext';
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { ZoomProvider } from '@/contexts/ZoomContext';

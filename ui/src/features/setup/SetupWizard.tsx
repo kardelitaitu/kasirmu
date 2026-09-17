@@ -2,8 +2,8 @@
 import { useContext, useState, useCallback } from 'react';
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
-import { Localized } from '@/frontend/shared/Localized';
-import { requiredLocalized } from '@/frontend/shared';
+import { Localized } from '@/components/Localized';
+import { requiredLocalized } from '@/components';
 import { useLocalization } from '@fluent/react';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { LocaleContext } from '@/i18n/LocaleContext';

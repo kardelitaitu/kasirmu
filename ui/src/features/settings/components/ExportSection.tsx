@@ -39,7 +39,7 @@ import { Localized, useLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Spinner } from '@/components/Spinner';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { DATA_TYPES, type DataType, type ExportState } from '../dataManagementModel';
 import { checkIcon, eyeIcon, eyeOffIcon } from '../dataManagementIcons';
 

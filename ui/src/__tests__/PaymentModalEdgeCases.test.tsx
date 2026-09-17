@@ -4,7 +4,7 @@ import { act } from 'react';
 import { renderInAct, actAsync } from '@/test-utils/renderInAct';
 import userEvent from '@testing-library/user-event';
 import { withFluent } from '@/locales/test-utils';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import salesFtl from '@/locales/sales.ftl?raw';
 import PaymentModal from '@/features/sales/PaymentModal';
 import type { Money, CartLine, Sku, LineId } from '@/types/domain';

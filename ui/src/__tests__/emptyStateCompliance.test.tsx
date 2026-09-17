@@ -29,7 +29,7 @@ import { render, screen } from '@testing-library/react';
 import fs from 'fs';
 import path from 'path';
 import { EmptyState as ComponentEmptyState } from '@/components/EmptyState';
-import { EmptyState as SharedEmptyState } from '@/frontend/shared/EmptyState';
+import { EmptyState as SharedEmptyState } from '@/components/EmptyState';
 
 // ── 1. Primitive single-source-of-truth ──────────────────────────────
 describe('empty-state compliance — primitive consolidation (EMPTY-01)', () => {

@@ -42,11 +42,11 @@ import { listAllWorkspacesScoped, type WorkspaceTypeDto } from '@/api/workspaces
 import { listLocationsScoped, type LocationProfile } from '@/api/locations';
 import { listLegalEntitiesScoped, type LegalEntity } from '@/api/legalEntities';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { openUpgradePricing as openUpgradePricingPage } from '@/utils/upgrade';
 import { Button } from '@/components/Button';
-import { SettingsPopup, requiredLocalized } from '@/frontend/shared';
+import { SettingsPopup, requiredLocalized } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { parseMinorUnits } from '@/types/domain';
 import SettingsSelect from '@/features/settings/SettingsSelect';

@@ -50,8 +50,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace, useWorkspaceScope } from '@/contexts/WorkspaceContext';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
-import { useSound } from '@/frontend/shared/useSound';
-import { requiredLocalized, LoadingStatus } from '@/frontend/shared';
+import { useSound } from '@/components/useSound';
+import { requiredLocalized, LoadingStatus } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
 import {
   listKdsOrdersScoped,

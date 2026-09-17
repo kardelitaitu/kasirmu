@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import currencyFtl from '@/locales/currency.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 import ExchangeRateScreen from '@/features/currency/ExchangeRateScreen';

@@ -16,7 +16,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useLocalization } from '@fluent/react';
 import { importData, importPreview, pickImportFile } from '@/api/data';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { INITIAL_IMPORT, type ImportState } from '../dataManagementModel';
 

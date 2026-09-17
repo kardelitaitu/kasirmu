@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { useToast } from '@/frontend/shared/Toast';
-import { requiredLocalized } from '@/frontend/shared';
+import { useToast } from '@/components/Toast';
+import { requiredLocalized } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
 import {
   listStockCounts,

@@ -8,7 +8,7 @@ import type { DisplayDensity, KdsSettings } from '@/features/kds/kdsSettingsMode
 import { RED_MAX_MIN, YELLOW_MAX_MIN } from '@/features/kds/kdsThresholdMinutes';
 import { useKdsCardColors } from '@/features/kds/KdsCardColorsContext';
 import { KdsRoutingRulesSection } from '@/features/kds/components/KdsRoutingRulesEditor';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 
 /** Custom flex-based slider: track div + fill div + knob div. */
 function KdsSlider({ value, min, max, onChange, onDragValue, color, ariaLabel, ariaValueText, dataTestId }: {

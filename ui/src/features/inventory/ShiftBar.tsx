@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/Button';
 import { Localized, useLocalization } from '@fluent/react';
-import { useToast } from '@/frontend/shared/Toast';
-import { requiredLocalized } from '@/frontend/shared';
+import { useToast } from '@/components/Toast';
+import { requiredLocalized } from '@/components';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { useAuth } from '@/contexts/AuthContext';

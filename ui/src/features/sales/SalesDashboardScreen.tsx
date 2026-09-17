@@ -1,5 +1,5 @@
 import { Localized, useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { getWidgets, getDeniedWidgets, useWidgetUser } from '@/platform/ui/widget-registry';
 import { useFeatures } from '@/hooks/useFeatures';
 import { Card } from '@/components/Card';

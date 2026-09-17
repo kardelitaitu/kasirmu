@@ -20,7 +20,7 @@ import {
 import { createSession, destroySession, refreshPickerTicket, switchOrganization as switchOrganizationApi } from "@/api/staff";
 import { getDeviceId } from "@/api/system";
 import { useAuth } from "@/contexts/AuthContext";
-import { requiredLocalized, useToast } from "@/frontend/shared";
+import { requiredLocalized, useToast } from "@/components";
 import { errorDetail } from "@/utils/app-error";
 import { useLocalization } from "@fluent/react";
 

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Localized, useLocalization } from '@fluent/react';
 import { getDailyRevenue } from '@/api/reports';

@@ -53,7 +53,7 @@ const mockAddToast = vi.fn();
 const mockRemoveToast = vi.fn();
 const mockClearToasts = vi.fn();
 
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   ToastProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useToast: () => ({
     addToast: mockAddToast,

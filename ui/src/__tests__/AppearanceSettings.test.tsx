@@ -83,7 +83,7 @@ vi.mock('@/utils/color', () => ({
   applyThemeContrasts: vi.fn(),
 }));
 
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: vi.fn() }),
 }));
 

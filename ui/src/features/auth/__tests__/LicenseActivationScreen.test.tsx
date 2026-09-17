@@ -16,7 +16,7 @@ Object.defineProperty(navigator, 'clipboard', {
   writable: true,
 });
 
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast })
 }));
 

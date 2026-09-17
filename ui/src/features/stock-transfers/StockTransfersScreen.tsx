@@ -19,7 +19,7 @@ import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
-import { requiredLocalized, type RequiredLocalizedL10n } from '@/frontend/shared';
+import { requiredLocalized, type RequiredLocalizedL10n } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './StockTransfersScreen.css';
 

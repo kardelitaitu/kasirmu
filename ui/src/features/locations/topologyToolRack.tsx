@@ -1,6 +1,6 @@
 import { Localized } from '@fluent/react';
 import type { useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import {
   StoreIcon,
   WarehouseIcon,

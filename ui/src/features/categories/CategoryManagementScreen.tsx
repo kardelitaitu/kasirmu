@@ -12,9 +12,9 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
-import { SettingsPopup, requiredLocalized, EmptyState } from '@/frontend/shared';
+import { SettingsPopup, requiredLocalized, EmptyState } from '@/components';
 import { NoCategoriesIcon } from '@/components/EmptyStateIllustrations';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './CategoryManagementScreen.css';
 

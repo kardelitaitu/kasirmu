@@ -35,7 +35,7 @@ vi.mock('@/api/license', () => ({
   testAuthConnection: vi.fn().mockResolvedValue({ ok: true, status: 'Connected', latencyMs: 10 }),
 }));
 
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
 

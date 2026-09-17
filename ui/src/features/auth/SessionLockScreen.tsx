@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
 import StatusBar from '@/components/StatusBar';
 import { staffLogin } from '@/api/staff';

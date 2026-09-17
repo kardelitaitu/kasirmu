@@ -35,7 +35,7 @@ vi.mock('@/api/email', () => ({
   sendTestReport: () => mockSendTestReport(),
 }));
 
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
 
@@ -57,8 +57,8 @@ vi.mock('@/frontend/shell/Tooltip', () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-vi.mock('@/frontend/shared', () => ({
-  ...vi.importActual('@/frontend/shared'),
+vi.mock('@/components', () => ({
+  ...vi.importActual('@/components'),
   requiredLocalized: (l10n: { getString: (id: string) => string }, id: string) =>
     l10n.getString(id),
 }));

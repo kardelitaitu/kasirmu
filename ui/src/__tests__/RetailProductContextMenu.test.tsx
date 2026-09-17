@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent, withFluentLocale } from '@/locales/test-utils';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import salesFtl from '@/locales/sales.ftl?raw';
 import salesIdFtl from '@/locales/sales.id.ftl?raw';
 import RetailProductContextMenu from '@/features/retail/RetailProductContextMenu';

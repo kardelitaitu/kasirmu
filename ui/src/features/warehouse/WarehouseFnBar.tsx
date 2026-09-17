@@ -3,7 +3,7 @@
 // Pure presentational — all callbacks are wired in the parent.
 // Self-contained copy of RetailFnBar.tsx — no shared imports.
 
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { useLocalization } from '@fluent/react';
 import { getWarehouseShortcut } from './warehouseShortcuts';
 

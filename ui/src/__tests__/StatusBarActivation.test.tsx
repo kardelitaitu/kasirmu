@@ -48,8 +48,8 @@ vi.mock('@/hooks/useAuthConnection', () => ({
 
 // ── Mock the Toast hook ───────────────────────────────────────────
 const mockAddToast = vi.fn();
-vi.mock('@/frontend/shared/Toast', async () => {
-  const actual: object = await vi.importActual('@/frontend/shared/Toast');
+vi.mock('@/components/Toast', async () => {
+  const actual: object = await vi.importActual('@/components/Toast');
   return {
     ...actual,
     useToast: () => ({ addToast: mockAddToast }),

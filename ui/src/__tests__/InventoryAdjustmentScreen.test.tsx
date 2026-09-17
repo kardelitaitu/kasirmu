@@ -7,7 +7,7 @@ import {
   recordUnmatchedInvoke,
   resetUnmatchedInvokes,
 } from '@/__tests__/test-utils/invokeCoverage';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import inventoryFtl from '@/locales/inventory.ftl?raw';
 import InventoryAdjustmentScreen from '@/features/inventory/InventoryAdjustmentScreen';
 

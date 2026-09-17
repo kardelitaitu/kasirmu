@@ -8,7 +8,7 @@ import StoreSwitcher from '@/components/StoreSwitcher';
 import OrgSwitcher from '@/components/OrgSwitcher';
 import StockAlertBell from '@/components/StockAlertBell';
 import { useBrand } from '@/contexts/BrandContext';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import StatusBar from './StatusBar';
 
 import { getNavItems, SECTION_LABELS, type SectionName } from '@/platform/ui/menu-registry';

@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent, withFluentLocale } from '@/locales/test-utils';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import { SalesHistoryView, TableManagementView, StockInquiryView } from '@/features/retail/RetailSubViews';
 
 // Mock the sub-components

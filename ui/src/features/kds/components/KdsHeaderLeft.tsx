@@ -27,7 +27,7 @@
  */
 import { Localized, useLocalization } from '@fluent/react';
 import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 
 export interface KdsHeaderLeftProps {
   activeTab: 'open' | 'completed';

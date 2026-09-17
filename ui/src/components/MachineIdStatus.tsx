@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getMachineId } from '@/api/license';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import './ConnectionStatus.css';
 import './MachineIdStatus.css';
 

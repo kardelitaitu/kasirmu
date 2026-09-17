@@ -105,7 +105,7 @@
  * the values and handlers named in the props differ.
  */
 import { Localized, useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { formatMoney, type Money } from '@/types/domain';
 
 export interface LoyaltyTenderPanelProps {

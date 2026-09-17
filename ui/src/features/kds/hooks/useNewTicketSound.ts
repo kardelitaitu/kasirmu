@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useSound } from '@/frontend/shared/useSound';
+import { useSound } from '@/components/useSound';
 import type { KdsOrder } from '@/api/kds';
 
 /** Minimum interval between new-ticket chimes (ms). */

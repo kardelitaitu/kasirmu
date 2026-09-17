@@ -1,4 +1,4 @@
-// ui/src/frontend/shared/requiredLocalized.ts
+// ui/src/components/requiredLocalized.ts
 //
 // Shared required-localization helper (TAX-09 cleanup).
 //

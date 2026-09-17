@@ -1,5 +1,5 @@
 import { Fragment, useRef } from 'react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { useLocalization } from '@fluent/react';
 import { formatMoney, type Money, type LineId } from '@/types/domain';
 import type { CustomerDto } from '@/api/customers';

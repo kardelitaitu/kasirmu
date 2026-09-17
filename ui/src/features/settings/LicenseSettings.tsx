@@ -4,7 +4,7 @@ import { getLicenseStatus, checkLicenseStatus, pauseSubscription, pauseSubscript
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import ExitSurveyModal from '@/components/ExitSurveyModal';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './LicenseSettings.css';

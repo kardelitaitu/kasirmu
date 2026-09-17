@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { useLocalization } from '@fluent/react';
-import { Localized } from '@/frontend/shared/Localized';
+import { Localized } from '@/components/Localized';
 import { processRefundScoped, type ProcessRefundScopedArgs, type SaleDetail } from '@/api/sales';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';

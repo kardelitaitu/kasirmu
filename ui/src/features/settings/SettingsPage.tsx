@@ -17,8 +17,8 @@ import { type SyncSettingsDto } from '@/api/offline';
 // only the BrandContext refresh handle is still read here.
 import { useBrand } from '@/contexts/BrandContext';
 import { deriveAccentPalette, applyAccentPalette } from '@/utils/color';
-import { useToast } from '@/frontend/shared/Toast';
-import { requiredLocalized } from '@/frontend/shared';
+import { useToast } from '@/components/Toast';
+import { requiredLocalized } from '@/components';
 import { useOptionalTheme, type Theme } from '@/frontend/shell/ThemeProvider';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';

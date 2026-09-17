@@ -19,7 +19,7 @@ import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent } from '@/locales/test-utils';
 import { ThemeProvider } from '@/frontend/shell/ThemeProvider';
 import { ZoomProvider } from '@/contexts/ZoomContext';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 import { BrandProvider } from '@/contexts/BrandContext';
 
 /**

@@ -40,7 +40,7 @@ vi.mock('@/hooks/useDevicesConnection', () => ({
   useDevicesConnection: () => ({ state: 'connected', latencyMs: null, cause: null, devices: 1, retryNow: () => {} }),
 }));
 
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: vi.fn() }),
 }));
 

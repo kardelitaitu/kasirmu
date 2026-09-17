@@ -1,9 +1,9 @@
 import { useState, useMemo, useCallback, useEffect, useRef, useContext } from 'react';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useWorkspaceScope } from '@/contexts/WorkspaceContext';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { Localized, useLocalization } from '@fluent/react';
 import { Skeleton } from '@/components/Skeleton';
 import { startSaleScoped, addLineScoped, completeSaleScoped, printSalesReceipt, getSale, getSaleScoped, setCartDiscountScoped, holdCartScoped, finalizeSale, voidPendingSale, previewPromotedTotalFromLinesScoped, type SetCartDiscountScopedArgs, type CompleteSaleScopedArgs, type PaymentSplitArg, type SerialNumberArg, type PartialStockResult, type PreviewPromotedTotalResult } from '@/api/sales';

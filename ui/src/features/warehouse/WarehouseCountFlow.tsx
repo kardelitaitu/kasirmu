@@ -9,8 +9,8 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
-import { useToast } from '@/frontend/shared/Toast';
+import { requiredLocalized } from '@/components';
+import { useToast } from '@/components/Toast';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';

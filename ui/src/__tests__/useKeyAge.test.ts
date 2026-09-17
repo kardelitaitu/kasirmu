@@ -9,7 +9,7 @@ vi.mock('@/api/security', () => ({
 }));
 
 const mockAddToast = vi.fn();
-vi.mock('@/frontend/shared/Toast', () => ({
+vi.mock('@/components/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
 

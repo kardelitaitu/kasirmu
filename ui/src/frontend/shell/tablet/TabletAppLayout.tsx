@@ -1,6 +1,6 @@
 import { type KeyboardEvent, type ReactNode } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared/requiredLocalized';
+import { requiredLocalized } from '@/components/requiredLocalized';
 import { getNavItems } from '@/platform/ui/menu-registry';
 import MemoBanner from '@/features/memo/MemoBanner';
 import './tablet.css';

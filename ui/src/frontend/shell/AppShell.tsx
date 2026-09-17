@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef, lazy } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
-import { useToast } from '@/frontend/shared/Toast';
+import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useIdleTimer } from '@/hooks/useIdleTimer';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';

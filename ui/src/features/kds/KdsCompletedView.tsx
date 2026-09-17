@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { requiredLocalized, LoadingStatus } from '@/frontend/shared';
+import { requiredLocalized, LoadingStatus } from '@/components';
 import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { listKdsOrdersScoped, type KdsOrder } from '@/api/kds';

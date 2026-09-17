@@ -34,7 +34,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { LocalizationProvider, ReactLocalization } from '@fluent/react';
-import { ToastProvider } from '@/frontend/shared/Toast';
+import { ToastProvider } from '@/components/Toast';
 
 vi.mock('@/contexts/BrandContext', () => ({
   useBrand: () => ({ settings: null, loading: false, refreshBrandSettings: vi.fn() }),

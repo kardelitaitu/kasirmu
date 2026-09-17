@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Localized } from '@fluent/react';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized } from '@/components';
 import type { ReactLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
