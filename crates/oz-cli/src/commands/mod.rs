@@ -64,7 +64,7 @@ pub(crate) fn open_db(path: &str) -> Result<Connection> {
 /// Open the store for `credential-deltas` ONLY, refusing a `--db` path that this
 /// command would have to CREATE before `open_db` gets the chance to do it.
 ///
-    /// The footgun, measured rather than assumed: `--db` defaults to ./kasir.db in
+/// The footgun, measured rather than assumed: `--db` defaults to ./kasir.db in
 /// the CURRENT directory and `Connection::open` CREATES a missing path, so a
 /// mistyped database opened an empty file, every count came back zero, and the
 /// command reported nothing-to-delete about a file it had just made — and left

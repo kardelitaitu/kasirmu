@@ -140,8 +140,15 @@ fn cli_parse_custom_db() {
 
 #[test]
 fn cli_parse_export_ozpkg() {
-    let cli =
-        Cli::try_parse_from(["oz", "export-ozpkg", "-o", "data.kasirpkg", "-p", "secret123"]).unwrap();
+    let cli = Cli::try_parse_from([
+        "oz",
+        "export-ozpkg",
+        "-o",
+        "data.kasirpkg",
+        "-p",
+        "secret123",
+    ])
+    .unwrap();
     match cli.command {
         Some(Command::ExportOzpkg {
             output, password, ..
