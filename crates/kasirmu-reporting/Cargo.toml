@@ -1,11 +1,11 @@
 [package]
-name = "oz-reporting"
+name = "kasirmu-reporting"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Analytics and CSV export engine for OZ-POS — daily summaries, sales reports, inventory movement."
+description = "Analytics and CSV export engine for kasir.mu — daily summaries, sales reports, inventory movement."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]
