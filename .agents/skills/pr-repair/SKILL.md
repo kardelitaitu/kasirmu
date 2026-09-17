@@ -77,7 +77,7 @@ git pull origin $(git branch --show-current)
 
 > [!IMPORTANT]
 > **Never run bare `gh pr checks --watch` to wait for all checks to finish.**
-> In kasir.mu, `dev-ci.yml` runs **11 jobs**, all on `ubuntu-latest` — there is **no OS matrix**, so "waiting for the matrix" is not a thing here. Typical wall time is a few minutes, dominated by `cargo-nextest` and `ui-test`. (This line previously claimed "38+ jobs across multiple OS matrices taking 15–25 minutes", which overstates the count ~3.5x and invents a dimension that does not exist; `release.yml` adds 5 more, but only on `v*` tags.) The fail-fast advice below stands regardless, and is if anything more valuable here: with 11 jobs and no matrix, a green run arrives quickly, so a slow poll wastes the whole window in which you could already be fixing the first failure.
+> In kasir.mu, `dev-ci.yml` runs **11 jobs**, all on `ubuntu-latest` — there is **no OS matrix**, so "waiting for the matrix" is not a thing here. Typical wall time is a few minutes, dominated by `cargo-nextest` and `ui-test`. (This line previously claimed "38+ jobs across multiple OS matrices taking 15–25 minutes", which overstates the count ~3.5x and invents a dimension that does not exist; `release.yml` adds 3 more (`release-validate`, `release-build`, `release-publish`), but only on `v*` tags.) The fail-fast advice below stands regardless, and is if anything more valuable here: with 11 jobs and no matrix, a green run arrives quickly, so a slow poll wastes the whole window in which you could already be fixing the first failure.
 
 ```powershell
 # Option A: Native gh CLI with 30s interval and fail-fast (exits on the first failed check!):
