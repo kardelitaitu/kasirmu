@@ -34,7 +34,7 @@ const OBSERVED_WITH_DATA = [
 
 // Base is `get_setting` (registered nowhere else; the rule mirrors it). The mock now
 // answers null for every key, which is what production sends for an unset one —
-// crates/oz-bridge/src/settings.rs:438-446, typed `string | null` in the client at
+// crates/kasirmu-bridge/src/settings.rs:438-446, typed `string | null` in the client at
 // ui/src/api/settings.ts:208-213 and :263. Asserting data here would grade that
 // stub, not the alias rule — same reasoning as UNLISTED_CONTROL and FORMERLY_CURATED.
 const OBSERVED_MAY_BE_NULL = ['get_setting_scoped'];

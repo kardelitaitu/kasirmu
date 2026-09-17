@@ -4,7 +4,7 @@ import { loggedInvoke } from '@/utils/logged-invoke';
 
 /**
  * Who supplied an effective payment rail (mirrors
- * `oz_core::regional::ConfigScope`'s serde names verbatim).
+ * `kasirmu_core::regional::ConfigScope`'s serde names verbatim).
  */
 export type PaymentRailScope = 'location' | 'legal_entity';
 

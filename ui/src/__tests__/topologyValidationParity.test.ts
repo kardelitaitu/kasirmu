@@ -43,7 +43,7 @@ const ENFORCED_ELSEWHERE: Readonly<Record<string, { file: string; why: string }>
     why: 'an apply-path limit, same reason',
   },
   'unknown-wire-endpoint': {
-    file: 'crates/oz-core/src/topology.rs',
+    file: 'crates/kasirmu-core/src/topology.rs',
     why: 'the CONDITION is enforced, under a different code: a wire pointing at a '
       + 'nonexistent node is refused as invalid-location-connection (probed, not '
       + 'inferred). A naming mismatch, not a gap — but the two surfaces do name '
@@ -60,7 +60,7 @@ const ENFORCED_ELSEWHERE: Readonly<Record<string, { file: string; why: string }>
 
 describe('topology validation code parity (TS ↔ Rust)', () => {
   const tsSource = read('ui/src/features/locations/topologyContract.ts');
-  const coreSource = read('crates/oz-core/src/topology.rs');
+  const coreSource = read('crates/kasirmu-core/src/topology.rs');
 
   const tsCodes = [...new Set(
     [...tsSource.matchAll(/code:\s*'([a-z][a-z0-9-]*)'/g)].map((m) => m[1] ?? '').filter(Boolean),

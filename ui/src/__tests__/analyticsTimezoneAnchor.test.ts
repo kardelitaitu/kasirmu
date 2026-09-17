@@ -65,7 +65,7 @@ describe('analytics timezone anchor (R36-01)', () => {
     // __dirname + resolve, matching StaffLoginScreen.test.tsx: import.meta.url
     // is an http:// URL under Vite and readFileSync rejects it.
     const sqlite = readFileSync(
-      resolve(__dirname, '../../../crates/oz-core/migrations/20260813_init.sql'),
+      resolve(__dirname, '../../../crates/kasirmu-core/migrations/20260813_init.sql'),
       'utf8',
     );
     const m = /timezone\s+TEXT NOT NULL DEFAULT '([^']+)'/.exec(sqlite);

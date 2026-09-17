@@ -19,7 +19,7 @@ import { updateLocationProfileScoped, getLocationProfileScoped, type LocationPro
 /** Bounded preset list the slice-4 regional editor offers for
  *  `locations.timezone` (ADR #48 Decision 2): exactly the three Indonesian
  *  IANA zones, rendered as a native select — no free-text entry, no search
- *  box. Mirrors `oz_core::regional::LOCATION_TIMEZONES`, which the write
+ *  box. Mirrors `kasirmu_core::regional::LOCATION_TIMEZONES`, which the write
  *  boundary (`update_location_profile_scoped`) enforces fail-closed
  *  alongside the legacy `UTC` column-default sentinel, so the editor must
  *  never send anything else. A future zone extends both lists together. */

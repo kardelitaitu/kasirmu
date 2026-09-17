@@ -315,7 +315,7 @@ describe('DataManagement — Backup', () => {
  *
  * IF BACKUP GATING LANDS, INVERT THIS TEST, DO NOT DELETE IT. Once
  * create_backup / get_backup_status enforce the permission in Rust (see event
- * backup_ungated_no_session in crates/oz-bridge/src/data.rs), or the screen stops
+ * backup_ungated_no_session in crates/kasirmu-bridge/src/data.rs), or the screen stops
  * calling them tokenlessly, flip these expectations to the scoped names or to a
  * refusal. A flipped test keeps recording the decision; a deleted one leaves the
  * fix as unobserved as the hole was.

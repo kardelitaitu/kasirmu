@@ -177,11 +177,11 @@ export default function AppShell() {
   // newer than the binary (command unregistered), (c) any non-Tauri context. A
   // MISSING settings key is not one of them (Settings::get returns Ok(None) →
   // status 'missing', the gate holds), nor is a contended global lock
-  // (crates/oz-bridge/src/ctx.rs:378-381 is infallible — the splash hangs
+  // (crates/kasirmu-bridge/src/ctx.rs:378-381 is infallible — the splash hangs
   // instead), and the error-shaped licence verdicts (ClockTampered,
   // InvalidSignature, Expired-past-grace, Missing) all arrive as
   // Ok(is_active:false), so a fresh install stays gated against them. The trust
-  // decision itself lives in the bridge (crates/oz-bridge/src/auth.rs:611-621 is
+  // decision itself lives in the bridge (crates/kasirmu-bridge/src/auth.rs:611-621 is
   // the only pre-activation gate and the IPC is callable from any surface); this
   // effect decides only what the shell renders.
   useEffect(() => {

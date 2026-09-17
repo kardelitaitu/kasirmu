@@ -40,9 +40,9 @@ const SMTP_CONFIG_KEY = 'smtp_config';
 /**
  * What the card persists. `password` is OPTIONAL and present only when the
  * operator actually typed into the field — an absent key is the keep signal the
- * backend merge in `crates/oz-core/src/export/email_report.rs` reads, exactly
+ * backend merge in `crates/kasirmu-core/src/export/email_report.rs` reads, exactly
  * as `UpdateSyncSettingsArgs::api_key` is for the sync credential
- * (crates/oz-bridge/src/sync.rs:72-74). Sending `password: null` used to mean
+ * (crates/kasirmu-bridge/src/sync.rs:72-74). Sending `password: null` used to mean
  * "clear it" to the whole-blob write, which is how saving this card destroyed a
  * stored SMTP password.
  */
@@ -147,7 +147,7 @@ export default function EmailReportSettings() {
         return;
       }
 
-      // Keep-on-blank (mirror of crates/oz-bridge/src/sync.rs:72-74): an
+      // Keep-on-blank (mirror of crates/kasirmu-bridge/src/sync.rs:72-74): an
       // untouched password field is OMITTED from the saved blob rather than
       // written as null, so the stored secret survives. Typing a value replaces
       // it; clearing a field the operator had just typed into sends "" and is

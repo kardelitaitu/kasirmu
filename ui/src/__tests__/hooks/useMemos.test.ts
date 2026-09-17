@@ -37,7 +37,7 @@ function activeMemo(id: string, over: Partial<ActiveMemosResponse['memos'][numbe
 }
 
 /** The server-served cadence the tests assert against (mirrors
- * `oz_core::memo`: base 900s, KDS derived as 2 × base). */
+ * `kasirmu_core::memo`: base 900s, KDS derived as 2 × base). */
 const CADENCE = { baseIntervalSecs: 900, kdsIntervalSecs: 1800 };
 
 function envelope(memos: ActiveMemosResponse['memos']): ActiveMemosResponse {

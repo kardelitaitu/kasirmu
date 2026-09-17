@@ -25,10 +25,10 @@
 //
 // Out of scope here, unchanged by design: the `import.meta.env.DEV` bypass
 // (dev-only, no IPC), and the Rust-side trust decision
-// (crates/oz-bridge/src/auth.rs:611-621 is the only pre-activation gate).
+// (crates/kasirmu-bridge/src/auth.rs:611-621 is the only pre-activation gate).
 //
 // WHY `completed` CANNOT BE THE LICENCE FLAG: get_setup_status's `completed`
-// is the SETUP-WIZARD DISMISSAL (crates/oz-bridge/src/setup.rs reads
+// is the SETUP-WIZARD DISMISSAL (crates/kasirmu-bridge/src/setup.rs reads
 // keys::SHOW_SETUP_WIZARD), not activation — so it is reachable on a
 // never-activated install. It may still open the door (rule 2), but it may no
 // longer be reported as "the licence is valid", and it is never inferred from

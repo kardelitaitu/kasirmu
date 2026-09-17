@@ -3,7 +3,7 @@ import { loggedInvoke } from '@/utils/logged-invoke';
 /**
  * The hierarchy level that supplied a resolved regional value.
  *
- * Mirrors `oz_core::regional::ConfigScope`'s serde names verbatim
+ * Mirrors `kasirmu_core::regional::ConfigScope`'s serde names verbatim
  * (snake_case) — the core model promises these names to later slices, so the
  * front-end re-exports them as-is rather than re-decorating them.
  */
@@ -23,7 +23,7 @@ export interface RegionalValue {
  *
  * ADR #48 (87114abf6): `timezone.value` is the **stored** IANA zone name —
  * offsets are derived at display/report time via
- * `oz_core::timezone::business_date_in_zone`, never re-derived client-side.
+ * `kasirmu_core::timezone::business_date_in_zone`, never re-derived client-side.
  */
 export interface RegionalConfig {
   /** The location this was resolved for. */

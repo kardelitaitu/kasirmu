@@ -57,7 +57,7 @@ export function useBackupStatus({ sessionToken, triggerFlash }: {
     // about holding one. Ledger: scripts/verify-scoped-coverage.sh:57, allowlisted at
     // :100 alongside create_backup. Left OPEN on purpose: gating it would deny backup
     // to installs that can never hold a token (offline, no admin instance). It is now
-    // LOUD - event backup_ungated_no_session in crates/oz-bridge/src/data.rs - and
+    // LOUD - event backup_ungated_no_session in crates/kasirmu-bridge/src/data.rs - and
     // pinned by a known-hazard test in ui/src/__tests__/DataManagementBackup.test.tsx.
     const fetchStatus = sessionToken
       ? () => getBackupStatusScoped(sessionToken)

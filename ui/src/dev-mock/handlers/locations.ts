@@ -147,7 +147,7 @@ const mockMemos: MockActiveMemo[] = [
 const MEMO_CADENCE = { baseIntervalSecs: 900, kdsIntervalSecs: 2 * 900 };
 
 
-/** Cadence served with the memo list — mirrors `oz_core::memo`:
+/** Cadence served with the memo list — mirrors `kasirmu_core::memo`:
  *  `NOTIFICATION_BASE_INTERVAL_SECS` (900s) and the derived
  *  `kds_notification_interval_secs()` (2 × base). Expressed as base × 2 so
  *  the multiplier intent survives a base change, exactly like the backend. */

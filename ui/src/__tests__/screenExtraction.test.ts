@@ -1634,7 +1634,7 @@ const SCREENS: ScreenEntry[] = [
     // component at :2, which is what makes it loadable at all.
     //
     // CITED BECAUSE THE MARKUP IS LIVE, NOT BECAUSE THE FEATURE WORKS — the styled
-    // surface is real and the data is not: crates/oz-hal/src/drivers/scale.rs:57 says
+    // surface is real and the data is not: crates/kasirmu-hal/src/drivers/scale.rs:57 says
     // HidWeightScale::read_weight reports Unsupported deliberately (it used to say
     // NotFound, which told an operator to check a cable on a driver that was never
     // written), registry.rs:4 records that no caller invokes register_scale() — the

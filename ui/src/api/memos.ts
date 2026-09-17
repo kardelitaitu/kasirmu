@@ -1,12 +1,12 @@
 import { loggedInvoke } from '@/utils/logged-invoke';
 
-/** Memo lifecycle status — mirrors `oz_core::memo::MemoStatus`. */
+/** Memo lifecycle status — mirrors `kasirmu_core::memo::MemoStatus`. */
 export type MemoStatus = 'draft' | 'published' | 'expired' | 'stopped' | 'archived';
 
-/** Memo display duration — mirrors `oz_core::memo::MemoDuration`. */
+/** Memo display duration — mirrors `kasirmu_core::memo::MemoDuration`. */
 export type MemoDuration = '12h' | '24h' | '3d' | '7d' | '30d';
 
-/** Per-terminal delivery state — mirrors `oz_core::memo::DeliveryStatus`. */
+/** Per-terminal delivery state — mirrors `kasirmu_core::memo::DeliveryStatus`. */
 export type DeliveryStatus = 'pending' | 'delivered' | 'acknowledged';
 
 /** A memo, as returned over the wire (camelCase — matches `MemoDto`). */
@@ -36,7 +36,7 @@ export interface ActiveMemo {
 /**
  * Display cadence served by the backend with the memo list (matches
  * `MemoCadenceDto`). The server is the single source of truth for the
- * notification intervals — `oz_core::memo` derives the KDS value as 2 × the
+ * notification intervals — `kasirmu_core::memo` derives the KDS value as 2 × the
  * base — and the UI schedules its polls from these values instead of
  * hardcoding the literals.
  */

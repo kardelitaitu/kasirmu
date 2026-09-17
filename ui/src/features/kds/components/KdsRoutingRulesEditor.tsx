@@ -2,7 +2,7 @@
 //
 // Routing-rules editor section for the KDS settings surface (the deferred UI
 // half of todo-kds-agents-1). Backed by the shipped `get/save_kds_routing_
-// rules_scoped` IPC pair (crates/oz-bridge/src/kds_routing.rs):
+// rules_scoped` IPC pair (crates/kasirmu-bridge/src/kds_routing.rs):
 //
 //   - save is a WHOLE-SET REPLACE; ids/timestamps are server-assigned, so
 //     the table edits draft rows and renumbers priority positionally on save

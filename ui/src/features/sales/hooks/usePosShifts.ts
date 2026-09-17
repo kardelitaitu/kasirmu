@@ -164,7 +164,7 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShi
     } catch (err) {
       // A refused open is NOT rare and was silently swallowed: the backend
       // rejects a second open shift for the signed-in user
-      // (crates/oz-core/src/db/shifts.rs:64-75), so before this line the click
+      // (crates/kasirmu-core/src/db/shifts.rs:64-75), so before this line the click
       // simply did nothing visible — no toast, no error, modal left standing.
       // Same surfacing idiom the close path uses two callbacks above
       // (setCloseShiftError + l10nErrorMessage), whose inline banner is

@@ -141,7 +141,7 @@ describe('typed connection pairing (ADR #34 first slice)', () => {
 
   // ADR #45 §1: the endpoint predicates live in the contract, not in code.
   // These assertions are mirrored one-for-one by the Rust tests in
-  // crates/oz-core/src/topology_tests.rs, so the two evaluators are pinned to
+  // crates/kasirmu-core/src/topology_tests.rs, so the two evaluators are pinned to
   // the same verdicts. ADR #45 §2 replaces the mirroring with a corpus
   // generated from the contract itself.
   it('canonicalizes a node into its contract kind token', () => {

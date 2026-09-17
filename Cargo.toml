@@ -45,7 +45,7 @@ repository = "https://github.com/kardelitaitu/oz-pos"  # TODO: update after repo
 readme = "README.md"
 
 [workspace.dependencies]
-# all crates import from here: oz-core = { workspace = true }
+# all crates import from here: kasirmu-core = { workspace = true }
 kasirmu-api = { path = "crates/kasirmu-api" }
 kasirmu-core = { path = "crates/kasirmu-core" }
 kasirmu-bridge = { path = "crates/kasirmu-bridge" }
@@ -79,7 +79,7 @@ modules-loyalty = { path = "modules/loyalty" }
 # ── Planned verticals (stub modules) ──────────────────────────────────
 # Each already exists as a registered no-op Module implementing the
 # kernel lifecycle, owning its manifest.json + feature flag, with the
-# domain logic still living in oz-core / desktop-client. See
+# domain logic still living in kasirmu-core / desktop-client. See
 # modules/README.md for the promotion path from stub to owning module.
 modules-purchasing = { path = "modules/purchasing" }
 modules-promotions = { path = "modules/promotions" }
@@ -131,7 +131,7 @@ hex = "0.4"
 tower = { version = "0.5", features = ["limit"] }
 http-body-util = "0.1"
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls"] }
-# Cloud sync Postgres transport — one canonical spec for oz-api,
+# Cloud sync Postgres transport — one canonical spec for kasirmu-api,
 # platform-sync, and apps/cloud-server (feature-unified at build time).
 tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-serde_json-1"] }
 deadpool-postgres = { version = "0.14", features = ["serde"] }
@@ -183,15 +183,15 @@ wiremock = "0.6.5"
 # in `lints`"), so a crate cannot relax a workspace lint from its manifest.
 #
 # Second, and decisively: `unsafe_code` is not uniformly deniable here.
-# `oz-logging` calls syslog/eventlog through FFI (`syslog.rs`,
-# `eventlog.rs`) and `oz-notification` uses `unsafe` in its tests, and
+# `kasirmu-logging` calls syslog/eventlog through FFI (`syslog.rs`,
+# `eventlog.rs`) and `kasirmu-notification` uses `unsafe` in its tests, and
 # neither currently carries a crate-level opt-out — adding a workspace-wide
 # deny would break both builds, which is out of scope for a plumbing change.
 #
 # The crates that DO deny it keep the file-local `#![deny(unsafe_code)]`
 # inner attribute, which stays the reviewable place for an exception:
-# `oz-lua` narrows two `unsafe impl Send/Sync` with `#[allow(unsafe_code)]`
-# plus a `// SAFETY:` rationale, and `oz-security` scopes its Windows
+# `kasirmu-lua` narrows two `unsafe impl Send/Sync` with `#[allow(unsafe_code)]`
+# plus a `// SAFETY:` rationale, and `kasirmu-security` scopes its Windows
 # CredRead/CredWrite FFI behind `#![allow(unsafe_code)]` in `windows.rs`.
 [workspace.lints.rust]
 missing_docs = "warn"

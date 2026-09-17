@@ -8,7 +8,7 @@
 // These pin the mock against the real surface rather than against itself:
 //   - apps/desktop-client/src/commands/staff.rs — RoleHolderDto / RoleHoldersDto
 //     field names and the cap it reports;
-//   - crates/oz-core/src/db/roles.rs — role_holder_count and role_holders share
+//   - crates/kasirmu-core/src/db/roles.rs — role_holder_count and role_holders share
 //     ONE WHERE clause precisely so no caller can be handed a count and a list
 //     that disagree. The mock carries the same obligation, and the per-role
 //     drift test below is what enforces it here.

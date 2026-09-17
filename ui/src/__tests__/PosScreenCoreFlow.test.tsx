@@ -1464,7 +1464,7 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
 
   // A refused open-shift used to be swallowed: `catch { // Handled silently }`
   // in usePosShifts. The backend DOES refuse a second open shift
-  // (crates/oz-core/src/db/shifts.rs:64-75), so this banner is the only signal
+  // (crates/kasirmu-core/src/db/shifts.rs:64-75), so this banner is the only signal
   // an operator ever gets that the click did anything.
   it('reports a refused shift open instead of failing silently', async () => {
     vi.mocked(shiftsApi.getActiveShiftScoped).mockResolvedValueOnce(null);

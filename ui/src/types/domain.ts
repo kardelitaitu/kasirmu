@@ -1,4 +1,4 @@
-// Domain types mirrored from `oz-core` (Rust).
+// Domain types mirrored from `kasirmu-core` (Rust).
 //
 // Newtypes use `& { readonly __brand }` so the TypeScript type system
 // refuses to mix up `CartId` and `Sku`. Convert at the IPC boundary
@@ -166,7 +166,7 @@ export const isAppError = (e: unknown): e is AppError =>
 /** ISO-4217 minor-unit exponent (decimal places) — IDR/JPY/KRW/VND = 0, KWD = 3, USD/EUR = 2.
  *  Canonical frontend convention; `formatMoney` and money-input parsing share
  *  this via `minorUnitExponent`. Aligned with the Rust side: `Currency::minor_unit_exponent`
- *  (foundation/src/money.rs), the `006_currencies.sql` migration, `oz-cli`
+ *  (foundation/src/money.rs), the `006_currencies.sql` migration, `kasirmu-cli`
  *  init-db, and this map all treat IDR as 0 (the Rupiah has no circulating
  *  minor unit). */
 export const MINOR_UNIT_EXPONENT: Record<string, number> = {

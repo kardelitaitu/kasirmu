@@ -3,11 +3,11 @@ import { loggedInvoke } from '@/utils/logged-invoke';
 // ── Receipt format (regional receipt-format axis) ───────────────────
 
 /** Who answered for a receipt-format group (mirrors
- *  `oz_core::db::receipt_formats::ReceiptSource`'s serde names). */
+ *  `kasirmu_core::db::receipt_formats::ReceiptSource`'s serde names). */
 export type ReceiptSource = 'entity' | 'terminal' | 'workspace' | 'legacy' | 'unset';
 
 /** The statutory content half (legal-entity scope). The wire mirrors
- *  `oz_core::db::receipt_formats::ReceiptContent`'s camelCase serde. */
+ *  `kasirmu_core::db::receipt_formats::ReceiptContent`'s camelCase serde. */
 export interface ReceiptContent {
   /** Market-mandated element codes (closed enum, enforced server-side). */
   requiredFields: string[];

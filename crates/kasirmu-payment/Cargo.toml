@@ -30,7 +30,7 @@ tracing = { workspace = true }
 # `paddle` gates the planned stub driver. The default keeps it compiled so
 # the API surface is always present; lean builds can disable it.
 # The former `edc` feature is gone: card terminals are devices and moved to
-# oz-hal, where drivers are unconditional and there is nothing to gate.
+# kasirmu-hal, where drivers are unconditional and there is nothing to gate.
 default = ["paddle"]
 paddle = []
 

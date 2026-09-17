@@ -30,7 +30,7 @@ export interface RegionalDeps {
 // ═══════════════════════════════════════════════════════════════
 // REGIONAL CONFIGURATION (regional slice 2, saas-2 design)
 // ═══════════════════════════════════════════════════════════════
-// Read model mirroring oz_core::RegionalConfig, which the command returns
+// Read model mirroring kasirmu_core::RegionalConfig, which the command returns
 // directly — snake_case fields, ConfigScope serde scope names ("location",
 // "legal_entity", "organization", "built_in"). ADR #48: timezone.value is
 // the STORED IANA name; offsets are derived at display/report time, never

@@ -110,7 +110,7 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
   }, []);
   // Determine save permission client-side, on the SAME key the write commands
   // authorize with: `topology:write` (platform/core/src/rbac.rs TOPOLOGY_WRITE)
-  // — every topology mutation gate checks it (`oz-bridge` topology
+  // — every topology mutation gate checks it (`kasirmu-bridge` topology
   // commands.rs:45 capability probe, :79 authorize_topology_write, :255
   // pin_topology_revision, :479 apply path). This block used to test
   // `staff:update`, a key the Manager preset carries (rbac_presets.rs:75) and

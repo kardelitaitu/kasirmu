@@ -1477,7 +1477,7 @@ describe('TopologyScreen', () => {
   // ── The key the kernel actually checks (regression) ──────────────
   //
   // `topology:write` (platform/core/src/rbac.rs TOPOLOGY_WRITE) is what every
-  // topology write command authorizes with — `crates/oz-bridge/src/topology/
+  // topology write command authorizes with — `crates/kasirmu-bridge/src/topology/
   // commands.rs:45, :79, :255, :479`. Among the built-in presets ONLY Admin
   // carries it (rbac_presets.rs:253), plus Owner implicitly via `permissions:
   // &["*"]` (rbac_presets.rs:46). Manager holds `staff:update`

@@ -20,7 +20,7 @@ export const ACTION_FLUENT_IDS: Record<string, string> = {
   'user.create': 'audit-action-user-create',
   'user.update': 'audit-action-user-update',
   // The three actions below are emitted by the security trail
-  // (oz_core::db::audit_security: SECURITY_ACTION_LOGOUT and the two impersonate
+  // (kasirmu_core::db::audit_security: SECURITY_ACTION_LOGOUT and the two impersonate
   // actions) and were the reason the trail had no screen: every other action in
   // the set already had a label, so these rows would have rendered as fallback
   // text on a screen nobody had built. They are added WITH SecurityTrailScreen,
