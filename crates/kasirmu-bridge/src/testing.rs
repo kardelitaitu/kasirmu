@@ -3,7 +3,7 @@
 //! Relocated command tests (mounted with `#[cfg(test)] #[path]` inside the
 //! bridge modules) construct a context over a fresh migrated database here
 //! instead of booting a Tauri `AppState`. The construction recipe mirrors
-//! `AppState::for_test` (`apps/desktop-client/src/state.rs`) — every
+//! `AppState::for_test` (`apps/desktop-tauri/src/state.rs`) — every
 //! `BridgeCtx` field is constructible without tauri, gtk or a driver
 //! registry — and `temp_conn` delegates to the repo's canonical
 //! migrated-test-conn helper `kasirmu_core::migrations::fresh_db` (snapshot

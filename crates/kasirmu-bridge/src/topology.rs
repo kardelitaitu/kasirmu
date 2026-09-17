@@ -1,6 +1,6 @@
 //! Topology bridge module (Wave E).
 //!
-//! Mirrors `apps/desktop-client/src/commands/topology/` so every `super::`
+//! Mirrors `apps/desktop-tauri/src/commands/topology/` so every `super::`
 //! path inside a moved file stays valid exactly as written: the children are
 //! declared here, in this module root, and not in the crate's `lib.rs`.
 //!

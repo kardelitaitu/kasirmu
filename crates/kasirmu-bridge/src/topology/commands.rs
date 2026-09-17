@@ -1,7 +1,7 @@
 //! Tauri command bodies for the node topology: capability probe, diagram
 //! templates, load, revisions, and the atomic Apply diff.
 //!
-//! Ported verbatim from `apps/desktop-client/src/commands/topology/commands.rs`
+//! Ported verbatim from `apps/desktop-tauri/src/commands/topology/commands.rs`
 //! (Wave E, e) as the last leaf of the `kasirmu_bridge::topology` mirror, after
 //! model, semantics, revisions and persistence, so its four `super::` device
 //! lines all resolve here. The desktop file keeps the `#[tauri::command]`

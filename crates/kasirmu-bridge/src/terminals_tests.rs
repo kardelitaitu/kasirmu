@@ -1,5 +1,5 @@
 //! Unit tests for the terminal command bodies (Wave-F test relocation:
-//! moved out of `apps/desktop-client/src/commands/terminals_tests.rs`).
+//! moved out of `apps/desktop-tauri/src/commands/terminals_tests.rs`).
 //!
 //! Mounted at the foot of `terminals.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the bridge command bodies, the DTOs and the

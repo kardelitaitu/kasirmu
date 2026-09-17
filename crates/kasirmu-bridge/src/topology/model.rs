@@ -1,6 +1,6 @@
 //! Typed topology model: node/wire payloads, enums, and resilient serde.
 //!
-//! Ported verbatim from `apps/desktop-client/src/commands/topology/model.rs`
+//! Ported verbatim from `apps/desktop-tauri/src/commands/topology/model.rs`
 //! (Wave E step E9a-a) as the first leaf of the `kasirmu_bridge::topology` mirror
 //! of that group; the desktop module re-exports this surface so every path it
 //! already answers stays reachable. `pub` marks items that sibling bridge
