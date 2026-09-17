@@ -1245,7 +1245,7 @@ docs/releases/release-process.md consistent with scripts.
   od (verified: exactly 64 hex chars on both paths). Commit `87a6f1e7`.
 
 Verified the rest of dev-up.sh/.ps1 + docker-entrypoint.sh:
-- health-check service names match docker-compose.yml (redis,
+- health-check service names match ops/docker/docker-compose.yml (redis,
   license-server, pos-cloud-server; + pos-cloud-db in pg mode)
 - `$(cat ...)` command substitution strips trailing newlines (PEM key
   parity with ps1's `.Trim()`); e2e newline-escaping chain consistent

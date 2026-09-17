@@ -55,7 +55,7 @@ Listens on `OZ_API_PORT` (default `3099`). DB path from `OZ_DB_PATH` (default `k
 | POST | `/api/v1/memos/{memo_id}/ack` | JWT (terminal only) | Acknowledge a memo. An admin-minted token has no terminal identity and cannot ack |
 
 ¹ `X-Admin-Key` header required when the server has an admin key configured (`OZ_ADMIN_KEY` on the cloud server; the per-install secret on the desktop local API); open in dev mode.
-  Docker deploys: `docker-compose.yml` hard-requires `OZ_ADMIN_KEY` (`:?` fail-fast at parse time, matching `OZ_API_SECRET`) — unset now means no stack, not an open mint.
+  Docker deploys: `ops/docker/docker-compose.yml` hard-requires `OZ_ADMIN_KEY` (`:?` fail-fast at parse time, matching `OZ_API_SECRET`) — unset now means no stack, not an open mint.
 ² Operator write tier (D1): admin key **and** a non-terminal token — device credentials
 must never mutate master data. Sales writes are exempt (terminals sell).
 ³ `require_tenant_write`: tenant-scoped sibling of ² — a non-terminal caller needs the

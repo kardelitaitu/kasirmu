@@ -67,7 +67,7 @@
 
 ## Build Verification
 
-- [ ] Docker image builds: `docker build -f Dockerfile.server -t oz-pos-cloud:latest .`
+- [ ] Docker image builds: `docker build -f ops/docker/Dockerfile.server -t oz-pos-cloud:latest .`
 - [ ] Docker image size < 100 MB
 - [ ] Desktop **installers** build (raw `cargo build --release` is not a release artifact):
   - Linux: `cargo tauri build --bundles appimage,deb`

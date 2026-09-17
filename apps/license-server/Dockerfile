@@ -38,7 +38,7 @@ FROM alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc
 # DOCKER-01: non-root runtime. su-exec is Alpine's gosu equivalent and is
 # used by the entrypoint to drop from root (which only fixes volume
 # ownership for pre-existing root-owned volumes) to the `pb` user before
-# PocketBase serves HTTP — the same pattern Dockerfile.server uses with gosu.
+# PocketBase serves HTTP — the same pattern ops/docker/Dockerfile.server uses with gosu.
 RUN apk add --no-cache ca-certificates tzdata su-exec
 
 RUN addgroup -S pb && adduser -S -G pb -h /pb pb
