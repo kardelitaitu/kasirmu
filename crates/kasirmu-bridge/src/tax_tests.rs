@@ -434,7 +434,12 @@ async fn require_tax_permission_rejects_missing_user() {
     let ctx = bridge.ctx();
 
     assert!(matches!(
-        require_tax_permission(&ctx, "missing-user", kasirmu_core::permissions::SETTINGS_READ).await,
+        require_tax_permission(
+            &ctx,
+            "missing-user",
+            kasirmu_core::permissions::SETTINGS_READ
+        )
+        .await,
         Err(BridgeError::PermissionDenied(_))
     ));
 }

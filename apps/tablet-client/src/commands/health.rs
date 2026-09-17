@@ -38,13 +38,17 @@ pub async fn version() -> Result<VersionInfo, AppError> {
 /// Get the stable device identifier (hostname) for terminal binding.
 #[command]
 pub async fn get_device_id() -> Result<String, AppError> {
-    kasirmu_bridge::health::get_device_id().await.map_err(Into::into)
+    kasirmu_bridge::health::get_device_id()
+        .await
+        .map_err(Into::into)
 }
 
 /// Get the local IP address of the machine.
 #[command]
 pub async fn get_local_ip() -> Result<String, AppError> {
-    kasirmu_bridge::health::get_local_ip().await.map_err(Into::into)
+    kasirmu_bridge::health::get_local_ip()
+        .await
+        .map_err(Into::into)
 }
 
 #[cfg(test)]

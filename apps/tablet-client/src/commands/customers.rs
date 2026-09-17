@@ -230,13 +230,12 @@ pub async fn get_customer_history_scoped(
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
 
-    let customer =
-        store
-            .get_customer(&customer_id)?
-            .ok_or_else(|| kasirmu_core::error::CoreError::NotFound {
-                entity: "customer",
-                id: customer_id.clone(),
-            })?;
+    let customer = store.get_customer(&customer_id)?.ok_or_else(|| {
+        kasirmu_core::error::CoreError::NotFound {
+            entity: "customer",
+            id: customer_id.clone(),
+        }
+    })?;
 
     let loyalty =
         store

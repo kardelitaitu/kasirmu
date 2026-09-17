@@ -457,7 +457,11 @@ fn run_override_cart_deduction_location(
 ) -> Result<(), AppError> {
     let store = Store::new(db);
 
-    require_permission_for_user(&store, user_id, kasirmu_core::permissions::SALES_OVERRIDE_PRICE)?;
+    require_permission_for_user(
+        &store,
+        user_id,
+        kasirmu_core::permissions::SALES_OVERRIDE_PRICE,
+    )?;
 
     store
         .override_active_cart_deduction_location(cart_id)
@@ -1137,8 +1141,11 @@ fn settle_shortfall_resolved(
     let mut cart = kasirmu_core::Cart::new(currency);
     for line_data in &args.lines {
         let unit_price = shortfall_line_unit_price(line_data, cart.currency())?;
-        let line =
-            kasirmu_core::CartLine::new(kasirmu_core::Sku::new(&line_data.sku), line_data.qty, unit_price);
+        let line = kasirmu_core::CartLine::new(
+            kasirmu_core::Sku::new(&line_data.sku),
+            line_data.qty,
+            unit_price,
+        );
         cart.add_line(line)
             .map_err(|e| AppError::Invalid(e.to_string()))?;
     }

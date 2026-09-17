@@ -192,7 +192,9 @@ pub struct CustomerHistoryDto {
 /// translation the authz seam applies.
 fn map_gate_error(e: kasirmu_core::CoreError) -> BridgeError {
     match e {
-        kasirmu_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
+        kasirmu_core::CoreError::PermissionDenied(message) => {
+            BridgeError::PermissionDenied(message)
+        }
         other => BridgeError::from(other),
     }
 }
@@ -584,13 +586,12 @@ pub async fn history_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
 
-    let customer =
-        store
-            .get_customer(customer_id)?
-            .ok_or_else(|| kasirmu_core::error::CoreError::NotFound {
-                entity: "customer",
-                id: customer_id.to_string(),
-            })?;
+    let customer = store.get_customer(customer_id)?.ok_or_else(|| {
+        kasirmu_core::error::CoreError::NotFound {
+            entity: "customer",
+            id: customer_id.to_string(),
+        }
+    })?;
 
     let loyalty =
         store

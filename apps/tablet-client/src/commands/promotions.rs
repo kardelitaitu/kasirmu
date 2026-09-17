@@ -122,8 +122,12 @@ pub async fn create_promotion_scoped(
     };
 
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, kasirmu_core::permissions::PROMOTIONS_CREATE)
-        .await?;
+    require_permission_for_session(
+        &state,
+        &session,
+        kasirmu_core::permissions::PROMOTIONS_CREATE,
+    )
+    .await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -144,7 +148,8 @@ pub async fn update_promotion_scoped(
     p.updated_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, kasirmu_core::permissions::PROMOTIONS_EDIT).await?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::PROMOTIONS_EDIT)
+        .await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -162,8 +167,12 @@ pub async fn delete_promotion_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, kasirmu_core::permissions::PROMOTIONS_DELETE)
-        .await?;
+    require_permission_for_session(
+        &state,
+        &session,
+        kasirmu_core::permissions::PROMOTIONS_DELETE,
+    )
+    .await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -182,8 +191,12 @@ pub async fn apply_promotion_scoped(
     state: State<'_, AppState>,
 ) -> Result<PromotionApplication, AppError> {
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, kasirmu_core::permissions::PROMOTIONS_APPLY)
-        .await?;
+    require_permission_for_session(
+        &state,
+        &session,
+        kasirmu_core::permissions::PROMOTIONS_APPLY,
+    )
+    .await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;

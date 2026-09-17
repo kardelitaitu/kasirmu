@@ -9,8 +9,10 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use chrono::{Datelike, Timelike};
+use kasirmu_lua::{
+    CartLineData, DiscountResult, LuaError, LuaEventBridge, LuaRuntime, TaxOverride,
+};
 use mlua::RegistryKey;
-use kasirmu_lua::{CartLineData, DiscountResult, LuaError, LuaEventBridge, LuaRuntime, TaxOverride};
 
 use crate::error::PluginError;
 use crate::loader::load_plugins;

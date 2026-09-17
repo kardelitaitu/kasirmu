@@ -136,9 +136,13 @@ pub async fn get_or_create_loyalty_account_scoped(
     state: State<'_, AppState>,
 ) -> Result<LoyaltyAccount, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::loyalty::get_or_create_loyalty_account_scoped(&ctx, &session_token, &customer_id)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::loyalty::get_or_create_loyalty_account_scoped(
+        &ctx,
+        &session_token,
+        &customer_id,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// Verify a loyalty permission against the global identity database.

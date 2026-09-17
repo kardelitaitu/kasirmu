@@ -34,7 +34,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use kasirmu_core::cache::Cache;
 use kasirmu_core::migrations;
 use kasirmu_core::session::SessionContext;
-use kasirmu_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
+use kasirmu_core::subscription::{
+    SubscriptionLifecycleState, SubscriptionTier, TenantSubscription,
+};
 use kasirmu_hal::DriverRegistry;
 use kasirmu_plugin::PluginManager;
 use platform_core::StoreDatabaseManager;

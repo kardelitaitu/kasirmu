@@ -866,7 +866,9 @@ async fn l194_switch_organization_records_an_org_switch_event() {
     let rows = audit_rows(&app).await;
     let hit = rows
         .iter()
-        .find(|(_, action, ..)| *action == kasirmu_core::db::audit_security::SECURITY_ACTION_ORG_SWITCH)
+        .find(|(_, action, ..)| {
+            *action == kasirmu_core::db::audit_security::SECURITY_ACTION_ORG_SWITCH
+        })
         .expect("a successful switch must record an org.switch row");
     let (user_id, action, outcome, target_id, _details) = hit;
     assert_eq!(

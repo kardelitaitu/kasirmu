@@ -52,7 +52,9 @@ use kasirmu_core::db::assignments::ScopeType;
 use kasirmu_core::downgrade::OverQuotaReport;
 use kasirmu_core::entitlements::{Entitlements, SubscriptionLoader, build_entitlements};
 use kasirmu_core::permissions;
-use kasirmu_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
+use kasirmu_core::subscription::{
+    SubscriptionLifecycleState, SubscriptionTier, TenantSubscription,
+};
 use kasirmu_core::workspace_type::{RESTAURANT_POS, STORE_POS, WAREHOUSE};
 
 use crate::commands::authz::require_permission_for_session;

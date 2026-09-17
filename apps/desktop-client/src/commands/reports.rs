@@ -19,7 +19,9 @@ use tauri::State;
 
 #[allow(unused_imports)] // sibling reports_tests.rs depends on it
 use kasirmu_core::db::Store;
-use kasirmu_core::db::popularity::{CategoryForecastRow, CategoryPopularityRow, CategoryTrendPoint};
+use kasirmu_core::db::popularity::{
+    CategoryForecastRow, CategoryPopularityRow, CategoryTrendPoint,
+};
 use kasirmu_core::db::reports::{
     BasketSizeRow, BasketTrendRow, CategoryBreakdownRow, CustomerSplitRow, DailyRevenueRow,
     DiscountsSummaryRow, HourlyHeatmapRow, HourlyOccupancyRow, InventoryTrendRow,
@@ -65,9 +67,14 @@ pub async fn get_menu_engineering_scoped(
     state: State<'_, AppState>,
 ) -> Result<kasirmu_reporting::menu_engineering::MenuEngineeringResult, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::reports::get_menu_engineering_scoped(&ctx, &session_token, &start_date, &end_date)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::reports::get_menu_engineering_scoped(
+        &ctx,
+        &session_token,
+        &start_date,
+        &end_date,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -123,9 +130,14 @@ pub async fn get_monthly_revenue_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<MonthlyRevenueRow>, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::reports::get_monthly_revenue_scoped(&ctx, &session_token, &start_date, &end_date)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::reports::get_monthly_revenue_scoped(
+        &ctx,
+        &session_token,
+        &start_date,
+        &end_date,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -252,9 +264,14 @@ pub async fn get_category_breakdown_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<CategoryBreakdownRow>, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::reports::get_category_breakdown_scoped(&ctx, &session_token, &start_date, &end_date)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::reports::get_category_breakdown_scoped(
+        &ctx,
+        &session_token,
+        &start_date,
+        &end_date,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -305,9 +322,15 @@ pub async fn get_voided_items_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<VoidedItemRow>, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::reports::get_voided_items_scoped(&ctx, &session_token, &start_date, &end_date, limit)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::reports::get_voided_items_scoped(
+        &ctx,
+        &session_token,
+        &start_date,
+        &end_date,
+        limit,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -333,9 +356,14 @@ pub async fn get_basket_size_trend_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<BasketTrendRow>, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::reports::get_basket_size_trend_scoped(&ctx, &session_token, &start_date, &end_date)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::reports::get_basket_size_trend_scoped(
+        &ctx,
+        &session_token,
+        &start_date,
+        &end_date,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -361,9 +389,14 @@ pub async fn get_discounts_summary_scoped(
     state: State<'_, AppState>,
 ) -> Result<DiscountsSummaryRow, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::reports::get_discounts_summary_scoped(&ctx, &session_token, &start_date, &end_date)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::reports::get_discounts_summary_scoped(
+        &ctx,
+        &session_token,
+        &start_date,
+        &end_date,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -396,9 +429,14 @@ pub async fn get_inventory_trend_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<InventoryTrendRow>, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::reports::get_inventory_trend_scoped(&ctx, &session_token, &start_date, &end_date)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::reports::get_inventory_trend_scoped(
+        &ctx,
+        &session_token,
+        &start_date,
+        &end_date,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -424,9 +462,14 @@ pub async fn get_hourly_occupancy_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<HourlyOccupancyRow>, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::reports::get_hourly_occupancy_scoped(&ctx, &session_token, &start_date, &end_date)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::reports::get_hourly_occupancy_scoped(
+        &ctx,
+        &session_token,
+        &start_date,
+        &end_date,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// Build a custom report for the session's store.

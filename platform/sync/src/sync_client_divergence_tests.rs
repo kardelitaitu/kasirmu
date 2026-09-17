@@ -508,7 +508,10 @@ fn duplicate_id_rejection_is_synced_here_and_recorded_as_a_parity_gap_there() {
 #[test]
 fn duplicate_id_prefix_has_not_drifted() {
     assert!(
-        kasirmu_core::sync_client::is_duplicate_id_rejection(&format!("{}abc", DUPLICATE_ID_PREFIX)),
+        kasirmu_core::sync_client::is_duplicate_id_rejection(&format!(
+            "{}abc",
+            DUPLICATE_ID_PREFIX
+        )),
         "UNDECIDED: the mirrored prefix no longer matches DUPLICATE_ID_REJECTION_PREFIX - update this test and re-read the parity claim"
     );
     assert!(

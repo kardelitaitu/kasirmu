@@ -21,8 +21,8 @@ use axum::{
 };
 use serde::Deserialize;
 
-use modules_currency::repository::CurrencyRepository;
 use kasirmu_core::CoreError;
+use modules_currency::repository::CurrencyRepository;
 
 use crate::AppState;
 use crate::auth::ApiTokenClaims;

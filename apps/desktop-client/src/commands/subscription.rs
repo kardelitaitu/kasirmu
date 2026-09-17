@@ -67,9 +67,13 @@ pub async fn explain_feature_availability_scoped(
     state: State<'_, AppState>,
 ) -> Result<FeatureVerdict, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::subscription::explain_feature_availability_scoped(&ctx, &session_token, &feature)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::subscription::explain_feature_availability_scoped(
+        &ctx,
+        &session_token,
+        &feature,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// The tenant-level over-quota assessment for the owner-facing

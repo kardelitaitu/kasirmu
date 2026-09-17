@@ -315,8 +315,11 @@ pub async fn start_with_audit(
     // actual bound port and registered INSIDE router()'s layer scope
     // (review MED-4: routes appended to the returned Router escape the
     // CORS/security-headers/trace layers).
-    let app =
-        kasirmu_api::router_with_openapi(api_state, Some(kasirmu_api::spec::local_spec(bound_port)), audit);
+    let app = kasirmu_api::router_with_openapi(
+        api_state,
+        Some(kasirmu_api::spec::local_spec(bound_port)),
+        audit,
+    );
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let task = tokio::spawn(async move {

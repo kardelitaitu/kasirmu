@@ -1104,7 +1104,10 @@ async fn daemon_resolves_push_conflict_via_shared_service() {
     // be re-enqueued (old behavior re-enqueued the server's stale v3).
     assert_eq!(all.len(), 1, "no remote winner may be re-enqueued");
     assert!(pending.is_empty(), "local winner must not stay pending");
-    assert_eq!(all[0].status, kasirmu_core::offline::OfflineQueueStatus::Synced);
+    assert_eq!(
+        all[0].status,
+        kasirmu_core::offline::OfflineQueueStatus::Synced
+    );
     assert!(
         all[0]
             .last_error

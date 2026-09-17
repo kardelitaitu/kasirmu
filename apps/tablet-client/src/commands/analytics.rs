@@ -41,9 +41,15 @@ pub async fn get_staff_analytics_daily_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<StaffAnalyticsDailyDto>, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::analytics::get_staff_analytics_daily_scoped(&ctx, &session_token, user_id, from, to)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::analytics::get_staff_analytics_daily_scoped(
+        &ctx,
+        &session_token,
+        user_id,
+        from,
+        to,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[cfg(test)]

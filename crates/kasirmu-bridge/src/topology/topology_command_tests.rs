@@ -298,7 +298,8 @@ fn backend_warehouse_quota_allows_two_plus_warehouses() {
         serde_json::json!({ "id": "wh-1", "type": "warehouse" }),
         serde_json::json!({ "id": "wh-2", "type": "warehouse" }),
     ];
-    let result = validate_warehouse_quota(&nodes, &kasirmu_core::subscription::SubscriptionTier::Plus);
+    let result =
+        validate_warehouse_quota(&nodes, &kasirmu_core::subscription::SubscriptionTier::Plus);
     assert!(result.is_ok());
 }
 
@@ -309,7 +310,8 @@ fn backend_warehouse_quota_rejects_multiple_free_warehouses() {
         serde_json::json!({ "id": "wh-1", "type": "warehouse" }),
         serde_json::json!({ "id": "wh-2", "type": "warehouse" }),
     ];
-    let result = validate_warehouse_quota(&nodes, &kasirmu_core::subscription::SubscriptionTier::Free);
+    let result =
+        validate_warehouse_quota(&nodes, &kasirmu_core::subscription::SubscriptionTier::Free);
     assert!(
         matches!(result, Err(BridgeError::PermissionDenied(message)) if message.contains("limit 1"))
     );

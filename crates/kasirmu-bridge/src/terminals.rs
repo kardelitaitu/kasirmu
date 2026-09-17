@@ -397,7 +397,11 @@ pub async fn register_terminal(
 
     let db = ctx.lock_global().await;
     let store = Store::new(&db);
-    ctx.require_permission_for_user(&store, &user_id, kasirmu_core::permissions::TERMINALS_REGISTER)?;
+    ctx.require_permission_for_user(
+        &store,
+        &user_id,
+        kasirmu_core::permissions::TERMINALS_REGISTER,
+    )?;
     store.create_terminal(&terminal)?;
     drop(db);
 

@@ -2,7 +2,8 @@ use super::*;
 use std::path::PathBuf;
 
 fn temp_image_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("kasirmu-local-api-{tag}-{}", uuid::Uuid::new_v4()));
+    let dir =
+        std::env::temp_dir().join(format!("kasirmu-local-api-{tag}-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -314,7 +315,8 @@ fn primary_store_id_resolves_and_falls_back() {
 
 #[tokio::test]
 async fn serves_the_primary_store_database_not_the_global_one() {
-    let tmp = std::env::temp_dir().join(format!("kasirmu-local-api-store-{}", uuid::Uuid::new_v4()));
+    let tmp =
+        std::env::temp_dir().join(format!("kasirmu-local-api-store-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).unwrap();
     let global = kasirmu_core::migrations::fresh_db();
     global
@@ -323,7 +325,8 @@ async fn serves_the_primary_store_database_not_the_global_one() {
             [],
         )
         .unwrap();
-    let manager = platform_core::StoreDatabaseManager::new(tmp.clone(), kasirmu_core::migrations::ALL);
+    let manager =
+        platform_core::StoreDatabaseManager::new(tmp.clone(), kasirmu_core::migrations::ALL);
 
     let store_id = primary_store_id(&global);
     let (api_db, api_path) = open_api_store_connection(&manager, &store_id).unwrap();
@@ -431,7 +434,8 @@ fn resolve_store_id_prefers_configured_and_degrades() {
 
 #[tokio::test]
 async fn api_writes_land_in_the_audit_log_of_the_served_store() {
-    let tmp = std::env::temp_dir().join(format!("kasirmu-local-api-audit-{}", uuid::Uuid::new_v4()));
+    let tmp =
+        std::env::temp_dir().join(format!("kasirmu-local-api-audit-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).unwrap();
     let global = kasirmu_core::migrations::fresh_db();
     global
@@ -440,7 +444,8 @@ async fn api_writes_land_in_the_audit_log_of_the_served_store() {
             [],
         )
         .unwrap();
-    let manager = platform_core::StoreDatabaseManager::new(tmp.clone(), kasirmu_core::migrations::ALL);
+    let manager =
+        platform_core::StoreDatabaseManager::new(tmp.clone(), kasirmu_core::migrations::ALL);
     let (api_db, api_path) = open_api_store_connection(&manager, "default").unwrap();
 
     let secret = "d".repeat(32);

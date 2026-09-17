@@ -442,8 +442,12 @@ async fn get_cart_deduction_location_scoped_rejects_invalid_token() {
 
 fn single_line_cart() -> kasirmu_core::Cart {
     let mut cart = kasirmu_core::Cart::new(usd());
-    cart.add_line(kasirmu_core::CartLine::new(Sku::new("COFFEE"), 2, price(350)))
-        .unwrap();
+    cart.add_line(kasirmu_core::CartLine::new(
+        Sku::new("COFFEE"),
+        2,
+        price(350),
+    ))
+    .unwrap();
     cart
 }
 

@@ -182,7 +182,9 @@ pub struct TaxRateDependencyCountsDto {
 /// translation the authz seam applies.
 fn map_gate_error(e: kasirmu_core::CoreError) -> BridgeError {
     match e {
-        kasirmu_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
+        kasirmu_core::CoreError::PermissionDenied(message) => {
+            BridgeError::PermissionDenied(message)
+        }
         other => BridgeError::from(other),
     }
 }
@@ -486,7 +488,12 @@ pub async fn list_rates_scoped(
     session_token: &str,
 ) -> Result<Vec<TaxRateDto>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_tax_permission(ctx, &session.user_id, kasirmu_core::permissions::SETTINGS_READ).await?;
+    require_tax_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SETTINGS_READ,
+    )
+    .await?;
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -511,7 +518,12 @@ pub async fn create_rate_scoped(
     args: &CreateTaxRateArgs,
 ) -> Result<TaxRateDto, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_tax_permission(ctx, &session.user_id, kasirmu_core::permissions::SETTINGS_EDIT).await?;
+    require_tax_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SETTINGS_EDIT,
+    )
+    .await?;
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -534,7 +546,12 @@ pub async fn update_rate_scoped(
     args: &UpdateTaxRateArgs,
 ) -> Result<TaxRateDto, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_tax_permission(ctx, &session.user_id, kasirmu_core::permissions::SETTINGS_EDIT).await?;
+    require_tax_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SETTINGS_EDIT,
+    )
+    .await?;
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -567,7 +584,12 @@ pub async fn delete_rate_scoped(
     id: &str,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_tax_permission(ctx, &session.user_id, kasirmu_core::permissions::SETTINGS_EDIT).await?;
+    require_tax_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SETTINGS_EDIT,
+    )
+    .await?;
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -598,7 +620,12 @@ pub async fn dependency_counts_scoped(
     id: &str,
 ) -> Result<TaxRateDependencyCountsDto, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_tax_permission(ctx, &session.user_id, kasirmu_core::permissions::SETTINGS_READ).await?;
+    require_tax_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SETTINGS_READ,
+    )
+    .await?;
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -626,7 +653,12 @@ pub async fn list_category_rates_scoped(
     session_token: &str,
 ) -> Result<Vec<CategoryTaxRateRow>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_tax_permission(ctx, &session.user_id, kasirmu_core::permissions::SETTINGS_READ).await?;
+    require_tax_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SETTINGS_READ,
+    )
+    .await?;
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -649,7 +681,12 @@ pub async fn set_category_rates_scoped(
     args: &SetCategoryTaxRatesArgs,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_tax_permission(ctx, &session.user_id, kasirmu_core::permissions::SETTINGS_EDIT).await?;
+    require_tax_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SETTINGS_EDIT,
+    )
+    .await?;
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -684,7 +721,12 @@ pub async fn rounding_modes_scoped(
     rate_ids: &[String],
 ) -> Result<HashMap<String, Option<RoundingMode>>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_tax_permission(ctx, &session.user_id, kasirmu_core::permissions::SETTINGS_READ).await?;
+    require_tax_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SETTINGS_READ,
+    )
+    .await?;
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()

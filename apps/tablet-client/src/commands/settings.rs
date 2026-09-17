@@ -122,7 +122,9 @@ fn run_set_receipt_settings(
     conn: &rusqlite::Connection,
     args: &ReceiptSettingsDto,
 ) -> Result<(), AppError> {
-    Ok(kasirmu_bridge::settings::run_set_receipt_settings(conn, args)?)
+    Ok(kasirmu_bridge::settings::run_set_receipt_settings(
+        conn, args,
+    )?)
 }
 
 // ── Store info DTO ────────────────────────────────────────────
@@ -158,7 +160,9 @@ fn run_set_store_settings(
     conn: &rusqlite::Connection,
     args: &StoreSettingsDto,
 ) -> Result<(), AppError> {
-    Ok(kasirmu_bridge::settings::run_set_store_settings(conn, args)?)
+    Ok(kasirmu_bridge::settings::run_set_store_settings(
+        conn, args,
+    )?)
 }
 
 // ── Credit Settings DTO ─────────────────────────────────────────
@@ -800,7 +804,8 @@ pub async fn set_settings_scoped(
     // key before it writes any, so one refused key aborts the whole batch.
     let written = {
         let tx = db_guard.unchecked_transaction()?;
-        let written = kasirmu_bridge::settings::run_set_settings_batch(&tx, &entries, &terminal_id)?;
+        let written =
+            kasirmu_bridge::settings::run_set_settings_batch(&tx, &entries, &terminal_id)?;
         tx.commit()?;
         written
     };
@@ -808,9 +813,12 @@ pub async fn set_settings_scoped(
     // Enqueue the values AS WRITTEN — the funnel merges `smtp_config`
     // internally, so `entries` is not what replication is offered.
     // Warn-and-continue: the local write already committed. SYNC-10.
-    if let Err(e) =
-        kasirmu_bridge::settings::enqueue_settings_updates(&store, &written, &terminal_id, "default")
-    {
+    if let Err(e) = kasirmu_bridge::settings::enqueue_settings_updates(
+        &store,
+        &written,
+        &terminal_id,
+        "default",
+    ) {
         tracing::warn!(
             key_count = written.len(),
             error = %e,

@@ -120,9 +120,14 @@ pub async fn delete_topology_template(
     state: State<'_, AppState>,
 ) -> Result<bool, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::topology::commands::delete_topology_template(&ctx, session_token, name, branch_id)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::topology::commands::delete_topology_template(
+        &ctx,
+        session_token,
+        name,
+        branch_id,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// Load the persisted topology graph.
@@ -171,9 +176,14 @@ pub async fn list_topology_revisions(
     state: State<'_, AppState>,
 ) -> Result<Vec<TopologyRevisionSummary>, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::topology::commands::list_topology_revisions(&ctx, session_token, branch_id, limit)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::topology::commands::list_topology_revisions(
+        &ctx,
+        session_token,
+        branch_id,
+        limit,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// ADR #46 §5/§7: fetch one revision's graph, to diff it or load it as a
@@ -186,9 +196,14 @@ pub async fn load_topology_revision(
     state: State<'_, AppState>,
 ) -> Result<TopologyRevisionGraphResult, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::topology::commands::load_topology_revision(&ctx, session_token, branch_id, revision)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::topology::commands::load_topology_revision(
+        &ctx,
+        session_token,
+        branch_id,
+        revision,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// Apply a full topology diff atomically (Critical #4).

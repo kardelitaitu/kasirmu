@@ -15,10 +15,10 @@
 use foundation::validate_not_empty;
 use serde::{Deserialize, Serialize};
 
-use modules_currency::commands::{CreateExchangeRateArgs, CurrencyDto, ExchangeRateDto};
-use modules_currency::repository::CurrencyRepository;
 use kasirmu_core::db::Store;
 use kasirmu_core::permissions;
+use modules_currency::commands::{CreateExchangeRateArgs, CurrencyDto, ExchangeRateDto};
+use modules_currency::repository::CurrencyRepository;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -296,10 +296,9 @@ pub async fn create_exchange_rate_scoped(
         .flatten()
         .map(|p| p.timezone)
         .unwrap_or_else(|| "UTC".to_string());
-    let date = args
-        .effective_date
-        .clone()
-        .unwrap_or_else(|| kasirmu_core::timezone::business_date_in_zone(chrono::Utc::now(), &timezone));
+    let date = args.effective_date.clone().unwrap_or_else(|| {
+        kasirmu_core::timezone::business_date_in_zone(chrono::Utc::now(), &timezone)
+    });
     let source = args.source.clone().unwrap_or_else(|| "manual".to_string());
     let row = repo.create_exchange_rate(
         &args.from_currency,

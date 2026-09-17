@@ -185,7 +185,8 @@ pub async fn load_topology(
             let Some(branch_id) = branch_id.as_deref() else {
                 return Ok(None);
             };
-            let Some(legacy_json) = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)? else {
+            let Some(legacy_json) = kasirmu_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)?
+            else {
                 return Ok(None);
             };
             let value: Value = serde_json::from_str(&legacy_json)

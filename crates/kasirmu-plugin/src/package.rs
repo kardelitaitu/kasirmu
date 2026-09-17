@@ -104,7 +104,9 @@ impl KasirpkEntry {
     pub fn filename(&self) -> &str {
         match self {
             KasirpkEntry::Manifest(_) => "manifest.json",
-            KasirpkEntry::Script(name) | KasirpkEntry::Migration(name) | KasirpkEntry::Other(name) => name,
+            KasirpkEntry::Script(name)
+            | KasirpkEntry::Migration(name)
+            | KasirpkEntry::Other(name) => name,
         }
     }
 

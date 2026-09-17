@@ -84,7 +84,8 @@ async fn run_cycle_downloads_missing_images_from_dead_server() {
         let guard = db.lock().await;
         let store = kasirmu_core::Store::new(&guard);
         kasirmu_core::settings::Settings::set_sync_enabled(&guard, true).unwrap();
-        kasirmu_core::settings::Settings::set_sync_server_url(&guard, "http://127.0.0.1:1").unwrap();
+        kasirmu_core::settings::Settings::set_sync_server_url(&guard, "http://127.0.0.1:1")
+            .unwrap();
         kasirmu_core::settings::Settings::set_sync_api_key(&guard, "sk-test").unwrap();
         // Assign a primary image to a product.
         let product_id = uuid::Uuid::new_v4().to_string();
@@ -114,7 +115,8 @@ async fn run_cycle_seeds_lru_from_existing_cache() {
         let guard = db.lock().await;
         let store = kasirmu_core::Store::new(&guard);
         kasirmu_core::settings::Settings::set_sync_enabled(&guard, true).unwrap();
-        kasirmu_core::settings::Settings::set_sync_server_url(&guard, "http://127.0.0.1:1").unwrap();
+        kasirmu_core::settings::Settings::set_sync_server_url(&guard, "http://127.0.0.1:1")
+            .unwrap();
         kasirmu_core::settings::Settings::set_sync_api_key(&guard, "sk-test").unwrap();
         // Reference a hash that IS present and one that is not.
         let product_id = uuid::Uuid::new_v4().to_string();

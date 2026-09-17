@@ -678,7 +678,9 @@ async fn create_tax_rate_requires_auth() {
 /// Helper: build a router with seeded roles (required for user creation).
 fn test_app_with_roles() -> Router {
     let conn = fresh_conn();
-    kasirmu_core::db::Store::new(&conn).seed_default_roles().unwrap();
+    kasirmu_core::db::Store::new(&conn)
+        .seed_default_roles()
+        .unwrap();
     let state = AppState {
         db: Arc::new(Mutex::new(conn)),
         pg: None,

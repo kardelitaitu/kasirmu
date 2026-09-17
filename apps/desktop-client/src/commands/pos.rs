@@ -356,4 +356,3 @@ pub async fn complete_sale_scoped(
 
     result
 }
-

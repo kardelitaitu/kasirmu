@@ -14,8 +14,6 @@
 
 use std::sync::Arc;
 
-use lettre::message::header::ContentType;
-use lettre::{AsyncTransport, Message};
 use kasirmu_core::{
     Store,
     export::{
@@ -23,6 +21,8 @@ use kasirmu_core::{
         email_sender,
     },
 };
+use lettre::message::header::ContentType;
+use lettre::{AsyncTransport, Message};
 use serde::Deserialize;
 use tracing::{error, info};
 

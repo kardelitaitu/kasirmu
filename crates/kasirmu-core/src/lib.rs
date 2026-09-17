@@ -66,6 +66,8 @@ pub mod gift_card;
 pub mod inventory;
 /// Inventory audit transactions (ADR-18 §9a + §9b; ADR-19 §3.2).
 pub mod inventory_transaction;
+/// OZ-POS package metadata reader (`.kasirpkg` bundles).
+pub mod kasirpkg;
 /// Kitchen Display System order pipeline.
 pub mod kds;
 /// Organization/Tenant legal business identity.
@@ -86,8 +88,6 @@ pub mod migrations;
 pub mod money;
 /// Offline queue — queued mutations for sync when connectivity returns.
 pub mod offline;
-/// OZ-POS package metadata reader (`.kasirpkg` bundles).
-pub mod kasirpkg;
 /// Accounts Payable (Hutang) domain model — status machine and row shapes.
 pub mod payable;
 /// Payment processing and split-tender allocation.

@@ -114,7 +114,9 @@ async fn test_pool(url: &str) -> Option<deadpool_postgres::Pool> {
                      SELECT pg_advisory_lock({SCHEMA_LOCK_KEY});"
                 ))
                 .await;
-            let apply = client.batch_execute(kasirmu_core::migrations::PG_INIT).await;
+            let apply = client
+                .batch_execute(kasirmu_core::migrations::PG_INIT)
+                .await;
             let _ = client
                 .batch_execute(&format!("SELECT pg_advisory_unlock({SCHEMA_LOCK_KEY});"))
                 .await;

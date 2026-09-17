@@ -7,9 +7,9 @@
 
 use tauri::{State, command};
 
+use kasirmu_core::db::Store;
 use modules_currency::commands::{CreateExchangeRateArgs, ExchangeRateDto};
 use modules_currency::repository::CurrencyRepository;
-use kasirmu_core::db::Store;
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
@@ -196,9 +196,9 @@ pub async fn create_exchange_rate_scoped(
         .flatten()
         .map(|p| p.timezone)
         .unwrap_or_else(|| "UTC".to_string());
-    let date = args
-        .effective_date
-        .unwrap_or_else(|| kasirmu_core::timezone::business_date_in_zone(chrono::Utc::now(), &timezone));
+    let date = args.effective_date.unwrap_or_else(|| {
+        kasirmu_core::timezone::business_date_in_zone(chrono::Utc::now(), &timezone)
+    });
     let source = args.source.unwrap_or_else(|| "manual".to_string());
     let row = repo.create_exchange_rate(
         &args.from_currency,

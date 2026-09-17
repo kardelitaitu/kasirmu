@@ -43,7 +43,9 @@ use crate::error::BridgeError;
 /// as a permission denial on the wire.
 fn map_gate_error(e: kasirmu_core::CoreError) -> BridgeError {
     match e {
-        kasirmu_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
+        kasirmu_core::CoreError::PermissionDenied(message) => {
+            BridgeError::PermissionDenied(message)
+        }
         other => BridgeError::from(other),
     }
 }
@@ -142,8 +144,12 @@ pub async fn list_inventory_locations(
     session_token: &str,
 ) -> Result<Vec<InventoryLocation>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::INVENTORY_VIEW)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::INVENTORY_VIEW,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -242,8 +248,12 @@ pub async fn get_workspace_locations_scoped(
     type_key: String,
 ) -> Result<Vec<WorkspaceLocationBinding>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::INVENTORY_VIEW)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::INVENTORY_VIEW,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -304,8 +314,12 @@ pub async fn get_workspace_inventory_locations(
     instance_id: String,
 ) -> Result<Vec<WorkspaceInventoryLocation>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::INVENTORY_VIEW)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::INVENTORY_VIEW,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -335,8 +349,12 @@ pub async fn start_inventory_shift(
     notes: String,
 ) -> Result<InventoryShift, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SALES_PROCESS,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -369,8 +387,12 @@ pub async fn end_inventory_shift(
     shift_id: String,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SALES_PROCESS,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -397,8 +419,12 @@ pub async fn get_active_inventory_shift(
     session_token: &str,
 ) -> Result<Option<InventoryShift>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SALES_PROCESS,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -425,8 +451,12 @@ pub async fn list_inventory_shifts(
     session_token: &str,
 ) -> Result<Vec<InventoryShift>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SALES_PROCESS,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -458,8 +488,12 @@ pub async fn create_inventory_transaction(
     lines: Vec<InventoryTransactionLineInput>,
 ) -> Result<String, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SALES_PROCESS,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -495,8 +529,12 @@ pub async fn list_inventory_transactions(
     session_token: &str,
 ) -> Result<Vec<InventoryTransaction>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SALES_PROCESS,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -526,8 +564,12 @@ pub async fn list_inventory_transactions_for_shift(
     since: String,
 ) -> Result<Vec<InventoryTransaction>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SALES_PROCESS,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -556,8 +598,12 @@ pub async fn get_inventory_transaction(
     id: String,
 ) -> Result<Option<(InventoryTransaction, Vec<InventoryTransactionLine>)>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SALES_PROCESS,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -588,8 +634,12 @@ pub async fn set_stock_threshold(
     enabled: bool,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SALES_PROCESS,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -617,8 +667,12 @@ pub async fn get_stock_thresholds(
     location_id: Option<String>,
 ) -> Result<Vec<StockThreshold>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SALES_PROCESS,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -646,8 +700,12 @@ pub async fn delete_stock_threshold(
     id: String,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SALES_PROCESS,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -676,8 +734,12 @@ pub async fn get_low_stock_alerts_at_location_scoped(
     default_threshold: i64,
 ) -> Result<Vec<kasirmu_core::db::reports::LowStockAlert>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SALES_PROCESS,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -705,8 +767,12 @@ pub async fn active_stock_alerts_scoped(
     location_id: String,
 ) -> Result<Vec<kasirmu_core::db::reports::StockAlertEvent>, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SALES_PROCESS,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -735,8 +801,12 @@ pub async fn acknowledge_stock_alert_scoped(
     alert_id: String,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SALES_PROCESS,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -764,8 +834,12 @@ pub async fn finalize_sale(
     sale_id: String,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SALES_PROCESS,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -793,8 +867,12 @@ pub async fn void_pending_sale(
     sale_id: String,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::SALES_PROCESS)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::SALES_PROCESS,
+    )
+    .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -824,8 +902,12 @@ pub async fn invalidate_location_cache_scoped(
     session_token: &str,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
-    require_inventory_permission(ctx, &session.user_id, kasirmu_core::permissions::INVENTORY_VIEW)
-        .await?;
+    require_inventory_permission(
+        ctx,
+        &session.user_id,
+        kasirmu_core::permissions::INVENTORY_VIEW,
+    )
+    .await?;
     invalidate_location_cache();
     Ok(())
 }

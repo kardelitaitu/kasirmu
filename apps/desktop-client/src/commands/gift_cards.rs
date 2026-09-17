@@ -77,9 +77,13 @@ pub async fn get_gift_card_balance_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<BalanceResult>, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::gift_cards::get_gift_card_balance_scoped(&ctx, &card_number_or_id, &session_token)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::gift_cards::get_gift_card_balance_scoped(
+        &ctx,
+        &card_number_or_id,
+        &session_token,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// Redeem (spend) a gift card balance against a sale (scoped).

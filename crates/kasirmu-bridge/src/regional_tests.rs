@@ -63,8 +63,13 @@ fn regional_config_wire_shape_is_the_core_model_unchanged() {
 fn wire_timezones_are_stored_iana_names_not_derived_offsets() {
     // ADR #48: the read model is a faithful pass-through of the stored IANA
     // name — no offset derivation anywhere on this side of the boundary.
-    let location_layer =
-        kasirmu_core::regional::RegionalLayer::blank(ConfigScope::Location, "", "Asia/Jayapura", "", "");
+    let location_layer = kasirmu_core::regional::RegionalLayer::blank(
+        ConfigScope::Location,
+        "",
+        "Asia/Jayapura",
+        "",
+        "",
+    );
     let config = kasirmu_core::regional::RegionalConfig::resolve("loc-1", None, &[location_layer]);
     assert_eq!(config.timezone.value, "Asia/Jayapura");
     assert_eq!(config.timezone.scope, ConfigScope::Location);

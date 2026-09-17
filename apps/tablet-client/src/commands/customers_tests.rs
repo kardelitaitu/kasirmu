@@ -346,7 +346,8 @@ fn dto_maps_email_to_string() {
 
 #[test]
 fn dto_maps_phone_to_string() {
-    let customer = kasirmu_core::Customer::new("Test").with_phone(Phone::new("+1-555-0102").unwrap());
+    let customer =
+        kasirmu_core::Customer::new("Test").with_phone(Phone::new("+1-555-0102").unwrap());
     let dto = CustomerDto::from(customer);
     assert_eq!(dto.phone, Some("+1-555-0102".into()));
 }

@@ -244,9 +244,10 @@ pub(super) async fn run_tick(
                     let db_clone = db.clone();
                     tokio::task::spawn_blocking(move || {
                         let conn = db_clone.blocking_lock();
-                        let terminal = kasirmu_core::settings::Settings::get_sync_terminal_id(&conn)
-                            .ok()
-                            .flatten();
+                        let terminal =
+                            kasirmu_core::settings::Settings::get_sync_terminal_id(&conn)
+                                .ok()
+                                .flatten();
                         let counter = kasirmu_core::Store::new(&conn)
                             .get_setting(crate::crdt::CLOCK_KEY)
                             .ok()

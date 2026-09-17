@@ -485,7 +485,12 @@ fn denied_key_persists_when_written_raw_but_get_refuses_it() {
     let conn = fresh_conn();
     // Seed door: the untracked `Settings::set`. The funnel refuses this write
     // now, so it cannot be the scaffolding for a read-side test.
-    Settings::set(&conn, kasirmu_core::settings::keys::AUTH_TOKEN, "sk_test_abc123").unwrap();
+    Settings::set(
+        &conn,
+        kasirmu_core::settings::keys::AUTH_TOKEN,
+        "sk_test_abc123",
+    )
+    .unwrap();
     assert_eq!(
         run_get_setting(&conn, kasirmu_core::settings::keys::AUTH_TOKEN).unwrap(),
         None,

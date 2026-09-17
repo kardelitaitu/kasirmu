@@ -51,9 +51,9 @@ use std::time::Duration;
 
 use kasirmu_security::mask::mask_token;
 
-use notify::Watcher as _;
 use kasirmu_core::cache::Cache;
 use kasirmu_plugin::PluginManager;
+use notify::Watcher as _;
 
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
@@ -843,7 +843,10 @@ impl AppState {
         let db = Arc::new(Mutex::new(Connection::open_in_memory().unwrap()));
         Self {
             db,
-            db_manager: StoreDatabaseManager::new(std::env::temp_dir(), kasirmu_core::migrations::ALL),
+            db_manager: StoreDatabaseManager::new(
+                std::env::temp_dir(),
+                kasirmu_core::migrations::ALL,
+            ),
             registry: Arc::new(DriverRegistry::default()),
             app: None,
             db_path: ":memory:".into(),

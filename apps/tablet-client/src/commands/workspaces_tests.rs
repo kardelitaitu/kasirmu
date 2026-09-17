@@ -338,7 +338,11 @@ fn hmac_hex(secret: &str, terminal_id: &str, store_id: &str, instance_id: &str) 
 /// Global DB with a bound terminal (device "tablet-1" → store-a/ws-a-1,
 /// signed with a known in-memory keyring secret) + a store-a DB with the
 /// instance. Primary store row exists in the global DB for fallbacks.
-fn binding_state() -> (AppState, tempfile::TempDir, kasirmu_security::InMemoryKeyring) {
+fn binding_state() -> (
+    AppState,
+    tempfile::TempDir,
+    kasirmu_security::InMemoryKeyring,
+) {
     let conn = migrations::fresh_db();
     let store = Store::new(&conn);
     let keyring = kasirmu_security::InMemoryKeyring::new();

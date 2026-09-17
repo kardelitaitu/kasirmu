@@ -131,7 +131,11 @@ fn write_setup(conn: &Connection, args: &CompleteSetupArgs) -> Result<(), AppErr
     Settings::prune_stale_features(conn, &registry)?;
 
     // 3. Save the preset name.
-    Settings::set(conn, kasirmu_core::settings::keys::STORE_PRESET, &args.preset)?;
+    Settings::set(
+        conn,
+        kasirmu_core::settings::keys::STORE_PRESET,
+        &args.preset,
+    )?;
 
     // 4. Mark setup as complete.
     Settings::set(conn, kasirmu_core::settings::keys::SETUP_COMPLETE, "1")?;
@@ -142,7 +146,11 @@ fn write_setup(conn: &Connection, args: &CompleteSetupArgs) -> Result<(), AppErr
     Settings::set_default_currency(conn, &args.default_currency)?;
 
     // 6. Dismiss the wizard so it doesn't show on next launch.
-    Settings::set(conn, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD, "false")?;
+    Settings::set(
+        conn,
+        kasirmu_core::settings::keys::SHOW_SETUP_WIZARD,
+        "false",
+    )?;
 
     Ok(())
 }

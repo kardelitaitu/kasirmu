@@ -257,13 +257,17 @@ pub async fn start_sale_scoped(
 
     // Resolve the primary deduction location for this workspace instance.
     let deduction_location_id = match stock_target_instance_id.as_deref() {
-        Some(target_instance_id) => {
-            kasirmu_core::location_resolver::resolve_primary_location(&db, target_instance_id, None)?
-        }
-        None => {
-            kasirmu_core::location_resolver::resolve_primary_location(&db, &session.instance_id, None)
-                .unwrap_or_else(|_| kasirmu_core::location_resolver::get_default_location_id())
-        }
+        Some(target_instance_id) => kasirmu_core::location_resolver::resolve_primary_location(
+            &db,
+            target_instance_id,
+            None,
+        )?,
+        None => kasirmu_core::location_resolver::resolve_primary_location(
+            &db,
+            &session.instance_id,
+            None,
+        )
+        .unwrap_or_else(|_| kasirmu_core::location_resolver::get_default_location_id()),
     };
 
     store.save_active_cart(&cart, Some(deduction_location_id.as_str()))?;
@@ -1812,8 +1816,11 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     let mut cart = kasirmu_core::Cart::new(currency);
     for line_data in &args.lines {
         let unit_price = shortfall_line_unit_price(line_data, cart.currency())?;
-        let mut line =
-            kasirmu_core::CartLine::new(kasirmu_core::Sku::new(&line_data.sku), line_data.qty, unit_price);
+        let mut line = kasirmu_core::CartLine::new(
+            kasirmu_core::Sku::new(&line_data.sku),
+            line_data.qty,
+            unit_price,
+        );
         line.set_course(line_data.course.as_deref());
         cart.add_line(line)
             .map_err(|e| BridgeError::Invalid(e.to_string()))?;
@@ -1850,7 +1857,11 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
         let store = Store::new(&db);
         if let Some(target_instance_id) = stock_target_instance_id.as_deref() {
-            kasirmu_core::location_resolver::resolve_primary_location(&db, target_instance_id, None)?;
+            kasirmu_core::location_resolver::resolve_primary_location(
+                &db,
+                target_instance_id,
+                None,
+            )?;
         }
 
         // Compute tax (same as first command)
@@ -1977,7 +1988,11 @@ pub async fn complete_sale_scoped(
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
         for target_instance_id in &stock_target_instance_ids {
-            kasirmu_core::location_resolver::resolve_primary_location(&db, target_instance_id, None)?;
+            kasirmu_core::location_resolver::resolve_primary_location(
+                &db,
+                target_instance_id,
+                None,
+            )?;
         }
     }
 

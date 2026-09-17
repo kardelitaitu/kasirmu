@@ -43,7 +43,9 @@ use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use kasirmu_bridge::payables::{CreatePayableArgs, MoneyDto, PayableDto, RecordPayablePaymentArgs};
+pub use kasirmu_bridge::payables::{
+    CreatePayableArgs, MoneyDto, PayableDto, RecordPayablePaymentArgs,
+};
 
 /// Parse the optional status filter for `list_payables_scoped`. Unknown
 /// values are rejected (unlike the store's lenient read-back) so a typo in a

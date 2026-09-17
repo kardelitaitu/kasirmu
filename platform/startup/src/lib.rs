@@ -198,10 +198,12 @@ pub fn init_module_system(
 
                     bus.subscribe::<kasirmu_core::events::SaleCompleted>(
                         "sale.completed",
-                        Box::new(kasirmu_notification::handlers::OrderConfirmationHandler::new(
-                            client.clone(),
-                            std::env::var("WHATSAPP_STORE_PHONE").ok(),
-                        )),
+                        Box::new(
+                            kasirmu_notification::handlers::OrderConfirmationHandler::new(
+                                client.clone(),
+                                std::env::var("WHATSAPP_STORE_PHONE").ok(),
+                            ),
+                        ),
                     );
                     bus.subscribe::<kasirmu_core::events::SaleCompleted>(
                         "sale.completed",

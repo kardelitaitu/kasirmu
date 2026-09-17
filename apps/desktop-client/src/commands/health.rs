@@ -59,13 +59,17 @@ pub async fn version_scoped(
 /// the `terminal_id` field when creating session tokens (ADR #7).
 #[tauri::command]
 pub async fn get_device_id() -> Result<String, AppError> {
-    kasirmu_bridge::health::get_device_id().await.map_err(Into::into)
+    kasirmu_bridge::health::get_device_id()
+        .await
+        .map_err(Into::into)
 }
 
 /// Get the local IP address of the machine.
 #[tauri::command]
 pub async fn get_local_ip() -> Result<String, AppError> {
-    kasirmu_bridge::health::get_local_ip().await.map_err(Into::into)
+    kasirmu_bridge::health::get_local_ip()
+        .await
+        .map_err(Into::into)
 }
 
 /// Session-scoped variant of [`ping`].

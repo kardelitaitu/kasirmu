@@ -19,12 +19,12 @@
 //!    declares, including the `type` rename.
 
 use foundation::contracts::Module;
-use modules_inventory::{Category as ModuleCategory, Product as ModuleProduct};
-use modules_inventory::{Inventory as ModuleInventory, InventoryModule};
 use kasirmu_core::category::Category as CoreCategory;
 use kasirmu_core::migrations::fresh_db;
 use kasirmu_core::product::Product as CoreProduct;
 use kasirmu_core::{Inventory as CoreInventory, InventoryLocation as CoreLocation};
+use modules_inventory::{Category as ModuleCategory, Product as ModuleProduct};
+use modules_inventory::{Inventory as ModuleInventory, InventoryModule};
 
 // ── 1. Module registration contract ─────────────────────────────────
 

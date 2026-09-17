@@ -79,8 +79,10 @@ pub(crate) fn set_topology_revision_pinned(
     revision: i64,
     pinned: bool,
 ) -> Result<TopologyRevisionPinResult, AppError> {
-    kasirmu_bridge::topology::revisions::set_topology_revision_pinned(conn, branch_id, revision, pinned)
-        .map_err(Into::into)
+    kasirmu_bridge::topology::revisions::set_topology_revision_pinned(
+        conn, branch_id, revision, pinned,
+    )
+    .map_err(Into::into)
 }
 
 /// Adapter over ['kasirmu_bridge::topology::revisions::audit_topology_apply'].

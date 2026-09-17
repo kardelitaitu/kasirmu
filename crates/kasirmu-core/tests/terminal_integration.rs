@@ -180,7 +180,9 @@ fn update_terminal_not_found() {
     let conn = setup();
     let t = make_terminal("nope", "X", "dev-x");
     let err = store(&conn).update_terminal(&t).unwrap_err();
-    assert!(matches!(err, kasirmu_core::CoreError::NotFound { entity, .. } if entity == "terminal"));
+    assert!(
+        matches!(err, kasirmu_core::CoreError::NotFound { entity, .. } if entity == "terminal")
+    );
 }
 
 // ── Deactivate / Reactivate ──────────────────────────────────────────
@@ -242,7 +244,9 @@ fn ping_terminal_sets_last_seen_at() {
 fn ping_terminal_not_found() {
     let conn = setup();
     let err = store(&conn).ping_terminal("nonexistent").unwrap_err();
-    assert!(matches!(err, kasirmu_core::CoreError::NotFound { entity, .. } if entity == "terminal"));
+    assert!(
+        matches!(err, kasirmu_core::CoreError::NotFound { entity, .. } if entity == "terminal")
+    );
 }
 
 #[test]

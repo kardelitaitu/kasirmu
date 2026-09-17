@@ -22,10 +22,14 @@ use serde::Serialize;
 use kasirmu_core::availability::{AvailabilityFeature, FeatureVerdict, UsageCounts};
 use kasirmu_core::db::Store;
 use kasirmu_core::db::assignments::ScopeType;
-use kasirmu_core::downgrade::{OverQuotaMarker, OverQuotaReport, OverQuotaSeverity, QuotaDimension};
+use kasirmu_core::downgrade::{
+    OverQuotaMarker, OverQuotaReport, OverQuotaSeverity, QuotaDimension,
+};
 use kasirmu_core::entitlements::{Entitlements, SubscriptionLoader, build_entitlements};
 use kasirmu_core::permissions;
-use kasirmu_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
+use kasirmu_core::subscription::{
+    SubscriptionLifecycleState, SubscriptionTier, TenantSubscription,
+};
 use kasirmu_core::workspace_type::{RESTAURANT_POS, STORE_POS, WAREHOUSE};
 
 use platform_core::StoreDatabaseManager;

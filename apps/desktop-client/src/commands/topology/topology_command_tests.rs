@@ -1352,7 +1352,9 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
     );
     let request_key = topology_apply_request_key("request-e2e-2").unwrap();
     assert!(
-        kasirmu_core::Settings::get(&db, &request_key).unwrap().is_none(),
+        kasirmu_core::Settings::get(&db, &request_key)
+            .unwrap()
+            .is_none(),
         "the failed Apply must not leave a request ledger"
     );
 
@@ -2853,7 +2855,9 @@ async fn a_pre_fingerprint_ledger_entry_is_removed_rather_than_replayed() {
     // on disk holding the seeded value; that was the first form of this
     // assertion, and it failed with left: None.
     assert!(
-        kasirmu_core::Settings::get(&db, &request_key).unwrap().is_none(),
+        kasirmu_core::Settings::get(&db, &request_key)
+            .unwrap()
+            .is_none(),
         "the pre-fingerprint ledger entry must be removed by the branch ahead of the \
          revision gate, not left for the next caller"
     );

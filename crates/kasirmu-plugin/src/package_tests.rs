@@ -388,7 +388,10 @@ fn from_bytes_path_preserved() {
     let bytes = build_kasirpkg(&[("manifest.json", manifest)]);
     let archive =
         KasirpkArchive::from_bytes(&bytes, PathBuf::from("/custom/path/plugin.kasirpkg")).unwrap();
-    assert_eq!(archive.path(), PathBuf::from("/custom/path/plugin.kasirpkg"));
+    assert_eq!(
+        archive.path(),
+        PathBuf::from("/custom/path/plugin.kasirpkg")
+    );
 }
 
 #[test]

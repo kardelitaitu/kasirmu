@@ -41,7 +41,9 @@ pub struct RedeemResult {
 /// the authz seam applies.
 fn map_gate_error(e: kasirmu_core::CoreError) -> BridgeError {
     match e {
-        kasirmu_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
+        kasirmu_core::CoreError::PermissionDenied(message) => {
+            BridgeError::PermissionDenied(message)
+        }
         other => BridgeError::from(other),
     }
 }

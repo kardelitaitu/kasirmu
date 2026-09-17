@@ -641,8 +641,8 @@ impl Settings {
 
     /// Set the LAN server pre-shared key (transparently encrypted at rest).
     pub fn set_lan_server_psk(conn: &Connection, psk: &str) -> Result<(), PlatformError> {
-        let encrypted =
-            kasirmu_crypto::encrypt_lan_psk(psk).map_err(|e| PlatformError::Internal(e.to_string()))?;
+        let encrypted = kasirmu_crypto::encrypt_lan_psk(psk)
+            .map_err(|e| PlatformError::Internal(e.to_string()))?;
         Self::set(conn, keys::LAN_SERVER_PSK, &encrypted)
     }
 }

@@ -111,15 +111,17 @@ async fn refresh_kds_queue_cache(
     };
     let mut tickets = Vec::with_capacity(orders.len());
     for order in orders {
-        let line_items = kasirmu_bridge::kds::get_kds_order_lines_scoped(ctx, session_token, &order.id)
-            .await
-            .unwrap_or_default();
+        let line_items =
+            kasirmu_bridge::kds::get_kds_order_lines_scoped(ctx, session_token, &order.id)
+                .await
+                .unwrap_or_default();
         // Station routing comes from the frozen engine; an empty vec is
         // the broadcast fallback (Expo semantics), so a resolve failure
         // degrades to broadcast rather than hiding the ticket.
-        let stations = kasirmu_bridge::kds_routing::resolve_kds_targets(ctx, session_token, &order.id)
-            .await
-            .unwrap_or_default();
+        let stations =
+            kasirmu_bridge::kds_routing::resolve_kds_targets(ctx, session_token, &order.id)
+                .await
+                .unwrap_or_default();
         tickets.push(KdsQueueTicket {
             order,
             line_items,
@@ -195,9 +197,10 @@ pub async fn update_kds_status_scoped(
         kasirmu_bridge::kds::update_kds_status_scoped(&ctx, &session_token, &id, &status).await?;
     if matches!(order.status.as_str(), "ready" | "preparing" | "pending") {
         // All bridge awaits complete before the kernel lock is taken.
-        let stations = kasirmu_bridge::kds_routing::resolve_kds_targets(&ctx, &session_token, &order.id)
-            .await
-            .unwrap_or_default();
+        let stations =
+            kasirmu_bridge::kds_routing::resolve_kds_targets(&ctx, &session_token, &order.id)
+                .await
+                .unwrap_or_default();
         let bumped_by = ctx.terminal_id().await;
         let occurred_at = chrono::Utc::now().to_rfc3339();
         let event = if order.status == "ready" {
@@ -246,16 +249,18 @@ pub async fn create_kds_order_from_sale_scoped(
     let cache = state.kds_queue_cache.clone();
     let ctx = state.bridge_ctx();
     let orders =
-        kasirmu_bridge::kds::create_kds_order_from_sale_scoped(&ctx, &session_token, &sale_id).await?;
+        kasirmu_bridge::kds::create_kds_order_from_sale_scoped(&ctx, &session_token, &sale_id)
+            .await?;
     if !orders.is_empty() {
         for order in &orders {
             let stations =
                 kasirmu_bridge::kds_routing::resolve_kds_targets(&ctx, &session_token, &order.id)
                     .await
                     .unwrap_or_default();
-            let items = kasirmu_bridge::kds::get_kds_order_lines_scoped(&ctx, &session_token, &order.id)
-                .await
-                .unwrap_or_default();
+            let items =
+                kasirmu_bridge::kds::get_kds_order_lines_scoped(&ctx, &session_token, &order.id)
+                    .await
+                    .unwrap_or_default();
             let event = KdsSyncEvent::OrderPlaced(KdsOrderPlaced {
                 kds_order_id: order.id.clone(),
                 sale_id: order.sale_id.clone(),
@@ -359,14 +364,19 @@ pub async fn update_kds_line_item_status_scoped(
 ) -> Result<kasirmu_core::KdsLineItem, AppError> {
     let cache = state.kds_queue_cache.clone();
     let ctx = state.bridge_ctx();
-    let item =
-        kasirmu_bridge::kds::update_kds_line_item_status_scoped(&ctx, &session_token, &item_id, &status)
-            .await?;
+    let item = kasirmu_bridge::kds::update_kds_line_item_status_scoped(
+        &ctx,
+        &session_token,
+        &item_id,
+        &status,
+    )
+    .await?;
     let stations =
         kasirmu_bridge::kds_routing::resolve_kds_targets(&ctx, &session_token, &item.kds_order_id)
             .await
             .unwrap_or_default();
-    match kasirmu_bridge::kds::get_kds_order_scoped(&ctx, &session_token, &item.kds_order_id).await {
+    match kasirmu_bridge::kds::get_kds_order_scoped(&ctx, &session_token, &item.kds_order_id).await
+    {
         Ok(Some(parent)) => {
             let event = KdsSyncEvent::LineItemBumped(KdsLineItemBumped {
                 kds_order_id: item.kds_order_id.clone(),

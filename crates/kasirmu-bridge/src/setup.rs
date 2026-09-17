@@ -112,7 +112,11 @@ pub async fn complete_setup(
         Settings::prune_stale_features(&tx, &registry)?;
 
         // 4. Save the preset name.
-        Settings::set(&tx, kasirmu_core::settings::keys::STORE_PRESET, &args.preset)?;
+        Settings::set(
+            &tx,
+            kasirmu_core::settings::keys::STORE_PRESET,
+            &args.preset,
+        )?;
 
         // 5. Mark setup as complete.
         Settings::set(&tx, kasirmu_core::settings::keys::SETUP_COMPLETE, "1")?;
@@ -121,7 +125,11 @@ pub async fn complete_setup(
         Settings::set_default_currency(&tx, &args.default_currency)?;
 
         // 7. Dismiss the wizard so it doesn't show on next launch.
-        Settings::set(&tx, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD, "false")?;
+        Settings::set(
+            &tx,
+            kasirmu_core::settings::keys::SHOW_SETUP_WIZARD,
+            "false",
+        )?;
     }
     tx.commit()?;
 
@@ -180,7 +188,11 @@ pub async fn seed_default_roles_scoped(
 /// `show_setup_wizard = false` flag — no preset or features are saved.
 pub async fn dismiss_setup_wizard(ctx: &BridgeCtx<'_>) -> Result<(), BridgeError> {
     let db = ctx.lock_global().await;
-    Settings::set(&db, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD, "false")?;
+    Settings::set(
+        &db,
+        kasirmu_core::settings::keys::SHOW_SETUP_WIZARD,
+        "false",
+    )?;
     tracing::info!("setup wizard dismissed (skip)");
     Ok(())
 }

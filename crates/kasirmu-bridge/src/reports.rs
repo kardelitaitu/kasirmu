@@ -21,7 +21,9 @@
 use std::sync::Arc;
 
 use kasirmu_core::db::Store;
-use kasirmu_core::db::popularity::{CategoryForecastRow, CategoryPopularityRow, CategoryTrendPoint};
+use kasirmu_core::db::popularity::{
+    CategoryForecastRow, CategoryPopularityRow, CategoryTrendPoint,
+};
 use kasirmu_core::db::reports::{
     BasketSizeRow, BasketTrendRow, CategoryBreakdownRow, CustomerSplitRow, DailyRevenueRow,
     DiscountsSummaryRow, HourlyHeatmapRow, HourlyOccupancyRow, InventoryTrendRow,
@@ -147,7 +149,8 @@ pub async fn get_menu_engineering(
     end_date: &str,
 ) -> Result<kasirmu_reporting::menu_engineering::MenuEngineeringResult, BridgeError> {
     let db = ctx.db.lock().await;
-    let result = kasirmu_reporting::menu_engineering::query_menu_engineering(&db, start_date, end_date)?;
+    let result =
+        kasirmu_reporting::menu_engineering::query_menu_engineering(&db, start_date, end_date)?;
     drop(db);
     Ok(result)
 }

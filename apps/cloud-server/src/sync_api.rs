@@ -282,7 +282,8 @@ async fn push_handler(
     // batch outcomes can be reassembled in request order — the client
     // zips `pending` against `results` by index (apply_push_results), so
     // a reordering would mark the WRONG items as synced/failed.
-    let mut valid_items: Vec<kasirmu_core::offline::OfflineQueueItem> = Vec::with_capacity(items.len());
+    let mut valid_items: Vec<kasirmu_core::offline::OfflineQueueItem> =
+        Vec::with_capacity(items.len());
     let mut valid_indexes: Vec<usize> = Vec::with_capacity(items.len());
     for (idx, item) in items.iter().enumerate() {
         if !state.skip_push_validation && uuid::Uuid::parse_str(&item.id).is_err() {

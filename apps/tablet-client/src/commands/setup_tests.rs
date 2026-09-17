@@ -381,7 +381,12 @@ fn show_setup_wizard_is_false_after_complete_setup() {
 #[test]
 fn show_setup_wizard_is_false_after_dismiss() {
     let conn = fresh_conn();
-    Settings::set(&conn, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD, "false").unwrap();
+    Settings::set(
+        &conn,
+        kasirmu_core::settings::keys::SHOW_SETUP_WIZARD,
+        "false",
+    )
+    .unwrap();
     let val = Settings::get(&conn, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD)
         .unwrap()
         .unwrap();
@@ -391,7 +396,12 @@ fn show_setup_wizard_is_false_after_dismiss() {
 #[test]
 fn get_setup_status_returns_completed_when_wizard_dismissed() {
     let conn = fresh_conn();
-    Settings::set(&conn, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD, "false").unwrap();
+    Settings::set(
+        &conn,
+        kasirmu_core::settings::keys::SHOW_SETUP_WIZARD,
+        "false",
+    )
+    .unwrap();
     let completed = Settings::get(&conn, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD)
         .unwrap()
         .map(|v| v == "false")

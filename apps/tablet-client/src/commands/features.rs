@@ -137,7 +137,8 @@ pub async fn set_feature(
     state: State<'_, AppState>,
 ) -> Result<SetFeatureResult, AppError> {
     let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, kasirmu_core::permissions::SETTINGS_EDIT).await?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SETTINGS_EDIT)
+        .await?;
     let feature = kasirmu_core::features::feature_from_key(&args.key)
         .ok_or_else(|| AppError::Invalid(format!("unknown feature key: {}", args.key)))?;
 
@@ -271,7 +272,8 @@ pub async fn set_features_bulk(
     state: State<'_, AppState>,
 ) -> Result<ListAllFeaturesResult, AppError> {
     let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, kasirmu_core::permissions::SETTINGS_EDIT).await?;
+    require_permission_for_session(&state, &session, kasirmu_core::permissions::SETTINGS_EDIT)
+        .await?;
     let mut db = state.db.lock().await;
 
     // Start a SQLite transaction for atomicity.

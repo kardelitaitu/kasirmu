@@ -94,9 +94,14 @@ pub async fn apply_promotion_scoped(
     state: State<'_, AppState>,
 ) -> Result<PromotionApplication, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::promotions::apply_promotion_scoped(&ctx, &session_token, &sale_id, &promotion_id)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::promotions::apply_promotion_scoped(
+        &ctx,
+        &session_token,
+        &sale_id,
+        &promotion_id,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// Apply a promotion against a store-scoped database connection.

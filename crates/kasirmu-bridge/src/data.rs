@@ -269,7 +269,11 @@ pub fn gate_import_user_batch(
         })
         .count() as i64;
     store
-        .ensure_quota_allows(kasirmu_core::downgrade::QuotaDimension::Staff, &tier, new_users)
+        .ensure_quota_allows(
+            kasirmu_core::downgrade::QuotaDimension::Staff,
+            &tier,
+            new_users,
+        )
         .map_err(BridgeError::from)?;
     Ok(new_users)
 }

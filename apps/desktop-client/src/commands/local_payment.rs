@@ -44,9 +44,13 @@ pub async fn get_local_payment_methods_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<EffectivePaymentRail>, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::local_payment::get_local_payment_methods_scoped(&ctx, &location_id, &session_token)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::local_payment::get_local_payment_methods_scoped(
+        &ctx,
+        &location_id,
+        &session_token,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// Replace the location's rail list (the card's whole-list write,

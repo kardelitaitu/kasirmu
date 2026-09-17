@@ -255,7 +255,10 @@ pub fn export_kasirpkg(
 ///
 /// Returns `CoreError::Internal` if decryption fails (wrong password or
 /// corrupt data).
-pub fn import_kasirpkg(data: &[u8], password: &str) -> Result<(KasirpkgHeader, KasirpkgPayload), CoreError> {
+pub fn import_kasirpkg(
+    data: &[u8],
+    password: &str,
+) -> Result<(KasirpkgHeader, KasirpkgPayload), CoreError> {
     if data.len() < HEADER_LEN {
         return Err(CoreError::Internal("file too short: missing header".into()));
     }

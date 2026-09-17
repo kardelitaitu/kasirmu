@@ -17,7 +17,9 @@
 use serde::{Deserialize, Serialize};
 
 use kasirmu_core::permissions;
-use kasirmu_core::{CountType, StockAdjustment, StockCount, StockCountLine, StockCountStatus, Store};
+use kasirmu_core::{
+    CountType, StockAdjustment, StockCount, StockCountLine, StockCountStatus, Store,
+};
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -201,7 +203,9 @@ pub struct CompleteStockCountArgs {
 /// needs the same `PermissionDenied` translation the authz seam applies.
 fn map_gate_error(e: kasirmu_core::CoreError) -> BridgeError {
     match e {
-        kasirmu_core::CoreError::PermissionDenied(message) => BridgeError::PermissionDenied(message),
+        kasirmu_core::CoreError::PermissionDenied(message) => {
+            BridgeError::PermissionDenied(message)
+        }
         other => BridgeError::from(other),
     }
 }

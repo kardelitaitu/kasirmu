@@ -97,9 +97,13 @@ pub async fn list_warehouse_products_at_location(
     location_id: String,
 ) -> Result<Vec<ProductDto>, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::products::list_warehouse_products_at_location(&ctx, &session_token, &location_id)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::products::list_warehouse_products_at_location(
+        &ctx,
+        &session_token,
+        &location_id,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 // ── Lookup by barcode ────────────────────────────────────────────────

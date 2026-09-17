@@ -113,7 +113,9 @@ impl From<ActiveMemoCloud> for ActiveMemoDto {
                 author_role: m.author_role,
                 title: m.title,
                 body: m.body,
-                status: kasirmu_core::memo::MemoStatus::Published.as_str().to_string(),
+                status: kasirmu_core::memo::MemoStatus::Published
+                    .as_str()
+                    .to_string(),
                 duration: m.duration,
                 revision: m.revision,
                 published_at: m.published_at,

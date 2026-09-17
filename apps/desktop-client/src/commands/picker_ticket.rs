@@ -11,4 +11,6 @@
 //! the 5-minute TTL and the uniform `None` denial for forged/expired/malformed
 //! tickets are defined exactly once, in the bridge.
 
-pub use kasirmu_bridge::picker::{PICKER_TICKET_TTL_SECS, sign_picker_ticket, verify_picker_ticket};
+pub use kasirmu_bridge::picker::{
+    PICKER_TICKET_TTL_SECS, sign_picker_ticket, verify_picker_ticket,
+};

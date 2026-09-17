@@ -217,7 +217,9 @@ pub async fn impersonate_user_scoped(
 #[tauri::command]
 pub async fn has_users(state: State<'_, AppState>) -> Result<HasUsersResult, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::auth::has_users(&ctx).await.map_err(Into::into)
+    kasirmu_bridge::auth::has_users(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 /// Destroy an active session, invalidating the token.

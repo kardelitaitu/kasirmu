@@ -372,14 +372,22 @@ async fn require_tax_permission_uses_global_identity_db() {
     let state = AppState::for_test_with_conn(conn);
 
     assert!(
-        require_tax_permission(&state, "user-owner", kasirmu_core::permissions::SETTINGS_READ)
-            .await
-            .is_ok()
+        require_tax_permission(
+            &state,
+            "user-owner",
+            kasirmu_core::permissions::SETTINGS_READ
+        )
+        .await
+        .is_ok()
     );
     assert!(
-        require_tax_permission(&state, "user-owner", kasirmu_core::permissions::SETTINGS_EDIT)
-            .await
-            .is_ok()
+        require_tax_permission(
+            &state,
+            "user-owner",
+            kasirmu_core::permissions::SETTINGS_EDIT
+        )
+        .await
+        .is_ok()
     );
 }
 
@@ -389,7 +397,12 @@ async fn require_tax_permission_rejects_missing_user() {
     let state = AppState::for_test_with_conn(conn);
 
     assert!(matches!(
-        require_tax_permission(&state, "missing-user", kasirmu_core::permissions::SETTINGS_READ).await,
+        require_tax_permission(
+            &state,
+            "missing-user",
+            kasirmu_core::permissions::SETTINGS_READ
+        )
+        .await,
         Err(AppError::PermissionDenied(_))
     ));
 }
@@ -631,8 +644,8 @@ fn rounding_mode_wire_is_the_core_serde_snake_case() {
         serde_json::to_value(kasirmu_core::tax_rate::RoundingMode::Truncate).unwrap(),
         serde_json::json!("truncate"),
     );
-    let map =
-        run_list_tax_rate_rounding_modes(&kasirmu_core::migrations::fresh_db(), &["r-none"]).unwrap();
+    let map = run_list_tax_rate_rounding_modes(&kasirmu_core::migrations::fresh_db(), &["r-none"])
+        .unwrap();
     assert_eq!(
         serde_json::to_value(map).unwrap(),
         serde_json::json!({ "r-none": null }),

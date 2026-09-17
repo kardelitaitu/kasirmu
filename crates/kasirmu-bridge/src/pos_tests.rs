@@ -1596,8 +1596,12 @@ async fn whitespace_only_attempt_id_is_unguarded_like_the_tablet() {
 
 fn single_line_cart() -> kasirmu_core::Cart {
     let mut cart = kasirmu_core::Cart::new(usd());
-    cart.add_line(kasirmu_core::CartLine::new(Sku::new("COFFEE"), 2, price(350)))
-        .unwrap();
+    cart.add_line(kasirmu_core::CartLine::new(
+        Sku::new("COFFEE"),
+        2,
+        price(350),
+    ))
+    .unwrap();
     cart
 }
 

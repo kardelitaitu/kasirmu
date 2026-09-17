@@ -176,7 +176,9 @@ pub const DEFAULT_TERMINAL_ID: &str = "default";
 /// gets [`kasirmu_hal::drivers::edc::wired::DEFAULT_BAUD`]. Adding a `baud_rate`
 /// column is the known follow-up; inferring one from the address would be
 /// worse than using the documented default.
-fn terminal_connection(row: &EdcTerminalConfig) -> Option<kasirmu_hal::bootstrap::TerminalConnection> {
+fn terminal_connection(
+    row: &EdcTerminalConfig,
+) -> Option<kasirmu_hal::bootstrap::TerminalConnection> {
     use kasirmu_hal::bootstrap::TerminalConnection;
     match (
         row.connection_type.as_str(),
@@ -217,7 +219,8 @@ pub async fn register_card_terminals(
     let mut report = BootstrapReport::default();
     // Carries the identity alongside the connection so the alias registers
     // the same device, not rows[0] which may have been rejected.
-    let mut default_terminal: Option<(kasirmu_hal::bootstrap::TerminalConnection, DeviceInfo)> = None;
+    let mut default_terminal: Option<(kasirmu_hal::bootstrap::TerminalConnection, DeviceInfo)> =
+        None;
 
     for row in rows {
         let Some(connection) = terminal_connection(row) else {
@@ -250,7 +253,10 @@ pub async fn register_card_terminals(
             }],
             ..HardwareConfig::default()
         };
-        merge(&mut report, kasirmu_hal::apply_config(registry, &config).await);
+        merge(
+            &mut report,
+            kasirmu_hal::apply_config(registry, &config).await,
+        );
     }
 
     if let Some((connection, info)) = default_terminal {
@@ -262,7 +268,10 @@ pub async fn register_card_terminals(
             }],
             ..HardwareConfig::default()
         };
-        merge(&mut report, kasirmu_hal::apply_config(registry, &config).await);
+        merge(
+            &mut report,
+            kasirmu_hal::apply_config(registry, &config).await,
+        );
     }
 
     report

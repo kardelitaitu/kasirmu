@@ -698,7 +698,8 @@ fn a_machine_bound_row_is_listed_as_untested_and_never_counted_cleartext() {
     use kasirmu_core::settings::keys::LICENSE_API_KEY;
     let conn = fresh_db();
     let sealed =
-        kasirmu_core::crypto::encrypt_api_key("license-key-never-printed", "machine-fp-demo").unwrap();
+        kasirmu_core::crypto::encrypt_api_key("license-key-never-printed", "machine-fp-demo")
+            .unwrap();
     Settings::set(&conn, LICENSE_API_KEY, &sealed).unwrap();
 
     let rows = scan_credential_settings(&conn).unwrap();

@@ -16,13 +16,13 @@
 //!    representation are pinned against the frontend contract.
 
 use foundation::contracts::Module;
+use kasirmu_core::migrations::fresh_db;
+use kasirmu_core::refund::{Refund as CoreRefund, RefundLine as CoreRefundLine};
+use kasirmu_core::sale::{Sale as CoreSale, SaleLine as CoreSaleLine};
 use modules_sales::{
     Refund as ModuleRefund, RefundLine as ModuleRefundLine, SalesModule, SalesService,
 };
 use modules_sales::{Sale as ModuleSale, SaleLine as ModuleSaleLine};
-use kasirmu_core::migrations::fresh_db;
-use kasirmu_core::refund::{Refund as CoreRefund, RefundLine as CoreRefundLine};
-use kasirmu_core::sale::{Sale as CoreSale, SaleLine as CoreSaleLine};
 
 // ── 1. Module registration contract ─────────────────────────────────
 

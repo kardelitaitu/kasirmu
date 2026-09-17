@@ -609,7 +609,10 @@ async fn test_pool() -> Option<deadpool_postgres::Pool> {
         .expect("pool build");
     match pool.get().await {
         Ok(client) => {
-            if let Err(e) = client.batch_execute(kasirmu_core::migrations::PG_INIT).await {
+            if let Err(e) = client
+                .batch_execute(kasirmu_core::migrations::PG_INIT)
+                .await
+            {
                 eprintln!("PG settings integration: schema apply failed: {e:?}");
                 return None;
             }
@@ -742,7 +745,9 @@ async fn pg_integration_settings_provision_per_tenant() {
 // deny-list tests elsewhere — that list is exact equality on a whole
 // normalised key, so it can only ever catch a key this lane is able to SPELL.
 
-use kasirmu_core::settings::keys::{SECRET_KEY_DENY_LIST, is_secret_setting_key, normalised_candidate};
+use kasirmu_core::settings::keys::{
+    SECRET_KEY_DENY_LIST, is_secret_setting_key, normalised_candidate,
+};
 
 /// The bases this route writes, named by the same constants the handlers use
 /// so a rename moves the case instead of rotting it.

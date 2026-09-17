@@ -775,7 +775,8 @@ fn corrupt_template_reads_as_absent_instead_of_failing() {
     // whole panel — the merchant keeps access to their other templates.
     let conn = fresh_conn();
     let topo = topology_setting_key(Some("main")).unwrap();
-    kasirmu_core::Settings::set(&conn, &template_setting_key(&topo, "Broken"), "{not json").unwrap();
+    kasirmu_core::Settings::set(&conn, &template_setting_key(&topo, "Broken"), "{not json")
+        .unwrap();
 
     assert_eq!(template_load(&conn, &topo, "Broken").unwrap(), None);
     assert_eq!(

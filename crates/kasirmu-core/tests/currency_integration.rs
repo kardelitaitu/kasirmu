@@ -301,7 +301,10 @@ fn exchange_rate_delete_nonexistent_returns_not_found() {
     let s = store(&conn);
 
     let result = s.delete_exchange_rate("non-existent-id");
-    assert!(matches!(result, Err(kasirmu_core::CoreError::NotFound { .. })));
+    assert!(matches!(
+        result,
+        Err(kasirmu_core::CoreError::NotFound { .. })
+    ));
 }
 
 // ── Exchange rate source field ───────────────────────────────────────

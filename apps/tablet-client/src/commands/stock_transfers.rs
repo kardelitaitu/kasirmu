@@ -129,9 +129,13 @@ pub async fn get_stock_transfer_lines_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<StockTransferLine>, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::stock_transfers::get_stock_transfer_lines_scoped(&ctx, &session_token, &transfer_id)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::stock_transfers::get_stock_transfer_lines_scoped(
+        &ctx,
+        &session_token,
+        &transfer_id,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// Add a transfer line in the session-scoped store.
@@ -169,9 +173,13 @@ pub async fn remove_stock_transfer_line_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::stock_transfers::remove_stock_transfer_line_scoped(&ctx, &session_token, &line_id)
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::stock_transfers::remove_stock_transfer_line_scoped(
+        &ctx,
+        &session_token,
+        &line_id,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// Send a transfer in the session-scoped store.

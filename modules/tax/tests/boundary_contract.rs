@@ -18,9 +18,9 @@
 //!    the frontend `TaxRateDto` declares, so IPC payloads stay in sync.
 
 use foundation::contracts::Module;
-use modules_tax::{RoundingMode, TaxModule, TaxRate, TaxService};
 use kasirmu_core::db::Store;
 use kasirmu_core::migrations::fresh_db;
+use modules_tax::{RoundingMode, TaxModule, TaxRate, TaxService};
 
 // ── 1. Module registration contract ─────────────────────────────────
 

@@ -1140,7 +1140,10 @@ fn assert_location_scoped_merge(store: &Store<'_>, pid: &str) {
     let default_rows: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM stock_summary WHERE item_id = ?1 AND location_id = ?2",
-            [pid, kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+            [
+                pid,
+                kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
+            ],
             |r| r.get(0),
         )
         .unwrap();

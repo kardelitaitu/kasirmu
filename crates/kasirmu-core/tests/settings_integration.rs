@@ -1248,7 +1248,12 @@ fn setup_writes_global_currency_key() {
     .unwrap();
     kasirmu_core::Settings::set(&conn, kasirmu_core::settings::keys::SETUP_COMPLETE, "1").unwrap();
     kasirmu_core::Settings::set_default_currency(&conn, "EUR").unwrap();
-    kasirmu_core::Settings::set(&conn, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD, "false").unwrap();
+    kasirmu_core::Settings::set(
+        &conn,
+        kasirmu_core::settings::keys::SHOW_SETUP_WIZARD,
+        "false",
+    )
+    .unwrap();
 
     // The currency must be stored under the global key, not the store key.
     assert_eq!(

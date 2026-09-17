@@ -55,8 +55,6 @@ pub use commands::*;
 // `save_topology` re-exports at pub(crate) visibility), so only the three
 // non-command modules need the cfg(test) globs — the library build would
 // otherwise warn about unused imports.
-#[cfg(test)]
-pub(crate) use model::*;
 /// The semantics-contract version is owned by `kasirmu_core`, where the evaluator
 /// that understands it lives. Re-exported for the test that pins the two
 /// version axes apart, so the assertion reads against one declaration rather
@@ -64,6 +62,8 @@ pub(crate) use model::*;
 /// above: the library build would otherwise warn about an unused import.
 #[cfg(test)]
 pub(crate) use kasirmu_core::topology::TOPOLOGY_CONTRACT_SCHEMA_VERSION;
+#[cfg(test)]
+pub(crate) use model::*;
 #[cfg(test)]
 pub(crate) use persistence::*;
 #[cfg(test)]

@@ -130,7 +130,10 @@ pub struct SyncDaemon {
 /// configured or disabled.
 pub(crate) fn read_config_and_pending(
     conn: &rusqlite::Connection,
-) -> (Option<SyncConfig>, Vec<kasirmu_core::offline::OfflineQueueItem>) {
+) -> (
+    Option<SyncConfig>,
+    Vec<kasirmu_core::offline::OfflineQueueItem>,
+) {
     let store = Store::new(conn);
     let config = SyncConfig::from_settings(&store).ok().flatten();
     let pending = store.list_pending_offline().unwrap_or_default();
@@ -158,7 +161,8 @@ async fn refresh_persisted_api_key(db: &DbConnection, server_url: &str) -> bool 
     };
     let token = match (terminal_id, terminal_secret) {
         (Some(id), Some(secret)) => {
-            kasirmu_core::sync_client::request_token_client_credentials(server_url, &id, &secret).await
+            kasirmu_core::sync_client::request_token_client_credentials(server_url, &id, &secret)
+                .await
         }
         _ => {
             kasirmu_core::sync_client::request_token(
