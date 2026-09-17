@@ -349,7 +349,7 @@ Drafts go straight into `_active/` (there is no `_template/` directory). Specs m
 
 ## Adding a new CI check — checklist
 
-- [ ] Define the check in `.github/workflows/dev-ci.yml` (the only active workflow) or as a `*.yml.bak`-referenced follow-up if dormant.
+- [ ] Define the check in one of the **two active workflows** — `.github/workflows/dev-ci.yml` (PR, push to `main`, manual dispatch) or `.github/workflows/release.yml` (`v*` tags) — or record it as a dormant follow-up under `.github/workflows/attic/`.
 - [ ] Add the corresponding local script under `scripts/` and wire it into `scripts/check.sh` (and `check.ps1` when it applies to Windows).
 - [ ] Document the check in this skill (so future contributors know it exists).
 - [ ] Update the pre-push checklist at the bottom of this file if it's a blocking check.
