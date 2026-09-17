@@ -1,7 +1,7 @@
 //! Setup bridge module (Wave E).
 //!
 //! Bodies extracted verbatim from
-//! apps/desktop-client/src/commands/setup.rs (Wave E slice E8). The only
+//! apps/desktop-tauri/src/commands/setup.rs (Wave E slice E8). The only
 //! rewrites are mechanical: `state.*` → `ctx.*` and `AppError::` →
 //! `BridgeError::`. Settings keys, transaction boundaries, gate order and
 //! log lines are byte-identical to the original command bodies.

@@ -4,7 +4,7 @@
 //! authentication uniformly across categories, settings, sync,
 //! products, and the refresh_picker_ticket flow.
 //!
-//! Relocated from `apps/desktop-client/src/commands/security_scoped_integration_tests.rs`
+//! Relocated from `apps/desktop-tauri/src/commands/security_scoped_integration_tests.rs`
 //! and mounted inside `kasirmu_bridge::auth`; every assertion is preserved verbatim,
 //! with the mechanical desktop-to-bridge mapping applied:
 //! `app.state()` -> `&ctx()`, `State`-last args -> `ctx`-first,
@@ -28,7 +28,7 @@ use kasirmu_core::db::Store;
 use kasirmu_core::session::SessionContext;
 
 /// The picker-ticket HMAC key the desktop's AppState::for_test_with_conn seeded
-/// (apps/desktop-client/src/state.rs:826), so tickets minted and verified here
+/// (apps/desktop-tauri/src/state.rs:826), so tickets minted and verified here
 /// round-trip against the very secret the shell carried before the relocation.
 const TEST_PICKER_SECRET: &[u8] = b"test-picker-ticket-secret";
 

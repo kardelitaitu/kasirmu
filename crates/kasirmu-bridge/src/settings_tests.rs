@@ -1,6 +1,6 @@
 //! Unit tests for the settings bridge module.
 //!
-//! Relocated from `apps/desktop-client/src/commands/settings_tests.rs` (Wave E /
+//! Relocated from `apps/desktop-tauri/src/commands/settings_tests.rs` (Wave E /
 //! EW1). The shell's `AppState::for_test` is replaced by the headless
 //! `TestBridge` harness ([`crate::testing`]); the conn-taking `run_*`
 //! helpers resolve against `kasirmu_bridge::settings` directly via `use super::*`.

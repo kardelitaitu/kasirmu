@@ -1,5 +1,5 @@
 //! Unit tests for the security command bodies (Wave-B test relocation: moved
-//! out of `apps/desktop-client/src/commands/security_tests.rs`).
+//! out of `apps/desktop-tauri/src/commands/security_tests.rs`).
 //!
 //! Mounted at the foot of `security.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves `ENCRYPTION_KEY_NAME`, the thread-isolated

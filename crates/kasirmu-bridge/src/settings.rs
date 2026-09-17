@@ -1,6 +1,6 @@
 //! Settings command bodies: the shared key guards, the setting DTOs, and the read side.
 //!
-//! Extracted from the desktop shell (apps/desktop-client/src/commands/settings.rs) as
+//! Extracted from the desktop shell (apps/desktop-tauri/src/commands/settings.rs) as
 //! Wave E slice E1a. Nothing here names a tauri type: each shell shim borrows a
 //! BridgeCtx, calls the matching function and maps BridgeError back onto AppError
 //! variant-for-variant, so the wire shape stays byte-identical. The writer half (the
