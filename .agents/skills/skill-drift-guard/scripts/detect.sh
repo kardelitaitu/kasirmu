@@ -266,7 +266,7 @@ if should_run paths; then
         http*|https*|file://*|node_modules*|target/*|dist/*) continue ;;
       esac
       # Skip regex-truncation artifacts. The extractor has no notion of a
-      # glob or an ellipsis, so `crates/oz-*` yields `crates/oz-` and prose
+      # glob or an ellipsis, so `crates/kasirmu-*` yields `crates/kasirmu-` and prose
       # like `bash scripts/...` yields `scripts/...`. A real path never ends
       # in `-`, `.` or an ellipsis, so dropping these cannot mask genuine
       # drift — it only stops the check crying wolf on every run.
@@ -291,12 +291,12 @@ fi
 if should_run crates; then
   : "${Cargo_FILE:=Cargo.toml}"
   if [ -f "$Cargo_FILE" ]; then
-    : "$(grep -oE '"crates/oz-[a-z-]+"' "$Cargo_FILE" 2>/dev/null | sort -u | sed 's|"crates/||;s|"||')"
-    workspace_crates="$(grep -oE '"crates/oz-[a-z-]+"' "$Cargo_FILE" 2>/dev/null | sort -u | sed 's|"crates/||;s|"||')"
-    skill_crates="$(cat .agents/skills/*/SKILL.md | grep -oE 'oz-[a-z-]+' | sort -u)"
+    : "$(grep -oE '"crates/kasirmu-[a-z-]+"' "$Cargo_FILE" 2>/dev/null | sort -u | sed 's|"crates/||;s|"||')"
+    workspace_crates="$(grep -oE '"crates/kasirmu-[a-z-]+"' "$Cargo_FILE" 2>/dev/null | sort -u | sed 's|"crates/||;s|"||')"
+    skill_crates="$(cat .agents/skills/*/SKILL.md | grep -oE 'kasirmu-[a-z-]+' | sort -u)"
 
     while read -r c; do
-      [ -z "$c" ] || [ "$c" = "oz-pos" ] || [[ "$c" = oz-pos-* ]] && continue
+      [ -z "$c" ] && continue
       if ! echo "$workspace_crates" | grep -qx "$c"; then
         FINDINGS[crates]+="missing in workspace: ${c}"$'\n'
       fi

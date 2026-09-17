@@ -100,7 +100,7 @@ version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
 license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
-name = "oz-cloud-server"
+name = "kasirmu-cloud"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
 license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
@@ -160,12 +160,12 @@ version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
 license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
-name = "oz-pos-app"
+name = "kasirmu-app"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
 license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
-name = "oz-pos-tablet"
+name = "kasirmu-tablet"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
 license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]

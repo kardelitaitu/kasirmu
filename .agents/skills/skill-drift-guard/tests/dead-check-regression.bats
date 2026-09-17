@@ -52,7 +52,7 @@ description: temporary drift fixture for dead-check-regression.bats
 
 # Drift probe
 
-References ui/src/__drift_probe_missing__.tsx and crates/oz-drift-probe-missing
+References ui/src/__drift_probe_missing__.tsx and crates/kasirmu-drift-probe-missing
 
 ```rust
 let m = Money::from_major(100, Currency::Usd);
@@ -126,7 +126,7 @@ OG_EOF
   run bash "$PROJECT_ROOT/.agents/skills/skill-drift-guard/scripts/detect.sh" \
       --check=crates
   [ "$status" -ne 0 ]
-  [[ "$output" == *"oz-drift-probe-missing"* ]]
+  [[ "$output" == *"kasirmu-drift-probe-missing"* ]]
 }
 
 # --------------------------------------------------------------------------
