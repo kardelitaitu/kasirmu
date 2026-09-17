@@ -122,7 +122,7 @@ pub enum Feature {
     Analytics,
 
     // ── Advanced ─────────────────────────────────────────────────
-    /// Data export / import (.ozpkg format).
+    /// Data export / import (.kasirpkg format).
     ExportImport,
     /// Third-party plugin system.
     PluginSystem,

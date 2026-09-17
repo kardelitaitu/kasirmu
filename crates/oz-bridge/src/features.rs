@@ -573,7 +573,7 @@ pub fn all_feature_metadata() -> Vec<(Feature, &'static str, &'static str, &'sta
         (
             Feature::ExportImport,
             "Export / Import",
-            "Data export/import in .ozpkg format",
+            "Data export/import in .kasirpkg format",
             "Advanced",
         ),
         (
