@@ -352,7 +352,7 @@ covered.
 
 **P10b remains unscheduled** (§6), which is why this phase is marked in progress rather than complete.
 
-### [ ] P11 — Name the shells by form factor + toolkit, and put per-OS config one level down
+### [x] P11 — Name the shells by form factor + toolkit, and put per-OS config one level down
 
 **Commit:** `refactor(apps): rename shells by form factor and toolkit`
 
@@ -430,6 +430,51 @@ the OSes the Tauri shell already covers.
 **Acceptance:** the rename is applied consistently across `Cargo.toml` members, `tauri.conf.json`,
 `AGENTS.md`, `.gitignore`, `.github/workflows/release.yml`, `scripts/*` ·
 `python scripts/verify-ipc-parity.py` exits 0 · `cargo check --workspace --all-targets`
+
+**Completed 2026-09-18** (commit `37dfce036`, 364 files: 329 renames + 35 modified). The commit was
+landed by the repository owner while the change was still in the working tree, under a message that
+names P11; its non-rename file set is exactly the functional list below, with nothing foreign swept in.
+
+**Scope was deliberately bounded to the functional surface — an owner decision, not a shortcut.** The
+raw reference count is **367 files**, but roughly 85% are prose citations (`//! apps/desktop-client/src/
+commands/audit.rs` in bridge module docs, module READMEs, test comments). Re-pointing only paths that
+*resolve* keeps the commit reviewable and avoids falsifying provenance statements — e.g.
+`crates/kasirmu-bridge/src/branding_tests.rs:2` reads *"relocation: moved out of
+`apps/desktop-client/src/commands/branding_tests.rs`"*, a claim about the past that a substitution would
+corrupt. Re-pointed: `Cargo.toml` members, `.dockerignore`, `.gitignore`, `.githooks/pre-push`,
+`dev-ci.yml` (two filters), `release.yml`, both `ops/docker` Dockerfiles, `ops/packaging/mobile/README.md`,
+21 `scripts/*`, three `ui/src/__tests__` files that read the shells, and the shells' own files (which
+self-cite the directory they live in). **Deferred and measured: 342 files / 1738 occurrences** of the old
+names remain, every one prose — for P7 (docs rewrite) and P13 (the `tablet` vocabulary sweep).
+
+**Two traps, both the same class as P12's `plugins/` finding.**
+
+1. **The alternation form is invisible to a literal path grep.** `.githooks/pre-push:76` and
+   `dev-ci.yml:93` reference the shells as `^apps/(cloud-server|desktop-client|tablet-client)/`, which
+   contains neither `apps/desktop-client` nor `apps/tablet-client`. A grep for the path misses the two
+   most load-bearing references in the tree — the push gate and the CI router. Search the **bare token**
+   as well as the path.
+2. **`include_str!` is a compile-time path dependency that a comment-oriented review misses.**
+   `crates/kasirmu-bridge/src/settings_tests.rs:1744` held
+   `include_str!("../../../apps/tablet-client/src/commands/settings.rs")`. The whole `crates/` bucket
+   (118 files) was classified as prose from a 12-line sample, and this was in it. It surfaced only as a
+   build failure (`could not compile kasirmu-bridge (lib test)`), which is the lesson: a bucket is not a
+   classification, and `cargo check --workspace --all-targets` must be run **after** the move, not only
+   before. `CARGO_MANIFEST_DIR`-relative paths, by contrast, are unaffected by a rename — all 24 of them
+   stayed correct untouched.
+
+**Gates.** `verify-ipc-parity.py` → `IPC parity: OK` · `verify-invoke-parity.py` → 473 invokes across 2
+shells, 0 violations · `verify-dockerfile-workspace.py` → all 42 members present in both Dockerfiles ·
+`verify-windows-config.py` → 0 violations · `verify-architecture-boundaries.py` → exit 0 ·
+`verify-ci-docs-drift.py` → 0 drift · `cargo check --workspace --all-targets` → exit 0 ·
+`cargo test -p kasirmu-bridge -p kasirmu-app -p kasirmu-tablet --lib` → **155 + 1322 + 669 passed, 0
+failed** · the three re-pointed UI test files → 64 passed.
+
+`scripts/test-ci-routing.sh` **cannot run in this sandbox**: it is killed at process start with zero
+output and emits no trace even under `bash -x`, so it never reaches the lines this phase changed. Its
+subject was verified directly instead — the Rust router now matches `apps/desktop-tauri/` and
+`apps/mobile-tauri/` and matches neither old name, and the release filter matches
+`apps/desktop-tauri/tauri.conf.json` only.
 
 ### [x] P12 — Root directory budget: 28 entries down to 23
 
