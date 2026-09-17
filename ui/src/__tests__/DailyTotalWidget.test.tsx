@@ -6,7 +6,7 @@ import salesFtl from '@/locales/sales.ftl?raw';
 import type { DailySummaryRow } from '@/api/sales';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
-import { clearWidgets, getDeniedWidgets, getWidgets } from '@/platform/ui/widget-registry';
+import { clearWidgets, getDeniedWidgets, getWidgets } from '@/registries/widget-registry';
 import { registerSalesWidgets } from '@/features/sales/widgets';
 
 vi.mock('@/contexts/SubscriptionContext', () => ({

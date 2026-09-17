@@ -1,7 +1,7 @@
 import { lazy } from 'react';
-import { registerPage } from '@/platform/ui/page-registry';
-import { registerNavItem } from '@/platform/ui/menu-registry';
-import { icon } from '@/platform/ui/icon';
+import { registerPage } from '@/registries/page-registry';
+import { registerNavItem } from '@/registries/menu-registry';
+import { icon } from '@/registries/icon';
 const OfflineQueueScreen = lazy(() => import('./OfflineQueueScreen'));
 
 export function registerOfflineFeature() {

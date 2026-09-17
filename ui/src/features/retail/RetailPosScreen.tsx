@@ -19,7 +19,7 @@ import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useFeatures, FEATURES } from '@/hooks/useFeatures';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { lookupProductBySkuScoped, lookupByBarcodeScoped, createProductScoped, updateProductScoped, adjustStockScoped, recordProductSearchScoped, type ProductDto, type CategoryDto } from '@/api/products';
-import { hasGrantedPermission } from '@/platform/ui/page-registry';
+import { hasGrantedPermission } from '@/registries/page-registry';
 import { openProductImagesScoped } from '@/api/browser';
 import { loadCatalog, invalidateCatalog } from '@/utils/catalog-cache';
 import { usePagedList } from '@/hooks/usePagedList';

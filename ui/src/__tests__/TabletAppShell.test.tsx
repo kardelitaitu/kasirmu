@@ -16,7 +16,7 @@ import { act } from 'react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import TabletAppShell from '@/app/tablet/TabletAppShell';
 import type { AuthContextValue } from '@/contexts/AuthContext';
-import { registerPage, clearPages } from '@/platform/ui/page-registry';
+import { registerPage, clearPages } from '@/registries/page-registry';
 import { getSetupStatus, type SetupStatus } from '@/api/settings';
 import sharedFtl from '@/locales/shared.ftl?raw';
 

@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { TOOLS, TOOL_GROUP_ORDER } from '@/features/workspaces/tools';
-import { getPage } from '@/platform/ui/page-registry';
+import { getPage } from '@/registries/page-registry';
 import { registerAllFeatures } from '@/features';
 import { TIER_LEVEL, tierSatisfies, type TierKey } from '@/utils/tierLevel';
 

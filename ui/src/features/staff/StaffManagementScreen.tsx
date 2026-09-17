@@ -44,7 +44,7 @@ import { Skeleton } from '@/components/Skeleton';
 import { requiredLocalized } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { useToast } from '@/components/Toast';
-import { hasGrantedPermission } from '@/platform/ui/page-registry';
+import { hasGrantedPermission } from '@/registries/page-registry';
 import { EmptyState } from '@/components';
 import { NoStaffIcon } from '@/components/EmptyStateIllustrations';
 import { ConfirmDialog } from '@/components/ConfirmDialog';

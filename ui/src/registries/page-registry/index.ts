@@ -4,7 +4,7 @@
  *
  * @example
  * ```tsx
- * import { registerPage } from '@/platform/ui/page-registry';
+ * import { registerPage } from '@/registries/page-registry';
  * import PosScreen from './PosScreen';
  *
  * registerPage({

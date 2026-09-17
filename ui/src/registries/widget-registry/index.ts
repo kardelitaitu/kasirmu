@@ -4,7 +4,7 @@
  *
  * @example
  * ```tsx
- * import { registerWidget } from '@/platform/ui/widget-registry';
+ * import { registerWidget } from '@/registries/widget-registry';
  * import SalesSummaryWidget from './SalesSummaryWidget';
  *
  * registerWidget({
@@ -23,7 +23,7 @@
  */
 
 import type { ComponentType, LazyExoticComponent } from 'react';
-import { passesGate, type RequiredRole } from '@/platform/ui/page-registry';
+import { passesGate, type RequiredRole } from '@/registries/page-registry';
 import { useAuth } from '@/contexts/AuthContext';
 
 // ── Types ──────────────────────────────────────────────────────────

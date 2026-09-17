@@ -17,7 +17,7 @@ import { isTopologyInstance } from './topologyContract';
 import TopologyRevisionBrowser from './TopologyRevisionBrowser';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { hasGrantedPermission } from '@/platform/ui/page-registry';
+import { hasGrantedPermission } from '@/registries/page-registry';
 import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { useContext } from 'react';

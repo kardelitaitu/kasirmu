@@ -268,8 +268,8 @@ import { yearlyHeatmapColumns, rangeForGranularity, isoToday } from '@/features/
 import { analyticsDataCache, clearAnalyticsCache } from '@/features/analytics/analytics-cache';
 import { registerAnalyticsFeature } from '@/features/analytics/register';
 import { registerStaffFeature } from '@/features/staff/register';
-import { getEnabledPages, clearPages, hasGrantedPermission } from '@/platform/ui/page-registry';
-import { getNavItems, clearNavItems } from '@/platform/ui/menu-registry';
+import { getEnabledPages, clearPages, hasGrantedPermission } from '@/registries/page-registry';
+import { getNavItems, clearNavItems } from '@/registries/menu-registry';
 
 // ────────────────────────────────────────────────────────────────────
 // Layout shell tests

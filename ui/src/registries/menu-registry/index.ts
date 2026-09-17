@@ -4,7 +4,7 @@
  *
  * @example
  * ```tsx
- * import { registerNavItem } from '@/platform/ui/menu-registry';
+ * import { registerNavItem } from '@/registries/menu-registry';
  *
  * registerNavItem({
  *   route: 'products',
@@ -16,7 +16,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { passesGate, type RequiredRole } from '@/platform/ui/page-registry';
+import { passesGate, type RequiredRole } from '@/registries/page-registry';
 
 // ── Section names ────────────────────────────────────────────────────
 

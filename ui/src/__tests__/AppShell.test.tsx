@@ -161,8 +161,8 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
 // ── page-registry: register the kds route so handleNavigate works ──
 import { getLicenseStatus } from '@/api/license';
 import { getSetupStatus } from '@/api/settings';
-import { registerPage, clearPages } from '@/platform/ui/page-registry';
-import { registerNavItem, clearNavItems } from '@/platform/ui/menu-registry';
+import { registerPage, clearPages } from '@/registries/page-registry';
+import { registerNavItem, clearNavItems } from '@/registries/menu-registry';
 
 
 

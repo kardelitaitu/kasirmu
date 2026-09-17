@@ -5,7 +5,7 @@ import { useOrientation } from '@/hooks/useOrientation';
 import TabletAppLayout from './TabletAppLayout';
 import { completeSetup, dismissSetupWizard, getSetupStatus } from '@/api/settings';
 import { useFeatures } from '@/hooks/useFeatures';
-import { getPage, isPageAccessible } from '@/platform/ui/page-registry';
+import { getPage, isPageAccessible } from '@/registries/page-registry';
 import PermissionDenied from '@/components/PermissionDenied';
 import { LazyBoundary } from '@/components/LazyBoundary';
 import { AppBootSplash } from '@/components/AppBootSplash';

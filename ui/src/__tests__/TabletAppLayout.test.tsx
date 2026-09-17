@@ -7,7 +7,7 @@ import sharedFtl from '@/locales/shared.ftl?raw';
 
 const mockGetNavItems = vi.fn();
 
-vi.mock('@/platform/ui/menu-registry', () => ({
+vi.mock('@/registries/menu-registry', () => ({
   getNavItems: (...args: unknown[]) => mockGetNavItems(...args),
 }));
 

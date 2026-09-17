@@ -13,7 +13,7 @@ import AppLayout, { type AppRoute } from './AppLayout';
 import { completeSetup, dismissSetupWizard, getSetupStatus } from '@/api/settings';
 import { useFeatures } from '@/hooks/useFeatures';
 import { useTerminalProfile } from '@/hooks/useTerminalProfile';
-import { getPage, isPageAccessible } from '@/platform/ui/page-registry';
+import { getPage, isPageAccessible } from '@/registries/page-registry';
 import { recordMark } from '@/utils/perf-metrics';
 import PermissionDenied from '@/components/PermissionDenied';
 import { ErrorState } from '@/components/ErrorState';

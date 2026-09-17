@@ -44,8 +44,8 @@ import {
   getPage,
   isPageAccessible,
   registerPage,
-} from '@/platform/ui/page-registry';
-import { clearNavItems, getNavItems, registerNavItem } from '@/platform/ui/menu-registry';
+} from '@/registries/page-registry';
+import { clearNavItems, getNavItems, registerNavItem } from '@/registries/menu-registry';
 
 const DISABLED_FEATURE = 'restaurant';
 

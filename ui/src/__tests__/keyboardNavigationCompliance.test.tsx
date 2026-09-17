@@ -29,7 +29,7 @@ import AppLayout from '@/app/AppLayout';
 import TabletAppLayout from '@/app/tablet/TabletAppLayout';
 import { Modal } from '@/components/Modal';
 import StoreSwitcher from '@/components/StoreSwitcher';
-import { registerNavItem, clearNavItems } from '@/platform/ui/menu-registry';
+import { registerNavItem, clearNavItems } from '@/registries/menu-registry';
 import type { LocationProfile } from '@/api/locations';
 
 // ── Shell leaf stubs (each covered by its own focused suite) ──────────

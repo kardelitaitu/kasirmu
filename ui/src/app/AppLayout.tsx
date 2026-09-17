@@ -11,7 +11,7 @@ import { useBrand } from '@/contexts/BrandContext';
 import { requiredLocalized } from '@/components';
 import StatusBar from './StatusBar';
 
-import { getNavItems, SECTION_LABELS, type SectionName } from '@/platform/ui/menu-registry';
+import { getNavItems, SECTION_LABELS, type SectionName } from '@/registries/menu-registry';
 import './AppLayout.css';
 
 // ── Route type ──────────────────────────────────────────────────────

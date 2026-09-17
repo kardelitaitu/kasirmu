@@ -1545,7 +1545,7 @@ describe('TopologyScreen', () => {
   // audit-read commands authorize with — `audit:view` (rbac.rs AUDIT_VIEW) —
   // but matched it with two raw `Array.includes` calls: the literal `*` and
   // the literal `audit:view`. The backend matcher (platform/core/src/rbac.rs
-  // :259-266, mirrored in TS at ui/src/platform/ui/page-registry/index.ts
+  // :259-266, mirrored in TS at ui/src/registries/page-registry/index.ts
   // :163-172) accepts THREE forms: exact, `*`, and `<domain>:*`. So a custom
   // role holding `audit:*` — which the kernel would serve — was denied the
   // control. Same helper as canSaveTopology above, same three forms, asserted

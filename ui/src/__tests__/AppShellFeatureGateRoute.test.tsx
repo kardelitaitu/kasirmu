@@ -77,8 +77,8 @@ import {
   getPage,
   isPageAccessible,
   registerPage,
-} from '@/platform/ui/page-registry';
-import { clearNavItems, getNavItems, registerNavItem } from '@/platform/ui/menu-registry';
+} from '@/registries/page-registry';
+import { clearNavItems, getNavItems, registerNavItem } from '@/registries/menu-registry';
 
 // ── Feature key under test ───────────────────────────────────────────
 // Synthetic on purpose (see WHAT THIS FILE DOES NOT REACH): mirrors the shape of

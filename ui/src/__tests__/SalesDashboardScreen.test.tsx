@@ -9,7 +9,7 @@ import {
 import salesFtl from '@/locales/sales.ftl?raw';
 import SalesDashboardScreen from '@/features/sales/SalesDashboardScreen';
 import { registerSalesWidgets } from '@/features/sales/widgets';
-import { clearWidgets } from '@/platform/ui/widget-registry';
+import { clearWidgets } from '@/registries/widget-registry';
 
 const SAMPLE_SUMMARY = [
   { sale_id: 'sale-1', total_minor: 1250, currency: 'USD', line_count: 2, status: 'completed', created_at: '2026-06-28T10:00:00Z' },

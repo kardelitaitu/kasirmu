@@ -4,7 +4,7 @@
  * reporting dashboard page.
  */
 import { lazy } from 'react';
-import { registerWidget } from '@/platform/ui/widget-registry';
+import { registerWidget } from '@/registries/widget-registry';
 
 // PERF-01: each widget is lazy-loaded so its chunk only downloads when
 // the reporting dashboard renders it (chart libs stay out of the entry).

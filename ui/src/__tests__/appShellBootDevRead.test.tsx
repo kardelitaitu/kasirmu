@@ -30,7 +30,7 @@ import { act } from 'react';
 import type { ReactNode } from 'react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import AppShell from '@/app/AppShell';
-import { clearPages } from '@/platform/ui/page-registry';
+import { clearPages } from '@/registries/page-registry';
 import settingsFtl from '@/locales/settings.ftl?raw';
 import staffFtl from '@/locales/staff.ftl?raw';
 
