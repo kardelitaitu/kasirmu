@@ -763,7 +763,10 @@ jobs:
     env:
       NF_API: https://api.northflank.com/v1
       NF_PROJECT_ID: ${{ vars.NORTHFLANK_PROJECT_ID || 'oz-pos' }}
-      NF_SERVICE_ID: ${{ vars.NORTHFLANK_SERVICE_ID || 'oz-pos-cloud' }}
+      # The live service is named `cloud`, NOT the old-branded `oz-pos-cloud`
+      # (verified against the Northflank API 2026-09-18). The project id
+      # `oz-pos` is still correct -- the project was never renamed.
+      NF_SERVICE_ID: ${{ vars.NORTHFLANK_SERVICE_ID || 'cloud' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check Northflank credentials
