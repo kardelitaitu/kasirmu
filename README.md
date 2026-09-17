@@ -221,15 +221,18 @@ Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before mer
 
 ## Status
 
-**Phase 4 (CRM, Restaurant, Accounting) in progress.** Measured 2026-09-16 against this checkout: 59 migration files (`ls crates/oz-core/migrations/*.sql | wc -l`), 455 desktop / 320 tablet IPC commands registered — 301 in both, 474 distinct (re-measured 2026-09-16 at HEAD `f8c11fc5c`: the registered pair is what `python scripts/verify-ipc-parity.py` prints and it exits 0 — 444 UI command strings per shell on that same run — while both/distinct are the intersection and union of the two `tauri::generate_handler![…]` lists, which that tool does not print, so re-derive them through its own `extract_handlers()` over `apps/desktop-client/src/lib.rs` and `apps/tablet-client/src/lib.rs` and never by a comma split; the identity 455 + 320 − 301 = 474 closes. The one-name drop from the 455 desktop / 321 tablet with 301 both / 475 distinct that this paragraph and the 2026-09-16 stamp above both carried has a name and is not a correction of a bad count: `d29a7c0f4` retired the tablet's registered `set_hardware_settings` door, and that earlier pair was correct against the tree it measured — it stands above as the dated record it is, and the mirrors took this same side at `7bb8ab0ba`), 301 feature `.tsx` files (`find ui/src/features -name '*.tsx' | wc -l`), 593 files under `ui/src/__tests__` (`find ui/src/__tests__ -type f | wc -l`; the 592 read earlier on 2026-09-16 moved by one file, `appShellBootDevRead.test.tsx` from `b61aedee0`), 8,354 Rust `#[test]` functions (`grep -rn --include='*.rs' -o '#\[test\]' . | wc -l`), and 17 crates (`ls -d crates/*/ | wc -l`). Earlier readings of these same facts are dated history, not current: the 08-09-26 stamp above records 450 distinct IPC (425 / 297 / 272), 183 feature `.tsx`, 8,709 tests and 13 crates; the 2026-09-15 pass in this same paragraph read 453 desktop / 322 tablet (297 both, 478 distinct), 299 feature `.tsx`, 589 test files, 8,280 `#[test]` and 16 crates — that last delta is one crate, `qris-core`, which the structure map had never listed. Every figure here has moved since it was first written.
+**Where we are: v0.0.39 — all six roadmap phases delivered, four follow-through gaps open.** The phase table in `docs/guides/ROADMAP.md` is the authority. (Note: the ROADMAP's phase *names* differ from the shorthand this section used until 2026-09-17 — "CRM, Restaurant, Accounting" and "Multi-store topology, Cloud Sync, Plugin system" were never ROADMAP phases. The real names are used below.)
 
-| Phase | Status | Focus |
-|---|---|---|
-| 1 | Complete | Platform foundation |
-| 2 | Complete | Inventory & Products |
-| 3 | Complete | Transactions & Staff |
-| 4 | In Progress | CRM, Restaurant, Accounting |
-| 5 | In Progress | Multi-store topology, Cloud Sync, Plugin system |
+| Phase (ROADMAP) | State | What's real | What's still open |
+|---|---|---|---|
+| 1 — Foundation & MVP | Done | Scan → cart → pay → receipt, setup wizard, feature flags, Money/CRUD core | Windows/Linux launch box unchecked |
+| 2 — Hardening | Done | oz-security, oz-logging, backup/restore, updaters, packaging | Log sinks exist but are never wired (no log file on any shipped binary); security/nightly CI retired to `.bak` |
+| 3 — Transactions & Staff | Done | Void/refund/hold/split, PIN auth + RBAC, shifts + EOD, tax engine, Lua runtime | — |
+| 4 — Scaling | Done, 2 gaps | Cloud sync (outbox → PG/HTTP), multi-store + terminals, Stripe/Square/QRIS, Android tablet build, responsive UI | Exchange-rate auto-sync daemon never starts (rates are manager-entered); receipt carries charge currency only, no base-currency line |
+| 5 — Intelligence | Done, 1 gap | Daily/weekly/monthly + EOD reporting, revenue/COGS/gross-profit, dashboards, en+id i18n | Custom report builder + cloud-warehouse export never built |
+| 6 — Ecosystem | Done, 1 gap | Loyalty, promotions, bundles, KDS, kiosk, table management, plugin sandbox, theming | Voice checkout (research, deferred) |
+
+Module-level truth (`modules/`): 10 active (`inventory`, `crm`, `tax`, `settings`, `staff`, `terminal`, `currency`, `sales`, `reporting`, `loyalty`), 4 still stubs with no domain logic (`purchasing`, `promotions`, `giftcards`, `kitchen` — the KDS UI in `ui/src/features/kds/` is frontend-only; the PROMO-3 engine lives in `oz-core`, not `modules/promotions`; gift-card types still sit in `modules/loyalty`). There is **no accounting module** — no chart of accounts, journal, or expense tracking exists anywhere in `modules/`, migrations, or UI. What the platform does have is sales accounting's raw material: revenue/COGS/gross-profit reporting (`crates/oz-core/src/db/reports/revenue.rs`), shift cash reconciliation, and purchase-order history.
 
 Latest release: **v0.0.39** (on branch `0.0.39`).
 
@@ -259,5 +262,4 @@ This software (`kasir.mu`) is **NOT open source**. No part of this codebase, ass
 
 See [LICENSE](./LICENSE) for terms and restrictions. For commercial licensing and pricing inquiries, contact: **adikaradwiatmaja@gmail.com**.
 
-> last audited 08-09-26 by docs-auditor
-
+![GitHub Profile Stats](https://kgnio-profile-card.vercel.app/api/card?user=kardelitaitu&theme=azure-noir)
