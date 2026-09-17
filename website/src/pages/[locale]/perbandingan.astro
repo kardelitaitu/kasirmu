@@ -1,0 +1,126 @@
+---
+export function getStaticPaths() {
+  return [{ params: { locale: "en" } }, { params: { locale: "id" } }];
+}
+import Base from "../../layouts/Base.astro";
+import { getRelativeLocaleUrl } from "astro:i18n";
+import { t } from "../../i18n";
+
+const locale = Astro.currentLocale ?? "en";
+const pageTitle = locale === "id" ? "Perbandingan kasir.mu vs Aplikasi Kasir Lain" : "kasir.mu vs Other POS Apps Compared";
+const pricingHref = getRelativeLocaleUrl(locale, "pricing");
+const downloadHref = getRelativeLocaleUrl(locale, "download");
+
+interface Rival {
+  name: string;
+  priceId: string;
+  priceEn: string;
+  offlineId: string;
+  offlineEn: string;
+  noteId: string;
+  noteEn: string;
+}
+
+const rivals: Rival[] = [
+  {
+    name: "Moka",
+    priceId: "Mulai ~Rp249rb/bln per outlet",
+    priceEn: "From ~Rp249k/mo per outlet",
+    offlineId: "Butuh internet untuk banyak fitur",
+    offlineEn: "Needs internet for many features",
+    noteId: "Ekosistem GoTo, kuat untuk F&B — harga per outlet lebih tinggi.",
+    noteEn: "GoTo ecosystem, strong for F&B — higher per-outlet price.",
+  },
+  {
+    name: "Majoo",
+    priceId: "Mulai ~Rp199rb/bln",
+    priceEn: "From ~Rp199k/mo",
+    offlineId: "Berbasis cloud, terbatas saat offline",
+    offlineEn: "Cloud-based, limited offline",
+    noteId: "Fitur lengkap banyak sektor — biaya naik per cabang dan add-on.",
+    noteEn: "Full features across sectors — cost grows per branch and add-on.",
+  },
+  {
+    name: "Olsera",
+    priceId: "Paket mulai ~Rp199rb/bln",
+    priceEn: "Plans from ~Rp199k/mo",
+    offlineId: "Sinkronisasi omnichannel butuh koneksi",
+    offlineEn: "Omnichannel sync needs connection",
+    noteId: "Kuat di omnichannel online-offline — kasir.mu unggul saat internet mati.",
+    noteEn: "Strong omnichannel online-offline — kasir.mu wins when the internet dies.",
+  },
+  {
+    name: "Qasir",
+    priceId: "Gratis + paket berbayar",
+    priceEn: "Free + paid plans",
+    offlineId: "Sebagian fitur butuh internet",
+    offlineEn: "Some features need internet",
+    noteId: "Pesaing gratis terdekat — bandingkan QRIS semua-paket dan audit trail kasir.mu.",
+    noteEn: "Closest free competitor — compare kasir.mu's all-plan QRIS and audit trail.",
+  },
+  {
+    name: "Pawoon",
+    priceId: "Mulai ~Rp149rb/bln",
+    priceEn: "From ~Rp149k/mo",
+    offlineId: "Berbasis cloud",
+    offlineEn: "Cloud-based",
+    noteId: "Populer untuk UMKM kuliner — kasir.mu lawan dengan harga Rp0–49rb dan offline penuh.",
+    noteEn: "Popular with culinary UMKM — kasir.mu counters with Rp0–49k pricing and full offline.",
+  },
+];
+---
+
+<Base title={`kasir.mu — ${pageTitle}`} description={t(locale, "pageDesc.perbandingan")}>
+  <section class="mx-auto max-w-4xl px-4 py-16">
+    <div data-reveal class="text-center">
+      <h1 class="text-4xl font-bold sm:text-5xl">{pageTitle}</h1>
+      <p class="mx-auto mt-6 max-w-2xl text-lg text-muted">{t(locale, "pageDesc.perbandingan")}</p>
+      <p class="mx-auto mt-4 max-w-2xl text-sm text-muted">
+        {locale === "id"
+          ? "Harga kompetitor adalah estimasi publik saat tulisan ini dibuat dan bisa berubah — cek situs resmi masing-masing sebelum memutuskan."
+          : "Competitor prices are public estimates at the time of writing and may change — check each official site before deciding."}
+      </p>
+    </div>
+    <div class="mt-12 overflow-hidden rounded-2xl border border-ink/10">
+      <table class="w-full text-left text-sm">
+        <thead>
+          <tr class="bg-surface/60">
+            <th scope="col" class="px-5 py-4 font-semibold">{locale === "id" ? "Aplikasi" : "App"}</th>
+            <th scope="col" class="px-5 py-4 font-semibold">{locale === "id" ? "Harga" : "Price"}</th>
+            <th scope="col" class="px-5 py-4 font-semibold">Offline</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-ink/10 bg-primary/[0.03]">
+            <td class="px-5 py-4 font-bold">kasir.mu</td>
+            <td class="px-5 py-4">{locale === "id" ? "Rp0 – Rp49rb/bln (Gratis selamanya tersedia)" : "Rp0 – Rp49k/mo (Free forever available)"}</td>
+            <td class="px-5 py-4">{locale === "id" ? "100% offline-first, QRIS semua paket" : "100% offline-first, QRIS on every plan"}</td>
+          </tr>
+          {rivals.map((r) => (
+            <tr class="border-t border-ink/10">
+              <td class="px-5 py-4 font-semibold">{r.name}</td>
+              <td class="px-5 py-4 text-muted">{locale === "id" ? r.priceId : r.priceEn}</td>
+              <td class="px-5 py-4 text-muted">{locale === "id" ? r.offlineId : r.offlineEn}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <div class="mt-8 grid gap-4 sm:grid-cols-2">
+      {rivals.map((r) => (
+        <div data-reveal class="rounded-xl border border-ink/10 bg-surface/40 p-5">
+          <h2 class="font-semibold">kasir.mu vs {r.name}</h2>
+          <p class="mt-2 text-sm text-muted">{locale === "id" ? r.noteId : r.noteEn}</p>
+        </div>
+      ))}
+    </div>
+    <div class="mt-10 flex flex-wrap items-center justify-center gap-3">
+      <a href={pricingHref} class="rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-white transition-colors duration-200 hover:bg-primary-hover">
+        {locale === "id" ? "Lihat harga kasir.mu" : "See kasir.mu pricing"}
+      </a>
+      <a href={downloadHref} class="rounded-xl border border-ink/15 px-6 py-3 text-sm font-semibold transition-colors duration-200 hover:border-ink/30">
+        {locale === "id" ? "Coba gratis" : "Try free"}
+      </a>
+    </div>
+  </section>
+</Base>

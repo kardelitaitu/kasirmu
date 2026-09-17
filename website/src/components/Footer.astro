@@ -98,6 +98,8 @@ const year = new Date().getFullYear();
           <span class="font-semibold text-ink">{locale === 'id' ? 'Bantuan' : 'Help'}</span>
           <a href={getRelativeLocaleUrl(locale, 'docs')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Docs</a>
           <a href={getRelativeLocaleUrl(locale, 'support')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Support</a>
+          <a href={getRelativeLocaleUrl(locale, 'cara')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">{locale === 'id' ? 'Cara Pakai' : 'How-To Guides'}</a>
+          <a href={getRelativeLocaleUrl(locale, 'perbandingan')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">{locale === 'id' ? 'Perbandingan' : 'Compare'}</a>
         </div>
       </nav>
       <nav class="flex items-center gap-6 text-xs text-muted" aria-label={t(locale, 'footer.legal')}>

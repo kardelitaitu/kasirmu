@@ -29,14 +29,14 @@ describe('Footer link structure', () => {
   });
 
   it('renders the sitemap columns', () => {
-    for (const slug of ['features', 'pricing', 'download', 'kasir-gratis', 'kasir-murah', 'kasir-qris', 'aplikasi-kasir-android', 'warung', 'cafe', 'restaurant', 'minimarket', 'warehouse', 'docs', 'support']) {
+    for (const slug of ['features', 'pricing', 'download', 'kasir-gratis', 'kasir-murah', 'kasir-qris', 'aplikasi-kasir-android', 'warung', 'cafe', 'restaurant', 'minimarket', 'warehouse', 'docs', 'support', 'cara', 'perbandingan']) {
       expect(FOOTER_SRC).toContain(`'${slug}'`);
     }
   });
 
   it('uses getRelativeLocaleUrl for navigation links', () => {
     const matches = FOOTER_SRC.match(/getRelativeLocaleUrl\(/g);
-    expect(matches).toHaveLength(16);
+    expect(matches).toHaveLength(18);
   });
 
   it('has aria-label on the legal nav', () => {
@@ -49,7 +49,7 @@ describe('Footer link structure', () => {
 
   it('has footer-link class on navigation links', () => {
     const footerLinkMatches = FOOTER_SRC.match(/class="footer-link/g);
-    expect(footerLinkMatches).toHaveLength(16);
+    expect(footerLinkMatches).toHaveLength(18);
   });
 });
 
@@ -112,6 +112,14 @@ describe('Footer link targets exist', () => {
 
   it('aplikasi-kasir-android landing page exists', () => {
     expect(() => readFileSync(join(pagesDir, 'aplikasi-kasir-android.astro'))).not.toThrow();
+  });
+
+  it('cara hub page exists', () => {
+    expect(() => readFileSync(join(pagesDir, 'cara.astro'))).not.toThrow();
+  });
+
+  it('perbandingan hub page exists', () => {
+    expect(() => readFileSync(join(pagesDir, 'perbandingan.astro'))).not.toThrow();
   });
 
   it('legal/privacy page exists', () => {

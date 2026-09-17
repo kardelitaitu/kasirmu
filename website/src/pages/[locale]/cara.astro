@@ -1,0 +1,92 @@
+---
+export function getStaticPaths() {
+  return [{ params: { locale: "en" } }, { params: { locale: "id" } }];
+}
+import Base from "../../layouts/Base.astro";
+import { getRelativeLocaleUrl } from "astro:i18n";
+import { t } from "../../i18n";
+
+const locale = Astro.currentLocale ?? "en";
+const pageTitle = locale === "id" ? "Cara Pakai kasir.mu: Panduan Langkah demi Langkah" : "How to Use kasir.mu: Step-by-Step Guides";
+
+interface Guide {
+  slug: string;
+  titleId: string;
+  titleEn: string;
+  descId: string;
+  descEn: string;
+}
+
+const guides: Guide[] = [
+  {
+    slug: "installation",
+    titleId: "Cara Install Aplikasi Kasir di Windows",
+    titleEn: "How to Install the POS App on Windows",
+    descId: "Unduh, pasang, dan buka kasir.mu pertama kali — ringan, 5 menit, tanpa kartu kredit.",
+    descEn: "Download, install, and open kasir.mu the first time — lightweight, 5 minutes, no credit card.",
+  },
+  {
+    slug: "first-sale",
+    titleId: "Cara Jualan Pertama: Transaksi Sampai Struk",
+    titleEn: "How to Make Your First Sale: Transaction to Receipt",
+    descId: "Tambah produk, terima tunai atau QRIS, cetak struk — transaksi pertama dalam 3 langkah.",
+    descEn: "Add products, take cash or QRIS, print the receipt — your first sale in 3 steps.",
+  },
+  {
+    slug: "payments",
+    titleId: "Cara Terima QRIS Statis + Dinamis",
+    titleEn: "How to Accept Static + Dynamic QRIS",
+    descId: "QR dinamis per transaksi atau stiker QR statis toko — settlement otomatis, tanpa EDC.",
+    descEn: "Dynamic QR per transaction or your store's static QR sticker — automatic settlement, no EDC.",
+  },
+  {
+    slug: "inventory",
+    titleId: "Cara Cek Stok & Stok Opname",
+    titleEn: "How to Check Stock & Do Stock Opname",
+    descId: "Lihat stok real-time, catat stok masuk-keluar, dan opname tanpa kertas.",
+    descEn: "See real-time stock, record stock in-out, and count stock without paper.",
+  },
+  {
+    slug: "offline-mode",
+    titleId: "Cara Jualan Saat Internet Mati",
+    titleEn: "How to Keep Selling With No Internet",
+    descId: "Transaksi antre lokal dan tersinkron otomatis — kasir tidak pernah berhenti.",
+    descEn: "Sales queue locally and sync automatically — the counter never stops.",
+  },
+  {
+    slug: "shifts",
+    titleId: "Cara Buka-Tutup Shift & Rekonsiliasi Kas",
+    titleEn: "How to Open-Close Shifts & Reconcile Cash",
+    descId: "Saldo awal, kas masuk-keluar, hitung akhir shift, dan laporan EOD.",
+    descEn: "Opening float, cash in-out, end-of-shift count, and EOD report.",
+  },
+];
+
+const docHref = (slug: string) => getRelativeLocaleUrl(locale, `docs/${slug}`);
+---
+
+<Base title={`kasir.mu — ${pageTitle}`} description={t(locale, "pageDesc.cara")}>
+  <section class="mx-auto max-w-4xl px-4 py-16">
+    <div data-reveal class="text-center">
+      <h1 class="text-4xl font-bold sm:text-5xl">{pageTitle}</h1>
+      <p class="mx-auto mt-6 max-w-2xl text-lg text-muted">{t(locale, "pageDesc.cara")}</p>
+    </div>
+    <div class="mt-12 grid gap-4 sm:grid-cols-2">
+      {guides.map((g) => (
+        <a data-reveal href={docHref(g.slug)} class="rounded-xl border border-ink/10 bg-surface/40 p-6 transition-all duration-200 hover:border-ink/20 hover:shadow-md hover:-translate-y-0.5">
+          <h2 class="text-lg font-semibold">{locale === "id" ? g.titleId : g.titleEn}</h2>
+          <p class="mt-2 text-sm text-muted">{locale === "id" ? g.descId : g.descEn}</p>
+        </a>
+      ))}
+    </div>
+  </section>
+  <script type="application/ld+json" is:inline set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": guides.map((g) => ({
+      "@type": "Question",
+      "name": locale === "id" ? g.titleId : g.titleEn,
+      "acceptedAnswer": { "@type": "Answer", "text": locale === "id" ? g.descId : g.descEn },
+    })),
+  })} />
+</Base>
