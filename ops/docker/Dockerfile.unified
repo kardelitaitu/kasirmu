@@ -186,10 +186,20 @@ FROM caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95a
 # DOCKER-02: base images pinned to immutable digests (refreshed 2026-08-17).
 FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS runtime
 
+# DOCKER-14: libudev1 is the RUNTIME half of the builder's libudev-dev. The
+# binary links libudev.so.1 through kasirmu-hal -> serialport 4.9.0 ->
+# libudev 0.3.0 -> libudev-sys, and debian:bookworm-slim does not ship it.
+# Without it the image BUILDS and then every container dies at exec with
+# "error while loading shared libraries: libudev.so.1: cannot open shared
+# object file". Dockerfile.server has always installed it -- its runtime
+# comment says the same thing -- and it builds the identical
+# `kasirmu-cloud` artifact. This file did not, so the gap could only ever
+# surface after the build-time libudev-dev gap was closed.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         libc6 \
+        libudev1 \
         supervisor \
         wget \
         jq \
