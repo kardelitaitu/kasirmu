@@ -166,8 +166,8 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [x] `cargo test` passes across all crates (5,800+ tests, 0 failed)
 - [x] `cargo clippy -- -D warnings` passes with zero warnings
 - [x] 5,800+ unit tests across the `oz-*` crate ecosystem, plus ~6,700 UI tests across 405 test files
-- [x] Data Management UI wired to real IPC (backup, export/import .ozpkg)
-- [x] `kasirmu-cli import-ozpkg` writes data to DB (products, categories, sales, customers, users, settings) — except settings rows the shared platform-core predicate `is_non_exportable_setting_key` marks non-exportable, which are skipped rather than written
+- [x] Data Management UI wired to real IPC (backup, export/import .kasirpkg)
+- [x] `kasirmu-cli import (was import-ozpkg)` writes data to DB (products, categories, sales, customers, users, settings) — except settings rows the shared platform-core predicate `is_non_exportable_setting_key` marks non-exportable, which are skipped rather than written
 - [x] StaffLoginScreen supports hardware keyboard PIN entry (digits, Backspace, Enter, Escape)
 - [ ] App launches on Windows and Linux
 
@@ -283,11 +283,11 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 ### Data Management
 - [x] `kasirmu-cli backup` — raw SQLite snapshot (`.db` file)
 - [x] `kasirmu-cli restore` — restore from snapshot
-- [x] `kasirmu-cli export` — encrypted `.ozpkg` (Argon2id + AES-256-GCM + zstd)
+- [x] `kasirmu-cli export` — encrypted `.kasirpkg` (Argon2id + AES-256-GCM + zstd)
   - Flags: `--types`, `--password`
-- [x] `kasirmu-cli import` — decrypt and apply `.ozpkg`
+- [x] `kasirmu-cli import` — decrypt and apply `.kasirpkg`
   - Flags: `--dry-run`, `--password`
-- [x] Feature flags embedded in `.ozpkg` plaintext metadata
+- [x] Feature flags embedded in `.kasirpkg` plaintext metadata
 
 ### Updates & Packaging
 - [x] Tauri auto-update (`tauri.conf.json` updater section → GitHub releases)

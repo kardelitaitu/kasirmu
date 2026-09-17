@@ -47,7 +47,7 @@ pub enum Command {
         output: String,
     },
     /// Write a CSV report for the given time window (scaffold).
-    Export {
+    ExportCsv {
         /// Report kind (e.g. `daily-summary`, `sales-by-hour`).
         kind: String,
     },
@@ -68,7 +68,7 @@ pub enum Command {
         input: String,
     },
     /// Export data to an encrypted .kasirpkg file (also accepts legacy .ozpkg files).
-    ExportKasirpkg {
+    Export {
         /// Output file path.
         #[arg(short, long)]
         output: String,
@@ -80,7 +80,7 @@ pub enum Command {
         password: String,
     },
     /// Import data from an encrypted .kasirpkg file (also accepts legacy .ozpkg files).
-    ImportKasirpkg {
+    Import {
         /// Input .kasirpkg file path.
         #[arg(short, long)]
         input: String,

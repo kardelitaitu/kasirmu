@@ -107,19 +107,19 @@ pub fn run() -> Result<()> {
         Some(Command::InitDb(args)) => run_init_db(&conn, &args),
         Some(Command::Product(args)) => run_product(&conn, args),
         Some(Command::Backup { output }) => run_backup(&conn, &output),
-        Some(Command::Export { kind }) => run_export(&conn, &kind),
+        Some(Command::ExportCsv { kind }) => run_export(&conn, &kind),
         Some(Command::Category(args)) => run_category(&conn, args),
         Some(Command::Inventory(args)) => run_inventory(&conn, args),
         Some(Command::Sale(args)) => run_sale(&conn, args),
         Some(Command::Customer(args)) => run_customer(&conn, args),
         Some(Command::User(args)) => run_user(&conn, args),
         Some(Command::Restore { input }) => run_restore(conn, &input),
-        Some(Command::ExportKasirpkg {
+        Some(Command::Export {
             output,
             types,
             password,
         }) => run_export_kasirpkg(&conn, &output, &types, &password),
-        Some(Command::ImportKasirpkg {
+        Some(Command::Import {
             input,
             password,
             dry_run,

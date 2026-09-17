@@ -186,7 +186,7 @@ Key requirements:
 - Manifests are validated: kebab-case plugin IDs, strict SemVer, recognised
   permissions only, unique IDs, and script paths confined to the plugin
   directory (no `..`, absolute paths, or symlink escapes)
-- `.ozpkg` archives are parsed with path-traversal and zip-bomb protections
+- `.kasirpkg` archives are parsed with path-traversal and zip-bomb protections
 
 ## Creating a Plugin
 

@@ -78,7 +78,7 @@ oz-pos/
 │   ├─ kasirmu-crypto/            # Cryptographic primitives (secret encryption at rest)
 │   ├─ kasirmu-media/             # Media pipeline (compress, crop, thumbnail)
 │   ├─ kasirmu-notification/      # Notification dispatch (email templates, delivery)
-│   ├─ kasirmu-plugin/            # Plugin loader (.ozpkg archives, manifest, sandbox)
+│   ├─ kasirmu-plugin/            # Plugin loader (.kasirpkg archives, manifest, sandbox)
 │   ├─ kasirmu-security/          # Security crate (keyring, TLS, PCI masking)
 │   │   ├─ Cargo.toml
 │   │   └─ src/

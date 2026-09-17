@@ -139,10 +139,10 @@ fn cli_parse_custom_db() {
 }
 
 #[test]
-fn cli_parse_export_kasirpkg() {
+fn cli_parse_export() {
     let cli = Cli::try_parse_from([
         "oz",
-        "export-kasirpkg",
+        "export",
         "-o",
         "data.kasirpkg",
         "-p",
@@ -150,21 +150,21 @@ fn cli_parse_export_kasirpkg() {
     ])
     .unwrap();
     match cli.command {
-        Some(Command::ExportKasirpkg {
+        Some(Command::Export {
             output, password, ..
         }) => {
             assert_eq!(output, "data.kasirpkg");
             assert_eq!(password, "secret123");
         }
-        _ => panic!("expected ExportKasirpkg"),
+        _ => panic!("expected Export"),
     }
 }
 
 #[test]
-fn cli_parse_import_kasirpkg() {
+fn cli_parse_import() {
     let cli = Cli::try_parse_from([
         "oz",
-        "import-kasirpkg",
+        "import",
         "-i",
         "data.kasirpkg",
         "-p",
@@ -173,7 +173,7 @@ fn cli_parse_import_kasirpkg() {
     ])
     .unwrap();
     match cli.command {
-        Some(Command::ImportKasirpkg {
+        Some(Command::Import {
             input,
             password,
             dry_run,
@@ -182,7 +182,7 @@ fn cli_parse_import_kasirpkg() {
             assert_eq!(password, "secret123");
             assert!(dry_run);
         }
-        _ => panic!("expected ImportKasirpkg"),
+        _ => panic!("expected Import"),
     }
 }
 
@@ -285,10 +285,10 @@ fn cli_parse_inventory_adjust() {
 
 #[test]
 fn cli_parse_export_csv() {
-    let cli = Cli::try_parse_from(["oz", "export", "daily-summary"]).unwrap();
+    let cli = Cli::try_parse_from(["oz", "export-csv", "daily-summary"]).unwrap();
     match cli.command {
-        Some(Command::Export { kind }) => assert_eq!(kind, "daily-summary"),
-        _ => panic!("expected Export"),
+        Some(Command::ExportCsv { kind }) => assert_eq!(kind, "daily-summary"),
+        _ => panic!("expected ExportCsv"),
     }
 }
 
@@ -296,7 +296,7 @@ fn cli_parse_export_csv() {
 fn cli_parse_export_with_types_and_password() {
     let cli = Cli::try_parse_from([
         "oz",
-        "export-kasirpkg",
+        "export",
         "-o",
         "backup.kasirpkg",
         "-p",
@@ -306,7 +306,7 @@ fn cli_parse_export_with_types_and_password() {
     ])
     .unwrap();
     match cli.command {
-        Some(Command::ExportKasirpkg {
+        Some(Command::Export {
             output,
             password,
             types,
@@ -316,6 +316,6 @@ fn cli_parse_export_with_types_and_password() {
             assert_eq!(password, "secret");
             assert_eq!(types, "products,customers");
         }
-        _ => panic!("expected ExportKasirpkg"),
+        _ => panic!("expected Export"),
     }
 }

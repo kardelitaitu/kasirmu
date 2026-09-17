@@ -478,7 +478,7 @@ details: [crates/kasirmu-lua/README.md](../../crates/kasirmu-lua/README.md).
 
 ## 9. `oz` CLI (local batch scripting)
 
-Migrations, backup/restore, CSV export, encrypted `.ozpkg` export/import,
+Migrations, backup/restore, CSV export, encrypted `.kasirpkg` export/import,
 and product/category/inventory/sale/customer/user CRUD straight against the
 SQLite DB — the right tool for cron-style maintenance on the terminal
 itself. Subcommand table and conventions (minor units, `--db`):
