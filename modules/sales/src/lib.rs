@@ -19,7 +19,7 @@ next: none | perf: N/A
 //! (DB CRUD, Tauri commands) and frontend (screens, API calls,
 //! Fluent locale) still live in their original locations:
 //!
-//! - Backend: `crates/kasirmu-core/src/db/sales.rs` + `apps/desktop-client/src/commands/pos.rs`
+//! - Backend: `crates/kasirmu-core/src/db/sales.rs` + `apps/desktop-tauri/src/commands/pos.rs`
 //! - Frontend: `ui/src/features/sales/` + `ui/src/api/sales.ts`
 //! - Locale: `shared-ui/locales/sales.ftl`
 //!

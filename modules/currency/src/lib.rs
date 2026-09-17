@@ -23,13 +23,13 @@ fixed 2026-07-25 (glm-5.3 review P2 pass): F-022 — repository write paths (cre
 //! and frontend still live in their original locations:
 //!
 //! - Backend: `modules/currency/src/repository.rs` + `crates/kasirmu-core/src/db/settings.rs` (exchange rate methods)
-//! - Commands: `apps/desktop-client/src/commands/currencies.rs` + `apps/desktop-client/src/commands/exchange_rates.rs`
+//! - Commands: `apps/desktop-tauri/src/commands/currencies.rs` + `apps/desktop-tauri/src/commands/exchange_rates.rs`
 //! - Frontend: `ui/src/features/currency/`
 //! - API: `ui/src/api/currency.ts`
 //!
 //! The exchange-rate model and repository have now been moved into
 //! `modules/currency/`. The Tauri command handlers still live in
-//! `apps/desktop-client/src/commands/exchange_rates.rs` and will be
+//! `apps/desktop-tauri/src/commands/exchange_rates.rs` and will be
 //! migrated in a later phase.
 //!
 //! ## Module manifest

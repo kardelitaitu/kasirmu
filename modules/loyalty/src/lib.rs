@@ -21,7 +21,7 @@ next: none | perf: N/A
 //!
 //! - Domain: `crates/kasirmu-core/src/loyalty.rs`
 //! - DB: `crates/kasirmu-core/src/db/loyalty.rs`
-//! - Commands: `apps/desktop-client/src/commands/` (TBD)
+//! - Commands: `apps/desktop-tauri/src/commands/` (TBD)
 //! - Frontend: `ui/src/features/loyalty/` (LoyaltyManagementScreen)
 //! - API: `ui/src/api/` (TBD)
 //! - Locale: `shared-ui/locales/` (TBD)
