@@ -446,7 +446,7 @@ const ROUTE_VERBS: [&str; 8] = [
 /// loudly and is trivially reworded, the safe direction for a guard.
 fn source_registered_routes() -> BTreeMap<String, BTreeSet<String>> {
     let sources: &[&str] = &[
-        include_str!("../../../crates/oz-api/src/lib.rs"),
+        include_str!("../../../crates/kasirmu-api/src/lib.rs"),
         include_str!("main.rs"),
         include_str!("sync_api.rs"),
         include_str!("webhooks.rs"),

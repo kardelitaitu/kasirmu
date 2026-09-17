@@ -19,8 +19,8 @@ next: none | perf: N/A
 //! (screens, API calls, Fluent locale) still live in their
 //! original locations:
 //!
-//! - Domain: `crates/oz-core/src/loyalty.rs`
-//! - DB: `crates/oz-core/src/db/loyalty.rs`
+//! - Domain: `crates/kasirmu-core/src/loyalty.rs`
+//! - DB: `crates/kasirmu-core/src/db/loyalty.rs`
 //! - Commands: `apps/desktop-client/src/commands/` (TBD)
 //! - Frontend: `ui/src/features/loyalty/` (LoyaltyManagementScreen)
 //! - API: `ui/src/api/` (TBD)

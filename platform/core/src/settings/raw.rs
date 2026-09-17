@@ -70,7 +70,7 @@ impl Settings {
     ///
     /// `Settings::load_all` is deliberately NOT filtered and must not be. It is
     /// a general-purpose internal accessor — `Settings::load_features` and
-    /// `Settings::prune_stale_features` (crates/oz-core) both read through it,
+    /// `Settings::prune_stale_features` (crates/kasirmu-core) both read through it,
     /// and feature rows are ordinary settings rows — so filtering it would
     /// re-type a whole-table read as an egress read and silently break feature
     /// pruning. Portability is a property of the caller's policy, expressed by
@@ -379,7 +379,7 @@ impl Settings {
     ///
     /// `owner` is the manager NAME, not the wording. Only the desktop lane can
     /// name a manager (its `managed_key_owner` label lookup, in
-    /// `crates/oz-bridge/src/settings.rs`); the tablet has no manager surface and
+    /// `crates/kasirmu-bridge/src/settings.rs`); the tablet has no manager surface and
     /// passes `None`, which is the generic `dedicated` spelling the bridge batch
     /// door already used. Before this, each lane carried its own paraphrase of
     /// one rule — the tablet hardcoded one phrasing, the bridge built another at
@@ -459,7 +459,7 @@ impl Settings {
     /// write stays non-fatal — warned about, the value write stands. Why
     /// that is safe is a dated claim, not an invariant, and it lives where
     /// the claim was first written down: `SAFETY_BASIS` in
-    /// `crates/oz-cli/src/commands/credential_deltas.rs` — nothing reads
+    /// `crates/kasirmu-cli/src/commands/credential_deltas.rs` — nothing reads
     /// the ledger back and `get_version` has zero production callers, AS
     /// OF 2026-09-12. (An earlier draft of this line said "the sync layer
     /// reconstructs" from the settings table; no such code exists — the
@@ -467,7 +467,7 @@ impl Settings {
     /// this file.) A missing delta row is also not a rare swallowed error:
     /// the ledger covers ONLY the tracked doors, and every typed setter —
     /// the receipt, store and credit saves in
-    /// `crates/oz-bridge/src/settings.rs` among them — writes its value
+    /// `crates/kasirmu-bridge/src/settings.rs` among them — writes its value
     /// with no delta row at all, so an incomplete ledger is the design,
     /// not the exception.
     pub fn set_tracked(
@@ -506,12 +506,12 @@ impl Settings {
     /// value write stands. Why that is safe is a dated claim, not an
     /// invariant: nothing reads the ledger back and `get_version` has zero
     /// production callers, AS OF 2026-09-12, as first written down in
-    /// `SAFETY_BASIS` (`crates/oz-cli/src/commands/credential_deltas.rs`)
+    /// `SAFETY_BASIS` (`crates/kasirmu-cli/src/commands/credential_deltas.rs`)
     /// — the "sync layer can reconstruct" mechanism this line used to cite
     /// does not exist. Nor is a missing delta row an exception to a
     /// complete ledger: it covers only the tracked doors, while every
     /// typed setter (the receipt, store and credit saves in
-    /// `crates/oz-bridge/src/settings.rs`) writes its value with no delta
+    /// `crates/kasirmu-bridge/src/settings.rs`) writes its value with no delta
     /// row at all.
     ///
     /// A batch caller that must refuse BEFORE writing its first row asks
@@ -559,7 +559,7 @@ impl Settings {
         // three good rows and one credential row wrote the three and refused
         // the fourth. The bridge now refuses both guards batch-wide before any
         // write, so the two doors really do agree; see
-        // `crates/oz-bridge/src/settings.rs::run_set_settings_batch`.
+        // `crates/kasirmu-bridge/src/settings.rs::run_set_settings_batch`.
         //
         // DEAD CODE, RECORDED NOT DELETED (08-09-26 review): this function has
         // no production caller — only `oz_core::settings` re-exports it and
@@ -685,7 +685,7 @@ impl IngestPolicyKind for IngestPolicy {
             //
             // THE ASYMMETRY IS THE DEBT, stated so it does not read as a rule:
             // these names still leave this install in a .ozpkg, and the egress
-            // gate in crates/oz-bridge/src/settings.rs and
+            // gate in crates/kasirmu-bridge/src/settings.rs and
             // apps/tablet-client/src/commands/settings.rs asks admits(), so
             // either list can still be OFFERED to the network and is now simply
             // refused on arrival. Closing the namespace is the paired allow-list,
@@ -727,14 +727,14 @@ impl IngestPolicyKind for IngestPolicy {
 /// * The sealed policy above — [`IngestPolicyKind::admits`] ORs it in for BOTH
 ///   untrusted directions, so `.ozpkg` and remote-sync ingest refuse these
 ///   prefixes alongside the deny list. [`Settings::load_exportable`] and
-///   `crates/oz-bridge/src/data.rs` reach it that way, and so does
-///   `crates/oz-cli/src/commands/ozpkg.rs`, which asks `PortablePackage` rather
+///   `crates/kasirmu-bridge/src/data.rs` reach it that way, and so does
+///   `crates/kasirmu-cli/src/commands/ozpkg.rs`, which asks `PortablePackage` rather
 ///   than the bare predicate — non-credential but manager-owned rows like
 ///   `local_api.enabled` and `lan_server.bind` therefore travel in neither a
 ///   CLI package nor a GUI one.
 /// * Tablet write funnel — `apps/tablet-client/src/commands/settings.rs` calls
 ///   this predicate directly and refuses a manager-owned key with it.
-/// * Desktop write funnel — `crates/oz-bridge/src/settings.rs` refuses with
+/// * Desktop write funnel — `crates/kasirmu-bridge/src/settings.rs` refuses with
 ///   this predicate too, through its `managed_key_owner`, which adds ONLY the
 ///   owner label the refusal message shows. The label stays in the bridge
 ///   because the message text is a UI surface rather than a second policy, and
@@ -765,7 +765,7 @@ impl IngestPolicyKind for IngestPolicy {
 /// ASCII-case-folds through `keys::normalised_candidate`, and so does this,
 /// against the SAME shared fold (it is `pub` in `keys.rs` because the two
 /// callers of the fold sit on opposite sides of the crate boundary — this gate
-/// inside platform-core, the owner label in `crates/oz-bridge/src/settings.rs`
+/// inside platform-core, the owner label in `crates/kasirmu-bridge/src/settings.rs`
 /// — and no second normalisation is written here). Before that, one
 /// boolean had two matching semantics inside it: `IngestPolicy::PortablePackage
 /// | RemoteSync` refused `STRIPE.API_KEY` on the credential arm while its

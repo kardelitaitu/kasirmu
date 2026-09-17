@@ -1305,7 +1305,7 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
 
     // Second Apply replays the STALE base revision (0) while the document is
     // already at 1, and the revision gate rejects it at the FRONT of
-    // apply_topology_diff (crates/oz-bridge/src/topology/commands.rs:527-541):
+    // apply_topology_diff (crates/kasirmu-bridge/src/topology/commands.rs:527-541):
     // that return runs before the recovery journal is written (:646) and before
     // the store transaction opens (:674-905), so this call commits nothing and
     // there is nothing here for the live error path to compensate.
@@ -2068,7 +2068,7 @@ async fn apply_naming_a_foreign_store_records_which_database_receives_the_writes
         // user-scoped carries an explicit branch LIST naming store_a only, so
         // store_b sits outside it, and workspaces_all = true so the workspace
         // dimension cannot be the reason for any denial: the question is the
-        // branch intersection at crates/oz-core/src/db/assignments.rs:204.
+        // branch intersection at crates/kasirmu-core/src/db/assignments.rs:204.
         store
             .set_assignment(
                 "user-scoped",
@@ -2134,13 +2134,13 @@ async fn apply_naming_a_foreign_store_records_which_database_receives_the_writes
     //
     //  * user-legacy (role-owner, NO assignments row) is refused with a
     //    SUBSCRIPTION-tier message, not a scope message. The permission call at
-    //    crates/oz-bridge/src/topology/commands.rs:476-482 runs BEFORE the tier
+    //    crates/kasirmu-bridge/src/topology/commands.rs:476-482 runs BEFORE the tier
     //    check (commands.rs:~713), so an assignment-less session passing scope on a
     //    store it merely NAMED in the diagram is the observation -- the write was
     //    stopped by an entitlement that has nothing to do with store identity.
     //  * user-scoped (explicit branch list = [store_a], store_b named by the
     //    diagram) is refused with "branch/workspace out of scope", which is
-    //    crates/oz-core/src/db/assignments.rs:204 intersecting exactly as written.
+    //    crates/kasirmu-core/src/db/assignments.rs:204 intersecting exactly as written.
     //
     // No row landed in either store, so the residual-state assertions are the
     // point: whatever the ruling on item 20 turns out to be, today the divergence
@@ -2195,7 +2195,7 @@ async fn apply_naming_a_foreign_store_records_which_database_receives_the_writes
 // Fact of record, established BEFORE choosing the fix: the scoped-create
 // family writes the profile row into the SESSION store's database — pinned
 // green by `create_location_profile_scoped_end_to_end_owner` at
-// `crates/oz-bridge/src/locations_tests.rs:148-154` (count == 2 after create),
+// `crates/kasirmu-bridge/src/locations_tests.rs:148-154` (count == 2 after create),
 // and `platform_core::StoreDatabaseManager::create_store_db` runs migrations
 // only — which seed every new store database exactly one row under the id
 // 'default', never a self-named row. So the ruling's literal
@@ -2519,7 +2519,7 @@ async fn session_only_row_authorizing_a_foreign_target_is_the_accepted_residual(
 // The ledger is written by `apply_topology_diff` via
 // `topology_apply_request_key(&request_id)` and read back in the block that
 // returns `Ok(TopologyApplyResult { revision })` before the revision gate, in
-// `crates/oz-bridge/src/topology/commands.rs`. Neither case touches the
+// `crates/kasirmu-bridge/src/topology/commands.rs`. Neither case touches the
 // two-store question owned by notes.md item 20.
 
 fn replay_app(
@@ -2733,7 +2733,7 @@ async fn a_different_request_id_carrying_the_same_content_is_not_treated_as_a_re
 // The other two arms of the same idempotency block, one test each:
 //   * a reused request_id carrying a DIFFERENT payload is refused by name --
 //     "topology request id was already used for a different Apply"
-//     (crates/oz-bridge/src/topology/commands.rs:502-507), and
+//     (crates/kasirmu-bridge/src/topology/commands.rs:502-507), and
 //   * a ledger entry with no fingerprint field is REMOVED, not answered from
 //     and not treated as an idempotent success (commands.rs:516-519).
 // Both were first written to assert the WRONG promise and shown to fail: the

@@ -77,7 +77,7 @@ fn resolve_session_expired_token_is_rejected_and_removed() {
 #[test]
 fn resolve_scope_isolates_store_databases() {
     let test_dir =
-        std::env::temp_dir().join(format!("oz-pos-tablet-scope-test-{}", uuid::Uuid::now_v7()));
+        std::env::temp_dir().join(format!("kasirmu-tablet-scope-test-{}", uuid::Uuid::now_v7()));
     let manager = StoreDatabaseManager::new(test_dir.clone(), oz_core::migrations::ALL);
     let state = AppState::for_test_with_db_manager(manager);
     for (token, store_id) in [("token-a", "store-a"), ("token-b", "store-b")] {

@@ -129,7 +129,7 @@ cargo tauri dev               # Terminal 2: Tauri dev shell
 ## Key state
 
 - `AppState` holds an `Arc<Mutex<Connection>>` for SQLite (shared with the background sync daemon), an `Arc<DriverRegistry>` for HAL devices, and a `Mutex<Option<oneshot::Sender<()>>>` for scanner cancellation — field types read from the `pub struct AppState` body (`src/state.rs:75`, closing brace at `:211`) on 2026-09-14. At startup the client calls `platform_startup::hardware::register_hardware`, which maps the saved `TerminalProfile` → `HardwareConfig` and applies it to the registry (`apply_config`) so the operator's configured printers/displays/drawers are usable at runtime.
-- Scanner background tasks broadcast `barcode:scanned` / `barcode:error` to the UI. As measured 2026-09-14 the emit happens in the bridge, not in this shell: `crates/oz-bridge/src/hardware.rs:577` and `:582` call `sink.emit(...)` on the injected `EventSink` (`apps/desktop-client/src/commands/hardware.rs:9` says so in its module doc); `app.emit("barcode:scanned", …)` survives as a direct call only in `apps/tablet-client/src/commands/hardware.rs:352` and `:629`.
+- Scanner background tasks broadcast `barcode:scanned` / `barcode:error` to the UI. As measured 2026-09-14 the emit happens in the bridge, not in this shell: `crates/kasirmu-bridge/src/hardware.rs:577` and `:582` call `sink.emit(...)` on the injected `EventSink` (`apps/desktop-client/src/commands/hardware.rs:9` says so in its module doc); `app.emit("barcode:scanned", …)` survives as a direct call only in `apps/tablet-client/src/commands/hardware.rs:352` and `:629`.
 - The `app` handle is `Option<AppHandle>` — always unwrap via `if let Some(ref app)`.
 
 > last audited 08-09-26 by docs-auditor

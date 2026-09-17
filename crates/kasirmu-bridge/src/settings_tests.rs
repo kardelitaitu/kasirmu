@@ -1600,9 +1600,9 @@ fn batch_write_of_two_ordinary_keys_lands_both() {
 // Every test above calls `run_set_settings_batch` with a BARE connection, a
 // shape the product never uses. `set_settings_scoped` opens its own
 // `unchecked_transaction` and runs the loop INSIDE it
-// (crates/oz-bridge/src/settings.rs:1264-1266). A loop that opens a transaction
+// (crates/kasirmu-bridge/src/settings.rs:1264-1266). A loop that opens a transaction
 // of its own therefore nests, and SQLite rejects the second BEGIN — the same
-// class `crates/oz-bridge/src/setup.rs:100-106` documents for
+// class `crates/kasirmu-bridge/src/setup.rs:100-106` documents for
 // `Settings::set_batch`. These two tests reproduce the command's shape.
 
 /// The batch door must work inside the transaction the command already owns.
@@ -1874,7 +1874,7 @@ fn both_shell_lanes_take_the_credential_refusal_from_its_one_producer() {
     let mut carriers: Vec<String> = Vec::new();
     for (label, source) in [
         ("platform/core/src/settings/raw.rs", RAW_RS),
-        ("crates/oz-bridge/src/settings.rs", BRIDGE_SETTINGS_RS),
+        ("crates/kasirmu-bridge/src/settings.rs", BRIDGE_SETTINGS_RS),
         (
             "apps/tablet-client/src/commands/settings.rs",
             TABLET_SETTINGS_RS,
@@ -1916,7 +1916,7 @@ fn both_shell_lanes_take_the_credential_refusal_from_its_one_producer() {
     // of its doors, the tablet at its one door.
     for (label, source, wrap, asks) in [
         (
-            "crates/oz-bridge/src/settings.rs",
+            "crates/kasirmu-bridge/src/settings.rs",
             BRIDGE_SETTINGS_RS,
             "BridgeError::Invalid(refusal)",
             2usize,

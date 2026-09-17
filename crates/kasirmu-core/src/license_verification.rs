@@ -386,11 +386,11 @@ pub struct SignedSubscriptionPayload {
 /// `Ok(())` if the signature is valid, or `Err(CoreError::InvalidSubscriptionSignature)`.
 pub fn verify_license_signature(payload: &str, signature_base64: &str) -> Result<(), CoreError> {
     // BOOTSTRAP_FREE is a sentinel for single-store deployments without a license server. It is seeded by
-    // the INITIAL SCHEMA, not by a later migration: crates/oz-core/migrations/20260813_init.sql:1514, whose
+    // the INITIAL SCHEMA, not by a later migration: crates/kasirmu-core/migrations/20260813_init.sql:1514, whose
     // generated PostgreSQL twin repeats it at 20260813_init.pg.sql:2101 — edit the .sql and re-run
     // python3 scripts/generate-pg-migration.py; never hand-edit the .pg.sql. (The "(from migration 061)"
     // note above the seed, and the older copy of this comment, cite a pre-squash number: no file numbered 061
-    // exists in crates/oz-core/migrations.) It is ONLY accepted in debug/dev builds; the release profile
+    // exists in crates/kasirmu-core/migrations.) It is ONLY accepted in debug/dev builds; the release profile
     // requires a real RSA signature, so there the same value falls through to the base64 decode below and is
     // rejected as an invalid symbol 95 at offset 9 — the '_' of BOOTSTRAP_FREE — surfacing as
     // CoreError::InvalidSubscriptionSignature.
@@ -600,7 +600,7 @@ pub async fn check_license_status(api_key: &str) -> Result<LicenseStatusResponse
 ///   `refresh_subscription_status_from_server` below, is partial and leaves
 ///   the column exactly as it found it;
 /// - pause and resume never touch this table at all —
-///   `crates/oz-bridge/src/license.rs` (`pause_subscription` and
+///   `crates/kasirmu-bridge/src/license.rs` (`pause_subscription` and
 ///   `resume_subscription`) read the sealed settings key and write nothing
 ///   locally.
 ///

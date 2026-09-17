@@ -21,7 +21,7 @@ next: WeightScale discovery path still open; otherwise stable | perf: N/A
 //! and printer-kick), serial customer pole displays, and weight scales.
 //!
 //! Card-payment terminals: the [`EdcTerminal`] trait is defined here and its
-//! drivers live in `crates/oz-hal/src/drivers/edc/` (`wired`, `wireless`, plus
+//! drivers live in `crates/kasirmu-hal/src/drivers/edc/` (`wired`, `wireless`, plus
 //! the Ingenico/PAX/Verifone codecs under `drivers/edc/protocol/`), registered
 //! through [`registry::DriverRegistry`] by the setup wizard. NFC readers are not
 //! implemented at all.

@@ -25,7 +25,7 @@
 //!   the at-rest question for the keys it refuses.
 //!
 //! Every existing test asks whether a deny-listed key is *refused on read*
-//! (`crates/oz-bridge/src/settings_tests.rs:404-413`) or whether it is *a
+//! (`crates/kasirmu-bridge/src/settings_tests.rs:404-413`) or whether it is *a
 //! member of the list*. None asks what actually landed in the column. A key
 //! can therefore sit in the database in cleartext and every suite in the repo
 //! stays green, because redaction on the read path is not encryption on the
@@ -48,10 +48,10 @@
 //! # Why classification has to call a decrypt function
 //!
 //! It does, and that is a finding rather than a shortcut. `settings.value` is
-//! a bare `TEXT` column (`crates/oz-core/migrations/20260813_init.sql:633-637`)
+//! a bare `TEXT` column (`crates/kasirmu-core/migrations/20260813_init.sql:633-637`)
 //! with no prefix, no version byte, no marker column, no discriminator of any
 //! kind. The only shape predicate in the codebase, `looks_like_ciphertext`
-//! (`crates/oz-crypto/src/lib.rs:311`), is PRIVATE, so it cannot be reused
+//! (`crates/kasirmu-crypto/src/lib.rs:311`), is PRIVATE, so it cannot be reused
 //! here and is reimplemented below. Because that predicate is a base64 length
 //! test and not a tag, a plaintext value that merely happens to be
 //! base64-shaped is indistinguishable from real ciphertext by inspection —
@@ -129,7 +129,7 @@ fn raw_delta_values(conn: &Connection, key: &str) -> Vec<String> {
 // -- Classification ---------------------------------------------------------
 
 /// Reimplementation of the PRIVATE `oz_crypto::looks_like_ciphertext`
-/// (`crates/oz-crypto/src/lib.rs:311`), which this test cannot call. Kept here
+/// (`crates/kasirmu-crypto/src/lib.rs:311`), which this test cannot call. Kept here
 /// as a deliberate duplicate: a census having to copy a private heuristic in
 /// order to classify its own database is itself the evidence that no public
 /// discriminator exists.
@@ -696,7 +696,7 @@ fn census_covers_the_deny_list_except_the_documented_five() {
 /// SEPARATE declaration of the same value —
 /// `email_report::SMTP_CONFIG_SETTINGS_KEY` — one in the tablet command
 /// (`apps/tablet-client/src/commands/settings.rs:604`), one in the desktop
-/// funnel (`crates/oz-bridge/src/settings.rs:484`). Nothing links the two
+/// funnel (`crates/kasirmu-bridge/src/settings.rs:484`). Nothing links the two
 /// constants but their text, so they are one rename apart from disagreeing:
 /// the funnel would keep excepting the key it names while the merge writes
 /// under a key the exception no longer covers, the passwordless blob would
@@ -711,7 +711,7 @@ fn smtp_config_exception_key_and_merge_key_hold_the_same_value() {
     let merge_key = kasirmu_core::export::email_report::SMTP_CONFIG_SETTINGS_KEY;
     assert_eq!(
         exception, merge_key,
-        "the cleartext-credential exception and the SMTP merge key drifted apart: keys::SMTP_CONFIG (platform/core/src/settings/keys.rs:220, compared by the tracked funnel) is {exception:?}, but SMTP_CONFIG_SETTINGS_KEY (crates/oz-core/src/export/email_report.rs:112, compared by both merge seams in apps/tablet-client/src/commands/settings.rs and crates/oz-bridge/src/settings.rs) is {merge_key:?} — reword either one and the merge writes under a key the exception no longer covers, so the passwordless blob overwrites the stored secret in silence"
+        "the cleartext-credential exception and the SMTP merge key drifted apart: keys::SMTP_CONFIG (platform/core/src/settings/keys.rs:220, compared by the tracked funnel) is {exception:?}, but SMTP_CONFIG_SETTINGS_KEY (crates/kasirmu-core/src/export/email_report.rs:112, compared by both merge seams in apps/tablet-client/src/commands/settings.rs and crates/kasirmu-bridge/src/settings.rs) is {merge_key:?} — reword either one and the merge writes under a key the exception no longer covers, so the passwordless blob overwrites the stored secret in silence"
     );
 }
 
@@ -830,9 +830,9 @@ fn auth_token_is_non_exportable_through_the_secret_list_and_not_the_device_list(
 ///
 /// Refused by the predicate is not the same as refused by the LANE, so this asks
 /// the lane. `is_non_exportable_setting_key` is what `Settings::load_exportable`
-/// filters on for the GUI settings export (`crates/oz-bridge/src/data.rs`) and
+/// filters on for the GUI settings export (`crates/kasirmu-bridge/src/data.rs`) and
 /// `IngestPolicy::PortablePackage` is what the `.ozpkg` lane asks
-/// (`crates/oz-cli/src/commands/ozpkg.rs`, plus `set_batch_with_policy` on
+/// (`crates/kasirmu-cli/src/commands/ozpkg.rs`, plus `set_batch_with_policy` on
 /// restore). Lift `keys::AUTH_TOKEN` out of `SECRET_KEY_DENY_LIST` and a
 /// credential-bearing key becomes packageable in cleartext through BOTH doors, in
 /// every folded spelling at once — the exact state the tree was in before
@@ -859,7 +859,7 @@ fn a_removal_from_the_secret_list_would_make_auth_token_exportable_through_both_
 
 // -- Decision pin: no ciphertext can be attributed to its key ---------------
 
-/// The frozen domain-separation prefixes in `crates/oz-crypto/src/lib.rs`
+/// The frozen domain-separation prefixes in `crates/kasirmu-crypto/src/lib.rs`
 /// (lines 152-176), copied here as OBSERVED STRINGS because every one of them
 /// is a private `const` — `SMTP_DOMAIN`, `API_KEY_DOMAIN`,
 /// `SYNC_API_KEY_DOMAIN`, `SYNC_TERMINAL_SECRET_DOMAIN`,

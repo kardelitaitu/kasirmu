@@ -109,7 +109,7 @@ pub struct AppState {
     /// default feature set and this shell does not enable it, so
     /// `create_cache` always reaches its documented fallback: a `NoopCache`
     /// that "always misses" and reports `is_healthy() == false`
-    /// (`crates/oz-core/src/cache.rs`). The URL passed at construction is
+    /// (`crates/kasirmu-core/src/cache.rs`). The URL passed at construction is
     /// deliberately empty — this shell owns no Redis to point at. The field
     /// exists because `BridgeCtx` requires the leg, **not** because a
     /// working cache is wired: read "uncached" here, never "cached".

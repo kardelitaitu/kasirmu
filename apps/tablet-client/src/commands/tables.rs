@@ -59,7 +59,7 @@ pub async fn get_table_scoped(
 // before any body ran — the whole table-management write surface was dead on
 // this shell, the third occurrence after settings (T4-1) and terminals (T7-2).
 // The actor now comes from the session, matching `oz_bridge::tables`, whose
-// twins never took a caller-named id (`crates/oz-bridge/src/tables.rs:64` resolves
+// twins never took a caller-named id (`crates/kasirmu-bridge/src/tables.rs:64` resolves
 // the session and calls `require_session_permission(&session, TABLES_CREATE)`),
 // and the check is awaited before the store lock rather than inside it.
 //

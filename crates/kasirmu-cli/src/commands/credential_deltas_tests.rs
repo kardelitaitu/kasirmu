@@ -686,7 +686,7 @@ fn an_existing_file_with_no_tables_is_refused_by_the_second_guard_not_the_first(
 // -- The machine-bound blind spot: listed, not tested -----------------------
 
 /// license.api_key is encrypted with the MACHINE-BOUND api_key family
-/// (crates/oz-bridge/src/license.rs:151 passes the installation machine id into
+/// (crates/kasirmu-bridge/src/license.rs:151 passes the installation machine id into
 /// encrypt_api_key), so a portable-only classifier labelled the row CLEARTEXT
 /// with the note that no family can seal it — false, and it landed inside the
 /// cleartext headline, over-stating exposure on exactly the credential a real

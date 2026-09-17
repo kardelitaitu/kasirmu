@@ -31,7 +31,7 @@ pub struct BrandSettingsDto {
 /// shell's `state.db`. The bridge twin reads a different database: it takes the
 /// global lock, resolves the primary location (`get_primary_location`, falling
 /// back to the first profile) and then opens **that location's store db** to read
-/// the same three keys (`crates/oz-bridge/src/branding.rs:128-159`). On a
+/// the same three keys (`crates/kasirmu-bridge/src/branding.rs:128-159`). On a
 /// multi-location install those are different rows, so delegating would change
 /// what the header renders — a behaviour change, which §4 forbids inside an
 /// extraction. Which store is canonical here is the same owner question T4-3
@@ -71,7 +71,7 @@ pub async fn set_brand_primary_colour(
 /// ADR #49 NOT APPLIED, deliberately. The bridge twin does **more** than this
 /// body: it validates the path first — inside the app data directory, with an
 /// extension from `ALLOWED_LOGO_EXTENSIONS` — and writes the *canonicalised*
-/// result (`crates/oz-bridge/src/branding.rs:178-194`, H-3). This shell has
+/// result (`crates/kasirmu-bridge/src/branding.rs:178-194`, H-3). This shell has
 /// never validated, so delegating would either add a check that can start
 /// refusing paths the tablet accepts today, or require passing `app_data: None`
 /// to opt out of it — a security-relevant choice, not an extraction. §4 forbids
@@ -108,7 +108,7 @@ pub async fn set_brand_store_name(
 // are on this shell's debt ledger as `resolves_session_names_no_permission`, while
 // the bridge's twins **do** gate: `get_brand_settings_scoped` on `settings:read`
 // and the three setters on `settings:edit`
-// (`crates/oz-bridge/src/branding.rs:106, 212, 229, 247`). Delegating any of them
+// (`crates/kasirmu-bridge/src/branding.rs:106, 212, 229, 247`). Delegating any of them
 // would therefore make the sweep read the `oz_bridge::` call as proof the shared
 // funnel owns the RBAC, flipping four real ledger entries to "gated" without a
 // permission being added — erasing debt rather than paying it, which §4 forbids.

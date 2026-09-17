@@ -823,7 +823,7 @@ async fn pg_integration_rls_force_blocks_owner() {
     // which is enough to prefer an explicit apply here and not enough to call the
     // helper broken. Same shape as
     // `pg_ddl_guard`'s continue-unserialized fallback at
-    // `crates/oz-api/src/pg_tests.rs:78`-`:82`: an error path that yields a PASS
+    // `crates/kasirmu-api/src/pg_tests.rs:78`-`:82`: an error path that yields a PASS
     // is worse than one that yields a failure. `expect` here fails loudly.
     client
         .batch_execute(oz_core::migrations::PG_INIT)

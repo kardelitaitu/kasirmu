@@ -8,7 +8,7 @@
 //! those signatures moved with the bodies and are re-exported below because the commands
 //! still name them. Nothing here is retained for a sibling test module: there is no
 //! `license_tests.rs` in this crate — that file moved to
-//! `crates/oz-bridge/src/license_tests.rs`, where the three pure helpers are tested
+//! `crates/kasirmu-bridge/src/license_tests.rs`, where the three pure helpers are tested
 //! against the bridge copies that actually run.
 
 use tauri::State;

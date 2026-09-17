@@ -8,7 +8,7 @@
 //! source at test time and placed in exactly one of three states:
 //!
 //! 1. gated — the wrapper resolves a session AND a permission is named on the path the
-//!    wrapper actually takes (its own body, or the crates/oz-bridge/src module it
+//!    wrapper actually takes (its own body, or the crates/kasirmu-bridge/src module it
 //!    forwards to — read the next section before trusting that word);
 //! 2. BY_DESIGN_UNGATED — device and health metadata with no permission on either side,
 //!    so no operator action is being authorised. EMPTY today, by decision rather than by
@@ -19,9 +19,9 @@
 //! # Why the bridge is in the parse set, and what green does NOT mean
 //!
 //! A tablet command wrapper is often a SHIM. Wave A-E lifted the command bodies into
-//! crates/oz-bridge/src; the shell file builds a BridgeCtx, forwards, and maps the error
+//! crates/kasirmu-bridge/src; the shell file builds a BridgeCtx, forwards, and maps the error
 //! back. Measured: 20 of the 318 wrapper bodies in this crate name a permission locally; the
-//! rest forward to crates/oz-bridge/src or run a local body that never asks. So
+//! rest forward to crates/kasirmu-bridge/src or run a local body that never asks. So
 //! judging "is this gated" from the shims alone reports 298 ungated commands and proves
 //! nothing about authorization. The predicate therefore follows the call one crate over
 //! and merges by module stem, which is the same move
@@ -371,7 +371,7 @@ const SINGLE_QUOTE: char = 39 as char;
 /// Module stems whose oz-bridge module names a permission — the merge that makes a shim
 /// judgeable at all.
 fn gated_bridge_stems() -> BTreeSet<String> {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/oz-bridge/src");
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/kasirmu-bridge/src");
     let files = rust_files(&dir);
     assert!(
         files.len() >= 40,
@@ -1101,7 +1101,7 @@ fn drift_pin_guard_marker_vocabulary_is_closed() {
             "require_audit_tier",
             "plan-tier availability gate, not a per-user permission check",
         ),
-        // commands/staff.rs:475 -> Store::require_role_assignable (crates/oz-core):
+        // commands/staff.rs:475 -> Store::require_role_assignable (crates/kasirmu-core):
         // validates that the role being assigned exists and may be assigned. Data
         // integrity around an authorization change, not the authorization itself.
         (

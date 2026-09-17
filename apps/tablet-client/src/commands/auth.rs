@@ -57,7 +57,7 @@ pub use oz_bridge::auth::{
 ///
 /// `debug_upgrade: false` is the tablet's side of a per-client policy that
 /// `Store::record_security_event` documents at
-/// `crates/oz-core/src/db/audit_security.rs:369-373`: the flag is the caller's and is
+/// `crates/kasirmu-core/src/db/audit_security.rs:369-373`: the flag is the caller's and is
 /// passed through unchanged, the desktop's dev Free→Premium promotion applies only under
 /// `cfg!(debug_assertions)`, and "tablet passes `false` so it never mirrors the desktop
 /// divergence". This comment used to cite commit `dfbc41b2` for that invariant; the hash

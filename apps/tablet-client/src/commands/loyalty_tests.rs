@@ -109,7 +109,7 @@ async fn scoped_command_denies_user_without_loyalty_permission() {
     .unwrap();
 
     let temp_dir = std::env::temp_dir().join(format!(
-        "oz-pos-tablet-loyalty-test-{}",
+        "kasirmu-tablet-loyalty-test-{}",
         uuid::Uuid::now_v7()
     ));
     let mut state = AppState::for_test_with_conn(conn);
@@ -149,7 +149,7 @@ async fn scoped_command_reads_only_the_session_store() {
     .unwrap();
 
     let temp_dir = std::env::temp_dir().join(format!(
-        "oz-pos-tablet-loyalty-test-{}",
+        "kasirmu-tablet-loyalty-test-{}",
         uuid::Uuid::now_v7()
     ));
     let mut state = AppState::for_test_with_conn(conn);

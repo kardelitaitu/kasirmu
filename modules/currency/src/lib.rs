@@ -22,7 +22,7 @@ fixed 2026-07-25 (glm-5.3 review P2 pass): F-022 — repository write paths (cre
 //! with the kernel during application startup. The underlying backend
 //! and frontend still live in their original locations:
 //!
-//! - Backend: `modules/currency/src/repository.rs` + `crates/oz-core/src/db/settings.rs` (exchange rate methods)
+//! - Backend: `modules/currency/src/repository.rs` + `crates/kasirmu-core/src/db/settings.rs` (exchange rate methods)
 //! - Commands: `apps/desktop-client/src/commands/currencies.rs` + `apps/desktop-client/src/commands/exchange_rates.rs`
 //! - Frontend: `ui/src/features/currency/`
 //! - API: `ui/src/api/currency.ts`

@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · all owned paths verified: crates/oz-core/src/db/sales.rs, apps/desktop-client/src/commands/pos.rs, ui/src/features/sales, ui/src/api/sales.ts, ui/src/locales/sales.ftl; modules/sales/manifest.json deps [inventory] match; Module trait + Kernel::register/load_all/start_all match platform/kernel API · Status "Phase 2.2 POC" consistent with files still in original locations · RE-AUDITED 31-08 (cont) by docs-auditor: manifest deps [inventory] + perms re-verified; boundary_contract.rs present; the crate has a parity-tested SalesRepository/SalesService mirror NOT wired into runtime (live pipeline still in crates/oz-core/src/db/sales.rs). FIXED: Lifecycle claimed on_load 'checks dependencies' and on_start 'Initializes state' — both are "future phases" comments (lib.rs:85-108 are stubs); corrected to describe the stubs. Overview PROMO-3/COR-7/LOY-03 checkout behaviours re-confirmed; normalized footer -->
+<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · all owned paths verified: crates/kasirmu-core/src/db/sales.rs, apps/desktop-client/src/commands/pos.rs, ui/src/features/sales, ui/src/api/sales.ts, ui/src/locales/sales.ftl; modules/sales/manifest.json deps [inventory] match; Module trait + Kernel::register/load_all/start_all match platform/kernel API · Status "Phase 2.2 POC" consistent with files still in original locations · RE-AUDITED 31-08 (cont) by docs-auditor: manifest deps [inventory] + perms re-verified; boundary_contract.rs present; the crate has a parity-tested SalesRepository/SalesService mirror NOT wired into runtime (live pipeline still in crates/kasirmu-core/src/db/sales.rs). FIXED: Lifecycle claimed on_load 'checks dependencies' and on_start 'Initializes state' — both are "future phases" comments (lib.rs:85-108 are stubs); corrected to describe the stubs. Overview PROMO-3/COR-7/LOY-03 checkout behaviours re-confirmed; normalized footer -->
 
 # Sales Module
 
@@ -19,13 +19,13 @@ The Sales module is the core point-of-sale vertical. It owns the entire sale pip
 
 ## Currently Owns
 
-- **Backend** — Sales CRUD and business logic (`crates/oz-core/src/db/sales.rs`)
+- **Backend** — Sales CRUD and business logic (`crates/kasirmu-core/src/db/sales.rs`)
 - **Commands** — POS pipeline Tauri commands (`apps/desktop-client/src/commands/pos.rs`)
 - **Frontend** — Sale screens (`ui/src/features/sales/`)
 - **API** — TypeScript API client (`ui/src/api/sales.ts`)
 - **Locale** — Fluent translation strings (`ui/src/locales/sales.ftl`)
 
-In the current phase the runtime sale pipeline still runs through the files above (notably `crates/oz-core/src/db/sales.rs`). The crate now also carries a parity-tested mirror — `repository.rs` (`SalesRepository`) and `service.rs` (`SalesService`) — pinned by `tests/boundary_contract.rs`, but these are **not yet wired into the runtime** (the lifecycle hooks below are stubs). A subsequent phase will move the implementation fully into `modules/sales/`.
+In the current phase the runtime sale pipeline still runs through the files above (notably `crates/kasirmu-core/src/db/sales.rs`). The crate now also carries a parity-tested mirror — `repository.rs` (`SalesRepository`) and `service.rs` (`SalesService`) — pinned by `tests/boundary_contract.rs`, but these are **not yet wired into the runtime** (the lifecycle hooks below are stubs). A subsequent phase will move the implementation fully into `modules/sales/`.
 
 ## Lifecycle
 

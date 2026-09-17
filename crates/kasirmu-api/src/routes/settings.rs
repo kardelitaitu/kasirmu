@@ -306,9 +306,9 @@ pub async fn put_settings_handler(
                 // This is NOT a claim that the desktop door applies the same
                 // rule. It does not: outside this handler, `SmtpConfig::validate`
                 // has exactly one production caller — the cloud sender. The
-                // desktop write funnel (crates/oz-bridge/src/settings.rs
+                // desktop write funnel (crates/kasirmu-bridge/src/settings.rs
                 // ::run_set_setting) and the desktop sender
-                // (crates/oz-bridge/src/email.rs:77) never call it. The seam
+                // (crates/kasirmu-bridge/src/email.rs:77) never call it. The seam
                 // this closes is cloud-door to cloud-sender, not desktop to
                 // cloud, and reading it as the latter would make the one shape
                 // below look like a desktop parity change when it is not.

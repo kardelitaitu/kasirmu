@@ -157,7 +157,7 @@ pub struct CategoryTaxRateRow {
 /// guard read `undefined`, `undefined > 0` is `false`, and the dialog offered a
 /// rate that historical sale lines reference with no warning and a live Confirm
 /// button. The backend refused the delete anyway
-/// (`crates/oz-core/src/db/tax/rates.rs:359`), which is why the bug cost the
+/// (`crates/kasirmu-core/src/db/tax/rates.rs:359`), which is why the bug cost the
 /// operator the warning rather than the data — and why nothing surfaced it:
 /// two of these three fields are single words, so they are spelled the same in
 /// either convention, and only the key that gated the button moved.

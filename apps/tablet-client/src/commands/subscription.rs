@@ -11,7 +11,7 @@
 //!
 //! # ADR #49 extraction status — 0 of 4 doors delegated, deliberately
 //!
-//! All four doors have twins in `crates/oz-bridge/src/subscription.rs`, and
+//! All four doors have twins in `crates/kasirmu-bridge/src/subscription.rs`, and
 //! none may be delegated. Three distinct grounds:
 //!
 //! 1. [`get_subscription_capabilities`] is on the registration-gate debt
@@ -23,7 +23,7 @@
 //!    portable. It is still refused, because its last statement calls this
 //!    module's [`load_feature_verdict`], and *that* helper's twin diverges by
 //!    one statement: the bridge applies `ent.apply_debug_upgrade()`
-//!    (`crates/oz-bridge/src/subscription.rs:376`) where this file does not.
+//!    (`crates/kasirmu-bridge/src/subscription.rs:376`) where this file does not.
 //!    Delegating the door would silently swap the callee and make a tablet
 //!    verdict report `premium` while this client's own caps payload reports
 //!    `free` — the exact contradiction the helper's comment exists to

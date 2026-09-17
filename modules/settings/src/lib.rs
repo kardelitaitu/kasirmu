@@ -18,7 +18,7 @@ next: none | perf: N/A
 //! (Settings struct, Tauri commands) and frontend (screens, API calls,
 //! Fluent locale) still live in their original locations:
 //!
-//! - Backend: `crates/oz-core/src/settings.rs` + `crates/oz-core/src/db/settings.rs`
+//! - Backend: `crates/kasirmu-core/src/settings.rs` + `crates/kasirmu-core/src/db/settings.rs`
 //! - Commands: `apps/desktop-client/src/commands/settings.rs`, `setup.rs`, `sync.rs`
 //! - Frontend: `ui/src/features/settings/` + `ui/src/features/setup/`
 //! - API: `ui/src/api/settings.ts`

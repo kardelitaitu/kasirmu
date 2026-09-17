@@ -3,7 +3,7 @@
 //! Every command in `settings.rs` is a shim over `oz_bridge::settings`, so the
 //! desktop lane performs no read of its own: `get_setting` reaches
 //! `oz_bridge::settings::get_setting`, which calls `run_get_setting`
-//! (`crates/oz-bridge/src/settings.rs`). These tests pin that door for the one
+//! (`crates/kasirmu-bridge/src/settings.rs`). These tests pin that door for the one
 //! key a renderer actually asks for, and pin that the shim adds no bypass.
 //!
 //! Why the row is seeded through `Settings::set` and never through the write

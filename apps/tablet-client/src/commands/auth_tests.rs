@@ -1215,7 +1215,7 @@ fn create_session_args_require_the_ui_wire_picker_ticket() {
 /// The `debug_upgrade` flag is a PER-CLIENT policy, and the two shells answer it
 /// differently on purpose.
 ///
-/// `crates/oz-core/src/db/audit_security.rs:369-373` says so in the shared store's own doc
+/// `crates/kasirmu-core/src/db/audit_security.rs:369-373` says so in the shared store's own doc
 /// ("desktop's dev Free->Premium promotion records in a debug build ... and tablet passes
 /// `false` so it never mirrors the desktop divergence"). The values are therefore not drift
 /// to be fixed -- which matters because everything else in this shell is being consolidated,
@@ -1227,7 +1227,7 @@ fn create_session_args_require_the_ui_wire_picker_ticket() {
 /// What this does NOT pin, stated because the gap is real: the runtime EFFECT of the flag.
 /// That needs a validly-signed Active Free subscription row, and the only fixture that mints
 /// one lives behind the bridge's private `#[cfg(test)] mod testing`
-/// (`crates/oz-bridge/src/lib.rs:153`), unreachable from this crate. The effect is pinned
+/// (`crates/kasirmu-bridge/src/lib.rs:153`), unreachable from this crate. The effect is pinned
 /// there, by `staff_login_on_free_records_only_because_a_debug_build_promotes_it`. If the
 /// bridge ever exports that fixture, the assertion this one stands in for is "a verified Free
 /// tenant records nothing on the tablet path and one row on the desktop path, in a debug
@@ -1245,13 +1245,13 @@ fn the_debug_upgrade_policy_is_per_client_by_design() {
     };
 
     let tablet = read("src/commands/auth.rs");
-    let bridge = read("../../crates/oz-bridge/src/auth.rs");
-    let store = read("../../crates/oz-core/src/db/audit_security.rs");
+    let bridge = read("../../crates/kasirmu-bridge/src/auth.rs");
+    let store = read("../../crates/kasirmu-core/src/db/audit_security.rs");
 
     assert!(
         tablet.contains("record_security_event(event, false)"),
         "the tablet's recorder no longer passes debug_upgrade: false. If the policies are \
-         genuinely being merged, change crates/oz-core/src/db/audit_security.rs's per-client \
+         genuinely being merged, change crates/kasirmu-core/src/db/audit_security.rs's per-client \
          paragraph and T5-3 in todo-refactor-oz-pos-app-agents-3.md in the same pass -- \
          flipping one call site is not a decision about the other"
     );

@@ -1779,7 +1779,7 @@ fn pg_init_declares_same_table_surface_as_sqlite() {
 #[test]
 fn migration_registry_matches_filesystem() {
     // DB-01: the registry is the source of truth. Every `.sql` file under
-    // crates/oz-core/migrations/ must have EXACTLY ONE registry entry,
+    // crates/kasirmu-core/migrations/ must have EXACTLY ONE registry entry,
     // and every registry entry must resolve to a real file. A new SQL
     // file that is never registered (or a registered entry whose file
     // was deleted) silently changes what fresh installs vs upgrades

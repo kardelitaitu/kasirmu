@@ -103,13 +103,13 @@ pub fn temp_conn() -> Connection {
 /// # The no-seam proof — read this before "fixing" a red licence fixture
 ///
 /// **No test in this crate can mint a signature that verifies.**
-/// `verify_license_signature` (`crates/oz-core/src/license_verification.rs:387`)
+/// `verify_license_signature` (`crates/kasirmu-core/src/license_verification.rs:387`)
 /// takes only `(payload, signature_base64)`: no key parameter, and it reads the
-/// key from the build-time `include_str!` of `crates/oz-core/oz-license.key.pub`
+/// key from the build-time `include_str!` of `crates/kasirmu-core/oz-license.key.pub`
 /// (`LICENSE_PUBLIC_KEY_PEM`, `:44`) through `load_public_key()` (`:396`,
 /// `:424-430`). That is the PUBLIC half of a keypair whose PRIVATE half is not
 /// in this checkout — `*.key` is git-ignored (`.gitignore:69`) and
-/// `crates/oz-core/oz-license.key` is absent from disk — so nothing a test
+/// `crates/kasirmu-core/oz-license.key` is absent from disk — so nothing a test
 /// writes can produce the RSA-2048 PKCS1v15/SHA-256 signature the embedded key
 /// accepts. Nor is there a seam to inject one: no parameter, no trait, no
 /// thread-local, no injected verifier, and all FOUR call sites reach it

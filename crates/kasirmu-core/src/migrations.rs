@@ -6,7 +6,7 @@ next: reword COR-6 comments | perf: N/A
 */
 //! Migration definitions for OZ-POS.
 //!
-//! Migrations are `.sql` files under `crates/oz-core/migrations/`. They are
+//! Migrations are `.sql` files under `crates/kasirmu-core/migrations/`. They are
 //! embedded at compile time via [`include_str!`] and run in the
 //! compile-time array order of [`ALL`](crate::migrations::ALL) on first startup by the generic
 //! runner in `platform-core`. The array order is canonical — not
@@ -38,7 +38,7 @@ use platform_core::database::Migration;
 /// All migrations in the order they should be applied.
 ///
 /// The list is exhaustive at compile time; adding a new migration means
-/// adding a new entry here AND a new file in `crates/oz-core/migrations/`.
+/// adding a new entry here AND a new file in `crates/kasirmu-core/migrations/`.
 ///
 pub const ALL: &[Migration] = &[
     Migration {

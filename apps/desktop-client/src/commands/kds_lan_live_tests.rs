@@ -20,7 +20,7 @@
 //!
 //! One genuine `oz-lan` defect was found here: the Phase-0 hello reader
 //! over-read and swallowed a following discover line. FIXED in
-//! `crates/oz-lan` (13-09-26, one connection-level `BufReader`); the
+//! `crates/kasirmu-lan` (13-09-26, one connection-level `BufReader`); the
 //! former red-by-construction `kds_lan_live_bugdemo_...` test below is
 //! now the active unpaced regression proof. The other tests still pace
 //! their writes (harmless; kept per the validation work order).
@@ -623,7 +623,7 @@ async fn kds_lan_live_reconnect_snapshot_serves_seeded_queue_cache() {
 /// could only ever come from the hello fields. The same
 /// transient-`BufReader` pattern existed at Phase 1.
 ///
-/// FIXED in `crates/oz-lan/src/lib.rs` (13-09-26): one connection-level
+/// FIXED in `crates/kasirmu-lan/src/lib.rs` (13-09-26): one connection-level
 /// `BufReader` now serves every read from the first byte through the
 /// phase-1 discovery request, so the buffered discover line survives
 /// the phase handoff. This test used to be `#[ignore]`d as

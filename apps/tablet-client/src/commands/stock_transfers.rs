@@ -15,7 +15,7 @@
 //!
 //! **And why the gate kind had to be compared anyway.** The gate is the
 //! **unscoped** `Store::require_permission(user_id, inventory:transfer)` on both
-//! sides: `crates/oz-bridge/src/stock_transfers.rs:73-82` documents its helper as
+//! sides: `crates/kasirmu-bridge/src/stock_transfers.rs:73-82` documents its helper as
 //! a verbatim port of the one that stood here, "same non-scope-aware
 //! `require_permission`, so a legacy user without an assignment row keeps behaving
 //! exactly as before". Had the bridge's twin used the scope-aware form instead,

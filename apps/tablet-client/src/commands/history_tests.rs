@@ -444,14 +444,14 @@ async fn export_eod_report_scoped_requires_reports_export() {
 /// by construction, and a green run here means the inconsistency is still
 /// live, not that it is correct.
 ///
-/// `Store::export_daily_summary` (crates/oz-core/src/db/sales.rs:262-268)
+/// `Store::export_daily_summary` (crates/kasirmu-core/src/db/sales.rs:262-268)
 /// filters on DATE only — no status predicate at all — and five consumers
 /// then sum or count what comes back: the dashboard tile
 /// (ui/src/features/sales/widgets/DailyTotalWidget.tsx), the tablet EOD
 /// builder both unscoped (commands/history.rs:205) and scoped (:413), and
-/// the desktop bridge path (crates/oz-bridge/src/history.rs:199) which
+/// the desktop bridge path (crates/kasirmu-bridge/src/history.rs:199) which
 /// feeds the same daily rows into total_sales and total_revenue at :284 and
-/// :330-331. `void_sale` (crates/oz-core/src/db/sales_lifecycle.rs:769-773)
+/// :330-331. `void_sale` (crates/kasirmu-core/src/db/sales_lifecycle.rs:769-773)
 /// sets status to voided and never touches total_minor, so the money of a
 /// cancelled sale stays inside the daily total.
 ///
@@ -577,12 +577,12 @@ async fn known_hazard_daily_totals_count_voided_sales_as_revenue() {
 ///
 /// One `EodReport` is built from two different answers to “what day is it”.
 /// The header half applies the store's offset — `Store::export_daily_summary
-/// ()` at crates/oz-core/src/db/sales.rs:268 and `export_sales_by_hour` at :290,
+/// ()` at crates/kasirmu-core/src/db/sales.rs:268 and `export_sales_by_hour` at :290,
 /// both `DATE(created_at, tz) = DATE(now, tz)` — while every money sub-query
 /// in the SAME struct is bare `date(created_at) = date('now')`: this door at
 /// apps/tablet-client/src/commands/history.rs:216, :237, :248; the scoped door
 /// at :437, :458, :469; the desktop's `build_eod_report` at
-/// crates/oz-bridge/src/history.rs:291, :312, :323. Nine bare clauses, three
+/// crates/kasirmu-bridge/src/history.rs:291, :312, :323. Nine bare clauses, three
 /// gated reads, one struct.
 ///
 /// For a +07:00 store the boundaries sit seven hours apart, so a row can be
@@ -598,7 +598,7 @@ async fn known_hazard_daily_totals_count_voided_sales_as_revenue() {
 /// at `chrono::Utc::now()`, and a now-created row satisfies the offset
 /// predicate and the bare predicate at once because both sides of each shift
 /// together: structurally blind, in whichever door runs it. The second
-/// blindness is `tz_modifier` (crates/oz-core/src/db/reports.rs:420 to :432),
+/// blindness is `tz_modifier` (crates/kasirmu-core/src/db/reports.rs:420 to :432),
 /// which reads the offset from the `locations` table of whichever database it
 /// is handed and falls back to `+00:00` for anything unparseable, IANA names
 /// included — exactly what the bare clauses already do, so a misconfigured

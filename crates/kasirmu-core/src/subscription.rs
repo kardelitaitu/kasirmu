@@ -389,7 +389,7 @@ pub struct TenantSubscription {
 /// `api_key`, `signature` and `signed_payload`.
 ///
 /// The derived impl printed all three. `api_key` used to be the worst of
-/// them: `crates/oz-bridge/src/license.rs` once stored the RAW server
+/// them: `crates/kasirmu-bridge/src/license.rs` once stored the RAW server
 /// response value on this struct while the settings row held the
 /// machine-bound ciphertext, so the row carried the weaker of two copies of
 /// one credential. It no longer does — since `5e054714e` both call sites

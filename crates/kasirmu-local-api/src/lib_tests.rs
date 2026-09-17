@@ -543,8 +543,8 @@ async fn api_writes_land_in_the_audit_log_of_the_served_store() {
 ///
 /// Landed in this crate rather than in platform-core because it is the one
 /// that already sees both sides: `oz-local-api` depends on `platform-core
-/// (`crates/oz-local-api/Cargo.toml`), and `platform-core` must NOT depend on
-/// it. `crates/oz-bridge` and `crates/oz-core` can neither: neither has an
+/// (`crates/kasirmu-local-api/Cargo.toml`), and `platform-core` must NOT depend on
+/// it. `crates/kasirmu-bridge` and `crates/kasirmu-core` can neither: neither has an
 /// `oz-local-api` dependency, and no edge was added to force one.
 #[test]
 fn drift_pin_local_api_settings_keys_stay_manager_owned() {

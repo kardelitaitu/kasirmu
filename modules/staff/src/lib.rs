@@ -17,7 +17,7 @@ next: none | perf: N/A
 //! (DB CRUD, Tauri commands) and frontend (screens, API calls,
 //! Fluent locale) still live in their original locations:
 //!
-//! - Backend: `crates/oz-core/src/user.rs` + `crates/oz-core/src/db/staff.rs`
+//! - Backend: `crates/kasirmu-core/src/user.rs` + `crates/kasirmu-core/src/db/staff.rs`
 //! - Commands: `apps/desktop-client/src/commands/staff.rs` + `apps/desktop-client/src/commands/auth.rs`
 //! - Frontend: `ui/src/features/staff/` + `ui/src/features/auth/`
 //! - API: `ui/src/api/staff.ts`

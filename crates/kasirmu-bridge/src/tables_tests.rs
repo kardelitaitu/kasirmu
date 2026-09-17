@@ -239,7 +239,7 @@ async fn owner_can_update_table_status() {
 // These tests verify permission denial. Positive tests are omitted
 // because assign_table_order requires a valid sale FK, and the Sale
 // creation path is complex (Cart → Sale::from_cart → create_sale).
-// Core Store tests in crates/oz-core/src/db/tables_tests.rs already
+// Core Store tests in crates/kasirmu-core/src/db/tables_tests.rs already
 // cover the assign/release business logic.
 
 #[tokio::test]

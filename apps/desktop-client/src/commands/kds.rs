@@ -63,7 +63,7 @@ fn sink_for(app: Option<&tauri::AppHandle>) -> Option<Arc<dyn EventSink>> {
 // `oz-bridge` nor `oz-core` may depend on `oz-lan` (dependency
 // inversion). These shims are the only place both worlds are in scope,
 // so publishing is this module's job — this is what the
-// `INTEGRATION(oz-lan kds-sync)` notes in `crates/oz-lan/src/lib.rs`
+// `INTEGRATION(oz-lan kds-sync)` notes in `crates/kasirmu-lan/src/lib.rs`
 // ask desktop-client to do.
 
 /// Publish one KDS sync event on the kernel bus, best-effort.

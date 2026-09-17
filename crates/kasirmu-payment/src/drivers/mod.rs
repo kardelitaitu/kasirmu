@@ -14,7 +14,7 @@ next: none | perf: N/A
 //!
 //! Card-present terminals are not here. An EDC terminal is a device, so its
 //! trait and drivers live in `oz-hal` alongside every other device class;
-//! see `crates/oz-hal/src/traits/edc.rs`. What stays in this crate is the
+//! see `crates/kasirmu-hal/src/traits/edc.rs`. What stays in this crate is the
 //! processor layer — the acquirers and gateways above.
 
 pub mod mock;

@@ -259,7 +259,7 @@ fn date_prefix(id: &str) -> Option<&str> {
 /// dev database carries ids the registry no longer lists, and booting anyway is
 /// the documented upgrade path (see
 /// `existing_db_with_legacy_rows_upgrades_idempotently` in
-/// `crates/oz-core/src/migrations_tests.rs`). That tolerance has a second
+/// `crates/kasirmu-core/src/migrations_tests.rs`). That tolerance has a second
 /// consequence. A database migrated forward by a newer build also carries only
 /// *later* ids -- ones this binary has never heard of -- and once its schema has
 /// been renamed or dropped by a migration this build cannot see, every query

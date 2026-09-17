@@ -643,7 +643,7 @@ fn tablet_manager_refusal_sentence_drift_pin() {
     // This lane has no manager-name lookup, so it passes `None` and the producer
     // substitutes its generic label. `\u{2014}` is the em dash inside that
     // sentence, spelled as an escape exactly as the bridge's byte-identical
-    // literals at `crates/oz-bridge/src/settings_tests.rs` spell theirs.
+    // literals at `crates/kasirmu-bridge/src/settings_tests.rs` spell theirs.
     for (key, expected) in [
         (
             "local_api.enabled",
@@ -1089,14 +1089,14 @@ fn license_phone_is_denied_as_a_credential_and_refused_on_egress() {
 // marker, and the lanes are read out of their own files. Nothing below is
 // a copy of a sentence, so a fix to platform-core wording moves this test
 // with it instead of failing here first. The helpers are duplicated from
-// `crates/oz-bridge/src/settings_tests.rs` because that file guards the
+// `crates/kasirmu-bridge/src/settings_tests.rs` because that file guards the
 // credential seam and is not this commit to edit.
 
 /// The producer, named once so the three files below are compared against it.
 use platform_core::settings::Settings as ManagerProducer;
 
 const PLAT_RAW_RS: &str = include_str!("../../../../platform/core/src/settings/raw.rs");
-const BRIDGE_SETTINGS_RS: &str = include_str!("../../../../crates/oz-bridge/src/settings.rs");
+const BRIDGE_SETTINGS_RS: &str = include_str!("../../../../crates/kasirmu-bridge/src/settings.rs");
 const TABLET_SETTINGS_RS: &str = include_str!("settings.rs");
 
 /// String literals in a file, comments removed, so prose cannot be counted
@@ -1241,7 +1241,7 @@ fn both_shell_lanes_take_the_manager_refusal_from_its_one_producer() {
     let mut carriers: Vec<String> = Vec::new();
     for (label, source) in [
         ("platform/core/src/settings/raw.rs", PLAT_RAW_RS),
-        ("crates/oz-bridge/src/settings.rs", BRIDGE_SETTINGS_RS),
+        ("crates/kasirmu-bridge/src/settings.rs", BRIDGE_SETTINGS_RS),
         (
             "apps/tablet-client/src/commands/settings.rs",
             TABLET_SETTINGS_RS,
@@ -1293,7 +1293,7 @@ fn both_shell_lanes_take_the_manager_refusal_from_its_one_producer() {
             1usize,
         ),
         (
-            "crates/oz-bridge/src/settings.rs",
+            "crates/kasirmu-bridge/src/settings.rs",
             BRIDGE_SETTINGS_RS,
             "BridgeError::Invalid(refusal)",
             2usize,
@@ -1937,7 +1937,7 @@ async fn set_settings_scoped_denies_a_session_without_settings_edit() {
 // `let (_session, …) = state.resolve_scope(&session_token)?` — the underscore is
 // the finding — and went to the database. Every one of their
 // `oz_bridge::settings` twins gates: five on `settings:read`, and
-// `list_credit_sales_scoped` on `sales:view` (`crates/oz-bridge/src/settings.rs:779`,
+// `list_credit_sales_scoped` on `sales:view` (`crates/kasirmu-bridge/src/settings.rs:779`,
 // under an "F-017" comment that even records the exception: "This one keeps
 // sales:view, not settings:read — verbatim from the shell"). All six were already
 // on this shell's debt ledger as `resolves_session_names_no_permission`, which is
@@ -2114,9 +2114,9 @@ async fn scoped_settings_reads_reach_their_bodies_for_an_owner() {
 // And the command is not decorative about its `user_id`.
 // `oz_bridge::settings::set_setting` runs
 // `ctx.require_permission_for_user(&store, user_id, SETTINGS_EDIT)?` at
-// `crates/oz-bridge/src/settings.rs:1259`, which reaches
+// `crates/kasirmu-bridge/src/settings.rs:1259`, which reaches
 // `Store::require_permission` → `assignment_for_user(user_id)?`
-// (`crates/oz-core/src/db/staff.rs:220`) — so an id that resolves to no user is
+// (`crates/kasirmu-core/src/db/staff.rs:220`) — so an id that resolves to no user is
 // an error before `run_set_setting` is ever called.
 //
 // So what this case pins is not "the gate works" but "the feature does not". The

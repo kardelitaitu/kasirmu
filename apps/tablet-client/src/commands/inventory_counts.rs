@@ -11,7 +11,7 @@
 //! classifier reads as a gate, so the sweep already calls them `Gated` and the
 //! delegation is ledger-neutral by construction. The gate is the **unscoped**
 //! `Store::require_permission(user_id, inventory_count)` on both sides
-//! (`crates/oz-bridge/src/inventory_counts.rs:209-228` documents its helper as a
+//! (`crates/kasirmu-bridge/src/inventory_counts.rs:209-228` documents its helper as a
 //! port of the shell's), so the gate *kind* matches too — had it been the
 //! scope-aware form, this port would have tightened a gate and been refused.
 //!
@@ -60,7 +60,7 @@ fn validate_quantity(field: &'static str, quantity: i64) -> Result<(), AppError>
 /// Test seam for the counted-vs-expected difference.
 ///
 /// ADR #49: the bridge has no function of this name — it inlines the rule inside
-/// `update_count_line_scoped` (`crates/oz-bridge/src/inventory_counts.rs:466-474`),
+/// `update_count_line_scoped` (`crates/kasirmu-bridge/src/inventory_counts.rs:466-474`),
 /// which is the same `checked_sub` → `counted_qty difference overflow` →
 /// `unwrap_or(0)` sequence kept here. So this pins the *rule*, not the bridge's
 /// copy of it; the overflow case is the one worth keeping either way.
@@ -252,7 +252,7 @@ pub async fn complete_stock_count_scoped(
 /// The allowed-transition set is not the same, though. This shell permits four
 /// pairs — `Draft→InProgress`, `Draft→Cancelled`, `InProgress→Cancelled`,
 /// `InProgress→InProgress` — while the bridge's twin permits those **plus
-/// `Draft→Draft`** (`crates/oz-bridge/src/inventory_counts.rs:563-570`). So
+/// `Draft→Draft`** (`crates/kasirmu-bridge/src/inventory_counts.rs:563-570`). So
 /// delegating would make a no-op `status: "draft"` on a draft count succeed where
 /// this shell returns `Invalid`. That is a behaviour change, and §4 forbids one
 /// inside an extraction; which set is correct is an owner decision, not a port.

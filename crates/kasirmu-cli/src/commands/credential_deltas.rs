@@ -59,7 +59,7 @@ pub(crate) const RESTART_WARNING: &str = concat!(
 /// fourteen credential keys sit in plaintext" while the same run printed a
 /// deny list of seventeen — and the two numbers were not even measurements of
 /// the same population: fourteen is the size of the key fixture in
-/// `crates/oz-core/tests/credential_storage_form.rs` (a census of 14 keys chosen
+/// `crates/kasirmu-core/tests/credential_storage_form.rs` (a census of 14 keys chosen
 /// because they have setters to walk, not because the deny list has 14 rows),
 /// nine is how many of THOSE landed cleartext in that census, and seventeen is
 /// `SECRET_KEY_DENY_LIST.len()` today. Restating any of them here rots the day
@@ -403,7 +403,7 @@ pub(crate) const SETTINGS_TABLE: &str = "settings";
 ///
 /// Indeterminate is PRINTED rather than resolved into a reassuring default: the
 /// value column is bare TEXT with no discriminator of any kind (see the module
-/// header, and the census in crates/oz-core/tests/credential_storage_form.rs
+/// header, and the census in crates/kasirmu-core/tests/credential_storage_form.rs
 /// which measures exactly that), so a report that guessed would be the lie this
 /// command exists to avoid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -460,7 +460,7 @@ type FamilyDecrypt = fn(&str) -> Result<String, oz_core::crypto::CryptoError>;
 
 /// Every family oz-crypto exposes, enumerated because the blind spot this closes
 /// is a mislabelled family: license.api_key used to read CLEARTEXT, no family can
-/// seal this key, while crates/oz-bridge/src/license.rs:151 encrypts it with the
+/// seal this key, while crates/kasirmu-bridge/src/license.rs:151 encrypts it with the
 /// installation machine id. A label that is not evidence is the same defect as a
 /// check that stays silent.
 ///
@@ -499,7 +499,7 @@ type FamilyDecrypt = fn(&str) -> Result<String, oz_core::crypto::CryptoError>;
 ///
 /// SEPARATED BY KEY, NOT BY BYTES, which is load-bearing for how the form column is
 /// read: every portable family uses the SAME envelope, base64url(nonce || ciphertext
-/// || tag) with no prefix, no version and no key id (crates/oz-crypto/src/lib.rs:13,
+/// || tag) with no prefix, no version and no key id (crates/kasirmu-crypto/src/lib.rs:13,
 /// 353, 389), so two families sealing the same plaintext emit strings of the SAME
 /// LENGTH. Measured in portable_envelopes_agree_so_only_the_key_column_separates: a
 /// sync_api_key envelope and a lan_psk envelope of one plaintext are both 56 chars

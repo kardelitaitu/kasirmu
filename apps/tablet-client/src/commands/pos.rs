@@ -18,7 +18,7 @@ next: none | perf: N/A
 //! `complete_sale_with_resolved_shortfalls_scoped` read a client-supplied
 //! `attempt_id`, treat it as an opaque key, stamp every payment split as
 //! `{attempt}:{index}` and answer a replay with the original receipt. The
-//! rules are copied from `crates/oz-bridge/src/pos.rs`, which this forked
+//! rules are copied from `crates/kasirmu-bridge/src/pos.rs`, which this forked
 //! command layer cannot import — keep the two in step.
 
 use tauri::{State, command};
@@ -487,7 +487,7 @@ pub async fn override_cart_deduction_location_scoped(
 // ── COR-7: per-attempt checkout idempotency (tablet port) ───────────
 //
 // Semantics copied from the desktop implementation in
-// `crates/oz-bridge/src/pos.rs` (`stamp_attempt_split_keys`,
+// `crates/kasirmu-bridge/src/pos.rs` (`stamp_attempt_split_keys`,
 // `replay_verdict`), which this crate cannot import: the tablet shell is a
 // fork of the command layer, so the helpers below are a second
 // implementation of the SAME rules, not shared code. Keep them in step.
@@ -1318,7 +1318,7 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     // DRIFT NOTE (deliberate, not carelessness): the desktop shell cannot
     // hold its equivalent span — its store connection is a STD `Mutex` and
     // the plugin hooks + event publish sitting between its two lock regions
-    // are `.await` points (crates/oz-bridge/src/pos.rs:1740-1754), so the
+    // are `.await` points (crates/kasirmu-bridge/src/pos.rs:1740-1754), so the
     // desktop two-lock gap is still open for structural reasons and relies
     // on fail-closed settlement + the UNIQUE index instead.
     let attempt = normalized_attempt_id(args.attempt_id.as_deref());

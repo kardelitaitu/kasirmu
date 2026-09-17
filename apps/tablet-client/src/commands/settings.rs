@@ -766,7 +766,7 @@ pub async fn set_setting_scoped(
 /// assumed:
 /// - **The enqueue goes to the STORE queue, not the global one.** The bridge
 ///   enqueues on `ctx.db` because the desktop daemon watches the global queue
-///   (`crates/oz-bridge/src/settings.rs`, "the sync daemon only watches the
+///   (`crates/kasirmu-bridge/src/settings.rs`, "the sync daemon only watches the
 ///   global queue"). The tablet's daemon drains the *store* queue:
 ///   `sync_run_scoped` reads it through `resolve_scope` (`sync.rs:400-411`) and
 ///   its Phase 3 comment at `:437-447` records that writing these marks to the

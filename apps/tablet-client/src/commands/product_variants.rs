@@ -16,7 +16,7 @@
 //! (`PRODUCTS_READ` / `PRODUCTS_READ` / `PRODUCTS_DELETE`), so all three are
 //! case 1 and the delegation is ledger-neutral. Note the twins' argument order:
 //! the payload comes **first** and `session_token` **last**
-//! (`crates/oz-bridge/src/product_variants.rs:160-164`), the reverse of most
+//! (`crates/kasirmu-bridge/src/product_variants.rs:160-164`), the reverse of most
 //! modules in this campaign — a straight copy of the usual call shape will not
 //! compile.
 //!
@@ -25,7 +25,7 @@
 //! otherwise statement-identical to their twins — same validation, same `Money`
 //! parse, same store call — but the bridge appends `" (scoped)"` where this
 //! shell logs `"product variant created"` (`:133` vs
-//! `crates/oz-bridge/src/product_variants.rs:316`) and `"product variant
+//! `crates/kasirmu-bridge/src/product_variants.rs:316`) and `"product variant
 //! updated"` (`:188` vs `:386`). §4 pins log text byte-identical, so these are a
 //! **decision rather than work**: reconcile the suffix and both become
 //! whole-body moves.
@@ -114,7 +114,7 @@ pub async fn get_product_variant_scoped(
 /// store call. The single delta is the log text: this shell logs
 /// `"product variant created"` (`:133`) where the bridge logs
 /// `"product variant created (scoped)"`
-/// (`crates/oz-bridge/src/product_variants.rs:316`). §4 pins log text
+/// (`crates/kasirmu-bridge/src/product_variants.rs:316`). §4 pins log text
 /// byte-identical, and the `resolve_boot_store` refusal set that precedent.
 ///
 /// This is a **decision rather than work** — reconcile the `(scoped)` suffix on
@@ -180,7 +180,7 @@ pub async fn create_product_variant_scoped(
 /// body is otherwise statement-identical, and the one delta is the log text —
 /// `"product variant updated"` here (`:188`) against
 /// `"product variant updated (scoped)"` in the twin
-/// (`crates/oz-bridge/src/product_variants.rs:386`). §4 pins log text
+/// (`crates/kasirmu-bridge/src/product_variants.rs:386`). §4 pins log text
 /// byte-identical.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]

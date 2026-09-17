@@ -1,6 +1,6 @@
 /*
 last audited 12-07-26 by RSA-Agent
-crate: oz-pos-app | status: SAFE | lint: CLEAN
+crate: kasirmu-app | status: SAFE | lint: CLEAN
 findings: closed C-1 (Epic X-3, see audit doc §11); no remaining findings in this file | next: re-audit on next material change | perf: not a hot path
 */
 

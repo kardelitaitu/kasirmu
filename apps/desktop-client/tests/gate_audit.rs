@@ -20,7 +20,7 @@
 //! Scope: the *path a client actually executes*, not one directory. The
 //! desktop shell's `src/commands` and the tablet shell's are walked with the
 //! `authz.rs` wrapper names, and - because Wave A-E lifted the desktop
-//! command bodies into `crates/oz-bridge/src` (the shell files are shims that
+//! command bodies into `crates/kasirmu-bridge/src` (the shell files are shims that
 //! build a `BridgeCtx` and forward) - the bridge is walked too, with its own
 //! wrapper names, merged into the desktop table by module stem. A stem that
 //! exists in both is summed; a stem that exists in only one is pinned as
@@ -40,7 +40,7 @@ use std::path::{Path, PathBuf};
 
 // ---------------------------------------------------------------------------
 // Pinned census — desktop client.
-// Shell gate calls plus the gate calls in `crates/oz-bridge/src`, which the shell
+// Shell gate calls plus the gate calls in `crates/kasirmu-bridge/src`, which the shell
 // forwards to. Generated from the current source; update deliberately,
 // never silently.
 //
@@ -486,7 +486,7 @@ const SHELL_GATES: &[&str] = &[
     "require_permission_for_session(",
 ];
 
-/// Gate entry points counted in `crates/oz-bridge/src`. The extraction that
+/// Gate entry points counted in `crates/kasirmu-bridge/src`. The extraction that
 /// moved the command bodies out of the desktop shell moved the gates with
 /// them, and renamed them: `BridgeCtx::require_session_permission` and
 /// `BridgeCtx::require_permission_for_user` are the bridge's equivalents of
@@ -766,7 +766,7 @@ fn desktop_command_census_matches_pin() {
                 skip: &[],
             },
             Root {
-                dir: manifest.join("../../crates/oz-bridge/src"),
+                dir: manifest.join("../../crates/kasirmu-bridge/src"),
                 gates: BRIDGE_GATES,
                 skip: &["ctx", "lib", "error", "testing"],
             },

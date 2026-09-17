@@ -262,7 +262,7 @@ pub async fn create_staff_scoped(
 /// `staff_security_events_tests::confirmed_free_records_nothing_even_in_a_debug_build`
 /// is the proof. `Store::record_security_event` takes a `debug_upgrade` flag;
 /// the tablet passes **`false`** (`commands/auth.rs:81`) and the bridge passes
-/// **`true`** (`crates/oz-bridge/src/auth.rs:160`), which is the desktop's
+/// **`true`** (`crates/kasirmu-bridge/src/auth.rs:160`), which is the desktop's
 /// dev Free→Premium promotion. Delegating would start auditing Free-tier
 /// staff updates in debug builds on a client that deliberately never does.
 /// `create_staff_scoped` shares the fork but not the exposure: the quota check

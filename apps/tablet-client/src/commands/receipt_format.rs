@@ -12,7 +12,7 @@
 //! (`SETTINGS_EDIT`, `require_permission_for_session`), while the bridge twins
 //! layer an ADR #47 location-resource check on top —
 //! `require_permission_for_session_resource(&session, SETTINGS_EDIT,
-//! ScopeType::Location, …)` (`crates/oz-bridge/src/receipt_format.rs:65-70` and
+//! ScopeType::Location, …)` (`crates/kasirmu-bridge/src/receipt_format.rs:65-70` and
 //! `:150-155`) — which this shell has never enforced. §4 forbids adding a gate
 //! inside an extraction as plainly as removing one, and a stricter gate can start
 //! refusing writes the shell accepts today.
@@ -64,7 +64,7 @@ pub async fn get_receipt_format_scoped(
 /// The bridge twin adds an ADR #47 location-resource check —
 /// `require_permission_for_session_resource(&session, SETTINGS_EDIT,
 /// ScopeType::Location, workspace_id)`
-/// (`crates/oz-bridge/src/receipt_format.rs:65-70`) — which has never run here.
+/// (`crates/kasirmu-bridge/src/receipt_format.rs:65-70`) — which has never run here.
 /// §4 forbids adding a gate inside an extraction, and the added check can start
 /// refusing writes this shell accepts today.
 #[tauri::command]
@@ -133,7 +133,7 @@ pub struct ReceiptLayoutArgs {
 /// bridge twin adds an ADR #47 location-resource check —
 /// `require_permission_for_session_resource(&session, SETTINGS_EDIT,
 /// ScopeType::Location, &primary_location_id(&conn)?)`
-/// (`crates/oz-bridge/src/receipt_format.rs:150-155`) — which this shell has
+/// (`crates/kasirmu-bridge/src/receipt_format.rs:150-155`) — which this shell has
 /// never enforced, and §4 forbids adding a gate inside an extraction.
 #[tauri::command]
 pub async fn set_receipt_content_scoped(

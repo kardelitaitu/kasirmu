@@ -165,7 +165,7 @@ fn retry_timing_is_within_bounds() {
     // BELOW the platform's own worst case. At e046e2f26 this target measured:
     // ten single-test runs unloaded, min / median / max target wall time
     // 0.53 / 0.53 / 0.54s (the retry loop itself ~500-520ms); inside an unfiltered
-    // `cargo test -p oz-pos-app` with three other sessions compiling at the same
+    // `cargo test -p kasirmu-app` with three other sessions compiling at the same
     // time it took 654ms and FAILED. A bound a busy machine can cross while every
     // line of production code is fine is a red somebody re-runs instead of
     // investigating, and dev-ci.yml#cargo-nextest runs this crate on shared runners.

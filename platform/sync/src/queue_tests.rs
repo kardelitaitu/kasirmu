@@ -1412,7 +1412,7 @@ fn legacy_apply_remote_leaves_a_refused_key_absent_from_the_database() {
 ///    a settings item (queue.rs:10-12), and the server stores a pushed payload opaquely
 ///    (apps/cloud-server/src/sync_store.rs:201), so any peer inside the tenant — or the
 ///    server operator — can name the key.
-/// 2. **The reader carries a bearer secret.** crates/oz-core/src/sync_auth.rs:72 sends
+/// 2. **The reader carries a bearer secret.** crates/kasirmu-core/src/sync_auth.rs:72 sends
 ///    `Authorization: Bearer <sync api key>` to whatever sync_server_url currently holds,
 ///    so planting that one name exfiltrates a credential without ever naming a credential
 ///    key. sync_enabled, pg_sync.host, pg_sync.user, pg_sync.dbname and redis.cache_ttl
@@ -1487,7 +1487,7 @@ fn remote_settings_update_applies_a_key_the_exclusion_list_misses() {
 /// author thought to name. Why each is worth a line despite that:
 ///
 /// * sync_server_url - the reader carries a bearer secret
-///   (crates/oz-core/src/sync_auth.rs:72 sends Authorization: Bearer <sync api key>
+///   (crates/kasirmu-core/src/sync_auth.rs:72 sends Authorization: Bearer <sync api key>
 ///   to whatever this row says), so the plant exfiltrates a credential without
 ///   ever naming a credential key.
 /// * sync_enabled - switches the transport on or off tenant-wide. The one name in
@@ -1503,10 +1503,10 @@ fn remote_settings_update_applies_a_key_the_exclusion_list_misses() {
 ///
 /// None of the six is ever a queue producer on the paths that matter, so refusing
 /// them at the ingest door drops no working traffic: sync_server_url's four writers
-/// are crates/oz-bridge/src/sync.rs:71, apps/tablet-client/src/commands/sync.rs:87,
+/// are crates/kasirmu-bridge/src/sync.rs:71, apps/tablet-client/src/commands/sync.rs:87,
 /// apps/desktop-client/src/sync_bootstrap.rs:83 and platform/sync/src/daemon_tick.rs:83,
 /// none of which calls Store::enqueue_settings_update_superseding
-/// (crates/oz-core/src/db/offline.rs:194). That is what makes this set safe to
+/// (crates/kasirmu-core/src/db/offline.rs:194). That is what makes this set safe to
 /// refuse while the wider allow-list is not.
 #[test]
 fn remote_settings_update_refuses_the_named_hazard_set() {
@@ -1681,7 +1681,7 @@ fn remote_settings_refusal_legs_stay_closed_beside_the_hazard_set() {
 /// And the honesty clause, because the count matters more than the code: this is a
 /// census of what someone thought to TRACE, not of what a caller can SEND. Both
 /// shells' setters take an arbitrary key string from the renderer
-/// (crates/oz-bridge/src/settings.rs run_set_setting / set_setting_scoped /
+/// (crates/kasirmu-bridge/src/settings.rs run_set_setting / set_setting_scoped /
 /// set_settings_scoped, apps/tablet-client/src/commands/settings.rs) and hand it to
 /// the one enqueue funnel, so the reachable egress surface is every setting the UI
 /// can write - see .agents/egress-surface.md for the enumeration and the size. A

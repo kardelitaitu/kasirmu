@@ -2,7 +2,7 @@
 //!
 //! `modules/tax` is the contractual owner of the tax domain types
 //! (`TaxRate`, `RoundingMode`), which `oz-core` re-exports
-//! (`crates/oz-core/src/tax_rate.rs`) and which the Tauri command layer
+//! (`crates/kasirmu-core/src/tax_rate.rs`) and which the Tauri command layer
 //! (`apps/*-client/src/commands/tax.rs`) and the UI's API surface
 //! (`ui/src/api/tax.ts`) consume. These tests pin that boundary so the
 //! pieces cannot drift:

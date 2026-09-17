@@ -551,7 +551,7 @@ pub fn run_set_setting(
 /// must not: that wrapper opens its own `unchecked_transaction` (BEGIN
 /// DEFERRED), and a second BEGIN inside the caller's transaction fails with
 /// "cannot start a transaction within a transaction" — the class documented at
-/// `crates/oz-bridge/src/setup.rs:100-106`. Confirmed at runtime by
+/// `crates/kasirmu-bridge/src/setup.rs:100-106`. Confirmed at runtime by
 /// `batch_funnel_runs_inside_the_commands_own_outer_transaction`. What it calls
 /// instead is the in-transaction form of the very same body,
 /// `platform_core::settings::Settings::set_tracked_in_tx`, which takes the

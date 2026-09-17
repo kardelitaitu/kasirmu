@@ -11,7 +11,7 @@
 //! source at test time and placed in exactly one of three states:
 //!
 //! 1. gated — the wrapper resolves a session AND a permission is named on the path the
-//!    wrapper actually takes (its own body, or the crates/oz-bridge/src module it
+//!    wrapper actually takes (its own body, or the crates/kasirmu-bridge/src module it
 //!    forwards to — read the next section before trusting that word);
 //! 2. BY_DESIGN_UNGATED — device and health metadata with no permission on either side,
 //!    so no operator action is being authorised. EMPTY today, by decision rather than by
@@ -22,7 +22,7 @@
 //! # Why the bridge is in the parse set, and what green does NOT mean
 //!
 //! A desktop command wrapper is a SHIM. Wave A-E lifted the command bodies into
-//! crates/oz-bridge/src; the shell file builds a BridgeCtx, forwards, and maps the error
+//! crates/kasirmu-bridge/src; the shell file builds a BridgeCtx, forwards, and maps the error
 //! back. Measured: ZERO of the 449 wrapper bodies in this crate name a permission. So
 //! judging "is this gated" from the shims alone reports 449 ungated commands and proves
 //! nothing about authorization. The predicate therefore follows the call one crate over
@@ -385,7 +385,7 @@ const SINGLE_QUOTE: char = 39 as char;
 /// Module stems whose oz-bridge module names a permission — the merge that makes a shim
 /// judgeable at all.
 fn gated_bridge_stems() -> BTreeSet<String> {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/oz-bridge/src");
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/kasirmu-bridge/src");
     let files = rust_files(&dir);
     assert!(
         files.len() >= 40,
@@ -1288,7 +1288,7 @@ fn looks_absolute(path: &str) -> bool {
 /// * `C:/dev/ozpos/main/ui/src/features/sales/SalesScreen.tsx` --> offender = TRUE
 /// * `C:/dev/ozpos/0.0.34/ui/src/features/sales/SalesScreen.tsx` --> offender = TRUE
 /// * `C:/dev/ozpos/kds-m2-scratch/ui/src/features/sales/SalesScreen.tsx` --> offender = TRUE
-/// * `C:/dev/ozpos/main/crates/oz-core/src/sales.rs`, a Rust file, not a UI file at all
+/// * `C:/dev/ozpos/main/crates/kasirmu-core/src/sales.rs`, a Rust file, not a UI file at all
 ///   --> offender = TRUE
 ///
 /// So the bug is not a theoretical root confusion. A gate running in `0.0.35` was
@@ -1592,7 +1592,7 @@ fn is_guard_shape(id: &str) -> bool {
 ///
 /// Query: every identifier of the shapes above followed by `(`, over
 /// `apps/desktop-client/src`, `apps/tablet-client/src`, `platform` and
-/// `crates/oz-bridge/src`, excluding `*_tests.rs` (helper and assertion names in a test file
+/// `crates/kasirmu-bridge/src`, excluding `*_tests.rs` (helper and assertion names in a test file
 /// are not gates). Measured 05:45 on e046e2f26: 242 production files, 18 distinct spellings,
 /// 657 call sites — and the original four tokens recognised 8 spellings and 280 sites, blind
 /// to require_session_permission (220 sites in 47 files) and every per-domain
@@ -1636,7 +1636,7 @@ fn drift_pin_guard_marker_vocabulary_is_closed() {
         root.join("src"),
         root.join("../tablet-client/src"),
         root.join("../../platform"),
-        root.join("../../crates/oz-bridge/src"),
+        root.join("../../crates/kasirmu-bridge/src"),
     ];
     for dir in &dirs {
         assert!(

@@ -734,7 +734,7 @@ async fn pg_integration_settings_provision_per_tenant() {
 // is the SHAPE of the key it can construct — three fixed Rust bases joined by
 // a `:` to a tenant id that arrives from an HTTP request and is filtered by
 // `validate::valid_tenant` to `[A-Za-z0-9_-]{1,64}`. And
-// `crates/oz-local-api/src/lib.rs:319` mounts this SAME router on loopback, so
+// `crates/kasirmu-local-api/src/lib.rs:319` mounts this SAME router on loopback, so
 // a renderer-adjacent surface is standing on that one regex. Widen the tenant
 // charset, or give this route a fourth field with a fourth base, and the cases
 // below are the thing that notices: a red test, not a third door that writes a

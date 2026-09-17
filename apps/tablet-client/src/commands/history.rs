@@ -289,7 +289,7 @@ pub async fn list_sales_scoped(
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    // F-017, mirrored from the desktop bridge (`crates/oz-bridge/src/history.rs`):
+    // F-017, mirrored from the desktop bridge (`crates/kasirmu-bridge/src/history.rs`):
     // a session-scoped twin must CHECK something, not just resolve a session.
     // Same permission constant the desktop path already uses for list_sales, asked
     // of the one gate helper this lane uses, so neither the permission name nor the
@@ -332,7 +332,7 @@ pub async fn get_sale_scoped(
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    // F-017, mirrored from the desktop bridge (`crates/oz-bridge/src/history.rs`):
+    // F-017, mirrored from the desktop bridge (`crates/kasirmu-bridge/src/history.rs`):
     // a session-scoped twin must CHECK something, not just resolve a session.
     // Same permission constant the desktop path already uses for get_sale, asked
     // of the one gate helper this lane uses, so neither the permission name nor the
@@ -372,7 +372,7 @@ pub async fn export_daily_summary_scoped(
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    // F-017, mirrored from the desktop bridge (`crates/oz-bridge/src/history.rs`):
+    // F-017, mirrored from the desktop bridge (`crates/kasirmu-bridge/src/history.rs`):
     // a session-scoped twin must CHECK something, not just resolve a session.
     // Same permission constant the desktop path already uses for export_daily_summary, asked
     // of the one gate helper this lane uses, so neither the permission name nor the
@@ -396,7 +396,7 @@ pub async fn export_sales_by_hour_scoped(
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    // F-017, mirrored from the desktop bridge (`crates/oz-bridge/src/history.rs`):
+    // F-017, mirrored from the desktop bridge (`crates/kasirmu-bridge/src/history.rs`):
     // a session-scoped twin must CHECK something, not just resolve a session.
     // Same permission constant the desktop path already uses for export_sales_by_hour, asked
     // of the one gate helper this lane uses, so neither the permission name nor the
@@ -420,7 +420,7 @@ pub async fn export_eod_report_scoped(
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    // F-017, mirrored from the desktop bridge (`crates/oz-bridge/src/history.rs`):
+    // F-017, mirrored from the desktop bridge (`crates/kasirmu-bridge/src/history.rs`):
     // a session-scoped twin must CHECK something, not just resolve a session.
     // Same permission constant the desktop path already uses for export_eod_report, asked
     // of the one gate helper this lane uses, so neither the permission name nor the

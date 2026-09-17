@@ -47,7 +47,7 @@ pub struct SyncSettingsDto {
 /// — because that is what the settings page sends (`ui/src/api/offline.ts`
 /// `UpdateSyncSettingsArgs`, payload built in
 /// `ui/src/features/settings/hooks/saveDiff.ts`) and what the bridge twin
-/// `crates/oz-bridge/src/sync.rs` already expects. Without `rename_all` this
+/// `crates/kasirmu-bridge/src/sync.rs` already expects. Without `rename_all` this
 /// struct silently ignored the UI's payload: both divergent fields are
 /// `Option<String>`, so serde filled `None` instead of erroring and
 /// `update_sync_settings_data`'s `unwrap_or("")` then WIPED the stored server

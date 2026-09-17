@@ -11,7 +11,7 @@
 //! ## How to use this example
 //!
 //! 1. Copy this file into your own crate
-//! 2. Add `oz-hal` as a dependency: `oz-hal = { path = "../oz-pos/crates/oz-hal" }`
+//! 2. Add `oz-hal` as a dependency: `oz-hal = { path = "../oz-pos/crates/kasirmu-hal" }`
 //! 3. Implement your actual hardware communication (USB, serial, etc.)
 //! 4. Register your driver via `DriverRegistry`
 //!

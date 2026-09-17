@@ -1,6 +1,6 @@
 /*
 last audited 31-08-26 by RSA-Agent (user-role campaign, Section D)
-crate: oz-pos-app | status: SAFE | lint: CLEAN
+crate: kasirmu-app | status: SAFE | lint: CLEAN
 findings: centralized enforcement gate per spec 0047 — require_permission[_scoped] defers to Store::authorize_with (db/staff.rs:297) which denies by default at every branch (unregistered required key, missing/inactive user, unresolvable role, scope mismatch); role derived server-side so the frontend cannot forge role_id; the session variant authorizes against the global identity DB (store DBs carry no user rows by design)
 next: none | perf: one indexed user lookup + role fetch per gate — fine
 */

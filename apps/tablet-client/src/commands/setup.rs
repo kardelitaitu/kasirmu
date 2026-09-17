@@ -31,7 +31,7 @@
 //!
 //! **One door is REFUSED.** [`complete_setup`] would *gain* a statement: the
 //! bridge's body opens its transaction with `store.seed_default_roles()`
-//! (`crates/oz-bridge/src/setup.rs:99`) and this shell has never run it. §4
+//! (`crates/kasirmu-bridge/src/setup.rs:99`) and this shell has never run it. §4
 //! forbids adding a statement inside an extraction as plainly as removing one,
 //! so the body stays tablet-native and [`write_setup`] stays with it.
 //!
@@ -157,7 +157,7 @@ fn write_setup(conn: &Connection, args: &CompleteSetupArgs) -> Result<(), AppErr
 ///
 /// Refused 2026-09-16. Delegating would **add a statement**: the bridge body
 /// opens its transaction with `store.seed_default_roles()`
-/// (`crates/oz-bridge/src/setup.rs:99`) which this shell's body has never
+/// (`crates/kasirmu-bridge/src/setup.rs:99`) which this shell's body has never
 /// executed, and §4 pins the transaction's legs and their order. This is the
 /// same class of change as adding a gate, and it is not an extraction.
 ///

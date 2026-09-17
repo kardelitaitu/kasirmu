@@ -21,7 +21,7 @@
 //! gate**: the twin adds an ADR #47 location-resource check on top of the
 //! session gate — `require_permission_for_session_resource(&session,
 //! SETTINGS_EDIT, ScopeType::Location, location_id)`
-//! (`crates/oz-bridge/src/local_payment.rs:82-88`) — which this shell has never
+//! (`crates/kasirmu-bridge/src/local_payment.rs:82-88`) — which this shell has never
 //! enforced. §4 forbids adding a gate inside an extraction as plainly as
 //! removing one, so the body stays tablet-native.
 //!
@@ -71,7 +71,7 @@ pub async fn get_local_payment_methods_scoped(
 /// an ADR #47 location-resource check on top —
 /// `require_permission_for_session_resource(&session, SETTINGS_EDIT,
 /// ScopeType::Location, location_id)`
-/// (`crates/oz-bridge/src/local_payment.rs:82-88`) — which has never run on
+/// (`crates/kasirmu-bridge/src/local_payment.rs:82-88`) — which has never run on
 /// this shell. §4 forbids adding a gate inside an extraction as plainly as
 /// removing one, and a stricter gate can start refusing writes the shell
 /// accepts today.

@@ -1,6 +1,6 @@
 /*
 last audited 31-08-26 by DSH-Agent (EDC commands rewired onto the HAL registry)
-crate: oz-pos-app | status: SAFE | lint: CLEAN
+crate: kasirmu-app | status: SAFE | lint: CLEAN
 findings: previously read a hardcoded AppState field holding an armed MockEdcTerminal, so any operator with SALES_PROCESS could call edc_sale and receive success:true with a Visa last4 and an auth code while no card terminal existed — the response shape gave the caller no way to tell it was fake. Nothing in ui/ imports edcSale yet, so it was latent rather than live. Now resolves through the registry and fails closed with HalErrorKind::NotFound. The hand-rolled five-arm status match is gone: TerminalStatus derives Serialize with rename_all camelCase, so the wire labels are produced by the compiler and a new variant cannot silently fall through to an unhandled arm.
 next: accept a terminal_id argument once more than one terminal can be configured | perf: N/A
 */

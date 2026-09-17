@@ -180,7 +180,7 @@ async fn scoped_table_service_writes_reach_the_body_for_a_cashier() {
 ///
 /// `cleaning` rather than `occupied` because the store refuses that transition
 /// without an active sale — `Store::set_table_status` in
-/// `crates/oz-core/src/db/tables.rs` answers "occupied requires an active sale —
+/// `crates/kasirmu-core/src/db/tables.rs` answers "occupied requires an active sale —
 /// use assign_table_order_scoped". The tail of that message used to name the bare
 /// `assign_table_order`, a command registered in neither shell and since deleted
 /// from this one, which is advice with nowhere to go; it is quoted here in its

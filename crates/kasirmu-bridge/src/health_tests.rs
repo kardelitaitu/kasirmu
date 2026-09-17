@@ -59,12 +59,12 @@ fn version_info_serde_json() {
 #[test]
 fn version_info_field_access() {
     let v = VersionInfo {
-        name: "oz-pos-app",
+        name: "kasirmu-app",
         version: "0.0.28",
         rust_version: "1.80",
         target: "wasm32",
     };
-    assert_eq!(v.name, "oz-pos-app");
+    assert_eq!(v.name, "kasirmu-app");
     assert_eq!(v.version, "0.0.28");
     assert_eq!(v.rust_version, "1.80");
     assert_eq!(v.target, "wasm32");

@@ -29,7 +29,7 @@ fn vendored_contract_matches_ui_canonical() {
     assert!(
         ui_path.exists(),
         "topology parity: no UI canonical contract at {} — this test compares the \
-         vendored crates/oz-core/src/topologySemantics.json against that file, so a \
+         vendored crates/kasirmu-core/src/topologySemantics.json against that file, so a \
          missing path means it has checked nothing. Either the UI file was deleted or \
          this path went stale again (stores/ -> locations/ has already happened once); \
          scripts/verify-topology-parity.py names the same pair.",
@@ -40,7 +40,7 @@ fn vendored_contract_matches_ui_canonical() {
     assert_eq!(
         SHARED_TOPOLOGY_SEMANTICS_JSON.as_bytes(),
         ui_bytes.as_slice(),
-        "vendored crates/oz-core/src/topologySemantics.json drifted from \
+        "vendored crates/kasirmu-core/src/topologySemantics.json drifted from \
          ui/src/features/locations/topologySemantics.json — copy the file \
          across (scripts/verify-topology-parity.py enforces this too)"
     );
@@ -807,7 +807,7 @@ fn topology_matrix_golden_matches_the_rust_evaluator() {
     assert_eq!(
         golden, expected,
         "the Rust topology evaluator no longer matches \
-         crates/oz-core/src/topologySemantics.matrix.json — either restore the \
+         crates/kasirmu-core/src/topologySemantics.matrix.json — either restore the \
          evaluator, or regenerate the golden deliberately and review the matrix \
          diff (ADR #45 §2)"
     );

@@ -149,9 +149,9 @@ pub async fn set_setting_pg(pool: &Pool, key: &str, value: &str) -> Result<(), S
 ///   `apply_ops_sqlite`, which writes this scoped key unconditionally, so a
 ///   write with the default tenant lands on `smtp_config:default`. The
 ///   desktop's own report loop never looks there: it reads only the bare
-///   `smtp_config` (`crates/oz-bridge/src/email.rs:35-43` →
+///   `smtp_config` (`crates/kasirmu-bridge/src/email.rs:35-43` →
 ///   `Store::get_smtp_config`, likewise the scheduler loop in
-///   `crates/oz-notification/src/email_scheduler.rs:44-45`).
+///   `crates/kasirmu-notification/src/email_scheduler.rs:44-45`).
 ///
 /// The consequence on desktop is a fork, not a miss. `stored_smtp_raw` reads
 /// scoped-then-bare and the keep-on-blank merge carries whatever it finds into

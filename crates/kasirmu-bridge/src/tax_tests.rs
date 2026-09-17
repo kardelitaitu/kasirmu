@@ -677,7 +677,7 @@ fn tax_rate_dependency_counts_wire_is_the_key_the_delete_guard_reads() {
     // same in either convention and only the third key moved; the dev-mock
     // (`ui/src/dev-mock/handlers/catalog.ts:391`) answers `sale_lines`, so the
     // screen looked right in mock mode; and the backend refuses the delete
-    // anyway (`crates/oz-core/src/db/tax/rates.rs:359`), so no data was ever
+    // anyway (`crates/kasirmu-core/src/db/tax/rates.rs:359`), so no data was ever
     // lost — the loss was the warning. And `saleLines` appears ZERO times in
     // the repository, i.e. no consumer on the emitted side existed to break.
     //

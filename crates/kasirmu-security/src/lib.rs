@@ -21,7 +21,7 @@ next: SEC-6 residual — SecretString for the Keyring get/set surface | perf: N/
 //! while the settings columns are encoded by `oz-crypto` under a derived key.
 //! They are not wired to each other — the entry this crate rotates is read
 //! back only to report rotation status (three functions in
-//! `crates/oz-bridge/src/security.rs`), and it is NOT the key that any
+//! `crates/kasirmu-bridge/src/security.rs`), and it is NOT the key that any
 //! settings or PII ciphertext is derived from.
 //!
 //! # Keyring

@@ -60,7 +60,7 @@ const QRIS_CURRENCY: &[u8; 3] = b"IDR";
 
 /// QR validity window served to the UI so the countdown has ONE source of
 /// truth: the driver hardcodes the same 300 s (`QRIS_EXPIRY_SECS` in
-/// `crates/oz-payment/src/drivers/qris.rs` — Midtrans-side expiry we do not
+/// `crates/kasirmu-payment/src/drivers/qris.rs` — Midtrans-side expiry we do not
 /// control; agents-3 repair notes the roadmap's "15 minutes" was wrong).
 const QRIS_EXPIRY_SECS: u32 = 300;
 

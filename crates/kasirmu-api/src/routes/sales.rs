@@ -13,7 +13,7 @@ next: none | perf: N/A
 //! keeps answering 201 with a new sale; the key is never parsed beyond the
 //! blank test, never normalised, and never minted server-side. Request content
 //! is never a deduplication input. Scope is (tenant_id, key) on both branches
-//! — see `crates/oz-core/migrations/20261001_sale_idempotency.sql`.
+//! — see `crates/kasirmu-core/migrations/20261001_sale_idempotency.sql`.
 //! `PATCH /api/v1/sales/{id}/status` — transition sale status.
 //! `GET /api/v1/sales/{id}` — get sale detail with line items.
 

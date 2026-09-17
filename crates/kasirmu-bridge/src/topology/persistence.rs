@@ -726,7 +726,7 @@ pub fn validate_semantic_ownership_in(
 /// workspaces or saves an envelope without having run it first has skipped the
 /// only place the canonical semantic shape is required. Production runs it
 /// from `apply_topology_diff`'s ownership block in
-/// `crates/oz-bridge/src/topology/commands.rs` (the `validate_apply_gate`
+/// `crates/kasirmu-bridge/src/topology/commands.rs` (the `validate_apply_gate`
 /// call), before the workspace block — by name, not line number, because
 /// R4 moved the block the old `commands.rs:561` citation pointed at.
 ///

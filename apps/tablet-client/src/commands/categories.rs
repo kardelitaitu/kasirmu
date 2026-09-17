@@ -21,7 +21,7 @@
 //! all. Naming it is what moves the denominator from 5 to 6 and reveals the
 //! remaining four as the only real forks.
 //!
-//! The bridge twin is `crates/oz-bridge/src/categories.rs`, which documents
+//! The bridge twin is `crates/kasirmu-bridge/src/categories.rs`, which documents
 //! itself as the tauri-free half of the **desktop** module — and the desktop
 //! has already delegated it (`apps/desktop-client/src/commands/categories.rs`
 //! is a shim, 8 `oz_bridge::` references and no local `list_categories`). So
@@ -113,7 +113,7 @@ pub struct CreateCategoryResult {
 /// Refused 2026-09-16. `state.resolve_scope` below resolves the session **and
 /// opens the store** in one call, and the gate runs after it; the bridge twin
 /// gates on `ctx.resolve_session` and only then calls `ctx.resolve_store`
-/// (`crates/oz-bridge/src/categories.rs:190-192`). Delegating would remove a
+/// (`crates/kasirmu-bridge/src/categories.rs:190-192`). Delegating would remove a
 /// deny-path side effect and change the error a caller sees against an
 /// unopenable store — `open_store` creates the directory, the database file and
 /// runs migrations on a cache miss. §4 pins gate and lock order, so the body
@@ -170,7 +170,7 @@ pub struct UpdateCategoryResult {
 ///
 /// Refused 2026-09-16 on the same ground as `create_category_scoped`: this
 /// shell opens the store before its gate, the bridge twin gates first
-/// (`crates/oz-bridge/src/categories.rs:218-220`), and §4 pins that order.
+/// (`crates/kasirmu-bridge/src/categories.rs:218-220`), and §4 pins that order.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn update_category_scoped(
@@ -216,7 +216,7 @@ pub struct DeleteCategoryResult {
 ///
 /// Refused 2026-09-16 on the same ground as `create_category_scoped`: this
 /// shell opens the store before its gate, the bridge twin gates first
-/// (`crates/oz-bridge/src/categories.rs:248-250`), and §4 pins that order.
+/// (`crates/kasirmu-bridge/src/categories.rs:248-250`), and §4 pins that order.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn delete_category_scoped(
@@ -259,13 +259,13 @@ async fn require_category_permission(
 /// 1. **Case 2, not case 3.** This door resolves a session (`resolve_scope`
 ///    below) and names **no** permission, so it is on the debt ledger. Its twin
 ///    is not a same-name match — the bridge calls it `list_scoped`
-///    (`crates/oz-bridge/src/categories.rs:160`), which is why an unmapped
+///    (`crates/kasirmu-bridge/src/categories.rs:160`), which is why an unmapped
 ///    parity run prints **`1 / 1`** — the lone pair being the shared gate
 ///    helper — and lists all five doors as `shell-only` facing five
 ///    bridge-only twins. Delegating would flip the ledger row to `Gated` and
 ///    **erase debt** rather than pay it (§1).
 /// 2. **An EXTRA gate.** The twin adds `permissions::PRODUCTS_READ`
-///    (`crates/oz-bridge/src/categories.rs:164-167`, marked `F-017`) which this
+///    (`crates/kasirmu-bridge/src/categories.rs:164-167`, marked `F-017`) which this
 ///    shell has never enforced, and §4 forbids adding a gate inside an
 ///    extraction as plainly as removing one. It is easy to miss because the
 ///    write doors' gates do match by name.

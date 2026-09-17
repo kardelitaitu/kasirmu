@@ -9,7 +9,7 @@ next: none | perf: single index pass per validation
 //! The topology graph (nodes + wires as serde_json values) is validated
 //! against the shared semantic contract (`topologySemantics.json`) and the
 //! ADR #34 typed-connection gates. The contract is VENDORED here in
-//! `crates/oz-core/src/topologySemantics.json` (embedded via `include_str!`)
+//! `crates/kasirmu-core/src/topologySemantics.json` (embedded via `include_str!`)
 //! so server builds never depend on the UI tree; the UI copy in
 //! `ui/src/features/locations/` is kept byte-identical by a parity test and
 //! `scripts/verify-topology-parity.py`. This module is the domain-level core

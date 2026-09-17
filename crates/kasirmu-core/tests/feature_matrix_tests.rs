@@ -14,7 +14,7 @@ use kasirmu_core::FeatureRegistry;
 // ── Expected feature counts ───────────────────────────────────────────
 //
 // These counts are verified against the preset constructors in
-// `crates/oz-core/src/features.rs`. When a preset is modified, update
+// `crates/kasirmu-core/src/features.rs`. When a preset is modified, update
 // the count and the individual feature assertions below.
 
 const SIMPLE_RETAIL_COUNT: usize = 7;

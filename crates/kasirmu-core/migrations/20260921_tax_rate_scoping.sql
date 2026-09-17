@@ -51,7 +51,7 @@
 -- Deliberately NOT this slice: no writer sets these columns yet (the write-side
 -- IPC is the next slice), the sale computation path is not rewired through the
 -- new resolver, and `platform/sync`'s `SnapshotTaxRate` /
--- `crates/oz-core/src/sync_pull.rs::upsert_tax_rates` still carry an explicit
+-- `crates/kasirmu-core/src/sync_pull.rs::upsert_tax_rates` still carry an explicit
 -- column list WITHOUT the four new ones. That last point is a live hazard for
 -- the next slice, not a cosmetic gap: a scoped row pulled from the hub would
 -- land with NULL scope and therefore read as tenant-global at the branch —

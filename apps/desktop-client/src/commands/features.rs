@@ -1,6 +1,6 @@
 /*
 last audited 12-07-27 by C-2 env-var fix
-crate: oz-pos-app | status: SAFE (C-2 resolved) | lint: CLEAN
+crate: kasirmu-app | status: SAFE (C-2 resolved) | lint: CLEAN
 findings: unsafe env::set_var removed from async command path; terminal_id written via AppState field | next: typed setter in AppState + tokio::sync::watch; callers migrate | perf: not in request hot path; concurrency is the concern
 */
 

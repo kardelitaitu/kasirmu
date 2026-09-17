@@ -16,7 +16,7 @@
 //!
 //! **One door is ported.** [`list_all_offline_scoped`] is the only door that is
 //! both body-identical *and* gated — it enforces `SYNC_MANAGE`
-//! (`crates/oz-bridge/src/offline.rs:266-268`), which is what makes the
+//! (`crates/kasirmu-bridge/src/offline.rs:266-268`), which is what makes the
 //! delegation ledger-neutral. `OfflineQueueItemDto` crossed the boundary with it.
 //!
 //! **Seven doors are REFUSED, on four separate grounds.** This module is the
@@ -31,7 +31,7 @@
 //! - **Added statements** — [`enqueue_offline_scoped`] on a second, independent
 //!   ground: the bridge runs three statements this shell never has,
 //!   `TenantSubscription::load` against the global db then `verify_signature()`
-//!   and `enforce_pos_writable()` (`crates/oz-bridge/src/offline.rs:233-236`).
+//!   and `enforce_pos_writable()` (`crates/kasirmu-bridge/src/offline.rs:233-236`).
 //! - **Storage source** — [`retry_offline_sync_scoped`]. Phase 1 reads the
 //!   pending rows from the store database on both sides, but Phase 3 writes the
 //!   outcomes to `state.db`, and on this shell `state.db` is the **global
@@ -150,7 +150,7 @@ fn run_list_remote_failures(
 /// 2. **An added enforcement block.** The twin runs three statements this shell
 ///    has never executed — `TenantSubscription::load` against the global db,
 ///    then `verify_signature()` and `enforce_pos_writable()`
-///    (`crates/oz-bridge/src/offline.rs:233-236`). §4 forbids adding a statement
+///    (`crates/kasirmu-bridge/src/offline.rs:233-236`). §4 forbids adding a statement
 ///    inside an extraction as plainly as removing one, and this one can start
 ///    refusing enqueues the shell accepts.
 ///
@@ -287,7 +287,7 @@ pub async fn pending_offline_count_scoped(
 /// **The divergence is also a live bug.** `mark_offline_synced` runs
 /// `UPDATE offline_queue SET status = 'synced' … WHERE id = ?1` and returns
 /// `CoreError::NotFound` when it affects no rows
-/// (`crates/oz-core/src/db/offline.rs:421-433`). Against the global db that id
+/// (`crates/kasirmu-core/src/db/offline.rs:421-433`). Against the global db that id
 /// does not exist, so the `?` inside `apply_sync_outcomes` aborts the command —
 /// *after* Phase 2 has already pushed the items to the server. The store's rows
 /// therefore stay `pending` and every retry re-sends them. Filed in
@@ -379,7 +379,7 @@ pub async fn retry_offline_sync_scoped(
 /// (`SYNC_MANAGE`), same order, same SQL. The one delta is the log text — this
 /// shell logs `"offline queue item deleted"` (`:359`) where the bridge logs
 /// `"offline queue item deleted (scoped)"`
-/// (`crates/oz-bridge/src/offline.rs:403`). §4 pins log text byte-identical, and
+/// (`crates/kasirmu-bridge/src/offline.rs:403`). §4 pins log text byte-identical, and
 /// the `resolve_boot_store` refusal set that precedent.
 ///
 /// This is a **decision rather than work**: reconcile the `(scoped)` suffix on
@@ -416,7 +416,7 @@ pub async fn delete_offline_item_scoped(
 /// bridge's own helper — and the gate matches, so nothing but the log text
 /// differs: `"dead-lettered remote item requeued for sync retry"` here (`:382`)
 /// against `"dead-lettered remote item requeued (scoped)"` in the twin
-/// (`crates/oz-bridge/src/offline.rs:425`). §4 pins log text byte-identical.
+/// (`crates/kasirmu-bridge/src/offline.rs:425`). §4 pins log text byte-identical.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn requeue_remote_failure_scoped(

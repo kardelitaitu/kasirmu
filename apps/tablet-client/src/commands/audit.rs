@@ -60,9 +60,9 @@ pub use oz_bridge::audit::{
 /// # Why the shims call this *and* the bridge still gates
 ///
 /// Tablet passes `debug_upgrade: false` to `build_entitlements`; the bridge's
-/// private copy passes `true` (`crates/oz-bridge/src/audit.rs:273`), which
+/// private copy passes `true` (`crates/kasirmu-bridge/src/audit.rs:273`), which
 /// promotes an Active `Free` row to `Premium` under `cfg!(debug_assertions)`
-/// (`crates/oz-core/src/entitlements.rs:96-108`, whose own doc records
+/// (`crates/kasirmu-core/src/entitlements.rs:96-108`, whose own doc records
 /// "Tablet never calls this"). **The bridge's `true` can only widen the gate,
 /// never narrow it, so running this stricter `false` check first makes the
 /// composite `min(both)` equal to the tablet's current gate exactly** - which
