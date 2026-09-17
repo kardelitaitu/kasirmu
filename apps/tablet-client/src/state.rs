@@ -530,6 +530,7 @@ impl AppState {
             topology_apply_lock: Mutex::new(()),
             db_manager: StoreDatabaseManager::new(std::env::temp_dir(), kasirmu_core::migrations::ALL),
             picker_ticket_secret: b"test-picker-ticket-secret".to_vec(),
+            sync_wakeup: Arc::new(tokio::sync::Notify::new()),
         }
     }
 
@@ -551,6 +552,7 @@ impl AppState {
             topology_apply_lock: Mutex::new(()),
             db_manager: StoreDatabaseManager::new(std::env::temp_dir(), kasirmu_core::migrations::ALL),
             picker_ticket_secret: b"test-picker-ticket-secret".to_vec(),
+            sync_wakeup: Arc::new(tokio::sync::Notify::new()),
         }
     }
 
