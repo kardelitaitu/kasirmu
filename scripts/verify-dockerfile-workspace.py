@@ -9,7 +9,7 @@ the root Cargo.toml but forgotten in a Dockerfile, the priming build
 silently fails (it is best-effort) and the cache layer is dead weight —
 every image build then recompiles the full dependency tree.
 
-P2: the unified image (Dockerfile.unified) had drifted from Dockerfile.server
+P2: the unified image (ops/docker/Dockerfile.unified) had drifted from ops/docker/Dockerfile.server
 — missing kasirmu-crypto / kasirmu-media (both in cloud-server's dependency graph),
 scripts/updater-compat-check (a workspace member cargo must resolve), and
 four modules (giftcards/kitchen/promotions/purchasing — not in the
@@ -42,8 +42,8 @@ CARGO_TOML = ROOT / "Cargo.toml"
 # exclusion sets are empty — kept so a future image can intentionally prune
 # members without breaking the check.
 DOCKERFILES: dict[str, set[str]] = {
-    "Dockerfile.server": set(),
-    "Dockerfile.unified": set(),
+    "ops/docker/Dockerfile.server": set(),
+    "ops/docker/Dockerfile.unified": set(),
 }
 
 # These workspace members are NOT copied as manifests: the cache stage

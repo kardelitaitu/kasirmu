@@ -46,7 +46,7 @@ cleanup
 
 # ── Build both images ────────────────────────────────────────────────
 echo "── Building images ──"
-docker build -q -f Dockerfile.server -t "$CLOUD_IMG" . >/dev/null
+docker build -q -f ops/docker/Dockerfile.server -t "$CLOUD_IMG" . >/dev/null
 echo "cloud image built"
 docker build -q -f apps/license-server/Dockerfile -t "$LICENSE_IMG" apps/license-server >/dev/null
 echo "license image built"

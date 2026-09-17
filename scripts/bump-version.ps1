@@ -135,7 +135,7 @@ Update-File "AGENTS.md" "version lock: $currentVersion" "version lock: $TargetVe
 Update-File ".agents/AGENTS.md" "| **Version Lock** | **Version is locked at ``$currentVersion``. NEVER modify version numbers.** | Do not bump version in ``Cargo.toml``, ``package.json``, ``tauri.conf.json``, etc. |" "| **Version Lock** | **Version is locked at ``$TargetVersion``. NEVER modify version numbers.** | Do not bump version in ``Cargo.toml``, ``package.json``, ``tauri.conf.json``, etc. |"
 Update-File ".agents/AGENTS.md" "version lock: $currentVersion" "version lock: $TargetVersion"
 Update-File "Cargo.toml" "version = `"$currentVersion`"" "version = `"$TargetVersion`""
-Update-File "Dockerfile.server" "version = `"$currentVersion`"" "version = `"$TargetVersion`""
+Update-File "ops/docker/Dockerfile.server" "version = `"$currentVersion`"" "version = `"$TargetVersion`""
 Update-File "apps/desktop-client/tauri.conf.json" "`"version`": `"$currentVersion`"," "`"version`": `"$TargetVersion`","
 Update-File "apps/tablet-client/tauri.conf.json" "`"version`": `"$currentVersion`"," "`"version`": `"$TargetVersion`","
 Update-File "ui/package.json" "`"version`": `"$currentVersion`"," "`"version`": `"$TargetVersion`","
@@ -180,8 +180,8 @@ Update-File "website/src/i18n/en.json" ('"subtitle": "Version {0} {1} free forev
 Update-File "website/src/i18n/id.json" ('"versionValue": "{0}"' -f $currentVersion) ('"versionValue": "{0}"' -f $TargetVersion)
 Update-File "website/src/i18n/id.json" ('"subtitle": "Versi {0} {1} gratis selamanya, tanpa pendaftaran."' -f $currentVersion, [char]0x2014) ('"subtitle": "Versi {0} {1} gratis selamanya, tanpa pendaftaran."' -f $TargetVersion, [char]0x2014)
 
-# Dockerfile.unified carries the same cache-priming manifests as Dockerfile.server.
-Update-File "Dockerfile.unified" "version = `"$currentVersion`"" "version = `"$TargetVersion`""
+# ops/docker/Dockerfile.unified carries the same cache-priming manifests as ops/docker/Dockerfile.server.
+Update-File "ops/docker/Dockerfile.unified" "version = `"$currentVersion`"" "version = `"$TargetVersion`""
 
 # .prime/AGENTS.md used to be synced here. The .prime/ tree (a third rules mirror and
 # a Python codebase-memory wrapper) was deleted on 08-09-26; verify-agents-mirrors.py

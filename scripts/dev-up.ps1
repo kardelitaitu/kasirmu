@@ -22,13 +22,27 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path -Parent (Split-Path -Parent $PSCommandPath))
 
+# ── Compose entry points ───────────────────────────────────────────
+# MIRROR of the same block in scripts/dev-up.sh — keep the two in step.
+# The Docker artifacts live under ops/docker/ (they used to sit at the repo
+# root). --project-directory . keeps the Compose project rooted at the repo,
+# which preserves the derived project name (existing volumes stay
+# ozpos_oz_cloud_data), lets Compose read the repo-root .env this script
+# generates, and keeps `context: .` resolving to the repo root.
+$ComposeBase = @('compose', '--project-directory', '.', '-f', 'ops/docker/docker-compose.yml')
+# An explicit -f suppresses the implicit override auto-merge, so the override is
+# named explicitly on the non-PG path. The PG path keeps its long-standing
+# behaviour: it always passed -f, so it never merged the override.
+$ComposeDev = $ComposeBase + @('-f', 'ops/docker/docker-compose.override.yml')
+$ComposePg  = $ComposeBase + @('-f', 'ops/docker/docker-compose.pg.yml')
+
 # ── Tear-down mode ────────────────────────────────────────────────
 if ($Down) {
   Write-Host "👋 Tearing down OZ-POS dev environment..." -ForegroundColor Yellow
   if ($Pg) {
-    docker compose -f docker-compose.yml -f docker-compose.pg.yml down -v
+    docker @ComposePg down -v
   } else {
-    docker compose down -v
+    docker @ComposeDev down -v
   }
   Write-Host "✅ Done. Volumes removed." -ForegroundColor Green
   exit 0
@@ -43,7 +57,7 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 # ── Generate the required secrets once, persist them, reuse on next run ──
 #
 # MIRROR of the same block in scripts/dev-up.sh — keep the two in step.
-# docker-compose.yml hard-requires OZ_API_SECRET (:55) and OZ_ADMIN_KEY (:70)
+# ops/docker/docker-compose.yml hard-requires OZ_API_SECRET (:55) and OZ_ADMIN_KEY (:70)
 # with the fail-closed ':?' form. That requirement IS the fix: an unset
 # OZ_ADMIN_KEY makes admin_key_authorised() (crates/kasirmu-api/src/routes/
 # tokens.rs) return TRUE, turning POST /api/v1/tokens into an unauthenticated
@@ -214,18 +228,18 @@ if (-not $env:OZ_LICENSE_PRIVATE_KEY) {
 if ($Build) {
   Write-Host "🔨 Building Docker images..." -ForegroundColor Cyan
   if ($Pg) {
-    docker compose -f docker-compose.yml -f docker-compose.pg.yml build
+    docker @ComposePg build
   } else {
-    docker compose build
+    docker @ComposeDev build
   }
 }
 
 # ── Start services ────────────────────────────────────────────────
 Write-Host "🚀 Starting OZ-POS backend services..." -ForegroundColor Cyan
 if ($Pg) {
-  docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d
+  docker @ComposePg up -d
 } else {
-  docker compose up -d
+  docker @ComposeDev up -d
 }
 
 # ── Wait for health checks ────────────────────────────────────────
@@ -241,7 +255,7 @@ $interval = 3
 while ($elapsed -lt $timeout) {
   $allHealthy = $true
   foreach ($svc in $services) {
-    $status = docker compose ps --format json $svc 2>$null | ConvertFrom-Json | Select-Object -ExpandProperty Health -ErrorAction SilentlyContinue
+    $status = docker @ComposeBase ps --format json $svc 2>$null | ConvertFrom-Json | Select-Object -ExpandProperty Health -ErrorAction SilentlyContinue
     if ($status -ne "healthy") {
       $allHealthy = $false
       break
@@ -253,7 +267,7 @@ while ($elapsed -lt $timeout) {
 }
 
 if ($elapsed -ge $timeout) {
-  Write-Host "⚠️  Health check timeout after ${timeout}s. Check logs: docker compose logs" -ForegroundColor Yellow
+  Write-Host "⚠️  Health check timeout after ${timeout}s. Check logs: docker compose --project-directory . -f ops/docker/docker-compose.yml logs" -ForegroundColor Yellow
 } else {
   Write-Host "✅ All services healthy (${elapsed}s)" -ForegroundColor Green
 }
@@ -274,5 +288,7 @@ if ($Pg) {
 Write-Host "╠══════════════════════════════════════════════════════════╣" -ForegroundColor Green
 Write-Host "║  Start desktop app: .\scripts\start-desktop.bat          ║" -ForegroundColor Green
 Write-Host "║  Stop services:    .\scripts\dev-up.ps1 -Down            ║" -ForegroundColor Green
-Write-Host "║  View logs:        docker compose logs -f                ║" -ForegroundColor Green
+Write-Host "║  View logs:        see the full command below            ║" -ForegroundColor Green
 Write-Host "╚══════════════════════════════════════════════════════════╝" -ForegroundColor Green
+Write-Host ""
+Write-Host "Tail logs: docker compose --project-directory . -f ops/docker/docker-compose.yml logs -f" -ForegroundColor Green

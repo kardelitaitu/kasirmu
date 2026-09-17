@@ -5,7 +5,7 @@
 #   export OZ_API_SECRET=$(openssl rand -hex 32)
 #   export OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)"
 #   export PG_PASSWORD=$(openssl rand -hex 32)
-#   docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d
+#   docker compose --project-directory . -f ops/docker/docker-compose.yml -f ops/docker/docker-compose.pg.yml up -d
 #
 # PG_PASSWORD is REQUIRED — Compose fails fast if it is absent so a
 # PostgreSQL service never starts with an empty/well-known password.

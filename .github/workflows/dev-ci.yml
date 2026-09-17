@@ -735,7 +735,7 @@ jobs:
     #
     #   * release-readiness proves the DESKTOP updater signing chain, and this job
     #     consumes none of it. It POSTs the commit sha to Northflank, which builds
-    #     Dockerfile.unified -- a backend container that takes no installer, no
+    #     ops/docker/Dockerfile.unified -- a backend container that takes no installer, no
     #     latest.json and no updater pubkey. That chain is already hard-gated where
     #     it binds, in release.yml: release-validate runs the same
     #     scripts/check-updater-compat.mjs, release-build needs release-validate,

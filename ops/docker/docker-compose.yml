@@ -11,7 +11,7 @@
 #   export OZ_API_SECRET=$(openssl rand -hex 32)
 #   export OZ_ADMIN_KEY=$(openssl rand -hex 32)
 #   export OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)"
-#   docker compose up -d
+#   docker compose --project-directory . -f ops/docker/docker-compose.yml up -d
 #   curl http://localhost:3099/api/v1/health
 #   curl http://localhost:8080/api/v1/license/status
 #
@@ -21,7 +21,7 @@
 #   export OZ_ADMIN_KEY=$(openssl rand -hex 32)
 #   export OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)"
 #   export PG_PASSWORD=$(openssl rand -hex 32)
-#   docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d
+#   docker compose --project-directory . -f ops/docker/docker-compose.yml -f ops/docker/docker-compose.pg.yml up -d
 #
 # Required env vars (Compose fails fast when absent):
 #   OZ_API_SECRET          — JWT signing secret (generate: openssl rand -hex 32)
@@ -157,7 +157,7 @@ services:
   # ── PostgreSQL Database (optional — docker-compose.pg.yml) ────────
   #
   # The enterprise PostgreSQL backend now lives in `docker-compose.pg.yml`
-  # and is merged explicitly (`-f docker-compose.yml -f docker-compose.pg.yml`).
+  # and is merged explicitly (`-f ops/docker/docker-compose.yml -f ops/docker/docker-compose.pg.yml`).
   # This keeps required-secret validation scoped: PG_PASSWORD is only
   # required when the pg override is actually in use, while the SQLite
   # quickstart above still starts with just the two core secrets (DOCKER-04).

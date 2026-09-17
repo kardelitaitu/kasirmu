@@ -8,7 +8,7 @@ import { defineConfig, devices } from '@playwright/test';
  * backend is needed for browser-based UI tests.
  *
  * API-level integration tests (api.spec.ts) target the cloud-server
- * running via Docker Compose (`docker-compose.e2e.yml`).
+ * running via Docker Compose (`ops/docker/docker-compose.e2e.yml`).
  *
  * Usage:
  *   # Start the Vite dev server first:

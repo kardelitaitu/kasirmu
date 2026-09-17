@@ -57,7 +57,7 @@ cleanup() {
   # Stop Docker services (only if we started them).
   if [ "$NO_DOCKER" = false ]; then
     echo "    Stopping Docker E2E services..."
-    docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" down -v 2>/dev/null || true
+    docker compose --project-directory "$ROOT_DIR" -f "$ROOT_DIR/ops/docker/docker-compose.e2e.yml" down -v 2>/dev/null || true
   fi
 
   echo "    Done."
@@ -87,7 +87,7 @@ if [ "$NO_DOCKER" = false ]; then
     fi
   fi
 
-  docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" up -d
+  docker compose --project-directory "$ROOT_DIR" -f "$ROOT_DIR/ops/docker/docker-compose.e2e.yml" up -d
 
   echo "    Waiting for services to become healthy..."
   echo "    (this may take 30-60s on first build)"
@@ -102,7 +102,7 @@ if [ "$NO_DOCKER" = false ]; then
     if [ "$i" -eq 30 ]; then
       echo " FAILED (attempt $i)"
       echo "    Check docker logs:"
-      docker compose -f "$ROOT_DIR/docker-compose.e2e.yml" logs e2e-cloud-server --tail=20
+      docker compose --project-directory "$ROOT_DIR" -f "$ROOT_DIR/ops/docker/docker-compose.e2e.yml" logs e2e-cloud-server --tail=20
       exit 1
     fi
     echo -n "."

@@ -1,12 +1,19 @@
 # ── Docker Compose Override — Local Development ──────────────────────
 #
-# Applied automatically by `docker compose` when `docker-compose.yml`
-# is present. Adds dev-friendly defaults:
+# Merged EXPLICITLY, second, by every entry point that wants dev defaults
+# (scripts/dev-up.sh and docs/operations/docker-deployment.md):
+#
+#   docker compose --project-directory . #     -f ops/docker/docker-compose.yml -f ops/docker/docker-compose.override.yml up -d
+#
+# Compose auto-merges an override file only when it sits beside the DEFAULT
+# file name in the project directory. This file now lives under ops/docker/
+# and is always named with -f, so the merge must be asked for. Adds
+# dev-friendly defaults:
 #   • Bind mounts for hot-reload (cloud-server source)
 #   • Higher log levels (RUST_LOG=debug)
 #   • Exposed debug ports
 #
-# To disable: rename this file or set COMPOSE_FILE=docker-compose.yml
+# To disable: drop the second -f (or point COMPOSE_FILE at the base file alone)
 
 services:
   pos-cloud-server:

@@ -158,13 +158,14 @@ const LOCAL_BUILD_CONTEXTS = [
   {
     service: 'e2e-cloud-server',
     image: 'e2e-cloud-server:latest',
-    // Dockerfile.server: context is the repo root, but .dockerignore drops
+    // ops/docker/Dockerfile.server: Compose is given --project-directory, so
+    // the context is still the repo root; .dockerignore drops
     // ui/, docs/, apps/desktop-client and apps/tablet-client, and cargo only
     // builds the kasirmu-cloud package — so apps/license-server and
     // apps/unified cannot change this binary.
     paths: [
       'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml',
-      'Dockerfile.server', '.dockerignore',
+      'ops/docker/Dockerfile.server', '.dockerignore',
       'crates', 'foundation', 'platform', 'modules',
       'apps/cloud-server',
       'scripts/docker-entrypoint.sh', 'scripts/updater-compat-check',
@@ -264,7 +265,7 @@ function buildServices(services) {
   for (const { service, reason } of services) {
     log('Docker', `Building ${service} — ${reason}`);
     execSync(
-      `docker compose -f "${ROOT}/docker-compose.e2e.yml" build ${service}`,
+      `docker compose --project-directory "${ROOT}" -f "${ROOT}/ops/docker/docker-compose.e2e.yml" build ${service}`,
       { stdio: 'inherit', timeout: 2_400_000 },
     );
   }
@@ -302,7 +303,7 @@ function assertImagesFresh() {
   }
   console.log('');
   log('Docker', `Rebuild them and re-run:  ${BOLD}npm run e2e -- --build${NC}`);
-  log('Docker', `Or build one directly:    docker compose -f docker-compose.e2e.yml build ${stale[0].service}`);
+  log('Docker', `Or build one directly:    docker compose --project-directory . -f ops/docker/docker-compose.e2e.yml build ${stale[0].service}`);
   throw new Error('stale E2E images');
 }
 
@@ -344,12 +345,12 @@ function dumpContainerLogs() {
   try {
     log('Docker', 'Dumping service logs for diagnosis...');
     execSync(
-      `docker compose -f "${ROOT}/docker-compose.e2e.yml" logs --tail 100`,
+      `docker compose --project-directory "${ROOT}" -f "${ROOT}/ops/docker/docker-compose.e2e.yml" logs --tail 100`,
       { stdio: 'inherit', timeout: 15_000 },
     );
     log('Docker', 'Container status:');
     execSync(
-      `docker compose -f "${ROOT}/docker-compose.e2e.yml" ps -a`,
+      `docker compose --project-directory "${ROOT}" -f "${ROOT}/ops/docker/docker-compose.e2e.yml" ps -a`,
       { stdio: 'inherit', timeout: 10_000 },
     );
   } catch {
@@ -383,7 +384,7 @@ function startDocker() {
   try {
     prePullRedis();
     execSync(
-      `docker compose -f "${ROOT}/docker-compose.e2e.yml" up -d --wait --pull=missing`,
+      `docker compose --project-directory "${ROOT}" -f "${ROOT}/ops/docker/docker-compose.e2e.yml" up -d --wait --pull=missing`,
       { stdio: 'inherit', timeout: 120_000 },
     );
     dockerStarted = true;
@@ -401,7 +402,7 @@ function stopDocker() {
   log('Docker', 'Stopping E2E services...');
   try {
     execSync(
-      `docker compose -f "${ROOT}/docker-compose.e2e.yml" down -v`,
+      `docker compose --project-directory "${ROOT}" -f "${ROOT}/ops/docker/docker-compose.e2e.yml" down -v`,
       { stdio: 'pipe', timeout: 60_000 },
     );
     dockerStarted = false;

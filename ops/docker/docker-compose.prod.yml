@@ -4,7 +4,7 @@
 #
 #   export OZ_API_SECRET=$(openssl rand -hex 32)
 #   export OZ_LICENSE_PRIVATE_KEY="$(cat crates/kasirmu-core/oz-license-private.pem)"
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#   docker compose --project-directory . -f ops/docker/docker-compose.yml -f ops/docker/docker-compose.prod.yml up -d
 #
 # (For PostgreSQL, also merge docker-compose.pg.yml and set PG_PASSWORD.)
 #
@@ -82,6 +82,6 @@ services:
 
   # pos-cloud-db lives in docker-compose.pg.yml (merged with `-f`) and is
   # hardened in that file — this override only touches services defined in
-  # the base compose, so `-f docker-compose.yml -f docker-compose.prod.yml`
+  # the base compose, so `-f ops/docker/docker-compose.yml -f ops/docker/docker-compose.prod.yml`
   # stays valid on its own (SQLite stack).
 

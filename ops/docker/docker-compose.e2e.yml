@@ -5,10 +5,10 @@
 # Redis is included for cache-dependent integration tests.
 #
 # Usage:
-#   docker compose -f docker-compose.e2e.yml up -d
+#   docker compose --project-directory . -f ops/docker/docker-compose.e2e.yml up -d
 #   cd ui && npm run dev &
 #   cd ui && npx playwright test --config e2e/playwright.config.ts
-#   docker compose -f docker-compose.e2e.yml down -v
+#   docker compose --project-directory . -f ops/docker/docker-compose.e2e.yml down -v
 #
 # Environment:
 #   OZ_API_SECRET    — JWT secret (default: e2e-test-secret)
