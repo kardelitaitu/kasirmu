@@ -1,10 +1,10 @@
 [package]
-name = "oz-pos-fuzz"
+name = "kasirmu-fuzz"
 version = "0.0.0"
 edition = "2024"
 publish = false
 license = "Proprietary"
-description = "Fuzz testing targets for OZ-POS critical parsing and arithmetic paths"
+description = "Fuzz testing targets for kasir.mu critical parsing and arithmetic paths"
 
 [package.metadata]
 cargo-fuzz = true
@@ -29,21 +29,21 @@ cargo-fuzz = true
 #
 #   (default)           - foundation + kasirmu-lua only; covers sku_parse,
 #                         money_parse (no C-lib initialization conflicts).
-#   kasirmu-core-fuzz        - adds kasirmu-core + bundled SQLite; needed for cart_deser.
-#   kasirmu-plugin-fuzz      - adds kasirmu-plugin (implies kasirmu-core-fuzz); needed for
+#   kasirmu-core-fuzz   - adds kasirmu-core + bundled SQLite; needed for cart_deser.
+#   kasirmu-plugin-fuzz - adds kasirmu-plugin (implies kasirmu-core-fuzz); needed for
 #                         ozpkg_parse + manifest_parse.
 #   lua-fuzz            - enables lua_sandbox (kasirmu-lua already in base deps).
 [features]
 kasirmu-core-fuzz   = ["dep:kasirmu-core"]
 kasirmu-plugin-fuzz = ["kasirmu-core-fuzz", "dep:kasirmu-plugin", "dep:toml"]
-lua-fuzz       = []
+lua-fuzz            = []
 
 [dependencies]
 libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
 foundation = { path = "../foundation" }
 kasirmu-lua = { path = "../crates/kasirmu-lua" }
-kasirmu-core   = { path = "../crates/kasirmu-core",   optional = true }
+kasirmu-core = { path = "../crates/kasirmu-core", optional = true }
 kasirmu-plugin = { path = "../crates/kasirmu-plugin", optional = true }
 # kasirmu-lua migrated from rlua to mlua 0.9; the lua_sandbox target inspects
 # the sandbox via mlua types, so mlua must be a direct dep with the same

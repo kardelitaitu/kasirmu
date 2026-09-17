@@ -14,16 +14,16 @@
 //! A panic here is a real bug in the hardened parser — the fuzz gate in
 //! CI uploads the crashing input as an artifact.
 //!
-//! This target requires the `oz-plugin-fuzz` feature:
-//!   `cargo fuzz run --features oz-plugin-fuzz ozpkg_parse`
+//! This target requires the `kasirmu-plugin-fuzz` feature:
+//!   `cargo fuzz run --features kasirmu-plugin-fuzz ozpkg_parse`
 
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
 
-// When oz-plugin-fuzz feature is not enabled, compile a no-op stub so the
-// binary still links cleanly without pulling in oz-plugin's C deps.
-#[cfg(feature = "oz-plugin-fuzz")]
+// When kasirmu-plugin-fuzz feature is not enabled, compile a no-op stub so the
+// binary still links cleanly without pulling in kasirmu-plugin's C deps.
+#[cfg(feature = "kasirmu-plugin-fuzz")]
 fuzz_target!(|data: &[u8]| {
     // `from_bytes` runs the full parse: zip open, entry classification,
     // resource-limit checks, and manifest.json validation. Errors are the
@@ -32,8 +32,8 @@ fuzz_target!(|data: &[u8]| {
     let _ = kasirmu_plugin::package::OzpkArchive::from_bytes(data, "fuzz.ozpkg");
 });
 
-#[cfg(not(feature = "oz-plugin-fuzz"))]
+#[cfg(not(feature = "kasirmu-plugin-fuzz"))]
 fuzz_target!(|_data: &[u8]| {
-    // Stub: oz-plugin-fuzz feature not enabled. Run with:
-    //   cargo fuzz run --features oz-plugin-fuzz ozpkg_parse
+    // Stub: kasirmu-plugin-fuzz feature not enabled. Run with:
+    //   cargo fuzz run --features kasirmu-plugin-fuzz ozpkg_parse
 });

@@ -21,7 +21,7 @@
 // This fuzz target is `no_main` and compiled only with cargo-fuzz.
 // It does not use `unsafe` directly.
 //
-// oz-lua migrated from rlua to mlua 0.9 (vendored Lua 5.4); the sandbox
+// kasirmu-lua migrated from rlua to mlua 0.9 (vendored Lua 5.4); the sandbox
 // checks below use `mlua::Value` types. `LuaRuntime` is used behind a
 // Mutex in production; fuzzing is single-threaded, so no concurrency
 // concerns apply.
@@ -50,7 +50,7 @@ fuzz_target!(|data: &[u8]| {
         // malicious code. Only check if input is short enough to have
         // loaded successfully and not exceeded the instruction limit.
         //
-        // The contract (pinned in oz-lua as
+        // The contract (pinned in kasirmu-lua as
         // `sandbox_contract_survives_the_fuzz_crash_input`):
         //   - os       → restricted table: date/time/clock present,
         //                execute/remove/rename/exit nil (or nil itself)
