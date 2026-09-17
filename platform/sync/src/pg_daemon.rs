@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde::Serialize;
-use tokio::sync::{Mutex, RwLock, watch};
+use tokio::sync::{Mutex, Notify, RwLock, watch};
 
 use oz_core::db::Store;
 use oz_core::events::SettingsUpdated;
@@ -38,6 +38,12 @@ const DEFAULT_PG_SYNC_INTERVAL: Duration = Duration::from_secs(60);
 /// request ceiling), so a grace shorter than one request cycle — the old
 /// fixed 100ms sleep — could never cover an in-flight cycle.
 const PG_STOP_GRACE: Duration = Duration::from_secs(30);
+
+/// Debounce window applied after a [`PgSyncDaemon::nudge`] wakeup (SYNC-EW).
+///
+/// Matches the HTTP daemon's debounce: absorbs rapid bursts from batch-scan
+/// workflows before running a single PG round-trip.
+const PG_WAKEUP_DEBOUNCE: Duration = Duration::from_millis(1_500);
 
 /// Snapshot of the PG daemon's current state, observable via
 /// [`PgSyncDaemon::status`]. Serialized camelCase for the Tauri command
@@ -80,6 +86,9 @@ pub struct PgSyncDaemon {
     /// of guessing with a sleep.
     worker: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     settings_sink: SettingsChangedSink,
+    /// Notifier for event-triggered wakeups (SYNC-EW). Call
+    /// [`PgSyncDaemon::nudge`] to wake the run loop early.
+    wakeup: Arc<Notify>,
 }
 
 impl PgSyncDaemon {
@@ -91,6 +100,7 @@ impl PgSyncDaemon {
             shutdown_tx: Arc::new(Mutex::new(None)),
             worker: Arc::new(Mutex::new(None)),
             settings_sink: Arc::new(|_: &SettingsUpdated| {}),
+            wakeup: Arc::new(Notify::new()),
         }
     }
 
@@ -102,6 +112,7 @@ impl PgSyncDaemon {
             shutdown_tx: Arc::new(Mutex::new(None)),
             worker: Arc::new(Mutex::new(None)),
             settings_sink: Arc::new(|_: &SettingsUpdated| {}),
+            wakeup: Arc::new(Notify::new()),
         }
     }
 
@@ -153,6 +164,7 @@ impl PgSyncDaemon {
 
         let interval = self.interval;
         let daemon_status = Arc::clone(&self.status);
+        let wakeup_clone = Arc::clone(&self.wakeup);
 
         {
             let mut s = daemon_status.write().await;
@@ -175,6 +187,15 @@ impl PgSyncDaemon {
                             tracing::info!("pg sync daemon shutting down");
                             break;
                         }
+                    }
+                    // SYNC-EW: event-triggered wakeup path (mirrors SyncDaemon).
+                    _ = wakeup_clone.notified() => {
+                        tracing::debug!(
+                            debounce_ms = PG_WAKEUP_DEBOUNCE.as_millis(),
+                            "pg sync daemon woken by nudge — debouncing"
+                        );
+                        tokio::time::sleep(PG_WAKEUP_DEBOUNCE).await;
+                        Self::run_tick(&db, &daemon_status, &settings_sink).await;
                     }
                 }
             }
@@ -591,6 +612,21 @@ impl PgSyncDaemon {
     /// Get the current sync interval.
     pub fn interval(&self) -> Duration {
         self.interval
+    }
+
+    /// Signal the run loop to wake up and run a PG sync tick immediately
+    /// (SYNC-EW — event-triggered wakeup).
+    ///
+    /// Identical semantics to [`crate::daemon::SyncDaemon::nudge`]: safe from
+    /// any thread, coalesces bursts, is a no-op when the daemon is stopped.
+    pub fn nudge(&self) {
+        self.wakeup.notify_one();
+    }
+
+    /// Return a clone of the underlying [`Arc<Notify>`] for test inspection.
+    #[cfg(test)]
+    pub(crate) fn wakeup_handle(&self) -> Arc<Notify> {
+        Arc::clone(&self.wakeup)
     }
 }
 

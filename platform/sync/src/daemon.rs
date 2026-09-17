@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rand::Rng;
-use tokio::sync::{Mutex, RwLock, watch};
+use tokio::sync::{Mutex, Notify, RwLock, watch};
 
 use oz_core::db::Store;
 use oz_core::events::SettingsUpdated;
@@ -36,6 +36,13 @@ const DEFAULT_SYNC_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Maximum backoff cap in milliseconds (60 s).
 const MAX_BACKOFF_MS: u64 = 60_000;
+
+/// Debounce window applied after a [`SyncDaemon::nudge`] wakeup (SYNC-EW).
+///
+/// After the notifier fires we sleep this long before running a tick.  This
+/// coalesces a burst of rapid sale-completion signals (e.g. batch scan) into
+/// a single sync cycle instead of hammering the remote endpoint.
+const WAKEUP_DEBOUNCE: Duration = Duration::from_millis(1_500);
 
 /// Grace period [`SyncDaemon::stop`] allows the run loop to finish an
 /// in-flight sync cycle before giving up and reporting a timeout. A tick
@@ -108,6 +115,11 @@ pub struct SyncDaemon {
     /// instead of guessing with a sleep.
     worker: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     settings_sink: SettingsChangedSink,
+    /// Notifier for event-triggered wakeups (SYNC-EW). Call
+    /// [`SyncDaemon::nudge`] to wake the run loop early. The loop
+    /// debounces rapid taps with a short `WAKEUP_DEBOUNCE` pause before
+    /// running a tick.
+    wakeup: Arc<Notify>,
 }
 
 /// Read sync configuration and pending offline items from a database
@@ -264,6 +276,7 @@ impl SyncDaemon {
             shutdown_tx: Arc::new(Mutex::new(None)),
             worker: Arc::new(Mutex::new(None)),
             settings_sink: Arc::new(|_: &SettingsUpdated| {}),
+            wakeup: Arc::new(Notify::new()),
         }
     }
 
@@ -275,6 +288,7 @@ impl SyncDaemon {
             shutdown_tx: Arc::new(Mutex::new(None)),
             worker: Arc::new(Mutex::new(None)),
             settings_sink: Arc::new(|_: &SettingsUpdated| {}),
+            wakeup: Arc::new(Notify::new()),
         }
     }
 
@@ -328,6 +342,7 @@ impl SyncDaemon {
 
         let interval = self.interval;
         let daemon_status = Arc::clone(&self.status);
+        let wakeup_clone = Arc::clone(&self.wakeup);
 
         {
             let mut s = daemon_status.write().await;
@@ -399,6 +414,35 @@ impl SyncDaemon {
                         if res.is_err() || *rx.borrow() {
                             tracing::info!("sync daemon shutting down");
                             break;
+                        }
+                    }
+                    // SYNC-EW: event-triggered wakeup path.
+                    //
+                    // A call to `nudge()` (e.g. after a cashier completes a
+                    // sale) fires this arm instead of waiting for the next
+                    // periodic tick. We sleep WAKEUP_DEBOUNCE first to
+                    // coalesce rapid bursts (batch scans, multi-tap) into a
+                    // single network round-trip, then run a normal tick.
+                    // Consecutive-failure tracking and backoff are updated
+                    // identically to the periodic arm so the two paths are
+                    // interchangeable from a reliability standpoint.
+                    _ = wakeup_clone.notified() => {
+                        tracing::debug!(
+                            debounce_ms = WAKEUP_DEBOUNCE.as_millis(),
+                            "sync daemon woken by nudge — debouncing"
+                        );
+                        tokio::time::sleep(WAKEUP_DEBOUNCE).await;
+                        daemon_tick::run_tick(&db, &daemon_status, &settings_sink).await;
+
+                        let had_error = daemon_status.read().await.last_error.is_some();
+                        if had_error {
+                            consecutive_failures += 1;
+                        } else {
+                            consecutive_failures = 0;
+                        }
+                        {
+                            let mut s = daemon_status.write().await;
+                            s.consecutive_failures = consecutive_failures;
                         }
                     }
                 }
@@ -504,6 +548,25 @@ impl SyncDaemon {
     /// Get the current sync interval.
     pub fn interval(&self) -> Duration {
         self.interval
+    }
+
+    /// Signal the run loop to wake up and run a sync tick immediately
+    /// (SYNC-EW — event-triggered wakeup).
+    ///
+    /// Safe to call from any thread/task while the daemon is running or
+    /// stopped: if the daemon is not running the notification is stored and
+    /// consumed on the next [`SyncDaemon::start`]. Calling `nudge` multiple
+    /// times before the debounce window expires coalesces into a single tick
+    /// because [`tokio::sync::Notify`] does not queue — it sets at most one
+    /// pending notification.
+    pub fn nudge(&self) {
+        self.wakeup.notify_one();
+    }
+
+    /// Return a clone of the underlying [`Arc<Notify>`] for test inspection.
+    #[cfg(test)]
+    pub(crate) fn wakeup_handle(&self) -> Arc<Notify> {
+        Arc::clone(&self.wakeup)
     }
 }
 
