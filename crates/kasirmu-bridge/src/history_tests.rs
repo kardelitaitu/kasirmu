@@ -1,5 +1,5 @@
 //! Unit tests for the sales-history DTOs and session rejection (test
-//! relocation: moved out of `apps/desktop-client/src/commands/history_tests.rs`).
+//! relocation: moved out of `apps/desktop-tauri/src/commands/history_tests.rs`).
 //!
 //! Mounted at the foot of `history.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the DTOs from the bridge module directly. The

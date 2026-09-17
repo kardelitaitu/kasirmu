@@ -1,6 +1,6 @@
 //! Unit tests for the health command surface.
 //!
-//! Relocated from `apps/desktop-client/src/commands/health_tests.rs`
+//! Relocated from `apps/desktop-tauri/src/commands/health_tests.rs`
 //! (Wave F); `version`'s per-crate identity strings are supplied at the
 //! call site exactly as the desktop shim threads them (see `super`'s doc).
 

@@ -1,5 +1,5 @@
 //! Inventory command bodies (Wave C / C1) — the tauri-free half of
-//! `apps/desktop-client/src/commands/inventory.rs`.
+//! `apps/desktop-tauri/src/commands/inventory.rs`.
 //!
 //! Locations CRUD, workspace location bindings, shifts, transaction logs, stock
 //! thresholds, stock alerts and the pending-sale finalize/void pair. Each

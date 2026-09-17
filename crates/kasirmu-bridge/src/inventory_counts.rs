@@ -1,5 +1,5 @@
 //! Inventory-count command bodies (Wave C / C2) — the tauri-free half of
-//! `apps/desktop-client/src/commands/inventory_counts.rs`.
+//! `apps/desktop-tauri/src/commands/inventory_counts.rs`.
 //!
 //! Key functions: the session-scoped stock-count operations
 //! ([`create_stock_count_scoped`] … [`list_stock_adjustments_scoped`]), each

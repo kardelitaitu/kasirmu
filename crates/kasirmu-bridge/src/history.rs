@@ -1,7 +1,7 @@
 //! Sales-history command bodies (list, get and export summaries).
 //!
 //! Wave F: extracted byte-for-byte from
-//! `apps/desktop-client/src/commands/history.rs`. The only rewrites are the
+//! `apps/desktop-tauri/src/commands/history.rs`. The only rewrites are the
 //! mechanical `state.*` → `ctx.*` receiver swaps and `AppError::` →
 //! `BridgeError::`; SQL, gate kind and order, lock order and count and all
 //! error strings are unchanged.
