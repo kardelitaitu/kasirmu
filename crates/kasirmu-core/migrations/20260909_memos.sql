@@ -43,8 +43,13 @@ CREATE INDEX IF NOT EXISTS idx_memos_tenant_status
 CREATE INDEX IF NOT EXISTS idx_memos_expiry
     ON memos(expires_at) WHERE status = 'published';
 
-CREATE INDEX IF NOT EXISTS idx_memos_location
-    ON memos(location_id);
+-- idx_memos_location is deliberately NOT created here. It is created by
+-- 20260911_memo_fk_restrict.sql, and 20260913_memo_locations.sql later drops
+-- memos.location_id entirely (targeting moves to memo_locations). Creating it
+-- here means this script can never be re-applied once 20260913 has run: the
+-- CREATE TABLE is a no-op and the index then fails with "no such column:
+-- location_id", which is not a duplicate-object error, so DB-02's
+-- statement-level fallback never engages and startup panics. See DB-02.
 
 -- Immutable published revisions: an edit after publish inserts a NEW row and
 -- bumps memos.revision; prior revision rows are never updated or deleted.
