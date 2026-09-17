@@ -57,4 +57,29 @@ let engine = SyncEngine::new(config);
 let result = engine.run_sync_cycle(&store).await?;
 ```
 
+## Event-Triggered Wakeup (SYNC-EW)
+
+Both `SyncDaemon` and `PgSyncDaemon` expose a `nudge()` method that signals the
+run loop to wake up immediately and run a sync tick, instead of waiting for the
+next periodic interval (60–120 s for HTTP, 60 s for PG).
+
+```rust
+// From any Tauri command that has AppState:
+state.sync_daemon.nudge();
+state.pg_sync_daemon.nudge();
+```
+
+The run loop listens on a `tokio::sync::Notify` as a third `select!` arm. After
+the notifier fires, the daemon sleeps a 1.5 s debounce window to coalesce rapid
+bursts (e.g. barcode-scan batch) before running a single sync cycle.
+
+**Offline resilience:** `nudge()` is fire-and-forget. If the daemon cannot reach
+the server the item stays in `offline_queue` and the normal exponential backoff
+handles retry — the wakeup path does not change failure handling.
+
+**Wiring:** `apps/desktop-client/src/commands/pos.rs` calls `nudge()` after a
+successful `complete_sale_scoped`. The tablet uses an `Arc<Notify>` field on
+`AppState` (`sync_wakeup`) that the inline sync daemon in `apps/tablet-client/src/lib.rs`
+selects on.
+
 > last audited 29-08-26 by docs-auditor

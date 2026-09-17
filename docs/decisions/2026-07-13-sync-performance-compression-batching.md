@@ -70,6 +70,32 @@ Target: **100 tenants @ ≤$4/mo**. The $2-$3 VPS constraint applies only to the
 - `docs/specs/_active/p2-sync-priority-concurrency.md`
 - `docs/specs/_active/p3-sync-pagination-snapshot-observability.md`
 
+## Addendum: Event-Triggered Wakeup (SYNC-EW, 2026-09-17)
+
+**Problem:** The periodic 60–120 s jitter is optimal for steady-state bandwidth cost, but means a completed sale can take up to 2 minutes to appear in the cloud portal. For the "cashier charges → manager sees it on dashboard immediately" UX, this is too slow.
+
+**Solution (SYNC-EW):** After a cashier calls `complete_sale_scoped`, the Tauri command calls `SyncDaemon::nudge()` (and `PgSyncDaemon::nudge()`). The `nudge()` method fires a `tokio::sync::Notify` that the daemon's run loop listens on as a **third `select!` arm**:
+
+```
+select! {
+    _ = sleep(60..=120 s)        =>  normal periodic tick
+    _ = rx.changed()             =>  shutdown signal
+    _ = wakeup.notified()        =>  SYNC-EW: event-triggered wakeup
+}
+```
+
+A 1.5 s debounce inside the wakeup arm coalesces rapid bursts (e.g. barcode scan of 20 items) into a single HTTP round-trip. Offline resilience is unchanged: if the daemon cannot reach the server, the items stay in `offline_queue` and the existing exponential backoff handles retry — `nudge()` is fire-and-forget.
+
+**Affected files:**
+- `platform/sync/src/daemon.rs` — `SyncDaemon::nudge()`, `WAKEUP_DEBOUNCE`, third `select!` arm
+- `platform/sync/src/pg_daemon.rs` — same for `PgSyncDaemon`
+- `apps/desktop-client/src/commands/pos.rs` — both `complete_sale_scoped` variants call nudge on Ok
+- `apps/tablet-client/src/state.rs` — `AppState::sync_wakeup: Arc<Notify>`
+- `apps/tablet-client/src/lib.rs` — inline sync daemon converted to `select!` with wakeup arm
+- `apps/tablet-client/src/commands/pos.rs` — `complete_sale_scoped` calls `state.sync_wakeup.notify_one()`
+
+**Expected latency after this change:** 1.5 s debounce + HTTP round-trip (~0.5–2 s) ≈ **2–4 s** to cloud portal visibility, down from up to 120 s.
+
 > last audited 09-08-26 by buffy
 > audit: Phase 1 Core Architecture & API Docs Audit; Phase 4 ADR Deep Audit
 > status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
