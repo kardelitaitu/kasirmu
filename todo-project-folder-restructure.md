@@ -227,7 +227,7 @@ the filename**, because that substring is what `check-dead-refs.py` exempts. Ren
 that exemption even in place.
 **Acceptance:** nothing to run — the deliverable is that the files did not move.
 
-### [ ] P6 — `dev/` → `prototypes/`
+### [x] P6 — `dev/` → `prototypes/`
 
 **Commit:** `chore(repo): rename dev/ to prototypes/`
 
