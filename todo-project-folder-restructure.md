@@ -297,7 +297,7 @@ the intent is not lost; not scheduled.
 **Acceptance (P9a):** `test ! -d ui/src/locales` · `bash scripts/lint-i18n.sh` exits 0 ·
 `python scripts/verify-ftl-orphans.py` exits 0 · `cd ui && npm run typecheck && npm run test`
 
-### [ ] P10 — Make the platform tier reusable by a non-Tauri shell
+### [/] P10 — Make the platform tier reusable by a non-Tauri shell
 
 **Commit:** `refactor(platform): remove the tauri dependency from platform-startup`
 
@@ -319,6 +319,38 @@ bodies — **67 of 70** files under `apps/desktop-client/src/commands/` already 
 **Acceptance (P10a):** `grep -c tauri platform/startup/Cargo.toml` → 0 ·
 `grep -rn tauri platform/startup/src/*.rs` → nothing ·
 `cargo check -p platform-startup` · `cargo check --workspace --all-targets --all-features`
+
+**P10a completed 2026-09-17** (commits `74856ee78` + `49a65a440`). Every acceptance line re-measured:
+`grep -c tauri platform/startup/Cargo.toml` → **0**; `grep -rn tauri platform/startup/src/*.rs` → **no
+match**; `cargo check -p platform-startup` → exit 0; `cargo check --workspace --all-targets
+--all-features` → exit 0; `cargo test -p platform-startup --lib` → **79 passed / 0 failed**.
+`Cargo.lock` lost exactly one line (`"tauri",` from `platform-startup`'s dependency list).
+
+**How the two spawns were replaced.** The crate now owns the runtime it needs: a lazily built
+multi-thread Tokio runtime (`daemon_runtime()`), used only when there is no ambient runtime. A new
+private `spawn_detached` prefers `tokio::runtime::Handle::try_current()` and falls back to that
+runtime. That preserves the property the old comment recorded — the call stays safe from a synchronous
+`setup` hook, where a bare `tokio::spawn` would panic — and keeps the watchdog on the same runtime as
+the daemon it watches, because by then an ambient handle exists. The returned `JoinHandle` is dropped
+deliberately: nothing joins a daemon. The 22 daemon spawn sites are unchanged; what moves is the
+runtime they land on.
+
+**The gate half is closed too, and that is the load-bearing part.** §4 records that
+`bridge-toolkit-purity` inspected only `crates/kasirmu-bridge` while `platform/startup` sat outside it,
+so the one real renderer coupling in the platform tier was invisible to the rule that declares it must
+not exist. `49a65a440` widens the rule to the four renderer-agnostic roots, reusing the
+`UI_VOCABULARY_ROOTS` population `ui_vocabulary_findings` already walks. It lands **green**:
+`python scripts/verify-architecture-boundaries.py` → exit 0, 8 tracked / 0 new blocking, with the
+scanned population up from **136 to 938** files. That `platform/startup` was the *only* offender across
+all four roots was measured **before** widening — every other manifest under `crates/`, `modules/`,
+`platform/` and `foundation/` is already toolkit-free — which is why the widening needed no baseline
+entry and therefore no expiry debt. Two tests were added
+(`scripts/__tests__/verify-architecture-boundaries.test.mjs`, now **27 passed / 0 failed**): one plants
+the offence in `modules/tax`, so the widening is provably not a no-op (the pre-existing case only ever
+planted in `crates/kasirmu-bridge`), and one asserts the clean direction for the two roots newly
+covered.
+
+**P10b remains unscheduled** (§6), which is why this phase is marked in progress rather than complete.
 
 ### [ ] P11 — Name the shells by form factor + toolkit, and put per-OS config one level down
 
