@@ -264,7 +264,7 @@ fallback, no open token mint) and implies `OZ_DB_REQUIRE_TLS=1` (startup
 fails if `DATABASE_URL` lacks `sslmode=require`). Keep all three in the
 Northflank secret store, never in the image.
 
-The `docker-compose.yml` full-stack path enforces this even earlier: both
+The `ops/docker/docker-compose.yml` full-stack path enforces this even earlier: both
 `OZ_API_SECRET` and `OZ_ADMIN_KEY` use the `:?` required interpolation, so
 `docker compose up` fails at parse time when either is unset — regardless of
 `OZ_PRODUCTION` (DOCKER-04). Generate both with `openssl rand -hex 32`.
@@ -322,7 +322,7 @@ the growth path in `docs/archived/2026-08-15-unify-auth-and-sync.md`.
 ### Log Growth Cap (50 MB per service)
 
 Every service in the Compose stack runs the `json-file` log driver with
-`max-size: "10m"` and `max-file: "5"` (set in `docker-compose.yml` and
+`max-size: "10m"` and `max-file: "5"` (set in `ops/docker/docker-compose.yml` and
 the prod/pg overrides) — so each service holds **at most 50 MB of logs
 (5 × 10 MB) regardless of uptime**. Unbounded log growth that fills the
 host disk is no longer possible.
@@ -403,7 +403,7 @@ docker volume prune
 |---------|-------|
 | Service name | `oz-cloud` |
 | Public URL | `https://license.ozpos.my.id` |
-| Dockerfile | `Dockerfile.unified` (repo root) |
+| Dockerfile | `ops/docker/Dockerfile.unified` (under `ops/docker/`) |
 | Port | `80` (caddy; routes to :8080 PocketBase / :3099 Rust) |
 | Volume | single volume at `/data` (Northflank free tier = 1 volume) |
 | Build trigger | **`workflow_dispatch` only** — Actions → Dev CI → Run workflow, which runs `northflank-deploy`. There is no push-triggered build; see §8.5 for why the `push` branch of that job's `if:` is unreachable |
@@ -426,7 +426,7 @@ longer exists — migrating that data requires a PocketBase backup → restore
 |----------|----------------|-------|
 | `OZ_LICENSE_PRIVATE_KEY` | RSA PEM | required — Go license server exits without it (`OZ_LICENSE_KEY` is the legacy alias) |
 | `OZ_API_SECRET` | `openssl rand -hex 32` | required when `OZ_PRODUCTION=1` |
-| `OZ_ADMIN_KEY` | `openssl rand -hex 32` | required — `docker-compose.yml` fails at parse time when unset; with `OZ_PRODUCTION=1` the server also refuses to start; gates token mint |
+| `OZ_ADMIN_KEY` | `openssl rand -hex 32` | required — `ops/docker/docker-compose.yml` fails at parse time when unset; with `OZ_PRODUCTION=1` the server also refuses to start; gates token mint |
 | `OZ_ADMIN_EMAIL` | the admin tenant's email | web-dashboard admin identity — the gate compares this to the signed-in tenant's email, and falls back to a compiled-in inbox when unset. **Set it before the admin-identity repair ships — see directly below the table** |
 | `OZ_PRODUCTION` | `1` | fail-closed boot: refuses to start if either secret is unset; implies `OZ_DB_REQUIRE_TLS=1` |
 | `OZ_ENFORCE_PLANS` | `1` | reject free-plan sync (403 plan_required) |
@@ -570,7 +570,7 @@ dashboard clicks.
      unset skips the smoke step)
 
 **Behavior:** runs on push to `main` filtered to the unified-image inputs
-(`Dockerfile.unified`, `Cargo.toml`/`Cargo.lock`, `rust-toolchain.toml`,
+(`ops/docker/Dockerfile.unified`, `Cargo.toml`/`Cargo.lock`, `rust-toolchain.toml`,
 `crates/**`, `foundation/**`, `platform/**`, `modules/**`, `apps/**`) plus
 `workflow_dispatch` for manual redeploys. Fail-closed: missing token/IDs
 fails the job loudly. Until the §8 env table is fully applied, the smoke

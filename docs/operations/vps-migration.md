@@ -739,7 +739,7 @@ migration window:
 ```bash
 # On the new VPS — build and start with a temporary port
 cd oz-pos
-docker build -f Dockerfile.server -t oz-pos-cloud:latest .
+docker build -f ops/docker/Dockerfile.server -t oz-pos-cloud:latest .
 docker run -d --name oz-cloud-test -p 3099:3099 oz-pos-cloud:latest
 sleep 5
 curl http://localhost:3099/health
@@ -810,7 +810,7 @@ Use when the sync server domain stays the same (e.g., `sync.ozpos.com`).
 
 ```bash
 # Build and run with Docker
-docker build -f Dockerfile.server -t oz-pos-cloud:latest .
+docker build -f ops/docker/Dockerfile.server -t oz-pos-cloud:latest .
 docker run -d \
   --name oz-cloud-server \
   -p 3099:3099 \
@@ -896,7 +896,7 @@ Use when moving to a completely different domain (e.g.,
 **1. Deploy the new server**
 
 ```bash
-docker build -f Dockerfile.server -t oz-pos-cloud:latest .
+docker build -f ops/docker/Dockerfile.server -t oz-pos-cloud:latest .
 docker run -d \
   --name oz-cloud-server \
   -p 3099:3099 \
@@ -1101,7 +1101,7 @@ This is the safety net — it always works regardless of Layers 1 and 2.
 
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
-| `docker build` fails | Missing Dockerfile or stale cache | Run `docker build --no-cache -f Dockerfile.server .` |
+| `docker build` fails | Missing Dockerfile or stale cache | Run `docker build --no-cache -f ops/docker/Dockerfile.server .` |
 | `docker run` exits immediately | Missing `OZ_API_SECRET` | Add `-e OZ_API_SECRET=<your-secret>` |
 | Port 3099 already in use | Another service on that port | `docker run -p 3090:3099` or `lsof -i :3099` to find the process |
 | `/health` returns connection refused | Container not running or wrong port | `docker ps`, check `docker logs oz-cloud-server` |
@@ -1178,6 +1178,6 @@ Use this checklist during every migration to confirm each step completed:
 - `apps/cloud-server/src/main.rs` — `OZ_REDIRECT_ONLY` mode
 - `platform/sync/src/transport.rs` — Client-side `parse_server_migrated()`
 - `platform/sync/src/daemon.rs` — Auto URL-update handler
-- `Dockerfile.server` — Cloud server Docker build
+- `ops/docker/Dockerfile.server` — Cloud server Docker build
 
 > last audited 31-08-26 by docs-auditor
