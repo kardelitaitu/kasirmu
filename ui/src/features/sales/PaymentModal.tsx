@@ -1324,7 +1324,10 @@ export default function PaymentModal({
                 date: new Date().toLocaleDateString('en-US', {
                   year: 'numeric', month: 'short', day: 'numeric',
                 }),
-                receiptNumber: `SALE-${result.saleId}`,
+                // Phase 4: print the frozen hierarchy code from the just-fetched
+                // sale detail (SaleDetail.displayCode), not a synthetic
+                // `SALE-<uuid>`. Legacy sales keep the fallback below.
+                receiptNumber: completedSale?.displayCode ?? `SALE-${result.saleId}`,
                 items: (completedSale?.lines ?? []).map((line) => ({
                   name: line.name || line.sku,
                   quantity: line.qty,

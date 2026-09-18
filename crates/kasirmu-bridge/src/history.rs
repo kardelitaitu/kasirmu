@@ -35,6 +35,11 @@ pub struct SaleListItem {
     pub user_id: Option<String>,
     /// ISO-8601 creation timestamp.
     pub created_at: String,
+    /// Frozen 22-char receipt hierarchy code (`location-terminal-YYMMDD-staff-seq`),
+    /// or `None` for sales predating the code / sales with no known terminal.
+    /// Surfaced read-only; the code is immutable once issued (plan §4.5).
+    #[serde(default)]
+    pub display_code: Option<String>,
 }
 
 /// Response for the sale-list commands (C1.2).
@@ -77,15 +82,28 @@ pub async fn list_sales_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
     let (sales, capped) = store.list_sales_with_history_cap(days)?;
+    // Phase 4: attach the frozen receipt hierarchy code to each list row in a
+    // single batch read (no per-row N+1). The list is capped to the tier's
+    // history window, so the IN-set is small.
+    let code_map: std::collections::HashMap<String, Option<String>> = store
+        .sale_display_codes(&sales.iter().map(|s| s.id.clone()).collect::<Vec<_>>())?
+        .into_iter()
+        .collect();
     drop(db);
     Ok(SaleListResponse {
-        sales: sales.into_iter().map(map_sale_to_item).collect(),
+        sales: sales
+            .into_iter()
+            .map(|s| {
+                let code = code_map.get(&s.id).cloned().flatten();
+                map_sale_to_item(s, code)
+            })
+            .collect(),
         sales_history_capped: capped,
     })
 }
 
 /// Shared mapping from `kasirmu_core::Sale` to `SaleListItem`.
-fn map_sale_to_item(s: kasirmu_core::Sale) -> SaleListItem {
+fn map_sale_to_item(s: kasirmu_core::Sale, display_code: Option<String>) -> SaleListItem {
     SaleListItem {
         id: s.id,
         total: s.total,
@@ -94,6 +112,7 @@ fn map_sale_to_item(s: kasirmu_core::Sale) -> SaleListItem {
         payment_method: s.payment_method,
         user_id: s.user_id,
         created_at: s.created_at,
+        display_code,
     }
 }
 
@@ -123,6 +142,11 @@ pub struct SaleDetail {
     pub created_at: String,
     /// Lines.
     pub lines: Vec<kasirmu_core::SaleLine>,
+    /// Frozen 22-char receipt hierarchy code (`location-terminal-YYMMDD-staff-seq`),
+    /// or `None` for sales predating the code / sales with no known terminal.
+    /// Surfaced read-only; the code is immutable once issued (plan §4.5).
+    #[serde(default)]
+    pub display_code: Option<String>,
     /// F2-7: the core-authored tax-estimate stamp (F2-5) when the checkout
     /// claimed an estimate; `None` = unstamped (absence is never a claim).
     /// Wire-verified: the struct-wide `rename_all` above IS the drift fix —
@@ -156,12 +180,22 @@ pub async fn get_sale_scoped(
         Some(s) => store.sale_tax_estimate_note(&s.id)?,
         None => None,
     };
+    // Phase 4: the frozen receipt hierarchy code rides the detail door (one
+    // extra row read, same as the tax-estimate note).
+    let display_code = match &sale {
+        Some(s) => store.sale_display_code(&s.id)?,
+        None => None,
+    };
     drop(db);
-    Ok(sale.map(|s| map_sale_to_detail(s, tax_estimate_note)))
+    Ok(sale.map(|s| map_sale_to_detail(s, tax_estimate_note, display_code)))
 }
 
 /// Shared mapping from `kasirmu_core::Sale` to `SaleDetail`.
-fn map_sale_to_detail(s: kasirmu_core::Sale, tax_estimate_note: Option<String>) -> SaleDetail {
+fn map_sale_to_detail(
+    s: kasirmu_core::Sale,
+    tax_estimate_note: Option<String>,
+    display_code: Option<String>,
+) -> SaleDetail {
     SaleDetail {
         id: s.id,
         total: s.total,
@@ -175,6 +209,7 @@ fn map_sale_to_detail(s: kasirmu_core::Sale, tax_estimate_note: Option<String>) 
         created_at: s.created_at,
         lines: s.lines,
         tax_estimate_note,
+        display_code,
     }
 }
 
