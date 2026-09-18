@@ -3199,6 +3199,12 @@ function lhWhere(key: string): string {
  * (value @ sheet) key is spread, and a frozen key whose site count moved is
  * drift either way -- an added site and a silently deleted one read identically
  * to a one-directional check, which is the failure this repo keeps re-proving.
+ *
+ * Restated 2026-09-19: `1 @ ui/src/features/restaurant/RestaurantMenu.css` 2 -> 1.
+ * 748866eb6 rebuilt `.restaurant-size-btn` as a borderless capsule segment and dropped
+ * its `line-height: 1`; the segment centres its glyph with flex now, so the literal
+ * became NO step rather than a --leading-* one. A deletion is still a move, and this
+ * one is named here rather than left to read as a quiet green.
  */
 const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/components/QrisQrDisplay.css", 1],
@@ -3244,7 +3250,7 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/features/reports/CustomReportScreen.css", 1],
   ["1", "ui/src/features/reports/DashboardScreen.css", 1],
   ["1", "ui/src/features/reports/MenuEngineeringScreen.css", 1],
-  ["1", "ui/src/features/restaurant/RestaurantMenu.css", 2],
+  ["1", "ui/src/features/restaurant/RestaurantMenu.css", 1],
   ["1", "ui/src/features/retail/RetailPosScreen.css", 10],
   ["1.2", "ui/src/features/retail/RetailPosScreen.css", 3],
   ["1.3", "ui/src/features/retail/RetailPosScreen.css", 1],
