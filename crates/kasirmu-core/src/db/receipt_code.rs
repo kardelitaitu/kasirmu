@@ -17,6 +17,7 @@
 //!
 //! Design and decisions: docs/plans/receipt-hierarchy-code.md
 
+use chrono::{DateTime, FixedOffset};
 use rusqlite::{OptionalExtension, params};
 
 use crate::CoreError;
@@ -145,6 +146,147 @@ impl crate::db::Store<'_> {
             .optional()
             .map_err(Into::into)
     }
+}
+
+/// Smallest sequence the 6-digit tail can express — the first receipt of a
+/// fiscal year.
+pub const SEQUENCE_MIN: i64 = 1;
+
+/// Largest sequence the 6-digit tail can express. The series is continuous
+/// per terminal per fiscal year, so this is the per-terminal annual ceiling
+/// (999,999 ≈ 2,739/day). Per §4.6 the claim refuses rather than wraps.
+pub const SEQUENCE_MAX: i64 = 999_999;
+
+/// Assemble the frozen 22-character receipt code.
+///
+/// Pure: it takes the already-resolved indices and the store-local date, so
+/// it is trivially testable and the same code that freezes at checkout also
+/// renders in a reprint six months later. The caller passes
+/// [`INDEX_ID_NONE`] (0x00) for `staff_idx` when the sale has no staff
+/// (`sales.user_id` is null — kiosk / system sale), so the code never
+/// prints a staff index that was never assigned.
+///
+/// Format: `{loc:02X}-{term:02X}-{YYMMDD}-{staff:02X}-{seq:06}`
+#[must_use]
+pub fn assemble_receipt_code(
+    loc_idx: i64,
+    term_idx: i64,
+    yymmdd: &str,
+    staff_idx: i64,
+    seq: i64,
+) -> String {
+    format!(
+        "{}-{}-{}-{}-{}",
+        index_hex(loc_idx),
+        index_hex(term_idx),
+        yymmdd,
+        index_hex(staff_idx),
+        format!("{seq:06}")
+    )
+}
+
+impl crate::db::Store<'_> {
+    /// Claim the next continuous receipt sequence for `(tenant_id, terminal_idx,
+    /// fiscal_year)`.
+    ///
+    /// The whole concurrency contract is one statement — `INSERT ... ON CONFLICT
+    /// DO UPDATE ... RETURNING`. The first claim of a (tenant, terminal, year)
+    /// seeds `counter = 1`; every later claim in the same year increments it.
+    /// The series is continuous, so a terminal re-bound to another location keeps
+    /// its number rather than restarting — the location segment still differs, so
+    /// `01-02-…-000123` and `03-02-…-000124` are distinct strings.
+    ///
+    /// Must be called inside the checkout transaction, beside the statutory
+    /// claim, so a rolled-back sale consumes no number. On reaching
+    /// [`SEQUENCE_MAX`] the caller is expected to roll back — that is what stops
+    /// a refused claim from advancing the counter.
+    pub fn claim_receipt_sequence(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        tenant_id: &str,
+        terminal_idx: &str,
+        fiscal_year: &str,
+    ) -> Result<i64, CoreError> {
+        let claimed: i64 = tx.query_row(
+        "INSERT INTO receipt_number_counters (tenant_id, terminal_idx, fiscal_year, counter, updated_at)
+         VALUES (?1, ?2, ?3, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+         ON CONFLICT(tenant_id, terminal_idx, fiscal_year)
+             DO UPDATE SET counter = receipt_number_counters.counter + 1,
+                           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         RETURNING counter",
+        params![tenant_id, terminal_idx, fiscal_year],
+        |row| row.get(0),
+    )?;
+
+        if claimed > SEQUENCE_MAX {
+            return Err(CoreError::Validation {
+                field: "receipt_sequence",
+                message: format!(
+                    "receipt sequence exhausted for terminal '{terminal_idx}' fiscal year '{fiscal_year}': \
+                 reached {claimed}, the 6-digit tail cannot exceed {SEQUENCE_MAX}",
+                ),
+            });
+        }
+        Ok(claimed)
+    }
+}
+
+/// Parse a stored `locations.timezone` value (`'+HH:MM'` / `'-HH:MM'` /
+/// `'UTC'` / `'Z'`) into a total offset in seconds, or `None` when the value
+/// is not a fixed offset core can interpret (e.g. an IANA name). Mirrors the
+/// contract enforced by [`crate::db::reports::datetime::tz_modifier`].
+fn offset_seconds(tz: &str) -> Option<i64> {
+    let tz = tz.trim();
+    if tz.is_empty() || tz.eq_ignore_ascii_case("UTC") || tz.eq_ignore_ascii_case("Z") {
+        return Some(0);
+    }
+    let (sign, rest) = match tz.strip_prefix('+') {
+        Some(r) => (1i64, r),
+        None => match tz.strip_prefix('-') {
+            Some(r) => (-1i64, r),
+            None => return None,
+        },
+    };
+    let (h, m) = rest.split_once(':')?;
+    let h: i64 = h.parse().ok()?;
+    let m: i64 = m.parse().ok()?;
+    if !(0..=14).contains(&h) || !(0..=59).contains(&m) {
+        return None;
+    }
+    Some(sign * (h * 3600 + m * 60))
+}
+
+/// Resolve the store-local date for a receipt issued at `now_utc` by the
+/// location whose `timezone` string is `location_timezone`.
+///
+/// Returns `(YYMMDD, YYYY)` — the issue date printed in the code and the
+/// fiscal year the sequence belongs to. Per §4.4 the offset is the
+/// *location's* own, not the primary store's, so a non-primary location's
+/// day-end is honoured; a multi-offset chain no longer stamps two receipts
+/// with the same number on the wrong midnight.
+///
+/// The conversion is done in Rust with `chrono` (a fixed offset, no tzdata),
+/// so it does not depend on SQLite's timezone-modifier quirks and is fully
+/// deterministic. A value core cannot interpret (an IANA name) falls back to
+/// UTC, matching the documented contract.
+pub fn resolve_receipt_date(
+    now_utc: &str,
+    location_timezone: &str,
+) -> Result<(String, String), CoreError> {
+    let utc = DateTime::parse_from_rfc3339(now_utc).map_err(|e| CoreError::Validation {
+        field: "receipt_date",
+        message: format!("invalid UTC timestamp '{now_utc}': {e}"),
+    })?;
+    let secs = offset_seconds(location_timezone).unwrap_or(0);
+    let offset = FixedOffset::east_opt(secs as i32).ok_or_else(|| CoreError::Validation {
+        field: "receipt_date",
+        message: format!("timezone offset out of range: {secs}s"),
+    })?;
+    let local = utc.with_timezone(&offset);
+    Ok((
+        local.format("%y%m%d").to_string(),
+        local.format("%Y").to_string(),
+    ))
 }
 
 #[cfg(test)]
