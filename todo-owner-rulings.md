@@ -215,6 +215,12 @@ Permission-gating the grid therefore makes the card **exactly equal** to the rou
 
 **Recommendation: (i), or (ii) if the product has no multi-processor fallback requirement.** The doc is cheap now that the code exists — the hard part (breaker keying, expiry/reconciliation) is a writing task, not a design task. What is not acceptable is (iii): an undocumented breaker on the payment path is exactly the artefact the box was written to prevent, and it would land a `(tenant_id, gateway)` keying decision that has never been reviewed.
 
+**The doc half is now written — 2026-09-18, `docs/plans/payment-resilience-design.md`, no owner input needed.** So the "no design doc exists anywhere live" finding above is discharged, and what remains of R9 is the fork itself. Writing it surfaced three measurements that **change the price of (i) and should be read before ruling**, because they mean the obvious wiring is the wrong one:
+
+- **"Wire it into the registry" would protect nothing.** The one production `PaymentRequest` construction is `apps/cloud-server/src/payment_api.rs:239`, on a **concrete** `QrisPaymentProcessor` (`:79`, built `:132-135`), calling `processor.sale()` at `:251`. `PaymentProcessorRegistry` is not on that path, and the whole fallback/resilience layer has **0 production callers** — the only references outside `registry.rs`/`resilience.rs` are in `registry_tests.rs`. So (i)'s price is *one construction site*, not a registry campaign — **cheaper than this entry assumed**.
+- **The double-charge hole is real and cheap to close.** `:246` takes the gateway key off the HTTP body, so it can be `None`; `sale` is what the decorator retries; a keyless retry mints a fresh gateway key (`drivers/qris.rs:5`, `processor.rs:78-80`). But `sale_id` is required (`:222-224`) and already sent as `reference` (`:244`), so a deterministic fallback key is available server-side. **That makes the safe version of (i) additive rather than a behaviour reduction** — it fixes retries that are unsafe today instead of removing them.
+- **One trap that would corrupt the fix.** Two fields are named `idempotency_key`: the local `payments` row (deliberately optional, contract at `20261001_sale_idempotency.sql:18`) and the gateway key (unguarded). A lane that makes the former mandatory to fix the latter is breaking a written contract. The doc's §1.3 separates them; a ruling on (i) should say *gateway key* explicitly.
+
 ---
 
 ## The ADR #49 ceilings — one ruling settles four items
