@@ -802,7 +802,7 @@ export default function SalesHistoryScreen() {
             <table className="sales-history-table" aria-hidden="true">
               <thead>
                 <tr>
-                  {['Sale ID', 'Date', 'Total', 'Items', 'Status', 'Payment', 'Cashier', ''].map((_, i) => (
+                  {['Sale ID', 'Receipt', 'Date', 'Total', 'Items', 'Status', 'Payment', 'Cashier', ''].map((_, i) => (
                     <th key={i}><Skeleton width="4rem" height="0.75rem" /></th>
                   ))}
                 </tr>
@@ -810,6 +810,7 @@ export default function SalesHistoryScreen() {
               <tbody>{Array.from({ length: 5 }, (_, r) => (
                   <tr key={r}>
                     <td><Skeleton width="5rem" height="0.875rem" /></td>
+                    <td><Skeleton width="6rem" height="0.875rem" /></td>
                     <td><Skeleton width="7rem" height="0.875rem" /></td>
                     <td><Skeleton width="4rem" height="0.875rem" /></td>
                     <td><Skeleton width="2rem" height="0.875rem" /></td>
