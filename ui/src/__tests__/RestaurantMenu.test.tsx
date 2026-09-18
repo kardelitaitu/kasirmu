@@ -557,14 +557,14 @@ describe('RestaurantMenu', () => {
   it('fires app:lock from the Lock Terminal row instead of logging out', async () => {
     renderMenu();
     const user = userEvent.setup();
-    const hamburger = document.querySelector('.restaurant-hamburger-btn') as HTMLButtonElement;
+    const sidebarBtn = document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement;
     const lockFired: Event[] = [];
     const onLock = (e: Event) => lockFired.push(e);
     window.addEventListener('app:lock', onLock);
 
     try {
-      await user.click(hamburger);
-      await waitFor(() => expect(screen.getByText('Manual')).toBeTruthy());
+      await user.click(sidebarBtn);
+      await waitFor(() => expect(screen.getByText('Lock Terminal')).toBeTruthy());
       await user.click(screen.getByText('Lock Terminal'));
       expect(lockFired).toHaveLength(1);
       expect(mockLogout).not.toHaveBeenCalled();
@@ -573,10 +573,13 @@ describe('RestaurantMenu', () => {
     }
   });
 
-  it('returns to the workspace picker from the back button', async () => {
+  it('returns to the workspace picker from the exit terminal row in sidebar', async () => {
     renderMenu();
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Back to workspaces' }));
+    const sidebarBtn = document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement;
+    await user.click(sidebarBtn);
+    await waitFor(() => expect(screen.getByText('Exit Terminal')).toBeTruthy());
+    await user.click(screen.getByText('Exit Terminal'));
     expect(mockGoToWorkspacePicker).toHaveBeenCalledTimes(1);
   });
 

@@ -29,7 +29,7 @@ SAFE_KEYS = {
     "refund-reason-aria", "refund-qty-decrease-aria", "refund-qty-increase-aria",
     "restaurant-categories-aria", "restaurant-clear-color-aria",
     "restaurant-font-size-decrease-aria", "restaurant-font-size-increase-aria",
-    "restaurant-menu-back-aria", "restaurant-menu-hamburger-aria",
+    "restaurant-sidebar-toggle-aria", "restaurant-menu-hamburger-aria",
     "restaurant-menu-search-placeholder", "restaurant-size-decrease-aria",
     "restaurant-size-increase-aria", "settings-sidebar-search-clear-aria",
     "shortfall-dialog-aria",

@@ -1,149 +1,61 @@
-// ── MenuPreferencesMenu component (todo-refactor-kds-agents-3.md) ───────
+// ── MenuPreferencesMenu component ──────────────────────────────────────────
 //
-// The header's left cluster: the hamburger trigger and its dropdown popover
-// (sort options, menu-size stepper, font-size stepper, the cart header's
-// terminal actions when the caller hands them in, theme toggle, lock
-// terminal, fullscreen). The parent keeps the open/closed flag because the
-// global search shortcuts must not steal focus while the popover is up, and
-// it owns the persisted preference callbacks; this component owns the
-// popover's keyboard-operability contract.
+// The header's preferences cluster: the 3-line hamburger trigger and its
+// floating dropdown popover (sort options, menu-size stepper, font-size
+// stepper, theme toggle, toggle fullscreen).
 //
-// Props: open + onOpenChange — controlled popover state; dropdownRef — the
-// popover element, kept by the parent because the global app-search shortcut
-// tests whether focus is inside it; sortMode + onSelectSort — current sort
-// and the pick handler (parent persists it); cardSize/onCardSizeStep and
-// fontSize/onFontSizeStep — stepper value and clamping handler owned by the
-// parent; cartActions — the relocated cart-header buttons (shift open/close,
-// deduction override, tables, history, KDS), optional so a bare
-// <RestaurantMenu /> renders no action group at all.
-//
-// Invariants: focus moves into the dropdown when opened by keyboard and
-// returns to the trigger on Escape; ArrowUp/Down/Home/End rove between the
-// dropdown buttons; Escape closes before the global search shortcut can see
-// it; every action row closes the popover as it hands off. The
-// restaurant-hamburger-* class names are pinned by tests.
+// Invariants:
+// - Focus moves into the dropdown when opened by keyboard and returns to the
+//   trigger on Escape.
+// - ArrowUp/Down/Home/End rove between the dropdown buttons (excluding steppers).
+// - Escape closes the popover before global search shortcuts can handle it.
+// - Every selection closes the popover.
+// - Class names restaurant-hamburger-* are pinned by tests and stylesheets.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useRef } from 'react';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
-import { animDuration } from '@/utils/animation';
 import { useTheme } from '@/app/ThemeProvider';
 import { useFullscreen } from '@/hooks/useFullscreen';
-import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import type { Dispatch, SetStateAction } from 'react';
 import { SORT_MODES } from '../RestaurantMenu';
+export type { RestaurantSidebarActions } from './RestaurantSidebar';
 
 type SortMode = (typeof SORT_MODES)[number];
-
-/**
- * The buttons that used to sit in the restaurant cart header
- * (`CartPanel.tsx` `.pos-cart-header`), handed down by PosScreen so the
- * popover is their only home in that workspace. Every field is a plain
- * callback or a fact — the popover owns no state and knows nothing about
- * modals, routes or the shift API.
- */
-export interface RestaurantSidebarActions {
-  /** Shift lookup in flight: no shift row at all, same as the old header. */
-  shiftLoading: boolean;
-  hasActiveShift: boolean;
-  onOpenShift: () => void;
-  onCloseShift: () => void;
-  /** Locked deduction location; null = not deducting, so no row. */
-  deductionLocationName: string | null;
-  deductionOverridden: boolean;
-  onOverrideDeduction: () => void;
-  /** Table Management is feature-gated: render-and-hide is not an option. */
-  showTables: boolean;
-  onOpenTables: () => void;
-  onOpenHistory: () => void;
-  onOpenKitchenDisplay: () => void;
-  /** Request exit from workspace; handled by host to check shifts. */
-  onRequestExit?: () => void;
-}
 
 export interface MenuPreferencesMenuProps {
   open: boolean;
   onOpenChange: Dispatch<SetStateAction<boolean>>;
   dropdownRef: React.RefObject<HTMLDivElement>;
-  container?: HTMLElement | null;
   sortMode: SortMode;
   onSelectSort: (mode: SortMode) => void;
   cardSize: number;
   onCardSizeStep: (delta: number) => void;
   fontSize: number;
   onFontSizeStep: (delta: number) => void;
-  /** Absent = no action group (retail, KDS, and every bare <RestaurantMenu />). */
-  cartActions?: RestaurantSidebarActions;
 }
 
 export function MenuPreferencesMenu({
   open,
   onOpenChange,
   dropdownRef,
-  container,
   sortMode,
   onSelectSort,
   cardSize,
   onCardSizeStep,
   fontSize,
   onFontSizeStep,
-  cartActions,
 }: MenuPreferencesMenuProps) {
   const { l10n } = useLocalization();
   const { theme, toggleTheme } = useTheme();
   const { toggleFullscreen } = useFullscreen();
-  const { goToWorkspacePicker } = useWorkspaceNav();
-  const hamburgerRef = useRef<HTMLDivElement>(null);
+  const hamburgerWrapperRef = useRef<HTMLDivElement>(null);
   const hamburgerButtonRef = useRef<HTMLButtonElement>(null);
   const hamburgerWasOpenRef = useRef(false);
   const hamburgerOpenedWithKeyboardRef = useRef(false);
 
-  // Animation state for sliding out when open flips to false
-  const [prevOpen, setPrevOpen] = useState(open);
-  const [exiting, setExiting] = useState(false);
-  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const wasEverOpenRef = useRef(open);
-
-  if (open) {
-    wasEverOpenRef.current = true;
-  }
-
-  // Adjust state synchronously during render when open transitions true -> false
-  // to avoid a 1-frame unmount gap where the sidebar disappears before exiting begins.
-  if (prevOpen !== open) {
-    setPrevOpen(open);
-    if (!open && wasEverOpenRef.current) {
-      setExiting(true);
-    } else if (open) {
-      setExiting(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!exiting) {
-      if (exitTimerRef.current !== null) {
-        clearTimeout(exitTimerRef.current);
-        exitTimerRef.current = null;
-      }
-      return;
-    }
-    exitTimerRef.current = setTimeout(() => {
-      setExiting(false);
-      exitTimerRef.current = null;
-    }, animDuration(300));
-    return () => {
-      if (exitTimerRef.current !== null) {
-        clearTimeout(exitTimerRef.current);
-        exitTimerRef.current = null;
-      }
-    };
-  }, [exiting]);
-
   // Move focus into the hamburger menu when it opens and return focus to the
-  // trigger when it closes. Focus lands on the first SORT row: the sort
-  // list is the panel's primary content and the existing keyboard tests
-  // pin focus there ('Manual' on open, A–Z on ArrowDown).
+  // trigger when it closes.
   useEffect(() => {
     if (open) {
       const buttons = dropdownRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? [];
@@ -155,7 +67,7 @@ export function MenuPreferencesMenu({
       hamburgerButtonRef.current?.focus();
     }
     hamburgerWasOpenRef.current = open;
-  }, [open, onOpenChange, dropdownRef]);
+  }, [open, dropdownRef]);
 
   // Close the hamburger menu on Escape before the global search shortcut can
   // clear or blur the search field.
@@ -187,11 +99,6 @@ export function MenuPreferencesMenu({
 
   const handleHamburgerKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
-    // Arrow/Home/End rove across every action row in panel order (sort rows
-    // and actions). The size steppers are excluded because they are a
-    // separate widget with their own Tab stops, and wrapping into them
-    // stranded arrow users inside a −/+ pair. The steppers stay reachable
-    // by Tab/Shift+Tab like every other row.
     const items = Array.from(
       dropdownRef.current?.querySelectorAll<HTMLButtonElement>(
         'button.restaurant-hamburger-item--sort, button.restaurant-hamburger-item:not(.restaurant-size-btn)',
@@ -210,16 +117,44 @@ export function MenuPreferencesMenu({
     items[next]?.focus();
   }, [dropdownRef]);
 
-  const asideContent = (
-    <aside
-      ref={dropdownRef}
-      id="restaurant-hamburger-menu"
-      className={`restaurant-hamburger-dropdown restaurant-sidebar${exiting ? ' restaurant-sidebar--exiting restaurant-hamburger-dropdown--exiting' : ''}`}
-      role="region"
-      tabIndex={-1}
-      aria-label={l10n.getString('restaurant-menu-hamburger-aria')}
-    >
-          <span className="restaurant-hamburger-label"><Localized id="restaurant-sort-label"><span>Sort</span></Localized></span>
+  return (
+    <div className="restaurant-hamburger-wrapper" ref={hamburgerWrapperRef}>
+      <button
+        type="button"
+        className={`restaurant-hamburger-btn${open ? ' restaurant-hamburger-btn--active' : ''}`}
+        ref={hamburgerButtonRef}
+        onPointerDown={() => {
+          hamburgerOpenedWithKeyboardRef.current = false;
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            hamburgerOpenedWithKeyboardRef.current = true;
+          }
+        }}
+        onClick={() => onOpenChange((prev) => !prev)}
+        aria-label={l10n.getString('restaurant-menu-hamburger-aria')}
+        aria-expanded={open}
+        aria-controls="restaurant-hamburger-menu"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" style={{ pointerEvents: 'none' }}>
+          <line x1="4" y1="6" x2="20" y2="6" />
+          <line x1="4" y1="12" x2="20" y2="12" />
+          <line x1="4" y1="18" x2="20" y2="18" />
+        </svg>
+      </button>
+
+      {open && (
+        <aside
+          ref={dropdownRef}
+          id="restaurant-hamburger-menu"
+          className="restaurant-hamburger-dropdown"
+          role="region"
+          tabIndex={-1}
+          aria-label={l10n.getString('restaurant-menu-hamburger-aria')}
+        >
+          <span className="restaurant-hamburger-label">
+            <Localized id="restaurant-sort-label"><span>Sort</span></Localized>
+          </span>
           {SORT_MODES.map((mode) => (
             <button
               key={mode}
@@ -293,88 +228,6 @@ export function MenuPreferencesMenu({
             </div>
           </div>
           <div className="restaurant-hamburger-divider" role="separator" />
-          {cartActions && (
-            <>
-              {/* The cart header's buttons, relocated: the restaurant cart is
-                  an order list, not a toolbar, and this popover is the only
-                  place in the workspace with room for the terminal chrome. Each
-                  row reuses the FTL key the header control already used, so the
-                  names an AT user hears did not change with the markup. */}
-              {cartActions.deductionLocationName && (
-                <button
-                  type="button"
-                  className="restaurant-hamburger-item"
-                  onKeyDown={handleHamburgerKeyDown}
-                  aria-label={l10n.getString('pos-cart-deduction-badge-aria', { name: cartActions.deductionLocationName })}
-                  onClick={() => { cartActions.onOverrideDeduction(); onOpenChange(false); }}
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="12" height="12" aria-hidden="true" style={{ pointerEvents: 'none' }}>
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                  </svg>
-                  <Localized id="pos-cart-deducting-label" vars={{ name: cartActions.deductionLocationName }}>
-                    <span>Deducting: {cartActions.deductionLocationName}</span>
-                  </Localized>
-                  {cartActions.deductionOverridden && (
-                    <span className="restaurant-hamburger-override" data-testid="deduction-override-indicator">
-                      {' '}(Override)
-                    </span>
-                  )}
-                </button>
-              )}
-              {!cartActions.shiftLoading && (cartActions.hasActiveShift ? (
-                <button
-                  type="button"
-                  className="restaurant-hamburger-item"
-                  onKeyDown={handleHamburgerKeyDown}
-                  aria-label={l10n.getString('pos-shift-close-aria')}
-                  onClick={() => { cartActions.onCloseShift(); onOpenChange(false); }}
-                >
-                  <Localized id="pos-shift-close-aria"><span>Close current shift</span></Localized>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="restaurant-hamburger-item"
-                  onKeyDown={handleHamburgerKeyDown}
-                  aria-label={l10n.getString('pos-shift-open-aria')}
-                  onClick={() => { cartActions.onOpenShift(); onOpenChange(false); }}
-                >
-                  <Localized id="pos-shift-open-aria"><span>Open a new shift</span></Localized>
-                </button>
-              ))}
-              {cartActions.showTables && (
-                <button
-                  type="button"
-                  className="restaurant-hamburger-item"
-                  onKeyDown={handleHamburgerKeyDown}
-                  aria-label={l10n.getString('tables-title')}
-                  onClick={() => { cartActions.onOpenTables(); onOpenChange(false); }}
-                >
-                  <Localized id="tables-title"><span>Table Management</span></Localized>
-                </button>
-              )}
-              <button
-                type="button"
-                className="restaurant-hamburger-item"
-                onKeyDown={handleHamburgerKeyDown}
-                aria-label={l10n.getString('retail-fn-history')}
-                onClick={() => { cartActions.onOpenHistory(); onOpenChange(false); }}
-              >
-                <Localized id="retail-fn-history"><span>History</span></Localized>
-              </button>
-              <button
-                type="button"
-                className="restaurant-hamburger-item"
-                onKeyDown={handleHamburgerKeyDown}
-                aria-label={l10n.getString('kds-title')}
-                onClick={() => { cartActions.onOpenKitchenDisplay(); onOpenChange(false); }}
-              >
-                <Localized id="kds-title"><span>Kitchen Display</span></Localized>
-              </button>
-              <div className="restaurant-hamburger-divider" role="separator" />
-            </>
-          )}
           <button
             type="button"
             className="restaurant-hamburger-item"
@@ -390,74 +243,13 @@ export function MenuPreferencesMenu({
             type="button"
             className="restaurant-hamburger-item"
             onKeyDown={handleHamburgerKeyDown}
-            aria-label={l10n.getString('restaurant-lock-terminal')}
-            onClick={() => {
-              // Lock, not logout. `app:lock` is the shell's session-lock
-              // contract (the same event DevToolbar fires); AppShell and
-              // TabletAppShell answer it by swapping in SessionLockScreen while
-              // the auth session and the in-flight cart stay in place. logout()
-              // here would drop the session and send the next person through a
-              // full staff login.
-              window.dispatchEvent(new CustomEvent('app:lock'));
-              onOpenChange(false);
-            }}
-          >
-            <Localized id="restaurant-lock-terminal"><span>Lock Terminal</span></Localized>
-          </button>
-          <button
-            type="button"
-            className="restaurant-hamburger-item"
-            onKeyDown={handleHamburgerKeyDown}
-            aria-label={l10n.getString('restaurant-exit-terminal')}
-            onClick={() => {
-              if (cartActions?.onRequestExit) {
-                cartActions.onRequestExit();
-              } else {
-                goToWorkspacePicker();
-              }
-              onOpenChange(false);
-            }}
-          >
-            <Localized id="restaurant-exit-terminal"><span>Exit Terminal</span></Localized>
-          </button>
-          <button
-            type="button"
-            className="restaurant-hamburger-item"
-            onKeyDown={handleHamburgerKeyDown}
             aria-label={l10n.getString('restaurant-toggle-fullscreen')}
             onClick={() => { toggleFullscreen(); onOpenChange(false); }}
           >
             <Localized id="restaurant-toggle-fullscreen"><span>Toggle Fullscreen</span></Localized>
           </button>
-    </aside>
-  );
-
-  return (
-    <div className="restaurant-header-left" ref={hamburgerRef}>
-      <button
-        type="button"
-        className={`restaurant-hamburger-btn${open ? ' restaurant-hamburger-btn--active' : ''}`}
-        ref={hamburgerButtonRef}
-        onPointerDown={() => {
-          hamburgerOpenedWithKeyboardRef.current = false;
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            hamburgerOpenedWithKeyboardRef.current = true;
-          }
-        }}
-        onClick={() => onOpenChange((prev) => !prev)}
-        aria-label={l10n.getString('restaurant-menu-hamburger-aria')}
-        aria-expanded={open}
-        aria-controls="restaurant-hamburger-menu"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" style={{ pointerEvents: 'none' }}>
-          <rect width="18" height="18" x="3" y="3" rx="4" />
-          <line x1="9" y1="3" x2="9" y2="21" />
-        </svg>
-      </button>
-
-      {(open || exiting) && (container ? createPortal(asideContent, container) : asideContent)}
+        </aside>
+      )}
     </div>
   );
 }

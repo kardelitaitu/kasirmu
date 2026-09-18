@@ -2,7 +2,7 @@ products-name = Nama
 
 restaurant-menu-search-placeholder = Cari Menu
 restaurant-menu-hamburger-aria = Menu
-restaurant-menu-back-aria = Kembali ke ruang kerja
+restaurant-sidebar-toggle-aria = Bilah Sisi
 restaurant-size-decrease-aria = Perkecil ukuran
 restaurant-size-increase-aria = Perbesar ukuran
 restaurant-font-size-decrease-aria = Perkecil ukuran huruf

@@ -49,9 +49,16 @@
 }
 
 .restaurant-header-left {
-  position: static;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
+.restaurant-hamburger-wrapper {
+  position: relative;
+}
+
+.restaurant-sidebar-btn,
 .restaurant-hamburger-btn {
   display: inline-flex;
   align-items: center;
@@ -68,16 +75,20 @@
   transition: background-color var(--duration-150) var(--ease-out), color var(--duration-150) var(--ease-out), border-color var(--duration-150) var(--ease-out);
 }
 
+.restaurant-sidebar-btn:focus-visible,
 .restaurant-hamburger-btn:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }
 
+.restaurant-sidebar-btn:hover,
 .restaurant-hamburger-btn:hover {
   background: var(--color-bg-hover);
   color: var(--color-fg);
 }
 
+.restaurant-sidebar-btn--active,
+.restaurant-sidebar-btn[aria-expanded="true"],
 .restaurant-hamburger-btn--active,
 .restaurant-hamburger-btn[aria-expanded="true"] {
   background: var(--color-bg-hover);
@@ -85,8 +96,7 @@
   color: var(--color-accent);
 }
 
-.restaurant-sidebar,
-.restaurant-hamburger-dropdown {
+.restaurant-sidebar {
   /* Pinned to the panel, not the viewport: the only positioned ancestor is
      `.restaurant-menu`, and the panel must scroll WITH the menu chrome
      (header + pills are sticky within the same box) rather than float over
@@ -111,27 +121,45 @@
   padding: var(--space-3) var(--space-2);
   overflow-y: auto;
   gap: var(--space-1);
-}
-
-/* THM-08 (popoverSurfaceCompliance): the guard walks EVERY rule that names a
- * floating selector, so a later override cannot pass while the shared rule
- * above still carries a non-popover background. The background therefore left
- * the shared geometry rule entirely: the sidebar is a docked panel and keeps
- * --color-bg-surface; the hamburger dropdown floats over the menu and takes
- * the same opaque popover token as ContextMenu.css, StoreSwitcher.css and
- * LocationPicker.css. */
-.restaurant-sidebar {
   background: var(--color-bg-surface);
 }
 
 .restaurant-hamburger-dropdown {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  min-width: 14rem;
+  box-sizing: border-box;
+  opacity: 1;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-dropdown);
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1);
   background: var(--color-bg-popover);
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .restaurant-sidebar,
-  .restaurant-hamburger-dropdown {
+  .restaurant-sidebar {
     animation: restaurant-sidebar-slide-in var(--duration-300) cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .restaurant-hamburger-dropdown {
+    animation: restaurant-dropdown-in var(--duration-150) var(--ease-out) both;
+  }
+
+  @keyframes restaurant-dropdown-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
 
   @keyframes restaurant-sidebar-slide-in {
@@ -156,12 +184,13 @@
     }
   }
 
-  .restaurant-sidebar--exiting,
-  .restaurant-hamburger-dropdown--exiting {
+  .restaurant-sidebar--exiting {
     animation: restaurant-sidebar-slide-out var(--duration-300) cubic-bezier(0.16, 1, 0.3, 1) both;
     pointer-events: none;
   }
 
+  .restaurant-sidebar-btn--active svg,
+  .restaurant-sidebar-btn[aria-expanded="true"] svg,
   .restaurant-hamburger-btn--active svg,
   .restaurant-hamburger-btn[aria-expanded="true"] svg {
     animation: restaurant-icon-rotate var(--duration-300) cubic-bezier(0.16, 1, 0.3, 1);
@@ -173,8 +202,11 @@
   }
 }
 
+.restaurant-sidebar-item,
 .restaurant-hamburger-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   width: 100%;
   padding: var(--space-2) var(--space-3);
   border: none;
@@ -188,10 +220,12 @@
   transition: background-color var(--duration-100) var(--ease-out);
 }
 
+.restaurant-sidebar-item:hover,
 .restaurant-hamburger-item:hover {
   background: var(--color-bg-hover);
 }
 
+.restaurant-sidebar-item:focus-visible,
 .restaurant-hamburger-item:focus-visible,
 .restaurant-context-item:focus-visible {
   outline: 2px solid var(--color-border-focus);
@@ -203,7 +237,6 @@
   position: relative;
 }
 
-
 .restaurant-hamburger-label {
   display: block;
   padding: var(--space-1_5) var(--space-3) var(--space-1);
@@ -214,6 +247,7 @@
   letter-spacing: 0.04em;
 }
 
+.restaurant-sidebar-divider,
 .restaurant-hamburger-divider {
   height: 1px;
   background: var(--color-border);
@@ -231,34 +265,9 @@
    badge's own marker (.pos-cart-deduction-override in CartPanel.css), restated
    here because a class a screen renders must be defined in that screen's sheet
    — the claim `screenExtraction.test.ts` polices. */
-.restaurant-hamburger-override {
+.restaurant-sidebar-override {
   color: var(--color-danger-fg);
   font-weight: var(--font-weight-semibold);
-}
-
-.restaurant-back-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  padding: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-surface);
-  color: var(--color-fg-secondary);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background-color var(--duration-150) var(--ease-out), color var(--duration-150) var(--ease-out);
-}
-
-.restaurant-back-btn:focus-visible {
-  box-shadow: inset 0 0 0 2px var(--color-border-focus);
-}
-
-.restaurant-back-btn:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-fg);
 }
 
 /* ── Search box ──────────────────────────────────── */

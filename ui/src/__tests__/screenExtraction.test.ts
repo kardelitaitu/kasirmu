@@ -1274,6 +1274,7 @@ const SCREENS: ScreenEntry[] = [
       'restaurant/components/MenuItemGrid.tsx',
       'restaurant/components/MenuItemContextMenu.tsx',
       'restaurant/components/MenuPreferencesMenu.tsx',
+      'restaurant/components/RestaurantSidebar.tsx',
       'restaurant/components/MenuSearchBar.tsx',
     ],
     // Cited, not muted: the sr-only span the menu card's "Add" label moved into

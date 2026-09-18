@@ -35,11 +35,11 @@ const INTERACTIVE_SELECTORS = [
   // control exactly (trailing `$`-ish boundary: no `--modifier` or
   // descendant may ride along) — over-matching here graded decorative
   // card parts and state classes as interactive elements.
-  /^\s*\.restaurant-hamburger-btn$/, /^\s*\.restaurant-back-btn$/,
+  /^\s*\.restaurant-sidebar-btn$/, /^\s*\.restaurant-hamburger-btn$/,
+  /^\s*\.restaurant-sidebar-item$/, /^\s*\.restaurant-hamburger-item$/,
   /^\s*\.restaurant-category-pill$/, /^\s*\.restaurant-search-input$/,
   /^\s*\.restaurant-search-clear$/, /^\s*\.restaurant-context-item$/,
   /^\s*\.restaurant-context-swatch$/, /^\s*\.restaurant-size-btn$/,
-  /^\s*\.restaurant-hamburger-item$/,
   // The tile itself is a native <button>, caught below — but its name is a
   // prefix of a dozen decorative descendants, so it needs the same exact
   // treatment rather than a bare \b.

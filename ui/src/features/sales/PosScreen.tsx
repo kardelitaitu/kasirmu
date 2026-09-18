@@ -6,7 +6,7 @@ import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
 import ProductLookupScreen from '@/features/products/ProductLookupScreen';
 import RestaurantMenu from '@/features/restaurant/RestaurantMenu';
-import type { RestaurantSidebarActions } from '@/features/restaurant/components/MenuPreferencesMenu';
+import type { RestaurantSidebarActions } from '@/features/restaurant/components/RestaurantSidebar';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { FEATURES, useFeatures } from '@/hooks/useFeatures';
 import TableManagementScreen from '@/features/tables/TableManagementScreen';
@@ -504,6 +504,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       .catch(() => setCourseFiringEnabled(null));
   }, [sessionToken]);
 
+  const handleRequestExit = useCallback(() => {
+    if (activeShift !== null) {
+      handleCloseShiftClick();
+    } else {
+      setShowExitConfirm(true);
+    }
+  }, [activeShift, handleCloseShiftClick]);
+
   // ── Sub-screen: Table Management ─────────────────────────────
   if (showTables) {
     return (
@@ -646,14 +654,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // header's old lock button is NOT here, because the popover's "Lock Terminal"
   // row replaced it: that one locks the session instead of logging the cashier
   // out. Field names are `on*` because the popover owns no state.
-  const handleRequestExit = useCallback(() => {
-    if (activeShift !== null) {
-      handleCloseShiftClick();
-    } else {
-      setShowExitConfirm(true);
-    }
-  }, [activeShift, handleCloseShiftClick]);
-
   const restaurantCartActions: RestaurantSidebarActions = {
     shiftLoading,
     hasActiveShift: activeShift !== null,
