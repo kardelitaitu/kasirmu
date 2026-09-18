@@ -262,9 +262,16 @@ jobs:
   # this workflow costs ~75 runner-minutes per run (measured on PR #95). That
   # is far too much to spend every night to test one crate.
   #
-  # WHY NO SYSTEM DEPS: `kasirmu-bridge` is headless by contract — no tauri / gtk /
-  # webkit2gtk dependency (see its Cargo.toml) — so unlike `cargo-nextest` this
-  # job skips the apt-get layer and the frontend dist stubs.
+  # SYSTEM DEPS: the narrow subset, not the sibling jobs' full list. `kasirmu-bridge`
+  # is headless by contract — no tauri / gtk / webkit2gtk dependency (see its
+  # Cargo.toml) — so it needs neither the gtk/webkit layer nor the frontend dist
+  # stubs. It DOES need `libudev-dev`: `cargo tree -p kasirmu-bridge -i libudev-sys`
+  # resolves `libudev-sys <- libudev <- serialport <- kasirmu-hal <- kasirmu-bridge`,
+  # and without the header `libudev-sys`'s build script dies before a single test
+  # runs — which is how this job failed on 2026-09-18 (`error: failed to run custom
+  # build command for libudev-sys v0.1.4`, run 35293028418). A gate that cannot
+  # reach its own tests cannot see the failure set it was added to watch, so the
+  # apt-get layer is load-bearing here even though the crate is headless.
   #
   # FLAG TRAP: `-P release` is the NEXTEST profile, not the cargo one, and
   # would silently re-run the debug build while looking correct. `-r`/`--release`
@@ -281,6 +288,10 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      - name: Install system dependencies (Linux, libudev only)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libudev-dev pkg-config
       - name: Install cargo-nextest
         uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2
         with:
