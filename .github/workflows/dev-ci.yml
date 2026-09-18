@@ -93,9 +93,14 @@ jobs:
             '^crates/|^modules/|^platform/|^foundation/|^apps/(cloud-server|desktop-tauri|mobile-tauri)/|^tools/fuzz/|^scripts/updater-compat-check/|^Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain' \
             && echo "rust=true"  >> "$GITHUB_OUTPUT" || echo "rust=false" >> "$GITHUB_OUTPUT"
 
-          # UI: ui/src has zero imports reaching outside ui/, so ui/ is a sound
-          # boundary for the vitest suite and its lockfile.
-          printf '%s\n' "$files" | grep -qE '^ui/' \
+          # UI: `ui/` is the vitest suite's boundary, but it is NOT self-contained.
+          # P9a moved the Fluent corpus to shared-ui/locales/ and ui/vite.config.ts
+          # aliases `@/locales/…` back onto it, so the `?raw` imports in
+          # ui/src/i18n/createEnUsLocalization.ts and the glob in
+          # i18n/barePlaceholderScan.ts read across that boundary. A bundle edit
+          # can therefore break the suite at import time, so it must route here
+          # as well as to i18n -- which is what scripts/test-ci-routing.sh pins.
+          printf '%s\n' "$files" | grep -qE '^ui/|^shared-ui/locales/' \
             && echo "ui=true" >> "$GITHUB_OUTPUT" || echo "ui=false" >> "$GITHUB_OUTPUT"
 
           # i18n: the .ftl bundles, any TSX/TS the parity scanner reads, and the
