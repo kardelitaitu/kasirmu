@@ -513,7 +513,15 @@
     pointer-events: none;
   }
 
-  /* ── Cart Panel: Synchronized 300ms slide & margin reflow ── */
+  /* ── Cart Panel: 300ms slide (transform/opacity only) ──────────────
+   * The panel's flex box is released before this runs — see the
+   * `min-width: 1024px` block at the foot of this file — so the products pane
+   * reaches its final width in a SINGLE layout pass and only these two
+   * compositor properties move. Animating `margin-right` here instead made the
+   * restaurant grid re-solve its `auto-fill` columns on every frame for the
+   * whole 300ms: measured 17 distinct card geometries per toggle, the cards
+   * ballooning to 216px/3 columns mid-open before re-packing to 181px/6, with
+   * the names re-wrapping under their line clamp throughout. */
   .pos-cart-panel--entering {
     animation: pos-cart-slide-in var(--duration-300) cubic-bezier(0.16, 1, 0.3, 1) both;
     overflow: hidden;
@@ -522,22 +530,22 @@
   @keyframes pos-cart-slide-in {
     from {
       opacity: 0;
-      margin-right: calc(-1 * var(--cart-width, 440px) - 16px);
+      transform: translateX(calc(100% + var(--space-2)));
     }
     to {
       opacity: 1;
-      margin-right: 8px;
+      transform: translateX(0);
     }
   }
 
   @keyframes pos-cart-slide-out {
     from {
       opacity: 1;
-      margin-right: 8px;
+      transform: translateX(0);
     }
     to {
       opacity: 0;
-      margin-right: calc(-1 * var(--cart-width, 440px) - 16px);
+      transform: translateX(calc(100% + var(--space-2)));
     }
   }
 
@@ -561,6 +569,35 @@
     border-top: 1px solid var(--color-border);
     border-radius: 0;
     margin: 0;
+  }
+}
+
+/* ── Cart exit: release the flex box before the slide ─────────────────
+ * The docked panel leaves its column in the same frame the restaurant menu's
+ * sidebar offset snaps, so the products pane changes width exactly once.
+ * While it kept its 440px box for the full 300ms — with the menu already
+ * reserving the sidebar's 18rem — the grid dipped well BELOW both end states
+ * mid-animation: cards inflated and re-packed, then shrank and re-packed
+ * again. Taking the panel out of flow at its own gutter is what makes the
+ * release atomic; the 300ms motion itself stays on transform/opacity above.
+ * Scoped to >= 1024px: below that the panel is a full-width sheet whose own
+ * positioning has nothing to do with the products column. */
+@media (min-width: 1024px) {
+  .pos-cart-panel--exiting {
+    position: absolute;
+    /* The panel's own gutter. `top`/`right`/`bottom` stand in for the static
+       `margin: 8px 8px 8px 0` once it is out of flow. */
+    top: 8px;
+    right: 8px;
+    bottom: 8px;
+    margin: 0;
+  }
+
+  /* The divider is part of the same column, so its 4px goes now too — a
+     later release would widen the pane (and could re-pack the grid) when the
+     handle finally unmounts. It is already fading out. */
+  .pos-resize-handle--exiting {
+    flex-basis: 0;
   }
 }
 
