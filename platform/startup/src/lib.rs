@@ -261,6 +261,17 @@ pub fn init_module_system(
 fn daemon_runtime() -> &'static tokio::runtime::Runtime {
     static RUNTIME: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
     RUNTIME.get_or_init(|| {
+        // INVARIANT: `build()` cannot fail for a reason any caller could act on.
+        // The builder is fully configured before the call and executes no user
+        // code while building, so its only failure modes are OS-level resource
+        // acquisition: spawning the worker threads and creating the I/O driver.
+        // This function is reached only from `spawn_daemon`'s
+        // no-ambient-runtime path, and `spawn_daemon` returns `()` to 21 call
+        // sites inside the shells' synchronous `setup` hooks — there is no error
+        // channel to plumb a `Result` into. A host that refuses
+        // `clone`/`epoll_create` cannot run these I/O-bound daemons at all, so
+        // panicking here reports the true state of the world rather than
+        // swallowing it.
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .thread_name("kasirmu-daemon")
