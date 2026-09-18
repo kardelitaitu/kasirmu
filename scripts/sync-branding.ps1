@@ -433,8 +433,8 @@ To generate receipt bitmaps from the master source icon:
 
 ```powershell
 # Requires ImageMagick
-magick convert assets/source-icon.png -resize 384x100 -threshold 50% assets/branding/%brandId%/hardware/receipt-logo-58mm.png
-magick convert assets/source-icon.png -resize 576x150 -threshold 50% assets/branding/%brandId%/hardware/receipt-logo-80mm.png
+magick convert assets/source-icon.png -resize 384x100! -threshold 50% assets/branding/%brandId%/hardware/receipt-logo-58mm.png
+magick convert assets/source-icon.png -resize 576x150! -threshold 50% assets/branding/%brandId%/hardware/receipt-logo-80mm.png
 ``````
 "@
     New-Item -ItemType Directory -Force -Path (Split-Path $hardwareReadmePath -Parent) | Out-Null
