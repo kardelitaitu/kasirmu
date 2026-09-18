@@ -3,7 +3,7 @@ name: brand-asset-pipeline
 description: Regenerate the kasir.mu brand asset set — app icons, favicons, PWA icons and vector logos — from a designer export, and repair drift between the brand source and the places it is copied to. Use when a new logo lands, when an icon shows the wrong or stale mark, when adding a whitelabel tenant under `assets/branding/`, or when `scripts/sync-branding.ps1` skips a step or refuses to run.
 ---
 
-<!-- Audit stamp: 2026-09-19 · Budak-Korporat · status: ACCURATE · Derived from a full regeneration of the `default` brand on 2026-09-19 (commits ac25c3e32, df5e0ff87, ea3aa2c7e, ea60a3c16). Verified this pass: `scripts/sync-branding.ps1` parses clean under PowerShell 7.5.5 and exits 0; `assets/branding/default/manifest.json` declares appName kasir.mu; both app `tauri.conf.json` files end a sync run with a zero diff; `ui/public` and `assets/branding/default/web/` agree byte-for-byte on all six web icons; the logo exports sitting directly in `ui/public/` are the designer's own files, and `ui/public/branding/` holds the four vector variants. The ImageMagick and PowerShell behaviours below were measured on this host, not inferred. -->
+<!-- Audit stamp: 2026-09-19 · Budak-Korporat · status: ACCURATE · Derived from a full regeneration of the `default` brand on 2026-09-19 (commits ac25c3e32, df5e0ff87, ea3aa2c7e, ea60a3c16) plus the 2026-09-19 icon.ico decode fix (32ea54472). Verified this pass: `scripts/sync-branding.ps1` parses clean under PowerShell 7.5.5 and exits 0; `assets/branding/default/manifest.json` declares appName kasir.mu; both app `tauri.conf.json` files end a sync run with a zero diff; `ui/public` and `assets/branding/default/web/` agree byte-for-byte on all six web icons; the logo exports sitting directly in `ui/public/` are the designer's own files, and `ui/public/branding/` holds the four vector variants. The 16-bit ICO trap was confirmed live: `cargo check -p kasirmu-app --no-default-features` panicked on `Unsupported PNG bit depth: Sixteen` from the committed 16-bit `icon.ico`, and passed after copying `tauri icon`'s 8-bit `icon.ico` into the source and both app dirs. The ImageMagick and PowerShell behaviours below were measured on this host, not inferred. -->
 
 # Brand Asset Pipeline
 
@@ -45,7 +45,10 @@ So a stale `appName` renames the product on the next sync. Check that field befo
 
 **2. `.icns` has no ImageMagick writer, and no reader either.** The file is written by the sync script's own PowerShell IconFamily packer, and only when `desktop/icon.icns` is *absent* — delete it to force a rebuild. Since that path needs ImageMagick, pack the container directly when trap 1 bites: magic `icns`, a big-endian total length, then one entry per size of a 4-byte OSType, a big-endian entry length and the PNG payload. The six codes are `ic11` 16, `ic12` 32, `ic13` 64, `ic07` 128, `ic08` 256, `ic09` 512. `identify` cannot verify it — parse the container and check the length field equals the file size.
 
-**3. The ICO writer emits uncompressed BMP frames.** A 256px BMP frame is 256 KB, so a six-frame `icon.ico` jumps from tens of KB to several hundred KB. Build the container directly to get PNG frames: an ICONDIR of reserved 0, type 1, count N; then 16-byte entries of width, height, 0, 0, planes 1, bpp 32, payload size and payload offset; then the PNG payloads. A dimension of 256 is encoded as 0.
+**3. The ICO writer emits 16-bit PNG frames under Q16 — and that breaks the build.** ImageMagick on Windows is a Q16 build, so when it packs PNG frames into an ICO every frame is `depth=16`. Tauri's `generate_context!()` proc-macro decodes `apps/desktop-tauri/icons/icon.ico` at compile time and **panics** on a 16-bit frame: `failed to decode icon .../icon.ico: Unsupported PNG bit depth: Sixteen`, which fails the whole app build. The same build also bloats — a 256px BMP frame is 256 KB, so a six-frame `icon.ico` jumps from tens of KB to several hundred KB. Two safe paths, both verified this host:
+   1. **`tauri icon assets/source-icon.png`** — canonical, produces an 8-bit `icon.ico` (~18 KB, frames 32/16/24/48/64/256). Copy its `icon.ico` into `assets/branding/default/desktop/`, `apps/desktop-tauri/icons/`, and `apps/mobile-tauri/icons/` (the sync copies the source verbatim, so fixing the source is what survives the next run).
+   2. ImageMagick `-depth 8` downscale of the existing file — preserves the original frame set but writes BMP frames and bloats to ~370 KB; only use it if the frame set must stay exact.
+   Whichever you pick, `magick identify -format "%[depth]"` must report `8` for every frame before committing. The web `ui/public/favicon.ico` is a separate file and does not block the build, but keep it 8-bit too.
 
 **4. Rasterise per size; do not downscale one master.** `px = viewBox_units × density / 96`, so for the 216-unit mark `density = px × 96 / 216`. A direct render at each target size beats shrinking a large one. SVG export tools emit a small transparent margin that is part of the design — leave it.
 
@@ -137,6 +140,6 @@ lockstep on both manifests.
 > last audited 19-09-26 (legs 1-3) by Budak-Korporat — added the platform-icons section, the
 > website-favicon source rule, the four-row PWA manifest rule, and the new-file XML chain on
 > mobile. Verified: `paths` check clean, proved live by injecting then removing a probe skill
-> (`zz-probe-drift2`) that cited `crates/zz-probe2-does-not-exist/src/lib.rs` — the check fired,
-> then went clean. The cited files all exist except the two `android-chrome-*` PNGs, which live
+> that cited a nonexistent crates path — the check fired, then went clean. The cited files all
+> exist except the two `android-chrome-*` PNGs, which live
 > only in `ui/public/` until someone folds them into `assets/branding/default/web/`.
