@@ -239,6 +239,44 @@ fn location_memo_fans_out_only_bound_terminals() {
 }
 
 #[test]
+fn location_memo_reaches_a_terminal_mirrored_before_it_had_a_binding() {
+    // The exact shape that made every Location Memo undeliverable: the row
+    // delivery resolves was mirrored before any location was known (the sync
+    // bootstrap does that), so it carried a NULL binding — and a Location Memo
+    // fans out through bound_location_id. `publish_memo_scoped` already passes
+    // the store's binding to `ensure_terminal_addressable`; this is the path
+    // that binding has to survive.
+    let store = store();
+    seed_terminal(&store, "t-mirrored", None);
+
+    let memo = store
+        .create_memo_draft(&new_memo("default", &["default"]))
+        .unwrap();
+
+    // Before: the fan-out matches nothing, so the publish is refused and the
+    // memo stays a draft nobody can ever receive.
+    let err = store.publish_memo("default", &memo.id).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "recipients"),
+        "expected the no-recipients refusal, got {err:?}"
+    );
+
+    // The mirror is re-run with the binding, exactly as publish_memo_scoped
+    // does. The DEVICE identity is what resolves the row that already exists.
+    store
+        .ensure_terminal_addressable(
+            &crate::Terminal::new("t-mirrored", "t-mirrored-dev"),
+            "default",
+            Some("default"),
+        )
+        .unwrap();
+
+    // After: the same memo reaches the terminal.
+    store.publish_memo("default", &memo.id).unwrap();
+    assert_eq!(recipient_count(&store, &memo.id), 1);
+}
+
+#[test]
 fn org_memo_fanout_excludes_other_tenants_terminals() {
     // The Phase 2 journal's tenant-isolation reconciliation named exactly this
     // test as the one that could not be written while `seed_location`
