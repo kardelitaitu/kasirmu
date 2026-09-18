@@ -277,6 +277,48 @@ fn ensure_terminal_addressable_reuses_the_row_that_already_covers_the_device() {
 }
 
 #[test]
+fn ensure_terminal_addressable_binds_a_row_that_was_already_mirrored() {
+    // A device mirrored before any location was known (the sync bootstrap does
+    // exactly that) still owns the row delivery resolves, so a Location Memo
+    // could never reach it unless the binding is refreshed in place later.
+    // Without this the terminal is permanently unbindable and every Location
+    // Memo publish refuses with "no terminal is registered to receive this memo".
+    let conn = fresh();
+    conn.execute_batch(
+        "INSERT INTO locations (id, name) VALUES ('loc-1', 'Front');
+         INSERT INTO terminals (id, name, device_id) VALUES ('global-1', 'Auto', 'dev-1')",
+    )
+    .unwrap();
+    let store = store(&conn);
+    let store_row = make_terminal("store-1", "Settings POS", "dev-1");
+
+    assert!(
+        !store
+            .ensure_terminal_addressable(&store_row, "default", Some("loc-1"))
+            .unwrap(),
+        "still no insert — one device never gets two rows"
+    );
+    assert_eq!(store.count_terminals().unwrap(), 1);
+    assert_eq!(
+        store.get_terminal_bound_location("global-1").unwrap(),
+        Some("loc-1".to_string()),
+        "the binding reaches the row delivery actually resolves"
+    );
+
+    // A caller that does not know a location yet must not wipe it.
+    assert!(
+        !store
+            .ensure_terminal_addressable(&store_row, "default", None)
+            .unwrap()
+    );
+    assert_eq!(
+        store.get_terminal_bound_location("global-1").unwrap(),
+        Some("loc-1".to_string()),
+        "None preserves the binding that is already there"
+    );
+}
+
+#[test]
 fn get_terminal_bound_location_is_none_for_unknown_and_unbound() {
     let conn = fresh();
     seed_terminals(&conn);

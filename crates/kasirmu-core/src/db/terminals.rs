@@ -144,6 +144,15 @@ impl Store<'_> {
     /// metadata, own tenant, and the location binding Location Memos target). No
     /// `terminal_secret` rides along — a credential belongs to the database that
     /// minted it. Returns whether it inserted.
+    ///
+    /// On an existing row it refreshes the location binding and nothing else.
+    /// That refresh is what makes a Location Memo deliverable at all: the row
+    /// delivery resolves may already have been mirrored (the sync bootstrap
+    /// mirrors the device before any location is known), and a Location Memo
+    /// fans out through `bound_location_id` — so a row that was mirrored without
+    /// one could never be bound later and every publish to it refused with no
+    /// recipients. `COALESCE` keeps a caller that does not know a location yet
+    /// (passing `None`) from wiping a binding that is already there.
     pub fn ensure_terminal_addressable(
         &self,
         source: &Terminal,
@@ -158,10 +167,18 @@ impl Store<'_> {
                 |r| r.get(0),
             )
             .optional()?;
-        if existing.is_some() {
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        if let Some(row_id) = existing {
+            tx.execute(
+                "UPDATE terminals SET
+                    bound_location_id = COALESCE(?1, bound_location_id),
+                    updated_at = ?2
+                 WHERE id = ?3",
+                params![bound_location_id, now, row_id],
+            )?;
+            tx.commit()?;
             return Ok(false);
         }
-        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         tx.execute(
             "INSERT INTO terminals (id, name, device_id, terminal_secret, is_active,
                                     last_seen_at, metadata, created_at, updated_at,
