@@ -81,11 +81,23 @@ impl BarcodeScanner for SerialBarcodeScanner {
             }));
         }
 
-        let mut port = open_port(&self.port_name, self.baud_rate)?;
+        // Opening a serial port is a blocking OS call, and on Windows a
+        // Bluetooth SPP or phantom port can hold `CreateFileW` for tens of
+        // seconds before it fails. Running it inline would occupy a runtime
+        // worker for the whole stall, so it goes to a blocking thread.
+        let port_name = self.port_name.clone();
+        let baud_rate = self.baud_rate;
+        let port = spawn_blocking(move || {
+            let mut port = open_port(&port_name, baud_rate)?;
 
-        // Enable read timeout so poll() doesn't block forever.
-        port.set_timeout(std::time::Duration::from_millis(500))
-            .map_err(|e| HalError::Protocol(format!("serial set_timeout: {e}")))?;
+            // Enable read timeout so poll() doesn't block forever.
+            port.set_timeout(std::time::Duration::from_millis(500))
+                .map_err(|e| HalError::Protocol(format!("serial set_timeout: {e}")))?;
+
+            Ok::<Box<dyn serialport::SerialPort>, HalError>(port)
+        })
+        .await
+        .map_err(|e| HalError::Usb(format!("serial open join error: {e}")))??;
 
         *guard = Some(port);
 
