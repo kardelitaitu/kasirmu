@@ -9,6 +9,19 @@ Closes the ADR #7 residual class mechanically: an unregistered command
 used to be invisible locally (the E2E dev-mock answers every invoke)
 and only surfaced at runtime as "command not found".
 
+Graded in four directions, three of them per shell -- and every one of them fails:
+- a UI command string this shell does not register and the allowlist does not carry;
+- an allowlist entry this shell DOES register (stale: the command came back);
+- an allowlist entry no direction reproduces -- no production UI file names it and this
+  shell does not register it, so it exempts nothing and no decision is being recorded
+  (`unreproduced_entry_message`; until 2026-09-18 this was an `info[<shell>-unreachable]`
+  printout, which counted toward the section's size and graded nothing);
+- the reverse directions, each with the same self-clean: a registered `_scoped` command no
+  client invokes, and a UI command no dev-mock handler can answer, fail unless allowlisted
+  in `scoped_orphans` / `dev_mock` -- and fail the other way once such an entry outlives its
+  gap. Those two sections take the {"name", "reason"} form; the shell sections take bare
+  names, for the cross-gate reason `allowlist_shape_problems` spells out.
+
 Also reports (informational, non-failing) the count of
 `#[tauri::command]` functions that are not registered in their shell —
 the dead-IPC-surface tracker being removed under review F-006.
@@ -1823,6 +1836,42 @@ def stale_orphan_message(
     )
 
 
+def unreproduced_entry_message(shell: str, command: str, allowlist_name: str) -> str:
+    """The failure line for a shell entry that neither direction reproduces.
+
+    The entry a shell section is FOR is one inside `missing[shell]`: the UI names the command
+    and this shell's generate_handler! has no door for it, so someone had to decide it is
+    tolerated. A name that is neither named by production UI code nor registered in the shell
+    describes no such decision -- there is no gap for it to allow.
+
+    Until this message existed, that population was graded by a printout. `info[<shell>-
+    unreachable]` named every one of them on every run and the run still returned 0, so the
+    line said in its own words that these entries were "accepted by the file and enforced by
+    nothing" -- and meant it. An entry there sat in the section's head count, in the number
+    the file's size is read from, and in every reader's idea of what this register tolerates,
+    while nothing in the tree asked for it. That is the one shape of entry this file could not
+    see: the forward check catches a gap with no entry, the staleness check catches an entry
+    whose command came back, and neither of them looks at an entry whose command was simply
+    never there or stopped being called.
+
+    Two causes, one message, because the repair is the same and only the history differs: a
+    wrapper the UI stopped calling (the command may still be registered -- then the staleness
+    check above has already failed the entry too, and deleting it settles both), or a name
+    typed ahead of the call site it was meant for. Neither is repairable by a writer flag: all
+    three writers here are additive ON PURPOSE (merge_section_entries), because a flag that
+    drops entries the current sweep does not reproduce is exactly how --write-allowlist once
+    removed the tablet ghost with no diagnostic and no diff anyone read. So this line asks for
+    a human edit and says so, rather than implying the next reseed will settle it.
+    """
+    return (
+        f"{shell}: unreproduced allowlist entry '{command}' -- production UI code names it "
+        f"nowhere and {SHELLS[shell]} does not register it, so nothing on either side asks "
+        f"for the exemption and no gap is being allowed. Delete it from {allowlist_name} "
+        f"(the writer flags are additive and will not), or restore the door it describes -- "
+        f"the UI call that puts the name back in this shell's measured gap set."
+    )
+
+
 def _balanced_body(text: str, start: int) -> str:
     """The `{...}` block starting at or after `start`, brace-balanced."""
     open_idx = text.find("{", start)
@@ -2361,7 +2410,7 @@ def self_test() -> int:
             err = io.StringIO()
             out = io.StringIO()
             with redirect_stdout(out), redirect_stderr(err):
-                main()
+                ghost_verdict = main()
             report = out.getvalue() + err.getvalue()
             payload_for_unreachable = json.loads(probe4.read_bytes().decode("utf-8"))
         finally:
@@ -2378,16 +2427,22 @@ def self_test() -> int:
          "brand_new_gap_scoped" in written_back["desktop"]
          and all(isinstance(e, str) for e in written_back["desktop"])
          and allowlist_shape_problems(written_back, Path("probe-allowlist.json")) == [])
-    # Pinned to the unreachable line itself. The first version asked only whether the ghost
-    # name appeared anywhere in the run, and mutation M3 -- deleting the computation -- still
-    # passed it, because a gate this noisy mentions a command string for other reasons. An
-    # assertion that reads someone else's output is the same failure as an exit-code check.
-    unreach_lines = [ln for ln in report.splitlines() if "-unreachable]:" in ln]
-    case("case 12  the unreachable check names a ghost that is neither gap nor handler",
-         len(unreach_lines) == 2
-         and any(ln.startswith("info[tablet-unreachable]: 2 of 2")
-                 and ghost_tablet in ln for ln in unreach_lines)
-         and all("neither" in ln for ln in unreach_lines), )
+    # Pinned to the failure line itself, AND to the run's own verdict code. The first version
+    # asked only whether the ghost name appeared anywhere in the run, and mutation M3 --
+    # deleting the computation -- still passed it, because a gate this noisy mentions a command
+    # string for other reasons. An assertion that reads someone else's output is the same
+    # failure as an exit-code check, so this one reads both. The pairing is the contract in one
+    # place: the entry stays in the FILE (asserted above -- the writer is additive on purpose)
+    # and the run refuses to call the register clean while it is there. A gate that silently
+    # pruned it instead would have nothing left to fail on, which is why both halves are here.
+    ghost_lines = [ln for ln in report.splitlines()
+                   if ghost_tablet in ln and "unreproduced" in ln]
+    case("case 12  a shell entry no direction reproduces fails the run, naming the entry",
+         ghost_verdict == 1 and "FAIL:" in report and len(ghost_lines) == 1
+         and ghost_lines[0].strip().startswith("- tablet:")
+         and "Delete it from" in ghost_lines[0], )
+    case("case 12  and the failing run did not rewrite the file to make itself green",
+         payload_for_unreachable["tablet"] == after_shell_merge["tablet"], )
     # Pinned to the SHELL line on purpose. The first version of this case asked whether the
     # run printed "(1 allowlisted)" anywhere, and it passed before the repair existed: the
     # dev_mock line already says that, so the assertion was reading a different section's
@@ -3637,6 +3692,14 @@ def main() -> int:
                 f"{shell}: stale allowlist entry '{command}' - now registered; "
                 f"remove it from {ALLOWLIST_PATH.name}"
             )
+        # The third direction a shell section can be wrong in, and the last one that was a
+        # printout: an entry that is neither a gap this run measured nor a command this shell
+        # registers exempts nothing. It used to be surfaced as info[<shell>-unreachable] and
+        # explicitly not graded -- see unreproduced_entry_message for why that grade moved, and
+        # for why the repair is a human edit rather than the next --write-allowlist run.
+        for command in sorted(allowed - missing[shell] - set(handlers[shell])):
+            failures.append(
+                unreproduced_entry_message(shell, command, ALLOWLIST_PATH.name))
 
     mock_entries = allowlist_section(allowlist, "dev_mock")
     mock_allow = {name for name, _ in mock_entries}
@@ -3689,14 +3752,18 @@ def main() -> int:
             shell, REPO_ROOT / SHELLS[shell], set(handlers[shell])
         )
         allowed_names = section_names(allowlist, shell)
-        # Surfaced, never enforced. An allowlisted name that is neither a gap this run
-        # reproduces nor a command the shell registers has nothing on either side of it
-        # asking for the exemption -- the tablet ghost that is not a UI string, not
-        # registered in either shell, and still answers from a dev-mock handler is the
-        # shape. It used to be invisible in both directions: the staleness check only
-        # catches an entry that DID become registered, and --write-allowlist deleted the
-        # rest without a word. The writer is additive now, so this line is the only thing
-        # that shows them, which is why it is information-only and cannot fail the gate.
+        # Enforced now, not merely surfaced: an allowlisted name that is neither a gap this
+        # run reproduces nor a command the shell registers has nothing on either side of it
+        # asking for the exemption -- the tablet ghost that is not a UI string, not registered
+        # in either shell, and still answers from a dev-mock handler is the shape. It used to
+        # be invisible in both directions: the staleness check only catches an entry that DID
+        # become registered, and --write-allowlist deleted the rest without a word. The writer
+        # is additive now, so nothing removes them -- which is precisely why the grade had to
+        # move: an entry no direction measures and no flag deletes is not a decision anyone is
+        # holding, it is a line the file counts and the tree does not. The failures above name
+        # each one and both repairs. info[<shell>-inert] keeps printing this population as a
+        # cross-check, because it derives membership from the tree's own name set rather than
+        # from missing/handlers, so the two agreeing is evidence and not a restatement.
         # The two "unregistered" figures on the line below are NOT the same measurement in
         # different clothes: missing[shell] is UI command NAMES the interface invokes and
         # this shell does not register (direction: ui -> shell), unregistered is Rust
@@ -3831,24 +3898,23 @@ def main() -> int:
             + (": " + ", ".join(f"{n} ({v[0]})" for n, v in sorted(fb.items())[:6]) if fb else "")
             + (f" (+{len(fb) - 6} more)" if len(fb) > 6 else "")
         )
-        print(
-            f"info[{shell}-unreachable]: {len(unreachable)} of {len(allowed_names)} "
-            f"allowlisted entries for this shell are reachable by neither direction -- not "
-            f"a gap this run measured and not registered in the shell's generate_handler, "
-            f"so nothing on either side still asks for the exemption"
-            + (f": {', '.join(unreachable)}" if unreachable else "")
-            + ". Informational: those entries are dropped by a human edit, not by the "
-            "writer flag."
-        )
+        # The unreproduced entries are failures now (see unreproduced_entry_message); nothing
+        # is printed for them here, so a green run cannot advertise a population it did not
+        # grade and a red run names each one once, in the failure list.
 
     # The inertness no shape repair touched: an accepted name that matches nothing the run
     # walks enforces nothing, and prints clean. One line per section, because a single
     # whole-file figure would hide that the four sections are inert for four different reasons
     # -- a scoped orphan is inert BY DEFINITION (no caller is what makes it an orphan), a shell
     # gap inert means the UI stopped invoking it, and a dev_mock entry inert means the mock
-    # never had to answer it. Informational, not a failure: 25 of those names belong to no one
-    # in particular and reding the tree for all of them at once would train people to ignore
-    # the gate, which is the outcome this whole file exists to avoid.
+    # never had to answer it. Informational for the writer-owned half, and a cross-check for
+    # the shell half since 2026-09-18: the shell slices of this population ARE failures now
+    # (the unreproduced-entry check above), derived independently -- this leg compares against
+    # the tree's own name set while the failures compare against missing/handlers, so the two
+    # agreeing is evidence rather than a restatement. What stays a printout is the writer-owned
+    # pair: 25 scoped orphans are inert BY DEFINITION (having no caller is what makes one an
+    # orphan), and reding the tree for all of them at once would train people to ignore the
+    # gate, which is the outcome this whole file exists to avoid.
     #
     #
     # THREE POPULATIONS, because two made a stale entry arithmetically invisible. The first
