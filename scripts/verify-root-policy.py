@@ -54,6 +54,7 @@ ROOT_FILE_ALLOWLIST = frozenset({
     # Owner working files (P5 withdrawal) + the agent-harness contract.
     "ARCHITECTURE.md", "DSH.md", "done-todo-rebrand.md", "todo-rebrand-2.md",
     "todo-open-debt-program.md", "todo-review-type.md",
+    "todo-owner-rulings.md",
     "todo-project-folder-restructure.md",
     # Measured exception (§5): not a duplicate of scripts/stats.json —
     # scripts/stats.ps1 and scripts/check.ps1 read this name.
