@@ -35,26 +35,82 @@
 
 /* ── Area 1: header (pinned) ─────────────────────────────────────── */
 
+/* Three columns, centre-weighted the way the KDS header is: the tab strip
+   holds the middle whatever the widths of the back button and the action
+   button, which space-between cannot do. */
 .staff-mgmt-header {
   flex: 0 0 auto;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-8);
   background: var(--color-bg-surface);
   border-bottom: 1px solid var(--color-border);
 }
 
-/* Title cluster (back + heading) and the page actions (Roles, Add Staff).
-   Without these wrappers the header's space-between would spread three or
-   four children into three or four columns. */
+/* Outer columns are pinned to their edges; without these both would sit
+   against the tab strip in the middle. */
+.staff-mgmt-header-lead {
+  justify-self: start;
+}
+
+.staff-mgmt-header-actions {
+  justify-self: end;
+}
+
+/* Back button and page actions. */
 .staff-mgmt-header-lead,
 .staff-mgmt-header-actions {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   min-width: 0;
+}
+
+/* ── Tab strip ───────────────────────────────────────────────────── */
+
+.staff-tabs {
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 3px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.staff-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-4);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-fg-secondary);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.staff-tab:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
+}
+
+.staff-tab--active {
+  background: var(--color-bg-elevated);
+  color: var(--color-fg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.staff-tab:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 
 /* The only route back to the workspace picker on this sidebar-less page.
@@ -94,6 +150,21 @@
   min-height: 0;
   overflow-y: auto;
   padding: var(--space-6) var(--space-8);
+}
+
+/* Both tab panels live inside the one scrolling region above. */
+.staff-mgmt-tabpanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* The inactive panel stays mounted (the Roles view holds loaded roles,
+   permission keys and expanded holders), so the `hidden` attribute has to
+   beat the `display: flex` above — the UA's [hidden] rule loses to a class
+   selector. */
+.staff-mgmt-tabpanel[hidden] {
+  display: none;
 }
 
 /* ── Area 3: status footer (pinned) ──────────────────────────────── */
@@ -143,13 +214,6 @@
   border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
   color: var(--color-fg-primary);
   font-size: var(--text-sm);
-}
-
-.staff-mgmt-title {
-  font-size: var(--text-2xl);
-  font-weight: var(--font-weight-bold);
-  margin: 0;
-  color: var(--color-fg);
 }
 
 .staff-mgmt-loading-skeleton {

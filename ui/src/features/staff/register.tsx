@@ -1,14 +1,20 @@
 import { lazy } from 'react';
 import { registerPage } from '@/registries/page-registry';
+
+// ONE lazy component, registered at BOTH routes on purpose. React reconciles
+// by element type, so moving between `staff` and `roles` re-renders this
+// component instead of remounting it — which is what lets the Staff/Roles tabs
+// swap views without dropping the loaded lists or flashing a skeleton. Two
+// distinct components here would make every tab click a full remount.
 const StaffManagementScreen = lazy(() => import('./StaffManagementScreen'));
-const RoleAuthoringScreen = lazy(() => import('./RoleAuthoringScreen'));
 
 export function registerStaffFeature() {
   // Both routes register `fullscreen`, so AppShell renders them without the
   // AppLayout wrapper — no sidebar, no app topbar. They are dedicated
   // settings pages, not workspace tools: neither carries a `registerNavItem`
-  // entry, and the two reach each other through the links in their own
-  // headers (Staff ↔ Roles) plus the back button to the workspace picker.
+  // entry. The two views are tabs inside the one page, and the routes differ
+  // only in which tab they open on — plus their gate, which stays per-route
+  // so a deep link cannot reach role authoring on a lesser grant.
   //
   // Role authoring is gated on staff:manage_roles, not staff:read: the
   // screen writes the grant sets every other gate resolves through, so
@@ -24,7 +30,7 @@ export function registerStaffFeature() {
   });
   registerPage({
     route: 'roles',
-    component: RoleAuthoringScreen,
+    component: StaffManagementScreen,
     label: 'Roles',
     requiredRole: 'manager',
     requiredPermission: 'staff:manage_roles',

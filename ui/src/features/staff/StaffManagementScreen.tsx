@@ -20,7 +20,7 @@
  * - Styles live in `StaffManagementScreen.css` (global classes shared with
  *   the extracted components).
  */
-import { useState, useCallback, useEffect, useContext } from 'react';
+import { useState, useCallback, useEffect, useContext, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import {
   listStaffScoped,
@@ -45,13 +45,16 @@ import { Skeleton } from '@/components/Skeleton';
 import { requiredLocalized } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { useToast } from '@/components/Toast';
-import { hasGrantedPermission } from '@/registries/page-registry';
+import { hasGrantedPermission, passesGate } from '@/registries/page-registry';
 import { EmptyState } from '@/components';
 import { NoStaffIcon } from '@/components/EmptyStateIllustrations';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { StaffListTable } from './components/StaffListTable';
 import { StaffDetailDrawer } from './components/StaffDetailDrawer';
 import { StaffManagementFooter } from './components/StaffManagementFooter';
+import RoleAuthoringPanel, { type RoleAuthoringPanelHandle } from './components/RoleAuthoringPanel';
+import { StaffTabs } from './components/StaffTabs';
+import { STAFF_TAB_IDS, type StaffTab } from './components/staffTabsModel';
 import './StaffManagementScreen.css';
 
 // ── Component ───────────────────────────────────────────────────────
@@ -72,8 +75,20 @@ export default function StaffManagementScreen() {
   const { addToast } = useToast();
   const { start: startImpersonation } = useImpersonation();
   const canImpersonate = hasGrantedPermission(session?.permissions, 'operator:impersonate');
-  /** The Roles link mirrors `roles`' own route gate (`staff:manage_roles`). */
-  const canManageRoles = hasGrantedPermission(session?.permissions, 'staff:manage_roles');
+  /**
+   * The Roles tab, and the header's "Add New Role" action with it, is shown
+   * under exactly the gate `#/roles` itself carries — `passesGate` with the
+   * same role and permission the page registration declares. Testing the raw
+   * permission instead would hide the tab for a session that carries no
+   * granted keys while the route still admits it by role, which is a tab and
+   * a route disagreeing about who may author roles.
+   */
+  const canManageRoles = passesGate(
+    'manager',
+    'staff:manage_roles',
+    session?.role_name,
+    session?.permissions,
+  );
   const [staff, setStaff] = useState<StaffMemberDto[]>([]);
   const [roles, setRoles] = useState<RoleDto[]>([]);
   /**
@@ -150,17 +165,51 @@ export default function StaffManagementScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  // ── Cross-page navigation ──────────────────────────────────────
+  // ── Tabs (Staff / Roles) ───────────────────────────────────────
   //
-  // Both staff pages are registered `fullscreen`, so neither is reachable
-  // from a sidebar and neither receives an `onNavigate` prop (AppShell
-  // renders registry pages with no props). The URL hash is therefore the
-  // app's cross-page channel here: AppShell's hashchange listener resolves
-  // `#/roles` against the page registry and swaps the route. Same idiom the
-  // Locations dashboard uses for `#/settings/topology`.
-  const goToRoles = useCallback(() => {
-    window.location.hash = '#/roles';
+  // The tab is the route. This component is registered at BOTH `staff` and
+  // `roles`, and React reconciles by element type — so a tab click swaps the
+  // route without remounting, and the two panels keep their loaded data
+  // instead of flashing a skeleton on every switch.
+  const [activeTab, setActiveTab] = useState<StaffTab>(() => {
+    // `#/roles…` opens on Roles; anything else (a cleared hash, an unrelated
+    // deep link) opens on Staff. The query is stripped because a route hash
+    // may carry one — AppShell does the same before matching a page.
+    const route = window.location.hash.replace(/^#\//, '').split('?')[0];
+    return route === 'roles' ? 'roles' : 'staff';
+  });
+
+  const selectTab = useCallback((tab: StaffTab) => {
+    setActiveTab(tab);
+    // Keep the URL honest so each tab stays deep-linkable and the browser's
+    // back button moves between them. AppShell's own hashchange listener
+    // resolves the route from this hash, finding the same component.
+    window.location.hash = `#/${tab}`;
   }, []);
+
+  // Back/forward and external deep links land here: AppShell maps the route,
+  // this keeps the tab in step with it.
+  useEffect(() => {
+    const syncTabFromHash = () => {
+      const route = window.location.hash.replace(/^#\//, '').split('?')[0];
+      if (route === 'staff' || route === 'roles') setActiveTab(route);
+    };
+    window.addEventListener('hashchange', syncTabFromHash);
+    return () => window.removeEventListener('hashchange', syncTabFromHash);
+  }, []);
+
+  // The roles panel is mounted on first visit and then kept: it fetches the
+  // role list, the permission-key registry and per-row holders, and re-issuing
+  // those on every tab click is work the user did not ask for. Gated on the
+  // same grant as the tab, so a staff-only manager never pays for it.
+  const [rolesPanelMounted, setRolesPanelMounted] = useState(canManageRoles && activeTab === 'roles');
+  useEffect(() => {
+    if (canManageRoles && activeTab === 'roles') setRolesPanelMounted(true);
+  }, [canManageRoles, activeTab]);
+
+  // Header → panel. The "Add New Role" button lives in this component while
+  // the editor's state lives in the panel; see RoleAuthoringPanelProps.handleRef.
+  const rolesPanelRef = useRef<RoleAuthoringPanelHandle>(null);
 
   // ── Drawer open/close
   //
@@ -276,21 +325,26 @@ export default function StaffManagementScreen() {
               <polyline points="12 19 5 12 12 5" />
             </svg>
           </button>
-          <Localized id="staff-title">
-            <h1 className="staff-mgmt-title">Staff</h1>
-          </Localized>
         </div>
+
+        {/* Centre column, KDS-header style. No h1: the tab names the view, and
+            a heading repeating the active tab is noise — the panel is
+            announced through aria-labelledby instead. */}
+        <StaffTabs activeTab={activeTab} onSelectTab={selectTab} showRoles={canManageRoles} />
+
         <div className="staff-mgmt-header-actions">
-          {/* Roles rides with Staff: same fullscreen destination, no sidebar
-              entry of its own, gated on the grant the screen itself writes. */}
-          {canManageRoles && (
-            <Button variant="secondary" onClick={goToRoles}>
-              <Localized id="nav-roles"><span>Roles</span></Localized>
-            </Button>
+          {/* One action slot, two jobs: the create affordance belongs to
+              whichever tab is showing. Roles is gated on the grant that gates
+              its route, so a staff-only manager never sees the button. */}
+          {activeTab === 'roles' && canManageRoles ? (
+            <Localized id="role-create">
+              <Button onClick={() => rolesPanelRef.current?.openCreate()}>Add New Role</Button>
+            </Localized>
+          ) : (
+            <Localized id="staff-add-button">
+              <Button onClick={openCreate}>Add Staff</Button>
+            </Localized>
           )}
-          <Localized id="staff-add-button">
-            <Button onClick={openCreate}>Add Staff</Button>
-          </Localized>
         </div>
       </div>
 
@@ -302,73 +356,98 @@ export default function StaffManagementScreen() {
           stays outside the header so a failed load cannot take the back
           button with it. */}
       <div className="staff-mgmt-main">
-        {/* C2.2: Pro tier near its 20-staff cap — upgrade nudge. */}
-        {atProStaffCap && (
-          <div className="staff-mgmt-approaching-banner" role="note">
-            <span>{l10n.getString('staff-limit-approaching-premium')}</span>
-            <Button variant="primary" size="sm" onClick={() => openUpgradePricingPage(locale, 'premium')}>
-              {l10n.getString('staff-limit-approaching-premium-cta')}
-            </Button>
-          </div>
-        )}
-
-        {loadError ? (
-          <Card shadow="sm">
-            <div className="staff-mgmt-load-error" role="alert">
-              <p className="staff-mgmt-load-error-message">{loadError}</p>
-              <Button onClick={() => load()} variant="secondary">
-                <Localized id="staff-retry"><span>Retry</span></Localized>
+        <div
+          className="staff-mgmt-tabpanel"
+          id={STAFF_TAB_IDS.staff.panel}
+          role="tabpanel"
+          aria-labelledby={STAFF_TAB_IDS.staff.tab}
+          hidden={activeTab !== 'staff'}
+        >
+          {/* C2.2: Pro tier near its 20-staff cap — upgrade nudge. */}
+          {atProStaffCap && (
+            <div className="staff-mgmt-approaching-banner" role="note">
+              <span>{l10n.getString('staff-limit-approaching-premium')}</span>
+              <Button variant="primary" size="sm" onClick={() => openUpgradePricingPage(locale, 'premium')}>
+                {l10n.getString('staff-limit-approaching-premium-cta')}
               </Button>
             </div>
-          </Card>
-        ) : loading ? (
-          <div className="staff-mgmt-loading-skeleton" aria-hidden="true">
-            {/* No header mimic here: the real header is rendered above for
-                every branch, so a second one would duplicate the title, the
-                back button and the actions while the list loads. */}
-            <div className="staff-mgmt-table-wrap">
-              <table className="staff-mgmt-table">
-                <thead>
-                  <tr>
-                    {['Role', 'Workspace', 'Name', 'Username', 'Status', ''].map((_, i) => (
-                      <th key={i}><Skeleton variant="text" width="4rem" /></th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>{Array.from({ length: 4 }).map((_, r) => (
-                    <tr key={r}>
-                      <td><Skeleton variant="block" width="5rem" height="1.25rem" style={{ borderRadius: 'var(--radius-full)' }} /></td>
-                      <td><Skeleton variant="text" width="6rem" /></td>
-                      <td><Skeleton variant="text" width="7rem" /></td>
-                      <td><Skeleton variant="text" width="4rem" /></td>
-                      <td><Skeleton variant="text" width="3.5rem" /></td>
-                      <td><Skeleton variant="block" width="5rem" height="1.5rem" /></td>
+          )}
+
+          {loadError ? (
+            <Card shadow="sm">
+              <div className="staff-mgmt-load-error" role="alert">
+                <p className="staff-mgmt-load-error-message">{loadError}</p>
+                <Button onClick={() => load()} variant="secondary">
+                  <Localized id="staff-retry"><span>Retry</span></Localized>
+                </Button>
+              </div>
+            </Card>
+          ) : loading ? (
+            <div className="staff-mgmt-loading-skeleton" aria-hidden="true">
+              {/* No header mimic here: the real header is rendered above for
+                  every branch, so a second one would duplicate the tab strip
+                  and the actions while the list loads. */}
+              <div className="staff-mgmt-table-wrap">
+                <table className="staff-mgmt-table">
+                  <thead>
+                    <tr>
+                      {['Role', 'Workspace', 'Name', 'Username', 'Status', ''].map((_, i) => (
+                        <th key={i}><Skeleton variant="text" width="4rem" /></th>
+                      ))}
                     </tr>
-                  ))}
+                  </thead>
+                  <tbody>{Array.from({ length: 4 }).map((_, r) => (
+                      <tr key={r}>
+                        <td><Skeleton variant="block" width="5rem" height="1.25rem" style={{ borderRadius: 'var(--radius-full)' }} /></td>
+                        <td><Skeleton variant="text" width="6rem" /></td>
+                        <td><Skeleton variant="text" width="7rem" /></td>
+                        <td><Skeleton variant="text" width="4rem" /></td>
+                        <td><Skeleton variant="text" width="3.5rem" /></td>
+                        <td><Skeleton variant="block" width="5rem" height="1.5rem" /></td>
+                      </tr>
+                    ))}
 </tbody>
-              </table>
+                </table>
+              </div>
             </div>
+          ) : staff.length === 0 ? (
+            <Card shadow="sm">
+              <div className="staff-mgmt-empty">
+                <EmptyState
+                  icon={<NoStaffIcon />}
+                  title={requiredLocalized(l10n, 'staff-empty')}
+                  action={{ label: requiredLocalized(l10n, 'staff-empty-cta'), onClick: openCreate }}
+                />
+              </div>
+            </Card>
+          ) : (
+            <StaffListTable
+              staff={staff}
+              workspaceNameMap={workspaceNameMap}
+              workspacesUnavailable={workspacesUnavailable}
+              canImpersonate={canImpersonate}
+              onEdit={openEdit}
+              onToggleActive={toggleActive}
+              onImpersonate={handleImpersonate}
+            />
+          )}
+        </div>
+
+        {/* Rendered whenever its tab exists, so the tab's aria-controls always
+            resolves; the PANEL inside mounts on first visit and is then kept
+            (see rolesPanelMounted). */}
+        {canManageRoles && (
+          <div
+            className="staff-mgmt-tabpanel"
+            id={STAFF_TAB_IDS.roles.panel}
+            role="tabpanel"
+            aria-labelledby={STAFF_TAB_IDS.roles.tab}
+            hidden={activeTab !== 'roles'}
+          >
+            {(rolesPanelMounted || activeTab === 'roles') && (
+              <RoleAuthoringPanel handleRef={rolesPanelRef} />
+            )}
           </div>
-        ) : staff.length === 0 ? (
-          <Card shadow="sm">
-            <div className="staff-mgmt-empty">
-              <EmptyState
-                icon={<NoStaffIcon />}
-                title={requiredLocalized(l10n, 'staff-empty')}
-                action={{ label: requiredLocalized(l10n, 'staff-empty-cta'), onClick: openCreate }}
-              />
-            </div>
-          </Card>
-        ) : (
-          <StaffListTable
-            staff={staff}
-            workspaceNameMap={workspaceNameMap}
-            workspacesUnavailable={workspacesUnavailable}
-            canImpersonate={canImpersonate}
-            onEdit={openEdit}
-            onToggleActive={toggleActive}
-            onImpersonate={handleImpersonate}
-          />
         )}
       </div>
 

@@ -31,8 +31,8 @@ staff-login-attempts-remaining = ({ $count } percobaan tersisa)
 staff-login-lockout = Terkunci. Coba lagi dalam { $seconds }d
 
 # ── Product Bundles ──
-staff-title = Staf
 staff-back-aria = Kembali ke ruang kerja
+staff-tabs-aria = Staf dan peran
 staff-footer-staff-count = { $count } anggota staf
 staff-footer-active = { $count } aktif
 staff-footer-roles = { $count } peran
@@ -239,10 +239,8 @@ staff-limit-approaching-premium-cta = Tingkatkan ke Premium
 # ── Pembuatan peran (ADR #47 putusan 4) ──────────────────────────────
 # Peran kustom adalah baris kumpulan izin bernama. Daftarnya diisi dari
 # registri izin, jadi tidak ada nama kunci yang ditulis tetap di UI.
-role-authoring-title = Peran
 role-authoring-subtitle = Peran bawaan adalah default; peran kustom adalah kumpulan izin yang Anda susun sendiri.
-role-create = Peran baru
-role-create-aria = Buat peran kustom baru
+role-create = Tambah Peran Baru
 role-list-aria = Semua peran
 role-empty-title = Belum ada peran
 role-badge-builtin = Bawaan
@@ -272,16 +270,13 @@ role-in-use-grants-only = { $count ->
     [one] Memuat 1 grant workspace
    *[other] Memuat { $count } grant workspace
   }
-role-editor-create-title = Peran baru
 role-editor-edit-title = Ubah peran
 role-field-name = Nama peran
 role-field-description = Deskripsi peran
 role-field-permissions = Izin
 role-perm-sensitive = Sensitif
 role-cancel = Batal
-role-cancel-aria = Batalkan perubahan peran ini
 role-save = Simpan peran
-role-save-aria = Simpan peran ini
 role-saved = Peran { $name } tersimpan.
 role-deleted = Peran { $name } dihapus.
 role-delete-confirm-title = Hapus peran ini?

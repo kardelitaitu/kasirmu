@@ -280,6 +280,8 @@ const SCREENS: ScreenEntry[] = [
       // Same reason SettingsFooter is registered against SettingsPage: skip
       // it and the guard goes green while those classes read as dead CSS.
       'staff/components/StaffManagementFooter.tsx',
+      // The header tab strip renders staff-tabs / staff-tab*, also styled here.
+      'staff/components/StaffTabs.tsx',
     ],
   },
 
@@ -2144,7 +2146,7 @@ const BASELINE_UNCITED: string[] = [
   'settings/SettingsScopeTag.css',
   'settings/WorkspaceSettingsModal.module.css',
   'setup/components/LiveSetupPreview.css',
-  'staff/RoleAuthoringScreen.css',
+  'staff/components/RoleAuthoringPanel.css',
   'warehouse/WarehouseConsole.css',
 ];
 

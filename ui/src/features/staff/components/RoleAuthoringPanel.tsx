@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useMemo, useState, type RefObject } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import {
   listRolesScoped,
@@ -13,22 +13,29 @@ import {
   type RoleHoldersDto,
 } from '@/api/staff';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Badge } from '@/components/Badge';
 import { Skeleton } from '@/components/Skeleton';
-import { EmptyState, requiredLocalized } from '@/components';
+import { EmptyState, SettingsPopup, requiredLocalized } from '@/components';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toast';
 import { l10nErrorMessage } from '@/utils/app-error';
-import './RoleAuthoringScreen.css';
+import './RoleAuthoringPanel.css';
 
 /**
- * Role authoring — create, edit and delete custom roles (ADR #47 ruling 4).
+ * RoleAuthoringPanel — the Roles half of the staff management page: create,
+ * edit and delete custom roles (ADR #47 ruling 4).
+ *
+ * It renders INSIDE `StaffManagementScreen`'s tab panel rather than as a
+ * route of its own, so it paints no page chrome — no back button, no page
+ * height, no padding. The page shell owns those, plus the header action that
+ * opens the create editor; this component exposes that one entry point
+ * through a ref (`RoleAuthoringPanelHandle.openCreate`) because the trigger
+ * lives in the shell while the editor's state lives here.
  *
  * A custom role is a named key-set row in the same registry vocabulary
- * enforcement already speaks; this screen is the write surface for it. Two
+ * enforcement already speaks; this panel is the write surface for it. Two
  * rules the UI must not paper over, both enforced server-side and mirrored
  * here only to explain themselves to the user:
  *
@@ -41,6 +48,10 @@ import './RoleAuthoringScreen.css';
  * The permission picker is fed by `list_permission_keys_scoped` rather than
  * a constant: the registry is the single source of truth (ADR #35) and a
  * hardcoded copy drifts from the keys the gate actually honors.
+ *
+ * The editor is a `SettingsPopup`, not an inline card, so the list keeps its
+ * scroll position and the picker's 85 keys get the popup's own scroll area
+ * instead of pushing the roster off-screen.
  *
  * Each row also expands to the accounts holding that role, and the scope
  * that bounds them. Three numbers ride along, and each may only be worded
@@ -138,35 +149,30 @@ function HolderDims({ h }: { h: RoleHolderDto }) {
   );
 }
 
-/**
- * Page-level back control for this fullscreen page.
- *
- * Roles registers `fullscreen`, so AppLayout — and with it the sidebar —
- * never renders around it, and `goToWorkspacePicker` is the only route back
- * to the workspace picker. It is a component so the loading branch renders
- * the same control as the loaded one: a slow role fetch must not leave the
- * operator on a sidebar-less page with no way out.
- */
-function BackToWorkspacesButton({ onClick, label }: { onClick: () => void; label: string }) {
-  return (
-    <button
-      type="button"
-      className="role-authoring-back-btn"
-      onClick={onClick}
-      aria-label={label}
-    >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
-        <line x1="19" y1="12" x2="5" y2="12" />
-        <polyline points="12 19 5 12 12 5" />
-      </svg>
-    </button>
-  );
+/** Props for the embedded roles panel. */
+export interface RoleAuthoringPanelProps {
+  /**
+   * The shell's handle on this panel. The header's "Add New Role" action lives
+   * outside this component while the editor's state lives inside it, so the
+   * shell reaches in through this ref rather than the panel hoisting six
+   * pieces of editor state up to a parent that only wants to open a popup.
+   *
+   * A plain prop, not `forwardRef`: `useImperativeHandle` accepts any `Ref`,
+   * so wrapping the component would buy nothing and make the prop invisible
+   * in the signature.
+   */
+  handleRef: RefObject<RoleAuthoringPanelHandle>;
 }
 
-export default function RoleAuthoringScreen() {
+/** The one thing the shell drives from outside this panel. */
+export interface RoleAuthoringPanelHandle {
+  /** Open the editor in create mode — the header's "Add New Role" action. */
+  openCreate: () => void;
+}
+
+function RoleAuthoringPanel({ handleRef }: RoleAuthoringPanelProps) {
   const { l10n } = useLocalization();
   const { sessionToken } = useWorkspace();
-  const { goToWorkspacePicker } = useWorkspaceNav();
   const { addToast } = useToast();
 
   const [roles, setRoles] = useState<RoleDto[]>([]);
@@ -215,12 +221,19 @@ export default function RoleAuthoringScreen() {
     void refresh();
   }, [refresh]);
 
-  // Both staff pages are registered `fullscreen` and receive no `onNavigate`
-  // prop, so the URL hash is how one reaches the other: AppShell's
-  // hashchange listener resolves `#/staff` against the page registry.
-  const goToStaff = useCallback(() => {
-    window.location.hash = '#/staff';
+  const openEditor = useCallback((role: RoleDto | null) => {
+    setEditingId(role ? role.id : '');
+    setName(role?.name ?? '');
+    setDescription(role?.description ?? '');
+    setGranted(new Set(role?.permissions ?? []));
+    setError(null);
   }, []);
+
+  // The create trigger lives in the page header, this state lives here, so
+  // the shell reaches in through the handle prop rather than hoisting the
+  // editor's state up to it. `openEditor` only calls setters, so the handle
+  // never reads a stale render.
+  useImperativeHandle(handleRef, () => ({ openCreate: () => openEditor(null) }), [openEditor]);
 
   // Grouped by family so the picker reads as capabilities rather than an
   // 85-key wall.
@@ -263,20 +276,12 @@ export default function RoleAuthoringScreen() {
     }
   };
 
-  const openEditor = (role: RoleDto | null) => {
-    setEditingId(role ? role.id : '');
-    setName(role?.name ?? '');
-    setDescription(role?.description ?? '');
-    setGranted(new Set(role?.permissions ?? []));
-    setError(null);
-  };
-
-  const closeEditor = () => {
+  const closeEditor = useCallback(() => {
     setEditingId(null);
     setName('');
     setDescription('');
     setGranted(new Set());
-  };
+  }, []);
 
   const toggleKey = (key: string) => {
     setGranted((prev) => {
@@ -331,7 +336,6 @@ export default function RoleAuthoringScreen() {
   if (loading) {
     return (
       <div className="role-authoring" aria-busy="true">
-        <BackToWorkspacesButton onClick={goToWorkspacePicker} label={l10n.getString('staff-back-aria')} />
         <Skeleton variant="block" width="100%" height="12rem" />
       </div>
     );
@@ -340,34 +344,21 @@ export default function RoleAuthoringScreen() {
   return (
     <div className="role-authoring">
       <Card>
-        <div className="role-authoring-header">
-          <div className="role-authoring-header-lead">
-            <BackToWorkspacesButton onClick={goToWorkspacePicker} label={l10n.getString('staff-back-aria')} />
-            <div>
-              <Localized id="role-authoring-title">
-                <h2>Roles</h2>
-              </Localized>
-              <Localized id="role-authoring-subtitle">
-                <p className="role-authoring-subtitle">
-                  Built-in roles are defaults; custom roles are named permission
-                  sets you author.
-                </p>
-              </Localized>
-            </div>
-          </div>
-          <div className="role-authoring-header-actions">
-            {/* Roles rides with Staff: the two are siblings under one tool,
-                so each links to the other. */}
-            <Button variant="secondary" onClick={goToStaff}>
-              <Localized id="nav-staff"><span>Staff</span></Localized>
-            </Button>
-            <Button variant="primary" onClick={() => openEditor(null)} aria-label={l10n.getString('role-create-aria')}>
-              <Localized id="role-create">New role</Localized>
-            </Button>
-          </div>
-        </div>
+        {/* No title here: the active tab names this view. The subtitle stays
+            because it explains what an authored role IS, which a tab label
+            cannot. */}
+        <Localized id="role-authoring-subtitle">
+          <p className="role-authoring-subtitle">
+            Built-in roles are defaults; custom roles are named permission
+            sets you author.
+          </p>
+        </Localized>
 
-        {error && (
+        {/* The editor owns its own error while it is open — SettingsPopup
+            renders it — so repeating it here would announce one failure
+            twice. This banner is for failures with no editor on screen: a
+            failed load, or a refused delete. */}
+        {error && editingId === null && (
           <p className="role-authoring-error" role="alert">
             {error}
           </p>
@@ -547,76 +538,72 @@ export default function RoleAuthoringScreen() {
         )}
       </Card>
 
-      {editingId !== null && (
-        <Card>
-          <Localized id={editingId === '' ? 'role-editor-create-title' : 'role-editor-edit-title'}>
-            <h3>Role details</h3>
+      {/* The editor is a popup, not a second card: the permission picker is an
+          85-key wall, and inline it pushed the role list off-screen and lost
+          the scroll position on every open. */}
+      <SettingsPopup
+        open={editingId !== null}
+        onClose={closeEditor}
+        title={l10n.getString(editingId === '' ? 'role-create' : 'role-editor-edit-title')}
+        error={error}
+        saving={saving}
+        onSave={() => void save()}
+        saveLabel={l10n.getString('role-save')}
+        saveDisabled={saving || name.trim().length === 0}
+        cancelLabel={l10n.getString('role-cancel')}
+        size="lg"
+      >
+        <label className="role-field">
+          <Localized id="role-field-name">
+            <span className="role-field-label">Role name</span>
           </Localized>
-          <label className="role-field">
-            <Localized id="role-field-name">
-              <span className="role-field-label">Role name</span>
-            </Localized>
-            <input
-              className="role-input"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              aria-label={l10n.getString('role-field-name')}
-            />
-          </label>
-          <label className="role-field">
-            <Localized id="role-field-description">
-              <span className="role-field-label">Role description</span>
-            </Localized>
-            <input
-              className="role-input"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              aria-label={l10n.getString('role-field-description')}
-            />
-          </label>
+          <input
+            className="role-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            aria-label={l10n.getString('role-field-name')}
+          />
+        </label>
+        <label className="role-field">
+          <Localized id="role-field-description">
+            <span className="role-field-label">Role description</span>
+          </Localized>
+          <input
+            className="role-input"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            aria-label={l10n.getString('role-field-description')}
+          />
+        </label>
 
-          <fieldset className="role-perm-picker">
-            <Localized id="role-field-permissions">
-              <legend>Permissions</legend>
-            </Localized>
-            {byFamily.map(([family, entries]) => (
-              <div key={family} className="role-perm-family">
-                <span className="role-perm-family-name">{family}</span>
-                {entries.map((entry) => (
-                  <label key={entry.key} className="role-perm-row">
-                    <input
-                      type="checkbox"
-                      checked={granted.has(entry.key)}
-                      onChange={() => toggleKey(entry.key)}
-                      aria-label={entry.key}
-                    />
-                    <code className="role-perm-key">{entry.key}</code>
-                    {entry.sensitive && (
-                      <Badge variant="warning">
-                        <Localized id="role-perm-sensitive">Sensitive</Localized>
-                      </Badge>
-                    )}
-                    <span className="role-perm-desc">{entry.description}</span>
-                  </label>
-                ))}
-              </div>
-            ))}
-          </fieldset>
-
-          <div className="role-editor-actions">
-            <Button variant="ghost" onClick={closeEditor} aria-label={l10n.getString('role-cancel-aria')}>
-              <Localized id="role-cancel">Cancel</Localized>
-            </Button>
-            <Button
-              variant="primary"
-              disabled={saving || name.trim().length === 0}
-              onClick={() => void save()}
-              aria-label={l10n.getString('role-save-aria')}>
-              <Localized id="role-save">Save role</Localized>
-            </Button>
-          </div>
-        </Card>
-      )}
+        <fieldset className="role-perm-picker">
+          <Localized id="role-field-permissions">
+            <legend>Permissions</legend>
+          </Localized>
+          {byFamily.map(([family, entries]) => (
+            <div key={family} className="role-perm-family">
+              <span className="role-perm-family-name">{family}</span>
+              {entries.map((entry) => (
+                <label key={entry.key} className="role-perm-row">
+                  <input
+                    type="checkbox"
+                    checked={granted.has(entry.key)}
+                    onChange={() => toggleKey(entry.key)}
+                    aria-label={entry.key}
+                  />
+                  <code className="role-perm-key">{entry.key}</code>
+                  {entry.sensitive && (
+                    <Badge variant="warning">
+                      <Localized id="role-perm-sensitive">Sensitive</Localized>
+                    </Badge>
+                  )}
+                  <span className="role-perm-desc">{entry.description}</span>
+                </label>
+              ))}
+            </div>
+          ))}
+        </fieldset>
+      </SettingsPopup>
 
       <ConfirmDialog
         open={pendingDelete !== null}
@@ -629,3 +616,5 @@ export default function RoleAuthoringScreen() {
     </div>
   );
 }
+
+export default RoleAuthoringPanel;

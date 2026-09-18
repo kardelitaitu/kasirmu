@@ -1,6 +1,6 @@
 /**
- * @file RoleAuthoringScreen.test.tsx
- * @description Tests for the custom-role authoring screen
+ * @file RoleAuthoringPanel.test.tsx
+ * @description Tests for the Roles panel of the staff management page
  * (todo-global-saas-3.md, ADR #47 ruling 4).
  *
  * Covers:
@@ -15,12 +15,13 @@
  *   - A failed load renders the alert
  */
 
+import { createRef } from 'react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { screen, cleanup, waitFor, fireEvent, act } from '@testing-library/react';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import staffFtl from '@/locales/staff.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
-import RoleAuthoringScreen from '@/features/staff/RoleAuthoringScreen';
+import RoleAuthoringPanel, { type RoleAuthoringPanelHandle } from '@/features/staff/components/RoleAuthoringPanel';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { HARNESS_SESSION_TOKEN } from '@/__tests__/test-utils/harnessDefaults';
 
@@ -146,12 +147,24 @@ function seed(roles = [PRESET, CUSTOM_PRESET, AUTHORED, IN_USE]) {
   });
 }
 
+/** The panel's handle, set by renderScreen: the create trigger lives in the
+ *  page header now, so this is the same entry point the header button uses. */
+let handle: { current: RoleAuthoringPanelHandle | null };
+
 function renderScreen(withToken = true) {
   vi.mocked(useWorkspace).mockReturnValue({
     ...workspaceValue,
     sessionToken: withToken ? HARNESS_SESSION_TOKEN : null,
   });
-  return renderWithProvidersSync(<RoleAuthoringScreen />, staffFtl, sharedFtl);
+  handle = createRef<RoleAuthoringPanelHandle>();
+  return renderWithProvidersSync(<RoleAuthoringPanel handleRef={handle} />, staffFtl, sharedFtl);
+}
+
+/** Open the create editor the way the header's "Add New Role" button does. */
+function openCreateEditor() {
+  act(() => {
+    handle.current!.openCreate();
+  });
 }
 
 const callsFor = (cmd: string) =>
@@ -167,7 +180,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe('RoleAuthoringScreen', () => {
+describe('RoleAuthoringPanel', () => {
   it('renders every role with its preset or custom badge', async () => {
     renderScreen();
     await waitFor(() => expect(screen.getByText('Owner')).toBeInTheDocument());
@@ -218,10 +231,10 @@ describe('RoleAuthoringScreen', () => {
   it('creates with the camelCase wire keys Tauri binds', async () => {
     renderScreen();
     await waitFor(() => expect(screen.getByText('Owner')).toBeInTheDocument());
-    fireEvent.click(screen.getByLabelText('Create a new custom role'));
+    openCreateEditor();
     fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Trainee' } });
     fireEvent.click(screen.getByLabelText('sales:view'));
-    fireEvent.click(screen.getByLabelText('Save this role'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save role' }));
 
     await waitFor(() => expect(callsFor('create_role_scoped')).toHaveLength(1));
     const [args] = callsFor('create_role_scoped');
@@ -243,7 +256,7 @@ describe('RoleAuthoringScreen', () => {
     // The row starts granted sales:view; add one and drop the original.
     fireEvent.click(screen.getByLabelText('staff:read'));
     fireEvent.click(screen.getByLabelText('sales:view'));
-    fireEvent.click(screen.getByLabelText('Save this role'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save role' }));
 
     await waitFor(() => expect(callsFor('update_role_scoped')).toHaveLength(1));
     const [args] = callsFor('update_role_scoped');
@@ -290,7 +303,7 @@ describe('RoleAuthoringScreen', () => {
     seed([PRESET, AUTHORED]);
     renderScreen();
     await waitFor(() => expect(screen.getByText('Owner')).toBeInTheDocument());
-    fireEvent.click(screen.getByLabelText('Create a new custom role'));
+    openCreateEditor();
     for (const entry of PERMISSION_KEYS) {
       expect(screen.getByLabelText(entry.key)).toBeInTheDocument();
     }
@@ -347,13 +360,13 @@ describe('RoleAuthoringScreen', () => {
     renderScreen();
     await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByLabelText('Create a new custom role'));
+    openCreateEditor();
     fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Night Manager' } });
-    fireEvent.click(screen.getByLabelText('Save this role'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save role' }));
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     // The editor survives, with the name still typed in.
-    expect(screen.getByLabelText('Save this role')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save role' })).toBeInTheDocument();
     expect(screen.getByLabelText('Role name')).toHaveValue('Night Manager');
     // And no success is claimed.
     expect(screen.queryByText(/Saved the .* role/)).not.toBeInTheDocument();
@@ -369,15 +382,15 @@ describe('RoleAuthoringScreen', () => {
     await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());
     expect(screen.queryByText('Trainee')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText('Create a new custom role'));
+    openCreateEditor();
     fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Trainee' } });
-    fireEvent.click(screen.getByLabelText('Save this role'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save role' }));
 
     await waitFor(() => expect(screen.getByText('Trainee')).toBeInTheDocument());
     expect(screen.getByText('Saved the Trainee role.')).toBeInTheDocument();
     expect(callsFor('list_roles_scoped')).toHaveLength(2);
     // The editor closes on success.
-    expect(screen.queryByLabelText('Save this role')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save role' })).not.toBeInTheDocument();
   });
 
   it('surfaces a refused delete and leaves the row in place', async () => {
@@ -414,7 +427,7 @@ describe('RoleAuthoringScreen', () => {
     await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());
 
     fireEvent.click(screen.getByLabelText('Edit the Night Manager role'));
-    fireEvent.click(screen.getByLabelText('Save this role'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save role' }));
 
     await waitFor(() => expect(callsFor('update_role_scoped')).toHaveLength(1));
     const [payload] = callsFor('update_role_scoped');
@@ -439,14 +452,14 @@ describe('RoleAuthoringScreen', () => {
     renderScreen();
     await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByLabelText('Create a new custom role'));
-    expect(screen.getByLabelText('Save this role')).toBeDisabled();
+    openCreateEditor();
+    expect(screen.getByRole('button', { name: 'Save role' })).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText('Role name'), { target: { value: '   ' } });
-    expect(screen.getByLabelText('Save this role')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save role' })).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Trainee' } });
-    expect(screen.getByLabelText('Save this role')).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Save role' })).toBeEnabled();
   });
 
   it('claims nothing about the role set while the list is loading', async () => {
@@ -459,7 +472,6 @@ describe('RoleAuthoringScreen', () => {
 
     expect(document.querySelector('[aria-busy="true"]')).not.toBeNull();
     expect(screen.queryByText('No roles yet')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Create a new custom role')).not.toBeInTheDocument();
   });
 
   // ── holders ────────────────────────────────────────────────────────────

@@ -1,10 +1,11 @@
 # shared-ui/locales/staff.ftl — Staff management
 
-staff-title = Staff
 # Both staff pages (staff, roles) are registered `fullscreen`, so neither has
 # a sidebar; this labels the page-level back button that returns to the
 # workspace picker.
 staff-back-aria = Back to workspaces
+# Names the Staff / Roles tab strip in the page header.
+staff-tabs-aria = Staff and roles
 # Status strip (components/StaffManagementFooter.tsx). A fullscreen route
 # renders without AppLayout, so the app's own StatusBar is absent and the page
 # reports its own state. The counts are the loaded snapshot's, never an
@@ -228,10 +229,10 @@ staff-limit-approaching-premium-cta = Upgrade to Premium
 # ── Role authoring (ADR #47 ruling 4) ────────────────────────────────
 # A custom role is a named permission-set row. The picker is fed by the
 # permission registry, so no key name is hardcoded in the UI.
-role-authoring-title = Roles
 role-authoring-subtitle = Built-in roles are defaults; custom roles are permission sets you author.
-role-create = New role
-role-create-aria = Create a new custom role
+# Header action on the Roles tab. Also the title of the create popup, so the
+# button and the dialog it opens read the same.
+role-create = Add New Role
 role-list-aria = All roles
 role-empty-title = No roles yet
 role-badge-builtin = Built-in
@@ -265,16 +266,13 @@ role-in-use-grants-only = { $count ->
     [one] Carries 1 workspace grant
    *[other] Carries { $count } workspace grants
   }
-role-editor-create-title = New role
 role-editor-edit-title = Edit role
 role-field-name = Role name
 role-field-description = Role description
 role-field-permissions = Permissions
 role-perm-sensitive = Sensitive
 role-cancel = Cancel
-role-cancel-aria = Cancel editing this role
 role-save = Save role
-role-save-aria = Save this role
 role-saved = Saved the { $name } role.
 role-deleted = Deleted the { $name } role.
 role-delete-confirm-title = Delete this role?

@@ -2583,7 +2583,7 @@ const UNRESOLVED_VAR_TOKENS_BASELINE: string[] = [
   "--bg-secondary", // 1
   "--border-color", // 8
   "--border-subtle", // 2 - settings/sections/DiagnosticsSection.css
-  "--color-surface-alt", // 1 - staff/RoleAuthoringScreen.css
+  "--color-surface-alt", // 1 - staff/components/RoleAuthoringPanel.css
   "--color-warning-pos-darker", // 1 - retail/RetailPosScreen.css
   "--danger-500", // 4 NO FALLBACK - a colour that renders nothing
   "--danger-700", // 1 NO FALLBACK
@@ -2751,7 +2751,7 @@ const FOREIGN_SCHEME_BASELINE: Array<[string, string, number]> = [
   ["--border-subtle", "ui/src/components/OrgSelector.css", 2],
   ["--border-subtle", "ui/src/components/OrgSwitcher.css", 5],
   ["--border-subtle", "ui/src/features/settings/sections/DiagnosticsSection.css", 2],
-  ["--color-surface-alt", "ui/src/features/staff/RoleAuthoringScreen.css", 1],
+  ["--color-surface-alt", "ui/src/features/staff/components/RoleAuthoringPanel.css", 1],
   ["--color-text-on-danger", "ui/src/components/StockAlertBell.css", 1],
   ["--color-warning-pos-darker", "ui/src/features/retail/RetailPosScreen.css", 1],
   ["--danger", "ui/src/components/OrgSwitcher.css", 1],
