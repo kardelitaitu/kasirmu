@@ -158,10 +158,20 @@
 /* The whole title+body block is one button that opens the enlarged
    card. Reset the button chrome so it reads as the bubble's body,
    and keep the min-width:0 chain so long text clamps instead of
-   stretching the bubble. */
+   stretching the bubble.
+
+   `align-items: stretch` is load-bearing, not decoration. reset.css
+   gives EVERY button `display: inline-flex; align-items: center`, and
+   a local rule that restates only `display` leaves that centring in
+   force on this element. The body is wider than the 400px cap, so it
+   filled the width and read left either way; the title is narrower,
+   so it was centred on the cross axis as a shrink-to-fit box — which
+   is why `text-align: left` on the title (2026-09-08) could never
+   move it. Owner-reported twice: 2026-09-08 and 2026-09-19. */
 .memo-banner-open {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: var(--space-1);
   min-width: 0;
   width: 100%;
