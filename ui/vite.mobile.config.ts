@@ -10,13 +10,26 @@ export default defineConfig({
   plugins: [react()],
 
   resolve: {
-    alias: {
-      // P9a: the Fluent corpus lives at shared-ui/locales/, outside ui/. This entry
-      // MUST precede the generic '@' one below, which prefix-matches every `@/…`
-      // specifier and would otherwise resolve `@/locales/…` to ./src/locales/.
-      '@/locales/': fileURLToPath(new URL('../shared-ui/locales/', import.meta.url)),
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-    },
+    // P9a: the Fluent corpus lives at shared-ui/locales/, outside ui/.
+    //
+    // This MUST be the array + regex form, not the object shorthand. With the
+    // object form a string key is tested as `importee.startsWith(key + '/')`, so
+    // the key '@/locales/' becomes '@/locales//' and never matches anything; the
+    // generic '@' entry then swallows '@/locales/…' and every `?raw` import
+    // resolves to ./src/locales/…, which does not exist. Measured 2026-09-19:
+    // `vite build --config vite.mobile.config.ts` died with
+    // "Could not load …/ui/src/locales/shared.ftl?raw". vite.config.ts uses the
+    // same two entries in this form — keep them in step.
+    alias: [
+      {
+        find: /^@\/locales\//,
+        replacement: fileURLToPath(new URL('../shared-ui/locales/', import.meta.url)),
+      },
+      {
+        find: /^@\//,
+        replacement: fileURLToPath(new URL('./src/', import.meta.url)),
+      },
+    ],
   },
 
   // Vite options tailored for Tauri development.
