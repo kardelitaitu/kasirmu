@@ -46,6 +46,12 @@ export interface ProductThumbProps {
   lazy?: boolean;
   /** Hue for the fallback colour (0-360), derived from category or product. */
   hue?: number;
+  /**
+   * Corner treatment. `square` (default) is the product-grid tile; `circle` is
+   * the avatar treatment. The radius is set inline below, so a caller cannot
+   * override it from a stylesheet — it has to be a prop.
+   */
+  shape?: 'square' | 'circle';
 }
 
 export function ProductThumb({
@@ -55,7 +61,9 @@ export function ProductThumb({
   size = 64,
   lazy = true,
   hue = 0,
+  shape = 'square',
 }: ProductThumbProps) {
+  const radius = shape === 'circle' ? 'var(--radius-full, 9999px)' : 'var(--radius-sm, 4px)';
   const [imgSrc, setImgSrc] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
   const mountedRef = useRef(true);
@@ -98,7 +106,7 @@ export function ProductThumb({
         loading={lazy ? 'lazy' : undefined}
         decoding="async"
         onError={() => setLoadError(true)}
-        style={{ objectFit: 'cover', borderRadius: 'var(--radius-sm, 4px)' }}
+        style={{ objectFit: 'cover', borderRadius: radius }}
       />
     );
   }
@@ -116,7 +124,7 @@ export function ProductThumb({
         width: size,
         height: size,
         backgroundColor: bgColor,
-        borderRadius: 'var(--radius-sm, 4px)',
+        borderRadius: radius,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

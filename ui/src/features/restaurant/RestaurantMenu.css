@@ -254,7 +254,7 @@
 }
 
 .restaurant-hamburger-item--active {
-  background: var(--color-bg-subtle, var(--color-bg-hover));
+  background: var(--color-bg-subtle);
   font-weight: var(--font-weight-medium);
   color: var(--color-accent);
 }
@@ -299,8 +299,147 @@
 .restaurant-sidebar-divider,
 .restaurant-hamburger-divider {
   height: 1px;
-  background: var(--color-border-subtle, var(--color-border));
+  background: var(--color-border-subtle);
   margin: var(--space-1_5) var(--space-1);
+}
+
+/* ── Sidebar header: the signed-in cashier ───────── */
+/* The one element in this panel that is allowed to carry a face. The rows
+   below it are deliberately colourless: none of them is ever "current". */
+.restaurant-sidebar-profile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  /* Horizontal inset matches the rows' own padding (`--space-3`), so the
+     avatar's left edge sits on the same column as the row tiles: the panel
+     pads by `--space-2`, then both the header and each row add `--space-3`. */
+  padding: var(--space-1) var(--space-3) var(--space-2);
+  min-width: 0;
+}
+
+.restaurant-sidebar-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+}
+
+/* Interactive only when the host wired a picker; otherwise it is a plain
+   identity tile and must not advertise itself as clickable. The variant is a
+   modifier class rather than a `button.` compound: focusVisibleCompliance
+   waives a compound of an already-covered base, and that waiver list is a
+   freeze, so a new `button.` name is a decision rather than a restyle. */
+.restaurant-sidebar-avatar--button {
+  cursor: pointer;
+}
+
+.restaurant-sidebar-avatar--button:hover {
+  opacity: 0.85;
+}
+
+.restaurant-sidebar-avatar:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.restaurant-sidebar-identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.restaurant-sidebar-name {
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.restaurant-sidebar-role {
+  font-size: var(--text-sm);
+  color: var(--color-fg-tertiary);
+  text-transform: capitalize;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Row icon tiles ──────────────────────────────── */
+/* Declared after the shared `.restaurant-sidebar-item` rule so these win on
+   source order: the hamburger dropdown shares those rules and is a different
+   surface, so it must not inherit the tile or the muted label. */
+.restaurant-sidebar-item {
+  color: var(--color-fg-secondary);
+  /* Both of these are overrides the shared rule above cannot carry, because it
+     is shared with the hamburger dropdown — a different surface, scoped out of
+     this restyle.
+     `justify-content`: the global `button` reset centres its content
+     (reset.css:82) and the shared rule never overrode it, so every row centred
+     itself — a short label like "History" drifted right of a long one and the
+     tiles never formed a column.
+     `font-size`: the shared rule reads at `--text-sm` (12px), a step below body
+     size. `--text-base` (14px) is one step up and still a step below the memo
+     banner's `--text-md` (16px), which is the ceiling here. */
+  justify-content: flex-start;
+  font-size: var(--text-base);
+}
+
+.restaurant-sidebar-item:hover {
+  color: var(--color-fg);
+}
+
+.restaurant-sidebar-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--space-8);
+  height: var(--space-8);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-subtle);
+  color: var(--color-fg-secondary);
+  transition: color var(--duration-100) var(--ease-out);
+}
+
+.restaurant-sidebar-item:hover .restaurant-sidebar-tile {
+  color: var(--color-fg);
+}
+
+/* ── Footer: version + copyright ─────────────────── */
+/* Mirrors the login screen's `.staff-login-footer-left`, so the two surfaces
+   name the product the same way. `margin-top: auto` is what puts it at the
+   foot: the panel is a flex column, so the auto margin absorbs the slack when
+   the rows are short, and the footer simply follows them when it overflows.
+   Sized at `--text-xs` to match the login footer — NOT the login's
+   `clamp(11px, 1.5vw, …)`, which is a literal the token guard forbids here. */
+.restaurant-sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0_5);
+  margin-top: auto;
+  /* Horizontal inset matches the header and the rows (`--space-3` on top of
+     the panel's own `--space-2`), so the footer shares the content column. */
+  padding: var(--space-2) var(--space-3) 0;
+}
+
+.restaurant-sidebar-version {
+  font-size: var(--text-xs);
+  color: var(--color-fg-tertiary);
+  letter-spacing: var(--tracking-wide);
+}
+
+.restaurant-sidebar-copyright {
+  font-size: var(--text-xs);
+  color: var(--color-fg-tertiary);
+  opacity: 0.7;
 }
 
 /* Override marker on the relocated deduction row. Same signal as the cart
@@ -1040,7 +1179,7 @@ body.is-resizing .restaurant-card * {
   align-items: center;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  background: var(--color-bg-subtle, var(--color-bg));
+  background: var(--color-bg-subtle);
   padding: 3px;
   gap: 2px;
   box-sizing: border-box;

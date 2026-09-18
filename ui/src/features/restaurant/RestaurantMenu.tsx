@@ -9,7 +9,7 @@ import { MenuCategoryTabBar } from './components/MenuCategoryTabBar';
 import { MenuItemGrid } from './components/MenuItemGrid';
 import { MenuItemContextMenu, type RestaurantContextMenuState } from './components/MenuItemContextMenu';
 import { MenuPreferencesMenu } from './components/MenuPreferencesMenu';
-import { RestaurantSidebar, type RestaurantSidebarActions } from './components/RestaurantSidebar';
+import { RestaurantSidebar, type RestaurantSidebarActions, type RestaurantSidebarProfile } from './components/RestaurantSidebar';
 import { MenuSearchBar } from './components/MenuSearchBar';
 import './RestaurantMenu.css';
 
@@ -29,6 +29,13 @@ export interface RestaurantMenuProps {
    * group, which is what every test render and non-POS host gets.
    */
   cartActions?: RestaurantSidebarActions;
+  /**
+   * Cashier identity for the sidebar header. Absent = no header block, which
+   * is what every test render and non-POS host gets.
+   */
+  profile?: RestaurantSidebarProfile | undefined;
+  /** Opens the photo picker; absent = the avatar renders as a static tile. */
+  onChangePhoto?: (() => void) | undefined;
   /** Request exit from workspace; handled by host to check shifts. */
   onRequestExit?: () => void;
 }
@@ -148,6 +155,8 @@ export default function RestaurantMenu({
   sidebarOpen: controlledSidebarOpen,
   onSidebarOpenChange,
   cartActions,
+  profile,
+  onChangePhoto,
   onRequestExit,
 }: RestaurantMenuProps) {
   const { l10n } = useLocalization();
@@ -472,6 +481,8 @@ export default function RestaurantMenu({
         triggerRef={sidebarButtonRef}
         container={menuRoot}
         cartActions={cartActions}
+        profile={profile}
+        onChangePhoto={onChangePhoto}
         onRequestExit={onRequestExit}
       />
 

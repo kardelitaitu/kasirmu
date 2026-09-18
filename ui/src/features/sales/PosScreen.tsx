@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useRef } from 'react';
+import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { useToast } from '@/components/Toast';
 import { requiredLocalized } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
@@ -6,7 +6,9 @@ import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
 import ProductLookupScreen from '@/features/products/ProductLookupScreen';
 import RestaurantMenu from '@/features/restaurant/RestaurantMenu';
-import type { RestaurantSidebarActions } from '@/features/restaurant/components/RestaurantSidebar';
+import type { RestaurantSidebarActions, RestaurantSidebarProfile } from '@/features/restaurant/components/RestaurantSidebar';
+import { open } from '@tauri-apps/plugin-dialog';
+import { getOwnAvatarScoped, setAvatarScoped } from '@/api/staff';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { FEATURES, useFeatures } from '@/hooks/useFeatures';
 import TableManagementScreen from '@/features/tables/TableManagementScreen';
@@ -52,6 +54,21 @@ import './CartPanelFooterTotals.css';
 import './CartPanelActions.css';
 import './CartPanel.brand.css';
 import './CartPanelCourseBar.css';
+
+
+/**
+ * True only inside a Tauri webview. Mirrors the check in `useFullscreen` and
+ * `useUnsavedChangesGuard` so the same seam behaves identically in the browser
+ * dev preview (:1420) and in the packaged app — the avatar picker needs it
+ * because the dialog plugin only exists in the webview.
+ */
+function isTauri(): boolean {
+  try {
+    return '__TAURI_INTERNALS__' in window;
+  } catch {
+    return false;
+  }
+}
 
 
 /**
@@ -187,6 +204,61 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [restaurantSidebarOpen, setRestaurantSidebarOpen] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const { goToWorkspacePicker } = useWorkspaceNav();
+
+  // ── Sidebar header identity ────────────────────────────
+  // The avatar hash is read through `get_own_avatar_scoped`, not the staff
+  // profile: the profile read requires `staff:read`, which a cashier does not
+  // hold, and it fails closed on an undecryptable sensitive column that has
+  // nothing to do with a photo. Refetched after an upload so the header
+  // updates without a re-login.
+  const [avatarHash, setAvatarHash] = useState<string | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  useEffect(() => {
+    if (!sessionToken) {
+      setAvatarHash(null);
+      return;
+    }
+    let cancelled = false;
+    void getOwnAvatarScoped(sessionToken)
+      .then((hash) => { if (!cancelled) setAvatarHash(hash); })
+      .catch(() => { /* offline or unsupported — keep the initials fallback */ });
+    return () => { cancelled = true; };
+  }, [sessionToken]);
+
+  const handleChangePhoto = useCallback(async () => {
+    if (!sessionToken || !session?.user_id || avatarBusy) return;
+    if (!isTauri()) {
+      // The browser dev preview has no dialog plugin; the dev-mock has no
+      // real cache dir to write into either. Say so rather than failing mute.
+      addToast({ message: requiredLocalized(l10n, 'restaurant-avatar-desktop-only'), type: 'info' });
+      return;
+    }
+    try {
+      const picked = await open({
+        multiple: false,
+        filters: [{ name: 'Images', extensions: ['webp', 'png', 'jpg', 'jpeg'] }],
+      });
+      if (!picked) return;
+      const path = Array.isArray(picked) ? picked[0] : picked;
+      if (!path) return;
+      setAvatarBusy(true);
+      const hash = await setAvatarScoped(sessionToken, session.user_id, path);
+      setAvatarHash(hash);
+    } catch {
+      addToast({ message: requiredLocalized(l10n, 'retail-edit-image-error'), type: 'error' });
+    } finally {
+      setAvatarBusy(false);
+    }
+  }, [sessionToken, session?.user_id, avatarBusy, addToast, l10n]);
+
+  const restaurantProfile = useMemo<RestaurantSidebarProfile | undefined>(() => {
+    if (!session) return undefined;
+    return {
+      displayName: session.display_name,
+      roleName: session.role_name,
+      avatarHash,
+    };
+  }, [session, avatarHash]);
 
   // ── Cart panel resize ──────────────────────────────────
   // Width state, the isResizing latch, both window listeners and the drag
@@ -687,6 +759,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             sidebarOpen={restaurantSidebarOpen}
             onSidebarOpenChange={setRestaurantSidebarOpen}
             cartActions={restaurantCartActions}
+            profile={restaurantProfile}
+            onChangePhoto={() => { void handleChangePhoto(); }}
             onRequestExit={handleRequestExit}
           />
         ) : (

@@ -13,6 +13,8 @@ pub mod audit;
 pub mod auth;
 /// Authorization commands (roles, permissions).
 pub mod authz;
+/// User-avatar commands (self-service, or `staff:update` for another user).
+pub mod avatars;
 /// Store branding commands.
 pub mod branding;
 /// External-browser commands (ADR #38).

@@ -571,4 +571,14 @@ export const staffHandlers: Record<string, MockHandler> = {
 },
 
   'get_staff_analytics_daily_scoped': () => [],
+
+  // Avatars. The real pipeline sniffs, transcodes, hashes and writes in Rust,
+  // so there is nothing to mock beyond the return shape: a 16-hex-char
+  // content hash. `ProductThumb` resolves that hash against the app cache
+  // dir, which the dev server cannot provide, so it falls back to the
+  // initials tile either way — the mock keeps the IPC contract honest rather
+  // than pretending to render a photo.
+  'set_avatar_scoped': () => '0123456789abcdef',
+  'clear_avatar_scoped': () => undefined,
+  'get_own_avatar_scoped': () => null,
 };

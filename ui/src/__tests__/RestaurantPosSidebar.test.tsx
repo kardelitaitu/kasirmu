@@ -1,4 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
@@ -366,5 +368,58 @@ describe('RestaurantPosSidebar', () => {
     // Restaurant hamburger/sidebar button is not present in Retail POS
     expect(document.querySelector('.restaurant-sidebar-btn')).not.toBeInTheDocument();
     expect(document.querySelector('.restaurant-hamburger-btn')).not.toBeInTheDocument();
+  });
+  it('names the product at the foot of the panel: version and copyright', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
+
+    await user.click(document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement);
+
+    // The same two lines the login screen carries bottom-left.
+    const footer = document.querySelector('.restaurant-sidebar-footer') as HTMLElement;
+    expect(footer).toBeInTheDocument();
+    // `getVersion()` throws outside Tauri, so the shared probe settles on its
+    // '0.0.0' placeholder here — this asserts the line renders, not its value.
+    expect(within(footer).getByText(/^v\d/)).toBeInTheDocument();
+    expect(within(footer).getByText(/All rights reserved/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Row alignment — a layout bug that no other guard could see.
+ *
+ * The global `button` reset centres its content (`ui/src/theme/reset.css:82`),
+ * and `.restaurant-sidebar-item` never overrode it. Measured 2026-09-19 in the
+ * running app: every row centred itself, so the shortest label ("History")
+ * drifted right of the longest and the icon tiles never formed a column. All
+ * 422 UI tests passed on that broken layout, because every other guard reads
+ * class names and token values and none of them reads `justify-content`.
+ *
+ * This pins the OVERRIDE, not the pixels: it cannot prove the tiles line up,
+ * only that the declaration without which they cannot is still there.
+ */
+describe('RestaurantPosSidebar — row alignment', () => {
+  const RESTAURANT_CSS = resolve(__dirname, '../features/restaurant/RestaurantMenu.css');
+
+  it('left-aligns the rows instead of inheriting the button reset centring', () => {
+    const css = readFileSync(RESTAURANT_CSS, 'utf-8');
+
+    // Every rule whose selector names the row, so reordering the sheet or
+    // splitting the rule cannot silently drop the declaration.
+    const bodies = [...css.matchAll(/\.restaurant-sidebar-item[^{]*\{([^}]*)\}/g)].map(
+      (m) => m[1] ?? '',
+    );
+    expect(
+      bodies.length,
+      'no `.restaurant-sidebar-item` rule found in RestaurantMenu.css — the reader is broken, not the CSS',
+    ).toBeGreaterThan(0);
+
+    expect(
+      bodies.some((body) => /justify-content:\s*flex-start/.test(body)),
+      'ui/src/theme/reset.css:82 gives every <button> `justify-content: center`. Without ' +
+        '`justify-content: flex-start` on .restaurant-sidebar-item each row centres its own ' +
+        'content, so a short label drifts right of a long one and the icon tiles stop forming ' +
+        'a column.',
+    ).toBe(true);
   });
 });

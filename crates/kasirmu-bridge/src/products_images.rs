@@ -12,6 +12,12 @@
 //! [`sha256_hex16`]) are `pub` so the desktop shell's sibling test module
 //! keeps its coverage.
 //!
+//! The read → sniff → transcode → hash → write half is factored out as
+//! [`ingest_to_store`], which performs no permission check and writes no
+//! reference. `set_image_scoped` is the first consumer; `crate::avatars` is
+//! the second. Anything that needs bytes in the content-addressed store
+//! should call it rather than repeat the sequence.
+//!
 //! The filesystem root is injected, never resolved here: the shim passes the
 //! app cache dir (`BridgeCtx::media_cache_dir`) as `image_root` and this
 //! module appends `images/{hash16}.webp` — the exact layout the desktop
@@ -65,43 +71,40 @@ pub struct ProductImageDto {
     pub position: i32,
 }
 
-// ── Command body: set image ────────────────────────────────────────────
+// ── Shared ingest pipeline ─────────────────────────────────────────────
 
-/// Assign the image at `source_path` to `product_id` at `slot` (1..=5).
+/// The result of ingesting one source image into the content-addressed store.
+#[derive(Debug, Clone)]
+pub struct IngestedImage {
+    /// First 16 hex chars of the SHA-256 digest of the transcoded WebP.
+    pub hash16: String,
+    /// Size of the transcoded WebP in bytes — the push-queue row's `size_bytes`.
+    pub byte_len: usize,
+}
+
+/// Read `source_path`, transcode it to WebP, hash it, and atomically store it
+/// at `{image_root}/images/{hash16}.webp`.
 ///
-/// `image_root` is the INJECTED media root (the shell's resolved app cache
-/// dir); the transcoded file lands at `image_root/images/{hash16}.webp`.
+/// This is the DB-free half of the spec-0046b pipeline, shared by every
+/// consumer that needs an image in the content-addressed store. It performs
+/// no permission check and writes no reference: the caller owns both, because
+/// only the caller knows which entity (a product slot, a user avatar) is being
+/// pointed at the hash.
 ///
-/// Gate order mirrors the command body: resolve the session, enforce
-/// `products:update` scope-aware against the global identity DB, then
-/// validate, transcode, write and assign. Returns the 16-hex-char content
-/// hash of the transcoded image.
+/// A content-addressed hit is a no-op write: if `{hash16}.webp` already exists
+/// the bytes are assumed identical (same hash) and the file is left alone,
+/// which is what makes two entities sharing one image cheap.
 ///
 /// # Errors
 ///
-/// Returns [`BridgeError::InvalidSession`] for an unknown/expired token,
-/// [`BridgeError::PermissionDenied`] without `products:update`,
-/// [`BridgeError::Invalid`] for bad slots/paths/formats/oversized input,
-/// and [`BridgeError::Internal`] for filesystem or store failures.
-pub async fn set_image_scoped(
-    ctx: &BridgeCtx<'_>,
-    session_token: &str,
-    product_id: &str,
-    slot: i32,
+/// Returns [`BridgeError::Invalid`] for an empty path, an unreadable file, an
+/// input over [`MAX_INPUT_BYTES`], an unsupported or corrupt format, or a
+/// transcode that cannot reach the size cap; and [`BridgeError::Internal`] for
+/// filesystem failures.
+pub async fn ingest_to_store(
     source_path: &str,
     image_root: &Path,
-) -> Result<String, BridgeError> {
-    // Resolve session + permission
-    let session = ctx.resolve_session(session_token)?;
-    ctx.require_session_permission(&session, permissions::PRODUCTS_UPDATE)
-        .await?;
-
-    // Validate slot
-    if !(1..=5).contains(&slot) {
-        return Err(BridgeError::Invalid(format!(
-            "slot must be between 1 and 5, got {slot}"
-        )));
-    }
+) -> Result<IngestedImage, BridgeError> {
     if source_path.is_empty() {
         return Err(BridgeError::Invalid("source_path must not be empty".into()));
     }
@@ -156,6 +159,56 @@ pub async fn set_image_scoped(
             .map_err(|e| BridgeError::Internal(format!("renaming image file: {e}")))?;
     }
 
+    Ok(IngestedImage {
+        hash16,
+        byte_len: webp_bytes.len(),
+    })
+}
+
+// ── Command body: set image ────────────────────────────────────────────
+
+/// Assign the image at `source_path` to `product_id` at `slot` (1..=5).
+///
+/// `image_root` is the INJECTED media root (the shell's resolved app cache
+/// dir); the transcoded file lands at `image_root/images/{hash16}.webp`.
+///
+/// Gate order mirrors the command body: resolve the session, enforce
+/// `products:update` scope-aware against the global identity DB, then
+/// validate, transcode, write and assign. Returns the 16-hex-char content
+/// hash of the transcoded image.
+///
+/// # Errors
+///
+/// Returns [`BridgeError::InvalidSession`] for an unknown/expired token,
+/// [`BridgeError::PermissionDenied`] without `products:update`,
+/// [`BridgeError::Invalid`] for bad slots/paths/formats/oversized input,
+/// and [`BridgeError::Internal`] for filesystem or store failures.
+pub async fn set_image_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    product_id: &str,
+    slot: i32,
+    source_path: &str,
+    image_root: &Path,
+) -> Result<String, BridgeError> {
+    // Resolve session + permission
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::PRODUCTS_UPDATE)
+        .await?;
+
+    // Validate slot
+    if !(1..=5).contains(&slot) {
+        return Err(BridgeError::Invalid(format!(
+            "slot must be between 1 and 5, got {slot}"
+        )));
+    }
+
+    // Read, transcode, hash and store the image. The DB-free half lives in
+    // `ingest_to_store` so the avatar command shares the exact same pipeline
+    // rather than a copy of it.
+    let ingested = ingest_to_store(source_path, image_root).await?;
+    let hash16 = ingested.hash16;
+
     // --- DB assignment ---
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
@@ -167,7 +220,7 @@ pub async fn set_image_scoped(
     // Enqueue for the cloud push scheduler (spec 0046b §3.6). The bytes are
     // already transcoded + content-hashed; only the pending-upload bookkeeping
     // happens here — the network leg never blocks the editor.
-    store.enqueue_image_push(&hash16, webp_bytes.len() as i64)?;
+    store.enqueue_image_push(&hash16, ingested.byte_len as i64)?;
 
     tracing::info!(product_id, slot, hash = %hash16, "product image set");
     Ok(hash16)
