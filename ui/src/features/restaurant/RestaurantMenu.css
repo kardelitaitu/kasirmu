@@ -458,6 +458,7 @@
   overflow-x: visible;
   align-content: start;
   padding: var(--space-1);
+  transition: gap var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* ── Restaurant card (diagonal layout) ──────────── */
@@ -489,6 +490,7 @@
      the --space-1 term stays as a safety buffer for unpinned line-heights. */
   height: calc(var(--space-14) + var(--space-8) + var(--space-1) + var(--card-size, 0) * 14px + var(--font-size, 0) * 8px);
   transition:
+    height var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1),
     border-color var(--duration-150) var(--ease-out),
     transform var(--duration-200) var(--ease-out),
     box-shadow var(--duration-200) var(--ease-out),
@@ -535,6 +537,19 @@
       transform: scale(1);
     }
   }
+/* When dragging the cart divider, freeze card transforms and hover states
+   so resizing is 100% fluid and cards don't pop up under the moving cursor */
+body.is-resizing .restaurant-card,
+body.is-resizing .restaurant-card:hover,
+body.is-resizing .restaurant-card:active {
+  transition: none !important;
+  transform: none !important;
+  box-shadow: none !important;
+  cursor: col-resize !important;
+}
+
+body.is-resizing .restaurant-card * {
+  cursor: col-resize !important;
 }
 
 .restaurant-card:hover:not(.restaurant-card--disabled) {
@@ -645,6 +660,7 @@
   padding-top: calc(var(--space-3) + var(--card-size, 0) * 4px);
   /* Compact side padding: 12px at the smallest size (was 32px). */
   padding-left: calc(var(--space-3) + var(--card-size, 0) * 2px);
+  transition: padding var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Pinned cards keep extra left clearance so the pin badge never overlaps
@@ -669,6 +685,7 @@
   overflow: hidden;
   max-height: calc(var(--leading-normal) * 2em);
   line-height: var(--leading-normal);
+  transition: font-size var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .restaurant-card-price {
@@ -679,6 +696,7 @@
   font-size: calc(var(--text-xs) + var(--font-size, 0) * 1px);
   font-weight: var(--font-weight-medium);
   color: var(--color-fg-tertiary);
+  transition: font-size var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .restaurant-card-status {
@@ -720,7 +738,10 @@
   flex-shrink: 0;
   width: calc(28px + var(--card-size, 0) * 4px);
   height: calc(28px + var(--card-size, 0) * 4px);
-  transition: transform var(--duration-150) var(--ease-out);
+  transition:
+    width var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1),
+    height var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1),
+    transform var(--duration-150) var(--ease-out);
 }
 
 .restaurant-card-add-badge circle {
