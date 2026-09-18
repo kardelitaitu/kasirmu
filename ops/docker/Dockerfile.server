@@ -26,7 +26,9 @@ FROM rust:1.88-slim@sha256:38bc5a86d998772d4aec2348656ed21438d20fcdce2795b56ca43
 # pkg-config / libc-dev). serialport (via kasirmu-hal) needs libudev.pc at
 # compile time through libudev-sys — without libudev-dev the builder
 # dies at libudev-sys's build script (measured 2026-09-16).
-RUN apt-get update && \
+RUN sed -i 's|deb.debian.org|kartolo.sby.datautama.net.id|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null \
+    || sed -i 's|deb.debian.org|kartolo.sby.datautama.net.id|g' /etc/apt/sources.list \
+    && apt-get update && \
     apt-get install -y --no-install-recommends \
         pkg-config \
         libc-dev \
@@ -178,7 +180,9 @@ FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe6
 # `dpkg -l libudev1` reports 252.39-1~deb12u2, status `ii`, with the base
 # image untouched. The earlier claim here that bookworm-slim "does not ship
 # it" was wrong.
-RUN apt-get update && \
+RUN sed -i 's|deb.debian.org|kartolo.sby.datautama.net.id|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null \
+    || sed -i 's|deb.debian.org|kartolo.sby.datautama.net.id|g' /etc/apt/sources.list \
+    && apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         libc6 \
