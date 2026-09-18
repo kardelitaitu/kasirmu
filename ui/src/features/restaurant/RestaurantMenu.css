@@ -42,7 +42,7 @@
      background keeps scrolled cards from showing through. */
   position: sticky;
   top: 0;
-  z-index: var(--z-base);
+  z-index: var(--z-sticky);
   background: var(--color-bg);
   padding-block: var(--space-1);
   margin-block: calc(var(--space-1) * -1);
