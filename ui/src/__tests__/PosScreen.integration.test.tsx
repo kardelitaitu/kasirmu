@@ -43,6 +43,7 @@ import productsFtl from '@/locales/products.ftl?raw';
 import inventoryFtl from '@/locales/inventory.ftl?raw';
 import settingsFtl from '@/locales/settings.ftl?raw';
 import PosScreen from '@/features/sales/PosScreen';
+import * as salesApi from '@/api/sales';
 import * as shiftsApi from '@/api/shifts';
 import * as settingsApi from '@/api/settings';
 import type * as HardwareModule from '@/api/hardware';
@@ -1225,10 +1226,27 @@ describe('PosScreen — Service charge toggle', () => {
 });
 
 describe('PosScreen — Open bills (hold/resume)', () => {
+  // Since 8fd64b850 ("hide open bills badge when no open bills exist") the
+  // badge renders only when at least one bill is held — and it is the ONLY
+  // trigger for the list overlay (setShowOpenBills has one caller: that
+  // onClick). So these cases seed a held bill; with none there is no button
+  // to click and the list cannot be opened at all.
+  const HELD_BILL = {
+    id: 'held-1',
+    label: 'Meja 4',
+    item_count: 1,
+    total_minor: 400,
+    currency: 'IDR',
+    created_at: '2026-09-19T00:00:00Z',
+    bill_type: 'open_bill',
+    customer_name: null,
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
     mockedBarcode.reset();
+    vi.mocked(salesApi.listOpenBillsScoped).mockResolvedValue([HELD_BILL]);
   });
 
   async function setupCart() {
@@ -1240,13 +1258,6 @@ describe('PosScreen — Open bills (hold/resume)', () => {
       expect(screen.getByTestId('cart-panel-line-item')).toBeInTheDocument();
     });
   }
-
-  it('shows open bills button with "Open Bills" label', async () => {
-    await setupCart();
-
-    const openBillsBtn = screen.getByRole('button', { name: /open bills/i });
-    expect(openBillsBtn).toBeInTheDocument();
-  });
 
   it('shows open bills button with "Open Bills" label', async () => {
     await setupCart();
@@ -1326,7 +1337,13 @@ describe('PosScreen — Open bills (hold/resume)', () => {
     });
   });
 
-  it('shows empty state in open bills list when no bills', async () => {
+  // Retired 2026-09-19: this case opened the list with ZERO held bills and
+  // asserted its "No open bills" empty state. 8fd64b850 made that unreachable
+  // — the badge is the only opener and it is hidden at zero — so the premise
+  // no longer holds. Replaced by the case below, which proves the list shows
+  // what it is given. The empty state itself still exists in the overlay
+  // (pos-open-bills-empty) and is now dead UI; flagged, not deleted here.
+  it('lists the held bill in the open bills list', async () => {
     await setupCart();
 
     const openBillsBtn = screen.getByRole('button', { name: /open bills/i });
@@ -1336,8 +1353,8 @@ describe('PosScreen — Open bills (hold/resume)', () => {
       expect(screen.getByRole('dialog', { name: /open bills list/i })).toBeInTheDocument();
     });
 
-    // Should show "No open bills" message
-    expect(screen.getByText(/no open bills/i)).toBeInTheDocument();
+    // The overlay falls back to `label` when `customer_name` is null.
+    expect(screen.getByText(/meja 4/i)).toBeInTheDocument();
   });
 
   it('closes open bills list when close button clicked', async () => {
