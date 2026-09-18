@@ -146,7 +146,13 @@ export default function QrisQrDisplay({
   // the PosScreen cousin-modals pattern (commit 1408992): the
   // overlay and container each get their own `--exiting` class so
   // two mirrored keyframes play in parallel.
-  const exit = useExitAnimation(isOpen, onClose);
+  //
+  // Explicit 300: qris-overlay-out / qris-container-out run at
+  // var(--duration-300) (QrisQrDisplay.css:138,142), so the timer that unmounts
+  // the surface has to be 300 too. Left on the hook default it would have
+  // silently followed the default back to 200 and unmounted 100 ms into a 300 ms
+  // fade.
+  const exit = useExitAnimation(isOpen, onClose, 300);
 
   // A11Y-02: complete dialog semantics — initial focus, Tab containment,
   // Escape, scroll lock, and focus restoration all via the shared trap.
