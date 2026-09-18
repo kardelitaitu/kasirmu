@@ -59,18 +59,56 @@ fn sync_pending_marks_items_synced() {
 /// ADR sync-plan-gating: the legacy blocking path must ALSO treat a
 /// 403 plan_required as a gated state — items stay `pending` (never
 /// marked failed) so they sync automatically after an upgrade.
+/// Read one whole HTTP request off `stream` — headers plus `Content-Length`
+/// body bytes — before the caller writes its answer.
+///
+/// The stub servers in this file answer and then drop the socket, and closing
+/// a socket that still has unread bytes queued makes the kernel send RST,
+/// which discards the response that was just written. TCP is a stream, so a
+/// single `read()` is not guaranteed to have taken the whole request even when
+/// it is tiny — and when it had not, these tests flapped intermittently: a
+/// clean 403 plan gate arrived at the client as a transport error instead, so
+/// the sync marked the queue failed rather than gated.
+#[cfg(feature = "sync-http")]
+fn read_request(stream: &mut impl std::io::Read) {
+    let mut request = Vec::new();
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let n = stream.read(&mut buffer).unwrap();
+        if n == 0 {
+            break;
+        }
+        request.extend_from_slice(&buffer[..n]);
+        let Some(head_end) = request.windows(4).position(|w| w == b"\r\n\r\n") else {
+            continue;
+        };
+        let body_len = request[..head_end]
+            .split(|&b| b == b'\n')
+            .filter_map(|line| {
+                let line = String::from_utf8_lossy(line);
+                let line = line.trim().to_ascii_lowercase();
+                line.strip_prefix("content-length:")
+                    .and_then(|v| v.trim().parse::<usize>().ok())
+            })
+            .next()
+            .unwrap_or(0);
+        if request.len() >= head_end + 4 + body_len {
+            break;
+        }
+    }
+}
+
 #[cfg(feature = "sync-http")]
 #[test]
 fn sync_pending_plan_required_keeps_items_pending() {
-    use std::io::{Read, Write};
+    use std::io::Write;
     use std::net::TcpListener;
 
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let server = std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
-        let mut buffer = [0_u8; 8192];
-        let _ = stream.read(&mut buffer).unwrap();
+        read_request(&mut stream);
         let body = r#"{"error":"plan_required"}"#;
         let response = format!(
             "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
@@ -113,15 +151,14 @@ fn sync_pending_plan_required_keeps_items_pending() {
 #[cfg(feature = "sync-http")]
 #[test]
 fn fetch_tenant_plan_returns_plan_from_server() {
-    use std::io::{Read, Write};
+    use std::io::Write;
     use std::net::TcpListener;
 
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let server = std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
-        let mut buffer = [0_u8; 8192];
-        let _ = stream.read(&mut buffer).unwrap();
+        read_request(&mut stream);
         let body = r#"{"tenant_id":"tenant-a","plan":"pro"}"#;
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
@@ -148,15 +185,14 @@ fn fetch_tenant_plan_returns_plan_from_server() {
 #[cfg(feature = "sync-http")]
 #[test]
 fn fetch_tenant_plan_reports_server_error() {
-    use std::io::{Read, Write};
+    use std::io::Write;
     use std::net::TcpListener;
 
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let server = std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
-        let mut buffer = [0_u8; 8192];
-        let _ = stream.read(&mut buffer).unwrap();
+        read_request(&mut stream);
         let body = r#"{"error":"invalid_token"}"#;
         let response = format!(
             "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
