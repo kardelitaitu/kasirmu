@@ -394,11 +394,38 @@ pub async fn apply_config(registry: &DriverRegistry, config: &HardwareConfig) ->
     }
 
     if config.autodetect_scanners {
+        // Every port the operator has already bound to another device. A
+        // serial port is one physical device, and scanner auto-detect takes
+        // the first id it is offered, so a port spoken for by a printer,
+        // display, drawer or card terminal must not also be offered as a
+        // scanner — that is how the register came to open a printer's port
+        // at startup and report it as a scanner failure.
+        let mut claimed: Vec<String> = Vec::new();
+        for printer in &config.printers {
+            if let Some(port) = printer.connection.address() {
+                claimed.push(port.to_owned());
+            }
+        }
+        for display in &config.displays {
+            claimed.push(display.port.clone());
+        }
+        for drawer in &config.drawers {
+            claimed.push(drawer.port.clone());
+        }
+        for terminal in &config.terminals {
+            match &terminal.connection {
+                TerminalConnection::Wired { port, .. } => claimed.push(port.clone()),
+                TerminalConnection::Wireless { target } => {
+                    claimed.push(target.address().to_owned())
+                }
+            }
+        }
+
         // Enumerate and bind every attached scanner. Reported per device so
         // the startup log says what the register actually picked up rather
         // than a bare "autodetect ran" — the whole reason this campaign
         // started was a registry whose contents nobody could see.
-        for id in registry.discover_scanners().await {
+        for id in registry.discover_scanners_excluding(&claimed).await {
             report.registered.push(id);
         }
     }

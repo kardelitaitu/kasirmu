@@ -241,6 +241,81 @@ async fn scanner_ids_come_back_sorted_whatever_order_they_went_in() {
 }
 
 #[tokio::test]
+async fn ranked_scanner_ids_put_a_hid_scanner_ahead_of_a_com_port() {
+    // useBarcodeScanner.ts takes element 0 and never asks. Alphabetical
+    // order offers "scanner:serial:COM7" before "scanner:usb:1234", so the
+    // register opens a COM port nobody proved was a scanner — and on
+    // Windows that open is what returns ERROR_SEM_TIMEOUT — while the
+    // terminal's real HID scanner sits behind it in the list.
+    let reg = DriverRegistry::default();
+    for id in [
+        "scanner:serial:COM7",
+        "scanner:usb:1234",
+        "scanner:bt:COM9",
+        "scanner:serial:COM3",
+    ] {
+        reg.register_scanner(id, mock_scanner(id)).await;
+    }
+    assert_eq!(
+        reg.scanner_ids_ranked().await,
+        vec![
+            "scanner:usb:1234".to_string(),
+            "scanner:bt:COM9".into(),
+            "scanner:serial:COM3".into(),
+            "scanner:serial:COM7".into(),
+        ]
+    );
+
+    // The alphabetical view the setup wizard uses is untouched.
+    let mut sorted = reg.scanner_ids().await;
+    sorted.sort();
+    assert_eq!(reg.scanner_ids().await, sorted);
+}
+
+#[tokio::test]
+async fn ranked_scanner_ids_are_stable_within_one_family() {
+    // Same hardware, two restarts, same device: the auto-detect must not
+    // depend on HashMap iteration order.
+    let reg = DriverRegistry::default();
+    for id in [
+        "scanner:serial:COM9",
+        "scanner:serial:COM10",
+        "scanner:serial:COM3",
+    ] {
+        reg.register_scanner(id, mock_scanner(id)).await;
+    }
+    let first = reg.scanner_ids_ranked().await;
+    for _ in 0..4 {
+        assert_eq!(
+            reg.scanner_ids_ranked().await,
+            first,
+            "ordering must not drift"
+        );
+    }
+}
+
+#[test]
+fn scanner_family_rank_orders_recognised_hardware_first() {
+    assert!(scanner_family_rank("scanner:usb:1") < scanner_family_rank("scanner:bt:COM1"));
+    assert!(scanner_family_rank("scanner:bt:COM1") < scanner_family_rank("scanner:serial:COM1"));
+    // An id outside the scheme (a mock, or one registered by name) must
+    // never shadow real hardware unless the operator pinned it.
+    assert!(scanner_family_rank("scanner:serial:COM1") < scanner_family_rank("mock"));
+}
+
+#[test]
+fn port_is_claimed_matches_case_insensitively_and_ignores_blanks() {
+    let claimed = vec!["COM7".to_string(), "  ".to_string()];
+    assert!(port_is_claimed("COM7", &claimed));
+    assert!(port_is_claimed("com7", &claimed));
+    assert!(!port_is_claimed("COM8", &claimed));
+    assert!(!port_is_claimed("COM7", &[]));
+    // An unconfigured device records an empty port; that is not a claim on
+    // every port on the machine.
+    assert!(!port_is_claimed("", &claimed));
+}
+
+#[tokio::test]
 async fn the_id_ordering_is_stable_across_repeated_calls() {
     let reg = DriverRegistry::default();
     for id in ["b", "d", "a", "c"] {
