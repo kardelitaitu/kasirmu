@@ -122,9 +122,12 @@ describe('prefers-reduced-motion compliance', () => {
         overlay.click();
       });
 
-      // Component uses a 200ms setTimeout for exit delay
+      // Component uses animDuration(300) for the exit delay, matching
+      // fastpin-fade-out's var(--duration-300) (FastPINOverlay.css:58).
+      // 200 was the pre-"smooth 300ms backdrop blur" duration; the timer and the
+      // keyframe moved together in that commit, so this advance has to move too.
       act(() => {
-        vi.advanceTimersByTime(200);
+        vi.advanceTimersByTime(300);
       });
 
       expect(onClose).toHaveBeenCalled();
@@ -142,7 +145,7 @@ describe('prefers-reduced-motion compliance', () => {
       expect(overlay.classList.contains('fastpin-overlay--exiting')).toBe(true);
 
       act(() => {
-        vi.advanceTimersByTime(200);
+        vi.advanceTimersByTime(300);
       });
 
       // After close callback, the parent sets open=false, unmounting the component
