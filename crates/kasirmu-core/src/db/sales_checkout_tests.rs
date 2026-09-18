@@ -73,6 +73,17 @@ fn single_line_sale(sku: &str, actor: Option<&str>) -> Sale {
     sale
 }
 
+/// Seed a terminal row so the receipt-code mint has a known terminal to
+/// resolve (and lazily allocate an index_id for). `device_id` is UNIQUE, so
+/// the id doubles as the device id for the test row.
+fn seed_terminal(conn: &Connection, id: &str) {
+    conn.execute(
+        "INSERT OR IGNORE INTO terminals (id, name, device_id) VALUES (?1, ?1, ?1)",
+        rusqlite::params![id],
+    )
+    .unwrap();
+}
+
 fn tender(amount_minor: i64) -> Vec<crate::PaymentSplitArg> {
     vec![crate::PaymentSplitArg {
         method: "cash".into(),
@@ -205,4 +216,55 @@ fn checkout_audit_details_pass_sanitize_on_door_path() {
     assert_eq!(entries.len(), 1);
     assert!(entries[0].details.chars().count() <= 4012);
     assert!(entries[0].details.ends_with("[truncated]"));
+}
+
+/// Phase 3/4: with a terminal known, the frozen 22-char receipt hierarchy code
+/// is minted, frozen into `sales.display_code`, returned on
+/// `CompleteSaleResult.receipt_number`, and readable via the narrow
+/// `sale_display_code` / `sale_display_codes` accessors — without widening the
+/// `Sale` struct (the `sale_tax_estimate_note` precedent).
+#[test]
+fn checkout_freezes_receipt_hierarchy_code_and_it_is_readable() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_stocked_product(&conn, "CODE-SKU");
+    seed_terminal(&conn, "TERM-1");
+    let sale = single_line_sale("CODE-SKU", Some("cashier-1"));
+
+    let result = s
+        .complete_sale_deduction_with_locations_and_estimate(
+            &sale,
+            None,
+            &[],
+            &tender(1000),
+            "cashier-1",
+            Some("TERM-1"),
+            &[],
+            false,
+        )
+        .unwrap();
+
+    // 22 chars, four hyphens, the agreed assembly shape.
+    let code = result.receipt_number;
+    assert_eq!(code.len(), 22, "expected 22-char code, got {code}");
+    assert_eq!(code.matches('-').count(), 4);
+
+    // Frozen into the row.
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT display_code FROM sales WHERE id = ?1",
+            rusqlite::params![sale.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored.as_deref(), Some(code.as_str()));
+
+    // Readable via the narrow accessor (single + batch), no Sale churn.
+    assert_eq!(
+        s.sale_display_code(&sale.id).unwrap().as_deref(),
+        Some(code.as_str())
+    );
+    let batch = s.sale_display_codes(&[sale.id.clone()]).unwrap();
+    assert_eq!(batch.len(), 1);
+    assert_eq!(batch[0].1.as_deref(), Some(code.as_str()));
 }

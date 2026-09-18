@@ -229,6 +229,110 @@ impl crate::db::Store<'_> {
         }
         Ok(claimed)
     }
+
+    /// Get an entity's `index_id`, allocating it lazily (once, never reused)
+    /// when a legacy row still lacks one.
+    ///
+    /// Used at checkout so the receipt hierarchy code works on data created
+    /// before indices were allocated, without a separate backfill step. The
+    /// read-then-allocate runs inside the caller's transaction, so a
+    /// rolled-back sale consumes no index. `table` is a compile-time constant
+    /// (`locations` / `terminals` / `users`), never caller input.
+    fn ensure_entity_index(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        tenant_id: &str,
+        kind: EntityIndexKind,
+        table: &str,
+        entity_id: &str,
+        now: &str,
+    ) -> Result<i64, CoreError> {
+        let existing: Option<i64> = tx
+            .query_row(
+                &format!("SELECT index_id FROM {table} WHERE id = ?1 AND tenant_id = ?2"),
+                params![entity_id, tenant_id],
+                |r| r.get::<_, Option<i64>>(0),
+            )
+            .optional()?
+            .flatten();
+        if let Some(idx) = existing {
+            return Ok(idx);
+        }
+        let idx = self.allocate_entity_index(tx, tenant_id, kind, now)?;
+        tx.execute(
+            &format!("UPDATE {table} SET index_id = ?1 WHERE id = ?2"),
+            params![idx, entity_id],
+        )?;
+        Ok(idx)
+    }
+
+    /// Mint the frozen 22-char receipt hierarchy code for a sale, or return
+    /// `None` when it cannot be formed.
+    ///
+    /// Returns `(display_code, terminal_id)` — `terminal_id` is the raw
+    /// terminal id (for `sales.terminal_id`), `display_code` is the assembled
+    /// string. When no terminal is known the code cannot be formed, so both
+    /// are `None` and the caller keeps today's behaviour (no code). A code
+    /// that cannot be formed is *not* an error: the sale must still complete.
+    ///
+    /// Indices are resolved (and allocated lazily when missing) and the
+    /// sequence is claimed inside `tx`, so the whole mint is atomic with the
+    /// sale — a voided sale consumes neither an index nor a number.
+    pub fn mint_receipt_code(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        tenant_id: &str,
+        location_id: &str,
+        terminal_id: Option<&str>,
+        staff_user_id: &str,
+        now_utc: &str,
+    ) -> Result<(Option<String>, Option<String>), CoreError> {
+        let terminal_id = terminal_id.map(str::to_string);
+        // Staff index: an empty user (kiosk / system sale) is the 00 sentinel.
+        let staff_idx = if staff_user_id.is_empty() {
+            INDEX_ID_NONE
+        } else {
+            self.ensure_entity_index(
+                tx,
+                tenant_id,
+                EntityIndexKind::User,
+                "users",
+                staff_user_id,
+                now_utc,
+            )?
+        };
+        let loc_idx = self.ensure_entity_index(
+            tx,
+            tenant_id,
+            EntityIndexKind::Location,
+            "locations",
+            location_id,
+            now_utc,
+        )?;
+        let Some(term_id) = terminal_id.as_deref() else {
+            return Ok((None, None));
+        };
+        let term_idx = self.ensure_entity_index(
+            tx,
+            tenant_id,
+            EntityIndexKind::Terminal,
+            "terminals",
+            term_id,
+            now_utc,
+        )?;
+
+        let tz: Option<String> = tx
+            .query_row(
+                "SELECT timezone FROM locations WHERE id = ?1",
+                params![location_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let (yymmdd, fiscal_year) = resolve_receipt_date(now_utc, tz.as_deref().unwrap_or("UTC"))?;
+        let seq = self.claim_receipt_sequence(tx, tenant_id, &index_hex(term_idx), &fiscal_year)?;
+        let code = assemble_receipt_code(loc_idx, term_idx, &yymmdd, staff_idx, seq);
+        Ok((Some(code), terminal_id))
+    }
 }
 
 /// Parse a stored `locations.timezone` value (`'+HH:MM'` / `'-HH:MM'` /

@@ -502,6 +502,58 @@ impl Store<'_> {
         Ok(note.flatten())
     }
 
+    /// Read the frozen 22-char receipt hierarchy code for one sale.
+    ///
+    /// Mirrors [`Store::sale_tax_estimate_note`]: a dedicated narrow accessor
+    /// rather than a field on [`Sale`], so the history surface (the only
+    /// consumer) does not force `display_code: None` into every `Sale` literal
+    /// across the kds/reports/tables/multi-terminal/promotions test corpora and
+    /// the modules-sales mirror. `None` = the sale predates the code (legacy
+    /// row, or no terminal was known at checkout) — absence is the honest
+    /// answer and must never read as a claim. The code is frozen at issue
+    /// (plan §4.5), so reprinting six months later shows what the receipt
+    /// showed then.
+    pub fn sale_display_code(&self, sale_id: &str) -> Result<Option<String>, CoreError> {
+        // Same two-absence flatten as sale_tax_estimate_note: OUTER = no such
+        // sale row (.optional()), INNER = NULL display_code column.
+        let code: Option<Option<String>> = self
+            .conn
+            .query_row(
+                "SELECT display_code FROM sales WHERE id = ?1",
+                params![sale_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?;
+        Ok(code.flatten())
+    }
+
+    /// Batch read of [`Store::sale_display_code`] for a list of sale ids in a
+    /// single statement. Returns `(id, display_code)` pairs only for rows that
+    /// exist; a missing id simply yields no pair, so callers zip by id and
+    /// fall back to `None` for any id absent from the result.
+    pub fn sale_display_codes(
+        &self,
+        ids: &[String],
+    ) -> Result<Vec<(String, Option<String>)>, CoreError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders: Vec<&str> = vec!["?"; ids.len()];
+        let sql = format!(
+            "SELECT id, display_code FROM sales WHERE id IN ({})",
+            placeholders.join(",")
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+        })?;
+        let mut out: Vec<(String, Option<String>)> = Vec::with_capacity(ids.len());
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
     /// Update the status of a sale, validating the state machine transition.
     pub fn update_sale_status(&self, id: &str, to: SaleStatus) -> Result<Sale, CoreError> {
         let result = self.conn.query_row(
