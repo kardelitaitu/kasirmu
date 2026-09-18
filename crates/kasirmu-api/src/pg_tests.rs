@@ -170,6 +170,23 @@ fn unique_id(prefix: &str) -> String {
 /// flake class while keeping the test's semantics identical. Callers must
 /// `DROP DATABASE {db_name} WITH (FORCE)` in cleanup (see the existing
 /// `concurrent_adjust_stock` test for the exact shape).
+///
+/// # Returns `None` from any of several stages — callers must not name a cause
+///
+/// `None` means "no throwaway database", and that is all it means. It is
+/// returned from the admin connect (`raw_pool`, which prints the real error
+/// itself at `:153`), from the DDL-guard window, from the stale-database sweep,
+/// and from `DROP`/`CREATE DATABASE` — the last three **silently**. So a caller
+/// that reports a *reason* is guessing: `(Postgres unreachable at {url})` was
+/// wrong in every run where the server was up and a later stage had failed,
+/// and it sent readers to the container, the port and the firewall.
+/// Report only what was observed. See `todo-owner-rulings.md` R17.
+///
+/// The file's own older arms already do this — `PG integration skipped: cannot
+/// CREATE DATABASE` (`:236`), `cannot CREATE DATABASE ({e})` (`:1340`),
+/// `cannot connect to {db_name}` (`:901`). Those name the stage and, where it
+/// exists, carry the server's error. The `unreachable` parenthetical was the
+/// outlier, not the convention.
 async fn throwaway_test_pool(
     url: &str,
     prefix: &str,
@@ -256,7 +273,7 @@ async fn pg_integration_rest_roundtrip() {
     // `products`; on the shared base DB a lock-ordering collision with a
     // parallel test process surfaces as a spurious `Db("db error")` abort.
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_rest").await else {
-        eprintln!("PG REST integration test skipped (Postgres unreachable at {url})");
+        eprintln!("PG REST integration test skipped: throwaway_test_pool returned None ({url})");
         return;
     };
 
@@ -596,7 +613,7 @@ async fn pg_integration_rest_rls_non_owner() {
     // base DB concurrent role setup + FOR UPDATE chains race parallel
     // test processes. The throwaway DB isolates both.
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_rest_rls").await else {
-        eprintln!("PG REST RLS test skipped (Postgres unreachable at {url})");
+        eprintln!("PG REST RLS test skipped: throwaway_test_pool returned None ({url})");
         return;
     };
 
@@ -829,7 +846,9 @@ async fn pg_integration_concurrent_adjust_stock() {
     // throwaway database, so it must not re-apply PG_INIT to the shared
     // base DB (concurrent catalog DDL across parallel test binaries).
     let Some(admin_pool) = raw_pool(&url).await else {
-        eprintln!("PG concurrent adjust test skipped (Postgres unreachable at {url})");
+        eprintln!(
+            "PG concurrent adjust test skipped: raw_pool returned None ({url}) — see the diagnostic above"
+        );
         return;
     };
     let admin = admin_pool.get().await.expect("admin client");
@@ -998,7 +1017,7 @@ async fn pg_integration_concurrent_sale_status_transition() {
     // lock-ordering collision with a parallel test process surfaces as a
     // spurious `Db("db error")` abort.
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_sale_race").await else {
-        eprintln!("PG concurrent status test skipped (Postgres unreachable at {url})");
+        eprintln!("PG concurrent status test skipped: throwaway_test_pool returned None ({url})");
         return;
     };
 
@@ -1098,7 +1117,7 @@ async fn pg_integration_tenant_sku_isolation() {
     // `products`; on the shared base DB a lock-ordering collision with a
     // parallel test process surfaces as a spurious `Db("db error")` abort.
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_sku_iso").await else {
-        eprintln!("PG tenant-isolation test skipped (Postgres unreachable at {url})");
+        eprintln!("PG tenant-isolation test skipped: throwaway_test_pool returned None ({url})");
         return;
     };
 
@@ -1582,7 +1601,7 @@ async fn pg_isolates_locations_by_tenant() {
     let url = std::env::var("OZ_TEST_PG_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_loc_rls").await else {
-        eprintln!("PG location RLS test skipped (Postgres unreachable at {url})");
+        eprintln!("PG location RLS test skipped: throwaway_test_pool returned None ({url})");
         return;
     };
 
@@ -1755,7 +1774,7 @@ async fn pg_integration_memo_sync_and_active_read() {
     let url = std::env::var("OZ_TEST_PG_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_memo").await else {
-        eprintln!("PG memo integration test skipped (Postgres unreachable at {url})");
+        eprintln!("PG memo integration test skipped: throwaway_test_pool returned None ({url})");
         return;
     };
 
