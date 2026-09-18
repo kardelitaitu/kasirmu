@@ -19,7 +19,7 @@ use thiserror::Error;
 ///
 /// Mirrored on the front-end as `AppError.subKind` so UI code can branch
 /// on the specific hardware failure mode without parsing the message string.
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum HalErrorKind {
     /// Device id not found in the registry.
