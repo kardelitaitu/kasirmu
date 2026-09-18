@@ -84,5 +84,59 @@ A new file cannot enter a pathspec commit on its own, so the `add` names only un
 
 - `docs/decisions/2026-07-15-whitelabel-branding-system.md` — the pipeline's design and the multi-tenant contract.
 - `ui-components` — the renderer conventions the vector logos feed into.
+- `website` (`website/public/`) — has its own `favicon.svg`, `og-image.svg`, `og-image.png`. The
+  favicon must mirror `assets/branding/default/vector/logo-mark.svg` (same shape, same blue, same
+  grey dot); the social image is a designer call, leave it alone until someone owns it.
 
-> last audited 19-09-26 by Budak-Korporat
+## Platform icons (windows store, android, ios) — use `tauri icon`, do not hand-roll
+
+The 10 Windows-Store tiles (`Square30/44/71/89/107/142/150/284/310 + StoreLogo.png`), the 18 iOS
+`AppIcon-*` PNGs, and the full Android set (`mipmap-{m,h,xh,xxh,xxxh}dpi/{ic_launcher,ic_launcher_foreground,ic_launcher_round}.png` plus the `mipmap-anydpi-v26/*.xml` and `values/ic_launcher_background.xml`) all live under `apps/desktop-tauri/icons/`. The Android set duplicates into `apps/mobile-tauri/gen/android/app/src/main/res/`. None of them are produced by `scripts/sync-branding.ps1`.
+
+Hand-rendering fails three ways: adaptive icons have a 108dp canvas with a 72dp safe zone, the
+`.icns` round-trip needs `iconutil` (macOS-only), and `ic_launcher_round` is a different circle than
+`ic_launcher` for many densities. The correct path is:
+
+```bash
+# managed, isolated — no ui/package.json touched, no lockfile in repo
+cd C:/Users/Dika/.workbuddy-ai/binaries/node/workspace
+npm install @tauri-apps/cli@2 --no-audit --no-fund
+
+# run into a temp dir so the eight pipeline-owned files are not touched
+"$WS/node_modules/.bin/tauri" icon assets/source-icon.png -o "$SCRATCH/tauri-icon-out"
+```
+
+The output matches the existing placeholder layout 1:1 (filename and size per file). Copy only the
+platform files (`Square*Logo.png`, `StoreLogo.png`, `android/`, `ios/`). Do **not** copy
+`{32x32,64x64,128x128,256x256}.png`, `icon.png`, `icon.ico`, or `icon.icns` — the pipeline owns
+those eight and would silently revert a direct overwrite on the next sync.
+
+On first run, `apps/mobile-tauri/gen/android/app/src/main/res/` is missing
+`mipmap-anydpi-v26/ic_launcher.xml` and `values/ic_launcher_background.xml`. They are byte-identical
+to the desktop side's tracked XMLs, so a diff against the desktop tree confirms zero drift before
+committing.
+
+## PWA manifest completeness
+
+The brand-source `assets/branding/default/web/site.webmanifest` and the renderer's
+`ui/public/site.webmanifest` must declare **all four** PWA icons, not just two:
+
+```json
+{"src":"/icon-192.png","sizes":"192x192","type":"image/png"},
+{"src":"/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"},
+{"src":"/android-chrome-192x192.png","sizes":"192x192","type":"image/png"},
+{"src":"/android-chrome-512x512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+```
+
+`index.html` itself names only `favicon.svg / favicon-32 / favicon-16 / favicon.ico /
+apple-touch-icon / site.webmanifest` — the manifest entries for `android-chrome-*` are
+referenced by Chrome's installability check, not by the page. The PNGs live in `ui/public/`
+(untracked unless the owner folds them into `assets/branding/default/web/`); add the rows in
+lockstep on both manifests.
+
+> last audited 19-09-26 (legs 1-3) by Budak-Korporat — added the platform-icons section, the
+> website-favicon source rule, the four-row PWA manifest rule, and the new-file XML chain on
+> mobile. Verified: `paths` check clean, proved live by injecting then removing a probe skill
+> (`zz-probe-drift2`) that cited `crates/zz-probe2-does-not-exist/src/lib.rs` — the check fired,
+> then went clean. The cited files all exist except the two `android-chrome-*` PNGs, which live
+> only in `ui/public/` until someone folds them into `assets/branding/default/web/`.
