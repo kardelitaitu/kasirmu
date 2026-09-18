@@ -39,6 +39,18 @@ migrations — the drift the loyalty work exposed):
    ``REFERENCES t(col)``): SQLite tolerates forward FK references,
    Postgres does not.
 
+6. Prepend two convergence sections for databases that already exist,
+   because ``CREATE TABLE IF NOT EXISTS`` is inert for COLUMNS and for
+   dropped indexes:
+
+   * a guarded column-reconciliation ``DO`` block covering every column
+     of every table (add the column when the table pre-exists without it;
+     promote to NOT NULL only when no row is NULL). Generated from the
+     same final SQLite state as the DDL, so it cannot rot.
+   * guarded ``DROP INDEX IF EXISTS`` for ``OBSOLETE_PG_INDEXES`` —
+     indexes an earlier revision emitted and a later migration removed,
+     which an existing database would otherwise keep forever.
+
 Usage:
 
     python3 scripts/generate-pg-migration.py           # write the file
@@ -76,6 +88,30 @@ DT_PG = "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')"
 # cast (`date(created_at)` / `created_at::date`) is rejected because the
 # text→date cast is STABLE (DateStyle-dependent), not IMMUTABLE.
 SQLITE_ONLY_INDEXES = {"idx_sales_status_created_date"}
+
+# Indexes an EARLIER revision of this generator emitted and a later SQLite
+# migration removed. Postgres has no re-apply for a dropped object: the
+# generated script only ever says ``CREATE … IF NOT EXISTS``, so a database
+# created before the removal keeps the index forever and silently enforces a
+# constraint the current schema does not declare. Each entry is emitted as a
+# guarded DROP so an existing database converges on the current schema.
+# Value = the SQLite migration that removed it (provenance for the reader).
+#
+# idx_tax_rates_single_default was ``UNIQUE (is_default) WHERE is_default = 1``
+# — at most ONE default tax rate per database. 20260926 replaced it with three
+# per-scope partial unique indexes (tenant-global / per legal entity / per
+# location), so the stale global index would refuse the second scoped default
+# the new model exists to allow.
+OBSOLETE_PG_INDEXES: dict[str, str] = {
+    "idx_tax_rates_single_default": "20260926_tax_rate_scoped_authoring.sql",
+    # 20260906 renamed store_profiles -> locations and user_store_access ->
+    # user_location_access and dropped these two by name. A renamed table
+    # carries its indexes along, so a database built before the rename keeps
+    # them under the old names while the snapshot creates the new ones —
+    # leaving two identical partial indexes and two identical user indexes.
+    "idx_store_profiles_primary": "20260906_rename_store_to_location.sql",
+    "idx_user_store_access_user_id": "20260906_rename_store_to_location.sql",
+}
 
 HEADER = """\
 -- ====================================================================
@@ -203,6 +239,49 @@ def build_db(ids: list[str]) -> sqlite3.Connection:
         db.executescript(sql)
         db.commit()
     return db
+
+
+# Schema-evolution statements the snapshot cannot express. `CREATE TABLE IF
+# NOT EXISTS` is inert for a table that already exists, so a RENAME or a DROP
+# that a SQLite migration performed is simply invisible to Postgres: the
+# legacy table/column stays, and the snapshot's version is created alongside
+# it. Replaying the operations is the only faithful port — and replaying a
+# RENAME (rather than re-creating the new name) is what preserves the rows.
+RENAME_COLUMN_RE = re.compile(
+    r"ALTER\s+TABLE\s+\"?(\w+)\"?\s+RENAME\s+COLUMN\s+\"?(\w+)\"?\s+TO\s+\"?(\w+)\"?",
+    re.I,
+)
+RENAME_TABLE_RE = re.compile(
+    r"ALTER\s+TABLE\s+\"?(\w+)\"?\s+RENAME\s+TO\s+\"?(\w+)\"?", re.I
+)
+
+
+def schema_evolution_ops() -> tuple[
+    list[tuple[str, str, str]], list[tuple[str, str, str, str]]
+]:
+    """``(table renames, column renames)`` parsed from the migration chain.
+
+    Derived rather than listed so the port cannot drift from the source of
+    truth. Order is registry order, which is the order the SQLite side
+    applies them in. Each tuple carries the migration id it came from, so
+    the emitted SQL names its own provenance.
+
+    Table rebuilds (``x_new`` RENAME TO ``x``) are parsed too but are inert:
+    the replay is guarded on the source existing and the target not, and
+    ``x_new`` never exists in a database that ran the chain normally.
+    """
+    table_renames: list[tuple[str, str, str]] = []
+    column_renames: list[tuple[str, str, str, str]] = []
+    for mid in registry_ids():
+        sql = (MIG_DIR / mid).read_text(encoding="utf-8")
+        column_renames.extend(
+            (m.group(1), m.group(2), m.group(3), mid)
+            for m in RENAME_COLUMN_RE.finditer(sql)
+        )
+        table_renames.extend(
+            (m.group(1), m.group(2), mid) for m in RENAME_TABLE_RE.finditer(sql)
+        )
+    return table_renames, column_renames
 
 
 def convert_table(stmt: str) -> str:
@@ -534,6 +613,240 @@ END $$;
 """
 
 
+def _sql_literal(value: str) -> str:
+    """Single-quoted SQL literal with internal quotes doubled."""
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _pg_type(sqlite_type: str) -> str:
+    """Type mapping for a PRAGMA-reported type (same rules as convert_table)."""
+    t = (sqlite_type or "").strip() or "TEXT"
+    t = re.sub(r"\bINTEGER\b", "BIGINT", t)
+    t = re.sub(r"\bREAL\b", "DOUBLE PRECISION", t)
+    return t
+
+
+def _pg_default(sqlite_default: str) -> str:
+    """Default mapping for a PRAGMA-reported default (same rules as convert_table)."""
+    s = sqlite_default.replace("strftime('%Y-%m-%dT%H:%M:%fZ', 'now')", TS_PG)
+    return s.replace("datetime('now')", DT_PG)
+
+
+def pg_column_specs(
+    db: sqlite3.Connection, ordered: list[str]
+) -> list[tuple[str, str, str, str | None, bool]]:
+    """``(table, column, pg_type, pg_default_or_None, not_null)`` per column.
+
+    Read from ``PRAGMA table_info`` rather than by parsing the rendered DDL.
+    SQLite keeps ``table_info`` current across ADD/DROP COLUMN, so it reports
+    the same final state the CREATE TABLE dump is taken from — and it needs no
+    fragile parsing of statements whose formatting the migrations control.
+    """
+    specs: list[tuple[str, str, str, str | None, bool]] = []
+    for table in ordered:
+        pragma = 'PRAGMA table_info("%s")' % table.replace('"', '""')
+        for _cid, name, sqlite_type, notnull, dflt, pk in db.execute(pragma):
+            specs.append(
+                (
+                    table,
+                    name,
+                    _pg_type(sqlite_type),
+                    None if dflt is None else _pg_default(dflt),
+                    bool(notnull) or bool(pk),
+                )
+            )
+    return specs
+
+
+RECONCILE_TEMPLATE = """\
+-- ── Column reconciliation for pre-existing databases ───────────────────
+-- CREATE TABLE IF NOT EXISTS is idempotent for TABLES but inert for
+-- COLUMNS: a table created by an earlier revision of this script is
+-- skipped whole, so every column added to it since is silently absent.
+-- That is not theoretical — on 2026-09-18 the deployed cloud-server
+-- crash-looped for five days with
+--
+--     ERROR: column "legal_entity_id" does not exist
+--     LINE 4: AND legal_entity_id IS NOT NULL
+--
+-- because `tax_rates` predated the 2026-09-08 scoping migration and the
+-- 2026-09-09 partial index that reads the new column. Reproduced against
+-- a real Postgres 16 from the schema of the last deployed sha.
+--
+-- The block below converges ANY earlier database onto the column set
+-- this script declares. It is generated from the same final SQLite state
+-- as the CREATE TABLE statements, so it cannot rot: a column added to an
+-- existing table in any future migration is picked up automatically.
+--
+-- Two deliberate limits:
+--   * It runs BEFORE the DDL, so every action is guarded on the table
+--     already existing. On a fresh database it is a no-op and the
+--     CREATE TABLE statements below create everything.
+--   * It restores COLUMNS and NOT NULL, never FOREIGN KEY / PRIMARY KEY /
+--     UNIQUE / CHECK. Those can be unsatisfiable on legacy rows, and a
+--     failure here aborts the whole migration (batch_execute is one
+--     implicit transaction) — i.e. it would re-create the very outage
+--     this block exists to end. A migrated database therefore differs
+--     from a fresh one by the absence of the foreign keys named in the
+--     scoping migrations; that gap is tracked, not hidden.
+--
+-- A NOT NULL column is added NULLABLE and promoted only when no row is
+-- NULL, so a legacy row can never be invented into compliance. When the
+-- promotion is refused the run raises a WARNING naming the table, the
+-- column and the NULL count.
+DO $oz_reconcile$
+DECLARE
+    r RECORD;
+    n_null BIGINT;
+BEGIN
+    FOR r IN
+        SELECT * FROM (VALUES
+__ROWS__
+        ) AS v(tbl, col, typ, dflt, nn)
+    LOOP
+        IF EXISTS (SELECT 1 FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = r.tbl)
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = r.tbl
+                      AND column_name = r.col)
+        THEN
+            EXECUTE format('ALTER TABLE public.%I ADD COLUMN %I %s%s',
+                           r.tbl, r.col, r.typ,
+                           CASE WHEN r.dflt IS NULL THEN ''
+                                ELSE ' DEFAULT ' || r.dflt END);
+        END IF;
+
+        -- Only ever touched while the catalog still says NULLABLE: on a
+        -- converged database this branch is not entered, so no boot pays
+        -- for a COUNT(*) over every NOT NULL column.
+        IF r.nn
+           AND EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = r.tbl
+                          AND column_name = r.col AND is_nullable = 'YES')
+        THEN
+            EXECUTE format('SELECT count(*) FROM public.%I WHERE %I IS NULL',
+                           r.tbl, r.col) INTO n_null;
+            IF n_null = 0 THEN
+                EXECUTE format('ALTER TABLE public.%I ALTER COLUMN %I SET NOT NULL',
+                               r.tbl, r.col);
+            ELSE
+                RAISE WARNING 'oz schema reconcile: %.% stays NULLABLE (% row(s) are NULL); a fresh database declares it NOT NULL',
+                    r.tbl, r.col, n_null;
+            END IF;
+        END IF;
+    END LOOP;
+END
+$oz_reconcile$;"""
+
+
+EVOLVE_TABLE_TEMPLATE = """\
+    -- __SRC__ -> __DST__   (__MID__)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = __SRC__)
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = __DST__)
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', __SRC__, __DST__);
+    END IF;"""
+
+EVOLVE_COLUMN_TEMPLATE = """\
+    -- __TBL__.__FROM__ -> __TO__   (__MID__)
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = __TBL__
+                  AND column_name = __FROM__)
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = __TBL__
+                  AND column_name = __TO__)
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME COLUMN %I TO %I',
+                       __TBL__, __FROM__, __TO__);
+    END IF;"""
+
+
+def render_evolution_ops(
+    table_renames: list[tuple[str, str, str]],
+    column_renames: list[tuple[str, str, str, str]],
+) -> str:
+    """Guarded replay of RENAMEs the snapshot cannot express.
+
+    Table renames are emitted before column renames because a column rename
+    can target a table that was itself just renamed (20260906 renames
+    ``user_store_access`` and then one of its columns).
+
+    This must run BEFORE the column reconciliation: replaying a rename
+    preserves the rows, whereas letting the reconciliation "add" the new
+    column instead would leave the legacy NOT NULL column behind — which is
+    what made the 2026-09-18 seed inserts fail with
+    ``null value in column "max_stores" ... violates not-null constraint``.
+    """
+    body: list[str] = []
+    for src, dst, mid in table_renames:
+        body.append(
+            EVOLVE_TABLE_TEMPLATE.replace("__SRC__", _sql_literal(src))
+            .replace("__DST__", _sql_literal(dst))
+            .replace("__MID__", mid)
+        )
+    for tbl, frm, to, mid in column_renames:
+        body.append(
+            EVOLVE_COLUMN_TEMPLATE.replace("__TBL__", _sql_literal(tbl))
+            .replace("__FROM__", _sql_literal(frm))
+            .replace("__TO__", _sql_literal(to))
+            .replace("__MID__", mid)
+        )
+    return "\n".join(
+        [
+            "-- ── Schema evolution replayed from the migration chain ──────────────",
+            "-- A RENAME or a DROP performed by a SQLite migration is invisible to",
+            "-- Postgres: CREATE TABLE IF NOT EXISTS skips the table whole, so the",
+            "-- legacy name survives and the snapshot's name is created alongside",
+            "-- it. Two consequences, both measured against Postgres 16 on",
+            "-- 2026-09-18: the seed inserts died on the legacy NOT NULL columns",
+            "-- (``max_stores``, ``workspace_instances.store_id``) that the rename",
+            "-- was supposed to have carried away, and `locations` came up empty",
+            "-- while the real rows sat in the un-renamed `store_profiles`.",
+            "--",
+            "-- Each replay is guarded on the source existing and the target not,",
+            "-- so it is a no-op on a fresh database and on one already converged.",
+            "DO $oz_evolve$",
+            "BEGIN",
+            "\n\n".join(body),
+            "END",
+            "$oz_evolve$;",
+        ]
+    )
+
+
+def render_reconciliation(
+    specs: list[tuple[str, str, str, str | None, bool]],
+) -> str:
+    """The guarded column-reconciliation DO block (see RECONCILE_TEMPLATE)."""
+    rows = ",\n".join(
+        "            (%s, %s, %s, %s, %s)"
+        % (
+            _sql_literal(table),
+            _sql_literal(col),
+            _sql_literal(typ),
+            "NULL::text" if dflt is None else _sql_literal(dflt),
+            "true" if notnull else "false",
+        )
+        for table, col, typ, dflt, notnull in specs
+    )
+    return RECONCILE_TEMPLATE.replace("__ROWS__", rows)
+
+
+def render_obsolete_indexes() -> str:
+    """Guarded DROPs for indexes a later SQLite migration removed."""
+    lines = [
+        "-- ── Indexes removed from the SQLite chain ─────────────────────────────",
+        "-- This script only ever says CREATE … IF NOT EXISTS, so a database built",
+        "-- before the removal keeps these forever. Dropping is the only way to",
+        "-- converge an existing database on the current schema.",
+    ]
+    for name in sorted(OBSOLETE_PG_INDEXES):
+        lines.append(f"DROP INDEX IF EXISTS {name};  -- removed by {OBSOLETE_PG_INDEXES[name]}")
+    return "\n".join(lines)
+
+
 def render() -> tuple[str, int, int, int, list[str]]:
     ids = registry_ids()
     db = build_db(ids)
@@ -588,10 +901,22 @@ def render() -> tuple[str, int, int, int, list[str]]:
             parts.append(f"stale TRIGGER_MAP entries: {', '.join(stale)}")
         raise SystemExit("error: trigger parity broken — " + "; ".join(parts))
 
-    seeds = dump_seeds(db, [name for name, _, _ in ordered])
+    ordered_names = [name for name, _, _ in ordered]
+    seeds = dump_seeds(db, ordered_names)
+    specs = pg_column_specs(db, ordered_names)
     db.close()
 
+    # Order matters: drop the obsolete indexes, then replay the renames (a
+    # rename preserves rows; letting the reconciliation add the new column
+    # instead would leave the legacy NOT NULL column behind), then reconcile
+    # the remaining columns. All three are guarded, so a fresh database runs
+    # them as no-ops before the DDL below creates everything.
+    table_renames, column_renames = schema_evolution_ops()
+
     out: list[str] = [HEADER.rstrip(), ""]
+    out.extend([render_obsolete_indexes(), ""])
+    out.extend([render_evolution_ops(table_renames, column_renames), ""])
+    out.extend([render_reconciliation(specs), ""])
     for name, _refs, stmt in ordered:
         out.extend([stmt, ""])
         for idx in unique_by_table.get(name, []):

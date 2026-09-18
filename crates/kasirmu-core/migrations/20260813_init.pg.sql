@@ -8,6 +8,1331 @@
 -- Drift guard: python3 scripts/generate-pg-migration.py --check
 -- ====================================================================
 
+-- ── Indexes removed from the SQLite chain ─────────────────────────────
+-- This script only ever says CREATE … IF NOT EXISTS, so a database built
+-- before the removal keeps these forever. Dropping is the only way to
+-- converge an existing database on the current schema.
+DROP INDEX IF EXISTS idx_store_profiles_primary;  -- removed by 20260906_rename_store_to_location.sql
+DROP INDEX IF EXISTS idx_tax_rates_single_default;  -- removed by 20260926_tax_rate_scoped_authoring.sql
+DROP INDEX IF EXISTS idx_user_store_access_user_id;  -- removed by 20260906_rename_store_to_location.sql
+
+-- ── Schema evolution replayed from the migration chain ──────────────
+-- A RENAME or a DROP performed by a SQLite migration is invisible to
+-- Postgres: CREATE TABLE IF NOT EXISTS skips the table whole, so the
+-- legacy name survives and the snapshot's name is created alongside
+-- it. Two consequences, both measured against Postgres 16 on
+-- 2026-09-18: the seed inserts died on the legacy NOT NULL columns
+-- (``max_stores``, ``workspace_instances.store_id``) that the rename
+-- was supposed to have carried away, and `locations` came up empty
+-- while the real rows sat in the un-renamed `store_profiles`.
+--
+-- Each replay is guarded on the source existing and the target not,
+-- so it is a no-op on a fresh database and on one already converged.
+DO $oz_evolve$
+BEGIN
+    -- 'kds_daily_counters_new' -> 'kds_daily_counters'   (20260822_kds_counter_store.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'kds_daily_counters_new')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'kds_daily_counters')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'kds_daily_counters_new', 'kds_daily_counters');
+    END IF;
+
+    -- 'products_new' -> 'products'   (20260831_per_tenant_unique_rebuild.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'products_new')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'products')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'products_new', 'products');
+    END IF;
+
+    -- 'users_new' -> 'users'   (20260831_per_tenant_unique_rebuild.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'users_new')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'users')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'users_new', 'users');
+    END IF;
+
+    -- 'product_variants_new' -> 'product_variants'   (20260831_per_tenant_unique_rebuild.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'product_variants_new')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'product_variants')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'product_variants_new', 'product_variants');
+    END IF;
+
+    -- 'bundle_items_new' -> 'bundle_items'   (20260831_per_tenant_unique_rebuild.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'bundle_items_new')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'bundle_items')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'bundle_items_new', 'bundle_items');
+    END IF;
+
+    -- 'product_taxes_new' -> 'product_taxes'   (20260831_per_tenant_unique_rebuild.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'product_taxes_new')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'product_taxes')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'product_taxes_new', 'product_taxes');
+    END IF;
+
+    -- 'product_bundles_new' -> 'product_bundles'   (20260831_per_tenant_unique_rebuild.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'product_bundles_new')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'product_bundles')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'product_bundles_new', 'product_bundles');
+    END IF;
+
+    -- 'store_profiles' -> 'locations'   (20260906_rename_store_to_location.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'store_profiles')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'locations')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'store_profiles', 'locations');
+    END IF;
+
+    -- 'user_store_access' -> 'user_location_access'   (20260906_rename_store_to_location.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'user_store_access')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'user_location_access')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'user_store_access', 'user_location_access');
+    END IF;
+
+    -- 'memos_new' -> 'memos'   (20260911_memo_fk_restrict.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'memos_new')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'memos')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'memos_new', 'memos');
+    END IF;
+
+    -- 'memo_recipients_new' -> 'memo_recipients'   (20260911_memo_fk_restrict.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'memo_recipients_new')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'memo_recipients')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'memo_recipients_new', 'memo_recipients');
+    END IF;
+
+    -- 'memos_new' -> 'memos'   (20260913_memo_locations.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'memos_new')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'memos')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'memos_new', 'memos');
+    END IF;
+
+    -- 'tax_rates_new' -> 'tax_rates'   (20260926_tax_rate_scoped_authoring.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'tax_rates_new')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'tax_rates')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'tax_rates_new', 'tax_rates');
+    END IF;
+
+    -- 'document_number_sequences_new' -> 'document_number_sequences'   (20260928_document_kind_check.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'document_number_sequences_new')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'document_number_sequences')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'document_number_sequences_new', 'document_number_sequences');
+    END IF;
+
+    -- 'user_location_access'.'store_id' -> 'location_id'   (20260906_rename_store_to_location.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'user_location_access'
+                  AND column_name = 'store_id')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'user_location_access'
+                  AND column_name = 'location_id')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME COLUMN %I TO %I',
+                       'user_location_access', 'store_id', 'location_id');
+    END IF;
+
+    -- 'tenant_subscription'.'max_stores' -> 'max_locations'   (20260906_rename_store_to_location.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'tenant_subscription'
+                  AND column_name = 'max_stores')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'tenant_subscription'
+                  AND column_name = 'max_locations')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME COLUMN %I TO %I',
+                       'tenant_subscription', 'max_stores', 'max_locations');
+    END IF;
+
+    -- 'workspace_instances'.'store_id' -> 'location_id'   (20260906_rename_store_to_location.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'workspace_instances'
+                  AND column_name = 'store_id')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'workspace_instances'
+                  AND column_name = 'location_id')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME COLUMN %I TO %I',
+                       'workspace_instances', 'store_id', 'location_id');
+    END IF;
+
+    -- 'terminals'.'bound_store_id' -> 'bound_location_id'   (20260906_rename_store_to_location.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'terminals'
+                  AND column_name = 'bound_store_id')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'terminals'
+                  AND column_name = 'bound_location_id')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME COLUMN %I TO %I',
+                       'terminals', 'bound_store_id', 'bound_location_id');
+    END IF;
+END
+$oz_evolve$;
+
+-- ── Column reconciliation for pre-existing databases ───────────────────
+-- CREATE TABLE IF NOT EXISTS is idempotent for TABLES but inert for
+-- COLUMNS: a table created by an earlier revision of this script is
+-- skipped whole, so every column added to it since is silently absent.
+-- That is not theoretical — on 2026-09-18 the deployed cloud-server
+-- crash-looped for five days with
+--
+--     ERROR: column "legal_entity_id" does not exist
+--     LINE 4: AND legal_entity_id IS NOT NULL
+--
+-- because `tax_rates` predated the 2026-09-08 scoping migration and the
+-- 2026-09-09 partial index that reads the new column. Reproduced against
+-- a real Postgres 16 from the schema of the last deployed sha.
+--
+-- The block below converges ANY earlier database onto the column set
+-- this script declares. It is generated from the same final SQLite state
+-- as the CREATE TABLE statements, so it cannot rot: a column added to an
+-- existing table in any future migration is picked up automatically.
+--
+-- Two deliberate limits:
+--   * It runs BEFORE the DDL, so every action is guarded on the table
+--     already existing. On a fresh database it is a no-op and the
+--     CREATE TABLE statements below create everything.
+--   * It restores COLUMNS and NOT NULL, never FOREIGN KEY / PRIMARY KEY /
+--     UNIQUE / CHECK. Those can be unsatisfiable on legacy rows, and a
+--     failure here aborts the whole migration (batch_execute is one
+--     implicit transaction) — i.e. it would re-create the very outage
+--     this block exists to end. A migrated database therefore differs
+--     from a fresh one by the absence of the foreign keys named in the
+--     scoping migrations; that gap is tracked, not hidden.
+--
+-- A NOT NULL column is added NULLABLE and promoted only when no row is
+-- NULL, so a legacy row can never be invented into compliance. When the
+-- promotion is refused the run raises a WARNING naming the table, the
+-- column and the NULL count.
+DO $oz_reconcile$
+DECLARE
+    r RECORD;
+    n_null BIGINT;
+BEGIN
+    FOR r IN
+        SELECT * FROM (VALUES
+            ('audit_log', 'id', 'TEXT', NULL::text, true),
+            ('audit_log', 'user_id', 'TEXT', NULL::text, true),
+            ('audit_log', 'action', 'TEXT', NULL::text, true),
+            ('audit_log', 'target_type', 'TEXT', NULL::text, false),
+            ('audit_log', 'target_id', 'TEXT', NULL::text, false),
+            ('audit_log', 'details', 'TEXT', '''{}''', false),
+            ('audit_log', 'outcome', 'TEXT', '''success''', true),
+            ('audit_log', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('audit_review_checkpoints', 'id', 'TEXT', NULL::text, true),
+            ('audit_review_checkpoints', 'store_id', 'TEXT', NULL::text, true),
+            ('audit_review_checkpoints', 'reviewer_user_id', 'TEXT', NULL::text, true),
+            ('audit_review_checkpoints', 'reviewed_at', 'TEXT', NULL::text, true),
+            ('audit_review_checkpoints', 'reviewed_through_created_at', 'TEXT', NULL::text, true),
+            ('audit_review_checkpoints', 'reviewed_through_id', 'TEXT', NULL::text, true),
+            ('audit_review_checkpoints', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('categories', 'id', 'TEXT', NULL::text, true),
+            ('categories', 'name', 'TEXT', NULL::text, true),
+            ('categories', 'colour', 'TEXT', '''#6366f1''', true),
+            ('categories', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('categories', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('categories', 'icon', 'TEXT', '''''', true),
+            ('currencies', 'code', 'TEXT', NULL::text, true),
+            ('currencies', 'numeric_code', 'TEXT', NULL::text, true),
+            ('currencies', 'name', 'TEXT', NULL::text, true),
+            ('currencies', 'minor_exponent', 'BIGINT', '2', true),
+            ('currencies', 'symbol', 'TEXT', '''''', true),
+            ('currencies', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('hardware_profiles', 'terminal_id', 'TEXT', NULL::text, true),
+            ('hardware_profiles', 'profile_json', 'TEXT', NULL::text, true),
+            ('hardware_profiles', 'schema_version', 'BIGINT', '1', true),
+            ('hardware_profiles', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('inventory_locations', 'id', 'TEXT', NULL::text, true),
+            ('inventory_locations', 'name', 'TEXT', NULL::text, true),
+            ('inventory_locations', 'type', 'TEXT', '''store''', true),
+            ('inventory_locations', 'description', 'TEXT', '''''', true),
+            ('inventory_locations', 'is_active', 'BIGINT', '1', true),
+            ('inventory_locations', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('inventory_locations', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('login_attempts', 'id', 'TEXT', NULL::text, true),
+            ('login_attempts', 'username', 'TEXT', NULL::text, true),
+            ('login_attempts', 'attempted_at', 'BIGINT', NULL::text, true),
+            ('login_attempts', 'device_id', 'TEXT', NULL::text, false),
+            ('loyalty_tiers', 'id', 'TEXT', NULL::text, true),
+            ('loyalty_tiers', 'name', 'TEXT', NULL::text, true),
+            ('loyalty_tiers', 'min_points', 'BIGINT', '0', true),
+            ('loyalty_tiers', 'points_per_unit', 'BIGINT', '10', true),
+            ('loyalty_tiers', 'colour', 'TEXT', '''#6b7280''', true),
+            ('loyalty_tiers', 'sort_order', 'BIGINT', '0', true),
+            ('loyalty_tiers', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('loyalty_tiers', 'earn_multiplier_millionths', 'BIGINT', '1000000', true),
+            ('modifier_groups', 'id', 'TEXT', NULL::text, true),
+            ('modifier_groups', 'name', 'TEXT', NULL::text, true),
+            ('modifier_groups', 'min_selections', 'BIGINT', '0', true),
+            ('modifier_groups', 'max_selections', 'BIGINT', '1', true),
+            ('modifier_groups', 'sort_order', 'BIGINT', '0', true),
+            ('modifier_groups', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('modifier_groups', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('offline_queue', 'id', 'TEXT', NULL::text, true),
+            ('offline_queue', 'action', 'TEXT', NULL::text, true),
+            ('offline_queue', 'payload', 'TEXT', NULL::text, true),
+            ('offline_queue', 'status', 'TEXT', '''pending''', true),
+            ('offline_queue', 'retry_count', 'BIGINT', '0', true),
+            ('offline_queue', 'last_error', 'TEXT', NULL::text, false),
+            ('offline_queue', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('offline_queue', 'synced_at', 'TEXT', NULL::text, false),
+            ('offline_queue', 'tenant_id', 'TEXT', '''default''', true),
+            ('offline_queue', 'priority', 'BIGINT', '1', true),
+            ('processed_webhooks', 'event_id', 'TEXT', NULL::text, true),
+            ('processed_webhooks', 'provider', 'TEXT', NULL::text, true),
+            ('processed_webhooks', 'received_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD HH24:MI:SS'')', true),
+            ('processed_webhooks', 'event_type', 'TEXT', NULL::text, false),
+            ('product_activity', 'id', 'TEXT', NULL::text, true),
+            ('product_activity', 'sku', 'TEXT', NULL::text, true),
+            ('product_activity', 'event_type', 'TEXT', NULL::text, true),
+            ('product_activity', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('product_activity', 'tenant_id', 'TEXT', '''default''', true),
+            ('promotions', 'id', 'TEXT', NULL::text, true),
+            ('promotions', 'name', 'TEXT', NULL::text, true),
+            ('promotions', 'description', 'TEXT', '''''', true),
+            ('promotions', 'promo_type', 'TEXT', NULL::text, true),
+            ('promotions', 'value_minor', 'BIGINT', '0', true),
+            ('promotions', 'min_qty', 'BIGINT', NULL::text, false),
+            ('promotions', 'trigger_sku', 'TEXT', NULL::text, false),
+            ('promotions', 'reward_sku', 'TEXT', NULL::text, false),
+            ('promotions', 'reward_qty', 'BIGINT', '1', false),
+            ('promotions', 'starts_at', 'TEXT', NULL::text, false),
+            ('promotions', 'ends_at', 'TEXT', NULL::text, false),
+            ('promotions', 'min_order_minor', 'BIGINT', '0', false),
+            ('promotions', 'category_id', 'TEXT', NULL::text, false),
+            ('promotions', 'active', 'BIGINT', '1', true),
+            ('promotions', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('promotions', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('roles', 'id', 'TEXT', NULL::text, true),
+            ('roles', 'name', 'TEXT', NULL::text, true),
+            ('roles', 'description', 'TEXT', '''''', true),
+            ('roles', 'permissions', 'TEXT', '''[]''', true),
+            ('roles', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('roles', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('setting_updated', 'id', 'BIGINT', NULL::text, true),
+            ('setting_updated', 'key', 'TEXT', NULL::text, true),
+            ('setting_updated', 'value', 'TEXT', NULL::text, true),
+            ('setting_updated', 'terminal_id', 'TEXT', '''unknown''', true),
+            ('setting_updated', 'version', 'BIGINT', NULL::text, true),
+            ('setting_updated', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('settings', 'key', 'TEXT', NULL::text, true),
+            ('settings', 'value', 'TEXT', '''''', true),
+            ('settings', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('stock_counts', 'id', 'TEXT', NULL::text, true),
+            ('stock_counts', 'count_number', 'TEXT', NULL::text, true),
+            ('stock_counts', 'status', 'TEXT', '''draft''', true),
+            ('stock_counts', 'count_type', 'TEXT', '''full''', true),
+            ('stock_counts', 'notes', 'TEXT', '''''', true),
+            ('stock_counts', 'counted_by', 'TEXT', NULL::text, false),
+            ('stock_counts', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('stock_counts', 'completed_at', 'TEXT', NULL::text, false),
+            ('stock_counts', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('stripe_customers', 'stripe_customer_id', 'TEXT', NULL::text, true),
+            ('stripe_customers', 'tenant_id', 'TEXT', NULL::text, true),
+            ('stripe_customers', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('suppliers', 'id', 'TEXT', NULL::text, true),
+            ('suppliers', 'code', 'TEXT', NULL::text, true),
+            ('suppliers', 'name', 'TEXT', NULL::text, true),
+            ('suppliers', 'contact_person', 'TEXT', '''''', true),
+            ('suppliers', 'phone', 'TEXT', '''''', true),
+            ('suppliers', 'email', 'TEXT', '''''', true),
+            ('suppliers', 'address', 'TEXT', '''''', true),
+            ('suppliers', 'tax_id', 'TEXT', '''''', true),
+            ('suppliers', 'payment_terms', 'TEXT', '''''', true),
+            ('suppliers', 'notes', 'TEXT', '''''', true),
+            ('suppliers', 'status', 'TEXT', '''active''', true),
+            ('suppliers', 'created_at', 'TEXT', NULL::text, true),
+            ('suppliers', 'updated_at', 'TEXT', NULL::text, true),
+            ('sync_applied_items', 'item_id', 'TEXT', NULL::text, true),
+            ('sync_applied_items', 'action', 'TEXT', NULL::text, true),
+            ('sync_applied_items', 'applied_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('sync_pull_state', 'id', 'BIGINT', NULL::text, true),
+            ('sync_pull_state', 'since', 'TEXT', NULL::text, false),
+            ('sync_pull_state', 'cursor', 'TEXT', NULL::text, false),
+            ('sync_remote_failures', 'item_id', 'TEXT', NULL::text, true),
+            ('sync_remote_failures', 'action', 'TEXT', NULL::text, true),
+            ('sync_remote_failures', 'payload', 'TEXT', NULL::text, true),
+            ('sync_remote_failures', 'attempts', 'BIGINT', '0', true),
+            ('sync_remote_failures', 'last_error', 'TEXT', NULL::text, true),
+            ('sync_remote_failures', 'first_failed_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('sync_remote_failures', 'last_failed_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('sync_remote_failures', 'dead_lettered', 'BIGINT', '0', true),
+            ('sync_terminals', 'terminal_id', 'TEXT', NULL::text, true),
+            ('sync_terminals', 'secret_hash', 'TEXT', NULL::text, true),
+            ('sync_terminals', 'label', 'TEXT', '''''', true),
+            ('sync_terminals', 'tenant_id', 'TEXT', NULL::text, false),
+            ('sync_terminals', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('tenant_plans', 'tenant_id', 'TEXT', NULL::text, true),
+            ('tenant_plans', 'plan', 'TEXT', '''free''', true),
+            ('tenant_plans', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('tenant_subscription', 'tenant_id', 'TEXT', NULL::text, true),
+            ('tenant_subscription', 'tier_key', 'TEXT', NULL::text, true),
+            ('tenant_subscription', 'status', 'TEXT', NULL::text, true),
+            ('tenant_subscription', 'expires_at', 'TEXT', NULL::text, false),
+            ('tenant_subscription', 'max_locations', 'BIGINT', NULL::text, true),
+            ('tenant_subscription', 'max_pos_instances', 'BIGINT', NULL::text, true),
+            ('tenant_subscription', 'allowed_types_json', 'TEXT', NULL::text, true),
+            ('tenant_subscription', 'signature', 'TEXT', NULL::text, true),
+            ('tenant_subscription', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('tenant_subscription', 'signed_payload', 'TEXT', '''''', true),
+            ('tenant_subscription', 'api_key', 'TEXT', '''''', true),
+            ('user_preferences', 'user_id', 'TEXT', NULL::text, true),
+            ('user_preferences', 'pref_key', 'TEXT', NULL::text, true),
+            ('user_preferences', 'pref_value', 'TEXT', '''''', true),
+            ('user_preferences', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('workspace_types', 'key', 'TEXT', NULL::text, true),
+            ('workspace_types', 'name', 'TEXT', NULL::text, true),
+            ('workspace_types', 'description', 'TEXT', '''''', true),
+            ('workspace_types', 'layout_mode', 'TEXT', '''fullscreen''', true),
+            ('workspace_types', 'icon', 'TEXT', '''''', true),
+            ('workspace_types', 'sort_order', 'BIGINT', '0', true),
+            ('workspace_types', 'accent_colour', 'TEXT', '''''', true),
+            ('workspaces', 'id', 'TEXT', NULL::text, true),
+            ('workspaces', 'key', 'TEXT', NULL::text, true),
+            ('workspaces', 'name', 'TEXT', NULL::text, true),
+            ('workspaces', 'description', 'TEXT', '''''', true),
+            ('workspaces', 'icon', 'TEXT', '''''', true),
+            ('sent_reports', 'tenant_id', 'TEXT', NULL::text, true),
+            ('sent_reports', 'period', 'TEXT', NULL::text, true),
+            ('sent_reports', 'report_id', 'TEXT', NULL::text, true),
+            ('sent_reports', 'sent_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('sent_reports', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('kds_daily_counters', 'date', 'TEXT', NULL::text, true),
+            ('kds_daily_counters', 'store_id', 'TEXT', '''''', true),
+            ('kds_daily_counters', 'counter', 'BIGINT', '0', true),
+            ('media_assets', 'id', 'TEXT', NULL::text, true),
+            ('media_assets', 'tenant_id', 'TEXT', '''default''', true),
+            ('media_assets', 'owner_type', 'TEXT', NULL::text, true),
+            ('media_assets', 'owner_id', 'TEXT', NULL::text, true),
+            ('media_assets', 'file_path', 'TEXT', NULL::text, true),
+            ('media_assets', 'mime_type', 'TEXT', NULL::text, true),
+            ('media_assets', 'content_hash', 'TEXT', NULL::text, false),
+            ('media_assets', 'width', 'BIGINT', NULL::text, false),
+            ('media_assets', 'height', 'BIGINT', NULL::text, false),
+            ('media_assets', 'size_bytes', 'BIGINT', '0', true),
+            ('media_assets', 'original_name', 'TEXT', NULL::text, false),
+            ('media_assets', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('media_assets', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('edc_terminals', 'id', 'TEXT', NULL::text, true),
+            ('edc_terminals', 'tenant_id', 'TEXT', '''default''', true),
+            ('edc_terminals', 'name', 'TEXT', NULL::text, true),
+            ('edc_terminals', 'connection_type', 'TEXT', NULL::text, true),
+            ('edc_terminals', 'transport', 'TEXT', NULL::text, true),
+            ('edc_terminals', 'address', 'TEXT', NULL::text, true),
+            ('edc_terminals', 'vendor', 'TEXT', NULL::text, false),
+            ('edc_terminals', 'model', 'TEXT', NULL::text, false),
+            ('edc_terminals', 'is_active', 'BIGINT', '1', true),
+            ('edc_terminals', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('edc_terminals', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('payment_gateways', 'id', 'TEXT', NULL::text, true),
+            ('payment_gateways', 'tenant_id', 'TEXT', '''default''', true),
+            ('payment_gateways', 'name', 'TEXT', NULL::text, true),
+            ('payment_gateways', 'is_active', 'BIGINT', '1', true),
+            ('payment_gateways', 'config_json', 'TEXT', '''{}''', true),
+            ('payment_gateways', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('payment_gateways', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('payment_settlements', 'id', 'TEXT', NULL::text, true),
+            ('payment_settlements', 'tenant_id', 'TEXT', '''default''', true),
+            ('payment_settlements', 'gateway', 'TEXT', NULL::text, true),
+            ('payment_settlements', 'batch_id', 'TEXT', NULL::text, true),
+            ('payment_settlements', 'settled_at', 'TEXT', NULL::text, false),
+            ('payment_settlements', 'expected_minor', 'BIGINT', '0', true),
+            ('payment_settlements', 'actual_minor', 'BIGINT', '0', true),
+            ('payment_settlements', 'currency', 'TEXT', '''USD''', true),
+            ('payment_settlements', 'status', 'TEXT', '''pending''', true),
+            ('payment_settlements', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('payment_settlements', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('image_refs', 'tenant_id', 'TEXT', NULL::text, true),
+            ('image_refs', 'hash', 'TEXT', NULL::text, true),
+            ('image_refs', 'refcount', 'BIGINT', '0', true),
+            ('image_refs', 'bytes', 'BIGINT', '0', true),
+            ('image_refs', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('image_push_queue', 'hash', 'TEXT', NULL::text, true),
+            ('image_push_queue', 'size_bytes', 'BIGINT', NULL::text, true),
+            ('image_push_queue', 'attempts', 'BIGINT', '0', true),
+            ('image_push_queue', 'next_attempt_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('image_push_queue', 'enqueued_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('outbox', 'id', 'TEXT', NULL::text, true),
+            ('outbox', 'topic', 'TEXT', NULL::text, true),
+            ('outbox', 'payload', 'TEXT', NULL::text, true),
+            ('outbox', 'status', 'TEXT', '''pending''', true),
+            ('outbox', 'priority', 'BIGINT', '0', true),
+            ('outbox', 'max_attempts', 'BIGINT', '5', true),
+            ('outbox', 'attempts', 'BIGINT', '0', true),
+            ('outbox', 'next_attempt_at', 'TEXT', NULL::text, true),
+            ('outbox', 'created_at', 'TEXT', NULL::text, true),
+            ('outbox', 'last_error', 'TEXT', NULL::text, false),
+            ('snapshot_versions', 'tenant_id', 'TEXT', NULL::text, true),
+            ('snapshot_versions', 'version', 'BIGINT', '0', true),
+            ('snapshot_versions', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('webhook_endpoints', 'id', 'TEXT', NULL::text, true),
+            ('webhook_endpoints', 'tenant_id', 'TEXT', '''default''', true),
+            ('webhook_endpoints', 'url', 'TEXT', NULL::text, true),
+            ('webhook_endpoints', 'secret', 'TEXT', NULL::text, true),
+            ('webhook_endpoints', 'events', 'TEXT', '''["*"]''', true),
+            ('webhook_endpoints', 'active', 'BIGINT', '1', true),
+            ('webhook_endpoints', 'created_at', 'TEXT', NULL::text, true),
+            ('webhook_endpoints', 'updated_at', 'TEXT', NULL::text, true),
+            ('legal_entities', 'id', 'TEXT', NULL::text, true),
+            ('legal_entities', 'tenant_id', 'TEXT', NULL::text, true),
+            ('legal_entities', 'name', 'TEXT', NULL::text, true),
+            ('legal_entities', 'legal_name', 'TEXT', '''''', true),
+            ('legal_entities', 'registration_number', 'TEXT', '''''', true),
+            ('legal_entities', 'tax_id', 'TEXT', '''''', true),
+            ('legal_entities', 'status', 'TEXT', '''active''', true),
+            ('legal_entities', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('legal_entities', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('legal_entities', 'country_code', 'TEXT', '''''', true),
+            ('legal_entities', 'locale', 'TEXT', '''''', true),
+            ('legal_entities', 'timezone', 'TEXT', '''''', true),
+            ('legal_entities', 'currency', 'TEXT', '''''', true),
+            ('memos', 'id', 'TEXT', NULL::text, true),
+            ('memos', 'tenant_id', 'TEXT', NULL::text, true),
+            ('memos', 'author_user_id', 'TEXT', NULL::text, true),
+            ('memos', 'author_role', 'TEXT', NULL::text, true),
+            ('memos', 'title', 'TEXT', NULL::text, true),
+            ('memos', 'body', 'TEXT', NULL::text, true),
+            ('memos', 'status', 'TEXT', '''draft''', true),
+            ('memos', 'duration', 'TEXT', '''24h''', true),
+            ('memos', 'revision', 'BIGINT', '1', true),
+            ('memos', 'published_at', 'TEXT', NULL::text, false),
+            ('memos', 'expires_at', 'TEXT', NULL::text, false),
+            ('memos', 'stopped_at', 'TEXT', NULL::text, false),
+            ('memos', 'stopped_by', 'TEXT', NULL::text, false),
+            ('memos', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('memos', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('memos', 'archived_at', 'TEXT', NULL::text, false),
+            ('topology_revisions', 'id', 'TEXT', NULL::text, true),
+            ('topology_revisions', 'branch_id', 'TEXT', '''''', true),
+            ('topology_revisions', 'revision', 'BIGINT', NULL::text, true),
+            ('topology_revisions', 'change_note', 'TEXT', '''''', true),
+            ('topology_revisions', 'diagram', 'TEXT', NULL::text, false),
+            ('topology_revisions', 'workspace_creations', 'BIGINT', '0', true),
+            ('topology_revisions', 'workspace_updates', 'BIGINT', '0', true),
+            ('topology_revisions', 'workspace_archives', 'BIGINT', '0', true),
+            ('topology_revisions', 'node_count', 'BIGINT', '0', true),
+            ('topology_revisions', 'wire_count', 'BIGINT', '0', true),
+            ('topology_revisions', 'contract_schema_version', 'BIGINT', NULL::text, true),
+            ('topology_revisions', 'pinned', 'BIGINT', '0', true),
+            ('topology_revisions', 'published_at', 'TEXT', NULL::text, true),
+            ('topology_revisions', 'published_by', 'TEXT', NULL::text, true),
+            ('topology_revisions', 'tenant_id', 'TEXT', '''default''', true),
+            ('over_quota_markers', 'id', 'BIGINT', NULL::text, true),
+            ('over_quota_markers', 'resource_id', 'TEXT', NULL::text, true),
+            ('over_quota_markers', 'resource_type', 'TEXT', NULL::text, true),
+            ('over_quota_markers', 'dimension', 'TEXT', NULL::text, true),
+            ('over_quota_markers', 'severity', 'TEXT', NULL::text, true),
+            ('over_quota_markers', 'limit', 'BIGINT', NULL::text, false),
+            ('over_quota_markers', 'current', 'BIGINT', NULL::text, true),
+            ('over_quota_markers', 'marked_at', 'TEXT', NULL::text, true),
+            ('over_quota_markers', 'tenant_id', 'TEXT', '''default''', true),
+            ('local_payment_methods', 'id', 'TEXT', NULL::text, true),
+            ('local_payment_methods', 'tenant_id', 'TEXT', '''default''', true),
+            ('local_payment_methods', 'scope_type', 'TEXT', NULL::text, true),
+            ('local_payment_methods', 'scope_id', 'TEXT', NULL::text, true),
+            ('local_payment_methods', 'rail_code', 'TEXT', NULL::text, true),
+            ('local_payment_methods', 'label', 'TEXT', NULL::text, true),
+            ('local_payment_methods', 'is_enabled', 'BIGINT', '1', true),
+            ('local_payment_methods', 'parameters', 'TEXT', '''{}''', true),
+            ('local_payment_methods', 'created_at', 'TEXT', NULL::text, true),
+            ('local_payment_methods', 'updated_at', 'TEXT', NULL::text, true),
+            ('receipt_formats', 'id', 'TEXT', NULL::text, true),
+            ('receipt_formats', 'tenant_id', 'TEXT', '''default''', true),
+            ('receipt_formats', 'scope_type', 'TEXT', NULL::text, true),
+            ('receipt_formats', 'scope_id', 'TEXT', NULL::text, true),
+            ('receipt_formats', 'config', 'TEXT', '''{}''', true),
+            ('receipt_formats', 'paper_width_mm', 'BIGINT', NULL::text, false),
+            ('receipt_formats', 'created_at', 'TEXT', NULL::text, true),
+            ('receipt_formats', 'updated_at', 'TEXT', NULL::text, true),
+            ('sale_idempotency', 'tenant_id', 'TEXT', '''default''', true),
+            ('sale_idempotency', 'key', 'TEXT', NULL::text, false),
+            ('sale_idempotency', 'sale_id', 'TEXT', NULL::text, true),
+            ('sale_idempotency', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('sync_conflicts', 'id', 'TEXT', NULL::text, true),
+            ('sync_conflicts', 'tenant_id', 'TEXT', '''default''', true),
+            ('sync_conflicts', 'entity_type', 'TEXT', NULL::text, true),
+            ('sync_conflicts', 'entity_id', 'TEXT', NULL::text, true),
+            ('sync_conflicts', 'local_terminal_id', 'TEXT', NULL::text, true),
+            ('sync_conflicts', 'local_vector', 'TEXT', NULL::text, true),
+            ('sync_conflicts', 'remote_vector', 'TEXT', NULL::text, true),
+            ('sync_conflicts', 'local_payload', 'TEXT', NULL::text, true),
+            ('sync_conflicts', 'remote_payload', 'TEXT', NULL::text, true),
+            ('sync_conflicts', 'severity', 'TEXT', NULL::text, true),
+            ('sync_conflicts', 'status', 'TEXT', '''open''', true),
+            ('sync_conflicts', 'resolution', 'TEXT', NULL::text, false),
+            ('sync_conflicts', 'resolved_by', 'TEXT', NULL::text, false),
+            ('sync_conflicts', 'resolved_at', 'TEXT', NULL::text, false),
+            ('sync_conflicts', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('sync_entity_vectors', 'tenant_id', 'TEXT', '''default''', true),
+            ('sync_entity_vectors', 'entity_type', 'TEXT', NULL::text, true),
+            ('sync_entity_vectors', 'entity_id', 'TEXT', NULL::text, true),
+            ('sync_entity_vectors', 'vector', 'TEXT', NULL::text, true),
+            ('sync_entity_vectors', 'last_payload', 'TEXT', '''''', true),
+            ('sync_entity_vectors', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('midtrans_transactions', 'order_id', 'TEXT', NULL::text, true),
+            ('midtrans_transactions', 'tenant_id', 'TEXT', NULL::text, true),
+            ('midtrans_transactions', 'sale_id', 'TEXT', NULL::text, true),
+            ('midtrans_transactions', 'amount_minor', 'BIGINT', NULL::text, true),
+            ('midtrans_transactions', 'currency', 'TEXT', '''IDR''', true),
+            ('midtrans_transactions', 'status', 'TEXT', '''issued''', true),
+            ('midtrans_transactions', 'created_at', 'TEXT', NULL::text, true),
+            ('midtrans_transactions', 'updated_at', 'TEXT', NULL::text, true),
+            ('exchange_rates', 'id', 'TEXT', NULL::text, true),
+            ('exchange_rates', 'from_currency', 'TEXT', NULL::text, true),
+            ('exchange_rates', 'to_currency', 'TEXT', NULL::text, true),
+            ('exchange_rates', 'source', 'TEXT', '''manual''', true),
+            ('exchange_rates', 'effective_date', 'TEXT', NULL::text, true),
+            ('exchange_rates', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('exchange_rates', 'rate_millionths', 'BIGINT', '0', true),
+            ('active_carts', 'id', 'TEXT', NULL::text, true),
+            ('active_carts', 'cart_data', 'TEXT', NULL::text, true),
+            ('active_carts', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('active_carts', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('active_carts', 'deduction_location_id', 'TEXT', NULL::text, false),
+            ('active_carts', 'location_override_at', 'TEXT', NULL::text, false),
+            ('held_carts', 'id', 'TEXT', NULL::text, true),
+            ('held_carts', 'label', 'TEXT', NULL::text, true),
+            ('held_carts', 'cart_data', 'TEXT', NULL::text, true),
+            ('held_carts', 'item_count', 'BIGINT', '0', true),
+            ('held_carts', 'total_minor', 'BIGINT', '0', true),
+            ('held_carts', 'currency', 'TEXT', '''USD''', true),
+            ('held_carts', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('held_carts', 'bill_type', 'TEXT', '''hold''', true),
+            ('held_carts', 'customer_name', 'TEXT', NULL::text, false),
+            ('held_carts', 'deduction_location_id', 'TEXT', NULL::text, false),
+            ('modifiers', 'id', 'TEXT', NULL::text, true),
+            ('modifiers', 'group_id', 'TEXT', NULL::text, true),
+            ('modifiers', 'name', 'TEXT', NULL::text, true),
+            ('modifiers', 'price_minor', 'BIGINT', '0', true),
+            ('modifiers', 'sort_order', 'BIGINT', '0', true),
+            ('modifiers', 'is_default', 'BIGINT', '0', true),
+            ('modifiers', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('modifiers', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('users', 'id', 'TEXT', NULL::text, true),
+            ('users', 'username', 'TEXT', NULL::text, true),
+            ('users', 'pin_hash', 'TEXT', NULL::text, true),
+            ('users', 'display_name', 'TEXT', NULL::text, true),
+            ('users', 'role_id', 'TEXT', NULL::text, true),
+            ('users', 'is_active', 'BIGINT', '1', true),
+            ('users', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('users', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('users', 'tenant_id', 'TEXT', '''default''', true),
+            ('users', 'date_of_birth', 'TEXT', NULL::text, false),
+            ('users', 'phone', 'TEXT', NULL::text, false),
+            ('users', 'national_id_type', 'TEXT', NULL::text, false),
+            ('users', 'national_id', 'TEXT', NULL::text, false),
+            ('users', 'email', 'TEXT', NULL::text, false),
+            ('users', 'monthly_take_home_minor', 'BIGINT', NULL::text, false),
+            ('users', 'emergency_contact_name', 'TEXT', NULL::text, false),
+            ('users', 'emergency_contact_phone', 'TEXT', NULL::text, false),
+            ('users', 'job_title', 'TEXT', '''''', true),
+            ('users', 'notes', 'TEXT', '''''', true),
+            ('users', 'address', 'TEXT', NULL::text, false),
+            ('users', 'language', 'TEXT', NULL::text, false),
+            ('users', 'avatar', 'TEXT', NULL::text, false),
+            ('users', 'tax_id', 'TEXT', NULL::text, false),
+            ('users', 'national_id_expires_at', 'TEXT', NULL::text, false),
+            ('users', 'emergency_contact_relationship', 'TEXT', NULL::text, false),
+            ('users', 'hire_date', 'TEXT', NULL::text, false),
+            ('users', 'national_id_hash', 'TEXT', NULL::text, false),
+            ('stock_adjustments', 'id', 'TEXT', NULL::text, true),
+            ('stock_adjustments', 'count_id', 'TEXT', NULL::text, false),
+            ('stock_adjustments', 'sku', 'TEXT', NULL::text, true),
+            ('stock_adjustments', 'product_name', 'TEXT', '''''', true),
+            ('stock_adjustments', 'previous_qty', 'BIGINT', '0', true),
+            ('stock_adjustments', 'adjusted_qty', 'BIGINT', '0', true),
+            ('stock_adjustments', 'reason', 'TEXT', '''''', true),
+            ('stock_adjustments', 'created_by', 'TEXT', NULL::text, false),
+            ('stock_adjustments', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('stock_count_lines', 'id', 'TEXT', NULL::text, true),
+            ('stock_count_lines', 'count_id', 'TEXT', NULL::text, true),
+            ('stock_count_lines', 'sku', 'TEXT', NULL::text, true),
+            ('stock_count_lines', 'product_name', 'TEXT', '''''', true),
+            ('stock_count_lines', 'expected_qty', 'BIGINT', '0', true),
+            ('stock_count_lines', 'counted_qty', 'BIGINT', NULL::text, false),
+            ('stock_count_lines', 'difference', 'BIGINT', '0', true),
+            ('stock_count_lines', 'notes', 'TEXT', '''''', true),
+            ('role_workspace_types', 'id', 'BIGINT', NULL::text, true),
+            ('role_workspace_types', 'role_id', 'TEXT', NULL::text, true),
+            ('role_workspace_types', 'type_key', 'TEXT', NULL::text, true),
+            ('workspace_type_screens', 'id', 'BIGINT', NULL::text, true),
+            ('workspace_type_screens', 'type_key', 'TEXT', NULL::text, true),
+            ('workspace_type_screens', 'screen_key', 'TEXT', NULL::text, true),
+            ('workspace_type_screens', 'sort_order', 'BIGINT', '0', true),
+            ('role_workspaces', 'id', 'BIGINT', NULL::text, true),
+            ('role_workspaces', 'role_id', 'TEXT', NULL::text, true),
+            ('role_workspaces', 'workspace_key', 'TEXT', NULL::text, true),
+            ('workspace_screens', 'id', 'BIGINT', NULL::text, true),
+            ('workspace_screens', 'workspace_key', 'TEXT', NULL::text, true),
+            ('workspace_screens', 'screen_key', 'TEXT', NULL::text, true),
+            ('workspace_screens', 'label', 'TEXT', '''''', true),
+            ('workspace_screens', 'sort_order', 'BIGINT', '0', true),
+            ('media_thumbnails', 'id', 'TEXT', NULL::text, true),
+            ('media_thumbnails', 'tenant_id', 'TEXT', '''default''', true),
+            ('media_thumbnails', 'asset_id', 'TEXT', NULL::text, true),
+            ('media_thumbnails', 'preset', 'TEXT', NULL::text, true),
+            ('media_thumbnails', 'file_path', 'TEXT', NULL::text, true),
+            ('media_thumbnails', 'width', 'BIGINT', NULL::text, true),
+            ('media_thumbnails', 'height', 'BIGINT', NULL::text, true),
+            ('media_thumbnails', 'size_bytes', 'BIGINT', '0', true),
+            ('media_thumbnails', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('locations', 'id', 'TEXT', NULL::text, true),
+            ('locations', 'name', 'TEXT', NULL::text, true),
+            ('locations', 'address', 'TEXT', '''''', false),
+            ('locations', 'tax_id', 'TEXT', '''''', false),
+            ('locations', 'currency', 'TEXT', '''USD''', true),
+            ('locations', 'timezone', 'TEXT', '''UTC''', true),
+            ('locations', 'is_primary', 'BIGINT', '0', true),
+            ('locations', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('locations', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('locations', 'tenant_id', 'TEXT', '''default''', true),
+            ('locations', 'legal_entity_id', 'TEXT', NULL::text, false),
+            ('locations', 'locale', 'TEXT', '''''', true),
+            ('locations', 'ticket_prefix', 'TEXT', '''''', true),
+            ('fiscal_schemes', 'id', 'TEXT', NULL::text, true),
+            ('fiscal_schemes', 'tenant_id', 'TEXT', '''default''', true),
+            ('fiscal_schemes', 'legal_entity_id', 'TEXT', NULL::text, true),
+            ('fiscal_schemes', 'scheme_code', 'TEXT', NULL::text, true),
+            ('fiscal_schemes', 'name', 'TEXT', NULL::text, true),
+            ('fiscal_schemes', 'parameters', 'TEXT', '''{}''', true),
+            ('fiscal_schemes', 'is_active', 'BIGINT', '1', true),
+            ('fiscal_schemes', 'created_at', 'TEXT', NULL::text, true),
+            ('fiscal_schemes', 'updated_at', 'TEXT', NULL::text, true),
+            ('document_number_sequences', 'id', 'TEXT', NULL::text, true),
+            ('document_number_sequences', 'tenant_id', 'TEXT', '''default''', true),
+            ('document_number_sequences', 'legal_entity_id', 'TEXT', NULL::text, true),
+            ('document_number_sequences', 'document_kind', 'TEXT', NULL::text, true),
+            ('document_number_sequences', 'prefix', 'TEXT', '''''', true),
+            ('document_number_sequences', 'current_value', 'BIGINT', '0', true),
+            ('document_number_sequences', 'reset_period', 'TEXT', '''never''', true),
+            ('document_number_sequences', 'period_key', 'TEXT', '''''', true),
+            ('document_number_sequences', 'padding', 'BIGINT', '0', true),
+            ('document_number_sequences', 'created_at', 'TEXT', NULL::text, true),
+            ('document_number_sequences', 'updated_at', 'TEXT', NULL::text, true),
+            ('memo_revisions', 'id', 'TEXT', NULL::text, true),
+            ('memo_revisions', 'memo_id', 'TEXT', NULL::text, true),
+            ('memo_revisions', 'revision', 'BIGINT', NULL::text, true),
+            ('memo_revisions', 'title', 'TEXT', NULL::text, true),
+            ('memo_revisions', 'body', 'TEXT', NULL::text, true),
+            ('memo_revisions', 'published_at', 'TEXT', NULL::text, true),
+            ('memo_revisions', 'published_by', 'TEXT', NULL::text, true),
+            ('memo_revisions', 'tenant_id', 'TEXT', '''default''', true),
+            ('assignments', 'user_id', 'TEXT', NULL::text, true),
+            ('assignments', 'role_id', 'TEXT', NULL::text, true),
+            ('assignments', 'scope_mode', 'TEXT', '''global''', true),
+            ('assignments', 'branch_scope', 'TEXT', '''all''', true),
+            ('assignments', 'workspace_scope', 'TEXT', '''all''', true),
+            ('assignments', 'expires_at', 'TEXT', NULL::text, false),
+            ('assignments', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('assignments', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('assignments', 'scope_type', 'TEXT', '''organization''', true),
+            ('assignments', 'scope_id', 'TEXT', NULL::text, false),
+            ('gift_cards', 'id', 'TEXT', NULL::text, true),
+            ('gift_cards', 'card_number', 'TEXT', NULL::text, true),
+            ('gift_cards', 'pin', 'TEXT', '''''', true),
+            ('gift_cards', 'initial_balance_minor', 'BIGINT', '0', true),
+            ('gift_cards', 'current_balance_minor', 'BIGINT', '0', true),
+            ('gift_cards', 'currency', 'TEXT', '''IDR''', true),
+            ('gift_cards', 'status', 'TEXT', '''active''', true),
+            ('gift_cards', 'issued_to', 'TEXT', '''''', true),
+            ('gift_cards', 'issue_date', 'TEXT', NULL::text, true),
+            ('gift_cards', 'expiry_date', 'TEXT', NULL::text, false),
+            ('gift_cards', 'created_by', 'TEXT', NULL::text, false),
+            ('gift_cards', 'updated_at', 'TEXT', NULL::text, true),
+            ('purchase_orders', 'id', 'TEXT', NULL::text, true),
+            ('purchase_orders', 'po_number', 'TEXT', NULL::text, true),
+            ('purchase_orders', 'supplier_id', 'TEXT', NULL::text, true),
+            ('purchase_orders', 'status', 'TEXT', '''draft''', true),
+            ('purchase_orders', 'order_date', 'TEXT', NULL::text, true),
+            ('purchase_orders', 'expected_date', 'TEXT', '''''', true),
+            ('purchase_orders', 'received_date', 'TEXT', NULL::text, false),
+            ('purchase_orders', 'subtotal_minor', 'BIGINT', '0', true),
+            ('purchase_orders', 'tax_minor', 'BIGINT', '0', true),
+            ('purchase_orders', 'total_minor', 'BIGINT', '0', true),
+            ('purchase_orders', 'notes', 'TEXT', '''''', true),
+            ('purchase_orders', 'created_by', 'TEXT', NULL::text, false),
+            ('purchase_orders', 'created_at', 'TEXT', NULL::text, true),
+            ('purchase_orders', 'updated_at', 'TEXT', NULL::text, true),
+            ('purchase_orders', 'location_id', 'TEXT', NULL::text, false),
+            ('user_workspaces', 'id', 'BIGINT', NULL::text, true),
+            ('user_workspaces', 'user_id', 'TEXT', NULL::text, true),
+            ('user_workspaces', 'ws_key', 'TEXT', NULL::text, true),
+            ('user_workspaces', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('customers', 'id', 'TEXT', NULL::text, true),
+            ('customers', 'name', 'TEXT', NULL::text, true),
+            ('customers', 'email', 'TEXT', NULL::text, false),
+            ('customers', 'phone', 'TEXT', NULL::text, false),
+            ('customers', 'loyalty_points', 'BIGINT', '0', true),
+            ('customers', 'total_spent_minor', 'BIGINT', '0', true),
+            ('customers', 'currency', 'TEXT', '''USD''', true),
+            ('customers', 'notes', 'TEXT', '''''', true),
+            ('customers', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('customers', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('customers', 'store_id', 'TEXT', NULL::text, false),
+            ('terminals', 'id', 'TEXT', NULL::text, true),
+            ('terminals', 'name', 'TEXT', NULL::text, true),
+            ('terminals', 'device_id', 'TEXT', NULL::text, true),
+            ('terminals', 'terminal_secret', 'TEXT', NULL::text, false),
+            ('terminals', 'is_active', 'BIGINT', '1', true),
+            ('terminals', 'last_seen_at', 'TEXT', NULL::text, false),
+            ('terminals', 'metadata', 'TEXT', NULL::text, false),
+            ('terminals', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('terminals', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('terminals', 'bound_location_id', 'TEXT', NULL::text, false),
+            ('terminals', 'bound_instance_id', 'TEXT', NULL::text, false),
+            ('terminals', 'binding_signature', 'TEXT', NULL::text, false),
+            ('terminals', 'tenant_id', 'TEXT', '''default''', true),
+            ('user_location_access', 'user_id', 'TEXT', NULL::text, true),
+            ('user_location_access', 'location_id', 'TEXT', NULL::text, true),
+            ('user_location_access', 'access_level', 'TEXT', '''operator''', true),
+            ('user_location_access', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('user_location_access', 'tenant_id', 'TEXT', '''default''', true),
+            ('workspace_instances', 'id', 'TEXT', NULL::text, true),
+            ('workspace_instances', 'type_key', 'TEXT', NULL::text, true),
+            ('workspace_instances', 'location_id', 'TEXT', NULL::text, true),
+            ('workspace_instances', 'name', 'TEXT', NULL::text, true),
+            ('workspace_instances', 'description', 'TEXT', '''''', true),
+            ('workspace_instances', 'colour', 'TEXT', NULL::text, false),
+            ('workspace_instances', 'status', 'TEXT', '''active''', true),
+            ('workspace_instances', 'last_accessed_at', 'TEXT', NULL::text, false),
+            ('workspace_instances', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('workspace_instances', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('workspace_instances', 'bound_location_id', 'TEXT', NULL::text, false),
+            ('workspace_instances', 'purpose_key', 'TEXT', '''general''', true),
+            ('products', 'id', 'TEXT', NULL::text, true),
+            ('products', 'sku', 'TEXT', NULL::text, true),
+            ('products', 'name', 'TEXT', NULL::text, true),
+            ('products', 'price_minor', 'BIGINT', NULL::text, true),
+            ('products', 'currency', 'TEXT', NULL::text, true),
+            ('products', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('products', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('products', 'category_id', 'TEXT', NULL::text, false),
+            ('products', 'barcode', 'TEXT', NULL::text, false),
+            ('products', 'price_updated_at', 'TEXT', '''''', false),
+            ('products', 'track_serial', 'BIGINT', '0', true),
+            ('products', 'product_type', 'TEXT', '''retail''', true),
+            ('products', 'cost_minor', 'BIGINT', '0', true),
+            ('products', 'version', 'BIGINT', '1', true),
+            ('products', 'store_id', 'TEXT', NULL::text, false),
+            ('products', 'tenant_id', 'TEXT', '''default''', true),
+            ('products', 'kitchen_zone', 'TEXT', NULL::text, false),
+            ('products', 'brand', 'TEXT', NULL::text, false),
+            ('products', 'rack_location', 'TEXT', NULL::text, false),
+            ('products', 'notes', 'TEXT', NULL::text, false),
+            ('products', 'unit', 'TEXT', NULL::text, false),
+            ('products', 'is_active', 'BIGINT', '1', true),
+            ('products', 'default_supplier_id', 'TEXT', NULL::text, false),
+            ('products', 'popularity_score', 'DOUBLE PRECISION', '0', true),
+            ('products', 'image_hash', 'TEXT', NULL::text, false),
+            ('memo_locations', 'memo_id', 'TEXT', NULL::text, true),
+            ('memo_locations', 'location_id', 'TEXT', NULL::text, true),
+            ('memo_locations', 'tenant_id', 'TEXT', '''default''', true),
+            ('tax_rates', 'id', 'TEXT', NULL::text, true),
+            ('tax_rates', 'name', 'TEXT', NULL::text, true),
+            ('tax_rates', 'rate_bps', 'BIGINT', NULL::text, true),
+            ('tax_rates', 'is_default', 'BIGINT', '0', true),
+            ('tax_rates', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('tax_rates', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('tax_rates', 'is_inclusive', 'BIGINT', '0', true),
+            ('tax_rates', 'tenant_id', 'TEXT', '''default''', true),
+            ('tax_rates', 'is_active', 'BIGINT', '1', true),
+            ('tax_rates', 'legal_entity_id', 'TEXT', NULL::text, false),
+            ('tax_rates', 'location_id', 'TEXT', NULL::text, false),
+            ('tax_rates', 'effective_from', 'TEXT', NULL::text, false),
+            ('tax_rates', 'effective_to', 'TEXT', NULL::text, false),
+            ('tax_rates', 'rounding_mode', 'TEXT', '''''', true),
+            ('assignment_branches', 'assignment_user_id', 'TEXT', NULL::text, true),
+            ('assignment_branches', 'branch_id', 'TEXT', NULL::text, true),
+            ('assignment_workspaces', 'assignment_user_id', 'TEXT', NULL::text, true),
+            ('assignment_workspaces', 'workspace_key', 'TEXT', NULL::text, true),
+            ('purchase_order_lines', 'id', 'TEXT', NULL::text, true),
+            ('purchase_order_lines', 'po_id', 'TEXT', NULL::text, true),
+            ('purchase_order_lines', 'sku', 'TEXT', '''''', true),
+            ('purchase_order_lines', 'product_name', 'TEXT', '''''', true),
+            ('purchase_order_lines', 'qty', 'BIGINT', '0', true),
+            ('purchase_order_lines', 'unit_cost_minor', 'BIGINT', '0', true),
+            ('purchase_order_lines', 'line_total_minor', 'BIGINT', '0', true),
+            ('purchase_order_lines', 'received_qty', 'BIGINT', '0', true),
+            ('purchase_order_lines', 'damaged_qty', 'BIGINT', '0', true),
+            ('payables', 'id', 'TEXT', NULL::text, true),
+            ('payables', 'tenant_id', 'TEXT', NULL::text, true),
+            ('payables', 'supplier_id', 'TEXT', NULL::text, true),
+            ('payables', 'po_id', 'TEXT', NULL::text, false),
+            ('payables', 'source', 'TEXT', '''manual''', true),
+            ('payables', 'reference', 'TEXT', '''''', true),
+            ('payables', 'amount_minor', 'BIGINT', NULL::text, true),
+            ('payables', 'paid_minor', 'BIGINT', '0', true),
+            ('payables', 'currency', 'TEXT', '''IDR''', true),
+            ('payables', 'due_date', 'TEXT', NULL::text, false),
+            ('payables', 'status', 'TEXT', '''open''', true),
+            ('payables', 'note', 'TEXT', '''''', true),
+            ('payables', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('payables', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('payables', 'settled_at', 'TEXT', NULL::text, false),
+            ('payables', 'written_off_at', 'TEXT', NULL::text, false),
+            ('loyalty_accounts', 'id', 'TEXT', NULL::text, true),
+            ('loyalty_accounts', 'customer_id', 'TEXT', NULL::text, true),
+            ('loyalty_accounts', 'points', 'BIGINT', '0', true),
+            ('loyalty_accounts', 'lifetime_points', 'BIGINT', '0', true),
+            ('loyalty_accounts', 'tier_id', 'TEXT', NULL::text, false),
+            ('loyalty_accounts', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('loyalty_accounts', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('sales', 'id', 'TEXT', NULL::text, true),
+            ('sales', 'total_minor', 'BIGINT', NULL::text, true),
+            ('sales', 'currency', 'TEXT', NULL::text, true),
+            ('sales', 'line_count', 'BIGINT', NULL::text, true),
+            ('sales', 'status', 'TEXT', '''active''', true),
+            ('sales', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('sales', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('sales', 'payment_method', 'TEXT', NULL::text, false),
+            ('sales', 'tendered_minor', 'BIGINT', NULL::text, false),
+            ('sales', 'discount_percent', 'BIGINT', '0', true),
+            ('sales', 'discount_label', 'TEXT', NULL::text, false),
+            ('sales', 'user_id', 'TEXT', NULL::text, false),
+            ('sales', 'subtotal_minor', 'BIGINT', '0', true),
+            ('sales', 'tax_total_minor', 'BIGINT', '0', true),
+            ('sales', 'customer_id', 'TEXT', NULL::text, false),
+            ('sales', 'version', 'BIGINT', '1', true),
+            ('sales', 'store_id', 'TEXT', NULL::text, false),
+            ('sales', 'deduction_locations', 'TEXT', NULL::text, false),
+            ('sales', 'pending_expires_at', 'TEXT', NULL::text, false),
+            ('sales', 'payment_reference', 'TEXT', NULL::text, false),
+            ('sales', 'captured_at', 'TEXT', NULL::text, false),
+            ('sales', 'tenant_id', 'TEXT', '''default''', true),
+            ('sales', 'base_currency', 'TEXT', NULL::text, false),
+            ('sales', 'base_total_minor', 'BIGINT', NULL::text, false),
+            ('sales', 'tender_rate_millionths', 'BIGINT', NULL::text, false),
+            ('sales', 'tip_minor', 'BIGINT', '0', true),
+            ('sales', 'service_charge_minor', 'BIGINT', '0', true),
+            ('sales', 'statutory_number', 'TEXT', NULL::text, false),
+            ('sales', 'tax_estimate_note', 'TEXT', NULL::text, false),
+            ('inventory_shifts', 'id', 'TEXT', NULL::text, true),
+            ('inventory_shifts', 'user_id', 'TEXT', NULL::text, true),
+            ('inventory_shifts', 'location_id', 'TEXT', NULL::text, true),
+            ('inventory_shifts', 'terminal_id', 'TEXT', NULL::text, false),
+            ('inventory_shifts', 'started_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('inventory_shifts', 'ended_at', 'TEXT', NULL::text, false),
+            ('inventory_shifts', 'status', 'TEXT', '''active''', true),
+            ('inventory_shifts', 'notes', 'TEXT', '''''', true),
+            ('inventory_shifts', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('inventory_shifts', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('shifts', 'id', 'TEXT', NULL::text, true),
+            ('shifts', 'user_id', 'TEXT', NULL::text, true),
+            ('shifts', 'terminal_id', 'TEXT', NULL::text, false),
+            ('shifts', 'opened_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('shifts', 'closed_at', 'TEXT', NULL::text, false),
+            ('shifts', 'opening_balance_minor', 'BIGINT', '0', true),
+            ('shifts', 'closing_balance_minor', 'BIGINT', NULL::text, false),
+            ('shifts', 'expected_cash_minor', 'BIGINT', NULL::text, false),
+            ('shifts', 'cash_difference_minor', 'BIGINT', NULL::text, false),
+            ('shifts', 'total_sales_minor', 'BIGINT', '0', true),
+            ('shifts', 'total_cash_minor', 'BIGINT', '0', true),
+            ('shifts', 'total_card_minor', 'BIGINT', '0', true),
+            ('shifts', 'total_other_minor', 'BIGINT', '0', true),
+            ('shifts', 'total_voids_minor', 'BIGINT', '0', true),
+            ('shifts', 'total_refunds_minor', 'BIGINT', '0', true),
+            ('shifts', 'notes', 'TEXT', '''''', true),
+            ('shifts', 'status', 'TEXT', '''open''', true),
+            ('shifts', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('shifts', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('shifts', 'total_payouts_minor', 'BIGINT', '0', true),
+            ('stock_transfers', 'id', 'TEXT', NULL::text, true),
+            ('stock_transfers', 'transfer_number', 'TEXT', NULL::text, true),
+            ('stock_transfers', 'status', 'TEXT', '''draft''', true),
+            ('stock_transfers', 'source_location_old', 'TEXT', NULL::text, false),
+            ('stock_transfers', 'destination_location_old', 'TEXT', NULL::text, false),
+            ('stock_transfers', 'source_location_id', 'TEXT', '''01926b3a-0000-7000-8000-000000000001''', true),
+            ('stock_transfers', 'destination_location_id', 'TEXT', '''01926b3a-0000-7000-8000-000000000001''', true),
+            ('stock_transfers', 'source_terminal_id', 'TEXT', NULL::text, false),
+            ('stock_transfers', 'destination_terminal_id', 'TEXT', NULL::text, false),
+            ('stock_transfers', 'notes', 'TEXT', '''''', true),
+            ('stock_transfers', 'created_by', 'TEXT', NULL::text, true),
+            ('stock_transfers', 'received_by', 'TEXT', NULL::text, false),
+            ('stock_transfers', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('stock_transfers', 'sent_at', 'TEXT', NULL::text, false),
+            ('stock_transfers', 'received_at', 'TEXT', NULL::text, false),
+            ('stock_transfers', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('terminal_feature_overrides', 'terminal_id', 'TEXT', NULL::text, true),
+            ('terminal_feature_overrides', 'feature', 'TEXT', NULL::text, true),
+            ('terminal_feature_overrides', 'enabled', 'BIGINT', '1', true),
+            ('terminal_feature_overrides', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('terminal_feature_overrides', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('terminal_profiles', 'terminal_id', 'TEXT', NULL::text, true),
+            ('terminal_profiles', 'profile_type', 'TEXT', '''unrestricted''', true),
+            ('terminal_profiles', 'locked_screen', 'TEXT', NULL::text, false),
+            ('terminal_profiles', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('kds_devices', 'id', 'TEXT', NULL::text, true),
+            ('kds_devices', 'name', 'TEXT', NULL::text, true),
+            ('kds_devices', 'restaurant_pos_id', 'TEXT', NULL::text, true),
+            ('kds_devices', 'station_ids', 'TEXT', '''[]''', true),
+            ('kds_devices', 'pairing_token_hash', 'TEXT', NULL::text, true),
+            ('kds_devices', 'pairing_expires_at', 'TEXT', NULL::text, true),
+            ('kds_devices', 'is_active', 'BIGINT', '1', true),
+            ('kds_devices', 'last_seen_at', 'TEXT', NULL::text, false),
+            ('kds_devices', 'connection_status', 'TEXT', '''disconnected''', true),
+            ('kds_devices', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('kds_devices', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('memo_recipients', 'id', 'TEXT', NULL::text, true),
+            ('memo_recipients', 'memo_id', 'TEXT', NULL::text, true),
+            ('memo_recipients', 'terminal_id', 'TEXT', NULL::text, true),
+            ('memo_recipients', 'user_id', 'TEXT', NULL::text, false),
+            ('memo_recipients', 'delivery_status', 'TEXT', '''pending''', true),
+            ('memo_recipients', 'delivered_at', 'TEXT', NULL::text, false),
+            ('memo_recipients', 'acknowledged_at', 'TEXT', NULL::text, false),
+            ('memo_recipients', 'acknowledged_by', 'TEXT', NULL::text, false),
+            ('memo_recipients', 'tenant_id', 'TEXT', '''default''', true),
+            ('kds_routing_rules', 'id', 'TEXT', NULL::text, true),
+            ('kds_routing_rules', 'restaurant_pos_id', 'TEXT', NULL::text, true),
+            ('kds_routing_rules', 'priority', 'BIGINT', NULL::text, true),
+            ('kds_routing_rules', 'matcher_kind', 'TEXT', NULL::text, true),
+            ('kds_routing_rules', 'matcher_value', 'TEXT', NULL::text, true),
+            ('kds_routing_rules', 'target_station', 'TEXT', NULL::text, true),
+            ('kds_routing_rules', 'is_active', 'BIGINT', '1', true),
+            ('kds_routing_rules', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('kds_routing_rules', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('user_workspace_instances', 'user_id', 'TEXT', NULL::text, true),
+            ('user_workspace_instances', 'instance_id', 'TEXT', NULL::text, true),
+            ('user_workspace_instances', 'is_default', 'BIGINT', '0', true),
+            ('user_workspace_instances', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('workspace_inventory_locations', 'id', 'TEXT', NULL::text, true),
+            ('workspace_inventory_locations', 'instance_id', 'TEXT', NULL::text, true),
+            ('workspace_inventory_locations', 'location_id', 'TEXT', NULL::text, true),
+            ('workspace_inventory_locations', 'is_primary', 'BIGINT', '0', true),
+            ('workspace_inventory_locations', 'allow_negative_stock', 'BIGINT', '0', true),
+            ('workspace_inventory_locations', 'sort_order', 'BIGINT', '0', true),
+            ('inventory', 'product_id', 'TEXT', NULL::text, true),
+            ('inventory', 'qty', 'BIGINT', '0', true),
+            ('inventory', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('inventory', 'location_id', 'TEXT', '''01926b3a-0000-7000-8000-000000000001''', true),
+            ('product_modifier_groups', 'product_id', 'TEXT', NULL::text, true),
+            ('product_modifier_groups', 'group_id', 'TEXT', NULL::text, true),
+            ('product_recipes', 'id', 'TEXT', NULL::text, true),
+            ('product_recipes', 'parent_product_id', 'TEXT', NULL::text, true),
+            ('product_recipes', 'ingredient_product_id', 'TEXT', NULL::text, true),
+            ('product_recipes', 'quantity_required', 'BIGINT', NULL::text, true),
+            ('product_recipes', 'unit', 'TEXT', '''pcs''', true),
+            ('product_recipes', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('product_recipes', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('stock_summary', 'item_id', 'TEXT', NULL::text, true),
+            ('stock_summary', 'location_id', 'TEXT', '''01926b3a-0000-7000-8000-000000000001''', true),
+            ('stock_summary', 'qty', 'BIGINT', '0', true),
+            ('stock_summary', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('stock_thresholds', 'id', 'TEXT', NULL::text, true),
+            ('stock_thresholds', 'product_id', 'TEXT', NULL::text, true),
+            ('stock_thresholds', 'location_id', 'TEXT', NULL::text, false),
+            ('stock_thresholds', 'threshold', 'BIGINT', NULL::text, true),
+            ('stock_thresholds', 'enabled', 'BIGINT', '1', true),
+            ('stock_thresholds', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('stock_thresholds', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('product_variants', 'id', 'TEXT', NULL::text, true),
+            ('product_variants', 'parent_sku', 'TEXT', NULL::text, true),
+            ('product_variants', 'name', 'TEXT', NULL::text, true),
+            ('product_variants', 'sku', 'TEXT', NULL::text, true),
+            ('product_variants', 'price_minor', 'BIGINT', NULL::text, false),
+            ('product_variants', 'currency', 'TEXT', NULL::text, false),
+            ('product_variants', 'barcode', 'TEXT', NULL::text, false),
+            ('product_variants', 'sort_order', 'BIGINT', '0', true),
+            ('product_variants', 'is_active', 'BIGINT', '1', true),
+            ('product_variants', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('product_variants', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('product_variants', 'tenant_id', 'TEXT', '''default''', true),
+            ('product_bundles', 'id', 'TEXT', NULL::text, true),
+            ('product_bundles', 'bundle_sku', 'TEXT', NULL::text, true),
+            ('product_bundles', 'name', 'TEXT', NULL::text, true),
+            ('product_bundles', 'description', 'TEXT', '''''', true),
+            ('product_bundles', 'bundle_price_minor', 'BIGINT', NULL::text, false),
+            ('product_bundles', 'currency', 'TEXT', '''USD''', true),
+            ('product_bundles', 'active', 'BIGINT', '1', true),
+            ('product_bundles', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('product_bundles', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('product_bundles', 'tenant_id', 'TEXT', '''default''', true),
+            ('product_images', 'product_id', 'TEXT', NULL::text, true),
+            ('product_images', 'slot', 'BIGINT', NULL::text, true),
+            ('product_images', 'hash', 'TEXT', NULL::text, true),
+            ('product_images', 'position', 'BIGINT', '0', true),
+            ('product_images', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('category_taxes', 'category_id', 'TEXT', NULL::text, true),
+            ('category_taxes', 'tax_rate_id', 'TEXT', NULL::text, true),
+            ('category_taxes', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('product_taxes', 'product_sku', 'TEXT', NULL::text, true),
+            ('product_taxes', 'tax_rate_id', 'TEXT', NULL::text, true),
+            ('product_taxes', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('product_taxes', 'tenant_id', 'TEXT', '''default''', true),
+            ('payable_payments', 'id', 'TEXT', NULL::text, true),
+            ('payable_payments', 'tenant_id', 'TEXT', NULL::text, true),
+            ('payable_payments', 'payable_id', 'TEXT', NULL::text, true),
+            ('payable_payments', 'amount_minor', 'BIGINT', NULL::text, true),
+            ('payable_payments', 'currency', 'TEXT', '''IDR''', true),
+            ('payable_payments', 'method', 'TEXT', '''cash''', true),
+            ('payable_payments', 'paid_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('payable_payments', 'recorded_by', 'TEXT', NULL::text, false),
+            ('payable_payments', 'note', 'TEXT', '''''', true),
+            ('gift_card_transactions', 'id', 'TEXT', NULL::text, true),
+            ('gift_card_transactions', 'gift_card_id', 'TEXT', NULL::text, true),
+            ('gift_card_transactions', 'sale_id', 'TEXT', NULL::text, false),
+            ('gift_card_transactions', 'txn_type', 'TEXT', NULL::text, true),
+            ('gift_card_transactions', 'amount_minor', 'BIGINT', NULL::text, true),
+            ('gift_card_transactions', 'balance_after_minor', 'BIGINT', NULL::text, true),
+            ('gift_card_transactions', 'notes', 'TEXT', '''''', true),
+            ('gift_card_transactions', 'created_at', 'TEXT', NULL::text, true),
+            ('kds_orders', 'id', 'TEXT', NULL::text, true),
+            ('kds_orders', 'sale_id', 'TEXT', NULL::text, true),
+            ('kds_orders', 'status', 'TEXT', '''pending''', true),
+            ('kds_orders', 'items_summary', 'TEXT', '''''', true),
+            ('kds_orders', 'item_count', 'BIGINT', '0', true),
+            ('kds_orders', 'display_number', 'BIGINT', NULL::text, false),
+            ('kds_orders', 'received_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('kds_orders', 'started_at', 'TEXT', NULL::text, false),
+            ('kds_orders', 'ready_at', 'TEXT', NULL::text, false),
+            ('kds_orders', 'served_at', 'TEXT', NULL::text, false),
+            ('kds_orders', 'prep_time_seconds', 'BIGINT', '0', false),
+            ('kds_orders', 'notes', 'TEXT', '''''', true),
+            ('kds_orders', 'store_id', 'TEXT', NULL::text, false),
+            ('kds_orders', 'kitchen_zone', 'TEXT', NULL::text, false),
+            ('kds_orders', 'table_number', 'TEXT', NULL::text, false),
+            ('kds_orders', 'priority', 'BIGINT', '0', true),
+            ('kds_orders', 'target_instance_id', 'TEXT', NULL::text, false),
+            ('kds_orders', 'restaurant_pos_id', 'TEXT', NULL::text, false),
+            ('kds_orders', 'acked_by_device', 'TEXT', NULL::text, false),
+            ('kds_orders', 'acked_at', 'TEXT', NULL::text, false),
+            ('kds_orders', 'ticket_prefix', 'TEXT', '''''', true),
+            ('loyalty_transactions', 'id', 'TEXT', NULL::text, true),
+            ('loyalty_transactions', 'account_id', 'TEXT', NULL::text, true),
+            ('loyalty_transactions', 'sale_id', 'TEXT', NULL::text, false),
+            ('loyalty_transactions', 'points', 'BIGINT', NULL::text, true),
+            ('loyalty_transactions', 'txn_type', 'TEXT', NULL::text, true),
+            ('loyalty_transactions', 'description', 'TEXT', NULL::text, true),
+            ('loyalty_transactions', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('payments', 'id', 'TEXT', NULL::text, true),
+            ('payments', 'sale_id', 'TEXT', NULL::text, true),
+            ('payments', 'method', 'TEXT', NULL::text, true),
+            ('payments', 'amount_minor', 'BIGINT', NULL::text, true),
+            ('payments', 'currency', 'TEXT', NULL::text, true),
+            ('payments', 'created_at', 'TEXT', NULL::text, true),
+            ('payments', 'gateway_reference', 'TEXT', NULL::text, false),
+            ('payments', 'gateway_status', 'TEXT', NULL::text, false),
+            ('payments', 'gateway_response', 'TEXT', NULL::text, false),
+            ('payments', 'settled_at', 'TEXT', NULL::text, false),
+            ('payments', 'settled_by', 'TEXT', NULL::text, false),
+            ('payments', 'idempotency_key', 'TEXT', NULL::text, false),
+            ('promotion_applications', 'id', 'TEXT', NULL::text, true),
+            ('promotion_applications', 'promotion_id', 'TEXT', NULL::text, true),
+            ('promotion_applications', 'sale_id', 'TEXT', NULL::text, true),
+            ('promotion_applications', 'discount_minor', 'BIGINT', NULL::text, true),
+            ('promotion_applications', 'description', 'TEXT', NULL::text, true),
+            ('promotion_applications', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('receipt_barcodes', 'id', 'TEXT', NULL::text, true),
+            ('receipt_barcodes', 'sale_id', 'TEXT', NULL::text, true),
+            ('receipt_barcodes', 'barcode', 'TEXT', NULL::text, true),
+            ('receipt_barcodes', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('refunds', 'id', 'TEXT', NULL::text, true),
+            ('refunds', 'sale_id', 'TEXT', NULL::text, true),
+            ('refunds', 'total_minor', 'BIGINT', NULL::text, true),
+            ('refunds', 'currency', 'TEXT', NULL::text, true),
+            ('refunds', 'reason', 'TEXT', '''''', true),
+            ('refunds', 'note', 'TEXT', '''''', true),
+            ('refunds', 'processed_by', 'TEXT', NULL::text, true),
+            ('refunds', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('refunds', 'tenant_id', 'TEXT', '''default''', true),
+            ('sale_lines', 'id', 'TEXT', NULL::text, true),
+            ('sale_lines', 'sale_id', 'TEXT', NULL::text, true),
+            ('sale_lines', 'sku', 'TEXT', NULL::text, true),
+            ('sale_lines', 'qty', 'BIGINT', NULL::text, true),
+            ('sale_lines', 'unit_minor', 'BIGINT', NULL::text, true),
+            ('sale_lines', 'line_minor', 'BIGINT', NULL::text, true),
+            ('sale_lines', 'currency', 'TEXT', NULL::text, true),
+            ('sale_lines', 'line_position', 'BIGINT', NULL::text, true),
+            ('sale_lines', 'tax_minor', 'BIGINT', '0', true),
+            ('sale_lines', 'tax_rate_id', 'TEXT', NULL::text, false),
+            ('sale_lines', 'serial_number', 'TEXT', NULL::text, false),
+            ('sale_lines', 'store_id', 'TEXT', NULL::text, false),
+            ('sale_lines', 'course', 'TEXT', NULL::text, false),
+            ('sale_lines', 'modifiers_json', 'TEXT', NULL::text, false),
+            ('sale_lines', 'tax_breakdown_json', 'TEXT', NULL::text, false),
+            ('sale_lines', 'cost_minor', 'BIGINT', NULL::text, false),
+            ('sale_lines', 'tenant_id', 'TEXT', '''default''', true),
+            ('sale_lines', 'product_id', 'TEXT', NULL::text, false),
+            ('sale_lines', 'product_name', 'TEXT', NULL::text, false),
+            ('sale_lines', 'category_id', 'TEXT', NULL::text, false),
+            ('tables', 'id', 'TEXT', NULL::text, true),
+            ('tables', 'name', 'TEXT', NULL::text, true),
+            ('tables', 'capacity', 'BIGINT', '4', true),
+            ('tables', 'pos_x', 'DOUBLE PRECISION', '0', true),
+            ('tables', 'pos_y', 'DOUBLE PRECISION', '0', true),
+            ('tables', 'shape', 'TEXT', '''circle''', true),
+            ('tables', 'width', 'DOUBLE PRECISION', '10', true),
+            ('tables', 'height', 'DOUBLE PRECISION', '10', true),
+            ('tables', 'status', 'TEXT', '''available''', true),
+            ('tables', 'active_sale_id', 'TEXT', NULL::text, false),
+            ('tables', 'section', 'TEXT', '''''', true),
+            ('tables', 'active', 'BIGINT', '1', true),
+            ('tables', 'sort_order', 'BIGINT', '0', true),
+            ('tables', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('tables', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('cash_payouts', 'id', 'TEXT', NULL::text, true),
+            ('cash_payouts', 'shift_id', 'TEXT', NULL::text, true),
+            ('cash_payouts', 'amount_minor', 'BIGINT', NULL::text, true),
+            ('cash_payouts', 'reason', 'TEXT', '''''', true),
+            ('cash_payouts', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('inventory_transactions', 'id', 'TEXT', NULL::text, true),
+            ('inventory_transactions', 'type', 'TEXT', NULL::text, true),
+            ('inventory_transactions', 'location_id', 'TEXT', NULL::text, true),
+            ('inventory_transactions', 'staff_id', 'TEXT', NULL::text, true),
+            ('inventory_transactions', 'transfer_id', 'TEXT', NULL::text, false),
+            ('inventory_transactions', 'purchase_order_id', 'TEXT', NULL::text, false),
+            ('inventory_transactions', 'notes', 'TEXT', '''''', true),
+            ('inventory_transactions', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('inventory_transactions', 'inventory_shift_id', 'TEXT', NULL::text, false),
+            ('stock_transfer_lines', 'id', 'TEXT', NULL::text, true),
+            ('stock_transfer_lines', 'transfer_id', 'TEXT', NULL::text, true),
+            ('stock_transfer_lines', 'sku', 'TEXT', NULL::text, true),
+            ('stock_transfer_lines', 'product_name', 'TEXT', '''''', true),
+            ('stock_transfer_lines', 'qty', 'BIGINT', NULL::text, true),
+            ('stock_transfer_lines', 'received_qty', 'BIGINT', '0', true),
+            ('stock_alert_events', 'id', 'TEXT', NULL::text, true),
+            ('stock_alert_events', 'threshold_id', 'TEXT', NULL::text, true),
+            ('stock_alert_events', 'product_id', 'TEXT', NULL::text, true),
+            ('stock_alert_events', 'location_id', 'TEXT', NULL::text, false),
+            ('stock_alert_events', 'current_qty', 'BIGINT', NULL::text, true),
+            ('stock_alert_events', 'threshold', 'BIGINT', NULL::text, true),
+            ('stock_alert_events', 'status', 'TEXT', '''active''', true),
+            ('stock_alert_events', 'triggered_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('stock_alert_events', 'acknowledged_at', 'TEXT', NULL::text, false),
+            ('stock_alert_events', 'acknowledged_by', 'TEXT', NULL::text, false),
+            ('stock_alert_events', 'resolved_at', 'TEXT', NULL::text, false),
+            ('bundle_items', 'id', 'TEXT', NULL::text, true),
+            ('bundle_items', 'bundle_id', 'TEXT', NULL::text, true),
+            ('bundle_items', 'sku', 'TEXT', NULL::text, true),
+            ('bundle_items', 'qty', 'BIGINT', '1', true),
+            ('bundle_items', 'unit_price_minor', 'BIGINT', NULL::text, false),
+            ('bundle_items', 'tenant_id', 'TEXT', '''default''', true),
+            ('kds_line_items', 'id', 'TEXT', NULL::text, true),
+            ('kds_line_items', 'kds_order_id', 'TEXT', NULL::text, true),
+            ('kds_line_items', 'sku', 'TEXT', NULL::text, true),
+            ('kds_line_items', 'display_name', 'TEXT', NULL::text, true),
+            ('kds_line_items', 'qty', 'BIGINT', NULL::text, true),
+            ('kds_line_items', 'course', 'TEXT', NULL::text, false),
+            ('kds_line_items', 'modifiers_json', 'TEXT', NULL::text, false),
+            ('kds_line_items', 'line_position', 'BIGINT', '0', true),
+            ('kds_line_items', 'item_status', 'TEXT', '''pending''', true),
+            ('kds_line_items', 'started_at', 'TEXT', NULL::text, false),
+            ('kds_line_items', 'ready_at', 'TEXT', NULL::text, false),
+            ('kds_line_items', 'served_at', 'TEXT', NULL::text, false),
+            ('kds_line_items', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('kds_line_items', 'restaurant_pos_id', 'TEXT', NULL::text, false),
+            ('kds_order_targets', 'kds_order_id', 'TEXT', NULL::text, true),
+            ('kds_order_targets', 'target_instance_id', 'TEXT', NULL::text, true),
+            ('kds_order_targets', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('kds_order_targets', 'restaurant_pos_id', 'TEXT', NULL::text, false),
+            ('refund_lines', 'id', 'TEXT', NULL::text, true),
+            ('refund_lines', 'refund_id', 'TEXT', NULL::text, true),
+            ('refund_lines', 'sale_line_id', 'TEXT', NULL::text, true),
+            ('refund_lines', 'sku', 'TEXT', NULL::text, true),
+            ('refund_lines', 'qty', 'BIGINT', NULL::text, true),
+            ('refund_lines', 'unit_minor', 'BIGINT', NULL::text, true),
+            ('refund_lines', 'line_minor', 'BIGINT', NULL::text, true),
+            ('refund_lines', 'currency', 'TEXT', NULL::text, true),
+            ('refund_lines', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('inventory_transaction_lines', 'id', 'TEXT', NULL::text, true),
+            ('inventory_transaction_lines', 'transaction_id', 'TEXT', NULL::text, true),
+            ('inventory_transaction_lines', 'sku', 'TEXT', NULL::text, true),
+            ('inventory_transaction_lines', 'product_name', 'TEXT', '''''', true),
+            ('inventory_transaction_lines', 'qty', 'BIGINT', NULL::text, true),
+            ('inventory_transaction_lines', 'barcode_scanned', 'TEXT', NULL::text, false),
+            ('inventory_transaction_lines', 'sort_order', 'BIGINT', '0', true),
+            ('stock_movements', 'id', 'TEXT', NULL::text, true),
+            ('stock_movements', 'item_id', 'TEXT', NULL::text, true),
+            ('stock_movements', 'delta', 'BIGINT', NULL::text, true),
+            ('stock_movements', 'reason', 'TEXT', NULL::text, false),
+            ('stock_movements', 'source_terminal_id', 'TEXT', NULL::text, false),
+            ('stock_movements', 'source_user_id', 'TEXT', NULL::text, false),
+            ('stock_movements', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('stock_movements', 'store_id', 'TEXT', '''''', true),
+            ('stock_movements', 'location_id', 'TEXT', '''01926b3a-0000-7000-8000-000000000001''', true),
+            ('stock_movements', 'inventory_transaction_id', 'TEXT', NULL::text, false),
+            ('stock_movements_archive', 'id', 'TEXT', NULL::text, true),
+            ('stock_movements_archive', 'item_id', 'TEXT', NULL::text, true),
+            ('stock_movements_archive', 'delta', 'BIGINT', NULL::text, true),
+            ('stock_movements_archive', 'reason', 'TEXT', NULL::text, false),
+            ('stock_movements_archive', 'source_terminal_id', 'TEXT', NULL::text, false),
+            ('stock_movements_archive', 'source_user_id', 'TEXT', NULL::text, false),
+            ('stock_movements_archive', 'store_id', 'TEXT', '''''', true),
+            ('stock_movements_archive', 'created_at', 'TEXT', NULL::text, true),
+            ('stock_movements_archive', 'location_id', 'TEXT', '''01926b3a-0000-7000-8000-000000000001''', true),
+            ('stock_movements_archive', 'inventory_transaction_id', 'TEXT', NULL::text, false)
+        ) AS v(tbl, col, typ, dflt, nn)
+    LOOP
+        IF EXISTS (SELECT 1 FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = r.tbl)
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = r.tbl
+                      AND column_name = r.col)
+        THEN
+            EXECUTE format('ALTER TABLE public.%I ADD COLUMN %I %s%s',
+                           r.tbl, r.col, r.typ,
+                           CASE WHEN r.dflt IS NULL THEN ''
+                                ELSE ' DEFAULT ' || r.dflt END);
+        END IF;
+
+        -- Only ever touched while the catalog still says NULLABLE: on a
+        -- converged database this branch is not entered, so no boot pays
+        -- for a COUNT(*) over every NOT NULL column.
+        IF r.nn
+           AND EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = r.tbl
+                          AND column_name = r.col AND is_nullable = 'YES')
+        THEN
+            EXECUTE format('SELECT count(*) FROM public.%I WHERE %I IS NULL',
+                           r.tbl, r.col) INTO n_null;
+            IF n_null = 0 THEN
+                EXECUTE format('ALTER TABLE public.%I ALTER COLUMN %I SET NOT NULL',
+                               r.tbl, r.col);
+            ELSE
+                RAISE WARNING 'oz schema reconcile: %.% stays NULLABLE (% row(s) are NULL); a fresh database declares it NOT NULL',
+                    r.tbl, r.col, n_null;
+            END IF;
+        END IF;
+    END LOOP;
+END
+$oz_reconcile$;
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id          TEXT PRIMARY KEY,                          -- UUID v4
     user_id     TEXT NOT NULL,                             -- FK to users.id (nullable if action is from system)
