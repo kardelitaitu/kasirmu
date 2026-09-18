@@ -40,6 +40,7 @@ export function useCustomerDisplay({
   // ── Auto-detect display on mount ─────────────────────────────
   useEffect(() => {
     let cancelled = false;
+    if (!sessionToken) return;
 
     (async () => {
       try {

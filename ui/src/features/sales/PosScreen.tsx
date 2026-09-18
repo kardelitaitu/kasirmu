@@ -281,7 +281,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setAppliedPromotions,
   });
   // ── Barcode scanner integration ─────────────────────────────
+  // Disabled on restaurant POS workspace (scanners are for retail checkout).
   useBarcodeScanner({
+    enabled: activeWorkspace !== 'restaurant-pos',
     sessionToken,
     onProductFound: useCallback(async (payload: BarcodeScannedPayload) => {
       if (!activeShiftRef.current) {
@@ -489,9 +491,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
   // ── Load receipt settings on mount ────────────────────────────
   useEffect(() => {
+    if (!sessionToken) return;
     getReceiptSettingsScoped(sessionToken)
       .then((s) => setShowTableNumberSetting(s.showTableNumber))
-      .catch(() => addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-receipt-settings-failed'), type: 'error' }));
+      .catch((err: unknown) => {
+        const kind = (err as { kind?: string } | null)?.kind;
+        if (kind === 'invalidSession') return;
+        addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-receipt-settings-failed'), type: 'error' });
+      });
   }, [addToast, sessionToken]); // l10n via ref — stable dep chain
 
   // ── Load restaurant course-firing flag on mount ─────────────────

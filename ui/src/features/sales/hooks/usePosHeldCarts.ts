@@ -65,9 +65,14 @@ export function usePosHeldCarts({
     () => setShowOpenBills(false),
   );
   const loadOpenBills = useCallback(() => {
-    listOpenBillsScoped(sessionToken).then(setOpenBills).catch(() => {
-      addToast({ message: 'Failed to load open bills', type: 'error' });
-    });
+    if (!sessionToken) return;
+    listOpenBillsScoped(sessionToken)
+      .then(setOpenBills)
+      .catch((err: unknown) => {
+        const kind = (err as { kind?: string } | null)?.kind;
+        if (kind === 'invalidSession') return;
+        addToast({ message: 'Failed to load open bills', type: 'error' });
+      });
   }, [addToast, sessionToken]);
 
   // ── Open Bill inline state ────────────────────────────────────
