@@ -477,6 +477,8 @@ def _self_test_rls_gate() -> None:
 RLS_TABLES = [
     "bundle_items",
     "edc_terminals",
+    "entity_index_cursors",
+    "entity_index_tombstones",
     "media_assets",
     "media_thumbnails",
     "memo_locations",
@@ -491,6 +493,7 @@ RLS_TABLES = [
     "product_taxes",
     "product_variants",
     "products",
+    "receipt_number_counters",
     "refunds",
     "sale_idempotency",
     "sale_lines",

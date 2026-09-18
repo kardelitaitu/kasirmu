@@ -573,7 +573,9 @@ fn init_sql_creates_complete_schema_surface() {
     // 20261005_kds_routing_rules.sql — the multi-station KDS routing table,
     // one per terminal, the pin the routing lane shipped without
     // re-measuring — is the 123rd; this assert is where that omission
-    // surfaced. Count measured, not
+    // surfaced. 20261006_receipt_hierarchy_code.sql adds the 124th–126th:
+    // entity_index_cursors, entity_index_tombstones and
+    // receipt_number_counters. Count measured, not
     // guessed: the whole
     // registry was replayed through sqlite3 and sqlite_master counted.
     assert_eq!(
@@ -581,7 +583,7 @@ fn init_sql_creates_complete_schema_surface() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        123,
+        126,
         "table surface drifted"
     );
     assert_eq!(
@@ -635,7 +637,12 @@ fn init_sql_creates_complete_schema_surface() {
         // index, and its TEXT PRIMARY KEY lands as a `sqlite_autoindex_*`
         // this query excludes. Count
         // measured by replaying the registry, as ever.
-        181,
+        // 20261006_receipt_hierarchy_code.sql adds four: the per-tenant
+        // index_id uniques on locations/terminals/users and the
+        // (tenant_id, display_code) backstop on sales. Its three composite
+        // PRIMARY KEYs land as sqlite_autoindex_*, which this query
+        // excludes.
+        185,
         "index surface drifted"
     );
     assert_eq!(
@@ -796,6 +803,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20261003_sync_entity_vectors.sql".to_string(),
             "20261004_midtrans_transactions.sql".to_string(),
             "20261005_kds_routing_rules.sql".to_string(),
+            "20261006_receipt_hierarchy_code.sql".to_string(),
         ]
     );
 
@@ -826,14 +834,15 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
     // 20260925, plus sale_idempotency from
     // 20261001, plus sync_conflicts from 20261002, plus sync_entity_vectors
     // from 20261003, plus midtrans_transactions from 20261004, plus
-    // kds_routing_rules from 20261005 — each
-    // recorded once, idempotently).
+    // kds_routing_rules from 20261005, plus entity_index_cursors,
+    // entity_index_tombstones and receipt_number_counters from
+    // 20261006 — each recorded once, idempotently).
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        123,
+        126,
         "table surface must be unchanged after upgrade"
     );
 }

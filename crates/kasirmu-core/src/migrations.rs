@@ -326,6 +326,14 @@ pub const ALL: &[Migration] = &[
         id: "20261005_kds_routing_rules.sql",
         sql: include_str!("../migrations/20261005_kds_routing_rules.sql"),
     },
+    // Receipt hierarchy code (docs/plans/receipt-hierarchy-code.md): index
+    // ids on location/terminal/user plus the continuous receipt counter.
+    // Date 20261006 sorts last and only adds columns and new tables, so it
+    // re-applies cleanly under the statement-level drift fallback.
+    Migration {
+        id: "20261006_receipt_hierarchy_code.sql",
+        sql: include_str!("../migrations/20261006_receipt_hierarchy_code.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.
