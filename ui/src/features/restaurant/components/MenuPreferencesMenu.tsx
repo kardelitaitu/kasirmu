@@ -96,35 +96,45 @@ export function MenuPreferencesMenu({
   const hamburgerOpenedWithKeyboardRef = useRef(false);
 
   // Animation state for sliding out when open flips to false
+  const [prevOpen, setPrevOpen] = useState(open);
   const [exiting, setExiting] = useState(false);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const wasEverOpenRef = useRef(false);
+  const wasEverOpenRef = useRef(open);
 
-  useEffect(() => {
-    if (open) {
-      wasEverOpenRef.current = true;
-      if (exitTimerRef.current !== null) {
-        clearTimeout(exitTimerRef.current);
-        exitTimerRef.current = null;
-      }
-      setExiting(false);
-    } else if (wasEverOpenRef.current) {
+  if (open) {
+    wasEverOpenRef.current = true;
+  }
+
+  // Adjust state synchronously during render when open transitions true -> false
+  // to avoid a 1-frame unmount gap where the sidebar disappears before exiting begins.
+  if (prevOpen !== open) {
+    setPrevOpen(open);
+    if (!open && wasEverOpenRef.current) {
       setExiting(true);
-      if (exitTimerRef.current !== null) {
-        clearTimeout(exitTimerRef.current);
-      }
-      exitTimerRef.current = setTimeout(() => {
-        setExiting(false);
-        exitTimerRef.current = null;
-      }, animDuration(300));
+    } else if (open) {
+      setExiting(false);
     }
-  }, [open]);
+  }
 
   useEffect(() => {
+    if (!exiting) {
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+      return;
+    }
+    exitTimerRef.current = setTimeout(() => {
+      setExiting(false);
+      exitTimerRef.current = null;
+    }, animDuration(300));
     return () => {
-      if (exitTimerRef.current !== null) clearTimeout(exitTimerRef.current);
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
     };
-  }, []);
+  }, [exiting]);
 
   // Move focus into the hamburger menu when it opens and return focus to the
   // trigger when it closes. Focus lands on the first SORT row: the sort
