@@ -491,6 +491,11 @@ pub fn run() {
                 // SaaS-3 L194: multi-organization user switching.
                 commands::auth::list_organizations,
                 commands::auth::switch_organization,
+                // Own-avatar read (parity gap closed 2026-09-19): the shared
+                // PosScreen restaurant sidebar reads this on mount and this shell
+                // renders that screen. The write half stays desktop-only by owner
+                // ruling — see commands/avatars.rs and the parity allowlist.
+                commands::avatars::get_own_avatar_scoped,
                 commands::branding::get_brand_settings,
                 commands::branding::set_brand_primary_colour,
                 commands::branding::set_brand_logo_path,

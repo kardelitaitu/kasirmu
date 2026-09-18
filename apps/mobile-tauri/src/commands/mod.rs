@@ -13,6 +13,8 @@ pub mod audit;
 pub mod auth;
 /// Authorization commands.
 pub mod authz;
+/// Own-avatar read command — ADR #49 shim over `kasirmu_bridge::avatars`.
+pub mod avatars;
 /// Store branding commands.
 pub mod branding;
 /// External-browser commands (ADR #38).
