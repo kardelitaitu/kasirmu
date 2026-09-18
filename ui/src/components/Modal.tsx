@@ -60,7 +60,7 @@ export function Modal({
   // ── Exit-animation gate ──────────────────────────────────────────
   // Releases the focus trap + scroll lock *while* the fade plays so focus
   // returns to the trigger, then unmounts after the mirror animation.
-  const { shouldRender, exiting, requestClose } = useExitAnimation(open, onClose, 200);
+  const { shouldRender, exiting, requestClose } = useExitAnimation(open, onClose, 300);
 
   // ── Focus trap (Escape + Tab cycling + auto-focus + scroll lock) ──
   // Inactive while exiting (and when closed) so focus restores to the trigger.

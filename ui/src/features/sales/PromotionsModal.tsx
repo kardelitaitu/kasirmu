@@ -36,7 +36,7 @@ export default function PromotionsModal({
   onClose,
 }: PromotionsModalProps) {
   const { l10n } = useLocalization();
-  const ANIM_MS = animDuration(200);
+  const ANIM_MS = animDuration(300);
   const [exiting, setExiting] = useState(false);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);

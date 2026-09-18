@@ -49,7 +49,7 @@ export interface UseExitAnimationResult {
 export function useExitAnimation(
   open: boolean,
   onClose: () => void,
-  durationMs: number = 200,
+  durationMs: number = 300,
 ): UseExitAnimationResult {
   const [exiting, setExiting] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

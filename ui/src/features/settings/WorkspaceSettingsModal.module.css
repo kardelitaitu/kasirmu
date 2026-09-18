@@ -22,13 +22,29 @@
 }
 
 @keyframes backdropIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
 }
 
 @keyframes backdropOut {
-  from { opacity: 1; }
-  to   { opacity: 0; }
+  from {
+    opacity: 1;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+  to {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+  }
 }
 
 /* The backdrop fade is decoration, so it is scoped to a preference for
@@ -37,11 +53,11 @@
    declared before exit, matching the order these rules held on their own. */
 @media (prefers-reduced-motion: no-preference) {
   .backdrop {
-    animation: backdropIn 200ms ease-out both;
+    animation: backdropIn 300ms ease-out both;
   }
 
   .backdrop--exiting {
-    animation: backdropOut 200ms ease-in forwards;
+    animation: backdropOut 300ms ease-in forwards;
   }
 }
 

@@ -203,7 +203,7 @@ export default function PaymentModal({
     attemptIdRef.current = crypto.randomUUID();
   }
 
-  const MS_200 = animDuration(200);
+  const MS_300 = animDuration(300);
 
   // ── Error classification ───────────────────────────────────────
 
@@ -1122,9 +1122,9 @@ export default function PaymentModal({
   // Auto-dismiss after leave animation completes
   useEffect(() => {
     if (!leaving) return;
-    const timer = setTimeout(handleLeaveEnd, MS_200);
+    const timer = setTimeout(handleLeaveEnd, MS_300);
     return () => clearTimeout(timer);
-  }, [leaving, handleLeaveEnd, MS_200]);
+  }, [leaving, handleLeaveEnd, MS_300]);
 
   // ── Focus trap (Escape + Tab cycling) ─────────────────────
   useFocusTrap(panelRef, open && !leaving && !processing && !done, () => {

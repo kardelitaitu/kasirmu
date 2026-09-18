@@ -15,23 +15,39 @@
 /* ── Entrance/exit animations ────────────────────────── */
 
 .payment-overlay--enter {
-  animation: payment-overlay-in var(--duration-200) var(--ease-out);
+  animation: payment-overlay-in var(--duration-300) var(--ease-out);
 }
 
 .payment-overlay--exit {
-  animation: payment-overlay-out var(--duration-200) var(--ease-in);
+  animation: payment-overlay-out var(--duration-300) var(--ease-in);
   pointer-events: none;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   @keyframes payment-overlay-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+      opacity: 0;
+      backdrop-filter: blur(0px);
+      -webkit-backdrop-filter: blur(0px);
+    }
+    to {
+      opacity: 1;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
   }
 
   @keyframes payment-overlay-out {
-    from { opacity: 1; }
-    to { opacity: 0; }
+    from {
+      opacity: 1;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    to {
+      opacity: 0;
+      backdrop-filter: blur(0px);
+      -webkit-backdrop-filter: blur(0px);
+    }
   }
 }
 
@@ -47,11 +63,11 @@
 }
 
 .payment-modal--enter {
-  animation: payment-modal-slide-up var(--duration-200) var(--ease-out);
+  animation: payment-modal-slide-up var(--duration-300) var(--ease-out);
 }
 
 .payment-modal--exit {
-  animation: payment-modal-out var(--duration-200) var(--ease-in);
+  animation: payment-modal-out var(--duration-300) var(--ease-in);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -897,7 +913,7 @@
   -webkit-backdrop-filter: blur(6px);
   will-change: backdrop-filter;
   transform: translateZ(0);
-  animation: payment-overlay-in var(--duration-200) var(--ease-out);
+  animation: payment-overlay-in var(--duration-300) var(--ease-out);
 }
 .payment-customer-search-modal {
   background: var(--color-bg-elevated);
@@ -907,7 +923,7 @@
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-lg);
-  animation: payment-modal-slide-up var(--duration-200) var(--ease-out);
+  animation: payment-modal-slide-up var(--duration-300) var(--ease-out);
 }
 .payment-customer-search-heading {
   margin: 0;

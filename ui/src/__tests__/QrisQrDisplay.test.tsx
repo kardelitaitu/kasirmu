@@ -112,7 +112,7 @@ describe('QrisQrDisplay exit-animation polish', () => {
     expectExiting(document.querySelector('.qris-overlay'), 'qris-overlay');
     expectExiting(document.querySelector('.qris-container'), 'qris-container');
 
-    advanceFadeSync(199);
+    advanceFadeSync(299);
     expect(document.querySelector('.qris-overlay')).toBeTruthy();
 
     advanceFadeSync(1);
@@ -136,7 +136,7 @@ describe('QrisQrDisplay exit-animation polish', () => {
     fireEvent.click(document.querySelector('.qris-close') as HTMLElement);
     fireEvent.click(document.querySelector<HTMLButtonElement>('.qris-close')!);
 
-    advanceFadeSync(200);
+    advanceFadeSync(300);
     expect(document.querySelector('.qris-overlay')).toBeNull();
   });
 
@@ -419,7 +419,7 @@ describe('QrisQrDisplay — QRIS Auto mode', () => {
     // Cancel goes through the exit animation, then the parent's onClose
     // (which voids the pending sale) — same layered close as the × button.
     expect(onClose).not.toHaveBeenCalled();
-    advanceFadeSync(200);
+    advanceFadeSync(300);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

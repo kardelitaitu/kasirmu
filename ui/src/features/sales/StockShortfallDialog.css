@@ -12,7 +12,7 @@
   -webkit-backdrop-filter: blur(10px);
   will-change: backdrop-filter;
   transform: translateZ(0);
-  animation: shortfall-fade-in var(--duration-200) var(--ease-out);
+  animation: shortfall-fade-in var(--duration-300) var(--ease-out);
 }
 
 .shortfall-modal {
@@ -26,17 +26,27 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: shortfall-slide-up var(--duration-200) var(--ease-out);
+  animation: shortfall-slide-up var(--duration-300) var(--ease-out);
 }
 
-@keyframes shortfall-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes shortfall-fade-in {
+    from {
+      opacity: 0;
+      backdrop-filter: blur(0px);
+      -webkit-backdrop-filter: blur(0px);
+    }
+    to {
+      opacity: 1;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+  }
 
-@keyframes shortfall-slide-up {
-  from { opacity: 0; transform: translateY(12px) scale(0.98); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+  @keyframes shortfall-slide-up {
+    from { opacity: 0; transform: translateY(12px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

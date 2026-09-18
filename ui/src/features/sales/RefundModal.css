@@ -225,15 +225,15 @@
  * surface shares visual identity. */
 @media (prefers-reduced-motion: no-preference) {
   .refund-overlay {
-    animation: refund-overlay-in var(--duration-200) var(--ease-out);
+    animation: refund-overlay-in var(--duration-300) var(--ease-out);
   }
   .refund-modal {
-    animation: refund-modal-slide-up var(--duration-200) var(--ease-out);
+    animation: refund-modal-slide-up var(--duration-300) var(--ease-out);
   }
 
   /* Done-state celebration (mirror the payment-done cascade). */
   .refund-done {
-    animation: refund-done-fade-in var(--duration-200) var(--ease-out);
+    animation: refund-done-fade-in var(--duration-300) var(--ease-out);
   }
   .refund-done-title {
     animation: refund-done-fade-in 350ms var(--ease-out) 100ms both;
@@ -243,8 +243,16 @@
   }
 
   @keyframes refund-overlay-in {
-    from { opacity: 0; }
-    to   { opacity: 1; }
+    from {
+      opacity: 0;
+      backdrop-filter: blur(0px);
+      -webkit-backdrop-filter: blur(0px);
+    }
+    to {
+      opacity: 1;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
   }
   @keyframes refund-modal-slide-up {
     from { opacity: 0; transform: translateY(12px) scale(0.98); }
@@ -259,19 +267,27 @@
      pattern, commit 1408992). Layered exit so overlay fade-out
      and modal slide-down play in parallel. */
   @keyframes refund-overlay-out {
-    from { opacity: 1; }
-    to   { opacity: 0; }
+    from {
+      opacity: 1;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    to {
+      opacity: 0;
+      backdrop-filter: blur(0px);
+      -webkit-backdrop-filter: blur(0px);
+    }
   }
   @keyframes refund-modal-slide-down {
     from { opacity: 1; transform: translateY(0) scale(1); }
     to   { opacity: 0; transform: translateY(12px) scale(0.98); }
   }
   .refund-overlay--exiting {
-    animation: refund-overlay-out var(--duration-200) var(--ease-out) both;
+    animation: refund-overlay-out var(--duration-300) var(--ease-out) both;
     pointer-events: none;
   }
   .refund-modal--exiting {
-    animation: refund-modal-slide-down var(--duration-200) var(--ease-out) both;
+    animation: refund-modal-slide-down var(--duration-300) var(--ease-out) both;
     pointer-events: none;
   }
 }
