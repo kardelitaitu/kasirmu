@@ -276,6 +276,10 @@ const SCREENS: ScreenEntry[] = [
       'staff/components/StaffListTable.tsx',
       'staff/components/StaffDetailDrawer.tsx',
       'staff/components/RoleAssignmentMatrix.tsx',
+      // The status footer renders staff-mgmt-footer* styled by this sheet.
+      // Same reason SettingsFooter is registered against SettingsPage: skip
+      // it and the guard goes green while those classes read as dead CSS.
+      'staff/components/StaffManagementFooter.tsx',
     ],
   },
 

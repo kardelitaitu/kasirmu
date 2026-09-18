@@ -1,12 +1,20 @@
 /* Fullscreen page root (features/staff/register.tsx registers `fullscreen`,
-   so AppLayout — and with it .app-content, which used to own the scroll and
-   the page background — never renders around this screen). The page
-   therefore owns its own viewport height, scrolling, and background. */
+   so AppLayout — and with it .app-content and the app's own StatusBar —
+   never renders around this screen). The page is therefore a self-contained
+   3-area shell: a pinned header, ONE scrolling main region, and a pinned
+   status footer. Same shape as .kds (KdsScreen.css:107-118, :132, :1685).
+
+   The root itself never scrolls. That is the point of the shape: a scrolling
+   root would carry the header off-screen and — worse — make the footer's
+   position depend on content height, so a long roster would push the status
+   strip below the fold. `min-height: 0` on the scrolling child is what lets
+   it shrink instead of stretching the root. */
 .staff-mgmt {
+  display: flex;
+  flex-direction: column;
   height: 100dvh;
-  overflow-y: auto;
+  overflow: hidden;
   background: var(--color-bg);
-  padding: var(--space-6) var(--space-8);
 }
 
 /* C1.1: staff-user quota banner shown inside the add/edit modal when the
@@ -25,11 +33,17 @@
   font-size: var(--text-sm);
 }
 
+/* ── Area 1: header (pinned) ─────────────────────────────────────── */
+
 .staff-mgmt-header {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--space-6);
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-8);
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border);
 }
 
 /* Title cluster (back + heading) and the page actions (Roles, Add Staff).
@@ -73,6 +87,49 @@
   outline-offset: 2px;
 }
 
+/* ── Area 2: main (the only scrolling region) ────────────────────── */
+
+.staff-mgmt-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-6) var(--space-8);
+}
+
+/* ── Area 3: status footer (pinned) ──────────────────────────────── */
+
+/* Visual treatment follows the Settings hub's own footer
+   (SettingsPage.css:304) — an elevated strip with a top border — rather
+   than the KDS footer's dimmed overlay: this is a settings page, and its
+   status text is meant to be read, not to recede behind a menu board. */
+.staff-mgmt-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-height: 1.5rem;
+  padding: var(--space-1) var(--space-8);
+  background: var(--color-bg-elevated);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-xs);
+  color: var(--color-fg-tertiary);
+}
+
+.staff-mgmt-footer-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+/* Placed BETWEEN segments by the footer, never appended to one, so a
+   segment that drops out (no workspace, no snapshot yet) takes its
+   separator with it. */
+.staff-mgmt-footer-sep {
+  opacity: 0.5;
+}
+
 /* C2.2 Pro→Premium approaching-limit banner (16+ staff). */
 .staff-mgmt-approaching-banner {
   display: flex;
@@ -100,11 +157,6 @@
   flex-direction: column;
   gap: var(--space-4);
   pointer-events: none;
-}
-
-.staff-mgmt-loading-skeleton .staff-mgmt-header {
-  pointer-events: none;
-  margin-bottom: 0;
 }
 
 .staff-mgmt-loading-skeleton .staff-mgmt-table thead {

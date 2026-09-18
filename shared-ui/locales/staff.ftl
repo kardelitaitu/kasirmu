@@ -5,6 +5,22 @@ staff-title = Staff
 # a sidebar; this labels the page-level back button that returns to the
 # workspace picker.
 staff-back-aria = Back to workspaces
+# Status strip (components/StaffManagementFooter.tsx). A fullscreen route
+# renders without AppLayout, so the app's own StatusBar is absent and the page
+# reports its own state. The counts are the loaded snapshot's, never an
+# assumption: a load that has not completed prints nothing.
+staff-footer-staff-count =
+    { $count ->
+        [one] { $count } staff member
+       *[other] { $count } staff members
+    }
+staff-footer-active = { $count } active
+staff-footer-roles =
+    { $count ->
+        [one] { $count } role
+       *[other] { $count } roles
+    }
+staff-footer-updated = Updated { $time }
 staff-add-button = Add Staff
 staff-empty = No staff members yet.
 staff-empty-cta = Add your first staff member

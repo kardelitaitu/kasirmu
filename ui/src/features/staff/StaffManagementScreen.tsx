@@ -51,6 +51,7 @@ import { NoStaffIcon } from '@/components/EmptyStateIllustrations';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { StaffListTable } from './components/StaffListTable';
 import { StaffDetailDrawer } from './components/StaffDetailDrawer';
+import { StaffManagementFooter } from './components/StaffManagementFooter';
 import './StaffManagementScreen.css';
 
 // ── Component ───────────────────────────────────────────────────────
@@ -75,6 +76,13 @@ export default function StaffManagementScreen() {
   const canManageRoles = hasGrantedPermission(session?.permissions, 'staff:manage_roles');
   const [staff, setStaff] = useState<StaffMemberDto[]>([]);
   const [roles, setRoles] = useState<RoleDto[]>([]);
+  /**
+   * When the current `staff`/`roles` lists landed, or null when no successful
+   * load has completed. The status footer uses it both as the freshness read-out
+   * and as the signal that there is a snapshot to report at all — without it a
+   * failed load would print `0 staff members`, which is a claim, not a gap.
+   */
+  const [loadedAt, setLoadedAt] = useState<number | null>(null);
   const [workspaceNameMap, setWorkspaceNameMap] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   /** STAFF-08: primary staff/roles load failed — show error + retry. */
@@ -104,6 +112,7 @@ export default function StaffManagementScreen() {
       ]);
       setStaff(staffData);
       setRoles(rolesData);
+      setLoadedAt(Date.now());
 
       // Load the workspace names for the table column. STAFF-08: a
       // workspace failure must NOT hide staff rows — show an explicit
@@ -127,10 +136,13 @@ export default function StaffManagementScreen() {
         setWorkspacesUnavailable(true);
       }
     } catch (err) {
-      // STAFF-08: surface a retryable error instead of swallowing it.
+      // STAFF-08: surface a retryable error instead of swallowing it. The
+      // snapshot timestamp goes with the rows it described — the footer must
+      // not keep reporting a list this screen just dropped.
       setLoadError(l10nErrorMessage(err, l10n, 'staff-error-load'));
       setStaff([]);
       setRoles([]);
+      setLoadedAt(null);
     } finally {
       setLoading(false);
     }
@@ -282,75 +294,93 @@ export default function StaffManagementScreen() {
         </div>
       </div>
 
-      {/* C2.2: Pro tier near its 20-staff cap — upgrade nudge. */}
-      {atProStaffCap && (
-        <div className="staff-mgmt-approaching-banner" role="note">
-          <span>{l10n.getString('staff-limit-approaching-premium')}</span>
-          <Button variant="primary" size="sm" onClick={() => openUpgradePricingPage(locale, 'premium')}>
-            {l10n.getString('staff-limit-approaching-premium-cta')}
-          </Button>
-        </div>
-      )}
-
-      {loadError ? (
-        <Card shadow="sm">
-          <div className="staff-mgmt-load-error" role="alert">
-            <p className="staff-mgmt-load-error-message">{loadError}</p>
-            <Button onClick={() => load()} variant="secondary">
-              <Localized id="staff-retry"><span>Retry</span></Localized>
+      {/* ── Main ──────────────────────────────────────────────────────
+          The page root is a flex column that never scrolls: header and
+          status footer are pinned, and THIS is the single scrolling region.
+          That is what keeps the footer's status visible while a long roster
+          is scrolled, and it is the shape KdsScreen uses. Everything below
+          stays outside the header so a failed load cannot take the back
+          button with it. */}
+      <div className="staff-mgmt-main">
+        {/* C2.2: Pro tier near its 20-staff cap — upgrade nudge. */}
+        {atProStaffCap && (
+          <div className="staff-mgmt-approaching-banner" role="note">
+            <span>{l10n.getString('staff-limit-approaching-premium')}</span>
+            <Button variant="primary" size="sm" onClick={() => openUpgradePricingPage(locale, 'premium')}>
+              {l10n.getString('staff-limit-approaching-premium-cta')}
             </Button>
           </div>
-        </Card>
-      ) : loading ? (
-        <div className="staff-mgmt-loading-skeleton" aria-hidden="true">
-          <div className="staff-mgmt-header">
-            <Skeleton variant="block" width="6rem" height="1.75rem" />
-            <Skeleton variant="block" width="6rem" height="2.25rem" />
-          </div>
-          <div className="staff-mgmt-table-wrap">
-            <table className="staff-mgmt-table">
-              <thead>
-                <tr>
-                  {['Role', 'Workspace', 'Name', 'Username', 'Status', ''].map((_, i) => (
-                    <th key={i}><Skeleton variant="text" width="4rem" /></th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>{Array.from({ length: 4 }).map((_, r) => (
-                  <tr key={r}>
-                    <td><Skeleton variant="block" width="5rem" height="1.25rem" style={{ borderRadius: 'var(--radius-full)' }} /></td>
-                    <td><Skeleton variant="text" width="6rem" /></td>
-                    <td><Skeleton variant="text" width="7rem" /></td>
-                    <td><Skeleton variant="text" width="4rem" /></td>
-                    <td><Skeleton variant="text" width="3.5rem" /></td>
-                    <td><Skeleton variant="block" width="5rem" height="1.5rem" /></td>
+        )}
+
+        {loadError ? (
+          <Card shadow="sm">
+            <div className="staff-mgmt-load-error" role="alert">
+              <p className="staff-mgmt-load-error-message">{loadError}</p>
+              <Button onClick={() => load()} variant="secondary">
+                <Localized id="staff-retry"><span>Retry</span></Localized>
+              </Button>
+            </div>
+          </Card>
+        ) : loading ? (
+          <div className="staff-mgmt-loading-skeleton" aria-hidden="true">
+            {/* No header mimic here: the real header is rendered above for
+                every branch, so a second one would duplicate the title, the
+                back button and the actions while the list loads. */}
+            <div className="staff-mgmt-table-wrap">
+              <table className="staff-mgmt-table">
+                <thead>
+                  <tr>
+                    {['Role', 'Workspace', 'Name', 'Username', 'Status', ''].map((_, i) => (
+                      <th key={i}><Skeleton variant="text" width="4rem" /></th>
+                    ))}
                   </tr>
-                ))}
+                </thead>
+                <tbody>{Array.from({ length: 4 }).map((_, r) => (
+                    <tr key={r}>
+                      <td><Skeleton variant="block" width="5rem" height="1.25rem" style={{ borderRadius: 'var(--radius-full)' }} /></td>
+                      <td><Skeleton variant="text" width="6rem" /></td>
+                      <td><Skeleton variant="text" width="7rem" /></td>
+                      <td><Skeleton variant="text" width="4rem" /></td>
+                      <td><Skeleton variant="text" width="3.5rem" /></td>
+                      <td><Skeleton variant="block" width="5rem" height="1.5rem" /></td>
+                    </tr>
+                  ))}
 </tbody>
-            </table>
+              </table>
+            </div>
           </div>
-        </div>
-      ) : staff.length === 0 ? (
-        <Card shadow="sm">
-          <div className="staff-mgmt-empty">
-            <EmptyState
-              icon={<NoStaffIcon />}
-              title={requiredLocalized(l10n, 'staff-empty')}
-              action={{ label: requiredLocalized(l10n, 'staff-empty-cta'), onClick: openCreate }}
-            />
-          </div>
-        </Card>
-      ) : (
-        <StaffListTable
-          staff={staff}
-          workspaceNameMap={workspaceNameMap}
-          workspacesUnavailable={workspacesUnavailable}
-          canImpersonate={canImpersonate}
-          onEdit={openEdit}
-          onToggleActive={toggleActive}
-          onImpersonate={handleImpersonate}
-        />
-      )}
+        ) : staff.length === 0 ? (
+          <Card shadow="sm">
+            <div className="staff-mgmt-empty">
+              <EmptyState
+                icon={<NoStaffIcon />}
+                title={requiredLocalized(l10n, 'staff-empty')}
+                action={{ label: requiredLocalized(l10n, 'staff-empty-cta'), onClick: openCreate }}
+              />
+            </div>
+          </Card>
+        ) : (
+          <StaffListTable
+            staff={staff}
+            workspaceNameMap={workspaceNameMap}
+            workspacesUnavailable={workspacesUnavailable}
+            canImpersonate={canImpersonate}
+            onEdit={openEdit}
+            onToggleActive={toggleActive}
+            onImpersonate={handleImpersonate}
+          />
+        )}
+      </div>
+
+      {/* ── Status footer ───────────────────────────────────────────
+          Fullscreen routes lose the app's own StatusBar (AppLayout mounts
+          it), so the page carries its own. */}
+      <StaffManagementFooter
+        totalCount={staff.length}
+        activeCount={staff.filter((member) => member.is_active).length}
+        roleCount={roles.length}
+        loadedAt={loadedAt}
+      />
 
       {/* ── Add/Edit Drawer ─────────────────────────────────────── */}
       <StaffDetailDrawer

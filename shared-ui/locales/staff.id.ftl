@@ -33,6 +33,10 @@ staff-login-lockout = Terkunci. Coba lagi dalam { $seconds }d
 # ── Product Bundles ──
 staff-title = Staf
 staff-back-aria = Kembali ke ruang kerja
+staff-footer-staff-count = { $count } anggota staf
+staff-footer-active = { $count } aktif
+staff-footer-roles = { $count } peran
+staff-footer-updated = Diperbarui { $time }
 staff-add-button = Tambah Staf
 staff-empty = Belum ada anggota staf.
 staff-empty-cta = Tambah anggota staf pertama
