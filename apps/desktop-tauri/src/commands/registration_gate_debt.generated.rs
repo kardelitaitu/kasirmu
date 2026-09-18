@@ -169,10 +169,14 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("sync::test_sync_connection", "no_session_resolution"),
 ];
 
-/// Registered commands the sweep found today. The floor in
-/// registration_gate_tests.rs is asserted equal to this, so a regenerated ledger
-/// that disagrees with a hand-kept floor fails the build.
-pub const REGISTERED_TOTAL: usize = 447;
+/// Registered commands the sweep found today — measured by `run_sweep` and written here by
+/// the generator, which is why it now reads 455 rather than the 447 that lagged inside
+/// `REGISTERED_SLACK`. It is NOT the pin: the floor in registration_gate_tests.rs is
+/// measured from the tree itself, and a number here that falls behind means a regeneration
+/// is overdue rather than that a build will fail. (Corrected 18-09-26 with the generator;
+/// this comment described the earlier ledger-versus-ledger comparison the floor leg
+/// replaced.)
+pub const REGISTERED_TOTAL: usize = 455;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 /// 70 -> 69: `security::rotate_encryption_key` was deregistered, and its ledger row
