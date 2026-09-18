@@ -17,6 +17,12 @@
 //!   terminal via the session and requires no extra permission.
 //! - Early stop (`stop`) is the 2026-09-07 A2 ruling: the AUTHOR of the memo
 //!   may always stop it; anyone else must hold `memo:stop`.
+//!
+//! Terminal identity has one rule, not one per leg: sessions carry the DEVICE
+//! identity (the hostname) while every recipient row — local or cloud — keys on
+//! `terminals.id`, so the read, the ack and the tablet's cloud query all resolve
+//! through [`resolve_recipient_terminal_id`] rather than each translating the
+//! session value themselves.
 
 use chrono::Utc;
 use kasirmu_core::memo::{
@@ -311,6 +317,35 @@ pub async fn list_active_memos_scoped(
     list_active_memos_local(ctx, &session).await
 }
 
+/// The `memo_recipients.terminal_id` a session's device delivers as — the ONE
+/// device→row translation every memo leg shares.
+///
+/// Two different values are both called "terminal id" here, and every leg that
+/// touches a recipient row has to agree on which one it means: a session
+/// carries the DEVICE identity (`WorkspaceContext` persists what `get_device_id`
+/// returned — the hostname), while the fan-out, the local read, the local ack,
+/// the cloud push and therefore the cloud read all key on `terminals.id` (the
+/// row's UUID; see `Store::resolve_terminal_row_id` for the rule itself).
+///
+/// Lives here, and is called by both halves of the tablet's read (the cloud
+/// query and the local fallback) plus the local ack, so the rule cannot fork
+/// into "the identity the display asked for" and "the identity the ack wrote
+/// to". A tablet that asked the cloud under its device identity asked under a
+/// value no recipient row can carry — the reason memos were delivered and
+/// still invisible.
+///
+/// `None` means the device has no terminal row in this tenant, and therefore no
+/// recipient rows either: a value that cannot resolve cannot match a foreign
+/// key, so callers must not send it anywhere as a terminal id.
+pub async fn resolve_recipient_terminal_id(
+    ctx: &BridgeCtx<'_>,
+    session: &SessionContext,
+) -> Result<Option<String>, BridgeError> {
+    let conn = ctx.lock_global().await;
+    let store = Store::new(&conn);
+    Ok(store.resolve_terminal_row_id(DEFAULT_TENANT_ID, &session.terminal_id)?)
+}
+
 /// The local half of the display read, for a shell that reaches memos by another
 /// route first: the tablet's local `memos` table is structurally empty, so it
 /// reads the cloud and only falls back to this. Taking an already-resolved
@@ -321,21 +356,22 @@ pub async fn list_active_memos_local(
     session: &SessionContext,
 ) -> Result<MemoDisplayDto, BridgeError> {
     let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let conn = ctx.lock_global().await;
-    let store = Store::new(&conn);
     // Translate the session's DEVICE identity into the terminal ROW id the
-    // recipient table keys on before reading (see
-    // `Store::resolve_terminal_row_id`): the fan-out writes one
+    // recipient table keys on before reading: the fan-out writes one
     // `memo_recipients` row per `terminals.id`, so querying the raw session
     // value would match nothing even for a device that has memos waiting.
     // An unresolved device demonstrably has no recipient rows — serve an empty
     // list (with the cadence, so the banner keeps polling) rather than erroring.
-    let memos = match store.resolve_terminal_row_id(DEFAULT_TENANT_ID, &session.terminal_id)? {
-        Some(terminal_id) => store
-            .list_active_for_terminal(DEFAULT_TENANT_ID, &terminal_id, &now)?
-            .into_iter()
-            .map(ActiveMemoDto::from)
-            .collect(),
+    let memos = match resolve_recipient_terminal_id(ctx, session).await? {
+        Some(terminal_id) => {
+            let conn = ctx.lock_global().await;
+            let store = Store::new(&conn);
+            store
+                .list_active_for_terminal(DEFAULT_TENANT_ID, &terminal_id, &now)?
+                .into_iter()
+                .map(ActiveMemoDto::from)
+                .collect()
+        }
         None => {
             tracing::debug!(
                 device = %session.terminal_id,
@@ -370,19 +406,19 @@ pub async fn acknowledge_memo_local(
     session: &SessionContext,
     memo_id: &str,
 ) -> Result<(), BridgeError> {
-    let conn = ctx.lock_global().await;
-    let store = Store::new(&conn);
     // The same device→row translation the display read performs, or the ack
     // would target a recipient row that cannot exist. An unresolved device has
     // nothing to acknowledge: report the store's own unknown-recipient error
     // instead of succeeding silently, because the caller drops the memo from
     // view optimistically and would never learn the ack never landed.
-    let terminal_id = store
-        .resolve_terminal_row_id(DEFAULT_TENANT_ID, &session.terminal_id)?
+    let terminal_id = resolve_recipient_terminal_id(ctx, session)
+        .await?
         .ok_or_else(|| CoreError::NotFound {
             entity: "memo_recipient",
             id: format!("{memo_id}/{}", session.terminal_id),
         })?;
+    let conn = ctx.lock_global().await;
+    let store = Store::new(&conn);
     store.acknowledge_memo(DEFAULT_TENANT_ID, memo_id, &terminal_id, &session.user_id)?;
     Ok(())
 }

@@ -454,6 +454,42 @@ async fn read_is_empty_for_the_empty_device_identity_login_falls_back_to() {
 }
 
 #[tokio::test]
+async fn recipient_identity_is_the_row_id_an_id_or_a_device_resolves_to() {
+    // This helper is what the tablet's cloud query and the local fallback both
+    // ask, so its three outcomes are pinned here rather than twice per leg: the
+    // device identity a session carries resolves to the row, a row id resolves
+    // to itself (a caller that already holds one is not sent astray), and an
+    // unresolved value stays `None` — never handed back as a terminal id.
+    let conn = kasirmu_core::migrations::fresh_db();
+    seed_terminal(&conn, "term-uuid-1", "RESTAURANT-POS");
+    let tb = TestBridge::new().with_conn(conn);
+
+    for identity in ["RESTAURANT-POS", "term-uuid-1"] {
+        assert_eq!(
+            resolve_recipient_terminal_id(
+                &tb.ctx(),
+                &session_for_device("user-staff", "role-staff", identity)
+            )
+            .await
+            .unwrap()
+            .as_deref(),
+            Some("term-uuid-1"),
+            "identity '{identity}' must resolve to the recipient row id"
+        );
+    }
+    assert_eq!(
+        resolve_recipient_terminal_id(
+            &tb.ctx(),
+            &session_for_device("user-staff", "role-staff", "UNREGISTERED-DEVICE")
+        )
+        .await
+        .unwrap(),
+        None,
+        "an unresolved device must not be sent anywhere as a terminal id"
+    );
+}
+
+#[tokio::test]
 async fn ack_writes_the_recipient_row_behind_the_session_device() {
     let conn = kasirmu_core::migrations::fresh_db();
     seed_terminal(&conn, "term-uuid-1", "RESTAURANT-POS");

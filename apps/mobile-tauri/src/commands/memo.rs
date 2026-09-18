@@ -17,7 +17,10 @@
 //! unconfigured or unreachable. Everything else — the DTOs, the display cadence
 //! and both local halves, including the device→terminal-row translation that
 //! makes the recipient rows match — is the bridge's (`kasirmu_bridge::memo`), so
-//! the wire shape and the resolution rule each have exactly one home.
+//! the wire shape and the resolution rule each have exactly one home. The cloud
+//! query is sent under that same resolved identity, never the raw session value:
+//! one terminal identity for the read, the ack and the push that produced the
+//! rows.
 
 use kasirmu_core::Store;
 use kasirmu_core::sync_client::{self, SyncConfig};
@@ -40,6 +43,14 @@ pub use kasirmu_bridge::memo::{
 /// configured the read goes to `GET /api/v1/memos/active`; when sync is
 /// unconfigured or unreachable it falls back to the local read (today's
 /// behaviour, with a warn log).
+///
+/// One terminal identity across that whole leg: the query is sent under the
+/// terminal ROW id the recipient rows key on
+/// ([`kasirmu_bridge::memo::resolve_recipient_terminal_id`]), not the DEVICE
+/// identity the session carries — the same translation the local fallback and
+/// the local ack perform. Sending the raw session value (the hostname) asked
+/// the cloud about a terminal it has no recipient rows for, so a memo the
+/// desktop delivered came back as an empty list.
 #[tauri::command]
 pub async fn list_active_memos_scoped(
     session_token: String,
@@ -54,9 +65,16 @@ pub async fn list_active_memos_scoped(
         let store = Store::new(&db);
         SyncConfig::from_settings(&store)?
     };
+    let ctx = state.bridge_ctx();
+    // Only a configured terminal has a cloud to ask; an unconfigured one goes
+    // straight to the local half, which resolves the identity for itself.
+    let recipient = match config.as_ref() {
+        Some(_) => kasirmu_bridge::memo::resolve_recipient_terminal_id(&ctx, &session).await?,
+        None => None,
+    };
 
-    if let Some(config) = config.as_ref() {
-        match sync_client::fetch_active_memos_from_server(config, &session.terminal_id).await {
+    if let (Some(config), Some(terminal_id)) = (config.as_ref(), recipient.as_ref()) {
+        match sync_client::fetch_active_memos_from_server(config, terminal_id).await {
             Ok(response) => {
                 return Ok(MemoDisplayDto {
                     memos: response
@@ -73,14 +91,23 @@ pub async fn list_active_memos_scoped(
             Err(e) => {
                 tracing::warn!(
                     error = %e,
-                    terminal = %session.terminal_id,
+                    terminal = %terminal_id,
+                    device = %session.terminal_id,
                     "memo cloud read failed; falling back to local read"
                 );
             }
         }
+    } else if config.is_some() {
+        // Configured, but this device resolves to no terminal row: there is no
+        // identity to ask the cloud about, and no recipient row could name it.
+        // Go straight to the local half, which serves the empty display with
+        // the cadence so the banner keeps polling.
+        tracing::debug!(
+            device = %session.terminal_id,
+            "memo cloud read skipped: this device has no terminal row"
+        );
     }
 
-    let ctx = state.bridge_ctx();
     kasirmu_bridge::memo::list_active_memos_local(&ctx, &session)
         .await
         .map_err(Into::into)
@@ -96,6 +123,15 @@ pub async fn list_active_memos_scoped(
 /// is unreachable the local write is the fallback. The ack carries the
 /// session's user id as informational metadata (terminal tokens have no
 /// user identity of their own).
+///
+/// The ack names no terminal: `POST /api/v1/memos/{memo_id}/ack` keys the
+/// caller's own recipient row off the token's `terminal_id` claim, and refuses
+/// a token that has none. So unlike the display read — which now asks under the
+/// resolved row id — this leg's terminal identity is a property of the
+/// CREDENTIAL, and a tablet whose sync token was minted admin-side (the normal
+/// paste-a-JWT provisioning) has no claim to key on: the 403 becomes a warn and
+/// the local write below is what actually lands. Unifying this leg means giving
+/// the device a terminal-scoped credential, not passing a different query.
 #[tauri::command]
 pub async fn acknowledge_memo_scoped(
     memo_id: String,

@@ -501,3 +501,133 @@ async fn ack_falls_back_to_local_write_with_seeded_recipient() {
     assert_eq!(acked_by.as_deref(), Some("user-staff"));
     drop(db);
 }
+
+// ── Cloud-read identity (one terminal identity across the leg) ──────
+//
+// `GET /api/v1/memos/active` is answered for the terminal ROW id the recipient
+// rows key on, so the tablet must ask under that id — the very same
+// device→row translation its local read and ack perform — and must not ask at
+// all for a device that resolves to no row.
+
+/// A one-shot fake cloud: captures the request it receives, then answers the
+/// memo-display contract with `body`.
+///
+/// The capture is written before the response, so a caller that returns from a
+/// query is guaranteed to find it recorded — and a caller that finds it empty
+/// provably never connected.
+async fn fake_cloud(
+    body: &'static str,
+) -> (
+    String,
+    std::sync::Arc<tokio::sync::Mutex<Option<String>>>,
+) {
+    use std::sync::Arc as StdArc;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server_url = format!("http://{}", listener.local_addr().unwrap());
+    let captured: StdArc<tokio::sync::Mutex<Option<String>>> =
+        StdArc::new(tokio::sync::Mutex::new(None));
+    let sink = captured.clone();
+    tokio::spawn(async move {
+        let Ok((mut socket, _)) = listener.accept().await else {
+            return;
+        };
+        let mut buffer = vec![0_u8; 16 * 1024];
+        let n = socket.read(&mut buffer).await.unwrap_or(0);
+        *sink.lock().await = Some(String::from_utf8_lossy(&buffer[..n]).into_owned());
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let _ = socket.write_all(response.as_bytes()).await;
+    });
+    (server_url, captured)
+}
+
+/// Point sync at `server_url` and mint a session for `device`.
+fn tablet_app_with_sync(
+    conn: rusqlite::Connection,
+    server_url: &str,
+    device: &str,
+) -> tauri::App<tauri::test::MockRuntime> {
+    kasirmu_core::settings::Settings::set_sync_enabled(&conn, true).unwrap();
+    kasirmu_core::settings::Settings::set_sync_server_url(&conn, server_url).unwrap();
+    kasirmu_core::settings::Settings::set_sync_api_key(&conn, "jwt-test").unwrap();
+    let app = tauri::test::mock_builder()
+        .manage(AppState::for_test_with_conn(conn))
+        .build(tauri::generate_context!())
+        .unwrap();
+    app.state::<AppState>()
+        .session_store
+        .write()
+        .unwrap()
+        .insert("tok".into(), tablet_session(device));
+    app
+}
+
+#[tokio::test]
+async fn cloud_read_asks_under_the_resolved_terminal_row_id() {
+    let (server_url, captured) =
+        fake_cloud(r#"{"memos":[],"cadence":{"base_interval_secs":900,"kds_interval_secs":1800}}"#)
+            .await;
+
+    let conn = kasirmu_core::migrations::fresh_db();
+    // Row id `terminal-1`, device id `dev-terminal-1` — the shapes a real
+    // registration produces, and deliberately different.
+    seed_terminal(&conn, "terminal-1");
+    let app = tablet_app_with_sync(conn, &server_url, "dev-terminal-1");
+
+    let dto = list_active_memos_scoped("tok".into(), app.state())
+        .await
+        .unwrap();
+
+    assert_eq!(dto.cadence.kds_interval_secs, 1_800, "the cloud cadence wins");
+    let request = captured
+        .lock()
+        .await
+        .clone()
+        .expect("a registered device must query the cloud");
+    assert!(
+        request.starts_with("GET /api/v1/memos/active?terminal_id=terminal-1 "),
+        "the cloud query must name the recipient row id: {request}"
+    );
+    assert!(
+        !request.contains("dev-terminal-1"),
+        "the device identity must never be sent as a terminal id: {request}"
+    );
+}
+
+#[tokio::test]
+async fn cloud_read_is_not_attempted_for_a_device_without_a_terminal_row() {
+    // The fake cloud DOES answer with a memo, so a query made under an
+    // unresolvable identity would be visible twice: in the capture, and in the
+    // list this command returns.
+    let (server_url, captured) = fake_cloud(
+        r#"{"memos":[{"id":"m-cloud-1","location_ids":[],"author_user_id":"user-manager","author_role":"role-manager","title":"Heads up","body":"Close early","duration":"24h","revision":1,"published_at":"2026-09-07T08:00:00.000Z","expires_at":"2026-09-08T08:00:00.000Z","created_at":"2026-09-07T07:00:00.000Z","delivery_status":"pending"}],"cadence":{"base_interval_secs":900,"kds_interval_secs":1800}}"#,
+    )
+    .await;
+
+    let conn = kasirmu_core::migrations::fresh_db();
+    seed_terminal(&conn, "terminal-1");
+    let app = tablet_app_with_sync(conn, &server_url, "UNREGISTERED-DEVICE");
+
+    let dto = list_active_memos_scoped("tok".into(), app.state())
+        .await
+        .unwrap();
+
+    assert!(
+        dto.memos.is_empty(),
+        "a device with no terminal row has no memos, cloud or local"
+    );
+    assert_eq!(
+        dto.cadence.base_interval_secs, 900,
+        "the cadence is still served locally so the banner keeps polling"
+    );
+    assert!(
+        captured.lock().await.is_none(),
+        "no request may be sent under an identity that cannot match a recipient row"
+    );
+}
