@@ -156,6 +156,10 @@ export function DevToolbar() {
    *
    * `org` spawns an Organization Memo (empty targeting = everyone);
    * `loc` targets the first location the environment serves.
+   *
+   * The title carries NO timestamp (owner direction, 2026-09-19: "its
+   * a memo, no need clock"). Successive spawns are told apart by the
+   * duration ladder in the body, so do not reintroduce one.
    */
   const spawnMemo = useCallback(async (scope: 'org' | 'loc') => {
     if (!sessionToken || spawning) return;
@@ -175,7 +179,7 @@ export function DevToolbar() {
       spawnDurationIndex += 1;
       const memo = await createMemoScoped(sessionToken, {
         locationIds,
-        title: `Dev ${scope === 'org' ? 'Organization' : 'Location'} memo · ${new Date().toLocaleTimeString()}`,
+        title: `Dev ${scope === 'org' ? 'Organization' : 'Location'} memo`,
         body: `Spawned by the dev toolbar to exercise the memo display surfaces. Duration: ${duration}.`,
         duration,
       });
