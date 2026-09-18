@@ -43,10 +43,13 @@ function rectOf(el: HTMLElement): MemoOrigin {
  *  - The stack shows at most {@link MAX_STACK} bubbles in backend list
  *    order; further memos queue silently and surface — with the spawn
  *    animation — when a slot frees.
- *  - Each bubble is adaptive-width (400px cap), previews at most 10 lines,
- *    carries its own (x) floating outside the top-right corner, and opens
- *    the enlarged reading card on click. Titles are optional (blank =
- *    text-only bubble) and no timestamp is ever rendered.
+ *  - Each bubble is adaptive-width (560px cap), previews at most 3
+ *    body rows under a 1-row title, carries its own (x) floating
+ *    outside the top-right corner, and opens the enlarged reading
+ *    card on click. Titles are optional (blank = text-only bubble)
+ *    and no timestamp is ever rendered. The row caps live in
+ *    MemoBanner.css as `-webkit-line-clamp`, not here: the preview is
+ *    a row budget, so the engine has to do the cutting.
  *  - The enlarged card is a dedicated portal overlay (not the shared
  *    Modal): large reading typography and a single big (x) outside the
  *    card. The big (x) acknowledges durably (chat-bubble semantics: read

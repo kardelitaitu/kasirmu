@@ -215,17 +215,57 @@
 }
 
 /* Owner direction (round 3): the bubble text reads at body size,
-   not caption size. */
+   not caption size.
+
+   The title is held to ONE row, and that is part of the bubble's row
+   budget rather than a restyle. The title sits outside the body's
+   clamp, so an unbounded title silently outgrows it: the composer
+   allows a 120-character title (MemosScreen.tsx:330), and a
+   99-character one measures 2 rows at the 560px cap -- a 5-row bubble
+   against a 3-row body, for a notification whose whole job is to be
+   small. The full title is never lost: the reading card renders it
+   unclamped in an <h2> (`.memo-expanded-title`), which is the surface
+   people actually read, exactly as the body already works. */
 .memo-banner-title {
   font-size: var(--text-md);
   font-weight: var(--font-weight-semibold);
   color: var(--color-fg);
   line-height: var(--leading-tight);
   text-align: left;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  -webkit-box-orient: vertical;
+  max-height: calc(var(--leading-tight) * 1em);
+  overflow: hidden;
 }
 
-/* The bubble previews at most 10 lines; the full text lives in the
-   enlarged card behind the open button.
+/* The BODY previews at most THREE lines (owner direction, 2026-09-19,
+   was 10); the full text lives in the enlarged card behind the open
+   button. The engine draws the terminator itself, as a single U+2026
+   `…` glued to the last glyph that fits.
+
+   The cap is a row clamp, NOT character surgery, and the measurement
+   says why. Swept against the running app, the number of characters
+   that fit in three rows is 241 for both 6-line dev fixtures but 63
+   for a 1-line body -- it varies with the body's own character mix, so
+   no fixed "drop the last N chars" rule can hold the row count.
+   `-webkit-line-clamp` can: measured at the 560px cap, the six-line
+   bodies are 6 rows unclamped (126px) and exactly 3 clamped (63px),
+   and 1L/2L/3L bodies measure 1/2/3 rows and are never cut early --
+   the engine cuts at the row boundary rather than at a byte offset.
+   It also costs no layout pass, no ResizeObserver and no re-measure on
+   font load, all of which a JS substring rule would need, because the
+   bubble's width is content-adaptive. And because the cut is purely
+   visual, the full body stays in the DOM: copy, find-in-page and
+   assistive tech still see the whole memo, which a substring rewrite
+   would destroy.
+
+   `max-height` is the belt-and-braces backstop for an engine without
+   webkit-box support, where the clamp would not fire: it hard-caps the
+   box at 3 rows. Same idiom as .restaurant-card-name. Both are
+   honoured in Chromium/WebKit and in Firefox 68+, so in practice the
+   clamp always wins and the backstop never binds.
 
    `text-wrap: pretty` is load-bearing at the wider cap, not a nicety.
    Widening the bubble from 400px to 560px moved the dev memo's break
@@ -236,7 +276,13 @@
    "...to exercise / the memo display surfaces. Duration: 12h."
    pretty was chosen because it only suppresses orphans and leaves
    balanced text alone, where balance rewrites every break. It
-   degrades to normal wrapping on an engine without it. */
+   degrades to normal wrapping on an engine without it.
+
+   Note where pretty stops mattering: it only ever moves a paragraph's
+   LAST lines, so while the clamp is truncating a long body its whole
+   effect lands on text nobody can see, and rows 1-3 are identical
+   under pretty and normal. It is still the right value, because it is
+   load-bearing on the bodies short enough NOT to be clamped. */
 .memo-banner-text {
   margin: 0;
   font-size: var(--text-md);
@@ -245,7 +291,9 @@
   text-wrap: pretty;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 10;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  max-height: calc(var(--leading-normal) * 3em);
   overflow: hidden;
   /* Long unbroken strings (URLs, ids) must wrap, not stretch the
      adaptive bubble past its cap. */
