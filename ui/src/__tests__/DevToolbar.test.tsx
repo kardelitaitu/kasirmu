@@ -207,6 +207,61 @@ describe('DevToolbar', () => {
     expect(durations[1]).toBe(ladder[(firstIdx + 1) % ladder.length]);
   });
 
+  // ── Memo fixtures ──────────────────────────────────────────────
+  // Every spawn must carry the NEXT fixture, so repeated clicks walk all eight
+  // (line count × tail) shapes on either scope. The rendered line counts are
+  // measured in a real layout engine and cannot be asserted here (jsdom has no
+  // layout) — see the band table above MEMO_FIXTURES in DevToolbar.tsx.
+
+  it('exposes the eight fixture shapes in the owner-stated order', async () => {
+    const { MEMO_FIXTURES } = await import('@/features/design/DevToolbar');
+    expect(MEMO_FIXTURES.map((f) => `${f.lines}L ${f.tail}`)).toEqual([
+      '1L short',
+      '1L long',
+      '2L short',
+      '2L long',
+      '3L short',
+      '3L long',
+      '6L short',
+      '6L long',
+    ]);
+    for (const f of MEMO_FIXTURES) expect(f.body.trim().length).toBeGreaterThan(0);
+  });
+
+  it('sends the fixture body verbatim and names the fixture in the title', async () => {
+    const { MEMO_FIXTURES } = await import('@/features/design/DevToolbar');
+    renderToolbar();
+
+    fireEvent.click(screen.getByRole('button', { name: /spawn an organization memo/i }));
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+
+    const args = mockCreate.mock.calls[0]![1] as { title: string; body: string };
+    const idx = MEMO_FIXTURES.findIndex((f) => f.body === args.body);
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(args.title).toContain(`${MEMO_FIXTURES[idx]!.lines}L ${MEMO_FIXTURES[idx]!.tail}`);
+    // The duration must NOT ride along in the body: it would break the
+    // measured line count of every fixture.
+    expect(args.body).not.toMatch(/Duration:/);
+  });
+
+  it('advances to the next fixture on every spawn, wrapping at the end', async () => {
+    const { MEMO_FIXTURES } = await import('@/features/design/DevToolbar');
+    renderToolbar();
+
+    for (let i = 0; i < 3; i++) {
+      fireEvent.click(screen.getByRole('button', { name: /spawn an organization memo/i }));
+      await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(i + 1));
+    }
+
+    const idxs = mockCreate.mock.calls.map((call) =>
+      MEMO_FIXTURES.findIndex((f) => f.body === (call[1] as { body: string }).body),
+    );
+    expect(idxs.every((i) => i >= 0)).toBe(true);
+    for (let i = 1; i < idxs.length; i++) {
+      expect(idxs[i]).toBe((idxs[i - 1]! + 1) % MEMO_FIXTURES.length);
+    }
+  });
+
   it('a failed spawn is logged and never reaches publish', async () => {
     mockCreate.mockRejectedValue(new Error('backend down'));
     renderToolbar();
@@ -247,7 +302,7 @@ describe('DevToolbar', () => {
     fireEvent.click(screen.getByRole('button', { name: /spawn a location memo/i }));
 
     const status = await screen.findByRole('status');
-    await waitFor(() => expect(status.textContent).toMatch(/Location memo published to loc-1/));
+    await waitFor(() => expect(status.textContent).toMatch(/Location memo .*published to loc-1/));
     expect(status.className).toContain('dev-toolbar-status--ok');
   });
 

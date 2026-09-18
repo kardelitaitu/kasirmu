@@ -87,6 +87,89 @@ function clampToViewport(x: number, y: number): { x: number; y: number } {
 const SPAWN_DURATIONS: MemoDuration[] = ['12h', '24h', '3d', '7d', '30d'];
 let spawnDurationIndex = 0;
 
+/** One dev memo fixture: a body tuned to a rendered shape. */
+export interface MemoFixture {
+  /** RENDERED line count the body is tuned to produce in the bubble. */
+  lines: 1 | 2 | 3 | 6;
+  /** Whether the LAST rendered line is a stub or nearly full. */
+  tail: 'short' | 'long';
+  /** The memo body. No trailing duration: see the note below. */
+  body: string;
+}
+
+/**
+ * The bodies a dev spawn cycles through — one per (line count × tail)
+ * combination the memo display surface has to survive (owner direction,
+ * 2026-09-19: "we want more variation on both org + location memo").
+ *
+ * `lines` is the RENDERED line count, not a newline count. The bubble wraps
+ * with `white-space: normal`, so any `\n` in a body collapses to a space and
+ * only the wrap decides how many lines appear — the fixtures are therefore
+ * prose of a tuned LENGTH, never text with inserted breaks. `tail` describes
+ * the final line: `short` leaves a stub, `long` nearly fills it. That pair is
+ * the point — a stub is what exposes an orphan, a full line is what exposes
+ * an over-eager clamp.
+ *
+ * MEASURED, NOT ASSUMED. Sweeping body length through the real bubble at its
+ * 560px cap (`--text-md` at this app's 14px root) gives the char band for each
+ * rendered line count:
+ *
+ *   1 line   27..76      4 lines  246..306     7 lines  472..541
+ *   2 lines  85..161     5 lines  319..381
+ *   3 lines 172..232     6 lines  395..460
+ *
+ * `.memo-banner-text` carries `text-wrap: pretty`, so an orphan is rebalanced
+ * rather than left as a lone word — the bands above already include that, and
+ * a greedy-wrap estimate will not reproduce them. Each fixture sits near an
+ * END of its band: `short` low in it, `long` high in it, so the pair brackets
+ * the shape rather than sampling its middle. Re-measure after any change to
+ * the bubble width, the body font size, or the text-wrap rule.
+ *
+ * No duration is appended to these bodies on purpose: a 15-character
+ * "Duration: 12h." suffix would push each fixture across a line boundary by a
+ * variable amount and silently destroy the tuning. The duration still cycles
+ * per spawn and is reported in the toolbar's status line.
+ */
+export const MEMO_FIXTURES: readonly MemoFixture[] = [
+  { lines: 1, tail: 'short', body: 'Back in five minutes.' },
+  {
+    lines: 1,
+    tail: 'long',
+    body: 'Front counter float is short — top it up before the evening shift.',
+  },
+  {
+    lines: 2,
+    tail: 'short',
+    body: 'Please restock the chiller before lunch and check the dairy dates on everything in the fridge.',
+  },
+  {
+    lines: 2,
+    tail: 'long',
+    body: 'Please restock the chiller before lunch and check the dairy dates. The front counter float is short, so top it up before the evening shift starts today.',
+  },
+  {
+    lines: 3,
+    tail: 'short',
+    body: 'Please restock the chiller before lunch and check the dairy dates. The front counter float is short, so top it up before the evening shift starts today. Sort the returns first.',
+  },
+  {
+    lines: 3,
+    tail: 'long',
+    body: 'Please restock the chiller before lunch and check the dairy dates. The front counter float is short, so top it up before the evening shift starts today. Sort the returns first. Deep clean the coffee machine tonight and log it.',
+  },
+  {
+    lines: 6,
+    tail: 'short',
+    body: 'Please restock the chiller before lunch and check the dairy dates. The front counter float is short, so top it up before the evening shift starts today. Sort the returns first. Deep clean the coffee machine tonight and log it. Two crates of cooking oil arrived damaged, so hold them for returns. The back door lock is sticking again, so report it to maintenance. Check the back door lock and the shutter today.',
+  },
+  {
+    lines: 6,
+    tail: 'long',
+    body: 'Please restock the chiller before lunch and check the dairy dates. The front counter float is short, so top it up before the evening shift starts today. Sort the returns first. Deep clean the coffee machine tonight and log it. Two crates of cooking oil arrived damaged, so hold them for returns. The back door lock is sticking again, so report it to maintenance. Check the back door lock and the shutter today. Move the seasonal display to the window.',
+  },
+];
+let spawnFixtureIndex = 0;
+
 // ── Draggable hook ─────────────────────────────────────────────────
 
 function useDragToolbar() {
@@ -181,9 +264,13 @@ export function DevToolbar() {
    * `org` spawns an Organization Memo (empty targeting = everyone);
    * `loc` targets the first location the environment serves.
    *
-   * The title carries NO timestamp (owner direction, 2026-09-19: "its
-   * a memo, no need clock"). Successive spawns are told apart by the
-   * duration ladder in the body, so do not reintroduce one.
+   * Each spawn takes the NEXT fixture from [`MEMO_FIXTURES`] and advances the
+   * index, so clicking repeatedly walks all eight shapes (1/2/3/6 rendered
+   * lines, each short- and long-tailed) on either scope. The title names the
+   * fixture it spawned — `· 3L short` — which is what makes a screenshot or a
+   * report self-identifying. The title carries NO timestamp (owner direction,
+   * 2026-09-19: "its a memo, no need clock"); the fixture tag is not a clock,
+   * it says which fixture you are looking at.
    *
    * Every outcome is REPORTED under the buttons, because the silent path is
    * indistinguishable from a broken button. The `loc` spawn in particular can
@@ -213,17 +300,19 @@ export function DevToolbar() {
       }
       const duration = SPAWN_DURATIONS[spawnDurationIndex % SPAWN_DURATIONS.length]!;
       spawnDurationIndex += 1;
+      const fixture = MEMO_FIXTURES[spawnFixtureIndex % MEMO_FIXTURES.length]!;
+      spawnFixtureIndex += 1;
       const memo = await createMemoScoped(sessionToken, {
         locationIds,
-        title: `Dev ${label} memo`,
-        body: `Spawned by the dev toolbar to exercise the memo display surfaces. Duration: ${duration}.`,
+        title: `Dev ${label} memo · ${fixture.lines}L ${fixture.tail}`,
+        body: fixture.body,
         duration,
       });
       await publishMemoScoped(sessionToken, memo.id);
       window.dispatchEvent(new CustomEvent('memos:refresh'));
       setSpawnStatus({
         tone: 'ok',
-        text: `${label} memo published${locationIds.length ? ` to ${locationIds[0]}` : ''} · ${duration}`,
+        text: `${label} memo ${fixture.lines}L ${fixture.tail} published${locationIds.length ? ` to ${locationIds[0]}` : ''} · ${duration}`,
       });
     } catch (e) {
       const text = describeSpawnError(e);
