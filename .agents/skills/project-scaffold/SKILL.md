@@ -70,7 +70,7 @@ tracing-subscriber = "0.3"
 ```
 
 ```
-oz-pos/
+ozpos/
 ├── Cargo.toml                  # workspace root (single committed Cargo.lock)
 ├── AGENTS.md · ARCHITECTURE.md · CONTRIBUTING.md · README.md   # root docs
 ├── crates/

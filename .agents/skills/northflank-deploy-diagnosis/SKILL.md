@@ -1,13 +1,21 @@
 ---
 name: northflank-deploy-diagnosis
-description: Diagnose why an OZ-POS Northflank build or deploy failed, and prove the fix before spending another deploy cycle. Use when a Northflank build shows FAILURE with only "Failure on executing build", when a container exits at exec with "error while loading shared libraries", when the Dockerfile that Northflank builds diverges from ops/docker/Dockerfile.server, when a pkg-config or build-script failure appears in a Docker build log, or when the Northflank service/path/branch config is suspected to be stale. Covers the build-logs endpoint (buildId is a QUERY PARAM, not a path segment), the lineLimit ceiling and the useless pagination cursor, the PATCH-combined-service vs deprecated build-options distinction, enumerating a crate closure's pkg-config build scripts via cargo metadata plus resolved feature sets, verifying runtime shared libraries offline against already-built local images with ldd, the usrmerge `dpkg -S` trap, and the sandbox rule that Docker container egress is blocked so apt-get cannot be tested in a fresh container.
+description: Diagnose why a kasir.mu Northflank build or deploy failed, and prove the fix before spending another deploy cycle. Use when a Northflank build shows FAILURE with only "Failure on executing build", when a container exits at exec with "error while loading shared libraries", when the Dockerfile that Northflank builds diverges from ops/docker/Dockerfile.server, when a pkg-config or build-script failure appears in a Docker build log, or when the Northflank service/path/branch config is suspected to be stale. Covers the build-logs endpoint (buildId is a QUERY PARAM, not a path segment), the lineLimit ceiling and the useless pagination cursor, the PATCH-combined-service vs deprecated build-options distinction, enumerating a crate closure's pkg-config build scripts via cargo metadata plus resolved feature sets, verifying runtime shared libraries offline against already-built local images with ldd, the usrmerge `dpkg -S` trap, and the sandbox rule that Docker container egress is blocked so apt-get cannot be tested in a fresh container.
 ---
 
-# OZ-POS — diagnosing a Northflank build/deploy failure
+# kasir.mu — diagnosing a Northflank build/deploy failure
 
 The service is `oz-pos` / `cloud`, built from `main`. A **successful build auto-deploys** (measured:
 build `mint-cook-2048` succeeded 15:10Z, deployed 15:16Z), so a FAILURE build means the deploy simply
 never happened — there is no separate deploy step to check.
+
+**`oz-pos` below is the Northflank *project id*, not the brand — do not rebrand it.** The brand is
+`kasir.mu`, but the Northflank project is still literally named `oz-pos`, and every endpoint here
+takes it as a path segment (`/v1/projects/oz-pos/services/cloud/…`). Renaming the string makes the
+URLs 404. The pre-rebrand image tags below (`oz-pos-cloud:*`, `oz-pos-unified:latest`) and the
+`/app/…` binary path name artifacts that really exist under those names, so leave them too. The
+drift guard's crate-prefix check keeps reporting that binary token — it allow-lists `oz-pos` but
+not the other pre-rebrand crate-style names — so treat that finding as expected residue.
 
 **The hard constraint:** every Northflank build costs minutes and the fix only takes effect after it
 reaches `main`. So do not push a guess. Get the build log, name the failing line, and prove the fix
@@ -166,3 +174,5 @@ Resolve remote shas with `git ls-remote`. A `git fetch` that prints `X..Y main -
 6. Confirm the Northflank `dockerFilePath` and service id still exist (§6).
 7. Prove what you can locally; state plainly what the sandbox prevented you from proving.
 8. Ask for the push order, then merge to `main` and poll the build to conclusion.
+
+> last audited 19-09-26 by Budak-Korporat
