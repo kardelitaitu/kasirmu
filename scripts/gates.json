@@ -277,7 +277,7 @@
       "id": "ci-routing-test",
       "label": "CI path router regression test",
       "status": "required",
-      "_note": "scripts/test-ci-routing.sh extracts the Route shell body from dev-ci.yml and runs it against 15 synthetic diffs. c5ec6381 shipped the router with no committed test, while the 0.0.36 release notes claimed one existed -- this file makes that claim true and keeps it true.",
+      "_note": "scripts/test-ci-routing.sh extracts the Route shell body from dev-ci.yml and runs it against the synthetic diffs pinned in that file -- it quotes no count on purpose, matching .githooks/pre-push, because the figure that used to sit here was true when written and had rotted by the time anyone looked. The authoritative list stays in the script. c5ec6381 shipped the router with no committed test, while the 0.0.36 release notes claimed one existed -- this file makes that claim true and keeps it true.",
       "runners": { "check.sh": ["ci routing test"] },
       "ci": { "workflow": "dev-ci.yml", "job": "ci-docs-drift" }
     },
