@@ -270,6 +270,37 @@ describe('Cloudflare Worker — worker.ts', () => {
     expect(res.headers.get('Location')).toBe('/evil.com/'); // same-origin
   });
 
+  it('B24c: /admin/* on the marketing host redirects to the host that owns the proxy', async () => {
+    // The admin SPA's assets live under /admin/* on the marketing host (the
+    // admin gate rewrites admin.kasir.mu → MARKETING_HOST/admin/*), which left
+    // https://kasir.mu/admin/login publicly reachable — and dead there: login.js
+    // takes the relative branch on any *.kasir.mu host, but the /api/v1/ proxy
+    // is gated to DASHBOARD_HOSTS, so every submit 404s. B24 fixed only the
+    // redirect; the page itself must go to the host that owns the proxy.
+    const req = new Request('https://kasir.mu/admin/login?next=%2Freports');
+    mockEnv.ASSETS.fetch.mockClear();
+    const res = await worker.fetch(req, mockEnv);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe('https://admin.kasir.mu/admin/login?next=%2Freports');
+    // The leaked page must not be served from the proxy-less host.
+    expect(mockEnv.ASSETS.fetch).not.toHaveBeenCalled();
+  });
+
+  it('B24c: the admin host still serves /admin/login locally (proxy intact)', async () => {
+    mockEnv.ASSETS.fetch.mockImplementation(async () => new Response('static asset'));
+    mockEnv.ASSETS.fetch.mockClear();
+    const req = new Request('https://admin.kasir.mu/admin/login');
+    const res = await worker.fetch(req, mockEnv);
+
+    expect(res.status).toBe(200);
+    const rewritten = mockEnv.ASSETS.fetch.mock.calls[0][0] as Request;
+    // Assets are read from the marketing host's bundle — a binding call, so
+    // the public /admin/* redirect above does not interfere with it.
+    expect(new URL(rewritten.url).hostname).toBe('kasir.mu');
+    expect(new URL(rewritten.url).pathname).toBe('/admin/login');
+  });
+
   // ── R1: account-portal httpOnly cookie on the marketing host ────────
 
   it('R1: serves /__oz/session on the marketing host from the cookie', async () => {

@@ -686,6 +686,26 @@ export default {
     // /__oz/logout on the marketing host too (the account portal lives at
     // kasir.mu/en/account).
 
+    // The admin SPA's assets live under /admin/* ON THE MARKETING HOST (the
+    // admin gate rewrites admin.kasir.mu → MARKETING_HOST/admin/*), which
+    // leaves https://kasir.mu/admin/login publicly reachable — and it is a
+    // dead form there. login.js sees a *.kasir.mu host, sets API='' and POSTs
+    // relative /api/v1/..., but the /api/v1/ proxy is gated to DASHBOARD_HOSTS,
+    // so every submit 404s. B24 fixed only the *redirect* onto this host; this
+    // closes the remaining hole by sending the page itself to the host that
+    // owns the proxy. The admin host's own asset loads call env.ASSETS.fetch
+    // directly (a binding call, not this handler), so they are unaffected.
+    if (url.pathname === '/admin' || url.pathname.startsWith('/admin/')) {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: `https://admin.kasir.mu${url.pathname}${url.search}`,
+          'Cache-Control': 'no-store',
+          'Referrer-Policy': 'no-referrer',
+        },
+      });
+    }
+
     // One-time exchange code (hardening F1, R1): the login page
     // authenticates, gets a short-lived single-use code via
     // /exchange-issue, and redirects to the account portal with ?code=<code>.

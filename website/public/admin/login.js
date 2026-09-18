@@ -1,6 +1,9 @@
 // API base: use relative path when hosted on kasir.mu subdomains (Worker API proxy)
 // to eliminate CORS and in-handler origin restrictions. Fall back to direct backend URL locally.
-const isSubdomain = window.location.hostname.endsWith('kasir.mu');
+// The leading dot is load-bearing: 'kasir.mu'.endsWith('kasir.mu') is also true, so the bare
+// marketing host used to take the relative branch — where the /api/v1/ proxy does not exist and
+// every call 404s. Only *.kasir.mu (admin/dashboard) has the proxy.
+const isSubdomain = window.location.hostname.endsWith('.kasir.mu');
 const API = isSubdomain
   ? ''
   : ((window.__OZ_CONFIG__ && window.__OZ_CONFIG__.licenseApiUrl) || 'https://license.kasir.mu');
