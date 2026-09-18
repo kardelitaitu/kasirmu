@@ -1255,6 +1255,16 @@ const SCREENS: ScreenEntry[] = [
       'restaurant-card',
       'tooltip-wrapper',
       'tooltip-wrapper--inline',
+      // non-JSX: applied to document.body by classList.add at
+      // sales/hooks/useCartResize.ts:56 (removed at :67), never through a
+      // className sink, so it cannot enter the used set. The rule it carries is
+      // `body.is-resizing .restaurant-card` (:542-551) -- a GLOBAL state class
+      // that the sales screen's divider sets in order to freeze this screen's
+      // card transforms mid-drag, which is why the two halves live in different
+      // features. Same shape as KdsScreen's no-anim, and it carries the same
+      // ledger member below; deleting the rule instead would un-freeze the
+      // cards under the moving cursor.
+      'is-resizing',
     ],
     // The Agent 3 extraction moved the tile/tab-strip/grid/overlay JSX into
     // components/*.tsx; they share the screen's stylesheet (global classes).
@@ -2066,7 +2076,7 @@ function allSheetIndex(): Map<string, Set<string>> {
 // answers are a stylesheet question rather than an exemption this file may grant.
 // 2026-09-15 ANSWERED -- all three were proven dead and deleted, each as ONE change (rule +
 // entry value + open-question member together, because the staleness check below grades both
-// lists in both directions). The list is now empty and the 4-member ledger above is the whole
+// lists in both directions). The list is now empty and the 5-member ledger below is the whole
 // exemption surface. Dead proofs, five shapes each, all failing to exist outside the rule: JSX
 // className, imperative/classList (the shape that saved workspace-card-ripple and restaurant-card
 // here), template stem (a prefix cannot cover a shorter base, which is why the bare
@@ -2094,6 +2104,11 @@ const EXTERNAL_CLASS_LEDGER: { entry: string; value: string; reason: string }[] 
     entry: 'RestaurantMenu',
     value: 'restaurant-card',
     reason: 'non-JSX: the base is assigned to a local at features/restaurant/components/MenuItemTile.tsx:189 (let cardClass of the literal) and only the composed value reaches className, so the extractor never sees the base; its entry already carries a restaurant-card-- prefix which cannot cover the base either',
+  },
+  {
+    entry: 'RestaurantMenu',
+    value: 'is-resizing',
+    reason: 'non-JSX: applied to document.body by classList.add at features/sales/hooks/useCartResize.ts:56, outside every component JSX and every prefix shape; the rule is a global body-state selector (body.is-resizing .restaurant-card, RestaurantMenu.css:542-551) whose whole purpose is to freeze THIS screen\'s cards while the sales screen\'s divider drags, so the setter and the rule cannot be brought into one feature',
   },
   {
     entry: 'KdsScreen',
