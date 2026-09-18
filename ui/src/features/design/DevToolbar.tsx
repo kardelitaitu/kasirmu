@@ -4,8 +4,29 @@ import { useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { createMemoScoped, publishMemoScoped, type MemoDuration } from '@/api/memos';
 import { listLocationsScoped } from '@/api/locations';
+import { parseAppError } from '@/utils/app-error';
 import { devLog } from '@/utils/devLog';
 import './DevToolbar.css';
+
+/**
+ * Render a rejected spawn as a single diagnostic line.
+ *
+ * A Tauri command rejects with the typed `AppError` OBJECT, not an `Error`,
+ * so the previous `e instanceof Error ? e.message : String(e)` produced the
+ * literal string `[object Object]` for every real backend refusal — which is
+ * how a refused Location Memo publish came to be reported as nothing at all.
+ * `parseAppError` also unwraps the v2 runtime's JSON-prefixed error string.
+ * This is a DEV surface, so the raw backend message is the point; the
+ * user-safe mapping in `plainErrorMessage` deliberately hides it.
+ */
+function describeSpawnError(e: unknown): string {
+  const typed = parseAppError(e);
+  if (typed) {
+    const sub = 'subKind' in typed && typed.subKind ? `${typed.subKind}: ` : '';
+    return `${sub}${typed.message ?? typed.kind}`;
+  }
+  return e instanceof Error ? e.message : String(e);
+}
 
 // ── SVG icons ──────────────────────────────────────────────────────
 
@@ -146,6 +167,9 @@ export function DevToolbar() {
   const { sessionToken } = useWorkspace();
   const currentTheme = THEMES.find((t) => t.key === theme);
   const [spawning, setSpawning] = useState(false);
+  const [spawnStatus, setSpawnStatus] = useState<{ tone: 'ok' | 'error'; text: string } | null>(
+    null,
+  );
 
   /**
    * Draft + publish a memo through the REAL IPC surface (the same
@@ -160,17 +184,29 @@ export function DevToolbar() {
    * The title carries NO timestamp (owner direction, 2026-09-19: "its
    * a memo, no need clock"). Successive spawns are told apart by the
    * duration ladder in the body, so do not reintroduce one.
+   *
+   * Every outcome is REPORTED under the buttons, because the silent path is
+   * indistinguishable from a broken button. The `loc` spawn in particular can
+   * be refused by the backend: `publish_memo` fans a Location Memo out only to
+   * terminals whose `bound_location_id` matches, and refuses the publish
+   * outright when that set is empty, so the memo stays a DRAFT and nothing
+   * renders. That refusal is correct — it is the toolbar's silence about it
+   * that reads as "not working".
    */
   const spawnMemo = useCallback(async (scope: 'org' | 'loc') => {
     if (!sessionToken || spawning) return;
     setSpawning(true);
+    setSpawnStatus(null);
+    const label = scope === 'org' ? 'Organization' : 'Location';
     try {
       let locationIds: string[] = [];
       if (scope === 'loc') {
         const locations = await listLocationsScoped(sessionToken);
         const first = locations[0]?.id;
         if (!first) {
-          devLog.warn('dev-toolbar', 'no locations exist in this environment; spawn a Location memo after creating one');
+          const text = 'no locations exist in this environment';
+          devLog.warn('dev-toolbar', `${text}; spawn a Location memo after creating one`);
+          setSpawnStatus({ tone: 'error', text: `Location memo: ${text}` });
           return;
         }
         locationIds = [first];
@@ -179,14 +215,20 @@ export function DevToolbar() {
       spawnDurationIndex += 1;
       const memo = await createMemoScoped(sessionToken, {
         locationIds,
-        title: `Dev ${scope === 'org' ? 'Organization' : 'Location'} memo`,
+        title: `Dev ${label} memo`,
         body: `Spawned by the dev toolbar to exercise the memo display surfaces. Duration: ${duration}.`,
         duration,
       });
       await publishMemoScoped(sessionToken, memo.id);
       window.dispatchEvent(new CustomEvent('memos:refresh'));
+      setSpawnStatus({
+        tone: 'ok',
+        text: `${label} memo published${locationIds.length ? ` to ${locationIds[0]}` : ''} · ${duration}`,
+      });
     } catch (e) {
-      devLog.error('dev-toolbar', `memo spawn failed: ${e instanceof Error ? e.message : String(e)}`);
+      const text = describeSpawnError(e);
+      devLog.error('dev-toolbar', `memo spawn failed: ${text}`);
+      setSpawnStatus({ tone: 'error', text: `${label} memo: ${text}` });
     } finally {
       setSpawning(false);
     }
@@ -266,6 +308,15 @@ export function DevToolbar() {
             Lock
           </button>
         </div>
+
+        {spawnStatus && (
+          <p
+            className={`dev-toolbar-status dev-toolbar-status--${spawnStatus.tone}`}
+            role="status"
+          >
+            {spawnStatus.text}
+          </p>
+        )}
       </div>
     </div>
   );

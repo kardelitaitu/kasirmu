@@ -221,6 +221,47 @@ describe('DevToolbar', () => {
     );
   });
 
+  // ── Spawn outcome reporting ────────────────────────────────────
+  // A silent spawn is indistinguishable from a dead button, which is how a
+  // refused Location Memo publish read as "the button does not work".
+
+  it('reports a refused publish as the backend message, not "[object Object]"', async () => {
+    // Tauri rejects with the typed AppError OBJECT, never an Error instance.
+    mockPublish.mockRejectedValue({
+      kind: 'invalid',
+      message: 'no terminal is registered to receive this memo',
+    });
+    renderToolbar();
+
+    fireEvent.click(screen.getByRole('button', { name: /spawn a location memo/i }));
+
+    const status = await screen.findByRole('status');
+    expect(status.textContent).toContain('no terminal is registered to receive this memo');
+    expect(status.textContent).not.toContain('[object Object]');
+    expect(status.className).toContain('dev-toolbar-status--error');
+  });
+
+  it('reports a published Location memo with its target location', async () => {
+    renderToolbar();
+
+    fireEvent.click(screen.getByRole('button', { name: /spawn a location memo/i }));
+
+    const status = await screen.findByRole('status');
+    await waitFor(() => expect(status.textContent).toMatch(/Location memo published to loc-1/));
+    expect(status.className).toContain('dev-toolbar-status--ok');
+  });
+
+  it('reports an empty location list instead of returning silently', async () => {
+    mockLocations.mockResolvedValue([]);
+    renderToolbar();
+
+    fireEvent.click(screen.getByRole('button', { name: /spawn a location memo/i }));
+
+    const status = await screen.findByRole('status');
+    expect(status.textContent).toMatch(/no locations exist/i);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
   // ── Drag position persistence ────────────────────────────────
   // The saved position must never remount the toolbar off-screen: it is
   // clamped into the CURRENT viewport (48px kept visible), so a stale
