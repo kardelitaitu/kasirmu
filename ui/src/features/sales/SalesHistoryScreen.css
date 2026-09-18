@@ -254,6 +254,15 @@
   font-size: var(--text-xs);
 }
 
+/* The frozen receipt hierarchy code (the statutory nomor faktur). Monospace
+   like the sale id beside it, and nowrap so a long code cannot wrap and
+   stagger the row height. */
+.sales-history-cell-receipt {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
 .sales-history-cell-total {
   font-family: var(--font-mono);
   font-weight: 600;
