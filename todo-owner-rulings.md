@@ -3,7 +3,7 @@
 **Document:** `todo-owner-rulings.md`
 **Role:** Decision queue. Every item below is blocked on a human choice, not on work.
 **How to use it:** each entry is `what is blocked` → `the fork` → `the options` → `recommendation` → `the price`. A ruling is recorded by writing one line under the entry and dating it; do not edit an entry's measured text, correct it forward.
-**Provenance:** every entry was re-derived in this checkout at HEAD `19437867c` (2026-09-18). The commands that produced each measurement are printed beside it, so a reader checks rather than trusts. Sibling records: `todo-open-debt-program.md` (the program these phases belong to), `docs/records/audit-open-findings.md` (the `BR-*` findings the ADR #49 ceilings cite), `docs/decisions/` (ADRs, for anything that graduates to a decision record).
+**Provenance:** every entry was re-derived in this checkout at HEAD `19437867c` (2026-09-18). The commands that produced each measurement are printed beside it, so a reader checks rather than trusts. Sibling records: `todo-open-debt-program.md` (the program these phases belong to), `docs/records/audit-open-findings.md` (the `BR-*` findings the ADR #49 ceilings cite), `docs/decisions/` (ADRs, for anything that graduates to a decision record). **R20 was added after publication**, at HEAD `83540df69`, and carries its own provenance — it is numbered last rather than folded into Phase 3 so that no existing entry's number moves.
 
 ---
 
@@ -30,6 +30,7 @@
 | R17 | The skip message that misdiagnoses | Phase 5 | Drop the parenthetical | None |
 | R18 | Split the program doc? | Dispatch | Split by phase | None |
 | R19 | Commit-scope allowlist? | Nothing | Leave permissive | None |
+| R20 | **The home Tools grid's vocabulary** | **Phase 3a.2** | **Keep the rank, narrow 3a.2** | Medium — visibility |
 
 **Already ruled — do not re-open:** the fail-closed default for an unknown role floor (owner, 2026-09-16: an unknown floor on an admin-tool gate must **deny**; landed as `a8c1fb4c5`).
 
@@ -114,6 +115,54 @@ So if the tablet's setup wizard is the creation path, a fresh tablet install rea
 **Recommendation: (i) if the product needs org-wide roles, otherwise (iii).** The decision the owner can make today is binary and cheap — *does any customer need a role that spans stores?* If yes, commission the doc and expect question 2 to dominate it. If no, (iii) is strictly cheaper than (ii): (ii) buys a new axis with no new table and still has to answer question 2, because a derived grouping is still a cross-store scope.
 
 **Price of being wrong.** High. This is the only ruling in this document that produces a **migration**, and a wrong axis is a migration plus an evaluation path plus gate wiring to unwind.
+
+### R20 — The home Tools grid's vocabulary: rank or permission  ⚠️ blocks Phase 3a.2, and the block is a green test
+
+**What is blocked.** `todo-open-debt-program.md` box `3a.2` — *"Replace the rank comparisons with permission checks"*, one gate at a time, each pinned by *"a custom role holding the gate permission passing the same way a preset would"*. Added to this queue after publication, so it carries the next free number rather than a Phase-3 one.
+
+**Why it cannot be executed as written, measured at HEAD `83540df69`.** The grid's rank is not a preference recorded in prose — it is **pinned by a live, green test**, and that test's assertion is *structurally coupled to the field 3a.2 removes*. `ui/src/__tests__/WorkspaceHomeTools.navParity.test.tsx:63-77`:
+
+```js
+const navLevel = navRoleLevel(nav!.requiredRole);
+if (navLevel === undefined) continue;          // permission-only / absent nav gate
+const homeLevel = ROLE_LEVEL[tool.access.minimumRole];
+expect(homeLevel, `homeLevel for "${tool.access.minimumRole}"`).toBeDefined();
+expect(homeLevel!, …).toBeGreaterThanOrEqual(navLevel);
+```
+
+Replace `minimumRole` with a permission and `ROLE_LEVEL[undefined]` is `undefined`, so `toBeDefined()` fails. **Proven by execution, not by reading.** A scratch probe (written, run, deleted — no tracked file touched; it stripped `minimumRole` in memory and re-ran the same expression) reports **17 of 17** catalogue entries failing, not only the six that would widen. So 3a.2's *first* gate turns this file red for **every** tool, and the repair is not a test update — it is the deletion of the assertion.
+
+**And that assertion is where the policy lives.** Its header, `:1-11`, states it: *"the home gate must not be LOOSER than the nav item's required role. Home-stricter is the documented policy choice … so the assertion is `homeLevel >= navLevel`, never the reverse."*
+
+**The two documents the earlier finding blamed are not both live.** `docs/records/audit-open-findings.md:1539` cites `todo-tools.md:730-732` as the policy's source. That path does not resolve: the file is **`.agents/done-todo-tools.md`** — `done-`-prefixed and archived — and the passage is at `:730-734`, the *"home `minimumRole` is never LOOSER than the route's `requiredRole` (home-stricter is the documented policy choice; Settings stays `manager` + authoritative `settings:read` at the route until the §H scope pass)"* sentence inside its "Tests (57 green)" paragraph. So the policy survives in three carriers and only one is live code; two of the three cite the doc by its dead name (`audit-open-findings.md:1539`; `WorkspaceHomeTools.test.tsx:1` and `:30`).
+
+**What the grid actually is.** Not a duplicate of the route gate — a **front-door filter** deliberately stricter than it. Measured this pass across the catalogue:
+
+| tool | home `minimumRole` | route (register) | route `requiredRole` | route `requiredPermission` | who gains if gated on the permission |
+|---|---|---|---|---|---|
+| `staff` | manager | `staff` (`staff/register.tsx:13`) | manager | `staff:read` | auditor |
+| `shifts` | manager | `shifts` (`shifts/register.tsx:8`) | manager | `shifts:view_any` | auditor |
+| `reports` | manager | **`dashboard`** (`reports/register.tsx:12`) | manager | `reports:view` | auditor |
+| `audit` | manager | **`audit-log`** (`audit/register.tsx:9`) | manager | `audit:view` | auditor |
+| `settings` | **admin** | `settings` (`settings/register.tsx:10`) | manager | `settings:read` | auditor |
+| `analytics` | **admin** | `analytics` (`analytics/register.tsx:12`) | manager | `analytics:view` | **manager** |
+
+Two of the six do not carry their own id as their route — the `reports` tool opens `dashboard` and the `audit` tool opens `audit-log` — which is why the parity test matches on `tool.route` rather than `tool.id`, and why a census keyed on ids silently compares the wrong pair. (`reports/register.tsx:23` also registers a *separate* `reports` route with the same gate; it is not the tool's target.)
+
+The route's permission arm is authoritative — `passesGate` (`ui/src/registries/page-registry/index.ts:139`) returns `hasGrantedPermission(...)` and never consults `requiredRole` when the session carries granted keys — and the preset that holds those keys but not the rank is the **auditor** (`platform/core/src/rbac_presets.rs:262-272`: `STAFF_READ`, `SETTINGS_READ`, `REPORTS_VIEW`, `AUDIT_VIEW`, `SHIFTS_VIEW_ANY`), plus, for `analytics`, the **manager** (`:84`, inside the `builtin_roles::MANAGER` block opening at `:49`).
+
+Permission-gating the grid therefore makes the card **exactly equal** to the route gate for those tools — not looser. The inequality `home >= route` would still hold numerically. What breaks is that the inequality is *expressed in a vocabulary 3a.2 deletes*, and the visible effect is a **read-only role gaining five cards** it cannot act on.
+
+**The options.**
+- **(i) The rank stays authoritative for the home grid; 3a.2 is narrowed to the gates that have no route twin, and the policy is cited at the site.** `ui/src/features/workspaces/tools.tsx:19-31` already documents the split; add the `done-todo-tools.md` citation, re-point the three dead citations, and let `roleAtLeast` remain the home vocabulary.
+- **(ii) The permission wins and the home grid mirrors the nav.** Every manager sees Analytics; every auditor sees Staff, Shifts, Reports, Audit and Settings. `navParity.test.tsx:63-77` is deleted or rewritten to compare permissions, and 3a.2 proceeds.
+- **(iii) Both vocabularies coexist on the card** — keep `minimumRole` as the front door and add a permission as a second arm. The only option that lets 3a.2 run without deleting the test, and the one 3a.3 would then have to unwind.
+
+**Recommendation: (i).** Three reasons, in order of weight. **First, there is no violation to fix** — the 2026-09-16 census (`docs/records/audit-open-findings.md:1565-1579`) found **0 of 17** tools carrying a home gate looser than the route, and the test guaranteeing it is green (11 tests across the two files, re-run this pass). 3a.2 is written as a repair; nothing is broken. **Second, (ii) is a widening on an admin surface** — five cards to a read-only role — landed by what would read as a refactor commit. **Third, the box's own required test is unsatisfiable under the current policy**: it asks for *"a custom role holding the gate permission passing the same way a preset would"*, but the preset holding `analytics:view` is `manager`, exactly the role the home gate excludes, so the test can only pass if the home gate stops excluding it — i.e. if (ii) is chosen first. That is a decision, not a lane's judgement.
+
+**If (ii) is chosen**, it belongs in a separate, deliberate commit that names the widening in its message, and 3a.3 (delete `roleAtLeast`/`ROLE_HIERARCHY`) becomes its natural second half. **If (i) is chosen**, 3a.2 shrinks to the two catalogue entries with no registered page (`settings/topology`, `settings/sync`) and to `ui/src/features/workspaces/WorkspaceHome.tsx:373`/`:423` — the two comparisons `roleAtLeast` did **not** already absorb (`:387` was migrated and now fails closed, per the comment at `:377-381`; the box's own anchors `:363`/`:372`/`:378`/`:414` are stale by 1–9 lines).
+
+**Price of being wrong.** **Medium, and it is a visibility change either way.** (i) leaves a read-only role unable to see cards for pages it can open from the nav — the mismatch `audit-open-findings.md:1532` describes, cosmetic but real, and what makes this feel like a bug. (ii) hands five admin-surface cards to the auditor, which is not cosmetic. The asymmetry is the argument: (i)'s cost is a confusing nav/grid mismatch, (ii)'s cost is an authorisation widening, and only one of those is reversible by a later commit.
 
 ---
 
@@ -280,3 +329,5 @@ So if the tablet's setup wizard is the creation path, a fresh tablet install rea
 ## If you rule on only three
 
 **R10** (which shell's gate set is authoritative) — it unblocks ~16 doors, it is the only item with a security consequence either way, and it is the reason five modules have been stuck for a week. **R3** (default-role seeding) — it is the only item here with a *live symptom* rather than a divergence: the mobile shell has zero production callers of the seeder and does not register the command that would seed on demand. **R5** (the organisation axis) — one binary question, *does any customer need a role that spans stores?*, and the answer decides whether Phase 3b is a design doc or a closure.
+
+**A cheap fourth — R20** (the home Tools grid's vocabulary). It blocks all of Phase 3a.2, and unlike the three above it needs no design and no migration: the code is *already* consistent (0 of 17 violations, test-enforced), so the ruling is only about which vocabulary the front door should speak. It is answerable in one sentence and it is the difference between a two-line citation fix and a deliberate authorisation widening.
