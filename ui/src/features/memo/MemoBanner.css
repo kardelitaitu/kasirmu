@@ -332,6 +332,22 @@
   overflow-wrap: anywhere;
 }
 
+/* Owner ruling 2026-09-19: "maximum is 3 row" is the WHOLE preview, so a
+   titled bubble spends one of them on the title and the body gets two.
+   An untitled bubble keeps all three for the body. A title can therefore
+   no longer push a preview to four rows. (The cap is a maximum, not a
+   fixed height: a one-line body still renders one short bubble. Measured
+   across the dev fixtures — 1L 1 row/65px, 2L 2 rows/86px, 3L and 6L
+   clamped to 2 of 3 and 2 of 6 — total preview rows never exceed 3.)
+   `:has()` is the right hook because the title element is conditionally
+   rendered (blank title = text-only bubble), and it is already the
+   codebase's idiom (KDS, SetupWizard, StaffManagement). */
+.memo-banner-open:has(.memo-banner-title) .memo-banner-text {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  max-height: calc(var(--leading-normal) * 2em);
+}
+
 /* The (x) floats clear of the bubble (owner direction, 2026-09-08;
    position settled against the owner's own sketch, 2026-09-19). The
    24px chip is unchanged in size -- only moved: one --space-10 past

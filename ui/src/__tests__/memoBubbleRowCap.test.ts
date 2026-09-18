@@ -75,6 +75,24 @@ describe('Memo bubble body three-row cap', () => {
   });
 });
 
+describe('Memo preview three-row total (title spends one of them)', () => {
+  it('gives the body two rows when a title is present', () => {
+    // Ruling 2026-09-19: "maximum is 3 row" is the whole preview. The title
+    // element is conditionally rendered, so this is keyed on :has().
+    const titled = ruleBody('\\.memo-banner-open:has\\(\\.memo-banner-title\\) \\.memo-banner-text');
+    expect(titled).toBeTruthy();
+    expect(titled).toMatch(/-webkit-line-clamp:\s*2/);
+    expect(titled).toMatch(/line-clamp:\s*2/);
+    expect(titled).toMatch(/max-height:\s*calc\(var\(--leading-normal\)\s*\*\s*2em\)/);
+  });
+
+  it('gives the body all three rows when there is no title', () => {
+    const body = ruleBody('\\.memo-banner-text');
+    expect(body).toMatch(/-webkit-line-clamp:\s*3/);
+    expect(body).toMatch(/max-height:\s*calc\(var\(--leading-normal\)\s*\*\s*3em\)/);
+  });
+});
+
 describe('Memo bubble title one-row cap', () => {
   it('clamps the title to a single row', () => {
     const body = ruleBody('\\.memo-banner-title');
