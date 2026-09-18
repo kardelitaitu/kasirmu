@@ -313,7 +313,17 @@ function scanCSS(filePath: string): Violation[] {
       if (colonIdx < 0) continue;
 
       const property = trimmed.slice(0, colonIdx).trim();
-      const value = trimmed.slice(colonIdx + 1).trim();
+      // `!important` is a cascade flag, not part of the value, so it is stripped
+      // ONCE here and every comparison below (isDesignToken / isExemptValue / the
+      // `value !== 'none'` and `/^\d/` tests) sees the bare value. Without this the
+      // scanner is blind to the flag: `box-shadow: none !important` read as a
+      // hardcoded shadow while `transition: none !important` and
+      // `transform: none !important` only escaped because those properties sit in
+      // NON_TOKEN_PROPS — the escape was a property accident, not a value reading.
+      // The strip is strictly PERMISSIVE: every exemption below is an exact-match
+      // or prefix test, so removing the suffix can only turn a violation into a
+      // pass, never the reverse.
+      const value = trimmed.slice(colonIdx + 1).replace(/!\s*important\s*$/i, '').trim();
 
       // Skip non-token-able properties
       if (NON_TOKEN_PROPS.has(property)) continue;
@@ -2934,6 +2944,11 @@ const TAILED_TOKEN_REFS = ALL_VAR_REFS.filter((r) => r.hasFallback && tailRelati
  * at 42e6c8201 -- 98 pairs / 156 sites, paid down to 83 pairs / 133 sites by
  * refactor(css): pay down the frozen literal tails the block gate can still certify. Shrink-only in BOTH directions, like the
  * two baselines above it.
+ *
+ * 83 pairs / 145 sites since the popup-modal exit animations landed (see the
+ * --modal-backdrop-blur note inside the array): 12 sites were ADDED, which is the one
+ * direction this list is not supposed to move, so it is recorded as a decision rather
+ * than absorbed. Pair count is unchanged -- no new sheet joined the family.
  */
 const DISAGREEING_TAIL_BASELINE: Array<[string, string, number]> = [
   ["--color-accent", "ui/src/features/sales/CartPanelCourseBar.css", 5],
@@ -3012,11 +3027,20 @@ const DISAGREEING_TAIL_BASELINE: Array<[string, string, number]> = [
   ["--color-warning-dim", "ui/src/features/settings/SettingsPage.css", 1],
   ["--color-warning-fg", "ui/src/features/inventory/LocationPicker.css", 1],
   ["--color-warning-subtle", "ui/src/app/UpdateBanner.css", 1],
-  ["--modal-backdrop-blur", "ui/src/components/FastPINOverlay.css", 2],
-  ["--modal-backdrop-blur", "ui/src/components/QrisQrDisplay.css", 2],
+  // 2 -> 6 in the three sheets below: feat(ui): smooth 300ms backdrop blur and exit
+  // animations on popup modals gave `backdrop-filter` a value at BOTH keyframe stops
+  // of each fade-in/fade-out pair (the `to` of fade-in, the `from` of fade-out), and
+  // an animated backdrop-filter needs a value at every stop -- so this is not a
+  // spread that can simply be deleted. The fallback itself IS dead text (tokens.css
+  // declares --modal-backdrop-blur in both [data-theme] blocks), so the whole family
+  // can still be paid down by hoisting the token into :root and sweeping all 22
+  // sites; that sweep is blocked today by the 150-site floor on TAILED_TOKEN_REFS.
+  // KdsScreen.css and MemoBanner.css keep 2: their rules are not animated.
+  ["--modal-backdrop-blur", "ui/src/components/FastPINOverlay.css", 6],
+  ["--modal-backdrop-blur", "ui/src/components/QrisQrDisplay.css", 6],
   ["--modal-backdrop-blur", "ui/src/features/kds/KdsScreen.css", 2],
   ["--modal-backdrop-blur", "ui/src/features/memo/MemoBanner.css", 2],
-  ["--modal-backdrop-blur", "ui/src/theme/components.css", 2],
+  ["--modal-backdrop-blur", "ui/src/theme/components.css", 6],
   ["--neutral-300", "ui/src/theme/reset.css", 1],
   ["--neutral-400", "ui/src/theme/reset.css", 1],
 ];
