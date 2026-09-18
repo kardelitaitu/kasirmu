@@ -481,43 +481,66 @@
     transition: border-color var(--duration-150) var(--ease-out);
   }
 
-  /* Cart entry animation: slides from right with smooth cubic-bezier */
+  /* ── Resize Handle: Synchronized 300ms fade ────────── */
+  .pos-resize-handle--entering {
+    animation: pos-resize-handle-fade-in var(--duration-300) cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes pos-resize-handle-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes pos-resize-handle-fade-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  .pos-resize-handle--exiting {
+    animation: pos-resize-handle-fade-out var(--duration-300) cubic-bezier(0.16, 1, 0.3, 1) both;
+    pointer-events: none;
+  }
+
+  /* ── Cart Panel: Synchronized 300ms slide & margin reflow ── */
   .pos-cart-panel--entering {
     animation: pos-cart-slide-in var(--duration-300) cubic-bezier(0.16, 1, 0.3, 1) both;
+    overflow: hidden;
   }
 
   @keyframes pos-cart-slide-in {
     from {
       opacity: 0;
-      transform: translateX(100%);
+      margin-right: calc(-1 * var(--cart-width, 440px));
     }
     to {
       opacity: 1;
-      transform: translateX(0);
+      margin-right: 0;
     }
   }
 
-  /* Cart exit animation: slides to right */
   @keyframes pos-cart-slide-out {
     from {
       opacity: 1;
-      transform: translateX(0);
+      margin-right: 0;
     }
     to {
       opacity: 0;
-      transform: translateX(100%);
+      margin-right: calc(-1 * var(--cart-width, 440px));
     }
   }
 
   .pos-cart-panel--exiting {
     animation: pos-cart-slide-out var(--duration-300) cubic-bezier(0.16, 1, 0.3, 1) both;
+    overflow: hidden;
     pointer-events: none;
-  }
-
-  .pos-resize-handle--exiting {
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity var(--duration-300) cubic-bezier(0.16, 1, 0.3, 1);
   }
 }
 

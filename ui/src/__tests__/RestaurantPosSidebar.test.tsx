@@ -149,8 +149,9 @@ describe('RestaurantPosSidebar', () => {
     expect(sidebar).toBeInTheDocument();
     expect(screen.getByText('Manual')).toBeInTheDocument();
 
-    // CartPanel plays exit animation then is hidden
+    // CartPanel & handle play exit animation then are hidden
     expect(cartPanel).toHaveClass('pos-cart-panel--exiting');
+    expect(resizeHandle).toHaveClass('pos-resize-handle--exiting');
     await waitFor(() => {
       expect(cartPanel.style.display).toBe('none');
     });
@@ -163,8 +164,9 @@ describe('RestaurantPosSidebar', () => {
     expect(toggleBtn.getAttribute('aria-expanded')).toBe('false');
     expect(document.querySelector('.restaurant-sidebar')).toHaveClass('restaurant-sidebar--exiting');
 
-    // CartPanel plays entering animation and is visible again
+    // CartPanel & handle play entering animation and are visible again
     expect(cartPanel).toHaveClass('pos-cart-panel--entering');
+    expect(resizeHandle).toHaveClass('pos-resize-handle--entering');
     expect(cartPanel.style.display).not.toBe('none');
     expect(resizeHandle.style.display).not.toBe('none');
 

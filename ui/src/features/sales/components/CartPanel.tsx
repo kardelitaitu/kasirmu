@@ -333,7 +333,7 @@ export function CartPanel({
   return (
     <>
       <div
-        className={`pos-resize-handle${cartExiting ? ' pos-resize-handle--exiting' : ''}`}
+        className={`pos-resize-handle${cartExiting ? ' pos-resize-handle--exiting' : ''}${cartEntering ? ' pos-resize-handle--entering' : ''}`}
         onMouseDown={startResize}
         aria-hidden="true"
         style={isFullyHidden ? { display: 'none' } : undefined}
@@ -345,7 +345,7 @@ export function CartPanel({
         ref={cartPanelRef}
         aria-label={l10n.getString('pos-cart-panel-aria')}
         role="region"
-        style={{ width: cartWidth, ...(isFullyHidden ? { display: 'none' } : {}) }}
+        style={{ width: cartWidth, '--cart-width': `${cartWidth}px`, ...(isFullyHidden ? { display: 'none' } : {}) } as React.CSSProperties}
         tabIndex={-1}
         onKeyDown={handleCartPanelKeyDown}
         {...cartSwipe}
