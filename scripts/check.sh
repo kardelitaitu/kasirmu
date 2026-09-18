@@ -427,7 +427,7 @@ step "script tests" "node --test scripts/__tests__/*.test.mjs" node --test scrip
 step "runner labels" "python3 scripts/test-runner-labels.py" python3 scripts/test-runner-labels.py
 
 # Gate: scripts/gates.json -> "bundle-parity".
-step "bundle parity" "python3 scripts/verify-bundle-parity.py --scan-dirs features,components,frontend,contexts,hooks,platform" python3 scripts/verify-bundle-parity.py --include-getstring --include-nav-keys --include-key-fields --include-dynamic-literals --include-id-maps --check-domain-pairs --scan-dirs features,components,frontend,contexts,hooks,platform
+step "bundle parity" "python3 scripts/verify-bundle-parity.py --scan-dirs features,components,app,theme,registries,contexts,hooks" python3 scripts/verify-bundle-parity.py --include-getstring --include-nav-keys --include-key-fields --include-dynamic-literals --include-id-maps --check-domain-pairs --scan-dirs features,components,app,theme,registries,contexts,hooks
 
 # ── Migration correctness (steps 6 and 7 of the pre-commit hook) ───────────
 # Both lived in ci.yml, retired to .bak by 23c96330, and were never restored in

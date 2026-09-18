@@ -592,17 +592,26 @@ jobs:
       # key present in neither locale and nothing anywhere would notice.
       #
       # --scan-dirs is load-bearing, not stylistic. The tool defaults to `features`
-      # alone; the six directories the hook names add 108 more files (228 -> 336, 47%
-      # more coverage). A CI step that omitted the flag would print "0 missing key(s)"
-      # while a third of the surface went unexamined -- green from a smaller input,
-      # which is the failure this repo keeps rediscovering.
+      # alone; the directories named here add 108 more files (428 -> 536, 25% more
+      # coverage, re-measured 2026-09-18). The +108 delta has held since the flag was
+      # added; the absolutes had rotted from 228/336, and the old "47%" with them.
+      # A CI step that omitted the flag would print "0 missing key(s)" while a fifth
+      # of the surface went unexamined -- green from a smaller input, which is the
+      # failure this repo keeps rediscovering.
+      #
+      # 2026-09-18: `frontend` and `platform` were deleted from ui/src by the
+      # restructure campaign's P2, so this step exited 2 ("scan dir not found") and
+      # failed on every push from 09-17 14:57 onward. Replaced with P2's live
+      # successors -- `app`, `theme`, `registries`. This flag and
+      # scripts/verify-bundle-parity.py's CENSUS_SCAN_DIRS are two copies of one
+      # list; the pre-push hook reaches the other via `--full-census`. Move together.
       # Gate: scripts/gates.json -> "bundle-parity".
       - name: i18n bundle parity
         run: |
           python3 scripts/verify-bundle-parity.py \
             --include-getstring --include-nav-keys --include-key-fields \
             --include-dynamic-literals --include-id-maps --check-domain-pairs \
-            --scan-dirs features,components,frontend,contexts,hooks,platform
+            --scan-dirs features,components,app,theme,registries,contexts,hooks
       # These two lived in ci.yml, which 23c96330 retired to .bak, and neither was
       # ever restored -- so for two releases the ONLY guard was the opt-in
       # pre-commit hook. core.hooksPath is set by scripts/setup-dev.ps1 and is not
@@ -763,7 +772,10 @@ jobs:
     env:
       NF_API: https://api.northflank.com/v1
       NF_PROJECT_ID: ${{ vars.NORTHFLANK_PROJECT_ID || 'oz-pos' }}
-      NF_SERVICE_ID: ${{ vars.NORTHFLANK_SERVICE_ID || 'oz-pos-cloud' }}
+      # The live service is named `cloud`, NOT the old-branded `oz-pos-cloud`
+      # (verified against the Northflank API 2026-09-18). The project id
+      # `oz-pos` is still correct -- the project was never renamed.
+      NF_SERVICE_ID: ${{ vars.NORTHFLANK_SERVICE_ID || 'cloud' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check Northflank credentials

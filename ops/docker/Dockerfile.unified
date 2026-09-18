@@ -47,7 +47,18 @@ RUN apt-get update && \
         pkg-config \
         libc-dev \
         libssl-dev \
+        libudev-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# DOCKER-13: libudev-dev is REQUIRED, not optional. `cargo build --package
+# kasirmu-cloud` reaches libudev-sys 0.1.4 transitively, whose build.rs runs
+# `pkg-config --libs --cflags libudev` and panics (exit 101) when it is absent.
+# Omitting it is what kept this image unbuildable from 2026-09-13 to 09-18 --
+# every Northflank build died at `RUN cargo build ...` with
+# "The system library `libudev` required by crate `libudev-sys` was not found".
+# ops/docker/Dockerfile.server has always installed it; this file did not, and
+# nothing caught the divergence. scripts/verify-dockerfile-workspace.py compares
+# the two files' cache-priming manifests but NOT their apt package lists.
 
 WORKDIR /build
 
@@ -175,6 +186,16 @@ FROM caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95a
 # DOCKER-02: base images pinned to immutable digests (refreshed 2026-08-17).
 FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS runtime
 
+# DOCKER-14: libudev1 is deliberately NOT listed here, and its absence is
+# not a defect. The binary does link libudev.so.1 (kasirmu-hal -> serialport
+# 4.9.0 -> libudev 0.3.0 -> libudev-sys), but debian:bookworm-slim already
+# ships it as a dependency of util-linux -- measured 2026-09-18 against this
+# exact pinned digest (`dpkg -l libudev1` -> 252.39-1~deb12u2, status `ii`)
+# and confirmed by `ldconfig -p` inside the pre-existing oz-pos-unified image,
+# whose runtime stage never installed it. Dockerfile.server lists it
+# explicitly; that is belt-and-braces rather than a requirement. Do not
+# "restore parity" by adding it here -- the real asymmetry that mattered was
+# the BUILDER-stage libudev-dev (DOCKER-13), not this.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \

@@ -35,12 +35,27 @@ not inferred from another document.
 `bash .agents/skills/skill-drift-guard/scripts/detect.sh` → **"No drift detected"**,
 exit 0, 5m00s. Every finding in this report was nonetheless still live.
 
-That is not a broken script, it is a **coverage gap**. The taxonomy (11 kinds) checks
+That is not a broken script, it is a **coverage gap**. The taxonomy (11 kinds) checked
 paths, crate membership, the `Money` API, dependency versions, golden-rule phrasing,
-cross-references, Fluent ids and audit dates. It has no check for: crate-name-prefix
-conventions, version-lock numbers, CI job counts, workflow trigger truth, prose module
-counts, moved locale directories, or repo-policy text. All the high-severity drift below
-falls into those unpoliced classes.
+cross-references, Fluent ids and audit dates. At audit time it had no check for
+crate-name-prefix conventions, version-lock numbers, CI job counts, workflow trigger
+truth, prose module counts, moved locale directories, or repo-policy text — and every
+high-severity finding below falls into those classes.
+
+> **Updated same day.** While this audit was in progress a **peer agent extended
+> `detect.sh`** with five new categories: `version-lock`, `crate-prefix`, `ci-jobs`,
+> `workflow-claims` and `git-policy` — covering most of the gap above. The new
+> `workflow-claims` check immediately found two claims this audit had *also* found by hand
+> but had only partially repaired (`project-scaffold:352` "the only active workflow" and
+> `skill-drift-guard:376` "one active workflow", both fixed in `b74b7fea1`). It found them
+> because the checker is systematic where a human read is not — I had repaired the CI
+> section and missed the same claim one line further down.
+>
+> Lesson: the §9.4 recommendation ("add drift checks") was independently right, and the
+> gap was closed faster by someone else than by the auditor who named it. **Re-run
+> `detect.sh` before quoting this section** — the unpoliced list is now much shorter, and
+> still uncovered are prose module counts, moved locale directories and cross-skill
+> contradictions.
 
 Liveness was confirmed rather than assumed (the guard's own pitfall #10): Check 1 fired
 correctly on an injected nonexistent crate path in a throwaway probe skill, and the full

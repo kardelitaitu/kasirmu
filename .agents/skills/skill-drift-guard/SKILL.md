@@ -373,7 +373,7 @@ Open a `fix(docs): sync skills with code drift report <DD-MM-YY>` PR for everyth
 
 ## CI integration
 
-The repo's one active workflow is `.github/workflows/dev-ci.yml` (ci.yml et al. are dormant `*.yml.bak` references). To enforce drift detection in CI, add a job there that runs the mechanical checks on changes to `.agents/skills/**`:
+The repo has **two active workflows**: `.github/workflows/dev-ci.yml` (the one drift detection belongs in) and `.github/workflows/release.yml` (`v*` tags only). The retired references are dormant one level down, under `.github/workflows/attic/`. To enforce drift detection in CI, add a job to `dev-ci.yml` that runs the mechanical checks on changes to `.agents/skills/**`:
 
 ```yaml
 skill-drift:
