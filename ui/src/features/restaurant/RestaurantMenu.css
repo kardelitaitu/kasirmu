@@ -139,7 +139,11 @@
   display: flex;
   flex-direction: column;
   padding: var(--space-2);
-  background: var(--color-bg-surface);
+  /* Opaque panel, same as .restaurant-context-menu: --color-bg-surface is a
+     5% alpha tint in the glass theme, which lets the menu text blend with
+     the cards underneath it (THM-08). The popover token is opaque in every
+     theme. */
+  background: var(--color-bg-popover);
   backdrop-filter: blur(8px);
 }
 
