@@ -345,7 +345,7 @@ impl DbPool {
             )
             .await
             .map_err(|_| DbError::Migration("schema migration timed out after 60s".into()))?
-            .map_err(|e| DbError::Migration(e.to_string()));
+            .map_err(|e| DbError::Migration(describe_pg_error(&e)));
             let _ = migrate_client
                 .batch_execute(&format!("SELECT pg_advisory_unlock({SCHEMA_LOCK_KEY});"))
                 .await;
@@ -394,6 +394,37 @@ impl DbPool {
     pub fn is_sqlite(&self) -> bool {
         matches!(self, Self::Sqlite(_))
     }
+}
+
+/// Render a `tokio_postgres` failure with everything the server actually said.
+///
+/// `tokio_postgres::Error`'s `Display` is the literal string `db error` for a
+/// server-side failure, so rendering it with `to_string()` throws away the
+/// message, the SQLSTATE, the failing statement and the object the server
+/// blamed. That is why the 2026-09-18 outage read as
+/// `failed to initialise database: Migration error: db error` on every boot
+/// and could not be pinpointed from the logs; it was reproduced offline and
+/// turned out to be `column "legal_entity_id" does not exist`. `as_db_error()`
+/// carries the real detail, so use it whenever the server answered.
+fn describe_pg_error(e: &tokio_postgres::Error) -> String {
+    let Some(db) = e.as_db_error() else {
+        return e.to_string();
+    };
+    let sqlstate = db.code().code();
+    let mut parts = vec![format!("{} (SQLSTATE {sqlstate})", db.message())];
+    for (label, value) in [
+        ("constraint", db.constraint()),
+        ("table", db.table()),
+        ("column", db.column()),
+        ("detail", db.detail()),
+        ("hint", db.hint()),
+        ("where", db.where_()),
+    ] {
+        if let Some(v) = value {
+            parts.push(format!("{label}={v}"));
+        }
+    }
+    parts.join("; ")
 }
 
 /// Errors that can occur during database setup.
