@@ -1822,8 +1822,75 @@ fn pg_init_declares_same_table_surface_as_sqlite() {
     // produces (the init plus every incremental migration — e.g.
     // `sent_reports` lives in 20260814_sent_reports.sql) and must not
     // leak SQLite-only dialect through the generator.
+
+    /// Strip `--` line and `/* */` block comments, quote-aware.
+    ///
+    /// Needed because the counter below is a **substring** count and
+    /// `20260813_init.pg.sql` discusses the phrase in its own header prose.
+    /// Without this, the counter reads comments as declarations.
+    fn strip_sql_comments(sql: &str) -> String {
+        let mut out = String::with_capacity(sql.len());
+        let mut chars = sql.chars().peekable();
+        let (mut in_quote, mut in_line, mut in_block) = (false, false, false);
+        while let Some(c) = chars.next() {
+            if in_line {
+                if c == '\n' {
+                    in_line = false;
+                    out.push('\n');
+                }
+                continue;
+            }
+            if in_block {
+                if c == '*' && chars.peek() == Some(&'/') {
+                    chars.next();
+                    in_block = false;
+                }
+                continue;
+            }
+            if in_quote {
+                out.push(c);
+                if c == '\'' {
+                    in_quote = false;
+                }
+                continue;
+            }
+            match c {
+                '\'' => {
+                    in_quote = true;
+                    out.push(c);
+                }
+                '-' if chars.peek() == Some(&'-') => {
+                    chars.next();
+                    in_line = true;
+                }
+                '/' if chars.peek() == Some(&'*') => {
+                    chars.next();
+                    in_block = true;
+                }
+                _ => out.push(c),
+            }
+        }
+        out
+    }
+
+    /// Count `CREATE TABLE` **declarations**, not mentions.
+    ///
+    /// Measured 2026-09-18: this test failed on `main` reporting `128` against
+    /// `126`, and the whole of the "drift" was **two comment lines** in
+    /// `20260813_init.pg.sql` (`:21` *"— Postgres: CREATE TABLE IF NOT EXISTS
+    /// skips the table whole…"* and `:210` *"— CREATE TABLE IF NOT EXISTS is
+    /// idempotent for TABLES…"*). Both surfaces in fact declared **126**; the
+    /// instrument was counting prose. The count assertion itself is deliberate
+    /// and stays (see `init_sql_creates_complete_schema_surface` — a count
+    /// catches a silent drop that a name-list check misses), so the fix is to
+    /// the instrument, not to the assertion. Quote-awareness matters in the
+    /// dangerous direction: a naive `split("--")` on a line containing
+    /// `DEFAULT '--'` would truncate *before* a declaration and hide it,
+    /// turning a real drift into a pass.
     fn table_count(sql: &str) -> usize {
-        sql.matches("CREATE TABLE IF NOT EXISTS").count()
+        strip_sql_comments(sql)
+            .matches("CREATE TABLE IF NOT EXISTS")
+            .count()
     }
     let sqlite_surface: String = ALL.iter().map(|m| m.sql).collect::<Vec<_>>().join("\n");
     assert_eq!(
@@ -1831,6 +1898,14 @@ fn pg_init_declares_same_table_surface_as_sqlite() {
         table_count(&sqlite_surface),
         "Postgres DDL table count drifted from the SQLite registry — regenerate scripts/generate-pg-migration.py"
     );
+    // Same instrument discipline as `table_count`: this asserts the Postgres
+    // **DDL** carries no SQLite dialect, so it must not read comments either.
+    // Today all five tokens are absent from the file entirely (measured
+    // 2026-09-18, so this change is behaviour-preserving), but a future header
+    // comment explaining *"we deliberately emit no PRAGMA here"* would have
+    // false-failed the gate — the same class of instrument defect as the count
+    // above, one comment away from firing.
+    let pg_ddl = strip_sql_comments(PG_INIT);
     for leftover in [
         "strftime",
         "AUTOINCREMENT",
@@ -1839,7 +1914,7 @@ fn pg_init_declares_same_table_surface_as_sqlite() {
         ") STRICT",
     ] {
         assert!(
-            !PG_INIT.contains(leftover),
+            !pg_ddl.contains(leftover),
             "Postgres DDL still contains SQLite dialect: {leftover:?}"
         );
     }
