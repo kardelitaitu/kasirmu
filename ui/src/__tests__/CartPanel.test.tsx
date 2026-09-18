@@ -217,17 +217,25 @@ describe('CartPanel (smoke)', () => {
     expect(footer?.contains(bar as Node)).toBe(true);
   });
 
-  it('keeps the open-bills badge mounted always and switches the title wording per workspace', () => {
-    // Claim 1 (CartPanel.tsx:589 "always visible"): present even with no
-    // lines, no footer and no action bar.
+  it('shows the open-bills badge only when open bills exist and switches the title wording per workspace', () => {
+    // Hidden when empty (openBills: []):
     const setShowOpenBills = vi.fn();
     const empty = renderPanel({ lines: [], openBills: [], setShowOpenBills });
-    const badge = within(empty.panel).getByRole('button', { name: 'View open bills' });
+    expect(within(empty.panel).queryByRole('button', { name: 'View open bills' })).toBeNull();
+    empty.unmount();
+
+    // Appears when open bills exist:
+    const withBills = renderPanel({
+      lines: [],
+      openBills: [{ id: 'bill-1' } as never],
+      setShowOpenBills,
+    });
+    const badge = within(withBills.panel).getByRole('button', { name: 'View open bills' });
     expect(badge.className).toContain('pos-cart-held-badge');
-    expect(badge.querySelector('.pos-cart-held-count')).toBeNull();
+    expect(badge.querySelector('.pos-cart-held-count')?.textContent).toBe('1');
     fireEvent.click(badge);
     expect(setShowOpenBills).toHaveBeenCalledWith(true);
-    empty.unmount();
+    withBills.unmount();
 
     // Claim 2 (:277 "Restaurants take orders, not sales").
     const resto = renderPanel({ activeWorkspace: 'restaurant-pos', lines: [] });

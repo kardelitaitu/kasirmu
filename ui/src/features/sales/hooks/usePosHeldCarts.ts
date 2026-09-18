@@ -83,10 +83,10 @@ export function usePosHeldCarts({
   const [openingBill, setOpeningBill] = useState(false);
 
   useEffect(() => {
-    if (showOpenBills) {
+    if (sessionToken || showOpenBills) {
       loadOpenBills();
     }
-  }, [showOpenBills, loadOpenBills]);
+  }, [sessionToken, showOpenBills, loadOpenBills]);
 
   const handleOpenBill = useCallback(async () => {
     if (!activeShift) {
