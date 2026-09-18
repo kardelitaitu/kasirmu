@@ -29,6 +29,8 @@ export interface RestaurantMenuProps {
    * group, which is what every test render and non-POS host gets.
    */
   cartActions?: RestaurantSidebarActions;
+  /** Request exit from workspace; handled by host to check shifts. */
+  onRequestExit?: () => void;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -146,6 +148,7 @@ export default function RestaurantMenu({
   sidebarOpen: controlledSidebarOpen,
   onSidebarOpenChange,
   cartActions,
+  onRequestExit,
 }: RestaurantMenuProps) {
   const { l10n } = useLocalization();
   const { sessionToken } = useWorkspace();
@@ -443,7 +446,7 @@ export default function RestaurantMenu({
         <button
           type="button"
           className="restaurant-back-btn"
-          onClick={goToWorkspacePicker}
+          onClick={onRequestExit ?? goToWorkspacePicker}
           aria-label={l10n.getString('restaurant-menu-back-aria')}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" style={{ pointerEvents: 'none' }}>

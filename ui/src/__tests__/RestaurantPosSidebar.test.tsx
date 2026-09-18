@@ -26,6 +26,7 @@ const mockProducts = [
 const mockActiveWorkspace = vi.hoisted(() => ({ current: 'restaurant-pos' }));
 const mockLogout = vi.hoisted(() => vi.fn());
 const mockGoToWorkspacePicker = vi.hoisted(() => vi.fn());
+const mockGetActiveShift = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
@@ -103,8 +104,8 @@ vi.mock('@/api/settings', async (importOriginal) => {
 });
 
 vi.mock('@/api/shifts', () => ({
-  getActiveShiftScoped: vi.fn().mockResolvedValue(null),
-  getActiveShift: vi.fn().mockResolvedValue(null),
+  getActiveShiftScoped: mockGetActiveShift,
+  getActiveShift: mockGetActiveShift,
 }));
 
 vi.mock('@/api/hardware', async () => {
@@ -125,6 +126,7 @@ describe('RestaurantPosSidebar', () => {
     mockActiveWorkspace.current = 'restaurant-pos';
     mockLogout.mockClear();
     mockGoToWorkspacePicker.mockClear();
+    mockGetActiveShift.mockReset().mockResolvedValue(null);
   });
 
   it('hides the CartPanel when restaurant sidebar is toggled open and restores it when closed', async () => {
@@ -209,7 +211,7 @@ describe('RestaurantPosSidebar', () => {
     });
   });
 
-  it('Exit Terminal navigates to workspace picker and closes the sidebar', async () => {
+  it('Exit Terminal shows confirmation dialog when shift is closed, and exits on confirm', async () => {
     const user = userEvent.setup();
     await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
 
@@ -219,12 +221,68 @@ describe('RestaurantPosSidebar', () => {
     const exitBtn = screen.getByRole('button', { name: 'Exit Terminal' });
     expect(exitBtn).toBeInTheDocument();
 
+    // Click Exit Terminal -> opens exit confirmation dialog
     await user.click(exitBtn);
-    expect(mockGoToWorkspacePicker).toHaveBeenCalledTimes(1);
 
+    // Sidebar closes
     await waitFor(() => {
       expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
     });
+
+    // Exit confirmation modal appears
+    expect(screen.getByText('Exit Workspace')).toBeInTheDocument();
+    expect(mockGoToWorkspacePicker).not.toHaveBeenCalled();
+
+    // Confirm exit
+    const confirmExitBtn = screen.getByRole('button', { name: 'Exit' });
+    await user.click(confirmExitBtn);
+
+    expect(mockGoToWorkspacePicker).toHaveBeenCalledTimes(1);
+  });
+
+  it('Exit Terminal prompts to close shift when an active shift exists', async () => {
+    mockGetActiveShift.mockResolvedValue({
+      id: 'shift-1',
+      cashier_id: 'user-1',
+      opened_at: '2026-09-18T08:00:00Z',
+      opening_balance_minor: 100000,
+      opening_balance: 100000,
+      total_sales_minor: 0,
+      total_sales: 0,
+      cash_sales_minor: 0,
+    });
+
+    const user = userEvent.setup();
+    await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
+
+    await user.click(document.querySelector('.restaurant-hamburger-btn') as HTMLButtonElement);
+    expect(document.querySelector('.restaurant-sidebar')).toBeInTheDocument();
+
+    const exitBtn = screen.getByRole('button', { name: 'Exit Terminal' });
+    await user.click(exitBtn);
+
+    // Sidebar closes
+    await waitFor(() => {
+      expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+    });
+
+    // Close Shift modal opens instead of exit dialog or direct exit
+    expect(mockGoToWorkspacePicker).not.toHaveBeenCalled();
+    expect(screen.queryByText('Exit Workspace')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Close shift' })).toBeInTheDocument();
+  });
+
+  it('header back button prompts to close shift when active, and shows exit confirm when closed', async () => {
+    // 1. Shift is closed (null)
+    const user = userEvent.setup();
+    await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
+
+    const backBtn = document.querySelector('.restaurant-back-btn') as HTMLButtonElement;
+    expect(backBtn).toBeInTheDocument();
+
+    await user.click(backBtn);
+    expect(screen.getByText('Exit Workspace')).toBeInTheDocument();
+    expect(mockGoToWorkspacePicker).not.toHaveBeenCalled();
   });
 
   // The restaurant cart header is an order list now, not a toolbar: every

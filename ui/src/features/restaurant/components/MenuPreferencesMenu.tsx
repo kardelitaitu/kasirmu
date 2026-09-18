@@ -58,6 +58,8 @@ export interface RestaurantSidebarActions {
   onOpenTables: () => void;
   onOpenHistory: () => void;
   onOpenKitchenDisplay: () => void;
+  /** Request exit from workspace; handled by host to check shifts. */
+  onRequestExit?: () => void;
 }
 
 export interface MenuPreferencesMenuProps {
@@ -408,7 +410,11 @@ export function MenuPreferencesMenu({
             onKeyDown={handleHamburgerKeyDown}
             aria-label={l10n.getString('restaurant-exit-terminal')}
             onClick={() => {
-              goToWorkspacePicker();
+              if (cartActions?.onRequestExit) {
+                cartActions.onRequestExit();
+              } else {
+                goToWorkspacePicker();
+              }
               onOpenChange(false);
             }}
           >

@@ -11,6 +11,8 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { FEATURES, useFeatures } from '@/hooks/useFeatures';
 import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 
 import { formatMoney, type LineId, type Product, type Sku } from '@/types/domain';
 import { useSwipe } from '@/hooks/useSwipe';
@@ -183,6 +185,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // workspace implies; an explicit "false" hides it.
   const [courseFiringEnabled, setCourseFiringEnabled] = useState<boolean | null>(null);
   const [restaurantSidebarOpen, setRestaurantSidebarOpen] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const { goToWorkspacePicker } = useWorkspaceNav();
 
   // ── Cart panel resize ──────────────────────────────────
   // Width state, the isResizing latch, both window listeners and the drag
@@ -642,6 +646,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // header's old lock button is NOT here, because the popover's "Lock Terminal"
   // row replaced it: that one locks the session instead of logging the cashier
   // out. Field names are `on*` because the popover owns no state.
+  const handleRequestExit = useCallback(() => {
+    if (activeShift !== null) {
+      handleCloseShiftClick();
+    } else {
+      setShowExitConfirm(true);
+    }
+  }, [activeShift, handleCloseShiftClick]);
+
   const restaurantCartActions: RestaurantSidebarActions = {
     shiftLoading,
     hasActiveShift: activeShift !== null,
@@ -654,6 +666,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     onOpenTables: () => setShowTables(true),
     onOpenHistory: () => setShowSalesHistory(true),
     onOpenKitchenDisplay: () => onNavigate?.('kds'),
+    onRequestExit: handleRequestExit,
   };
 
   return (
@@ -667,6 +680,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             sidebarOpen={restaurantSidebarOpen}
             onSidebarOpenChange={setRestaurantSidebarOpen}
             cartActions={restaurantCartActions}
+            onRequestExit={handleRequestExit}
           />
         ) : (
           <ProductLookupScreen onAddProduct={handleAddProduct} />
@@ -779,6 +793,20 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         open={showFastPINOverlay}
         onClose={() => setShowFastPINOverlay(false)}
         onVerified={handleDeductionPinVerified}
+      />
+
+      {/* ── Restaurant POS Exit Confirmation ────────────────────────── */}
+      <ConfirmDialog
+        open={showExitConfirm}
+        onCancel={() => setShowExitConfirm(false)}
+        onConfirm={() => {
+          setShowExitConfirm(false);
+          goToWorkspacePicker();
+        }}
+        title={l10n.getString('restaurant-exit-confirm-title')}
+        message={l10n.getString('restaurant-exit-confirm-desc')}
+        variant="warning"
+        confirmLabel={l10n.getString('restaurant-exit-confirm-btn')}
       />
     </div>
   </>
