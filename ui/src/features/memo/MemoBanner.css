@@ -233,21 +233,30 @@
   overflow-wrap: anywhere;
 }
 
-/* The (x) floats OUTSIDE the bubble (owner direction, 2026-09-08;
-   pushed clear of the corner 2026-09-19 -- "more to the right"). The
-   chip is 24px and hangs one --space-6 past the bubble's right edge,
-   leaving only a sliver of it over the corner: outside at a glance,
-   still attached to the bubble. The old -8px offset left two thirds
-   of the chip sitting over the bubble and read as an inside control.
-   A raw pixel value here is refused by themeTokenCompliance (only
-   sub-10px functional offsets are exempt), so this stays on the
-   spacing scale. Anchored to the bubble (the positioned ancestor);
-   the row's overflow clipping is disabled in steady state so the
-   chip stays visible. */
+/* The (x) floats clear of the bubble (owner direction, 2026-09-08;
+   position settled against the owner's own sketch, 2026-09-19). The
+   24px chip is unchanged in size -- only moved: one --space-10 past
+   the bubble's right edge leaves an ~11px gap between them, so the
+   chip reads as an outside control rather than one sitting on the
+   corner. Measured off the sketch: the chip's diameter is 80px there
+   and the gap 35px, i.e. 0.44 chip-diameters -- 24px * 0.44 = 10.5px.
+   The two earlier offsets both kept the chip on the bubble (the
+   original -8px left two thirds of it over the corner).
+
+   `top: 0` is the sketch's own alignment, not a default: there the
+   chip's top edge and the bubble's top edge are the same scanline
+   (y=47 in a 1372x327 drawing), so the chip sits beside the corner
+   rather than riding above it. Measured in the running app, `top: 0`
+   puts the chip's top 1px below the bubble's outer edge -- `top`
+   resolves against the padding box and the bubble carries a 1px
+   border; the sketch's flush edge and this differ by that 1px.
+   Anchored to the bubble (the positioned ancestor); the row's
+   overflow clipping is disabled in steady state so the chip stays
+   visible. */
 .memo-banner-close {
   position: absolute;
-  top: -8px;
-  right: calc(-1 * var(--space-6));
+  top: 0;
+  right: calc(-1 * var(--space-10));
   display: inline-flex;
   align-items: center;
   justify-content: center;
