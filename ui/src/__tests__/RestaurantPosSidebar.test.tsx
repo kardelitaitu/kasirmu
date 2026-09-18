@@ -159,14 +159,18 @@ describe('RestaurantPosSidebar', () => {
     // Click toggle button again to close sidebar
     await user.click(toggleBtn);
 
-    // Sidebar is closed
+    // Sidebar is closed (plays exit animation then unmounts)
     expect(toggleBtn.getAttribute('aria-expanded')).toBe('false');
-    expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+    expect(document.querySelector('.restaurant-sidebar')).toHaveClass('restaurant-sidebar--exiting');
 
     // CartPanel plays entering animation and is visible again
     expect(cartPanel).toHaveClass('pos-cart-panel--entering');
     expect(cartPanel.style.display).not.toBe('none');
     expect(resizeHandle.style.display).not.toBe('none');
+
+    await waitFor(() => {
+      expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+    });
   });
 
   // The sidebar item is labelled "Lock Terminal", so it has to lock the
@@ -196,7 +200,9 @@ describe('RestaurantPosSidebar', () => {
     expect(lockEvents).toHaveLength(1);
     expect(mockLogout).not.toHaveBeenCalled();
     // The popover closes on the lock, like every other item in it.
-    expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+    });
   });
 
   // The restaurant cart header is an order list now, not a toolbar: every
@@ -233,7 +239,9 @@ describe('RestaurantPosSidebar', () => {
     // navigation and closes the popover like every other item in it.
     await user.click(within(sidebar).getByRole('button', { name: 'Kitchen Display' }));
     expect(onNavigate).toHaveBeenCalledWith('kds');
-    expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+    });
   });
 
   it('keeps the cart header buttons in the cart panel for the retail workspace', async () => {

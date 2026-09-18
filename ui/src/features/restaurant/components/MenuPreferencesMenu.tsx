@@ -23,10 +23,11 @@
 // it; every action row closes the popover as it hands off. The
 // restaurant-hamburger-* class names are pinned by tests.
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
+import { animDuration } from '@/utils/animation';
 import { useTheme } from '@/app/ThemeProvider';
 import { useFullscreen } from '@/hooks/useFullscreen';
 import type { Dispatch, SetStateAction } from 'react';
@@ -93,6 +94,37 @@ export function MenuPreferencesMenu({
   const hamburgerButtonRef = useRef<HTMLButtonElement>(null);
   const hamburgerWasOpenRef = useRef(false);
   const hamburgerOpenedWithKeyboardRef = useRef(false);
+
+  // Animation state for sliding out when open flips to false
+  const [exiting, setExiting] = useState(false);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wasEverOpenRef = useRef(false);
+
+  useEffect(() => {
+    if (open) {
+      wasEverOpenRef.current = true;
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+      setExiting(false);
+    } else if (wasEverOpenRef.current) {
+      setExiting(true);
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+      }
+      exitTimerRef.current = setTimeout(() => {
+        setExiting(false);
+        exitTimerRef.current = null;
+      }, animDuration(300));
+    }
+  }, [open]);
+
+  useEffect(() => {
+    return () => {
+      if (exitTimerRef.current !== null) clearTimeout(exitTimerRef.current);
+    };
+  }, []);
 
   // Move focus into the hamburger menu when it opens and return focus to the
   // trigger when it closes. Focus lands on the first SORT row, not the Close
@@ -170,7 +202,7 @@ export function MenuPreferencesMenu({
     <aside
       ref={dropdownRef}
       id="restaurant-hamburger-menu"
-      className="restaurant-hamburger-dropdown restaurant-sidebar"
+      className={`restaurant-hamburger-dropdown restaurant-sidebar${exiting ? ' restaurant-sidebar--exiting restaurant-hamburger-dropdown--exiting' : ''}`}
       role="region"
       tabIndex={-1}
       aria-label={l10n.getString('restaurant-menu-hamburger-aria')}
@@ -406,7 +438,7 @@ export function MenuPreferencesMenu({
         </svg>
       </button>
 
-      {open && (container ? createPortal(asideContent, container) : asideContent)}
+      {(open || exiting) && (container ? createPortal(asideContent, container) : asideContent)}
     </div>
   );
 }

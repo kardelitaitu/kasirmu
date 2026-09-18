@@ -302,7 +302,7 @@ export function CartPanel({
         setCartExiting(false);
         setIsFullyHidden(true);
         exitTimerRef.current = null;
-      }, animDuration(250));
+      }, animDuration(300));
     } else {
       if (exitTimerRef.current !== null) {
         clearTimeout(exitTimerRef.current);
@@ -318,7 +318,7 @@ export function CartPanel({
         enterTimerRef.current = setTimeout(() => {
           setCartEntering(false);
           enterTimerRef.current = null;
-        }, animDuration(380));
+        }, animDuration(300));
       }
     }
   }, [hidden]);
