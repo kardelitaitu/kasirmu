@@ -76,7 +76,7 @@
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl, 12px);
-  margin: 6px;
+  margin: 8px;
   box-sizing: border-box;
   overflow: hidden;
   min-height: 0;
@@ -522,22 +522,22 @@
   @keyframes pos-cart-slide-in {
     from {
       opacity: 0;
-      margin-right: calc(-1 * var(--cart-width, 440px) - 12px);
+      margin-right: calc(-1 * var(--cart-width, 440px) - 16px);
     }
     to {
       opacity: 1;
-      margin-right: 6px;
+      margin-right: 8px;
     }
   }
 
   @keyframes pos-cart-slide-out {
     from {
       opacity: 1;
-      margin-right: 6px;
+      margin-right: 8px;
     }
     to {
       opacity: 0;
-      margin-right: calc(-1 * var(--cart-width, 440px) - 12px);
+      margin-right: calc(-1 * var(--cart-width, 440px) - 16px);
     }
   }
 
