@@ -12,6 +12,7 @@ restaurant-font-size-label = Font Size
 restaurant-theme-light = Light Mode
 restaurant-theme-dark = Dark Mode
 restaurant-lock-terminal = Lock Terminal
+restaurant-exit-terminal = Exit Terminal
 restaurant-toggle-fullscreen = Toggle Fullscreen
 restaurant-clear-color-aria = Clear color
 restaurant-categories-aria = Menu categories

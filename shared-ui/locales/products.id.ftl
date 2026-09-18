@@ -11,6 +11,7 @@ restaurant-font-size-label = Ukuran Huruf
 restaurant-theme-light = Mode Terang
 restaurant-theme-dark = Mode Gelap
 restaurant-lock-terminal = Kunci Terminal
+restaurant-exit-terminal = Keluar Terminal
 restaurant-toggle-fullscreen = Aktifkan/nonaktifkan layar penuh
 restaurant-clear-color-aria = Hapus warna
 restaurant-categories-aria = Kategori menu

@@ -25,6 +25,7 @@ const mockProducts = [
 
 const mockActiveWorkspace = vi.hoisted(() => ({ current: 'restaurant-pos' }));
 const mockLogout = vi.hoisted(() => vi.fn());
+const mockGoToWorkspacePicker = vi.hoisted(() => vi.fn());
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
@@ -57,7 +58,7 @@ vi.mock('@/features/products/useProducts', () => ({
 }));
 
 vi.mock('@/hooks/useWorkspaceNav', () => ({
-  useWorkspaceNav: () => ({ goToWorkspacePicker: vi.fn() }),
+  useWorkspaceNav: () => ({ goToWorkspacePicker: mockGoToWorkspacePicker }),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -123,6 +124,7 @@ describe('RestaurantPosSidebar', () => {
     // inherit whatever the previous test left behind.
     mockActiveWorkspace.current = 'restaurant-pos';
     mockLogout.mockClear();
+    mockGoToWorkspacePicker.mockClear();
   });
 
   it('hides the CartPanel when restaurant sidebar is toggled open and restores it when closed', async () => {
@@ -202,6 +204,24 @@ describe('RestaurantPosSidebar', () => {
     expect(lockEvents).toHaveLength(1);
     expect(mockLogout).not.toHaveBeenCalled();
     // The popover closes on the lock, like every other item in it.
+    await waitFor(() => {
+      expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+    });
+  });
+
+  it('Exit Terminal navigates to workspace picker and closes the sidebar', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
+
+    await user.click(document.querySelector('.restaurant-hamburger-btn') as HTMLButtonElement);
+    expect(document.querySelector('.restaurant-sidebar')).toBeInTheDocument();
+
+    const exitBtn = screen.getByRole('button', { name: 'Exit Terminal' });
+    expect(exitBtn).toBeInTheDocument();
+
+    await user.click(exitBtn);
+    expect(mockGoToWorkspacePicker).toHaveBeenCalledTimes(1);
+
     await waitFor(() => {
       expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
     });

@@ -30,6 +30,7 @@ import { useLocalization } from '@fluent/react';
 import { animDuration } from '@/utils/animation';
 import { useTheme } from '@/app/ThemeProvider';
 import { useFullscreen } from '@/hooks/useFullscreen';
+import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import type { Dispatch, SetStateAction } from 'react';
 import { SORT_MODES } from '../RestaurantMenu';
 
@@ -90,6 +91,7 @@ export function MenuPreferencesMenu({
   const { l10n } = useLocalization();
   const { theme, toggleTheme } = useTheme();
   const { toggleFullscreen } = useFullscreen();
+  const { goToWorkspacePicker } = useWorkspaceNav();
   const hamburgerRef = useRef<HTMLDivElement>(null);
   const hamburgerButtonRef = useRef<HTMLButtonElement>(null);
   const hamburgerWasOpenRef = useRef(false);
@@ -160,6 +162,7 @@ export function MenuPreferencesMenu({
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
+      e.stopPropagation();
       hamburgerOpenedWithKeyboardRef.current = true;
       onOpenChange(false);
     };
@@ -398,6 +401,18 @@ export function MenuPreferencesMenu({
             }}
           >
             <Localized id="restaurant-lock-terminal"><span>Lock Terminal</span></Localized>
+          </button>
+          <button
+            type="button"
+            className="restaurant-hamburger-item"
+            onKeyDown={handleHamburgerKeyDown}
+            aria-label={l10n.getString('restaurant-exit-terminal')}
+            onClick={() => {
+              goToWorkspacePicker();
+              onOpenChange(false);
+            }}
+          >
+            <Localized id="restaurant-exit-terminal"><span>Exit Terminal</span></Localized>
           </button>
           <button
             type="button"
