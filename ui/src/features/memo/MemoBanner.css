@@ -125,13 +125,20 @@
   overflow: hidden;
 }
 
-/* The bubble itself: adaptive width capped at 400px (owner direction,
-   2026-09-08). min-height: 0 lets the grid row actually collapse
+/* The bubble itself: adaptive width capped at 560px (owner direction,
+   2026-09-08, raised from 400px 2026-09-19 -- "the box will be
+   bigger"), and never wider than the viewport less the stack's own
+   gutters, so the bottom-left bubble cannot run off a narrow screen.
+   The 560 was measured, not guessed: the dev memo's body has a 573px
+   single-line width, so any cap up to 560px still wraps to the
+   two-line preview the owner's sketch shows, and a cap at 573px or
+   above stops binding for this content at all (the bubble becomes
+   content-width). min-height: 0 lets the grid row actually collapse
    below the content size. */
 .memo-banner {
   position: relative;
   min-height: 0;
-  max-width: 400px;
+  max-width: min(560px, calc(100vw - var(--space-12)));
   padding: var(--space-3) var(--space-4);
   background: var(--color-bg-popover);
   border: 1px solid var(--color-border);
@@ -218,12 +225,24 @@
 }
 
 /* The bubble previews at most 10 lines; the full text lives in the
-   enlarged card behind the open button. */
+   enlarged card behind the open button.
+
+   `text-wrap: pretty` is load-bearing at the wider cap, not a nicety.
+   Widening the bubble from 400px to 560px moved the dev memo's break
+   from "...exercise the memo / display surfaces. Duration: 12h." to
+   "...Duration: / 12h." -- a single-word last line. Measured across
+   wrap modes at 560px: normal orphans "12h.", pretty breaks at
+   "...display surfaces. / Duration: 12h.", balance breaks at
+   "...to exercise / the memo display surfaces. Duration: 12h."
+   pretty was chosen because it only suppresses orphans and leaves
+   balanced text alone, where balance rewrites every break. It
+   degrades to normal wrapping on an engine without it. */
 .memo-banner-text {
   margin: 0;
   font-size: var(--text-md);
   color: var(--color-fg-secondary);
   line-height: var(--leading-normal);
+  text-wrap: pretty;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 10;
