@@ -1,13 +1,53 @@
 /// <reference types="vitest/config" />
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
 
 // Tauri expects a fixed port; fail if it isn't available.
 const host = process.env.TAURI_DEV_HOST;
 
+/**
+ * Serve this build's entry at `/`, and emit an `index.html` alias for it.
+ *
+ * Tauri's webview loads the app **root**, and its asset resolver maps that to
+ * `index.html`. This build's entry is `index.mobile.html`, so nothing existed
+ * at `/` and the installed Android app opened to a blank screen.
+ *
+ * Measured 2026-09-19 against the dev server: `GET /` returned **200 with 0
+ * bytes** while `GET /index.mobile.html` returned the page. `dist-mobile/`
+ * likewise contained only `index.mobile.html`.
+ *
+ * `scripts/check-bundle.mjs` already accepts either basename, preferring
+ * `index.html`, so emitting the alias does not disturb the bundle budget gate.
+ */
+function mobileEntryAtRoot(): Plugin {
+  return {
+    name: 'kasirmu-mobile-entry-at-root',
+    // `vite:build-html` emits the HTML asset from its own generateBundle, which
+    // runs after normal user plugins. Without this the bundle has no
+    // `index.mobile.html` yet and the alias is silently never emitted.
+    enforce: 'post',
+    configureServer(server) {
+      // Runs before Vite's internal middlewares, so this wins over the
+      // html-fallback middleware that would otherwise look for index.html.
+      server.middlewares.use((req, _res, next) => {
+        if (req.url === '/' || req.url === '/index.html') {
+          req.url = '/index.mobile.html';
+        }
+        next();
+      });
+    },
+    generateBundle(_options, bundle) {
+      const entry = bundle['index.mobile.html'];
+      if (entry && entry.type === 'asset') {
+        this.emitFile({ type: 'asset', fileName: 'index.html', source: entry.source });
+      }
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), mobileEntryAtRoot()],
 
   resolve: {
     // P9a: the Fluent corpus lives at shared-ui/locales/, outside ui/.
