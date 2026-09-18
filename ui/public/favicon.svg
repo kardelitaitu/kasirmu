@@ -1,35 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- OZ-POS SVG Favicon — Scalable vector favicon for modern browsers -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#2563EB"/>
-      <stop offset="100%" stop-color="#6366F1"/>
-    </linearGradient>
-  </defs>
-  <rect width="100" height="100" rx="20" fill="url(#bg)"/>
-  <g fill="#FFFFFF" transform="translate(50,48) scale(1.1)">
-    <path d="M0,-30 C8,-30 16,-28.5 23,-25 C30,-21.5 36,-16.5 40,-10
-             C44,-3.5 46,3.5 46,11 C46,18.5 44,25 40,31
-             C36,37 30,41 23,44 C16,47 8,48.5 0,48.5
-             C-8,48.5 -16,47 -23,44 C-30,41 -36,37 -40,31
-             C-44,25 -46,18.5 -46,11 C-46,3.5 -44,-3.5 -40,-10
-             C-36,-16.5 -30,-21.5 -23,-25 C-16,-28.5 -8,-30 0,-30Z
-             fill-opacity="0.15"/>
-    <path d="M0,-28 C-6,-28 -12,-26 -17,-22.5 C-22,-19 -26,-14 -28,-8
-             C-30,-2 -30,4 -28,10 C-26,16 -22,21 -17,24.5
-             C-12,28 -6,30 0,30 C6,30 12,28 17,24.5
-             C22,21 26,16 28,10 C30,4 30,-2 28,-8
-             C26,-14 22,-19 17,-22.5 C12,-26 6,-28 0,-28Z"/>
-    <path d="M0,-18 C-4,-18 -7.5,-16.5 -10,-14 C-12.5,-11.5 -14,-8 -14,-4
-             C-14,0 -12.5,3.5 -10,6 C-7.5,8.5 -4,10 0,10
-             C4,10 7.5,8.5 10,6 C12.5,3.5 14,0 14,-4
-             C14,-8 12.5,-11.5 10,-14 C7.5,-16.5 4,-18 0,-18Z"/>
-  </g>
-  <g fill="#FFFFFF" transform="translate(50,75)">
-    <rect x="-18" y="0" width="4" height="18" rx="1.5"/>
-    <rect x="-6" y="0" width="4" height="18" rx="1.5"/>
-    <rect x="6" y="0" width="4" height="18" rx="1.5"/>
-    <rect x="18" y="0" width="4" height="18" rx="1.5"/>
-  </g>
-</svg>
+<!-- kasir.mu SVG Favicon - Scalable vector favicon for modern browsers -->
+<!-- Same artwork as vector/logo-mark.svg so the browser tab matches the app icon. -->
+<!-- kasir.mu Logo - Mark (symbol only, no wordmark) -->
+<!-- Designer export, unmodified. Used where a square footprint is required. -->
+<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 216 216"><defs><style>.cls-1{fill:#147efb;}.cls-2{fill:#fff;}.cls-3{fill:#b3b3b3;}</style></defs><title>kasirmu-logo-square</title><rect class="cls-1" x="3.61" y="3.48" width="208.73" height="208.73" rx="24.64"/><path class="cls-2" d="M118.1,173.11,89.6,130.57l-17.5,15v23.31q0,8.49-4.91,13.05a16.06,16.06,0,0,1-11.29,4.57q-7.45,0-11.71-4.51t-4.26-13.32v-125q0-9.78,4.14-14.88t11.83-5.1c5,0,8.91,1.54,11.82,4.62S72.1,35.93,72.1,42v71.11l36.3-34.59a88.64,88.64,0,0,1,10.29-8.81,15.24,15.24,0,0,1,8.63-2.36,14.81,14.81,0,0,1,10.05,3.49,11.12,11.12,0,0,1,4,8.76q0,6.44-13.12,17.19L111.12,111l33.11,47.27q3.66,5.27,5.26,8a10.35,10.35,0,0,1,1.6,5.21q0,7-4.2,11t-11,4q-5.93,0-9.11-2.9A70.27,70.27,0,0,1,118.1,173.11Z"/><path class="cls-3" d="M178.58,179.6a13.21,13.21,0,0,1-9.05-3.38q-3.79-3.39-3.8-9.47a12.31,12.31,0,0,1,3.63-8.89,12.07,12.07,0,0,1,9-3.72,12.54,12.54,0,0,1,9.09,3.68,12,12,0,0,1,3.77,8.93q0,6-3.77,9.43A12.71,12.71,0,0,1,178.58,179.6Z"/></svg>
