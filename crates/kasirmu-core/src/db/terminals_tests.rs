@@ -104,6 +104,187 @@ fn get_terminal_by_device_id_not_found() {
     assert!(t.is_none());
 }
 
+// ── resolve_terminal_row_id ─────────────────────────────────────
+//
+// The key translation the memo read/ack depend on: a session carries the
+// DEVICE identity (`get_device_id` = hostname) while dependent tables store
+// `terminals.id` (a UUID).
+
+#[test]
+fn resolve_terminal_row_id_accepts_both_row_id_and_device_id() {
+    let conn = fresh();
+    seed_terminals(&conn);
+    let store = store(&conn);
+    assert_eq!(
+        store.resolve_terminal_row_id("default", "term-1").unwrap(),
+        Some("term-1".to_string()),
+        "a row id resolves to itself"
+    );
+    assert_eq!(
+        store.resolve_terminal_row_id("default", "dev-002").unwrap(),
+        Some("term-2".to_string()),
+        "the hostname a real session carries resolves to the row id"
+    );
+    assert_eq!(
+        store.resolve_terminal_row_id("default", "dev-003").unwrap(),
+        Some("term-3".to_string()),
+        "an inactive terminal still resolves — activity is not the key"
+    );
+}
+
+#[test]
+fn resolve_terminal_row_id_is_none_for_unknown_or_empty_identity() {
+    let conn = fresh();
+    seed_terminals(&conn);
+    let store = store(&conn);
+    assert_eq!(
+        store
+            .resolve_terminal_row_id("default", "unknown-device")
+            .unwrap(),
+        None
+    );
+    // `WorkspaceContext` falls back to "" when `get_device_id` fails, so the
+    // empty identity is a real input and must not match anything.
+    assert_eq!(store.resolve_terminal_row_id("default", "").unwrap(), None);
+    assert_eq!(
+        store.resolve_terminal_row_id("default", "   ").unwrap(),
+        None
+    );
+}
+
+#[test]
+fn resolve_terminal_row_id_prefers_the_id_over_another_rows_device_id() {
+    // Both columns are unique, but not unique *across* each other: an id that
+    // spells another row's device_id must resolve to the id's own row, because
+    // that is the row a dependent foreign key can point at.
+    let conn = fresh();
+    conn.execute_batch(
+        "INSERT INTO terminals (id, name, device_id) VALUES
+            ('x-1', 'By id',  'dev-9'),
+            ('x-2', 'By dev', 'x-1');",
+    )
+    .unwrap();
+    assert_eq!(
+        store(&conn)
+            .resolve_terminal_row_id("default", "x-1")
+            .unwrap(),
+        Some("x-1".to_string())
+    );
+}
+
+#[test]
+fn resolve_terminal_row_id_does_not_cross_tenants() {
+    // Resolving another tenant's terminal would hand the caller an id whose
+    // dependent rows cannot exist, i.e. an empty result dressed up as a hit.
+    let conn = fresh();
+    conn.execute_batch(
+        "INSERT INTO terminals (id, name, device_id, tenant_id) VALUES
+            ('term-b', 'Other tenant', 'dev-b', 'tenant-b');",
+    )
+    .unwrap();
+    let store = store(&conn);
+    assert_eq!(
+        store.resolve_terminal_row_id("default", "dev-b").unwrap(),
+        None
+    );
+    assert_eq!(
+        store.resolve_terminal_row_id("tenant-b", "dev-b").unwrap(),
+        Some("term-b".to_string())
+    );
+}
+
+// ── ensure_terminal_addressable (memo delivery across the two homes) ──
+
+#[test]
+fn ensure_terminal_addressable_inserts_once_and_carries_no_credential() {
+    let conn = fresh();
+    seed_terminals(&conn);
+    conn.execute_batch("INSERT INTO locations (id, name) VALUES ('loc-1', 'Front')")
+        .unwrap();
+    let store = store(&conn);
+    let source = make_terminal("term-9", "Back POS", "dev-009");
+
+    assert!(
+        store
+            .ensure_terminal_addressable(&source, "default", Some("loc-1"))
+            .unwrap(),
+        "first call inserts the mirror"
+    );
+    assert!(
+        !store
+            .ensure_terminal_addressable(&source, "default", Some("loc-1"))
+            .unwrap(),
+        "second call is a no-op"
+    );
+
+    assert_eq!(store.count_terminals().unwrap(), 4, "exactly one row added");
+    let mirrored = store.get_terminal("term-9").unwrap().unwrap();
+    assert_eq!(mirrored.device_id, "dev-009");
+    assert!(
+        mirrored.terminal_secret.is_none(),
+        "a credential belongs to the database that minted it"
+    );
+    // The two things delivery needs: the device resolves to this row, and a
+    // Location Memo can reach it through its binding.
+    assert_eq!(
+        store.resolve_terminal_row_id("default", "dev-009").unwrap(),
+        Some("term-9".to_string())
+    );
+    assert_eq!(
+        store.get_terminal_bound_location("term-9").unwrap(),
+        Some("loc-1".to_string())
+    );
+    let tenant: String = conn
+        .query_row(
+            "SELECT tenant_id FROM terminals WHERE id = 'term-9'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        tenant, "default",
+        "written under the tenant the fan-out filters on"
+    );
+}
+
+#[test]
+fn ensure_terminal_addressable_reuses_the_row_that_already_covers_the_device() {
+    // Addressability is per DEVICE: the MultiTerminal auto-register path may
+    // already have created this device's row under a different id, and a second
+    // row would both violate the device_id UNIQUE constraint and split delivery
+    // from the read (which resolves by device identity).
+    let conn = fresh();
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id) VALUES ('global-1', 'Auto', 'dev-1')",
+        [],
+    )
+    .unwrap();
+    let store = store(&conn);
+    let store_row = make_terminal("store-1", "Settings POS", "dev-1");
+
+    assert!(
+        !store
+            .ensure_terminal_addressable(&store_row, "default", None)
+            .unwrap(),
+        "one device never gets two rows"
+    );
+    assert_eq!(store.count_terminals().unwrap(), 1);
+    assert_eq!(
+        store.resolve_terminal_row_id("default", "dev-1").unwrap(),
+        Some("global-1".to_string()),
+        "delivery uses the row that already exists"
+    );
+}
+
+#[test]
+fn get_terminal_bound_location_is_none_for_unknown_and_unbound() {
+    let conn = fresh();
+    seed_terminals(&conn);
+    let store = store(&conn);
+    assert_eq!(store.get_terminal_bound_location("term-1").unwrap(), None);
+    assert_eq!(store.get_terminal_bound_location("nobody").unwrap(), None);
+}
+
 // ── Create ──────────────────────────────────────────────────────
 
 #[test]

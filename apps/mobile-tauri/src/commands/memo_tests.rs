@@ -1,4 +1,5 @@
 use super::*;
+use kasirmu_core::memo::{ActiveMemo, Memo};
 use kasirmu_core::session::SessionContext;
 use tauri::Manager as _;
 
@@ -149,16 +150,24 @@ fn cloud_wire_shape_decodes_into_display_dto() {
 }
 
 /// A terminal row for the fan-out (tenant defaults to `default`).
+///
+/// Idempotent, because `seed_published_memo` seeds one too.
 fn seed_terminal(conn: &rusqlite::Connection, id: &str) {
     conn.execute(
-        "INSERT INTO terminals (id, name, device_id) VALUES (?1, ?1, ?2)",
+        "INSERT INTO terminals (id, name, device_id) VALUES (?1, ?1, ?2)
+         ON CONFLICT (id) DO NOTHING",
         rusqlite::params![id, format!("dev-{id}")],
     )
     .unwrap();
 }
 
 /// One published Organization Memo authored on the (seeded) desktop side.
+///
+/// Seeds a terminal first: publishing refuses a fan-out that resolves zero
+/// recipients, and the terminal-less identity DB is the case that refusal
+/// exists for. The seeded device is not the one any case logs in as.
 fn seed_published_memo(conn: &rusqlite::Connection) -> String {
+    seed_terminal(conn, "term-seed-1");
     let store = Store::new(conn);
     let draft = store
         .create_memo_draft(&kasirmu_core::memo::NewMemo {
@@ -311,6 +320,140 @@ async fn ack_goes_to_the_cloud_and_carries_the_wire_contract() {
     assert!(
         request.contains("acknowledged_by"),
         "ack request did not carry the acking user: {request}"
+    );
+}
+
+// ── Device identity → `terminals.id` (the login-shaped session) ─────
+//
+// `seed_terminal` writes a UUID row id and a `dev-<id>` device id, and
+// `tablet_session` above takes whichever value it is handed. A real login
+// session carries the DEVICE identity (`WorkspaceContext` persists what
+// `get_device_id()` returned), so these cases drive the commands with the
+// device id and assert the local read/ack still reach the recipient row.
+
+#[tokio::test]
+async fn local_read_resolves_the_session_device_to_its_terminal_row() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    seed_terminal(&conn, "terminal-1");
+    let memo_id = seed_published_memo(&conn);
+    let app = tauri::test::mock_builder()
+        .manage(AppState::for_test_with_conn(conn))
+        .build(tauri::generate_context!())
+        .unwrap();
+    app.state::<AppState>()
+        .session_store
+        .write()
+        .unwrap()
+        .insert("tok".into(), tablet_session("dev-terminal-1"));
+
+    let dto = list_active_memos_scoped("tok".into(), app.state())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        dto.memos.len(),
+        1,
+        "the session's device id must resolve to the terminal row the fan-out wrote"
+    );
+    assert_eq!(dto.memos[0].memo.id, memo_id);
+}
+
+#[tokio::test]
+async fn local_read_is_empty_not_an_error_for_a_device_without_a_terminal_row() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    seed_published_memo(&conn);
+    let app = tauri::test::mock_builder()
+        .manage(AppState::for_test_with_conn(conn))
+        .build(tauri::generate_context!())
+        .unwrap();
+    app.state::<AppState>()
+        .session_store
+        .write()
+        .unwrap()
+        .insert("tok".into(), tablet_session("UNREGISTERED-DEVICE"));
+
+    let dto = list_active_memos_scoped("tok".into(), app.state())
+        .await
+        .unwrap();
+
+    assert!(dto.memos.is_empty());
+    assert_eq!(
+        dto.cadence.kds_interval_secs,
+        kasirmu_core::memo::kds_notification_interval_secs()
+    );
+}
+
+#[tokio::test]
+async fn fallback_ack_resolves_the_session_device_to_its_terminal_row() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    seed_terminal(&conn, "terminal-1");
+    let memo_id = seed_published_memo(&conn);
+    // Sync configured but unreachable (port 1 is the repo's standard dead
+    // endpoint), so the cloud attempt fails and the local write applies.
+    kasirmu_core::settings::Settings::set_sync_enabled(&conn, true).unwrap();
+    kasirmu_core::settings::Settings::set_sync_server_url(&conn, "http://127.0.0.1:1").unwrap();
+    kasirmu_core::settings::Settings::set_sync_api_key(&conn, "jwt-test").unwrap();
+    let app = tauri::test::mock_builder()
+        .manage(AppState::for_test_with_conn(conn))
+        .build(tauri::generate_context!())
+        .unwrap();
+    app.state::<AppState>()
+        .session_store
+        .write()
+        .unwrap()
+        .insert("tok".into(), tablet_session("dev-terminal-1"));
+
+    acknowledge_memo_scoped(memo_id.clone(), "tok".into(), app.state())
+        .await
+        .expect("fallback ack must succeed via the local write");
+
+    let app_state = app.state::<AppState>();
+    let db = app_state.db.lock().await;
+    let (terminal_id, status): (String, String) = {
+        use rusqlite::params;
+        let store = Store::new(&db);
+        store
+            .conn()
+            .query_row(
+                "SELECT terminal_id, delivery_status FROM memo_recipients
+                 WHERE memo_id = ?1 AND terminal_id = 'terminal-1'",
+                params![memo_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap()
+    };
+    assert_eq!(
+        terminal_id, "terminal-1",
+        "the ack must key the row id, not the device id"
+    );
+    assert_eq!(status, "acknowledged");
+}
+
+#[tokio::test]
+async fn ack_for_a_device_without_a_terminal_row_is_a_typed_failure() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    seed_published_memo(&conn);
+    let app = tauri::test::mock_builder()
+        .manage(AppState::for_test_with_conn(conn))
+        .build(tauri::generate_context!())
+        .unwrap();
+    app.state::<AppState>()
+        .session_store
+        .write()
+        .unwrap()
+        .insert("tok".into(), tablet_session("UNREGISTERED-DEVICE"));
+
+    let result = acknowledge_memo_scoped("m-1".into(), "tok".into(), app.state()).await;
+
+    assert!(
+        matches!(
+            result,
+            Err(AppError::Core {
+                sub_kind: kasirmu_core::CoreErrorKind::NotFound,
+                ..
+            })
+        ),
+        "expected an unknown-recipient NotFound, got {result:?}"
     );
 }
 

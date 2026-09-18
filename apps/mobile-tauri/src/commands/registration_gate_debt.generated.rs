@@ -37,14 +37,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ),
     ("branding::set_brand_logo_path", "no_session_resolution"),
     ("branding::set_brand_store_name", "no_session_resolution"),
-    (
-        "memo::list_active_memos_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "memo::acknowledge_memo_scoped",
-        "resolves_session_names_no_permission",
-    ),
     ("staff::bootstrap_owner", "no_session_resolution"),
     (
         "subscription::get_subscription_capabilities",
@@ -139,10 +131,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ),
     (
         "categories::list_categories_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "hardware::list_scanners_scoped",
         "resolves_session_names_no_permission",
     ),
     (
@@ -270,7 +258,17 @@ pub const REGISTERED_TOTAL: usize = 319;
 /// number. It is the only one of the seven `hardware::*` rows with a gate to
 /// copy — the other six are ungated in the bridge too, so they stay as debt
 /// until an owner rules on what permission they should carry.
-pub const DEBT_CEILING: usize = 88;
+///
+/// Lowered from 88 by the memo tablet-delegation: `memo::list_active_memos_scoped`
+/// and `memo::acknowledge_memo_scoped` stopped being authenticate-then-assume when
+/// their bodies became `kasirmu_bridge::memo` shims (the bridge module names
+/// `permissions::`), and `hardware::list_scanners_scoped` was swept out as stale
+/// debt: commit `cde2c8ac2` added a quoted-`domain:action` literal to bridge
+/// `hardware.rs` after this ledger was last generated, which flipped the sweep's
+/// merge classification for that name. No permission was added to the command; the
+/// row described a state the tree no longer measures, and the ratchet printed it
+/// as the correction.
+pub const DEBT_CEILING: usize = 85;
 
 /// Lowered from 89 by T11: `settings::set_hardware_settings` shed its row by deletion,
 /// not by gating. Its only argument beyond the DTO was a renderer-supplied `user_id` --
@@ -285,8 +283,8 @@ pub const DEBT_CEILING: usize = 88;
 pub const NO_SESSION_RESOLUTION: usize = 41;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
-/// 47 + 41 = 88 = `DEBT_CEILING`, as the class counts must sum to the ledger.
-pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 47;
+/// 44 + 41 = 85 = `DEBT_CEILING`, as the class counts must sum to the ledger.
+pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 44;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).
 pub const UNSOURCED: usize = 0;

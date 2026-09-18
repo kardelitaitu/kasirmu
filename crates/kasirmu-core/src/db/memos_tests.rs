@@ -147,6 +147,9 @@ fn location_memo_scope_is_location() {
 #[test]
 fn publish_transitions_stamps_expiry_and_snapshots_revision() {
     let store = store();
+    // A publishable memo needs somewhere to go: the fan-out refuses zero
+    // recipients, so every fixture that publishes seeds its terminal.
+    seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     let published = store.publish_memo("default", &memo.id).unwrap();
 
@@ -281,6 +284,7 @@ fn org_memo_fanout_still_reaches_unbound_terminals_of_same_tenant() {
 #[test]
 fn publish_twice_is_rejected() {
     let store = store();
+    seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
     let err = store.publish_memo("default", &memo.id).unwrap_err();
@@ -294,8 +298,63 @@ fn publish_twice_is_rejected() {
 }
 
 #[test]
+fn publish_is_refused_when_the_audience_resolves_to_no_terminal() {
+    // A memo that reaches nobody must not report the success a delivered memo
+    // reports — the author would see "published" while every terminal sees
+    // nothing. The refusal rolls the whole transaction back, so the memo is
+    // still a draft with no revision and no recipient.
+    let store = store();
+    let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
+
+    let err = store.publish_memo("default", &memo.id).unwrap_err();
+
+    assert!(matches!(
+        err,
+        CoreError::Validation {
+            field: "recipients",
+            ..
+        }
+    ));
+    let back = store.get_memo("default", &memo.id).unwrap().unwrap();
+    assert_eq!(back.status, MemoStatus::Draft, "the publish must roll back");
+    assert!(back.published_at.is_none());
+    let revisions: i64 = store
+        .conn()
+        .query_row(
+            "SELECT COUNT(*) FROM memo_revisions WHERE memo_id = ?1",
+            params![memo.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(revisions, 0, "a refused publish snapshots no revision");
+}
+
+#[test]
+fn location_memo_whose_locations_hold_no_terminal_is_refused() {
+    // The other zero-recipient route: the tenant has terminals, but none of them
+    // is bound to a location the memo targets.
+    let store = store();
+    seed_location(&store, "empty-loc");
+    seed_terminal(&store, "t-unbound", None);
+    let memo = store
+        .create_memo_draft(&new_memo("default", &["empty-loc"]))
+        .unwrap();
+
+    let err = store.publish_memo("default", &memo.id).unwrap_err();
+
+    assert!(matches!(
+        err,
+        CoreError::Validation {
+            field: "recipients",
+            ..
+        }
+    ));
+}
+
+#[test]
 fn stop_published_records_actor_and_time() {
     let store = store();
+    seed_terminal(&store, "t1", None);
     let memo = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &memo.id).unwrap();
     let stopped = store.stop_memo("default", &memo.id, "user-2").unwrap();
@@ -606,6 +665,7 @@ fn sweep_all_expired_spans_tenants() {
     // user-facing read, so it carries no tenant filter).
     let store = store();
     seed_terminal(&store, "t1", None);
+    seed_terminal_with_tenant(&store, "t-other", None, "other-tenant");
     let a = store.create_memo_draft(&new_memo("default", &[])).unwrap();
     store.publish_memo("default", &a.id).unwrap();
     let b = store
@@ -840,11 +900,14 @@ fn retention_window_is_thirty_days_per_the_ruling() {
 fn location_delete_is_blocked_by_its_memos() {
     let store = store();
     seed_location(&store, "del-loc");
-    // No terminal bound to del-loc, so the targeting row is the ONLY
-    // dependent — this isolates memo_locations.location_id as the blocker
-    // rather than a terminal binding.
+    // A Location Memo must reach at least one terminal to be publishable at all,
+    // so the terminal is bound to a SECOND location and `del-loc` itself stays
+    // terminal-free — which is what isolates memo_locations.location_id as the
+    // blocker rather than a terminal binding.
+    seed_location(&store, "live-loc");
+    seed_terminal(&store, "t-live", Some("live-loc"));
     let memo = store
-        .create_memo_draft(&new_memo("default", &["del-loc"]))
+        .create_memo_draft(&new_memo("default", &["del-loc", "live-loc"]))
         .unwrap();
     store.publish_memo("default", &memo.id).unwrap();
 
@@ -1076,6 +1139,7 @@ fn memo_by(author: &str) -> NewMemo {
 #[test]
 fn list_authored_scopes_to_author_and_includes_drafts() {
     let store = store();
+    seed_terminal(&store, "t1", None);
     let draft = store.create_memo_draft(&memo_by("alice")).unwrap();
     let published = store.create_memo_draft(&memo_by("alice")).unwrap();
     store.publish_memo("default", &published.id).unwrap();

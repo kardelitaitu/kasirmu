@@ -211,7 +211,13 @@ fn session_for(user_id: &str, role_id: &str) -> SessionContext {
 
 /// Published memo authored by `user-manager` (the fixed author all stop
 /// cases act on).
+///
+/// Seeds one registered terminal first: publishing refuses a fan-out that
+/// resolves zero recipients, and a terminal-less identity DB is exactly the
+/// case that refusal exists for. The seeded device is deliberately NOT the
+/// device any case logs in as, so a read still has to resolve its own.
 fn seed_published_memo(conn: &rusqlite::Connection) -> String {
+    seed_terminal(conn, "term-seed-1", "SEEDED-DEVICE");
     let store = Store::new(conn);
     let draft = store
         .create_memo_draft(&kasirmu_core::memo::NewMemo {
@@ -302,4 +308,466 @@ async fn stop_rejects_invalid_session() {
     let tb = TestBridge::new().with_conn(kasirmu_core::migrations::fresh_db());
     let result = stop_memo_scoped(&tb.ctx(), "missing-token", "memo-1").await;
     assert!(matches!(result, Err(BridgeError::InvalidSession)));
+}
+
+// ── Consumption path: device identity → `terminals.id` ──────────────
+//
+// A real login session carries the DEVICE identity (`create_session` persists
+// whatever `get_device_id()` returned — the hostname), while `terminals.id` is
+// a UUID and `memo_recipients.terminal_id` is an enforced foreign key to it.
+// `session_for` above hardcodes "term-1" for both roles, which is exactly the
+// coincidence that hid the mismatch, so these cases build the session the way
+// the login flow does and assert the read and the ack reach the right row.
+
+/// A registered terminal in the shape every real registration produces:
+/// UUID row id, hostname device id (`Terminal::new`).
+///
+/// Idempotent, because `seed_published_memo` seeds one too.
+fn seed_terminal(conn: &rusqlite::Connection, id: &str, device: &str) {
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id) VALUES (?1, ?1, ?2)
+         ON CONFLICT (id) DO NOTHING",
+        rusqlite::params![id, device],
+    )
+    .unwrap();
+}
+
+/// A login-shaped session: `terminal_id` is the device identity, not a row id.
+fn session_for_device(user_id: &str, role_id: &str, device: &str) -> SessionContext {
+    SessionContext::new(
+        user_id.into(),
+        role_id.into(),
+        device.into(),
+        "store-a".into(),
+        "inst-1".into(),
+        "restaurant-pos".into(),
+        None,
+        0,
+    )
+}
+
+#[tokio::test]
+async fn read_reaches_the_recipient_row_behind_the_session_device() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    seed_terminal(&conn, "term-uuid-1", "RESTAURANT-POS");
+    let memo_id = seed_published_memo(&conn);
+    let tb = TestBridge::new().with_conn(conn);
+    tb.sessions().write().unwrap().insert(
+        "tok".into(),
+        session_for_device("user-staff", "role-staff", "RESTAURANT-POS"),
+    );
+
+    let dto = list_active_memos_scoped(&tb.ctx(), "tok").await.unwrap();
+
+    assert_eq!(
+        dto.memos.len(),
+        1,
+        "the session's hostname must resolve to the terminal row the fan-out wrote"
+    );
+    assert_eq!(dto.memos[0].memo.id, memo_id);
+    assert_eq!(dto.memos[0].delivery_status, "pending");
+    assert_eq!(
+        dto.cadence.base_interval_secs,
+        NOTIFICATION_BASE_INTERVAL_SECS
+    );
+}
+
+#[tokio::test]
+async fn read_of_a_location_memo_resolves_the_same_way() {
+    // Location targeting fans out through `memo_locations` → bound terminals,
+    // and the read must resolve the device identity for that branch too.
+    let conn = kasirmu_core::migrations::fresh_db();
+    conn.execute_batch("INSERT INTO locations (id, name) VALUES ('loc-1', 'Front')")
+        .unwrap();
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id, bound_location_id)
+         VALUES ('term-uuid-1', 'Front POS', 'RESTAURANT-POS', 'loc-1')",
+        [],
+    )
+    .unwrap();
+    let memo_id = {
+        let store = Store::new(&conn);
+        let draft = store
+            .create_memo_draft(&NewMemo {
+                tenant_id: "default".into(),
+                location_ids: vec!["loc-1".into()],
+                author_user_id: "user-manager".into(),
+                author_role: "role-manager".into(),
+                title: "Heads up".into(),
+                body: "Close early".into(),
+                duration: kasirmu_core::memo::MemoDuration::Hours24,
+            })
+            .unwrap();
+        store.publish_memo("default", &draft.id).unwrap().id
+    };
+    let tb = TestBridge::new().with_conn(conn);
+    tb.sessions().write().unwrap().insert(
+        "tok".into(),
+        session_for_device("user-staff", "role-staff", "RESTAURANT-POS"),
+    );
+
+    let dto = list_active_memos_scoped(&tb.ctx(), "tok").await.unwrap();
+
+    assert_eq!(dto.memos.len(), 1);
+    assert_eq!(dto.memos[0].memo.id, memo_id);
+}
+
+#[tokio::test]
+async fn read_is_empty_not_an_error_for_a_device_without_a_terminal_row() {
+    // The memo was delivered to the fixture's seeded terminal; THIS device has
+    // no row at all, so nothing is addressed to it — an empty list, and the
+    // cadence still served so the banner keeps polling instead of dying on a
+    // missing identity.
+    let conn = kasirmu_core::migrations::fresh_db();
+    seed_published_memo(&conn);
+    let tb = TestBridge::new().with_conn(conn);
+    tb.sessions().write().unwrap().insert(
+        "tok".into(),
+        session_for_device("user-staff", "role-staff", "UNREGISTERED-DEVICE"),
+    );
+
+    let dto = list_active_memos_scoped(&tb.ctx(), "tok").await.unwrap();
+
+    assert!(dto.memos.is_empty());
+    assert_eq!(
+        dto.cadence.kds_interval_secs,
+        kds_notification_interval_secs()
+    );
+}
+
+#[tokio::test]
+async fn read_is_empty_for_the_empty_device_identity_login_falls_back_to() {
+    // `WorkspaceContext` sends `terminal_id: await getDeviceId().catch(() => "")`,
+    // so "" is a live input. It must match nothing — never every memo.
+    let conn = kasirmu_core::migrations::fresh_db();
+    seed_terminal(&conn, "term-uuid-1", "RESTAURANT-POS");
+    seed_published_memo(&conn);
+    let tb = TestBridge::new().with_conn(conn);
+    tb.sessions().write().unwrap().insert(
+        "tok".into(),
+        session_for_device("user-staff", "role-staff", ""),
+    );
+
+    let dto = list_active_memos_scoped(&tb.ctx(), "tok").await.unwrap();
+
+    assert!(dto.memos.is_empty());
+}
+
+#[tokio::test]
+async fn ack_writes_the_recipient_row_behind_the_session_device() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    seed_terminal(&conn, "term-uuid-1", "RESTAURANT-POS");
+    let memo_id = seed_published_memo(&conn);
+    let tb = TestBridge::new().with_conn(conn);
+    tb.sessions().write().unwrap().insert(
+        "tok".into(),
+        session_for_device("user-staff", "role-staff", "RESTAURANT-POS"),
+    );
+    let ctx = tb.ctx();
+
+    acknowledge_memo_scoped(&ctx, "tok", &memo_id)
+        .await
+        .unwrap();
+
+    let db = ctx.lock_global().await;
+    let (terminal_id, status, acknowledged_by): (String, String, Option<String>) = db
+        .query_row(
+            "SELECT terminal_id, delivery_status, acknowledged_by
+             FROM memo_recipients WHERE memo_id = ?1 AND terminal_id = 'term-uuid-1'",
+            rusqlite::params![&memo_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        terminal_id, "term-uuid-1",
+        "the ack must key the row id, not the hostname"
+    );
+    assert_eq!(status, "acknowledged");
+    assert_eq!(acknowledged_by.as_deref(), Some("user-staff"));
+    // And only that recipient: the fan-out's other row is untouched, so an ack
+    // can never clear a memo for a terminal that never read it.
+    let other: String = db
+        .query_row(
+            "SELECT delivery_status FROM memo_recipients
+             WHERE memo_id = ?1 AND terminal_id = 'term-seed-1'",
+            rusqlite::params![&memo_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        other, "pending",
+        "an ack is per recipient, never a broadcast"
+    );
+}
+
+// ── End to end: a terminal registered in the STORE db ────────────────
+//
+// Registration has two homes and only one of them is addressable by the memo
+// tables. `register_terminal_scoped` (Settings → Terminals per-store) writes the
+// row into `store-<store_id>.sqlite`, while the memo tables live in the global
+// identity DB, where `memo_recipients.terminal_id` carries an enforced FK to ITS
+// `terminals(id)`. The published fan-out used to read only the global table, so
+// on such an installation it resolved zero recipients and reported the success
+// of a memo no terminal could receive. These cases drive the real commands on
+// both sides of that split for every store whose terminals the publish touches.
+
+use crate::terminals::{RegisterTerminalArgs, register_terminal_scoped};
+
+#[tokio::test]
+async fn publish_reaches_a_terminal_registered_through_the_store_db() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    seed_user(&conn, "user-manager", "role-manager");
+    seed_user(&conn, "user-staff", "role-staff");
+    let tb = TestBridge::new().with_conn(conn);
+    // Both sides log into `store-a` (the store `session_for_device` names), and
+    // the reader carries the DEVICE identity the renderer sends, exactly as in
+    // the resolution cases above.
+    tb.sessions().write().unwrap().insert(
+        "author-tok".into(),
+        session_for_device("user-manager", "role-manager", "DESKTOP-AUTHOR"),
+    );
+
+    // The real registration command: writes into the STORE database.
+    let registered = register_terminal_scoped(
+        &tb.ctx(),
+        "author-tok",
+        RegisterTerminalArgs {
+            name: "Front POS".into(),
+            device_id: "RESTAURANT-POS".into(),
+            terminal_secret: None,
+            metadata: None,
+        },
+    )
+    .await;
+    // Release: the seeded subscription row this command validates does not
+    // verify, so no terminal is registered and the delivery half below would
+    // have nothing to test — assert the refusal rather than the outcome.
+    if !crate::testing::seeded_row_loads() {
+        crate::testing::assert_refused_by_the_seeded_row(&tb, registered, "free").await;
+        return;
+    }
+    let registered = registered.expect("a manager holds `terminals:register`");
+
+    // The premise of this case: the row is NOT in the global identity DB, so a
+    // fan-out that reads only this table cannot see it.
+    {
+        let db = tb.ctx().lock_global().await;
+        let global_terminals: i64 = db
+            .query_row("SELECT COUNT(*) FROM terminals", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            global_terminals, 0,
+            "`register_terminal_scoped` must write the store db, or this case proves nothing"
+        );
+    }
+
+    let memo_id = publish_org_memo(&tb, "author-tok").await;
+
+    // The recipient row the fan-out had to be able to write: the STORE
+    // terminal's row id, mirrored into the global table the FK points at.
+    {
+        let db = tb.ctx().lock_global().await;
+        let recipient: String = db
+            .query_row(
+                "SELECT terminal_id FROM memo_recipients WHERE memo_id = ?1",
+                rusqlite::params![&memo_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            recipient, registered.id,
+            "the recipient must key the store-registered terminal's row id"
+        );
+    }
+
+    // And the banner's read, on the recipient's own login.
+    tb.sessions().write().unwrap().insert(
+        "reader-tok".into(),
+        session_for_device("user-staff", "role-staff", "RESTAURANT-POS"),
+    );
+    let dto = list_active_memos_scoped(&tb.ctx(), "reader-tok")
+        .await
+        .unwrap();
+    assert_eq!(
+        dto.memos.len(),
+        1,
+        "a memo published on this store must reach the terminal registered in it"
+    );
+    assert_eq!(dto.memos[0].memo.id, memo_id);
+}
+
+#[tokio::test]
+async fn publish_reaches_terminals_from_both_registration_homes() {
+    // The production shape: this device was auto-registered in the global
+    // identity db by `set_features` (MultiTerminal), while the other POS was
+    // registered through Settings → Terminals into the per-store db. A publish
+    // must address both, each by its own row id.
+    let conn = kasirmu_core::migrations::fresh_db();
+    seed_user(&conn, "user-manager", "role-manager");
+    seed_user(&conn, "user-staff", "role-staff");
+    let auto = Terminal::new("DESKTOP-AUTHOR (auto)", "DESKTOP-AUTHOR");
+    Store::new(&conn).create_terminal(&auto).unwrap();
+    let tb = TestBridge::new().with_conn(conn);
+    tb.sessions().write().unwrap().insert(
+        "author-tok".into(),
+        session_for_device("user-manager", "role-manager", "DESKTOP-AUTHOR"),
+    );
+
+    let registered = register_terminal_scoped(
+        &tb.ctx(),
+        "author-tok",
+        RegisterTerminalArgs {
+            name: "Front POS".into(),
+            device_id: "RESTAURANT-POS".into(),
+            terminal_secret: None,
+            metadata: None,
+        },
+    )
+    .await;
+    // Release: the seeded subscription row does not verify, so the second
+    // home is never registered (see the case above for the full reason).
+    if !crate::testing::seeded_row_loads() {
+        crate::testing::assert_refused_by_the_seeded_row(&tb, registered, "free").await;
+        return;
+    }
+    let registered = registered.expect("a manager holds `terminals:register`");
+
+    let memo_id = publish_org_memo(&tb, "author-tok").await;
+
+    let recipients: Vec<String> = {
+        let db = tb.ctx().lock_global().await;
+        let mut stmt = db
+            .prepare(
+                "SELECT terminal_id FROM memo_recipients WHERE memo_id = ?1 ORDER BY terminal_id",
+            )
+            .unwrap();
+        let rows = stmt
+            .query_map(rusqlite::params![&memo_id], |r| r.get::<_, String>(0))
+            .unwrap();
+        rows.collect::<Result<Vec<_>, _>>().unwrap()
+    };
+    let mut expected = vec![auto.id.clone(), registered.id.clone()];
+    expected.sort();
+    assert_eq!(
+        recipients, expected,
+        "one recipient per registered terminal, whichever home registered it"
+    );
+
+    // And each device's own read finds it, on the same two identities.
+    for (token, device) in [
+        ("auto-tok", "DESKTOP-AUTHOR"),
+        ("reader-tok", "RESTAURANT-POS"),
+    ] {
+        tb.sessions().write().unwrap().insert(
+            token.into(),
+            session_for_device("user-staff", "role-staff", device),
+        );
+        let dto = list_active_memos_scoped(&tb.ctx(), token).await.unwrap();
+        assert_eq!(
+            dto.memos.len(),
+            1,
+            "{device} must see the memo it was made a recipient for"
+        );
+        assert_eq!(dto.memos[0].memo.id, memo_id);
+    }
+}
+
+#[tokio::test]
+async fn publish_refuses_when_no_terminal_can_receive() {
+    // A terminal-less identity DB is not hypothetical: it is what a fresh
+    // installation looks like before Settings → Terminals has registered
+    // anything, and it is where the old silent success lived. The refusal must
+    // be a failure the author can act on, and the draft must survive it.
+    let conn = kasirmu_core::migrations::fresh_db();
+    seed_user(&conn, "user-manager", "role-manager");
+    let tb = TestBridge::new().with_conn(conn);
+    tb.sessions().write().unwrap().insert(
+        "author-tok".into(),
+        session_for_device("user-manager", "role-manager", "DESKTOP-AUTHOR"),
+    );
+    let draft = create_memo_scoped(
+        &tb.ctx(),
+        "author-tok",
+        CreateMemoArgs {
+            location_ids: vec![],
+            title: "Heads up".into(),
+            body: "Close early".into(),
+            duration: None,
+        },
+    )
+    .await
+    .expect("a manager holds `memo:write`");
+
+    let result = publish_memo_scoped(&tb.ctx(), "author-tok", &draft.id).await;
+
+    match result {
+        Err(BridgeError::Core {
+            sub_kind: kasirmu_core::CoreErrorKind::Validation,
+            message,
+        }) => assert!(
+            message.contains("terminal"),
+            "the refusal must name what is missing, got: {message}"
+        ),
+        other => panic!("expected the zero-recipient refusal, got {other:?}"),
+    }
+    let db = tb.ctx().lock_global().await;
+    let status: String = db
+        .query_row(
+            "SELECT status FROM memos WHERE id = ?1",
+            rusqlite::params![&draft.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        status, "draft",
+        "a refused publish must roll back to the draft the author can fix"
+    );
+}
+
+/// Create and publish an Organization Memo through the real commands,
+/// returning the memo id.
+async fn publish_org_memo(tb: &TestBridge, token: &str) -> String {
+    let draft = create_memo_scoped(
+        &tb.ctx(),
+        token,
+        CreateMemoArgs {
+            location_ids: vec![],
+            title: "Heads up".into(),
+            body: "Close early".into(),
+            duration: None,
+        },
+    )
+    .await
+    .expect("a manager holds `memo:write`");
+    publish_memo_scoped(&tb.ctx(), token, &draft.id)
+        .await
+        .expect("a store with a registered terminal has a recipient")
+        .id
+}
+
+#[tokio::test]
+async fn ack_without_a_terminal_row_is_a_typed_failure_not_a_silent_ok() {
+    // The caller drops the memo from view optimistically and swallows the
+    // error, so a success here would hide an ack that never landed.
+    let conn = kasirmu_core::migrations::fresh_db();
+    seed_terminal(&conn, "term-uuid-1", "RESTAURANT-POS");
+    let memo_id = seed_published_memo(&conn);
+    let tb = TestBridge::new().with_conn(conn);
+    tb.sessions().write().unwrap().insert(
+        "tok".into(),
+        session_for_device("user-staff", "role-staff", "UNREGISTERED-DEVICE"),
+    );
+
+    let result = acknowledge_memo_scoped(&tb.ctx(), "tok", &memo_id).await;
+
+    assert!(
+        matches!(
+            result,
+            Err(BridgeError::Core {
+                sub_kind: kasirmu_core::CoreErrorKind::NotFound,
+                ..
+            })
+        ),
+        "expected an unknown-recipient NotFound, got {result:?}"
+    );
 }

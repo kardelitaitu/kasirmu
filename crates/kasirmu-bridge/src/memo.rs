@@ -20,9 +20,12 @@
 
 use chrono::Utc;
 use kasirmu_core::memo::{
-    ActiveMemo, Memo, NOTIFICATION_BASE_INTERVAL_SECS, NewMemo, kds_notification_interval_secs,
+    ActiveMemo, Memo, MemoStatus, NOTIFICATION_BASE_INTERVAL_SECS, NewMemo,
+    kds_notification_interval_secs,
 };
-use kasirmu_core::{Store, permissions};
+use kasirmu_core::session::SessionContext;
+use kasirmu_core::sync_client::ActiveMemoCloud;
+use kasirmu_core::{CoreError, Store, Terminal, permissions};
 use serde::{Deserialize, Serialize};
 
 use crate::ctx::BridgeCtx;
@@ -100,6 +103,37 @@ impl From<ActiveMemo> for ActiveMemoDto {
         Self {
             memo: MemoDto::from(a.memo),
             delivery_status: a.delivery_status.as_str().to_string(),
+        }
+    }
+}
+
+/// Map a cloud-served memo into the display DTO. The cloud read is
+/// claim-scoped (it echoes no tenant) and its query only returns `published`
+/// rows, so those two DTO fields are filled from the read's own invariants —
+/// the same values the local-read path derives.
+///
+/// Lives here rather than in the shell that performs the cloud read because
+/// this DTO is defined here: a shell crate cannot implement a foreign trait for
+/// two foreign types, and the wire shape must not fork into one DTO per shell.
+impl From<ActiveMemoCloud> for ActiveMemoDto {
+    fn from(m: ActiveMemoCloud) -> Self {
+        Self {
+            memo: MemoDto {
+                id: m.id,
+                tenant_id: DEFAULT_TENANT_ID.to_string(),
+                location_ids: m.location_ids,
+                author_user_id: m.author_user_id,
+                author_role: m.author_role,
+                title: m.title,
+                body: m.body,
+                status: MemoStatus::Published.as_str().to_string(),
+                duration: m.duration,
+                revision: m.revision,
+                published_at: m.published_at,
+                expires_at: m.expires_at,
+                created_at: m.created_at,
+            },
+            delivery_status: m.delivery_status,
         }
     }
 }
@@ -188,7 +222,51 @@ pub async fn create_memo_scoped(
     Ok(MemoDto::from(store.create_memo_draft(&new)?))
 }
 
+/// The terminals the publishing store has registered, each with its location
+/// binding — read from the database `register_terminal_scoped` writes them to.
+///
+/// The store connection is a `std::sync::Mutex`, so this is a synchronous read
+/// and no guard is held across an await; the caller locks the global DB after it
+/// returns.
+///
+/// A store database that does not exist means the store has no registered
+/// terminals, and the answer is an empty list — deliberately not `open_store`,
+/// which would CREATE the file as a side effect of publishing a memo. A store
+/// database that exists but cannot be read is an error rather than an empty
+/// list: publishing without it would under-deliver silently down to (and
+/// possibly past) the zero-recipient refusal.
+fn store_registered_terminals(
+    ctx: &BridgeCtx<'_>,
+    session: &SessionContext,
+) -> Result<Vec<(Terminal, Option<String>)>, BridgeError> {
+    if !ctx.db_manager.store_db_exists(&session.store_id) {
+        return Ok(Vec::new());
+    }
+    let conn = ctx.db_manager.open_store(&session.store_id)?;
+    let db = conn
+        .lock()
+        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&db);
+    let mut registered = Vec::new();
+    for terminal in store.list_terminals()? {
+        let bound_location_id = store.get_terminal_bound_location(&terminal.id)?;
+        registered.push((terminal, bound_location_id));
+    }
+    Ok(registered)
+}
+
 /// Publish a draft memo. Requires `memo:write`.
+///
+/// Terminal registration has two homes and the memo tables can only address one
+/// of them: `register_terminal_scoped` writes the terminal into the per-store
+/// database, while the MultiTerminal auto-register path (`set_features`) writes
+/// it into the global identity DB where the memo tables live and where
+/// `memo_recipients.terminal_id` carries an enforced FK to `terminals(id)`. So
+/// before publishing, this store's registered terminals are made addressable in
+/// the global table — otherwise a device registered through Settings → Terminals
+/// fans out to nobody and the publish reports the success of a memo no terminal
+/// can receive (see `Store::ensure_terminal_addressable`).
+///
 pub async fn publish_memo_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
@@ -197,8 +275,26 @@ pub async fn publish_memo_scoped(
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, permissions::MEMO_WRITE)
         .await?;
+    let store_terminals = store_registered_terminals(ctx, &session)?;
     let conn = ctx.lock_global().await;
     let store = Store::new(&conn);
+    let mut mirrored = 0_usize;
+    for (terminal, bound_location_id) in &store_terminals {
+        if store.ensure_terminal_addressable(
+            terminal,
+            DEFAULT_TENANT_ID,
+            bound_location_id.as_deref(),
+        )? {
+            mirrored += 1;
+        }
+    }
+    if mirrored > 0 {
+        tracing::info!(
+            mirrored,
+            store_id = %session.store_id,
+            "memo publish: made this store's registered terminals addressable"
+        );
+    }
     Ok(MemoDto::from(
         store.publish_memo(DEFAULT_TENANT_ID, memo_id)?,
     ))
@@ -212,14 +308,42 @@ pub async fn list_active_memos_scoped(
     session_token: &str,
 ) -> Result<MemoDisplayDto, BridgeError> {
     let session = ctx.resolve_session(session_token)?;
+    list_active_memos_local(ctx, &session).await
+}
+
+/// The local half of the display read, for a shell that reaches memos by another
+/// route first: the tablet's local `memos` table is structurally empty, so it
+/// reads the cloud and only falls back to this. Taking an already-resolved
+/// session is what lets that fallback reuse the device→row translation instead
+/// of copying it.
+pub async fn list_active_memos_local(
+    ctx: &BridgeCtx<'_>,
+    session: &SessionContext,
+) -> Result<MemoDisplayDto, BridgeError> {
     let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let conn = ctx.lock_global().await;
     let store = Store::new(&conn);
-    let memos = store
-        .list_active_for_terminal(DEFAULT_TENANT_ID, &session.terminal_id, &now)?
-        .into_iter()
-        .map(ActiveMemoDto::from)
-        .collect();
+    // Translate the session's DEVICE identity into the terminal ROW id the
+    // recipient table keys on before reading (see
+    // `Store::resolve_terminal_row_id`): the fan-out writes one
+    // `memo_recipients` row per `terminals.id`, so querying the raw session
+    // value would match nothing even for a device that has memos waiting.
+    // An unresolved device demonstrably has no recipient rows — serve an empty
+    // list (with the cadence, so the banner keeps polling) rather than erroring.
+    let memos = match store.resolve_terminal_row_id(DEFAULT_TENANT_ID, &session.terminal_id)? {
+        Some(terminal_id) => store
+            .list_active_for_terminal(DEFAULT_TENANT_ID, &terminal_id, &now)?
+            .into_iter()
+            .map(ActiveMemoDto::from)
+            .collect(),
+        None => {
+            tracing::debug!(
+                device = %session.terminal_id,
+                "memo read: this device has no terminal row, so it has no memos"
+            );
+            Vec::new()
+        }
+    };
     Ok(MemoDisplayDto {
         memos,
         cadence: MemoCadenceDto {
@@ -236,14 +360,30 @@ pub async fn acknowledge_memo_scoped(
     memo_id: &str,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
+    acknowledge_memo_local(ctx, &session, memo_id).await
+}
+
+/// The local half of the ack, the counterpart of [`list_active_memos_local`]
+/// for a shell whose durable ack first travels through the cloud.
+pub async fn acknowledge_memo_local(
+    ctx: &BridgeCtx<'_>,
+    session: &SessionContext,
+    memo_id: &str,
+) -> Result<(), BridgeError> {
     let conn = ctx.lock_global().await;
     let store = Store::new(&conn);
-    store.acknowledge_memo(
-        DEFAULT_TENANT_ID,
-        memo_id,
-        &session.terminal_id,
-        &session.user_id,
-    )?;
+    // The same device→row translation the display read performs, or the ack
+    // would target a recipient row that cannot exist. An unresolved device has
+    // nothing to acknowledge: report the store's own unknown-recipient error
+    // instead of succeeding silently, because the caller drops the memo from
+    // view optimistically and would never learn the ack never landed.
+    let terminal_id = store
+        .resolve_terminal_row_id(DEFAULT_TENANT_ID, &session.terminal_id)?
+        .ok_or_else(|| CoreError::NotFound {
+            entity: "memo_recipient",
+            id: format!("{memo_id}/{}", session.terminal_id),
+        })?;
+    store.acknowledge_memo(DEFAULT_TENANT_ID, memo_id, &terminal_id, &session.user_id)?;
     Ok(())
 }
 
