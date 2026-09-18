@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Skill drift detection — runs the 7 mechanical checks described in
+# Skill drift detection — runs the 15 mechanical checks described in
 # .agents/skills/skill-drift-guard/SKILL.md and emits a markdown report.
 #
 # Usage:
@@ -246,7 +246,8 @@ audit_footer_check_in_file() {
 
 # Findings: associative array of category -> lines
 declare -A FINDINGS
-for cat in paths crates api versions golden refs fluent audit-date audit-format doc-audit; do
+for cat in paths crates api versions golden refs fluent audit-date audit-format doc-audit \
+           version-lock crate-prefix ci-jobs workflow-claims git-policy; do
   FINDINGS[$cat]=""
 done
 
@@ -514,6 +515,216 @@ if should_run doc-audit; then
 fi
 
 # ---------------------------------------------------------------------------
+# Helpers for Checks 11–15 (all added 18-09-26)
+# ---------------------------------------------------------------------------
+
+# Print a skill with its HTML audit-stamp comments removed. Audit stamps are
+# the history of what an earlier audit *claimed*; they are full of numbers
+# (old version locks, old job counts) that are correctly stale and must never
+# be re-reported. Without this, Check 11 fires on every superseded stamp.
+#
+# Also terminates a comment on a line ending in `)>`: docs-auditor's stamp is
+# closed that way (see §7 of the audit record), and an unterminated `<!--`
+# would otherwise swallow the rest of that file and blind every prose check
+# to it — a silent coverage hole of exactly the kind this script exists to
+# prevent.
+strip_skill_comments() {
+  awk '
+    {
+      if (inC) {
+        if (index($0, "-->") > 0 || $0 ~ /\)\>[ \t]*$/) inC = 0
+        next
+      }
+      line = $0
+      while (1) {
+        s = index(line, "<!--")
+        if (s == 0) break
+        e = index(substr(line, s), "-->")
+        if (e > 0) { line = substr(line, 1, s-1) substr(line, s+e+2) }
+        else { inC = 1; line = substr(line, 1, s-1); break }
+      }
+      print line
+    }
+  ' "$1" 2>/dev/null
+}
+
+# Number words -> int, for job-count claims written as prose ("eleven jobs").
+num_word_to_int() {
+  case "$(printf '%s' "$1" | tr -d '*' | tr 'A-Z' 'a-z')" in
+    one) echo 1 ;; two) echo 2 ;; three) echo 3 ;; four) echo 4 ;; five) echo 5 ;;
+    six) echo 6 ;; seven) echo 7 ;; eight) echo 8 ;; nine) echo 9 ;; ten) echo 10 ;;
+    eleven) echo 11 ;; twelve) echo 12 ;; thirteen) echo 13 ;; fourteen) echo 14 ;;
+    fifteen) echo 15 ;; sixteen) echo 16 ;; seventeen) echo 17 ;; eighteen) echo 18 ;;
+    nineteen) echo 19 ;; twenty) echo 20 ;;
+    *) echo "" ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Check 11 — Version-lock claims (taxonomy #12)
+#
+# The workspace version is locked. A skill that restates it goes stale the
+# moment the lock moves, and the stale number then propagates into PR titles
+# and branch names. Scoped deliberately to EXPLICIT lock assertions
+# ("Version is locked at `0.0.NN`", "version = ...", "As of 0.0.NN") rather
+# than to every `0.0.NN` in the file: docs-auditor legitimately quotes
+# 0.0.21/0.0.22/0.0.23 as worked examples of *other documents'* headers, and
+# exit-animation quotes `0.0.3` as the branch a historical commit landed on.
+# A wider net produced false positives on both.
+# ---------------------------------------------------------------------------
+if should_run version-lock; then
+  : "${Version_FILE:=Cargo.toml}"
+  if [ -f "$Version_FILE" ]; then
+    locked="$(awk '/^\[workspace\.package\]/{f=1;next} /^\[/{f=0} f && /^version[[:space:]]*=/{gsub(/[^0-9.]/,"");print;exit}' "$Version_FILE" 2>/dev/null)"
+    if [ -n "$locked" ]; then
+      while read -r skill; do
+        [ -z "$skill" ] && continue
+        # `< <(…)` not `grep | while`: see the subshell note in Check 1.
+        while read -r claimed; do
+          [ "$claimed" = "$locked" ] && continue
+          FINDINGS[version-lock]+="${skill}: claims version ${claimed}, workspace is locked at ${locked}"$'\n'
+        done < <(strip_skill_comments "$skill" \
+          | grep -inE 'version (is )?locked|locked at|version[[:space:]]*=|as of 0\.0\.|workspace version' 2>/dev/null \
+          | grep -oE '0\.0\.[0-9]+' | sort -u)
+      done < <(find .agents/skills -name SKILL.md 2>/dev/null)
+    fi
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# Check 12 — Stale crate-name prefix (taxonomy #13)
+#
+# Crates were renamed `oz-*` -> `kasirmu-*`; the skills kept teaching the old
+# prefix for months because no check compared a skill's crate vocabulary
+# against the workspace's actual naming. Check 2 cannot see this: it greps
+# the CURRENT prefix, so a reference to a retired prefix simply does not
+# match and is never considered.
+#
+# `oz-pos` is allow-listed: it is the knowledge-graph project name and the
+# historical repo label, not a crate.
+#
+# Matching is case-SENSITIVE deliberately. An earlier `-i` match flagged
+# `OZ_DB_PATH` and `OZ_TEST_PG_URL` — environment variables that keep the
+# `OZ_` prefix by design and have nothing to do with crate naming.
+# ---------------------------------------------------------------------------
+if should_run crate-prefix; then
+  : "${STALE_CRATE_PREFIX:=oz}"
+  : "${PREFIX_ALLOWLIST:=oz-pos}"
+  while read -r skill; do
+    [ -z "$skill" ] && continue
+    # `< <(…)` not `grep | while`: see the subshell note in Check 1.
+    while read -r tok; do
+      case "$tok" in
+        ${PREFIX_ALLOWLIST}*) continue ;;
+      esac
+      FINDINGS[crate-prefix]+="${skill}: stale crate-name reference '${tok}' (workspace crates use the 'kasirmu-' prefix)"$'\n'
+    done < <(strip_skill_comments "$skill" 2>/dev/null \
+      | grep -oE "(^|[^a-zA-Z0-9_])${STALE_CRATE_PREFIX}[-_][a-z0-9]+" \
+      | grep -oE "${STALE_CRATE_PREFIX}[-_][a-z0-9]+" | sort -u)
+  done < <(find .agents/skills -name SKILL.md 2>/dev/null)
+fi
+
+# ---------------------------------------------------------------------------
+# Check 13 — CI job-count claims (taxonomy #14)
+#
+# Only counts claims where `dev-ci` precedes the number on the same line, so
+# a sentence about a *different* set (e.g. northflank's seven `needs` jobs)
+# is not compared against the workflow total.
+# ---------------------------------------------------------------------------
+if should_run ci-jobs; then
+  wf=".github/workflows/dev-ci.yml"
+  if [ -f "$wf" ]; then
+    actual_jobs="$(awk '/^jobs:/{f=1;next} /^[^[:space:]]/{f=0} f && /^  [a-z][a-z0-9_-]*:$/{n++} END{print n+0}' "$wf" 2>/dev/null)"
+    while read -r skill; do
+      [ -z "$skill" ] && continue
+      # `< <(…)` not `grep | while`: see the subshell note in Check 1.
+      while read -r tok; do
+        t="${tok//\*/}"; t="${t%+}"
+        if [[ "$t" =~ ^[0-9]+$ ]]; then n="$t"; else n="$(num_word_to_int "$t")"; fi
+        [ -z "$n" ] && continue
+        [ "$n" = "$actual_jobs" ] && continue
+        FINDINGS[ci-jobs]+="${skill}: claims ${tok} dev-ci jobs, workflow defines ${actual_jobs}"$'\n'
+      done < <(strip_skill_comments "$skill" 2>/dev/null \
+        | grep -oiE "dev-ci[^j]{0,60}jobs" 2>/dev/null \
+        | grep -oiE "(\*\*[a-z]+\*\*|[0-9]+\+?)[[:space:]]+jobs" \
+        | sed -E 's/[[:space:]]+[jJ][oO][bB][sS]$//' | sort -u)
+    done < <(find .agents/skills -name SKILL.md 2>/dev/null)
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# Check 14 — Workflow-truth claims (taxonomy #15)
+#
+# Verifies three sentences a skill can assert about CI: that there is exactly
+# one active workflow, that the workflow has no push trigger, and that the
+# dormant workflows sit at the workflows root. All three were asserted
+# wrongly at once on 18-09-26: `release.yml` had been restored, `.bak` files
+# had moved into `attic/`, and `on.push` had been re-declared — while the
+# skill still said "the ONE active workflow", "no push trigger" and
+# "*.yml.bak". Nothing in the original taxonomy could see any of it.
+# ---------------------------------------------------------------------------
+if should_run workflow-claims; then
+  wf_dir=".github/workflows"
+  if [ -d "$wf_dir" ]; then
+    active_wf="$(find "$wf_dir" -maxdepth 1 -name '*.yml' ! -name '*.bak' 2>/dev/null | wc -l | tr -d ' ')"
+    bak_at_root="$(find "$wf_dir" -maxdepth 1 -name '*.bak' 2>/dev/null | wc -l | tr -d ' ')"
+    has_push="$(awk '/^on:/{f=1;next} /^[^[:space:]]/{f=0} f && /^[[:space:]]+push:[[:space:]]*$/{print 1;exit}' "$wf_dir/dev-ci.yml" 2>/dev/null)"
+    has_push="${has_push:-0}"
+    while read -r skill; do
+      [ -z "$skill" ] && continue
+      # `< <(…)` not `grep | while`: see the subshell note in Check 1.
+      while read -r msg; do
+        FINDINGS[workflow-claims]+="${skill}: ${msg}"$'\n'
+      done < <(strip_skill_comments "$skill" 2>/dev/null | awk \
+        -v active="$active_wf" -v bak="$bak_at_root" -v push="$has_push" '
+        {
+          l = tolower($0)
+          if ((index(l,"single active workflow") || index(l,"only active workflow") || index(l,"one active workflow")) \
+              && active != 1)
+            print "claims a single active workflow, but " active " live workflow(s) exist under .github/workflows/"
+          if ((index(l,"no push trigger") || index(l,"has no push") || index(l,"does not have a push trigger")) && push == 1)
+            print "claims the workflow has no push trigger, but dev-ci.yml declares on.push"
+          # Guard on "attic": a line naming the attic/ subdirectory is stating
+          # the correct location and must not be flagged.
+          if (index($0, "*.yml.bak") && index(l, "attic") == 0 && bak == 0)
+            print "claims dormant workflows are *.yml.bak at the workflows root, but none are there (see .github/workflows/attic/)"
+        }')
+    done < <(find .agents/skills -name SKILL.md 2>/dev/null)
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# Check 15 — Repo git-policy violations in skill examples (taxonomy #16)
+#
+# AGENTS.md forbids `git add` / `git commit -a` / `--amend` / `git stash`.
+# A skill that teaches the forbidden form teaches it to every future agent.
+# Only COMMAND lines are checked — a line that starts with `git`, or any line
+# inside a fenced block. Prose that merely warns about a command
+# ("avoid broad `git add -A`") is instruction, not example, and is skipped;
+# matching it produced false positives in `tdd`.
+# ---------------------------------------------------------------------------
+if should_run git-policy; then
+  while read -r skill; do
+    [ -z "$skill" ] && continue
+    # `< <(…)` not `grep | while`: see the subshell note in Check 1.
+    while read -r hit; do
+      FINDINGS[git-policy]+="${skill}: ${hit}"$'\n'
+    done < <(strip_skill_comments "$skill" 2>/dev/null | awk '
+      /^```/ { fence = !fence; next }
+      {
+        l = $0
+        sub(/^[ \t>-]+/, "", l)
+        is_cmd = (fence || l ~ /^git[ \t]/)
+        if (!is_cmd) next
+        if (l ~ /^git[ \t]+add[ \t]/) print NR": forbidden \`git add\` (use a pathspec commit)"
+        if (l ~ /^git[ \t]+commit[ \t]+(-a|--amend)/) print NR": forbidden \`git commit -a\` / \`--amend\`"
+        if (l ~ /^git[ \t]+stash/) print NR": forbidden \`git stash\`"
+        if (l ~ /^git[ \t]+stage/) print NR": forbidden \`git stage\`"
+      }')
+  done < <(find .agents/skills -name SKILL.md 2>/dev/null)
+fi
+
+# ---------------------------------------------------------------------------
 # Auto-patch (safe categories only)
 # ---------------------------------------------------------------------------
 if $AUTO_PATCH; then
@@ -540,7 +751,8 @@ manual_count=0
 report=""
 report+="# Skill drift report — $today"$'\n\n'
 
-for cat in paths crates api versions golden refs fluent audit-date audit-format doc-audit; do
+for cat in paths crates api versions golden refs fluent audit-date audit-format doc-audit \
+           version-lock crate-prefix ci-jobs workflow-claims git-policy; do
   body="${FINDINGS[$cat]}"
   if [ -z "$body" ]; then continue; fi
   manual_count=$((manual_count + $(echo "$body" | grep -c . || true)))
