@@ -76,7 +76,7 @@
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl, 12px);
-  margin: 8px;
+  margin: 8px 8px 8px 0;
   box-sizing: border-box;
   overflow: hidden;
   min-height: 0;
