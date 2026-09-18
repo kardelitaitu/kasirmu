@@ -204,11 +204,6 @@
   position: relative;
 }
 
-/* Close row: same row treatment, no extra paint — the modifier exists so the
-   class the TSX renders always has a rule (screenExtraction). */
-.restaurant-hamburger-item--close {
-  font-weight: var(--font-weight-semibold);
-}
 
 .restaurant-hamburger-label {
   display: block;

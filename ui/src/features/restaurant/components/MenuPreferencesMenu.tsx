@@ -127,10 +127,9 @@ export function MenuPreferencesMenu({
   }, []);
 
   // Move focus into the hamburger menu when it opens and return focus to the
-  // trigger when it closes. Focus lands on the first SORT row, not the Close
-  // row: the sort list is the panel's primary content and the existing
-  // keyboard tests pin focus there ('Manual' on open, A–Z on ArrowDown).
-  // The Close row stays reachable by Tab/Shift+Tab like every other row.
+  // trigger when it closes. Focus lands on the first SORT row: the sort
+  // list is the panel's primary content and the existing keyboard tests
+  // pin focus there ('Manual' on open, A–Z on ArrowDown).
   useEffect(() => {
     if (open) {
       const buttons = dropdownRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? [];
@@ -173,16 +172,14 @@ export function MenuPreferencesMenu({
 
   const handleHamburgerKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
-    // Arrow/Home/End rove across every row in panel order, EXCEPT the Close
-    // row: the auto-focus lands on the first sort row, and the existing
-    // keyboard tests pin Home to that same row ('Manual'), so roving must
-    // treat the sort rows as the ring. The size steppers are excluded for the
-    // same reason — they are a separate widget with their own Tab stops, and
-    // wrapping into them stranded arrow users inside a −/+ pair. Close and
-    // the steppers stay reachable by Tab/Shift+Tab like every other row.
+    // Arrow/Home/End rove across every action row in panel order (sort rows
+    // and actions). The size steppers are excluded because they are a
+    // separate widget with their own Tab stops, and wrapping into them
+    // stranded arrow users inside a −/+ pair. The steppers stay reachable
+    // by Tab/Shift+Tab like every other row.
     const items = Array.from(
       dropdownRef.current?.querySelectorAll<HTMLButtonElement>(
-        'button.restaurant-hamburger-item--sort, button.restaurant-hamburger-item:not(.restaurant-hamburger-item--close):not(.restaurant-size-btn)',
+        'button.restaurant-hamburger-item--sort, button.restaurant-hamburger-item:not(.restaurant-size-btn)',
       ) ?? [],
     );
     if (items.length === 0) return;
@@ -207,15 +204,6 @@ export function MenuPreferencesMenu({
       tabIndex={-1}
       aria-label={l10n.getString('restaurant-menu-hamburger-aria')}
     >
-          <button
-            type="button"
-            className="restaurant-hamburger-item restaurant-hamburger-item--close"
-            onClick={() => onOpenChange(false)}
-            aria-label={l10n.getString('restaurant-menu-close-aria', undefined, 'Close menu')}
-          >
-            <Localized id="restaurant-menu-close"><span>Close</span></Localized>
-          </button>
-          <div className="restaurant-hamburger-divider" role="separator" />
           <span className="restaurant-hamburger-label"><Localized id="restaurant-sort-label"><span>Sort</span></Localized></span>
           {SORT_MODES.map((mode) => (
             <button
