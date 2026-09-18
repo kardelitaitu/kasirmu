@@ -17,7 +17,6 @@
   box-sizing: border-box;
   padding: var(--space-3) var(--space-4);
   gap: var(--space-2);
-  transition: padding-left var(--duration-300) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .restaurant-menu--sidebar-open {
