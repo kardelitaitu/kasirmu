@@ -13,6 +13,7 @@ import {
   type RoleHoldersDto,
 } from '@/api/staff';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Badge } from '@/components/Badge';
@@ -137,9 +138,35 @@ function HolderDims({ h }: { h: RoleHolderDto }) {
   );
 }
 
+/**
+ * Page-level back control for this fullscreen page.
+ *
+ * Roles registers `fullscreen`, so AppLayout — and with it the sidebar —
+ * never renders around it, and `goToWorkspacePicker` is the only route back
+ * to the workspace picker. It is a component so the loading branch renders
+ * the same control as the loaded one: a slow role fetch must not leave the
+ * operator on a sidebar-less page with no way out.
+ */
+function BackToWorkspacesButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      className="role-authoring-back-btn"
+      onClick={onClick}
+      aria-label={label}
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+        <line x1="19" y1="12" x2="5" y2="12" />
+        <polyline points="12 19 5 12 12 5" />
+      </svg>
+    </button>
+  );
+}
+
 export default function RoleAuthoringScreen() {
   const { l10n } = useLocalization();
   const { sessionToken } = useWorkspace();
+  const { goToWorkspacePicker } = useWorkspaceNav();
   const { addToast } = useToast();
 
   const [roles, setRoles] = useState<RoleDto[]>([]);
@@ -187,6 +214,13 @@ export default function RoleAuthoringScreen() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Both staff pages are registered `fullscreen` and receive no `onNavigate`
+  // prop, so the URL hash is how one reaches the other: AppShell's
+  // hashchange listener resolves `#/staff` against the page registry.
+  const goToStaff = useCallback(() => {
+    window.location.hash = '#/staff';
+  }, []);
 
   // Grouped by family so the picker reads as capabilities rather than an
   // 85-key wall.
@@ -297,6 +331,7 @@ export default function RoleAuthoringScreen() {
   if (loading) {
     return (
       <div className="role-authoring" aria-busy="true">
+        <BackToWorkspacesButton onClick={goToWorkspacePicker} label={l10n.getString('staff-back-aria')} />
         <Skeleton variant="block" width="100%" height="12rem" />
       </div>
     );
@@ -306,20 +341,30 @@ export default function RoleAuthoringScreen() {
     <div className="role-authoring">
       <Card>
         <div className="role-authoring-header">
-          <div>
-            <Localized id="role-authoring-title">
-              <h2>Roles</h2>
-            </Localized>
-            <Localized id="role-authoring-subtitle">
-              <p className="role-authoring-subtitle">
-                Built-in roles are defaults; custom roles are named permission
-                sets you author.
-              </p>
-            </Localized>
+          <div className="role-authoring-header-lead">
+            <BackToWorkspacesButton onClick={goToWorkspacePicker} label={l10n.getString('staff-back-aria')} />
+            <div>
+              <Localized id="role-authoring-title">
+                <h2>Roles</h2>
+              </Localized>
+              <Localized id="role-authoring-subtitle">
+                <p className="role-authoring-subtitle">
+                  Built-in roles are defaults; custom roles are named permission
+                  sets you author.
+                </p>
+              </Localized>
+            </div>
           </div>
-          <Button variant="primary" onClick={() => openEditor(null)} aria-label={l10n.getString('role-create-aria')}>
-            <Localized id="role-create">New role</Localized>
-          </Button>
+          <div className="role-authoring-header-actions">
+            {/* Roles rides with Staff: the two are siblings under one tool,
+                so each links to the other. */}
+            <Button variant="secondary" onClick={goToStaff}>
+              <Localized id="nav-staff"><span>Staff</span></Localized>
+            </Button>
+            <Button variant="primary" onClick={() => openEditor(null)} aria-label={l10n.getString('role-create-aria')}>
+              <Localized id="role-create">New role</Localized>
+            </Button>
+          </div>
         </div>
 
         {error && (

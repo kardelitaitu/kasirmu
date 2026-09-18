@@ -1,6 +1,10 @@
 # shared-ui/locales/staff.ftl — Staff management
 
 staff-title = Staff
+# Both staff pages (staff, roles) are registered `fullscreen`, so neither has
+# a sidebar; this labels the page-level back button that returns to the
+# workspace picker.
+staff-back-aria = Back to workspaces
 staff-add-button = Add Staff
 staff-empty = No staff members yet.
 staff-empty-cta = Add your first staff member

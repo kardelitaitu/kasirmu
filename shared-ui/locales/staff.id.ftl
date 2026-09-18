@@ -32,6 +32,7 @@ staff-login-lockout = Terkunci. Coba lagi dalam { $seconds }d
 
 # ── Product Bundles ──
 staff-title = Staf
+staff-back-aria = Kembali ke ruang kerja
 staff-add-button = Tambah Staf
 staff-empty = Belum ada anggota staf.
 staff-empty-cta = Tambah anggota staf pertama

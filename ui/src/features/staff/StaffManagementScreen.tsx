@@ -33,6 +33,7 @@ import {
 import { listAllWorkspacesScoped } from '@/api/workspaces';
 import { listLocationsScoped } from '@/api/locations';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useAuth } from '@/contexts/AuthContext';
 import { useImpersonation } from '@/contexts/ImpersonationContext';
 import { LocaleContext } from '@/i18n/LocaleContext';
@@ -65,10 +66,13 @@ export default function StaffManagementScreen() {
   const { caps } = useSubscription();
   const atProStaffCap = caps?.tier === 'pro' && (caps.staffCount ?? 0) >= 16;
   const { sessionToken } = useWorkspace();
+  const { goToWorkspacePicker } = useWorkspaceNav();
   const { session } = useAuth();
   const { addToast } = useToast();
   const { start: startImpersonation } = useImpersonation();
   const canImpersonate = hasGrantedPermission(session?.permissions, 'operator:impersonate');
+  /** The Roles link mirrors `roles`' own route gate (`staff:manage_roles`). */
+  const canManageRoles = hasGrantedPermission(session?.permissions, 'staff:manage_roles');
   const [staff, setStaff] = useState<StaffMemberDto[]>([]);
   const [roles, setRoles] = useState<RoleDto[]>([]);
   const [workspaceNameMap, setWorkspaceNameMap] = useState<Map<string, string>>(new Map());
@@ -133,6 +137,18 @@ export default function StaffManagementScreen() {
   }, [sessionToken, l10n]);
 
   useEffect(() => { load(); }, [load]);
+
+  // ── Cross-page navigation ──────────────────────────────────────
+  //
+  // Both staff pages are registered `fullscreen`, so neither is reachable
+  // from a sidebar and neither receives an `onNavigate` prop (AppShell
+  // renders registry pages with no props). The URL hash is therefore the
+  // app's cross-page channel here: AppShell's hashchange listener resolves
+  // `#/roles` against the page registry and swaps the route. Same idiom the
+  // Locations dashboard uses for `#/settings/topology`.
+  const goToRoles = useCallback(() => {
+    window.location.hash = '#/roles';
+  }, []);
 
   // ── Drawer open/close
   //
@@ -231,12 +247,39 @@ export default function StaffManagementScreen() {
   return (
     <div className="staff-mgmt" onContextMenu={(e) => e.preventDefault()}>
       <div className="staff-mgmt-header">
-        <Localized id="staff-title">
-          <h1 className="staff-mgmt-title">Staff</h1>
-        </Localized>
-        <Localized id="staff-add-button">
-          <Button onClick={openCreate}>Add Staff</Button>
-        </Localized>
+        <div className="staff-mgmt-header-lead">
+          {/* This screen is registered `fullscreen`, so AppLayout — and with it
+              the sidebar and topbar — never renders around it. The back
+              button is the only in-page route to the workspace picker, and it
+              sits outside every load branch below so a failed or slow staff
+              load can never strand the operator on a sidebar-less page. */}
+          <button
+            type="button"
+            className="staff-mgmt-back-btn"
+            onClick={goToWorkspacePicker}
+            aria-label={l10n.getString('staff-back-aria')}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+          </button>
+          <Localized id="staff-title">
+            <h1 className="staff-mgmt-title">Staff</h1>
+          </Localized>
+        </div>
+        <div className="staff-mgmt-header-actions">
+          {/* Roles rides with Staff: same fullscreen destination, no sidebar
+              entry of its own, gated on the grant the screen itself writes. */}
+          {canManageRoles && (
+            <Button variant="secondary" onClick={goToRoles}>
+              <Localized id="nav-roles"><span>Roles</span></Localized>
+            </Button>
+          )}
+          <Localized id="staff-add-button">
+            <Button onClick={openCreate}>Add Staff</Button>
+          </Localized>
+        </div>
       </div>
 
       {/* C2.2: Pro tier near its 20-staff cap — upgrade nudge. */}

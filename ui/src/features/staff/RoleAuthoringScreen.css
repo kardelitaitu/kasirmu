@@ -1,8 +1,52 @@
-/* Role authoring — custom role editing (ADR #47 ruling 4). */
+/* Role authoring — custom role editing (ADR #47 ruling 4).
+   Fullscreen page root (features/staff/register.tsx registers `fullscreen`,
+   so AppLayout — and with it .app-content, which used to own the scroll, the
+   page background and the page padding — never renders around this screen). */
 .role-authoring {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  height: 100dvh;
+  overflow-y: auto;
+  background: var(--color-bg);
+  padding: var(--space-6) var(--space-8);
+}
+
+/* Title cluster (back + heading) and the page actions (Staff, New role). */
+.role-authoring-header-lead,
+.role-authoring-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* The only route back to the workspace picker on this sidebar-less page.
+   Sized off the touch-target token; see the Staff sheet for the fuller note. */
+.role-authoring-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-fg-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.role-authoring-back-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
+}
+
+.role-authoring-back-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 
 .role-authoring-header {
