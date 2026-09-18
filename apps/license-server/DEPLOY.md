@@ -238,7 +238,7 @@ The license server requires the RSA private key as an environment variable. **Ne
 
    > **Deliverability honesty:** without your own domain + SPF/DKIM/DMARC, inbox placement is best-effort — codes may land in spam. Once you own a domain: set `OZ_SMTP_FROM=noreply@<domain>`, add the provider's SPF include + DKIM records (and a DMARC policy), then the verified-sender fallback is no longer needed. This is the actual fix for "signup codes never land in spam".
 6. (Optional) Web API CORS allowlist override:
-   - **Key:** `OZ_WEB_ALLOWED_ORIGINS` — comma-separated origins allowed to call the web endpoints. **Defaults are already correct** for the current setup (`https://ozpos.my.id`, `http://localhost:4321`); only set this if you deploy the website to a different origin.
+   - **Key:** `OZ_WEB_ALLOWED_ORIGINS` — comma-separated origins allowed to call the web endpoints. **Defaults are already correct** for the current setup (`https://kasir.mu`, `https://dashboard.kasir.mu`, `https://admin.kasir.mu`, `http://localhost:4321`); only set this if you deploy the website to a different origin. **If you do set it, read §7.2 first** — a stale value silently breaks the whole login surface.
 7. (Optional) Session lifetime override:
    - **Key:** `OZ_WEB_SESSION_TTL` — Go duration, default `24h` (e.g. `72h` to extend dashboard sessions).
 8. Add the **billing webhook** secrets (required for the checkout → provisioning flow — Paddle for global, Midtrans for Indonesia, ADR #39):
@@ -271,10 +271,13 @@ The license server requires the RSA private key as an environment variable. **Ne
 
 ### 7.2 CORS for the website
 
-The website is served from `https://ozpos.my.id` and calls the web endpoints (`/api/v1/web/contact`, `request-otp`, `verify-otp`, `/me`, `logout`) cross-origin.
+The website is served from `https://kasir.mu` — with the account portal at `https://kasir.mu/en/account/` and the admin panel at `https://admin.kasir.mu` — and calls the web endpoints (`/api/v1/web/contact`, `request-otp`, `verify-otp`, `/me`, `logout`) cross-origin.
 
-- **Web OTP endpoints** enforce an **in-handler CORS allowlist** read from `OZ_WEB_ALLOWED_ORIGINS` (Step 6 above). Its default already includes `ozpos.my.id` and `http://localhost:4321`, so **no configuration is needed** — just don't set the variable to an empty string, or the allowlist falls back to the default.
-- **`/api/v1/web/contact`** relies on PocketBase's global CORS middleware, which allows all origins by default (stateless, no cookies). No configuration needed for the contact form to work. For hardening, restrict origins by adding the `--origins` flag to the `serve` command in the Dockerfile `CMD` (e.g. `--origins=https://ozpos.my.id,http://localhost:4321`).
+- **Web OTP endpoints** enforce an **in-handler CORS allowlist** read from `OZ_WEB_ALLOWED_ORIGINS` (Step 6 above); `OZ_CORS_ORIGINS` is merged in, so one value covers the Go and Rust services. Its default already includes `kasir.mu`, `dashboard.kasir.mu`, `admin.kasir.mu` and `http://localhost:4321`, so **no configuration is needed** — just don't set the variable to an empty string, or the allowlist falls back to the default.
+- **A stale override is worse than no override.** Every origin the allowlist omits gets `403 {"error":"origin not allowed"}` on login, signup, OTP, password reset and the exchange handoff. A rebrand that leaves these vars naming the **old** domain breaks the entire web login surface while every page still renders — the outage is silent, because the pages themselves are static. Never leave a *blank* value either: on the Rust side a blank `OZ_CORS_ORIGINS` means *deny every cross-origin request* (fail closed), not "use the defaults".
+- **`OZ_CORS_ORIGINS` overrides rather than extends.** If you set it, include the Tauri webview origins `tauri://localhost` and `http://tauri.localhost` (see `DEFAULT_CORS_ORIGINS` in `crates/kasirmu-api/src/lib.rs`), or the desktop/mobile apps lose their allowance.
+- **Diagnosing it:** probe one endpoint while varying only the `Origin` header — a non-browser caller (no `Origin`) is always allowed, so a bare `curl` proves nothing. Method: `ozpos-web-origin-allowlist-diagnosis`.
+- **`/api/v1/web/contact`** relies on PocketBase's global CORS middleware, which allows all origins by default (stateless, no cookies). No configuration needed for the contact form to work. For hardening, restrict origins by adding the `--origins` flag to the `serve` command in the Dockerfile `CMD` (e.g. `--origins=https://kasir.mu,http://localhost:4321`).
 
 ### 7.3 Attach to the service
 
