@@ -3,14 +3,15 @@ name: onboarding-guide
 description: Meta-skill that routes tasks to the right kasir.mu skill. Use when starting a new task and unsure which specialized skill applies. Read this first when joining the project or picking up an unfamiliar area.
 ---
 
-<!-- Audit stamp: 2026-09-19 · Budak-Korporat · status: PARTIAL — router only. Added the `brand-asset-pipeline` row to the skill router, pointing at the new `.agents/skills/brand-asset-pipeline/SKILL.md`. Verified this pass: that file exists and declares `name: brand-asset-pipeline`; `bash .agents/skills/skill-drift-guard/scripts/detect.sh --check=paths` was confirmed live first by injecting a probe skill holding a nonexistent crates path (it fired) and then removing it (it went clean), and reports no drift with the new skill present; the logo exports and `ui/public/branding/` cited by the new skill both exist. Nothing else in this file was re-audited this pass; the 2026-09-15 and 2026-09-08 stamps below still stand for the rest. -->
-
-<!-- Audit stamp: 2026-09-19 · Budak-Korporat · status: PARTIAL — router only. Added the
-`brand-asset-pipeline` row to the skill router, pointing at `.agents/skills/brand-asset-pipeline/SKILL.md`.
-Verified: the new skill exists and the per-check drift guard reports no drift with it present;
-the `paths` check was confirmed live first by injecting a probe skill that cited a nonexistent
-crates path (it fired), then removing it (it went clean). Nothing else in this file was
-re-audited this pass; the 2026-09-15 and 2026-09-08 stamps below still stand for the rest. -->
+<!-- Audit stamp: 2026-09-19 · Budak-Korporat · status: PARTIAL — router only. Added two rows to the
+skill router — `brand-asset-pipeline` and `android-apk-build` — each pointing at
+`.agents/skills/<name>/SKILL.md`. Also merged a DUPLICATE `brand-asset-pipeline` row and its duplicate
+audit stamp, both introduced earlier the same day by two separate commits (49322db5f, 7f23c35eb);
+§13 replace-don't-stack applies. Verified this pass: both skill files exist and declare the matching
+`name`; `ui/public/branding/` (cited by brand-asset-pipeline) exists; the per-check drift guard reports
+no drift, and its `paths` check was confirmed live first by injecting a probe skill that cited a
+nonexistent crates path (it fired), then removing it (it went clean). Nothing else in this file was
+re-audited this pass; the 2026-09-08 and 2026-09-15 stamps below still stand for the rest. -->
 
 <!-- Audit stamp: 2026-09-08 · DSH · status: PARTIAL — router only. Added the `codebase-memory` row and the standing graph-first-discovery note under the router table; verified `.agents/skills/codebase-memory/` exists and that `AGENTS.md` really does mandate graph-first discovery. Nothing else in this file was re-audited this pass; the 03-09-26 rev-2 stamp below still stands for the rest. · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-09-03] · DSH · status: ACCURATE (rev 2 — pre-commit gate count corrected: the hook now runs six gates (cargo fmt, i18n lint, bundle parity, FTL dedupe, migration column-type lint, PG schema drift guard) plus LF normalization and a conditional Go gate for apps/license-server; verified against .githooks/pre-commit itself) · verified this pass: the kasirmu-lua, kasirmu-payment, kasirmu-security and kasirmu-reporting crate READMEs, crates/kasirmu-core/src/db/reports.rs, platform/sync, apps/cloud-server, scripts/test-tdd.sh, .agents/skills/skill-drift-guard/scripts/detect.sh all exist · prior: 2026-08-31 docs-auditor rev (obsolete-defer section rewritten; EdcTerminal/mlua/per-domain api fixes; embedded-hal removed)  ·· [2026-08-31] · docs-auditor · status: ACCURATE (obsolete-defer + convention refs repaired) · FIXED 31-08: 'Skills to defer (no code yet)' was obsolete — kasirmu-lua/kasirmu-payment/kasirmu-security/cloud-sync/kasirmu-reporting all ship code now; rewritten to 'Areas with code but no dedicated skill yet' pointing at each crate README; nonexistent PaymentTerminal trait -> EdcTerminal (hal-drivers); rlua -> mlua; pos.ts -> per-domain ui/src/api/<feature>.ts (router + workflow); device list NFC -> real (customer display, weight scale, EDC); embedded-hal -> async-trait · verified accurate: exit-animation-pattern skill exists, scripts verify-bundle-parity.py + dedupe-ftl.py + lint-i18n.sh + check.sh exist, .githooks/pre-commit 4-gate description matches -->
 # kasir.mu Onboarding Guide
@@ -62,8 +63,8 @@ What do you want to do?
 | Write or review tests, drive a change test-first (red-green-refactor), or run the fast TDD loop (`scripts/test-tdd.sh`) | **`tdd`** |
 | Add a new Tauri command on the backend, register it, and call it from the front-end via a per-domain `ui/src/api/<feature>.ts` wrapper | **`tauri-ipc`** |
 | Add or change React component, screen, hook, or any user-visible string; review accessibility, i18n, or strict TypeScript | **`ui-components`** |
-| Refresh or troubleshoot the kasir.mu brand assets — favicons, PWA manifest, platform icons, brand-source SVG, the sync script | **`brand-asset-pipeline`** |
-| Regenerate the brand asset set (app icons, favicons, PWA icons, vector logos) from a designer export, add a whitelabel tenant, or repair drift between `assets/branding/` and the directories it is copied into | **`brand-asset-pipeline`** |
+| Refresh, regenerate or troubleshoot the kasir.mu brand assets — app icons, favicons, PWA icons, the PWA manifest, platform icons, vector logos, the brand-source SVG, the sync script — from a designer export; add a whitelabel tenant; or repair drift between `assets/branding/` and the directories it is copied into | **`brand-asset-pipeline`** |
+| Build, sign, install or debug the Android tablet app (`apps/mobile-tauri`, package `mu.kasir.mobile`) — cargo tauri android build, an unsigned APK that will not install, `INSTALL_FAILED_USER_RESTRICTED`, or wireless ADB that will not connect | **`android-apk-build`** |
 | Add a symmetric CSS entry/exit animation (mirror keyframe + class toggle + useRef cleanup + ID-set-compare race guard) on a pill, badge, banner, modal, or any dismissable UI element | **`exit-animation-pattern`** |
 | Add a new device category or transport driver (barcode scanner, receipt printer, cash drawer, customer display, weight scale, EDC payment terminal); write the **mandatory mock** | **`hal-drivers`** |
 | Scaffold the workspace, add a new crate, configure CI, write commit messages, set up the GitHub Actions matrix | **`project-scaffold`** |
