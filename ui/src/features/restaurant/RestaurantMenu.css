@@ -126,9 +126,9 @@
 
 .restaurant-hamburger-dropdown {
   position: absolute;
-  top: calc(100% + var(--space-1_5));
+  top: calc(100% + var(--space-2));
   left: 0;
-  width: 16.5rem;
+  width: 18.5rem;
   box-sizing: border-box;
   opacity: 1;
   border: 1px solid var(--color-border);
@@ -138,7 +138,7 @@
   isolation: isolate;
   display: flex;
   flex-direction: column;
-  padding: var(--space-1_5);
+  padding: var(--space-2);
   background: var(--color-bg-surface);
   backdrop-filter: blur(8px);
 }
@@ -207,9 +207,10 @@
 .restaurant-hamburger-item {
   display: flex;
   align-items: center;
-  gap: var(--space-2_5);
+  gap: var(--space-3);
   width: 100%;
-  padding: var(--space-2) var(--space-2_5);
+  min-height: var(--touch-target-min);
+  padding: var(--space-2_5) var(--space-3);
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
@@ -236,18 +237,19 @@
 .restaurant-hamburger-section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-0_5);
+  gap: var(--space-1);
 }
 
 .restaurant-hamburger-sort-group {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-1);
 }
 
 .restaurant-hamburger-item--sort {
-  padding: var(--space-1_5) var(--space-2_5);
-  border-radius: var(--radius-md);
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
   position: relative;
 }
 
@@ -261,18 +263,21 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1rem;
-  height: 1rem;
+  width: 1.25rem;
+  height: 1.25rem;
   color: var(--color-accent);
   flex-shrink: 0;
 }
 
 .restaurant-sort-text {
   flex: 1;
+  font-size: var(--text-sm);
 }
 
 .restaurant-pref-icon {
   flex-shrink: 0;
+  width: 18px;
+  height: 18px;
   color: var(--color-fg-secondary);
   transition: color var(--duration-100) var(--ease-out);
 }
@@ -283,8 +288,8 @@
 
 .restaurant-hamburger-label {
   display: block;
-  padding: var(--space-1) var(--space-2_5) var(--space-1);
-  font-size: 0.6875rem;
+  padding: var(--space-1_5) var(--space-3) var(--space-1);
+  font-size: 0.75rem;
   font-weight: var(--font-weight-bold);
   color: var(--color-fg-tertiary);
   text-transform: uppercase;
@@ -1008,8 +1013,9 @@ body.is-resizing .restaurant-card * {
   justify-content: space-between;
   gap: var(--space-2);
   cursor: default;
-  padding: var(--space-1_5) var(--space-2_5);
-  border-radius: var(--radius-md);
+  min-height: var(--touch-target-comfortable);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
 }
 
 .restaurant-hamburger-size:hover {
@@ -1019,11 +1025,12 @@ body.is-resizing .restaurant-card * {
 .restaurant-size-label-group {
   display: flex;
   align-items: center;
-  gap: var(--space-2_5);
+  gap: var(--space-3);
 }
 
 .restaurant-hamburger-size-label {
   font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
   color: var(--color-fg);
   white-space: nowrap;
 }
@@ -1032,10 +1039,10 @@ body.is-resizing .restaurant-card * {
   display: inline-flex;
   align-items: center;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--color-bg-subtle, var(--color-bg));
-  padding: 2px;
-  gap: 0;
+  padding: 3px;
+  gap: 2px;
   box-sizing: border-box;
 }
 
@@ -1046,12 +1053,13 @@ body.is-resizing .restaurant-card * {
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: calc(var(--radius-md) - 2px);
-  background: transparent;
-  color: var(--color-fg-secondary);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-fg);
   cursor: pointer;
   padding: 0;
-  transition: background-color var(--duration-100) var(--ease-out), color var(--duration-100) var(--ease-out);
+  box-shadow: var(--shadow-xs);
+  transition: background-color var(--duration-100) var(--ease-out), color var(--duration-100) var(--ease-out), transform var(--duration-100) var(--ease-out);
 }
 
 .restaurant-size-btn:hover:not(:disabled) {
@@ -1059,15 +1067,21 @@ body.is-resizing .restaurant-card * {
   color: var(--color-fg);
 }
 
+.restaurant-size-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
 .restaurant-size-btn:disabled {
   opacity: 0.25;
   cursor: not-allowed;
+  box-shadow: none;
+  background: transparent;
 }
 
 .restaurant-size-value {
-  min-width: 1.5rem;
+  min-width: 2rem;
   text-align: center;
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   font-weight: var(--font-weight-bold);
   color: var(--color-fg);
   user-select: none;
