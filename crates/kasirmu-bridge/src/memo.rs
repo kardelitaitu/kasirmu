@@ -23,15 +23,21 @@
 //! `terminals.id`, so the read, the ack and the tablet's cloud query all resolve
 //! through [`resolve_recipient_terminal_id`] rather than each translating the
 //! session value themselves.
+//!
+//! The cloud ack's identity is the same rule applied to the credential:
+//! [`resolve_ack_client_credentials`] pairs the device with its resolved row id
+//! as the pairing's `client_id`, so the token the server mints carries a
+//! `terminal_id` claim the ack endpoint can key a recipient row on.
 
 use chrono::Utc;
 use kasirmu_core::memo::{
     ActiveMemo, Memo, MemoStatus, NOTIFICATION_BASE_INTERVAL_SECS, NewMemo,
     kds_notification_interval_secs,
 };
+use kasirmu_core::settings::Settings;
 use kasirmu_core::session::SessionContext;
 use kasirmu_core::sync_client::ActiveMemoCloud;
-use kasirmu_core::{CoreError, Store, Terminal, permissions};
+use kasirmu_core::{CoreError, Store, Terminal, permissions, sync_client};
 use serde::{Deserialize, Serialize};
 
 use crate::ctx::BridgeCtx;
@@ -421,6 +427,119 @@ pub async fn acknowledge_memo_local(
     let store = Store::new(&conn);
     store.acknowledge_memo(DEFAULT_TENANT_ID, memo_id, &terminal_id, &session.user_id)?;
     Ok(())
+}
+
+/// Resolve this device's terminal-scoped cloud credential, pairing it with the
+/// sync server on first use (ADR sync-auth-hardening P3, the tablet's leg).
+///
+/// `POST /api/v1/memos/{id}/ack` keys the caller's recipient row off the
+/// token's `terminal_id` CLAIM and refuses a token that has none — so unlike
+/// the display read (which asks under the resolved row id in its query) the
+/// ack's terminal identity is a property of the CREDENTIAL. An admin-minted
+/// paste-a-JWT token carries no claim, which is why the tablet's cloud ack has
+/// been falling back to the local write on every such install.
+///
+/// The claim the server binds on the client-credentials path is the PAIRING's
+/// `client_id` (`verify_terminal_credentials` → `create_token_full(..,
+/// Some(&terminal.terminal_id), ..)`), so the fix is not a different parameter
+/// but a different mint: pair with `client_id` set to the SAME resolved row id
+/// the read and the local ack already use, then mint with those credentials.
+/// One terminal identity across the whole leg — the push, the read, the local
+/// write and now the cloud ack all name the same `terminals.id`.
+///
+/// Falls back to the stored API key (`Some(None)`) when the device has no
+/// terminal row (nothing to ack under any claim — the caller's cloud attempt
+/// will 403 and the local write, which resolves the same way, is the answer)
+/// or when pairing/minting fails against the configured server (a legacy
+/// server without the registration endpoints keeps today's behaviour). The
+/// distinction matters only for the log: no path here invents a token.
+///
+/// The secret is stored in the settings table next to the sync credentials it
+/// belongs to (`sync_terminal_id`/`sync_terminal_secret` — the same pair the
+/// desktop's `sync_bootstrap` uses for its own leg), plaintext like every
+/// other local credential in this threat model.
+pub async fn resolve_ack_client_credentials(
+    ctx: &BridgeCtx<'_>,
+    session: &SessionContext,
+    server_url: &str,
+) -> Result<Option<(String, String)>, BridgeError> {
+    // The resolved row id this device delivers as — read BEFORE the settings,
+    // in its own scope, because [`resolve_recipient_terminal_id`] takes the
+    // global lock itself (tokio mutexes are not re-entrant, so nothing here
+    // may hold that guard across the call) and because no guard may be alive
+    // across any await below: the tauri command future must stay `Send`.
+    let terminal_row_id = resolve_recipient_terminal_id(ctx, session).await?;
+
+    // Already paired with THIS row id — reuse the stored credentials.
+    let stored = {
+        let conn = ctx.lock_global().await;
+        let store = Store::new(&conn);
+        (
+            Settings::get_sync_terminal_id(store.conn())?,
+            Settings::get_sync_terminal_secret(store.conn())?,
+        )
+    }; // guard dropped here before the awaits below
+    if let (Some(paired_id), Some(secret)) = (&stored.0, &stored.1) {
+        // The row id the pairing was made under must still be the row id the
+        // session resolves to: a re-registration that produced a new row
+        // invalidates the old pairing's claim, so it is dropped and re-paired
+        // rather than minting a token bound to a recipient row that no longer
+        // answers for this device.
+        if Some(paired_id) == terminal_row_id.as_ref() {
+            return Ok(Some((paired_id.clone(), secret.clone())));
+        }
+        tracing::info!(
+            paired = %paired_id,
+            device = %session.terminal_id,
+            "memo ack: stored pairing no longer matches this device's terminal row — re-pairing"
+        );
+    }
+
+    // Fresh pair: client_id IS the resolved row id, so the minted claim and
+    // the read/local identity agree by construction. An unresolved device has
+    // no claim to mint for — fall back to the stored API key.
+    let Some(terminal_row_id) = terminal_row_id else {
+        tracing::debug!(
+            device = %session.terminal_id,
+            "memo ack: device has no terminal row — no client credentials to pair"
+        );
+        return Ok(None);
+    };
+
+    let registration =
+        sync_client::register_terminal(server_url, sync_client::admin_key_from_env().as_deref(), &terminal_row_id, "pos-terminal")
+            .await;
+    if !registration.ok {
+        tracing::info!(
+            status = %registration.status,
+            "memo ack: terminal registration refused — falling back to the stored API key"
+        );
+        return Ok(None);
+    }
+    let (Some(client_id), Some(client_secret)) = (registration.terminal_id, registration.device_secret)
+    else {
+        tracing::warn!("memo ack: registration answered ok without credentials — ignoring it");
+        return Ok(None);
+    };
+
+    let token = sync_client::request_token_client_credentials(server_url, &client_id, &client_secret).await;
+    if !token.ok {
+        tracing::info!(
+            status = %token.status,
+            "memo ack: client-credentials mint refused — falling back to the stored API key"
+        );
+        return Ok(None);
+    }
+
+    // Persist the pairing ONLY once a token was actually minted with it, so a
+    // half-finished pair never looks like a good one on the next run.
+    {
+        let conn = ctx.lock_global().await;
+        let store = Store::new(&conn);
+        Settings::set_sync_terminal_id(store.conn(), &client_id)?;
+        Settings::set_sync_terminal_secret(store.conn(), &client_secret)?;
+    }
+    Ok(Some((client_id, client_secret)))
 }
 
 /// List every memo authored by the session user, newest first — the

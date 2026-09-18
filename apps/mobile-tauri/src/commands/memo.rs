@@ -125,13 +125,15 @@ pub async fn list_active_memos_scoped(
 /// user identity of their own).
 ///
 /// The ack names no terminal: `POST /api/v1/memos/{memo_id}/ack` keys the
-/// caller's own recipient row off the token's `terminal_id` claim, and refuses
-/// a token that has none. So unlike the display read — which now asks under the
-/// resolved row id — this leg's terminal identity is a property of the
-/// CREDENTIAL, and a tablet whose sync token was minted admin-side (the normal
-/// paste-a-JWT provisioning) has no claim to key on: the 403 becomes a warn and
-/// the local write below is what actually lands. Unifying this leg means giving
-/// the device a terminal-scoped credential, not passing a different query.
+/// caller's own recipient row off the token's `terminal_id` claim and refuses
+/// a token that has none. That claim is a property of the CREDENTIAL, so when
+/// the stored key is an admin-minted paste-a-JWT (the normal provisioning) the
+/// command first resolves a terminal-scoped credential — pairing the device
+/// with its RESOLVED ROW id as the `client_id`, the same identity the read and
+/// the local write use ([`kasirmu_bridge::memo::resolve_ack_client_credentials`])
+/// — and mints with those. A device with no terminal row, or a server that
+/// refuses pairing/minting, keeps the stored key and therefore today's
+/// behaviour: the cloud attempt fails its own way and the local write lands.
 #[tauri::command]
 pub async fn acknowledge_memo_scoped(
     memo_id: String,
@@ -141,7 +143,7 @@ pub async fn acknowledge_memo_scoped(
     let session = state.resolve_session(&session_token)?;
 
     // Scoped block: the connection guard must never be held across the
-    // HTTP await below (it is not `Send`).
+    // HTTP awaits below (they are not `Send`).
     let config = {
         let db = state.db.lock().await;
         let store = Store::new(&db);
@@ -149,7 +151,53 @@ pub async fn acknowledge_memo_scoped(
     };
 
     if let Some(config) = config.as_ref() {
-        match sync_client::ack_memo_on_server(config, &memo_id, Some(&session.user_id)).await {
+        // A terminal-scoped token is minted on demand so the claim matches the
+        // recipient row the ack keys on; the api_key inside `config` is only a
+        // fallback and is not mutated.
+        let config = if config.api_key.is_some() {
+            let ctx = state.bridge_ctx();
+            match kasirmu_bridge::memo::resolve_ack_client_credentials(
+                &ctx,
+                &session,
+                &config.server_url,
+            )
+            .await
+            {
+                Ok(Some((client_id, client_secret))) => {
+                    match sync_client::request_token_client_credentials(
+                        &config.server_url,
+                        &client_id,
+                        &client_secret,
+                    )
+                    .await
+                    {
+                        t if t.ok && t.token.is_some() => SyncConfig {
+                            server_url: config.server_url.clone(),
+                            api_key: t.token,
+                        },
+                        t => {
+                            tracing::info!(
+                                status = %t.status,
+                                "memo ack: scoped-token mint failed on the configured key's path — using the stored key"
+                            );
+                            config.clone()
+                        }
+                    }
+                }
+                Ok(None) => config.clone(),
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        "memo ack: credential resolution failed — using the stored key"
+                    );
+                    config.clone()
+                }
+            }
+        } else {
+            config.clone()
+        };
+
+        match sync_client::ack_memo_on_server(&config, &memo_id, Some(&session.user_id)).await {
             Ok(_) => return Ok(()),
             Err(e) => {
                 tracing::warn!(

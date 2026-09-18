@@ -807,3 +807,81 @@ async fn ack_without_a_terminal_row_is_a_typed_failure_not_a_silent_ok() {
         "expected an unknown-recipient NotFound, got {result:?}"
     );
 }
+
+// ── Terminal-scoped ack credentials ([resolve_ack_client_credentials]) ──
+//
+// The pairing is the credential leg's identity: client_id IS the resolved row
+// id, so the token's terminal_id claim keys the same recipient row the read
+// and the local write name. These cases drive the helper against a scripted
+// server and against the settings table directly (no network for the
+// stored-pairing path).
+
+#[tokio::test]
+async fn stored_pairing_is_reused_only_while_it_names_this_devices_row() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    seed_terminal(&conn, "terminal-1", "dev-terminal-1");
+    let tb = TestBridge::new().with_conn(conn);
+    let session = session_for_device("user-staff", "role-staff", "dev-terminal-1");
+
+    // A pairing stored under the CURRENT row id is reused without any network
+    // I/O: the helper answers before it would ever reach register/mint.
+    {
+        let conn = tb.ctx().lock_global().await;
+        let store = Store::new(&conn);
+        Settings::set_sync_terminal_id(store.conn(), "terminal-1").unwrap();
+        Settings::set_sync_terminal_secret(store.conn(), "devsec-kept").unwrap();
+    }
+    let resolved = resolve_ack_client_credentials(&tb.ctx(), &session, "http://127.0.0.1:1")
+        .await
+        .expect("a stored pairing resolves without touching the (dead) server");
+    assert_eq!(
+        resolved,
+        Some(("terminal-1".into(), "devsec-kept".into())),
+        "the pairing must ride the resolved ROW id, never the device id"
+    );
+
+    // A pairing stored under a STALE row id is discarded: re-registration
+    // produced a new row, so the old claim no longer answers for this device
+    // and the helper re-pairs rather than minting with the old identity. The
+    // server URL is the dead endpoint, so the re-pair attempt fails closed and
+    // the fallback (None) is what reaches the caller — the point is that the
+    // STALE pair was not returned.
+    {
+        let conn = tb.ctx().lock_global().await;
+        let store = Store::new(&conn);
+        Settings::set_sync_terminal_id(store.conn(), "terminal-REPLACED").unwrap();
+    }
+    let resolved = resolve_ack_client_credentials(&tb.ctx(), &session, "http://127.0.0.1:1")
+        .await
+        .expect("a stale pairing is an answer, not an error");
+    assert_eq!(
+        resolved, None,
+        "a pairing whose row id no longer resolves must not be handed out"
+    );
+}
+
+#[tokio::test]
+async fn an_unresolved_device_never_pairs_and_falls_back_to_the_stored_key() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    seed_terminal(&conn, "terminal-1", "dev-terminal-1");
+    let tb = TestBridge::new().with_conn(conn);
+    let session = session_for_device("user-staff", "role-staff", "UNREGISTERED-DEVICE");
+
+    // No server is reachable at port 1, so any pairing attempt would hang or
+    // fail; either way the helper must answer None BEFORE dialing — a device
+    // with no terminal row has no claim to pair under.
+    let resolved = resolve_ack_client_credentials(&tb.ctx(), &session, "http://127.0.0.1:1")
+        .await
+        .unwrap();
+    assert_eq!(resolved, None);
+
+    // And nothing was persisted: a half-pairing would look like a good one on
+    // the next run.
+    let conn = tb.ctx().lock_global().await;
+    let store = Store::new(&conn);
+    assert_eq!(Settings::get_sync_terminal_id(store.conn()).unwrap(), None);
+    assert_eq!(
+        Settings::get_sync_terminal_secret(store.conn()).unwrap(),
+        None
+    );
+}

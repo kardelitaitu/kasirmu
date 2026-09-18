@@ -631,3 +631,154 @@ async fn cloud_read_is_not_attempted_for_a_device_without_a_terminal_row() {
         "no request may be sent under an identity that cannot match a recipient row"
     );
 }
+
+// ── Terminal-scoped ack credential (pairing with client_id = row id) ──
+//
+// `POST /api/v1/memos/{id}/ack` keys the caller's recipient row off the
+// token's terminal_id CLAIM and refuses a token without one. That claim comes
+// from the PAIRING's client_id on the client-credentials mint path, so the
+// device must pair with its RESOLVED ROW id — the same identity the read and
+// the local write use. These cases drive the whole three-request exchange
+// (register → mint → ack) against one scripted fake cloud.
+
+/// A fake cloud that answers a scripted sequence of requests, recording every
+/// one: an echo of what a real server produces for POST /api/v1/terminals,
+/// POST /api/v1/tokens (client-credentials) and POST /api/v1/memos/{id}/ack.
+/// The register reply echoes back the `terminal_id` it was SENT — that is the
+/// pairing's client_id as the server saw it, exactly what a real server does.
+async fn scripted_cloud(
+    token_reply: impl Fn() -> (u16, String) + Send + 'static,
+    ack_reply: impl Fn() -> (u16, String) + Send + 'static,
+) -> (
+    String,
+    std::sync::Arc<tokio::sync::Mutex<Vec<String>>>,
+) {
+    use std::sync::Arc as StdArc;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server_url = format!("http://{}", listener.local_addr().unwrap());
+    let captured: StdArc<tokio::sync::Mutex<Vec<String>>> = StdArc::default();
+    let sink = captured.clone();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buffer = vec![0_u8; 16 * 1024];
+            let n = socket.read(&mut buffer).await.unwrap_or(0);
+            let request = String::from_utf8_lossy(&buffer[..n]).into_owned();
+            let (status, body) = if request.starts_with("POST /api/v1/terminals ") {
+                // Echo the pairing's terminal_id back, the way the real
+                // registration endpoint does — and record the request whole.
+                let id = request
+                    .split("\r\n\r\n")
+                    .nth(1)
+                    .and_then(|b| serde_json::from_str::<serde_json::Value>(b).ok())
+                    .and_then(|v| v["terminal_id"].as_str().map(str::to_owned))
+                    .unwrap_or_default();
+                (
+                    200,
+                    serde_json::json!({"terminal_id": id, "device_secret": "devsec-1"})
+                        .to_string(),
+                )
+            } else if request.starts_with("POST /api/v1/tokens ") {
+                token_reply()
+            } else {
+                ack_reply()
+            };
+            let reply = format!(
+                "HTTP/1.1 {} \r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                if status == 200 { "200 OK" } else { "403 Forbidden" },
+                body.len(),
+                body
+            );
+            let _ = socket.write_all(reply.as_bytes()).await;
+            sink.lock().await.push(request);
+        }
+    });
+    (server_url, captured)
+}
+
+#[tokio::test]
+async fn cloud_ack_pairs_with_the_resolved_row_id_and_mints_a_scoped_token() {
+    let (server_url, captured) = scripted_cloud(
+        || (
+            200,
+            serde_json::json!({
+                "token": {"token": "jwt-scoped-1", "expires_at": "2026-09-19T00:00:00.000Z"}
+            })
+            .to_string(),
+        ),
+        || (
+            200,
+            serde_json::json!({
+                "memo_id": "m-1", "terminal_id": "terminal-1",
+                "delivery_status": "acknowledged",
+                "acknowledged_at": "2026-09-07T09:00:00.000Z", "changed": true
+            })
+            .to_string(),
+        ),
+    )
+    .await;
+
+    let conn = kasirmu_core::migrations::fresh_db();
+    // Row id `terminal-1`, device id `dev-terminal-1` — deliberately different,
+    // so a test that sends the device identity fails loudly.
+    seed_terminal(&conn, "terminal-1");
+    let app = tablet_app_with_sync(conn, &server_url, "dev-terminal-1");
+
+    acknowledge_memo_scoped("m-1".into(), "tok".into(), app.state())
+        .await
+        .expect("cloud ack must succeed through the paired credential");
+
+    let requests = captured.lock().await.clone();
+    let register = requests
+        .iter()
+        .find(|r| r.starts_with("POST /api/v1/terminals "))
+        .expect("the device must register before it can mint a scoped token");
+    let pairing_body = register
+        .split("\r\n\r\n")
+        .nth(1)
+        .and_then(|b| serde_json::from_str::<serde_json::Value>(b).ok())
+        .expect("the registration request must carry a JSON body");
+    assert_eq!(
+        pairing_body["terminal_id"], "terminal-1",
+        "the pairing's client_id must be the RESOLVED ROW id, not the device id"
+    );
+    let token_mint = requests
+        .iter()
+        .find(|r| r.starts_with("POST /api/v1/tokens "))
+        .expect("a registered device must mint its scoped token");
+    let mint_body = token_mint
+        .split("\r\n\r\n")
+        .nth(1)
+        .and_then(|b| serde_json::from_str::<serde_json::Value>(b).ok())
+        .expect("the mint request must carry a JSON body");
+    assert_eq!(mint_body["client_id"], "terminal-1");
+    assert_eq!(mint_body["client_secret"], "devsec-1");
+    let ack = requests
+        .iter()
+        .find(|r| r.starts_with("POST /api/v1/memos/m-1/ack "))
+        .expect("the ack itself must reach the cloud");
+    assert!(
+        ack.to_ascii_lowercase()
+            .contains("authorization: bearer jwt-scoped-1"),
+        "the ack must travel on the SCOPED token, not the stored admin-minted key: {ack}"
+    );
+    // And the pairing must be durable: a second ack reuses it instead of
+    // re-registering (which would rotate the secret server-side).
+    acknowledge_memo_scoped("m-1".into(), "tok".into(), app.state())
+        .await
+        .expect("second cloud ack must reuse the stored pairing");
+    let requests = captured.lock().await.clone();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|r| r.starts_with("POST /api/v1/terminals "))
+            .count(),
+        1,
+        "a stored pairing must be reused, not re-registered (re-registration rotates the secret)"
+    );
+}
