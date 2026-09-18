@@ -152,102 +152,166 @@ export function MenuPreferencesMenu({
           tabIndex={-1}
           aria-label={l10n.getString('restaurant-menu-hamburger-aria')}
         >
-          <span className="restaurant-hamburger-label">
-            <Localized id="restaurant-sort-label"><span>Sort</span></Localized>
-          </span>
-          {SORT_MODES.map((mode) => (
+          <div className="restaurant-hamburger-section">
+            <span className="restaurant-hamburger-label">
+              <Localized id="restaurant-sort-label"><span>Sort</span></Localized>
+            </span>
+            <div className="restaurant-hamburger-sort-group" aria-label={l10n.getString('restaurant-sort-label')}>
+              {SORT_MODES.map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={sortMode === mode}
+                  className={`restaurant-hamburger-item restaurant-hamburger-item--sort${sortMode === mode ? ' restaurant-hamburger-item--active' : ''}`}
+                  onKeyDown={handleHamburgerKeyDown}
+                  onClick={() => {
+                    onSelectSort(mode);
+                  }}
+                >
+                  <span className="restaurant-sort-check" aria-hidden="true">
+                    {sortMode === mode ? (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="14" height="14">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    ) : null}
+                  </span>
+                  <Localized id={`restaurant-sort-${mode}`}>
+                    <span className="restaurant-sort-text">{mode === 'manual' ? 'Manual' : mode === 'a-z' ? 'A–Z' : mode === 'date' ? 'By Date' : 'Popularity'}</span>
+                  </Localized>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="restaurant-hamburger-divider" role="separator" />
+
+          <div className="restaurant-hamburger-section">
+            <div className="restaurant-hamburger-item restaurant-hamburger-size" role="group" aria-label={l10n.getString('restaurant-size-label')}>
+              <div className="restaurant-size-label-group">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" className="restaurant-pref-icon" aria-hidden="true">
+                  <rect x="3" y="3" width="7" height="7" rx="1" />
+                  <rect x="14" y="3" width="7" height="7" rx="1" />
+                  <rect x="14" y="14" width="7" height="7" rx="1" />
+                  <rect x="3" y="14" width="7" height="7" rx="1" />
+                </svg>
+                <span className="restaurant-hamburger-size-label"><Localized id="restaurant-size-label"><span>Menu Size</span></Localized></span>
+              </div>
+              <div className="restaurant-hamburger-size-controls">
+                <button
+                  type="button"
+                  className="restaurant-size-btn"
+                  onKeyDown={handleHamburgerKeyDown}
+                  disabled={cardSize <= 0}
+                  onClick={() => onCardSizeStep(-1)}
+                  aria-label={l10n.getString('restaurant-size-decrease-aria')}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" width="12" height="12" aria-hidden="true">
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+                <span className="restaurant-size-value">{cardSize}</span>
+                <button
+                  type="button"
+                  className="restaurant-size-btn"
+                  onKeyDown={handleHamburgerKeyDown}
+                  disabled={cardSize >= 4}
+                  onClick={() => onCardSizeStep(1)}
+                  aria-label={l10n.getString('restaurant-size-increase-aria')}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" width="12" height="12" aria-hidden="true">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="restaurant-hamburger-item restaurant-hamburger-size" role="group" aria-label={l10n.getString('restaurant-font-size-label')}>
+              <div className="restaurant-size-label-group">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" className="restaurant-pref-icon" aria-hidden="true">
+                  <polyline points="4 7 4 4 20 4 20 7" />
+                  <line x1="9" y1="20" x2="15" y2="20" />
+                  <line x1="12" y1="4" x2="12" y2="20" />
+                </svg>
+                <Localized id="restaurant-font-size-label">
+                  <span className="restaurant-hamburger-size-label">Font Size</span>
+                </Localized>
+              </div>
+              <div className="restaurant-hamburger-size-controls">
+                <button
+                  type="button"
+                  className="restaurant-size-btn"
+                  onKeyDown={handleHamburgerKeyDown}
+                  disabled={fontSize <= 0}
+                  onClick={() => onFontSizeStep(-1)}
+                  aria-label={l10n.getString('restaurant-font-size-decrease-aria')}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" width="12" height="12" aria-hidden="true">
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+                <span className="restaurant-size-value">{fontSize}</span>
+                <button
+                  type="button"
+                  className="restaurant-size-btn"
+                  onKeyDown={handleHamburgerKeyDown}
+                  disabled={fontSize >= 4}
+                  onClick={() => onFontSizeStep(1)}
+                  aria-label={l10n.getString('restaurant-font-size-increase-aria')}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" width="12" height="12" aria-hidden="true">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="restaurant-hamburger-divider" role="separator" />
+
+          <div className="restaurant-hamburger-section">
             <button
-              key={mode}
               type="button"
-              className="restaurant-hamburger-item restaurant-hamburger-item--sort"
+              className="restaurant-hamburger-item"
               onKeyDown={handleHamburgerKeyDown}
-              onClick={() => {
-                onSelectSort(mode);
-              }}
+              aria-label={l10n.getString(theme === 'dark' ? 'restaurant-theme-light' : 'restaurant-theme-dark')}
+              onClick={() => { toggleTheme(); onOpenChange(false); }}
             >
-              {sortMode === mode && <span className="restaurant-sort-check">✓</span>}
-              <Localized id={`restaurant-sort-${mode}`}>
-                <span>{mode === 'manual' ? 'Manual' : mode === 'a-z' ? 'A–Z' : mode === 'date' ? 'By Date' : 'Popularity'}</span>
+              {theme === 'dark' ? (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" className="restaurant-pref-icon" aria-hidden="true">
+                  <circle cx="12" cy="12" r="5" />
+                  <line x1="12" y1="1" x2="12" y2="3" />
+                  <line x1="12" y1="21" x2="12" y2="23" />
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                  <line x1="1" y1="12" x2="3" y2="12" />
+                  <line x1="21" y1="12" x2="23" y2="12" />
+                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" className="restaurant-pref-icon" aria-hidden="true">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                </svg>
+              )}
+              <Localized id={theme === 'dark' ? 'restaurant-theme-light' : 'restaurant-theme-dark'}>
+                <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
               </Localized>
             </button>
-          ))}
-          <div className="restaurant-hamburger-divider" role="separator" />
-          <div className="restaurant-hamburger-item restaurant-hamburger-size" role="group" aria-label={l10n.getString('restaurant-size-label')}>
-            <span className="restaurant-hamburger-size-label"><Localized id="restaurant-size-label"><span>Menu Size</span></Localized></span>
-            <div className="restaurant-hamburger-size-controls">
-              <button
-                type="button"
-                className="restaurant-size-btn"
-                onKeyDown={handleHamburgerKeyDown}
-                disabled={cardSize <= 0}
-                onClick={() => onCardSizeStep(-1)}
-                aria-label={l10n.getString('restaurant-size-decrease-aria')}
-              >
-                &minus;
-              </button>
-              <span className="restaurant-size-value">{cardSize}</span>
-              <button
-                type="button"
-                className="restaurant-size-btn"
-                onKeyDown={handleHamburgerKeyDown}
-                disabled={cardSize >= 4}
-                onClick={() => onCardSizeStep(1)}
-                aria-label={l10n.getString('restaurant-size-increase-aria')}
-              >
-                +
-              </button>
-            </div>
+            <button
+              type="button"
+              className="restaurant-hamburger-item"
+              onKeyDown={handleHamburgerKeyDown}
+              aria-label={l10n.getString('restaurant-toggle-fullscreen')}
+              onClick={() => { toggleFullscreen(); onOpenChange(false); }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" className="restaurant-pref-icon" aria-hidden="true">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+              </svg>
+              <Localized id="restaurant-toggle-fullscreen"><span>Toggle Fullscreen</span></Localized>
+            </button>
           </div>
-          <div className="restaurant-hamburger-divider" role="separator" />
-          <div className="restaurant-hamburger-item restaurant-hamburger-size" role="group" aria-label={l10n.getString('restaurant-font-size-label')}>
-            <Localized id="restaurant-font-size-label">
-              <span className="restaurant-hamburger-size-label">Font Size</span>
-            </Localized>
-            <div className="restaurant-hamburger-size-controls">
-              <button
-                type="button"
-                className="restaurant-size-btn"
-                onKeyDown={handleHamburgerKeyDown}
-                disabled={fontSize <= 0}
-                onClick={() => onFontSizeStep(-1)}
-                aria-label={l10n.getString('restaurant-font-size-decrease-aria')}
-              >
-                &minus;
-              </button>
-              <span className="restaurant-size-value">{fontSize}</span>
-              <button
-                type="button"
-                className="restaurant-size-btn"
-                onKeyDown={handleHamburgerKeyDown}
-                disabled={fontSize >= 4}
-                onClick={() => onFontSizeStep(1)}
-                aria-label={l10n.getString('restaurant-font-size-increase-aria')}
-              >
-                +
-              </button>
-            </div>
-          </div>
-          <div className="restaurant-hamburger-divider" role="separator" />
-          <button
-            type="button"
-            className="restaurant-hamburger-item"
-            onKeyDown={handleHamburgerKeyDown}
-            aria-label={l10n.getString(theme === 'dark' ? 'restaurant-theme-light' : 'restaurant-theme-dark')}
-            onClick={() => { toggleTheme(); onOpenChange(false); }}
-          >
-            <Localized id={theme === 'dark' ? 'restaurant-theme-light' : 'restaurant-theme-dark'}>
-              <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
-            </Localized>
-          </button>
-          <button
-            type="button"
-            className="restaurant-hamburger-item"
-            onKeyDown={handleHamburgerKeyDown}
-            aria-label={l10n.getString('restaurant-toggle-fullscreen')}
-            onClick={() => { toggleFullscreen(); onOpenChange(false); }}
-          >
-            <Localized id="restaurant-toggle-fullscreen"><span>Toggle Fullscreen</span></Localized>
-          </button>
         </aside>
       )}
     </div>
