@@ -256,6 +256,16 @@ pub fn seeded_row_loads() -> bool {
 /// The restamp is on the in-memory struct only, and nothing is written back to
 /// the database, so like [`seeded_row_loads`] this stays a read and cannot
 /// perturb the fixture that calls it.
+///
+/// # There is a twin, and this copy is the authority
+///
+/// `apps/mobile-tauri/src/commands/testing.rs` restates this predicate and the
+/// refusal guards built on it. It cannot import them: this module is a private
+/// `mod testing;` and the tablet has no test-support crate to share, while
+/// promoting them into `kasirmu-core` would add a `test-utils` feature and
+/// public API to a production crate for the sake of ~45 lines. So the tablet
+/// carries a copy — and **a change to the ruling, to this predicate, or to the
+/// guards must be mirrored there**, because nothing in CI compares the two.
 #[must_use]
 pub fn seeded_row_reaches_a_paid_tier() -> bool {
     let conn = temp_conn();
