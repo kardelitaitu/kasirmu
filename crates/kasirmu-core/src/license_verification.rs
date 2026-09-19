@@ -27,11 +27,11 @@ use crate::error::CoreError;
 
 /// The license server URL embedded at build time.
 ///
-/// Points at the unified deployment (auth + sync on one host, ADR #11):
-/// the old standalone `oz-pos-license-service` was folded into it.
-/// Override via the `OZ_LICENSE_SERVER_URL` environment variable
-/// in production, or use `http://localhost:8090` for local testing.
-pub const LICENSE_SERVER_URL: &str = "https://license.kasir.mu";
+/// Points at the unified deployment (auth + sync on one host, ADR #11): the old
+/// standalone `oz-pos-license-service` was folded into it. This is an alias for
+/// [`crate::server_origin::MAIN_SERVER_ORIGIN`] — the single compiled definition
+/// of the origin lives in `server_origin` (ADR #55).
+pub const LICENSE_SERVER_URL: &str = crate::server_origin::MAIN_SERVER_ORIGIN;
 
 /// The RSA-2048 public key in PEM format, embedded at build time.
 ///
@@ -44,8 +44,16 @@ pub const LICENSE_SERVER_URL: &str = "https://license.kasir.mu";
 pub const LICENSE_PUBLIC_KEY_PEM: &str = include_str!("../oz-license.key.pub");
 
 /// Return the license server URL, respecting the env var override.
+///
+/// Delegates to [`crate::server_origin::resolve_origin`] so the precedence table
+/// has exactly one implementation. A blank or malformed override is ignored
+/// rather than producing an empty base URL.
 pub fn license_server_url() -> String {
-    std::env::var("OZ_LICENSE_SERVER_URL").unwrap_or_else(|_| LICENSE_SERVER_URL.to_string())
+    crate::server_origin::resolve_origin(
+        std::env::var(crate::server_origin::ORIGIN_ENV_OVERRIDE).ok(),
+        None,
+    )
+    .url
 }
 
 /// Result of pinging the license server's unauthenticated health endpoint.

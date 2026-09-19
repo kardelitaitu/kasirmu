@@ -122,6 +122,10 @@ pub mod sale;
 pub mod sale_deduction;
 /// Service health contracts — shared state vocabulary for license, sync,
 /// payment and device connectivity, and the license-server classifier.
+/// Server origin resolution — the one compiled definition of the unified
+/// auth+sync deployment URL (ADR #55).
+pub mod server_origin;
+
 pub mod service_health;
 /// Active user session state.
 pub mod session;
