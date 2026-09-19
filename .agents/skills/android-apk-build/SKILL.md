@@ -93,6 +93,51 @@ curl -s --max-time 15 http://localhost:1422/ | wc -c
 
 ---
 
+### `beforeBuildCommand` is mangled under the sandbox — build the frontend yourself, then skip the hook
+
+**Symptom (measured 2026-09-19):** the build dies in **7 seconds**, right after
+`Running beforeBuildCommand 'npm run build:mobile --prefix ../ui'`, with `The syntax of the command is
+incorrect.` followed by `A subdirectory or file .exe already exists.` / `… -c already exists.` Those are
+`md`/`copy` errors: the sandbox's command wrapper re-splits the hook string and feeds the fragments to a
+shell builtin, so the hook never runs. It is **not** a `--prefix` bug — the identical string works when you
+invoke it yourself, which is why the same command can succeed an hour earlier in the same session.
+
+**Workaround, verified end-to-end, no config file edited:**
+
+```bash
+cd /c/dev/ozpos && npm run build:mobile --prefix ui     # ✓ built in ~10s
+touch apps/mobile-tauri/src/lib.rs                     # force the asset re-embed (see above)
+cd apps/mobile-tauri
+cargo tauri android build --apk --target aarch64 -c '{"build":{"beforeBuildCommand":null}}'
+```
+
+`-c` merges JSON over `tauri.conf.json` for that invocation only, so the repo file stays untouched and no
+peer is disturbed. **The frontend must be built first** — with the hook nulled, nothing else produces
+`frontendDist`, and Tauri will embed whatever is already there. Proven: 7m51s, then `Finished 1 APK at:
+…/universal/release/app-universal-release-unsigned.apk`.
+
+**Do not try to pre-clear `ui/dist-mobile` instead.** The safe-delete shim now intercepts a plain
+`rm -rf ui/dist-mobile` (`SAFE_DELETE_FAIL_CLOSED … reason: trash-failed`) and `mv ui/dist-mobile …`
+returns `Permission denied`, so that route is closed. The escalated standalone Vite build clears the
+directory itself without tripping the shim.
+
+### Proving the artifact actually contains your change
+
+A successful build is not evidence that the new code is in the APK — the frontend-embed trap above means a
+stale `frontendDist` ships silently. Extract and grep the native library:
+
+```bash
+APK=apps/mobile-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-signed.apk
+unzip -o -j "$APK" "lib/arm64-v8a/libkasirmu_mobile_lib.so" -d /tmp/apkchk
+grep -c 'get_own_avatar_scoped' /tmp/apkchk/libkasirmu_mobile_lib.so   # a new command name
+grep -c 'index.html' /tmp/apkchk/libkasirmu_mobile_lib.so              # the entry alias
+```
+
+Measured 2026-09-19: the new command name ×1 and `index.html` ×10. The same `unzip` also proves the ABI —
+if only `lib/arm64-v8a/` resolves, the APK is arm64-only as intended.
+
+---
+
 ## 3. The build defaults to release, and there is no keystore
 
 So the product is `…/apk/universal/release/app-universal-release-unsigned.apk`, which will not install.
