@@ -296,10 +296,22 @@ function RoleAuthoringPanel({ active, handleRef }: RoleAuthoringPanelProps) {
   // does not hide them: they keep rendering into document.body and stay in the
   // accessibility tree while the other tab is on screen, editing a view nobody
   // is looking at. The tab strip is under their overlay, so a click cannot
-  // reach them that way — but a `hashchange` can: a deep link, or the browser's
-  // Back button, changes the route while the dialog is open. That path goes
-  // through no click handler, which is why this is an effect on `active`
-  // rather than a line in the shell's `selectTab`.
+  // reach them that way — but a `hashchange` can: the browser's Back button
+  // through tab history moves `#/roles` -> `#/staff` with the dialog open, and
+  // that path goes through no click handler. Hence an effect on `active` rather
+  // than a line in the shell's `selectTab`, which only sees clicks.
+  //
+  // The two nearby cases this deliberately does NOT cover, both measured in the
+  // running app rather than reasoned about — because the believable-but-wrong
+  // reading is that they are covered here:
+  //   * a WORKSPACE SWITCH clears the hash to '' (AppShell's workspace-switch
+  //     effect). That matches neither tab, so the tab does not change and the
+  //     modal correctly stays: the view is unchanged, so there is no invariant
+  //     to restore. It is not "covered by the listener" — the listener no-ops.
+  //   * a route that LEAVES the page (`#/products`) unmounts this whole screen,
+  //     so the portal goes with the subtree. Nothing to dismiss either.
+  // Between them they leave exactly one hole — the tab change — and that is this
+  // effect.
   useEffect(() => {
     if (active) return;
     closeEditor();
