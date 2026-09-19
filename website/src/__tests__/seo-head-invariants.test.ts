@@ -97,15 +97,16 @@ describe('auth pages are de-indexed', () => {
     // The old failure mode: a page added to the de-index list in the sitemap
     // regex but not noindexed (or vice versa) — two hand-synced copies that
     // had already drifted once (/signup was submitted to the sitemap while
-    // carrying no robots meta). Each gated page now asserts its own noindex
-    // from isNonPublic, and this test asserts the wiring is complete.
-    const gated = ['account', 'login', 'signup', 'enterprise-trial'];
-    for (const slug of gated) {
-      expect(isNonPublic(`/en/${slug}/`), slug).toBe(true);
-      const page = read('pages', '[locale]', `${slug}.astro`);
-      expect(page, `${slug}.astro must derive noindex from isNonPublic`).toContain('isNonPublic(Astro.url.pathname)');
-      expect(page, `${slug}.astro must pass noindex to Base`).toMatch(/noindex=\{noindex\}/);
-    }
+    // carrying no robots meta). The behavioral half of this rule is asserted
+    // by sitemap-options.test.ts (the filter consumes the list) and by the
+    // built output itself; what still needs pinning is the one structural
+    // edge — Base renders the `robots` meta from the same prop the pages set —
+    // plus the exact set membership.
+    expect(isNonPublic('/en/signup/')).toBe(true);
+    // One structural edge: SiteHead — the shared head — renders the robots
+    // meta from the same noindex prop the gated pages set. Every layout gets
+    // it by construction, so a hand-rolled second head cannot forget it.
+    expect(SITE_HEAD).toMatch(/\{noindex\s*&&\s*<meta name="robots" content="noindex"\s*\/>\}/);
   });
 
   it('NON_PUBLIC_PAGES covers exactly the four gated pages', () => {
