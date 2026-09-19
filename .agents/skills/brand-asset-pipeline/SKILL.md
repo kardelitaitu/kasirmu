@@ -162,9 +162,4 @@ referenced by Chrome's installability check, not by the page. The PNGs live in `
 (untracked unless the owner folds them into `assets/branding/default/web/`); add the rows in
 lockstep on both manifests.
 
-> last audited 19-09-26 (legs 1-3) by Budak-Korporat — added the platform-icons section, the
-> website-favicon source rule, the four-row PWA manifest rule, and the new-file XML chain on
-> mobile. Verified: `paths` check clean, proved live by injecting then removing a probe skill
-> that cited a nonexistent crates path — the check fired, then went clean. The cited files all
-> exist except the two `android-chrome-*` PNGs, which live
-> only in `ui/public/` until someone folds them into `assets/branding/default/web/`.
+> last audited 19-09-26 by Budak-Korporat
