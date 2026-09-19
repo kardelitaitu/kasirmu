@@ -277,13 +277,18 @@ offered.
 
 | Client | Type | Redirect | Secret |
 |---|---|---|---|
-| Web | Web application | `https://license.kasir.mu/api/v1/web/oauth/google/callback` | server env only |
+| Web | Web application | both names for the same deployment (ADR #55): both names for the same deployment (ADR #55): `https://license.kasir.mu/api/v1/web/oauth/google/callback` **and** `https://license.ozpos.my.id/api/v1/web/oauth/google/callback` **and** `https://license.ozpos.my.id/api/v1/web/oauth/google/callback` | server env only |
 | Desktop | **Desktop app** | none registered — loopback, app-chosen port | optional per Google; server-side only if present |
 
 Consent screen: External, scopes `openid email profile` only, published to Production. No
 sensitive-scope review is required for basic identity scopes; brand verification (verified
 domain, homepage, privacy policy) is what replaces a bare project id with our name and logo
 on the consent screen.
+
+> **Amended 2026-09-19 by ADR #55:** the Web flow cannot fall back between hosts — a browser
+> redirect goes where it goes and Google matches redirect URIs exactly. Both callback URIs above
+> must therefore be registered, and the Worker configured with whichever host serves the flow.
+> Naming both hosts in the §2.4 `next` allowlist is the remaining half of O1.
 
 ### 2.9 Secrets
 

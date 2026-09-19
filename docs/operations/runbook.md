@@ -493,7 +493,7 @@ curl -s -o /dev/null -w '%{http_code}' -X POST \
 Also: create the PocketBase superuser via the `/_/` first-boot installer
 link (or shell: `pocketbase superuser upsert EMAIL PASS`).
 
-### App-side URL references (the 5 hardcoded spots)
+### App-side URL references (ADR #55 — one compiled list, not five hardcoded spots)
 
 All point at the unified host; each also has an env-var override:
 
@@ -502,12 +502,18 @@ All point at the unified host; each also has an env-var override:
 | `crates/kasirmu-core/src/license_verification.rs` | `LICENSE_SERVER_URL` const | `OZ_LICENSE_SERVER_URL` |
 | `apps/desktop-tauri/tauri.conf.json` | CSP `connect-src` | — |
 | `apps/mobile-tauri/tauri.conf.json` | CSP `connect-src` | — |
-| `ui/src/features/auth/LicenseActivationScreen.tsx` | `AUTH_SERVICE_URL` fallback | `VITE_AUTH_SERVICE_URL` |
+| `crates/kasirmu-core/src/server_origin.rs` | `MAIN_SERVER_ORIGIN` / `FALLBACK_SERVER_ORIGIN` — the only compiled origins | `OZ_LICENSE_SERVER_URL` |
 | `ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx` | pinned URL | — |
 
 The **sync server URL** is per-install user config: Settings → Cloud Sync
-→ enter `https://license.ozpos.my.id`. Unlike auth, it is
-stored in the local DB (never compiled in).
+→ enter `https://license.ozpos.my.id`. It is per-install user config, stored in the local DB —
+and since ADR #55 it also has compiled fallbacks (`server_origin::MAIN_SERVER_ORIGIN` in the
+bridge probe, `FALLBACK_SERVER_ORIGIN` in the desktop debug bootstrap, and the `SettingsContext`
+draft), so the earlier claim that it is "never compiled in" no longer holds.
+
+The row this table used to carry for `AUTH_SERVICE_URL` / `VITE_AUTH_SERVICE_URL` was stale:
+grep `ui/src` for either name and neither exists. `node scripts/check-server-origins.mjs` is the
+guard that keeps this table honest.
 
 ### 8.5 Automated deploys — **not automated today**
 
