@@ -203,10 +203,15 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
     swapSessionToken: vi.fn(),
     terminalId: '',
   }),
+  // `PosScreen` is the Restaurant POS screen — both shells mount it only under
+  // `activeWorkspace === 'restaurant-pos'` (AppShell, TabletAppShell). The mock
+  // said 'store-pos', which no shell ever produces, so every scope-gated call
+  // in this tree was exercised with the wrong vertical. Corrected 2026-09-19
+  // when `usePosHeldCarts` started gating `list_open_bills_scoped` on it.
   useWorkspaceScope: () => ({
     storeId: 'default',
     instanceId: 'default',
-    typeKey: 'store-pos',
+    typeKey: 'restaurant-pos',
   }),
   WorkspaceProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
