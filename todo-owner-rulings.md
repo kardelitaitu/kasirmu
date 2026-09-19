@@ -31,6 +31,7 @@
 | R18 | Split the program doc? | Dispatch | Split by phase | None |
 | R19 | Commit-scope allowlist? | Nothing | Leave permissive | None |
 | R20 | **The home Tools grid's vocabulary** | **Phase 3a.2** | **Keep the rank, narrow 3a.2** | Medium — visibility |
+| R21 | **Open-bills list at zero held bills** | 1 dead locale string | **Delete it, or add an entry point** | Low |
 
 **Already ruled — do not re-open:** the fail-closed default for an unknown role floor (owner, 2026-09-16: an unknown floor on an admin-tool gate must **deny**; landed as `a8c1fb4c5`).
 
@@ -322,6 +323,18 @@ Permission-gating the grid therefore makes the card **exactly equal** to the rou
 **What is blocked.** Nothing; recorded as an open item. `.githooks/commit-msg` enumerates types but leaves the scope as "non-empty and parenthesis-free", with no allowlist — its own comment says "Optional scope". A typo in the area is accepted silently.
 
 **Recommendation: leave it permissive.** An allowlist needs maintenance and the rebrand is still moving names — the same rename that made this document necessary would make a hard-coded area list wrong twice over.
+
+### R21 — Can the open-bills list be opened when no bill is held?
+
+**What is blocked.** One dead string, and one class of test that can never pass. `8fd64b850` (2026-09-18, "hide open bills badge when no open bills exist") gated the badge on `openBills.length > 0`. That badge is the **only** caller of `setShowOpenBills(true)` — `grep -rn "setShowOpenBills(true)" ui/src` returns exactly one hit, `ui/src/features/sales/components/CartPanel.tsx:689` — so at zero held bills the list overlay cannot be opened at all, and its empty state `pos-open-bills-empty` ("No open bills.", `shared-ui/locales/sales.ftl:692`, plus the `sales.id.ftl` row) is unreachable dead UI.
+
+**Options.** (i) Accept it: the list is reachable only once a bill is held, so delete `pos-open-bills-empty` and both locale rows. (ii) Give the list a second, always-visible entry point so the empty state stays live. (iii) Leave the string in place and carry it.
+
+**Recommendation: (i) unless you want the empty state, in which case (ii).** (i) is the smaller change and is consistent with what `8fd64b850` set out to do; deleting the string is the honest close, because UI that cannot be reached cannot be verified or regression-tested. Choose (iii) only if restoring an entry point is planned — otherwise the next session repeats this analysis.
+
+**Price.** Low either way — no schema, no migration, no wire change. (i) touches two `.ftl` rows and one component branch; (ii) touches one component and needs a design word on where the entry point goes.
+
+**Provenance.** Re-derived 2026-09-19 at HEAD; five `PosScreen.integration` cases that clicked the badge at zero bills were stale against this behaviour and were rewired in `410494319` (they now seed a held bill). The empty-state case was retired rather than deleted silently, and its reasoning is recorded in the test file.
 
 ### Housekeeping — not rulings, but they will be asked about
 
