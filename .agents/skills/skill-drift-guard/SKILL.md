@@ -417,7 +417,7 @@ The detection script has an integration test suite under `tests/` that pins the 
 
 #### What's covered
 
-Five scenarios under `tests/`:
+Six scenarios under `tests/`:
 
 | File | Pins |
 |------|------|
@@ -426,6 +426,7 @@ Five scenarios under `tests/`:
 | `shape-violation.bats` | `(extra)` in the by-clause → fires under `doc-audit` with `DD-MM-YY + by-clause` and NOT the value-check message. Pins the SHAPE-first invariant (no Python call when shape fails). |
 | `audit-date-stale.bats` | `03-06-26` (~35 days before 08-07-26, > 30-day threshold) appended to `hal-drivers/SKILL.md` → fires under `audit-date` with `days ago` and the stale date. Pins Check 8's strptime parse + 30-day threshold + `tail -1` "latest wins" extraction invariant. |
 | `dead-check-regression.bats` | The **silent-death** guard. Behavioural half: injects one piece of drift per category into a probe skill and asserts Checks 1, 3, 4, 6, 7 each FIRE (they had been reporting "No drift detected" forever because their `FINDINGS[cat]+=…` ran in a pipeline subshell and the write was discarded). Structural half: an awk pass over `detect.sh` that fails if ANY `while read` loop whose body writes `FINDINGS[` is fed by a pipeline — so the class cannot come back via a check added later. Also asserts every declared category still has a `should_run` block. *Perf:* pins Check 10's corpus prefilter (`md_footer_files` and the exact `find -exec … +` form) and asserts the prefilter and the per-file scan share the single `$FOOTER_RE` definition — a prefilter that drifts narrower than its scan skips files and loses findings exactly as quietly as a swallowed write did. |
+| `crate-prefix-allowlist.bats` | Check 12's `PREFIX_ALLOWLIST` semantics. A synthetic retired `oz-`-prefixed name in the fixture must still FIRE; the allow-listed prefixes must be silent — including the `oz-pos`-prefixed tag, the regression canary, which the old matcher silenced and a naive two-entry list un-silenced. Also asserts the probe yields exactly **one** finding, so no allow-listed token contributes its own. Pins the loop form: `case "$tok" in ${PREFIX_ALLOWLIST}*)` is not word-split, so the list was effectively single-entry and only `oz-*` matched — which silently disabled the check. *(The fixture's literal token is deliberately **not** reproduced here: this file is itself scanned by Check 12.)* |
 
 Each test uses bats' `setup` / `teardown` to backup + restore CONTRIBUTING.md inside `$BATS_TEST_TMPDIR` so the suite is hermetic — no test leak survives between runs. `dead-check-regression.bats` goes further and touches **no tracked file at all**: its probe is a self-contained skill directory, and it drives Check 6 through the `OG_FILE` override rather than editing `onboarding-guide` (a backup/restore of a tracked file leaks a probe line if the run is killed mid-test, which then turns `clean-baseline.bats` red for the next contributor).
 

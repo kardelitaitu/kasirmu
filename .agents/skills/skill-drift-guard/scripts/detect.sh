@@ -622,8 +622,16 @@ fi
 # the CURRENT prefix, so a reference to a retired prefix simply does not
 # match and is never considered.
 #
-# `oz-pos` is allow-listed: it is the knowledge-graph project name and the
-# historical repo label, not a crate.
+# `PREFIX_ALLOWLIST` holds the exceptions, SPACE-separated, matched by PREFIX
+# (so `oz-pos` also covers `oz-pos-cloud`). Two entries today:
+#   oz-pos   — the Northflank project id and the historical repo label, not a crate.
+#   oz-cloud — a pre-rebrand binary path (`/app/oz-cloud-server`) that
+#              northflank-deploy-diagnosis names deliberately, as history.
+# It is matched in a LOOP, not with `case "$tok" in ${PREFIX_ALLOWLIST}*)`:
+# a case pattern is not word-split, so that form was effectively SINGLE-ENTRY
+# — the two-entry string became the one literal pattern `oz-pos oz-cloud*`,
+# which matched NEITHER `oz-cloud` NOR the previously-working `oz-pos-cloud`.
+# Only `oz-*` matched, and that silently disabled the check. Measured 2026-09-19.
 #
 # Matching is case-SENSITIVE deliberately. An earlier `-i` match flagged
 # `OZ_DB_PATH` and `OZ_TEST_PG_URL` — environment variables that keep the
@@ -631,14 +639,18 @@ fi
 # ---------------------------------------------------------------------------
 if should_run crate-prefix; then
   : "${STALE_CRATE_PREFIX:=oz}"
-  : "${PREFIX_ALLOWLIST:=oz-pos}"
+  : "${PREFIX_ALLOWLIST:=oz-pos oz-cloud}"
   while read -r skill; do
     [ -z "$skill" ] && continue
     # `< <(…)` not `grep | while`: see the subshell note in Check 1.
     while read -r tok; do
-      case "$tok" in
-        ${PREFIX_ALLOWLIST}*) continue ;;
-      esac
+      # Unquoted on purpose: word splitting is what turns the space-separated
+      # list into one pattern per entry. Quoting it here restores the bug.
+      allowed=""
+      for allowed_prefix in $PREFIX_ALLOWLIST; do
+        case "$tok" in "$allowed_prefix"*) allowed=1; break ;; esac
+      done
+      [ -n "$allowed" ] && continue
       FINDINGS[crate-prefix]+="${skill}: stale crate-name reference '${tok}' (workspace crates use the 'kasirmu-' prefix)"$'\n'
     done < <(strip_skill_comments "$skill" 2>/dev/null \
       | grep -oE "(^|[^a-zA-Z0-9_])${STALE_CRATE_PREFIX}[-_][a-z0-9]+" \

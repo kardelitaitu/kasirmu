@@ -13,9 +13,10 @@ never happened — there is no separate deploy step to check.
 `kasir.mu`, but the Northflank project is still literally named `oz-pos`, and every endpoint here
 takes it as a path segment (`/v1/projects/oz-pos/services/cloud/…`). Renaming the string makes the
 URLs 404. The pre-rebrand image tags below (`oz-pos-cloud:*`, `oz-pos-unified:latest`) and the
-`/app/…` binary path name artifacts that really exist under those names, so leave them too. The
-drift guard's crate-prefix check keeps reporting that binary token — it allow-lists `oz-pos` but
-not the other pre-rebrand crate-style names — so treat that finding as expected residue.
+`/app/oz-cloud-server` binary path name artifacts that really exist under those names, so leave them
+too. Both `oz-pos` and `oz-cloud` are allow-listed in the drift guard's crate-prefix check
+(`PREFIX_ALLOWLIST` in `detect.sh`), so this file produces **no** finding. If one ever reappears,
+suspect the allowlist — not this doc.
 
 **The hard constraint:** every Northflank build costs minutes and the fix only takes effect after it
 reaches `main`. So do not push a guess. Get the build log, name the failing line, and prove the fix
