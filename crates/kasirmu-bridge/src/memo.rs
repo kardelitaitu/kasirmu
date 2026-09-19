@@ -34,8 +34,8 @@ use kasirmu_core::memo::{
     ActiveMemo, Memo, MemoStatus, NOTIFICATION_BASE_INTERVAL_SECS, NewMemo,
     kds_notification_interval_secs,
 };
-use kasirmu_core::settings::Settings;
 use kasirmu_core::session::SessionContext;
+use kasirmu_core::settings::Settings;
 use kasirmu_core::sync_client::ActiveMemoCloud;
 use kasirmu_core::{CoreError, Store, Terminal, permissions, sync_client};
 use serde::{Deserialize, Serialize};
@@ -506,9 +506,13 @@ pub async fn resolve_ack_client_credentials(
         return Ok(None);
     };
 
-    let registration =
-        sync_client::register_terminal(server_url, sync_client::admin_key_from_env().as_deref(), &terminal_row_id, "pos-terminal")
-            .await;
+    let registration = sync_client::register_terminal(
+        server_url,
+        sync_client::admin_key_from_env().as_deref(),
+        &terminal_row_id,
+        "pos-terminal",
+    )
+    .await;
     if !registration.ok {
         tracing::info!(
             status = %registration.status,
@@ -516,13 +520,15 @@ pub async fn resolve_ack_client_credentials(
         );
         return Ok(None);
     }
-    let (Some(client_id), Some(client_secret)) = (registration.terminal_id, registration.device_secret)
+    let (Some(client_id), Some(client_secret)) =
+        (registration.terminal_id, registration.device_secret)
     else {
         tracing::warn!("memo ack: registration answered ok without credentials — ignoring it");
         return Ok(None);
     };
 
-    let token = sync_client::request_token_client_credentials(server_url, &client_id, &client_secret).await;
+    let token =
+        sync_client::request_token_client_credentials(server_url, &client_id, &client_secret).await;
     if !token.ok {
         tracing::info!(
             status = %token.status,

@@ -261,8 +261,9 @@ async fn pairing_reuses_the_devices_existing_terminal_row_not_a_mirrored_one() {
                     .and_then(|b| serde_json::from_str::<serde_json::Value>(b).ok())
                     .and_then(|v| v["terminal_id"].as_str().map(str::to_owned))
                     .unwrap_or_default();
-                let body =
-                    format!("{{\"terminal_id\":\"{terminal_id}\",\"device_secret\":\"dev-secret-2\"}}");
+                let body = format!(
+                    "{{\"terminal_id\":\"{terminal_id}\",\"device_secret\":\"dev-secret-2\"}}"
+                );
                 (
                     format!(
                         "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
@@ -272,7 +273,8 @@ async fn pairing_reuses_the_devices_existing_terminal_row_not_a_mirrored_one() {
                     true,
                 )
             } else {
-                let body = r#"{"token":{"token":"jwt-paired-2","expires_at":null,"token_id":"t2"}}"#;
+                let body =
+                    r#"{"token":{"token":"jwt-paired-2","expires_at":null,"token_id":"t2"}}"#;
                 (
                     format!(
                         "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
@@ -351,15 +353,17 @@ async fn a_stored_pairing_whose_row_no_longer_resolves_is_dropped_and_re_paired(
                     .and_then(|b| serde_json::from_str::<serde_json::Value>(b).ok())
                     .and_then(|v| v["terminal_id"].as_str().map(str::to_owned))
                     .unwrap_or_default();
-                let body =
-                    format!("{{\"terminal_id\":\"{terminal_id}\",\"device_secret\":\"dev-secret-3\"}}");
+                let body = format!(
+                    "{{\"terminal_id\":\"{terminal_id}\",\"device_secret\":\"dev-secret-3\"}}"
+                );
                 format!(
                     "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                     body.len(),
                     body
                 )
             } else {
-                let body = r#"{"token":{"token":"jwt-paired-3","expires_at":null,"token_id":"t3"}}"#;
+                let body =
+                    r#"{"token":{"token":"jwt-paired-3","expires_at":null,"token_id":"t3"}}"#;
                 format!(
                     "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                     body.len(),
@@ -392,7 +396,9 @@ async fn a_stored_pairing_whose_row_no_longer_resolves_is_dropped_and_re_paired(
         "the stale pairing must not survive"
     );
     assert_eq!(
-        Settings::get_sync_terminal_secret(&conn).unwrap().as_deref(),
+        Settings::get_sync_terminal_secret(&conn)
+            .unwrap()
+            .as_deref(),
         Some("dev-secret-3"),
         "the re-pair must have completed (new secret stored)"
     );

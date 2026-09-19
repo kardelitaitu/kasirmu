@@ -517,10 +517,7 @@ async fn ack_falls_back_to_local_write_with_seeded_recipient() {
 /// provably never connected.
 async fn fake_cloud(
     body: &'static str,
-) -> (
-    String,
-    std::sync::Arc<tokio::sync::Mutex<Option<String>>>,
-) {
+) -> (String, std::sync::Arc<tokio::sync::Mutex<Option<String>>>) {
     use std::sync::Arc as StdArc;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -584,7 +581,10 @@ async fn cloud_read_asks_under_the_resolved_terminal_row_id() {
         .await
         .unwrap();
 
-    assert_eq!(dto.cadence.kds_interval_secs, 1_800, "the cloud cadence wins");
+    assert_eq!(
+        dto.cadence.kds_interval_secs, 1_800,
+        "the cloud cadence wins"
+    );
     let request = captured
         .lock()
         .await
@@ -649,10 +649,7 @@ async fn cloud_read_is_not_attempted_for_a_device_without_a_terminal_row() {
 async fn scripted_cloud(
     token_reply: impl Fn() -> (u16, String) + Send + 'static,
     ack_reply: impl Fn() -> (u16, String) + Send + 'static,
-) -> (
-    String,
-    std::sync::Arc<tokio::sync::Mutex<Vec<String>>>,
-) {
+) -> (String, std::sync::Arc<tokio::sync::Mutex<Vec<String>>>) {
     use std::sync::Arc as StdArc;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -680,8 +677,7 @@ async fn scripted_cloud(
                     .unwrap_or_default();
                 (
                     200,
-                    serde_json::json!({"terminal_id": id, "device_secret": "devsec-1"})
-                        .to_string(),
+                    serde_json::json!({"terminal_id": id, "device_secret": "devsec-1"}).to_string(),
                 )
             } else if request.starts_with("POST /api/v1/tokens ") {
                 token_reply()
@@ -690,7 +686,11 @@ async fn scripted_cloud(
             };
             let reply = format!(
                 "HTTP/1.1 {} \r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                if status == 200 { "200 OK" } else { "403 Forbidden" },
+                if status == 200 {
+                    "200 OK"
+                } else {
+                    "403 Forbidden"
+                },
                 body.len(),
                 body
             );
@@ -704,22 +704,26 @@ async fn scripted_cloud(
 #[tokio::test]
 async fn cloud_ack_pairs_with_the_resolved_row_id_and_mints_a_scoped_token() {
     let (server_url, captured) = scripted_cloud(
-        || (
-            200,
-            serde_json::json!({
-                "token": {"token": "jwt-scoped-1", "expires_at": "2026-09-19T00:00:00.000Z"}
-            })
-            .to_string(),
-        ),
-        || (
-            200,
-            serde_json::json!({
-                "memo_id": "m-1", "terminal_id": "terminal-1",
-                "delivery_status": "acknowledged",
-                "acknowledged_at": "2026-09-07T09:00:00.000Z", "changed": true
-            })
-            .to_string(),
-        ),
+        || {
+            (
+                200,
+                serde_json::json!({
+                    "token": {"token": "jwt-scoped-1", "expires_at": "2026-09-19T00:00:00.000Z"}
+                })
+                .to_string(),
+            )
+        },
+        || {
+            (
+                200,
+                serde_json::json!({
+                    "memo_id": "m-1", "terminal_id": "terminal-1",
+                    "delivery_status": "acknowledged",
+                    "acknowledged_at": "2026-09-07T09:00:00.000Z", "changed": true
+                })
+                .to_string(),
+            )
+        },
     )
     .await;
 

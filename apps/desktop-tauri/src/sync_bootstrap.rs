@@ -250,10 +250,7 @@ async fn resolve_terminal_credentials(
             let still_resolves = {
                 let store = kasirmu_core::Store::new(&conn);
                 store
-                    .resolve_terminal_row_id(
-                        kasirmu_bridge::memo::DEFAULT_TENANT_ID,
-                        &id,
-                    )
+                    .resolve_terminal_row_id(kasirmu_bridge::memo::DEFAULT_TENANT_ID, &id)
                     .ok()
                     .flatten()
                     .is_some()
@@ -289,7 +286,11 @@ async fn resolve_terminal_credentials(
                 let store = kasirmu_core::Store::new(&conn);
                 let mirror = kasirmu_core::Terminal::new(&device_id, &device_id);
                 store
-                    .ensure_terminal_addressable(&mirror, kasirmu_bridge::memo::DEFAULT_TENANT_ID, None)
+                    .ensure_terminal_addressable(
+                        &mirror,
+                        kasirmu_bridge::memo::DEFAULT_TENANT_ID,
+                        None,
+                    )
                     .map(|_| mirror.id)
             };
             match mirror_result {
@@ -329,7 +330,9 @@ async fn resolve_terminal_credentials(
 
     // The server's canonical id for this pairing wins: it echoes the id back
     // and that is what future claims will carry.
-    let paired_id = registration.terminal_id.unwrap_or_else(|| terminal_id.clone());
+    let paired_id = registration
+        .terminal_id
+        .unwrap_or_else(|| terminal_id.clone());
     let device_secret = registration.device_secret?;
     let conn = db.lock().await;
     if let Err(e) = Settings::set_sync_terminal_id(&conn, &paired_id) {

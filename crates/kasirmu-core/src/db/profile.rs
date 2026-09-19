@@ -595,7 +595,9 @@ impl Store<'_> {
     /// Returns [`CoreError::Db`] on store failures. A missing user is reported
     /// as `Ok(None)` — the caller has already established identity.
     pub fn get_user_avatar(&self, user_id: &str) -> Result<Option<String>, CoreError> {
-        let mut stmt = self.conn.prepare("SELECT avatar FROM users WHERE id = ?1")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT avatar FROM users WHERE id = ?1")?;
         let mut rows = stmt.query(rusqlite::params![user_id])?;
         match rows.next()? {
             Some(row) => Ok(row.get(0)?),

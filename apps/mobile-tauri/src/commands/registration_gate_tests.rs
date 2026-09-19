@@ -520,14 +520,17 @@ fn parse_ledger_rows(src: &str) -> Vec<(String, String)> {
 /// `left: [...], right: [...]` in a panic message is a wall nobody reads. The sentence
 /// worth printing is which rows are new, which are paid, which changed class, and where
 /// the order first diverges — each of those is a different repair.
-fn ledger_diff(
-    measured: &[(String, String)],
-    declared: &[(String, String)],
-) -> Option<String> {
+fn ledger_diff(measured: &[(String, String)], declared: &[(String, String)]) -> Option<String> {
     let measured_names: BTreeSet<&str> = measured.iter().map(|(n, _)| n.as_str()).collect();
     let declared_names: BTreeSet<&str> = declared.iter().map(|(n, _)| n.as_str()).collect();
-    let new_debt: Vec<&str> = measured_names.difference(&declared_names).copied().collect();
-    let paid: Vec<&str> = declared_names.difference(&measured_names).copied().collect();
+    let new_debt: Vec<&str> = measured_names
+        .difference(&declared_names)
+        .copied()
+        .collect();
+    let paid: Vec<&str> = declared_names
+        .difference(&measured_names)
+        .copied()
+        .collect();
     let mut mislabelled = Vec::new();
     for (name, class) in measured {
         if let Some((_, old)) = declared.iter().find(|(n, _)| n == name)
@@ -597,7 +600,9 @@ fn render_ledger(rows: &[(String, String)]) -> String {
 /// the number moved. Only what the tree can be asked about replaces what the file says.
 fn rendered_ledger_file(current: &str, rows: &[(String, String)], total: usize) -> String {
     let at = current.find("pub const DEBT_LEDGER").unwrap_or_else(|| {
-        panic!("the ledger declares no `DEBT_LEDGER`: there is nothing for the generator to replace")
+        panic!(
+            "the ledger declares no `DEBT_LEDGER`: there is nothing for the generator to replace"
+        )
     });
     let tail = &current[at..];
     let end = tail.find("];").unwrap_or_else(|| {
@@ -611,7 +616,11 @@ fn rendered_ledger_file(current: &str, rows: &[(String, String)], total: usize) 
     // body it cannot find, so the sweep and the generator cannot disagree about it. It is
     // still written rather than assumed, because a hand-edit to that line would otherwise
     // be the one number in this file no leg reads.
-    replace_usize(&replace_usize(&out, "REGISTERED_TOTAL", total), "UNSOURCED", 0)
+    replace_usize(
+        &replace_usize(&out, "REGISTERED_TOTAL", total),
+        "UNSOURCED",
+        0,
+    )
 }
 
 /// `pub const NAME: usize = N;` with N replaced, or a panic naming the declaration.
