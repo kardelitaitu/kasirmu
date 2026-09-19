@@ -11413,3 +11413,61 @@ Hooks (Q1b/Q2/Q3): the unnamed act that set `core.hooksPath` is now RATIFIED and
 Six commits: `307dcdfe4` mirrors · `1960901cb` integrity (12 rows dispositioned: 6 ticked-as-ruled, 4 converted, 2 answered-in-place) · `50feeeb72` tools · `00b369785` settings-3 · `2e84122b6` settings-2 bound · `34ddcfa75` rename. Final counts: operational-integrity open 3 (NOT-WORK/records, zero rulings owed), tools 0, settings-2 2 (deliberate), settings-3 0 (kept `todo-` by its own acceptance rule). The board now has NO open owner-questions left from my programs.
 
 **Commit:** six above; this entry rides its own docs(journal) commit -- never push without a direct user order.
+
+## 2026-09-19 — The BOOTSTRAP_FREE ruling lands: the seeded Free row loads in every profile, and the migration was not finished until the comments were
+
+**Context:**
+The decision queue's Phase 1 had been parked on one owner ruling for three days: `todo-open-debt-program.md`
+`:558` — "Until that ruling lands, `--release` cannot reach 0 failed". The question was the release profile's
+treatment of `BOOTSTRAP_FREE`, the sentinel the init schema seeds into every fresh install. The owner ruled:
+**the schema-seeded Free row must load in EVERY profile, and the sentinel is honoured only for a Free tier.**
+
+**The ruling, and the security property it keeps.** `TenantSubscription::verify_signature`
+(`crates/kasirmu-core/src/subscription.rs`) now accepts the sentinel whenever `tier_key()` is `free`, in debug
+and in release alike. A sentinel-signed row claiming a PAID tier still falls through to the base64 decode and is
+rejected there — the property the old `#[cfg(debug_assertions)]`-only arm was protecting, now expressed as a
+tier condition rather than a build-profile one. Debug is a strict no-op: the sentinel branch was already
+reachable there through `verify_license_signature`'s own any-payload short-circuit, so CI's debug
+`--workspace --all-features` leg is unaffected. Only release changes, which is the point.
+
+**What the ruling cost, and where it hid.** Honouring the sentinel in release made the seeded row LOAD, which
+split one fork predicate into two questions. `crates/kasirmu-bridge/src/testing.rs`'s `seeded_row_loads()` had
+been answering both, so 44 bridge fixtures that restamped a paid tier began taking the load arm in release and
+asserting Plus/Pro/Premium capabilities a sentinel row cannot have; 40 more came from four guard copies
+comparing a restamped row's verdict against the unstamped answer. The tablet crate had **thirteen** paid
+fixtures with no fork at all — its `*_tests.rs` are private `#[path]` modules with no shared test module — and
+had been red in release for months without anyone seeing it.
+
+**Problem — the migration was not finished when the tests went green.** Splitting the predicate broke no call
+site; it broke **37 comment blocks across 14 files** that re-derived the fork's rationale ("Release:
+create_session propagates the seeded row's failed signature check"), a claim that had been true for years and
+became false the moment release honoured the sentinel. The root claim sat in the authority module itself, which
+carried a paragraph *arguing against the change that shipped* — "Making release accept the sentinel … would move
+a licence bypass into the SHIPPED binary — a strictly worse trade" — plus a two-kind taxonomy the ruling had
+just made three kinds. Nothing was red; only a reader was misled, and the next lane would have re-derived the
+wrong model from it.
+
+**Solution.** Corrected forward, authority first: the predicate's taxonomy, that paragraph, the guard's doc and
+the tripwire test's doc in `testing.rs`, then the 37 call-site blocks — re-labelled *broken-seed fallback*
+rather than deleted, because they still fire when the row EXISTS but does not verify. Two traps inside the pass:
+my own edits moved the ~15 line anchors `testing.rs` cites, so the first correction pass was itself stale and
+needed a second; and several anchors were already drifted ~50 lines beforehand
+(`license_verification.rs:396` → `:435`, `subscription.rs:476` → `:521`). Proof the sweep changed no code:
+stripping comment lines from both sides and diffing printed exactly one panic-message string in three files and
+nothing else. The live gate rationales in `dev-ci.yml`, `docs/operations/ci-pipeline.md` and
+`docs/releases/checklist.md` said "the release profile is where `BOOTSTRAP_FREE` stops verifying" and are
+corrected to "…a sentinel-signed row on a PAID tier".
+
+**Verification:**
+`kasirmu-bridge` **1346/0** debug and release · `kasirmu-mobile` **677/0** debug and release ·
+`cargo fmt --all --check` clean. Two outlier legs, both environmental and both re-measured green:
+`kasirmu-mobile --release` first read 676/1 (the known mock-server flake), and a `kasirmu-bridge` debug leg read
+**1345/1 in 14,789.81s (4h07m** for a 213s suite) — the failure was the documented `127.0.0.1` flake but it
+failed in 5s, and `cargo nextest run -p kasirmu-bridge --lib --retries 0 --no-fail-fast` then ran **1346/0 in
+232s with zero TIMEOUTs**, so nothing hangs and the duration is an artefact of `cargo test` running all 1346
+tests as threads in one process. The test the debt program had recorded as *deliberately left red* is no longer
+red and no longer needs to be: `grep -rn "DELIBERATELY LEFT RED" crates/ apps/ --include=*.rs` returns nothing.
+
+**Commit:** four — `fd925d5c7` (fix + bridge migration) · `b1d7118` (tablet twin) · `4761f1bd9`
+(cross-reference) · `31aa530fe` (comment repair); the live gate rationales and this entry ride the docs commit
+that follows. Never push without a direct user order.

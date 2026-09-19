@@ -355,7 +355,9 @@ Recorded because each one is still live in some document a worker might read, an
 | `drivers/edc/*.rs` | `todo-payment-agents-4.md:137-139` | the files are real but live under `crates/kasirmu-hal/src/`, not `crates/kasirmu-payment/src/` |
 | `.circleci/workflows/06-cargo-nextest.yml:37` | several plans | retired by `e3aff7b56` (2026-09-14); `git ls-files \| grep -c circleci` → 0. Use `git show e3aff7b56^:<path>` |
 | "a push to `main` deploys" as a one-liner | older notes | still true, but incomplete — see `dev-ci.yml:695` |
-| `cargo test -p oz-bridge --release` = **76 failed** | `:105` (and the audit stamp, `:106`, `:112`) | **1 failed** — 1315 passed / 1 failed in 195.65s, re-run this pass. The survivor is *deliberately* red; see the Phase 1 re-measurement block. |
+| `cargo test -p oz-bridge --release` = **76 failed** | `:105` (and the audit stamp, `:106`, `:112`) | **1 failed** — 1315 passed / 1 failed in 195.65s, re-run this pass. The survivor is *deliberately* red; see the Phase 1 re-measurement block. **Superseded 2026-09-19: 0 failed.** |
+| `BOOTSTRAP_FREE` verifies only under `#[cfg(debug_assertions)]` | `:98`, `:123`, `:557`; `dev-ci.yml`; `docs/operations/ci-pipeline.md`; `docs/releases/checklist.md` | **True only for a PAID tier.** Since the 19-09-26 ruling `TenantSubscription::verify_signature` honours the sentinel whenever `tier_key()` is `free`, in BOTH profiles; a sentinel-signed paid row still dies in the base64 decoder. See the Phase 1 closure block below. |
+| "Until that ruling lands, `--release` cannot reach 0 failed" | `:558` | **0 failed** — 1346/0 in both profiles at `31aa530fe`. The ruling landed 2026-09-19, so Phase 1's acceptance is met and the gate at `:112` would no longer land red. |
 | `todo-font-system.md (5 open)` | `:334`, out-of-scope list | **0 open / 13 ticked** — closed earlier today. Its 5 became 0 without this file noticing, the same census-rot `:504` names for `:404`. |
 
 ---
@@ -557,6 +559,53 @@ cargo test -p oz-bridge --release    # 1315 passed; 1 failed   (195.65s)
 - **The survivor is deliberately red, and the code says so.** `staff::security_events_tests::a_rejected_create_records_no_security_event` panics at `crates/oz-bridge/src/staff_security_events_tests.rs:209` with `InvalidSubscriptionSignature … Invalid symbol 95, offset 9` — symbol 95 is `_`, the underscore in `BOOTSTRAP_FREE`, i.e. exactly the release/base64 mechanism `:98` describes. Its own comment reads: *"DELIBERATELY LEFT RED in the release profile … Forking here would turn the test green while its subject — the recorder staying silent on a rejected mutation — stops being exercised … A green that asserts nothing is worse than a red with a reason; the honest fix is a verifying seeded row, which is an owner decision and not a fixture edit."* **That pattern occurs exactly once in the tree** (`grep -rc "DELIBERATELY LEFT RED" crates/ --include=*.rs | grep -v ":0"` → 1 file, 1 occurrence), so it is a decision, not a class.
 - **The dispatch consequence is the useful part: Phase 1's remaining work is one owner ruling, not 76 fixture fixes.** `:110` (fix the profile-dishonest fixtures) and `:106` (classify each of the 76) have almost nothing left to bite on — the fixtures were fixed elsewhere, and the one survivor refuses a fixture edit on principle. What remains is the *verifying seeded row* its comment names: the same shape as the parked arm at `:113`, and like it, blocked on the owner rather than on code. **Until that ruling lands, `--release` cannot reach 0 failed, so Phase 1's acceptance stays unmet and a `--release` gate (`:112`) would land red** — which is the house rule's reason for ordering cleanup before enforcement.
 - **Nothing here was fixed by this pass.** No source file was touched; the two commands above are the whole of the work, and the census is unchanged at **29 open / 11 ticked** (any-depth, per `:53`).
+
+---
+
+## Phase 1 closed 2026-09-19 (HEAD `31aa530fe`) — the ruling landed and `--release` is 0 failed
+
+The owner ruled on the question the block above parks: **the schema-seeded Free row must load in EVERY
+profile, and the sentinel is honoured only for a Free tier.** Landed in
+`crates/kasirmu-core/src/subscription.rs` — `TenantSubscription::verify_signature` accepts `BOOTSTRAP_FREE`
+whenever `tier_key()` is `free`, in debug and in release alike; a sentinel-signed row claiming a PAID tier
+still falls through to the base64 decode and is rejected there, which is the security property the old
+debug-only arm was protecting. Commits: `fd925d5c7` (fix + bridge fixture migration) · `b1d7118` (tablet twin
++ its fixture migration) · `4761f1bd9` (cross-reference note) · `31aa530fe` (comment repair).
+
+```bash
+cargo test -p kasirmu-bridge              # 1346 passed; 0 failed
+cargo test -p kasirmu-bridge --release    # 1346 passed; 0 failed
+cargo test -p kasirmu-mobile --lib        #  677 passed; 0 failed
+cargo test --release -p kasirmu-mobile --lib   #  677 passed; 0 failed
+```
+
+- **The acceptance this file was waiting on is met.** `--release` reaches **0 failed**, so the sentence at
+  `:558` ("Until that ruling lands, `--release` cannot reach 0 failed") is now the opposite of the truth, and
+  the gate at `:112` would no longer land red.
+- **The survivor named above is no longer red, and no longer needs to be.**
+  `grep -rn "DELIBERATELY LEFT RED" crates/ apps/ --include=*.rs` now returns **nothing**. The test it named,
+  `staff::security_events_tests::a_rejected_create_records_no_security_event`, was re-cut so the refusal under
+  test is a *permission* one, with its duplicate-username half moved to the forked sibling
+  `a_duplicate_username_create_records_no_security_event` — a fixture edit the parked comment had refused
+  *precisely because the verifying seeded row it wanted did not exist*. It exists now, which is the whole
+  point of the ruling.
+- **Two behaviour changes fell out and are correct, not regressions.** A Free tenant's login audit row is now
+  **1 in debug / 0 in release** (was 1 in both): the skip at `db/audit_security.rs:389` is
+  `ent.loaded && audit_retention_days().is_none()`, and release used to write *because the row was
+  unverifiable*. And `create_location_profile_scoped_end_to_end_owner` is now refused in release by the **Free
+  store quota** (`SubscriptionLimitExceeded`) rather than at the signature — the signature refusal *was* the
+  bug the ruling fixed.
+- **The fixture vocabulary split in two, and that is the part a re-run must know.**
+  `crates/kasirmu-bridge/src/testing.rs` now carries `seeded_row_loads()` (true in **both** profiles),
+  `seeded_row_reaches_a_paid_tier()` (`== cfg!(debug_assertions)`), and
+  `seeded_row_verdict_for_tier(stamp)` for the shared guards. A fixture that restamps a paid tier must fork on
+  the second, not the first; the guards must be passed the **stamp**, not a bool. The tablet cannot import
+  them (`kasirmu_bridge::testing` is a private `mod`), so `apps/mobile-tauri/src/commands/testing.rs` is a
+  hand-kept twin — the bridge's copy is the authority. Traps and the full procedure:
+  `ozpos-release-profile-fork`.
+- **The pre-rebrand paths this file quotes throughout (`crates/oz-bridge/…`, `crates/oz-core/…`) still resolve
+  to nothing.** They are `kasirmu-*` today; that class is tracked in the rotted-claims table above, and the
+  four commands in this block are the current form. `[carried]`
 
 ---
 

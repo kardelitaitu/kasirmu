@@ -253,11 +253,17 @@ jobs:
   # ── 3b. Release-profile bridge tests ─────────────────────────────────
   #
   # WHY THIS EXISTS: the debug run above licenses nothing about the release
-  # profile, and the two disagree on exactly one thing that used to be
-  # invisible — `BOOTSTRAP_FREE` verifies only under `#[cfg(debug_assertions)]`,
-  # so in release every command doing `sub.verify_signature()?` fails closed.
-  # That produced 76 reds no gate could see. Release is green as of `2dc500382`,
-  # which is what makes this job landable: never land a gate red.
+  # profile. Since the 19-09-26 ruling the two agree on the schema-seeded FREE
+  # row — `TenantSubscription::verify_signature` honours `BOOTSTRAP_FREE`
+  # whenever `tier_key()` is `free`, in BOTH profiles — so what still diverges
+  # is that same sentinel on a row carrying a PAID tier: debug accepts it
+  # through the `#[cfg(debug_assertions)]` short-circuit at
+  # `license_verification.rs:402`, release falls through to the base64 decode
+  # and rejects it. A fixture that restamps a tier forks on
+  # `seeded_row_reaches_a_paid_tier`, and a regression there is invisible to the
+  # debug run above. The historical 76 reds no gate could see are why the job
+  # was created; release is green as of `2dc500382` and 1346/0 as of
+  # `31aa530fe`, which is what keeps it landable: never land a gate red.
   #
   # WHY PUSH-ONLY: a release build is a much colder compile than the debug one,
   # and taxing every PR with it was ruled not worth the guarantee. Drift is
