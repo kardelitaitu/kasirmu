@@ -1,6 +1,6 @@
 ---
 name: android-apk-build
-description: Build, sign and install the kasir.mu tablet app (apps/mobile-tauri, package mu.kasir.mobile) on a real Android device, and connect to it over wireless ADB. Use when running cargo tauri android build or android dev; when the build dies with "The PATHEXT environment variable isn't set"; when beforeBuildCommand fails with "Could not read package.json"; when the Vite mobile build reports it cannot load a .ftl file; when the produced APK is unsigned and refuses to install; when adb install returns INSTALL_FAILED_USER_RESTRICTED; or when adb devices is empty while adb mdns services still advertises the device.
+description: Build, sign and install the kasir.mu tablet app (apps/mobile-tauri, package mu.kasir.mobile) on a real Android device, and connect to it over wireless ADB. Use when running cargo tauri android build or android dev; when the build dies with "The PATHEXT environment variable isn't set"; when beforeBuildCommand fails with "Could not read package.json"; when the Vite mobile build reports it cannot load a .ftl file; when the produced APK is unsigned and refuses to install; when adb install returns INSTALL_FAILED_USER_RESTRICTED; when adb devices is empty while adb mdns services still advertises the device; when the app opens to a blank black screen; when the WebView shows "Failed to request http://<lan-ip>:1422/"; or when the launcher icon is cropped or cut off on the home screen.
 ---
 
 <!-- Audit stamp: 2026-09-19 · Budak-Korporat · status: ACCURATE · Derived from a full build/install/debug cycle on 2026-09-19 against the Redmi 23073RPBFG. Verified this pass: a signed release APK installed over wireless ADB (adb install -r → Success, lastUpdateTime advanced) and launched to mu.kasir.mobile/.MainActivity with no FATAL in logcat; aapt2 dump badging reports package mu.kasir.mobile and application-label Kasir.mu; the mobile entry is index.mobile.html and the vite.mobile.config.ts alias plugin is present; the SDK/NDK/build-tools/JDK paths below resolved on this host; both wireless-ADB failure modes were reproduced and the re-pairing recovery confirmed. The MIUI install-gate claim was corrected this pass — it is not absolute. · Pass 2 (2026-09-19, Android build-repair lane): the JBR/JDK-25 trap in §1 was already correct and was re-confirmed end to end — the frozen failing command was reproduced (`> 25.0.3` from `JavaVersion.parse` while configuring `buildSrc`) and then repaired, and the durable `org.gradle.java.home` pin — which this skill did not previously mention — was added and verified against a deliberately hostile `JAVA_HOME`. New section added for the `:app:rustBuildArm64Debug` / `command 'cargo.bat'` decoy: its cause in `BuildTask.kt` rethrowing only the last fallback exception, and the verified stale-daemon remedy. A full debug APK built twice consecutively after the repair. Versions re-measured this pass: JDK 21.0.12.1+1, Android Studio JBR 25.0.3, NDK 30.0.14904198, build-tools 37.0.0, platform android-36, wrapper Gradle 8.14.3. · Pass 3 (2026-09-19, same lane, end-to-end `dev`): a full `cargo tauri android dev` against the Redmi 23073RPBFG was driven to completion — device auto-detected (aarch64), Rust compiled, Gradle assembled `apk/arm64/debug/app-arm64-debug.apk` (420.7 MB), and the app then installed, launched, became the focused activity and rendered the real UI (a 2 063 599-byte screenshot with 9 228 distinct colours, brand green ≈#495A30) with no FATAL. Two new traps recorded from that run: a hand-started `npm run dev:mobile` binds loopback only, because `ui/vite.mobile.config.ts:107` is `host: host || false` and only `cargo tauri android dev` sets `TAURI_DEV_HOST` (this is now Cause 3 of the blank-screen section); and the MIUI install gate is flaky rather than absolute (§4). Also recorded: `screencap` returns pure black while `Display State=OFF`, which coexists with `mWakefulness=Awake` and is easily mistaken for an app failure. The two earlier passes' claims were re-confirmed, none contradicted. -->
@@ -82,7 +82,7 @@ absence is not evidence of a broken setup.
   after P9a). Failure: `[vite:asset] Could not load …shared.ftl?raw`. `ui/vite.config.ts` uses the regex
   form — keep both in step.
 
-### A blank screen: two unrelated causes, rule them out in order
+### A blank screen: three unrelated causes, rule them out in order
 
 **Cause 1 — the webview root had nothing to serve.** Tauri resolves the webview root to `index.html`, hardcoded and reused as the 404 fallback. The mobile
 build's entry is `index.mobile.html`, and the mobile build script emits only that — nothing emits
@@ -138,6 +138,39 @@ adb when the user has a credential set; ask for it rather than interpreting blac
 **Changing the frontend does not re-embed it.** Neither `tauri-build` nor `tauri-codegen` emits
 `cargo:rerun-if-changed` for `frontendDist`, so Cargo sees no reason to recompile and the APK keeps the
 old assets. After any frontend change, force it — `touch apps/mobile-tauri/src/lib.rs` — before building.
+
+### `Failed to request http://<lan-ip>:1422/` — the installed APK is a debug build
+
+The WebView renders a Chromium error page instead of the app. That is **not** a blank screen and not a
+frontend bug: a debug APK loads `build.devUrl` instead of the embedded bundle, so the fix is a different
+APK, not a code change.
+
+What selects it is the **`custom-protocol` Cargo feature** — not `--release`, and not `debug_assertions`.
+`tauri/build.rs:257` is `dev = !has_feature("custom-protocol")`, and `get_app_url`
+(`tauri/src/manager/mod.rs:353`) is gated `#[cfg(dev)]`: the `dev` arm takes `dev_url`, the `not(dev)` arm
+takes `frontend_dist`. The CLI enables the feature in `Rust::build_options`
+(`tauri-cli/src/interface/rust.rs:485`, `features.push("tauri/custom-protocol")`) and then hands the
+feature list to Gradle over a **local WebSocket** — `write_options` publishes it, and the
+`android-studio-script` command fetches it back with `read_options`. Consequently a bare
+`gradlew assembleRelease` is **not** a production build; only `cargo tauri android build` is.
+
+Rule it out in one line:
+
+```bash
+adb shell dumpsys package mu.kasir.mobile | grep -E 'flags=|versionCode'
+```
+
+`DEBUGGABLE` anywhere in `flags=` means a debug APK is installed. The size gap needs no tooling at all:
+debug ≈ **441 MB** (unstripped symbols), release ≈ **28 MB**. Also check *which* file you installed —
+`app/build/outputs/apk/` keeps `universal/debug/`, `arm64/debug/` and `universal/release/` side by side.
+
+With the release APK installed the app loads `https://tauri.localhost` and runs its own IPC; corroborate
+from the renderer's own console lines (`adb logcat | grep tauri.localhost`). Two red herrings on that
+path: the `loading HTTPS URL; you might need to provide a certificate …` WARN is **cosmetic** — the
+`client`/`url`/`response_cache` it guards are `#[cfg(all(dev, mobile))]`
+(`tauri/src/protocol/tauri.rs:74`), so a correct release build logs it too; and a
+`Command <x> not found` for a license command on the tablet is **expected**, because the tablet shell
+registers no license commands (`ui/src/__tests__/useAuthConnection.test.tsx:252`).
 
 ### `:app:rustBuildArm64Debug` fails with `command 'cargo.bat'` — the message is a decoy
 
@@ -331,6 +364,127 @@ The sandbox injects a `node-safe-delete` shim over `fs.rmSync`, so Vite's `empty
 it clears a populated mobile output directory — `SAFE_DELETE_BULK_CONFIRM_REQUIRED`, count against a
 threshold of 50. It is an artifact of the sandbox; the same build passes when the Bash call escalates
 out of it. Setting `emptyOutDir: false` would paper over a non-bug.
+
+---
+
+## 7. The launcher icon is cropped by the mask — and `tauri icon` alone cannot fix it
+
+**Symptom.** On the home screen the icon looks cut off — the tile's corners and edges are gone.
+
+**Measure it; do not eyeball it.** Android sizes each adaptive-icon layer at **108x108 dp**, but the area
+guaranteed to survive an OEM mask is only the central **66x66 dp**; the outer 18 dp on each of the four
+sides is reserved for masking and parallax. Artwork must therefore fill at most 66/108 = **61.1%** of the
+layer. Compare the foreground's alpha bounding box against that. At `xxxhdpi` the layer is 432x432 px
+(4 px/dp) and the safe zone is the central 264x264 px, `x[84..347]`.
+
+Measured 2026-09-19 on `mipmap-xxxhdpi/ic_launcher_foreground.png`: the artwork bbox is **419x419 =
+97.0%** of the layer, so **19.4 dp is cut per side — 37% of the tile's width** — and the white mark loses
+~9 dp off its top. All five densities agree (the foreground is 108/162/216/324/432 px for
+mdpi/hdpi/xhdpi/xxhdpi/xxxhdpi), so the geometry is not the bug — the artwork is.
+
+**Three compounding causes, all upstream of the Gradle build:**
+
+1. **`tauri icon` writes the adaptive foreground with no inset at all.** `resize_and_save_png(fg, size,
+   path, None, None)` (`tauri-cli/src/icon.rs:554-563`) is a bare `resize_exact` — no margin, no mask.
+   The *legacy* icons generated in the same run **do** get one: `apply_round_mask` with an 8.33% margin
+   for `Regular` and a 50% radius for `Rounded` (`icon.rs:586-615`). That asymmetry is exactly why
+   `ic_launcher.png` looks acceptable while the adaptive icon is chopped.
+   **`android_fg_scale` is honoured only on the legacy path** (`icon.rs:607-609`), so it cannot fix the
+   adaptive layer — any inset must be baked into the image itself.
+2. **The tile sits in the wrong layer.** The blue rounded square is baked into the *foreground*; Android
+   expects the tile to be the *background* layer and only the mark to be the foreground. A tile drawn
+   full-bleed in the foreground is guaranteed to be cut, because the mask is applied to the whole layer.
+3. **The background layer is `#fff`** — the CLI's default `--ios-color` (`icon.rs:101`), inherited by
+   Android because no icon manifest supplies `bg_color`. Nobody chose it, and it shows as a white frame
+   wherever the clipped tile no longer reaches.
+
+**Fix — applied and verified 2026-09-19.** Give the foreground its own pre-inset source and pass a
+manifest. Two things make this work:
+
+- the adaptive foreground path applies **no inset of its own**, so padding baked into the image survives;
+- `android_bg` is not needed. `bg_color` alone emits `values/ic_launcher_background.xml`, giving the tile
+  as a **flat full-bleed colour** — which is what a tile-shaped logo wants. The launcher mask then *shapes*
+  the tile instead of chopping it.
+
+`apps/mobile-tauri/icons/android-icon-manifest.json`:
+
+```json
+{ "default": "icon.png", "android_fg": "android-fg.png", "bg_color": "#147EFB" }
+```
+
+`default` must stay the **full** artwork (tile + mark). It still feeds the desktop set and the *legacy*
+`ic_launcher.png` / `ic_launcher_round.png`, which take the `else` branch and would become an invisible
+white mark on transparent if pointed at `android_fg`.
+
+Generate into a scratch dir and copy only the Android resources — `tauri icon` also rewrites the desktop,
+iOS and appx sets:
+
+```bash
+cd /c/dev/ozpos/apps/mobile-tauri
+cargo tauri icon icons/android-icon-manifest.json -o 'C:\scratch\icongen'
+# then copy <scratch>\icongen\android\** over gen/android/app/src/main/res/
+```
+
+**Pass `-o` as a Windows path.** From Git Bash a `/c/...` value reaches the Windows binary verbatim and
+resolves against the current drive, so `-o /c/Users/x/tmp` silently writes to `C:\c\Users\x\tmp` — and the
+`res/` tree you then inspect is not the one that was written. (Same class of trap as the `PATH` note in §1.)
+
+Size the mark to the **66/108 safe zone**, not the 72/108 visible area: 72 dp is the un-masked content
+area, and a circular or squircle mask eats its corners. Verified result — the mark at 60% of the layer
+fits at every density (mdpi 62x66 inside 66x66; xxxhdpi 241x260 inside 264x264), where the old artwork
+measured 419x419 against the same 264x264 zone.
+
+**Recover the mark by un-multiplying — do not mask on whiteness.** The old foreground is the mark
+composited over the flat tile blue, so with `o = a*M + (1-a)*B` and `B = #147EFB` the tile's only strong
+chroma is its blueness (`B_b - B_r = 231`) while the mark is achromatic. That solves directly:
+
+```
+a = 1 - (o_b - o_r) / 231        M = (o - (1-a)*B) / a
+```
+
+This keeps the mark's real colours. Using *whiteness as alpha* instead silently turns the master's grey
+dot `#B3B3B3` into white at ~54% alpha, which composites to pale blue `#94C4FD` over the tile — off-brand,
+and visibly different from the grey dot in the app's own logo. The un-multiply reproduces the original
+appearance exactly, precisely because the adaptive background *is* the same blue: the blue-tinted
+anti-aliasing around the mark stays invisible.
+
+**Filter the mark's connected components by thickness before taking its bounding box.** The tile's rounded
+edge carries a 1 px anti-aliased fringe — here a 318 px-tall column at `x=425` plus ~20 single pixels.
+Those stretch the bbox from 304x327 to 421x411, which sizes the mark ~28% too small. Keep only components
+whose width **and** height are >= ~8 px: the "k" (224x327) and the dot (52x52) survive, the fringe does not.
+
+Verify **per density** before building: compare the foreground's alpha bbox against the central 66/108
+square and require it to be contained at all five densities. Downscale only (0.793 here, from a 432 px
+source), so no upscaling is introduced — but a vector or >=1024 px master would be the better long-term
+source.
+
+### Verify the icon that actually shipped, not the one on disk
+
+Three things make the *packaged* resource hard to check, and each produces a confident wrong answer:
+
+1. **Release builds obfuscate resource paths.** With `isMinifyEnabled = true` the APK holds `res/-B.png`,
+   `res/QZ.png`, … — there is no `mipmap-xxxhdpi/ic_launcher_foreground.png` to grep for. Resolve names
+   through `resources.arsc` instead:
+
+   ```bash
+   aapt2 dump resources <apk> | grep -A6 "mipmap/ic_launcher_foreground"
+   ```
+
+   The same dump yields `mipmap/ic_launcher (anydpi) -> res/XX.xml` — the adaptive icon the launcher
+   actually uses at `minSdk 26` — and `color/ic_launcher_background -> #ff147efb`. Dump the XML with
+   `aapt2 dump xmltree --file res/XX.xml <apk>` to confirm foreground/background wiring.
+2. **AGP palette-converts the PNGs** (colorType 3, with `PLTE` + `tRNS`). A decoder that only understands
+   RGBA reads palette pixels as opaque, reports a full-bleed bbox, and makes you conclude the icon is
+   cropped when it is not. Honour `tRNS` before believing any bbox.
+3. **`aapt2` and `apksigner` need a Windows path.** From Git Bash `/c/dev/...` reaches the binary verbatim
+   and dies with `failed opening zip: I/O error` — pass `C:\dev\...`. Same class of trap as the `-o` note
+   above.
+
+Then prove the device is running your build: extract the resolved `res/*.png` from the built APK **and**
+from `adb pull` of the installed `base.apk`, and compare md5 — a matching whole-APK md5 is the strongest
+single check. Signature: `apksigner verify --verbose <apk>` should report `Verified using v2 scheme ...:
+true` with `Number of signers: 1`. The absence of `META-INF/*.RSA` means nothing — v2/v3 signatures live
+in the APK Signing Block, not in `META-INF`.
 
 ---
 
