@@ -7,6 +7,12 @@ import { unified } from '@astrojs/markdown-remark';
 import rehypeCallouts from './src/plugins/rehype-callouts.mjs';
 import rehypeMermaidClass from './src/plugins/rehype-mermaid-class.mjs';
 import rehypeMermaid from 'rehype-mermaid';
+import { createLastmodResolver } from './scripts/sitemap-lastmod.mjs';
+
+// Resolves a real content date per sitemap URL (docs frontmatter `updated`,
+// otherwise the git commit date of the page's source file). Never a build
+// timestamp — see scripts/sitemap-lastmod.mjs for why that matters.
+const lastmodFor = createLastmodResolver();
 
 // Static marketing site — two locales, path-prefixed (/en/, /id/), no
 // server runtime. See website-plan.md §10 for the Cloudflare Pages settings.
@@ -40,6 +46,15 @@ export default defineConfig({
       // page now (4-card landing, src/pages/[locale]/docs/index.astro) so it
       // stays in the sitemap; only the locale-less bare /docs/ path is noise.
       filter: (page) => !/\/(account|login|enterprise-trial)\/$/.test(page),
+      // <lastmod> per URL, from a real content date: docs use their authored
+      // `updated` frontmatter (the same value the page renders), everything
+      // else the git commit date of its source file. A URL with no resolvable
+      // date omits the field rather than claiming "now" — Google discards a
+      // lastmod that always changes. See scripts/sitemap-lastmod.mjs.
+      serialize: (item) => {
+        const lastmod = lastmodFor(item.url);
+        return lastmod ? { ...item, lastmod } : item;
+      },
     }),
   ],
   markdown: {
