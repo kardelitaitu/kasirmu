@@ -54,7 +54,9 @@ replacement for either.
 One reservation already exists: the deployment admin identity's email is reserved and must
 never be self-provisioned (`reservedAdminEmails`, "ONE SET, ONE READER",
 `admin_tenant_lifecycle.go:78-80`; `web_otp.go:595-600` returns ok without provisioning).
-Any Google resolver must consult the same set (§2.3).
+That guard lives **inside creation** (`createTenant`, `web_otp.go:696-698`), so a new
+resolver inherits it for free on the create path and inherits nothing on the link path —
+which is why §2.3 refuses before linking.
 
 ### 1.3 The web front is a Worker that already owns session handoff
 
@@ -165,16 +167,21 @@ Resolve a demonstrated identity (Google `sub`, or an emailed code) to a tenant:
 
 1. `(provider, subject)` already bound → that tenant. **Success, idempotent.**
 2. Bound to a *different* tenant → `409`. Never rebind.
-3. Not bound, but the email resolves to a tenant → **link** (insert the identity row) and
-   audit it. Requires `email_verified = true` as asserted by Google.
-4. Email is in `reservedAdminEmails` → refuse, exactly as `request-otp` does
-   (`web_otp.go:595-600`). Never create, never link.
+3. Email is in `reservedAdminEmails` → refuse, exactly as `request-otp` does
+   (`web_otp.go:595-600`). Never create and never link. **This check must precede the link
+   step**: creation is already guarded inside `createTenant` (`web_otp.go:696-698`), but
+   nothing guards *linking*, and the admin's own `tenants` row already exists with
+   `email_verified = false` — so a link attempt would attach a Google identity to the admin
+   tenant and flip it verified.
+4. Not bound, but the email resolves to a tenant → **link** (insert the identity row), flip
+   `email_verified` to true if it was false, and audit both. Requires
+   `email_verified = true` as asserted by Google.
 5. Otherwise → **create** via the existing shared creation path
    (`createTenantForEmail`, `web_otp.go:642`) and then set `email_verified = true`,
    because Google proved the mailbox and the code round-trip is redundant. One creation
    function for both signups, so they cannot drift.
 
-Auto-link at step 3 is not a convenience, it is a correctness requirement: if the same email
+Auto-link at step 4 is not a convenience, it is a correctness requirement: if the same email
 arrives through two doors, both must resolve to one account, or "use Google or your own
 email" silently produces two accounts for one person and the second one has no licence.
 
@@ -212,11 +219,14 @@ The wizard's step 7 offers *link this device to my account*. The Google variant:
 4. Open the returned URL with the existing `tauri-plugin-opener` (already a dependency and
    already used for ADR #38's external image search — `crates/kasirmu-bridge/src/browser.rs:9-14`).
 5. Google → `/api/v1/desktop/link/google/callback`: the **server** exchanges the code, so
-   no client secret ships in the bundle and no JWKS verification is needed in Go; requires
-   `email_verified`; binds per §2.3; `302` to
-   `http://127.0.0.1:<port>/?link_code=<one-time>`.
+   no client secret ships in the bundle and no JWKS verification is needed in Go. The
+   returned ID token is still checked for `iss`, `aud == client_id` and `exp`, and only
+   `sub`, `email` and `email_verified` are read from it; `email_verified` is required;
+   binds per §2.3; `302` to `http://127.0.0.1:<port>/?link_code=<one-time>`.
 6. The listener hands the code to the app, which calls `/api/v1/desktop/link/consume` with
-   `machine_id`. The server registers the terminal (`POST /api/v1/terminals`,
+   `machine_id`. The code is single-use, TTL-bounded, and **bound to the `machine_id` that
+   started the flow** — a mismatch is refused, so a code lifted out of the loopback URL is
+   worthless on another device. The server registers the terminal (`POST /api/v1/terminals`,
    admin-key gated — `crates/kasirmu-api/src/spec/paths.rs:46-60`; hash-only storage at
    `pg.rs:922` / `verify_terminal_credentials` `pg.rs:974`) and returns the
    `device_secret`, shown once.
@@ -241,9 +251,12 @@ the account email; the server sends a code to `tenants.email`; the app submits i
 on the identical `link/consume` and the identical terminal credential.
 
 **Link codes are purpose-bound.** A code issued for device linking must not be replayable
-into `/web/verify-otp`, and vice versa; the store keys by purpose, not just by email. Rate
-limiting and lockout reuse `login_lockout.go` and the `request-otp` limiter
-(`web_otp.go:575`), counted per device + email.
+into `/web/verify-otp`, and vice versa; the store keys by purpose, not just by email.
+
+Rate limiting and lockout cover **both** methods — state issuance on `start`, the emailed
+code, and `consume` — reusing `login_lockout.go` and the `request-otp` limiter
+(`web_otp.go:575`) and counted per device + email, so neither door is the cheaper one to
+brute-force.
 
 ### 2.7 Tablet: the email path, never the Google one
 
@@ -274,9 +287,10 @@ on the consent screen.
 
 ### 2.9 Secrets
 
-`client_secret` lives only in the licence server environment (Northflank / the
-`KASIRMU_*` pattern). It is never committed and never enters a desktop or tablet bundle. The
-desktop flow is PKCE-protected and the client is public by design (§1.7).
+`client_secret` lives only in the licence server's environment — `OZ_*` at runtime
+(Northflank), which the developer machine mirrors as `KASIRMU_*` user-scope variables. It is
+never committed and never enters a desktop or tablet bundle. The desktop flow is
+PKCE-protected and the client is public by design (§1.7).
 
 ### 2.10 Non-goals
 
@@ -297,10 +311,10 @@ desktop flow is PKCE-protected and the client is public by design (§1.7).
 | Any | Google, `sub` already bound to this tenant | signed in (idempotent) |
 | Any | Google, `sub` bound to another tenant | `409` |
 | password/OTP account | Google, email matches, `email_verified` true | identity linked, signed in |
-| webhook/purchase account, `email_verified` false | Google, email matches | linked **and** `email_verified` flips true |
+| webhook/purchase account, `email_verified` false | Google, email matches | linked, `email_verified` flips true, both audited |
 | no account | Google, basic scopes, `email_verified` true | account created, signed in |
 | no account | Google, `email_verified` false | refused — never link an unproven address |
-| reserved admin email | either method | refused, as `request-otp` refuses it |
+| reserved admin email | either method | refused **before** any link or create (§2.3 step 3) |
 | Google-created account | later uses email code | works — email is the root (§1.2) |
 | Google-created account | later sets a password | works — `set-password` is unchanged |
 | password account | later unlinks Google | safe; OTP remains |
@@ -339,8 +353,8 @@ quietly remove it.
   change.
 - **A wizard-only entry point has no in-app repair path.** See §9 O2.
 - **The licence server makes one outbound call to `kasirmu-api`** to register the terminal
-  (§2.5 step 6), adding a cross-service dependency and an admin key to the licence server's
-  environment. If that hop is unwanted, the fallback is to keep cloud sync on the
+  (§2.5 step 6), adding a cross-service dependency and an admin key (`OZ_ADMIN_KEY`) to the
+  licence server's environment. If that hop is unwanted, the fallback is to keep cloud sync on the
   tenant-wide `api_key` and defer the terminal credential — accepting that the link is then
   cosmetic.
 - **Enumeration**: the web already answers uniformly (`web_otp.go:600-604`); the desktop
@@ -380,7 +394,8 @@ Each phase ships independently.
 
 - Go: resolver matrix (§3) as a table test, including reserved-admin refusal, `409` on
   foreign `sub`, `email_verified=false` refusal, and equivalence of the two creation doors.
-- Go: state single-use and expiry; purpose-bound link codes rejected by `/web/verify-otp`.
+- Go: state single-use and expiry; purpose-bound link codes rejected by `/web/verify-otp`;
+  link codes refused when replayed with a different `machine_id`.
 - Bridge: `oauth_tests.rs` for PKCE derivation, URL construction, and `redirect_uri`
   validation (loopback only; a non-loopback or non-ephemeral redirect is refused).
 - UI: the wizard step's states (idle, browser opened, awaiting, linked, refused, cancelled,
