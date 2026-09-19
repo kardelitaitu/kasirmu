@@ -39,7 +39,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync-branding.ps1 -B
 
 So a stale `appName` renames the product on the next sync. Check that field before running anything, and diff the three patched files afterwards. For the `default` brand the correct identifier values are `mu.kasir.app` (desktop) and `mu.kasir.mobile` (tablet); a tenant gets `mu.kasir.<brandId>`.
 
-## Four traps, all measured
+## Five traps, all measured
 
 **1. ImageMagick cannot be executed from the PowerShell tool.** `magick -version` returns nothing and writes no file, while the same binary works from bash. `Get-Command magick.exe` still *resolves*, so the script's detection passes and the failure surfaces as a conversion error. Symptom: `[WARN] Failed to generate any PNG tiles for .icns`. Run rasterisation from bash instead.
 
@@ -51,6 +51,43 @@ So a stale `appName` renames the product on the next sync. Check that field befo
    Whichever you pick, `magick identify -format "%[depth]"` must report `8` for every frame before committing. The web `ui/public/favicon.ico` is a separate file and does not block the build, but keep it 8-bit too.
 
 **4. Rasterise per size; do not downscale one master.** `px = viewBox_units × density / 96`, so for the 216-unit mark `density = px × 96 / 216`. A direct render at each target size beats shrinking a large one. SVG export tools emit a small transparent margin that is part of the design — leave it.
+
+**5. Every generated icon `.png` is 16-bit under Q16 — and that panics the app at runtime (measured 2026-09-19).**
+Trap 3 covers the `.ico`; the PNGs fail the same way, at a different moment, and this is the one that
+reaches users. `magick` on this host is a **Q16-HDRI** build, so
+`assets/branding/default/desktop/*.png` were written `depth=16 type=TrueColorAlpha` (`magick identify
+-format '%z' <file>` → `16`). Tauri's icon validation assumes 8-bit RGBA and divides the decoded buffer
+by 4, so a 16-bit 32×32 PNG supplies **2048** pixels where it expects **1024**.
+
+Unlike the `.ico` case this is **not** a compile error: the crate builds, the APK installs, and the app then
+panics in tauri's setup when the window is created — `stop_unwind` converts it to `abort()`:
+
+```
+thread '<unnamed>' panicked at tauri-2.11.3\src\app.rs:1425:11:
+Failed to setup app: runtime error: invalid icon: The specified dimensions (32x32)
+don't match the number of pixels supplied by the `rgba` argument (2048).
+For those dimensions, the expected pixel count is 1024.
+F/libc: Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) ... (mu.kasir.mobile)
+```
+
+The logcat tag carrying it is `RustStdoutStderr` — MIUI's own crash dialog (`thirdappassistant`)
+says nothing useful. It fires only once a window exists, so with `"windows": []` the same bug is silent (the
+app merely paints nothing) and declaring the window is what arms it.
+
+Fix at the source, then re-sync — never in the copies:
+
+```bash
+cd assets/branding/<brand>/desktop
+for f in *.png; do magick "$f" -depth 8 -type TrueColorAlpha PNG32:"$f.tmp" && mv "$f.tmp" "$f"; done
+cd /c/dev/ozpos && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync-branding.ps1 -Brand default
+```
+
+`-type TrueColorAlpha` matters: with `-depth 8` alone ImageMagick re-encodes 32×32 as
+`PaletteAlpha`, which still decodes correctly but silently changes the colour type. Confirm from the raw IHDR
+with `od -An -tu1 -j24 -N2 <file>` — it must read `8 6` — then verify every destination is
+byte-identical to its source. `tray-icon.png` is 16-bit too and no step of the sync copies it, so convert
+it in place. Same Q16 root cause as trap 3, which is why fixing only the `.ico` (commit `32ea54472`)
+left this half live.
 
 Two smaller ones: `pathlib`'s `write_text` translates newlines to CRLF on Windows, which `.gitattributes` (`* text=auto eol=lf`) forbids, so every `git` command will warn — normalise generated SVG to LF. And a Vite `public/` directory is copied **verbatim** into the bundle, so artwork staged there ships; `ui/vite.config.ts` sets no `publicDir`.
 
