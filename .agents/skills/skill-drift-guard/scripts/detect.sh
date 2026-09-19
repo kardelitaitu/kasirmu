@@ -292,8 +292,30 @@ fi
 if should_run crates; then
   : "${Cargo_FILE:=Cargo.toml}"
   if [ -f "$Cargo_FILE" ]; then
-    : "$(grep -oE '"crates/kasirmu-[a-z-]+"' "$Cargo_FILE" 2>/dev/null | sort -u | sed 's|"crates/||;s|"||')"
-    workspace_crates="$(grep -oE '"crates/kasirmu-[a-z-]+"' "$Cargo_FILE" 2>/dev/null | sort -u | sed 's|"crates/||;s|"||')"
+    # Workspace members are NOT all under `crates/`. `apps/cloud-server` is an
+    # explicit member whose package is `kasirmu-cloud`, `apps/desktop-tauri` is
+    # `kasirmu-app`, `apps/mobile-tauri` is `kasirmu-mobile`, and `foundation`
+    # is a member too — none of those names can be derived from a `crates/`
+    # path, so the old `crates/`-only grep reported every one of them as
+    # "missing in workspace" while the skill docs citing them were correct.
+    # Resolved 2026-09-19: walk the real `members` list and read each member
+    # directory's own `name`, expanding the `*` globs.
+    workspace_crates="$(
+      sed -n '/^members = \[/,/^\]/p' "$Cargo_FILE" 2>/dev/null \
+        | grep -oE '"[^"]+"' | tr -d '"' \
+        | while read -r m; do
+            case "$m" in
+              *'*')
+                for d in "${m%\*}"*/; do
+                  [ -f "${d}Cargo.toml" ] && sed -n 's/^[[:space:]]*name[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "${d}Cargo.toml" | head -1
+                done
+                ;;
+              *)
+                [ -f "$m/Cargo.toml" ] && sed -n 's/^[[:space:]]*name[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "$m/Cargo.toml" | head -1
+                ;;
+            esac
+          done | sort -u
+    )"
     skill_crates="$(cat .agents/skills/*/SKILL.md | grep -oE 'kasirmu-[a-z-]+' | sort -u)"
 
     while read -r c; do
