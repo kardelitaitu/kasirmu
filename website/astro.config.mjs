@@ -7,18 +7,13 @@ import { unified } from '@astrojs/markdown-remark';
 import rehypeCallouts from './src/plugins/rehype-callouts.mjs';
 import rehypeMermaidClass from './src/plugins/rehype-mermaid-class.mjs';
 import rehypeMermaid from 'rehype-mermaid';
-import { createLastmodResolver } from './scripts/sitemap-lastmod.mjs';
-
-// Resolves a real content date per sitemap URL (docs frontmatter `updated`,
-// otherwise the git commit date of the page's source file). Never a build
-// timestamp — see scripts/sitemap-lastmod.mjs for why that matters.
-const lastmodFor = createLastmodResolver();
+import { SITE, createSitemapOptions } from './scripts/sitemap-options.mjs';
 
 // Static marketing site — two locales, path-prefixed (/en/, /id/), no
 // server runtime. See website-plan.md §10 for the Cloudflare Pages settings.
 // Canonical, og:url, sitemap, and hreflang all derive from `site`.
 export default defineConfig({
-  site: 'https://kasir.mu',
+  site: SITE,
   // Inline global.css into every page's <head> instead of emitting a
   // render-blocking <link rel="stylesheet">. A worker-side hack that
   // deferred the link (media="print" onload swap) caused a flash of
@@ -30,32 +25,10 @@ export default defineConfig({
   build: { inlineStylesheets: 'always' },
   integrations: [
     react(),
-    sitemap({
-      // Emit <xhtml:link rel="alternate" hreflang> pairs for both locales
-      // so search engines treat /en/… and /id/… as translations of each other.
-      i18n: {
-        defaultLocale: 'en',
-        locales: {
-          en: 'en',
-          id: 'id',
-        },
-      },
-      // Skip the auth and gated pages — no indexable content on /account
-      // (session-gated), /login (form-only), or /enterprise-trial
-      // (approval-code-gated). The docs hub (/en/docs/, /id/docs/) IS a real
-      // page now (4-card landing, src/pages/[locale]/docs/index.astro) so it
-      // stays in the sitemap; only the locale-less bare /docs/ path is noise.
-      filter: (page) => !/\/(account|login|enterprise-trial)\/$/.test(page),
-      // <lastmod> per URL, from a real content date: docs use their authored
-      // `updated` frontmatter (the same value the page renders), everything
-      // else the git commit date of its source file. A URL with no resolvable
-      // date omits the field rather than claiming "now" — Google discards a
-      // lastmod that always changes. See scripts/sitemap-lastmod.mjs.
-      serialize: (item) => {
-        const lastmod = lastmodFor(item.url);
-        return lastmod ? { ...item, lastmod } : item;
-      },
-    }),
+    // Sitemap rules (per-URL <lastmod>, x-default, the excluded root, the
+    // gated pages) live in scripts/sitemap-options.mjs so they are unit-tested
+    // rather than buried in config. See that file for the rationale.
+    sitemap(createSitemapOptions()),
   ],
   markdown: {
     // Astro 7: remark/rehype plugins now live on the unified() processor
@@ -75,7 +48,11 @@ export default defineConfig({
     plugins: [tailwindcss()],
   },
   i18n: {
-    defaultLocale: 'en',
+    // `id` is the site's default in every observable signal: `/` canonicalises
+    // to /id/, x-default points at /id/, <html lang> is "id", the root page's
+    // noscript fallback is /id/, and the marketing copy is Indonesian. This
+    // used to say `en`, contradicting all five.
+    defaultLocale: 'id',
     locales: ['en', 'id'],
     routing: {
       // Both locales are path-prefixed: /en/… and /id/…
