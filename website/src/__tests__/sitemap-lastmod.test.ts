@@ -86,7 +86,8 @@ describe('sourceFileFor', () => {
     ];
     for (const url of urls) {
       const rel = sourceFileFor(url);
-      expect(rel, `${url} should map to a source file`).toBeTruthy();
+      // `sourceFileFor` is typed `string | null`; assert non-null and narrow.
+      if (!rel) throw new Error(`${url} should map to a source file`);
       expect(existsSync(join(REPO, rel)), `${url} -> ${rel} must exist`).toBe(true);
     }
   });
