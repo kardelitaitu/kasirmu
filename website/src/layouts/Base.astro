@@ -65,6 +65,14 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
     {noindex && <meta name="robots" content="noindex" />}
     <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
     <link rel="sitemap" href="/sitemap-index.xml" />
+    <!-- llms.txt discovery. The only other pointer to it is a comment in
+         robots.txt, which no parser reads. Emitted on every page rather than
+         the homepage alone because llms.txt is site-scoped — there is no
+         per-page variant to point at, so the link is a constant and cannot be
+         forgotten on a new page. It is a hint for LLM/agent consumers, not a
+         ranking signal. See docs/records/seo-robots-llms-review-19-09-26.md
+         §2.2 L7. -->
+    <link rel="describedby" href="/llms.txt" type="text/plain" />
     <!-- Preconnect: Cloudflare Web Analytics beacon (auto-injected by the edge).
          Establishes TLS + DNS early so the RUM request at ~300ms doesn't
          block the critical path while waiting for a cold connection. -->
