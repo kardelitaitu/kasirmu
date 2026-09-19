@@ -738,7 +738,16 @@ if should_run git-policy; then
         sub(/^[ \t>-]+/, "", l)
         is_cmd = (fence || l ~ /^git[ \t]/)
         if (!is_cmd) next
-        if (l ~ /^git[ \t]+add[ \t]/) print NR": forbidden \`git add\` (use a pathspec commit)"
+        if (l ~ /^git[ \t]+add[ \t]/) {
+          # AGENTS.md §3 sanctions exactly ONE `git add` form: the new-file
+          # chain, `git add -- <new path> && git commit -m "…" -- <paths>`,
+          # which exists because a pathspec commit cannot add an untracked
+          # file. Allowed narrowly 2026-09-19 — the `add` must name a single
+          # `--`-delimited path AND be chained straight into a `git commit`.
+          # Every other form (bare, -A, ., a directory) stays forbidden.
+          if (l !~ /^git[ \t]+add[ \t]+--[ \t]+[^&]+&&[ \t]*git[ \t]+commit[ \t]/)
+            print NR": forbidden \`git add\` (use a pathspec commit)"
+        }
         if (l ~ /^git[ \t]+commit[ \t]+(-a|--amend)/) print NR": forbidden \`git commit -a\` / \`--amend\`"
         if (l ~ /^git[ \t]+stash/) print NR": forbidden \`git stash\`"
         if (l ~ /^git[ \t]+stage/) print NR": forbidden \`git stage\`"
