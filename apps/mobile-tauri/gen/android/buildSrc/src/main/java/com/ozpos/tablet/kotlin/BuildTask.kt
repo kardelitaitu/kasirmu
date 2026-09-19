@@ -37,7 +37,17 @@ open class BuildTask : DefaultTask() {
                         lastException = fallbackException
                     }
                 }
-                throw lastException
+                // Report the FIRST failure, not the last. The initial `cargo` attempt is
+                // the one that carries the real cause; the trailing cargo.cmd/cargo.bat
+                // probes can only ever fail with "A problem occurred starting process",
+                // and rethrowing the last one reported a missing `cargo.bat` that had
+                // nothing to do with the actual error — which is how a failed
+                // `:app:rustBuildArm64Debug` came to look like a missing batch file and
+                // cost a full diagnosis cycle (see apps/mobile-tauri/AGENTS.md).
+                if (lastException !== e) {
+                    e.addSuppressed(lastException)
+                }
+                throw e
             } else {
                 throw e;
             }
