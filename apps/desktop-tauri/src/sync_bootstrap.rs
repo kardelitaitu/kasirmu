@@ -34,8 +34,11 @@ use kasirmu_core::sync_client;
 use rusqlite::Connection;
 use tokio::sync::Mutex;
 
-/// Default cloud sync server — the unified auth+sync service at the custom domain.
-const LOCAL_SYNC_URL: &str = "https://license.ozpos.my.id";
+/// Default cloud sync server — the unified auth+sync service at the custom
+/// domain. Sourced from the single compiled origin list (ADR #55); this dev
+/// bootstrap points at the second name for the same deployment, matching the
+/// behaviour it has always had.
+const LOCAL_SYNC_URL: &str = kasirmu_core::server_origin::FALLBACK_SERVER_ORIGIN;
 
 /// How many probe + token attempts before giving up. The docker backend
 /// can take a few seconds to answer on a cold start, so a bounded retry

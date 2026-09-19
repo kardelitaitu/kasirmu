@@ -502,7 +502,7 @@ describe('SettingsPage topbar save flow (kept)', () => {
     const configured = { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: false };
     expect(withSyncDefaults(configured)).toBe(configured);
     expect(withSyncDefaults({ serverUrl: '   ', hasApiKey: false, enabled: false })).toEqual({
-      serverUrl: 'https://license.ozpos.my.id', hasApiKey: false, enabled: true,
+      serverUrl: 'https://license.kasir.mu', hasApiKey: false, enabled: true,
     });
   });
 

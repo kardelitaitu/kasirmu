@@ -635,7 +635,7 @@ describe('CloudSyncSettings', () => {
     expect(urlInput).toBeInTheDocument();
     expect(urlInput.type).toBe('url');
     // An unconfigured sync now gets the cloud-server draft URL.
-    expect(urlInput).toHaveValue('https://license.ozpos.my.id');
+    expect(urlInput).toHaveValue('https://license.kasir.mu');
   });
 
   it('updates server URL input value when typing', async () => {

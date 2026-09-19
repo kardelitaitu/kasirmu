@@ -170,7 +170,7 @@ pub fn update_pg_sync_settings_data(
 // indicator can recover while auto-provisioning is still writing the
 // persisted settings row. Points at the unified cloud server.
 #[cfg(debug_assertions)]
-const LOCAL_DEV_SYNC_URL: &str = "https://license.kasir.mu";
+const LOCAL_DEV_SYNC_URL: &str = kasirmu_core::server_origin::MAIN_SERVER_ORIGIN;
 
 /// Resolve the URL used by the status-bar health probe.
 ///

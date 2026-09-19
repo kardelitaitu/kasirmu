@@ -56,7 +56,10 @@ export interface SettingsState {
   appVersion: string;
 }
 
-const DEFAULT_LOCAL_SYNC_SERVER_URL = 'https://license.ozpos.my.id';
+// Mirrors kasirmu_core::server_origin::MAIN_SERVER_ORIGIN: the settings draft
+// proposes the canonical origin, never the fallback name. Locked by
+// scripts/check-server-origins.mjs (ADR #55).
+const DEFAULT_LOCAL_SYNC_SERVER_URL = 'https://license.kasir.mu';
 
 /**
  * Give an unconfigured settings page a usable cloud-sync draft.
