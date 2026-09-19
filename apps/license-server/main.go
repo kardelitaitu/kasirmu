@@ -260,6 +260,9 @@ func main() {
 		// credential out of URLs (which would otherwise leak it to webserver
 		// access logs, CDN logs, browser history, and Referer headers).
 		se.Router.POST("/api/v1/license/status", handleStatus(app))
+		// Origin attestation (ADR #55): unauthenticated by design -- the client has
+		// no credential until it has attested the host it is about to use.
+		se.Router.POST("/api/v1/license/attest", handleAttest(app))
 		// C3.3: Pause/resume subscription endpoints
 		se.Router.POST("/api/v1/license/pause", handlePause(app))
 		se.Router.POST("/api/v1/license/resume", handleResume(app))
@@ -1093,6 +1096,19 @@ type SubscriptionPayload struct {
 	Features map[string]bool `json:"features,omitempty"`
 }
 
+// signDetached signs arbitrary bytes with the license RSA-2048 key using
+// PKCS1v15/SHA-256 and returns the base64 signature. Origin attestation
+// (ADR #55) needs the same primitive the subscription payloads use, and one
+// implementation of a signing primitive is the point.
+func signDetached(payload []byte) (string, error) {
+	hash := sha256.Sum256(payload)
+	sig, err := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, hash[:])
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(sig), nil
+}
+
 // signSubscription marshals the payload to JSON, SHA-256 hashes it,
 // and signs it with the RSA-2048 private key using PKCS1v15.
 func signSubscription(sub SubscriptionPayload) (payload string, signature string, err error) {
@@ -1105,10 +1121,9 @@ func signSubscription(sub SubscriptionPayload) (payload string, signature string
 	if err != nil {
 		return "", "", err
 	}
-	hash := sha256.Sum256(payloadBytes)
-	sig, err := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, hash[:])
+	signature, err = signDetached(payloadBytes)
 	if err != nil {
 		return "", "", err
 	}
-	return string(payloadBytes), base64.StdEncoding.EncodeToString(sig), nil
+	return string(payloadBytes), signature, nil
 }
