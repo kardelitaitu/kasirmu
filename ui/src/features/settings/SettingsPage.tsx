@@ -7,7 +7,7 @@ import {
 } from '@/api/settings';
 import { setDecimalSep } from '@/utils/storage';
 import { useAuth } from '@/contexts/AuthContext';
-import { roleAtLeast } from '@/utils/role';
+import { roleAtLeast, normalizeRole } from '@/utils/role';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { SettingsProvider, useSettings } from '@/contexts/SettingsContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
@@ -136,8 +136,12 @@ function SettingsPageContent() {
   // ── Role gate: Settings is admin/owner-only ──────────────────
   // roleAtLeast fails closed (missing/blank/retired/unknown roles never
   // clear the floor), so managers, staff, auditors — and anyone with an
-  // unrecognized role — get the locked card instead of the shell.
-  const adminUp = roleAtLeast(session?.role_name ?? null, 'admin');
+  // unrecognized role — get the locked card instead of the shell. The gate
+  // normalizes first: the session carries the backend's DISPLAY role name
+  // (capitalized, e.g. 'Owner', 'Manager' — kasirmu-bridge/src/auth.rs:485),
+  // while roleAtLeast's table is keyed lowercase, so an unnormalized 'Owner'
+  // scores 0 and locks a real owner out (reproduced in the browser).
+  const adminUp = roleAtLeast(normalizeRole(session?.role_name ?? null), 'admin');
   const { sessionToken } = useWorkspace();
 
   const [displayCardSize, setDisplayCardSize] = useState(0);
