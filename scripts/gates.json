@@ -583,6 +583,13 @@
       "runners": { "check.sh": ["exhaustive-deps ratchet"] },
       "ci": { "workflow": "dev-ci.yml", "job": "ui-test" },
       "_note": "Caps react-hooks/exhaustive-deps warnings at the value in scripts/exhaustive-deps-baseline.json (7, down from 12). `npm run lint` is `eslint .` with no --max-warnings 0, so it exits 0 while reporting 58 warnings, and this rule is the only automated check for a stale closure. Item 69 found five callbacks listing `userId` -- a prop no component body ever read, kept 'used' only by its presence in the deps array -- while two of those same arrays omitted `promotionIds`, which IS sent in the complete_sale payload. Neither was gated by anything. The ratchet does not clear the debt, it freezes the improvement. Runs in ui-test rather than static-gates because it needs ui/node_modules, which only ui-test and i18n install. Like the FTL orphan gate its CI value depends on the job actually running, and dev-ci.yml has no push trigger, so on a long-lived release branch check.sh remains the only thing enforcing it."
+    },
+    {
+      "id": "server-origins",
+      "label": "Server origin consistency",
+      "status": "required",
+      "runners": { "check.sh": ["server origins"] },
+      "_note": "Added in 0.0.39. Reads the compiled origin list in crates/kasirmu-core/src/server_origin.rs (ADR #55) and fails when a Tauri CSP, the Worker CSP, the Worker LICENSE_API_URL fallback, the settings draft, or either Rust dev fallback disagrees with it. The drift it guards was live: the compiled auth URL said license.kasir.mu while both Tauri CSPs, the desktop bootstrap, the settings draft and the runbook all said license.ozpos.my.id, so a host change silently needed a release and nothing detected the mismatch. Local-only (no CI runner): needs node and nothing else."
     }
   ]
 }

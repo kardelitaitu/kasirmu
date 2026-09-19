@@ -242,9 +242,9 @@ if (!fs.existsSync(VITEST_BIN)) {
     // notes.md item 39's published number, executed rather than remembered.
     const reach = run(['node', '-e', "const g=require('./scripts/gates.json').gates;const r=g.filter(x=>x.status==='required'&&!x.ci);console.log(r.length+'|'+r.map(x=>x.id).join(','))"]);
     const [rc, ids] = (reach.out || '').trim().split('|');
-    check('notes.md item 39: the count of required rows with no ci block', reach.status === 0 && rc === '6',
+    check('notes.md item 39: the count of required rows with no ci block', reach.status === 0 && rc === '8',
       `${rc} row(s): ${ids}`,
-      '6 -- if this drifts a row gained or lost CI coverage: repair item 39, and note that bundle-budget left this set in d3ae1e201');
+      '8 -- if this drifts a row gained or lost CI coverage: repair item 39 and this literal together. 6 -> 8 on 2026-09-19: root-policy had already joined without a re-count (the seventh), and the ADR #55 lane added server-origins, which is local-only by design. bundle-budget left this set in d3ae1e201.');
 
     // Informational, not a verdict: in a shared checkout the tree is dirty more often
     // than it is clean, and a tool that reports that as drift every day is a tool whose

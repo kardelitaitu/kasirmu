@@ -96,6 +96,7 @@ step "exhaustive-deps ratchet" "python3 scripts/verify-exhaustive-deps.py" pytho
 # Existing transitional debt is reported but only new, expired, or stale
 # baseline entries fail. This is static-only and has no runtime impact.
 step "architecture boundaries" "python3 scripts/verify-architecture-boundaries.py --strict" python3 scripts/verify-architecture-boundaries.py --strict
+step "server origins" "node scripts/check-server-origins.mjs" node scripts/check-server-origins.mjs
 
 # ── Money formatting gate (IDR/JPY/KWD exp-2 regression guard) ───────────
 # Fails when production .rs code hardcodes `/ 100` division or `{}.{:02}`

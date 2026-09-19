@@ -179,7 +179,7 @@ function withStrictCSP(resp: Response): Response {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data:",
     "font-src 'self' data: https://fonts.gstatic.com",
-    "connect-src 'self' https://kasir.mu https://*.code.run https://*.kasir.mu https://open.er-api.com",
+    "connect-src 'self' https://kasir.mu https://*.code.run https://*.kasir.mu https://license.ozpos.my.id https://open.er-api.com",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
