@@ -3,7 +3,7 @@ name: android-apk-build
 description: Build, sign and install the kasir.mu tablet app (apps/mobile-tauri, package mu.kasir.mobile) on a real Android device, and connect to it over wireless ADB. Use when running cargo tauri android build or android dev; when the build dies with "The PATHEXT environment variable isn't set"; when beforeBuildCommand fails with "Could not read package.json"; when the Vite mobile build reports it cannot load a .ftl file; when the produced APK is unsigned and refuses to install; when adb install returns INSTALL_FAILED_USER_RESTRICTED; or when adb devices is empty while adb mdns services still advertises the device.
 ---
 
-<!-- Audit stamp: 2026-09-19 · Budak-Korporat · status: ACCURATE · Derived from a full build/install/debug cycle on 2026-09-19 against the Redmi 23073RPBFG. Verified this pass: a signed release APK installed over wireless ADB (adb install -r → Success, lastUpdateTime advanced) and launched to mu.kasir.mobile/.MainActivity with no FATAL in logcat; aapt2 dump badging reports package mu.kasir.mobile and application-label Kasir.mu; the mobile entry is index.mobile.html and the vite.mobile.config.ts alias plugin is present; the SDK/NDK/build-tools/JDK paths below resolved on this host; both wireless-ADB failure modes were reproduced and the re-pairing recovery confirmed. The MIUI install-gate claim was corrected this pass — it is not absolute. · Pass 2 (2026-09-19, Android build-repair lane): the JBR/JDK-25 trap in §1 was already correct and was re-confirmed end to end — the frozen failing command was reproduced (`> 25.0.3` from `JavaVersion.parse` while configuring `buildSrc`) and then repaired, and the durable `org.gradle.java.home` pin — which this skill did not previously mention — was added and verified against a deliberately hostile `JAVA_HOME`. New section added for the `:app:rustBuildArm64Debug` / `command 'cargo.bat'` decoy: its cause in `BuildTask.kt` rethrowing only the last fallback exception, and the verified stale-daemon remedy. A full debug APK built twice consecutively after the repair. Versions re-measured this pass: JDK 21.0.12.1+1, Android Studio JBR 25.0.3, NDK 30.0.14904198, build-tools 37.0.0, platform android-36, wrapper Gradle 8.14.3. -->
+<!-- Audit stamp: 2026-09-19 · Budak-Korporat · status: ACCURATE · Derived from a full build/install/debug cycle on 2026-09-19 against the Redmi 23073RPBFG. Verified this pass: a signed release APK installed over wireless ADB (adb install -r → Success, lastUpdateTime advanced) and launched to mu.kasir.mobile/.MainActivity with no FATAL in logcat; aapt2 dump badging reports package mu.kasir.mobile and application-label Kasir.mu; the mobile entry is index.mobile.html and the vite.mobile.config.ts alias plugin is present; the SDK/NDK/build-tools/JDK paths below resolved on this host; both wireless-ADB failure modes were reproduced and the re-pairing recovery confirmed. The MIUI install-gate claim was corrected this pass — it is not absolute. · Pass 2 (2026-09-19, Android build-repair lane): the JBR/JDK-25 trap in §1 was already correct and was re-confirmed end to end — the frozen failing command was reproduced (`> 25.0.3` from `JavaVersion.parse` while configuring `buildSrc`) and then repaired, and the durable `org.gradle.java.home` pin — which this skill did not previously mention — was added and verified against a deliberately hostile `JAVA_HOME`. New section added for the `:app:rustBuildArm64Debug` / `command 'cargo.bat'` decoy: its cause in `BuildTask.kt` rethrowing only the last fallback exception, and the verified stale-daemon remedy. A full debug APK built twice consecutively after the repair. Versions re-measured this pass: JDK 21.0.12.1+1, Android Studio JBR 25.0.3, NDK 30.0.14904198, build-tools 37.0.0, platform android-36, wrapper Gradle 8.14.3. · Pass 3 (2026-09-19, same lane, end-to-end `dev`): a full `cargo tauri android dev` against the Redmi 23073RPBFG was driven to completion — device auto-detected (aarch64), Rust compiled, Gradle assembled `apk/arm64/debug/app-arm64-debug.apk` (420.7 MB), and the app then installed, launched, became the focused activity and rendered the real UI (a 2 063 599-byte screenshot with 9 228 distinct colours, brand green ≈#495A30) with no FATAL. Two new traps recorded from that run: a hand-started `npm run dev:mobile` binds loopback only, because `ui/vite.mobile.config.ts:107` is `host: host || false` and only `cargo tauri android dev` sets `TAURI_DEV_HOST` (this is now Cause 3 of the blank-screen section); and the MIUI install gate is flaky rather than absolute (§4). Also recorded: `screencap` returns pure black while `Display State=OFF`, which coexists with `mWakefulness=Awake` and is easily mistaken for an app failure. The two earlier passes' claims were re-confirmed, none contradicted. -->
 
 # Android build, sign, install and wireless ADB
 
@@ -61,7 +61,7 @@ Verified 2026-09-19: with `JAVA_HOME` deliberately left on the JBR 25 path, `gra
 `BUILD SUCCESSFUL`. Do **not** put this line in the tracked `gen/android/gradle.properties` — it
 holds an absolute path and would break every other machine.
 
-`java` on `PATH` is Oracle **JDK 8** on this host (…Common Files\Oracle\Java\java8path`),`
+`java` on `PATH` is Oracle **JDK 8** on this host (`…Common Files\Oracle\Java\java8path`),
 so `PATH` tells you nothing about the JVM Gradle actually uses.
 
 `cargo tauri info` prints **no Android environment section** even when SDK and NDK are correct — its
@@ -82,9 +82,9 @@ absence is not evidence of a broken setup.
   after P9a). Failure: `[vite:asset] Could not load …shared.ftl?raw`. `ui/vite.config.ts` uses the regex
   form — keep both in step.
 
-### A blank screen means `/` had nothing to serve — the mobile entry is `index.mobile.html`
+### A blank screen: two unrelated causes, rule them out in order
 
-Tauri resolves the webview root to `index.html`, hardcoded and reused as the 404 fallback. The mobile
+**Cause 1 — the webview root had nothing to serve.** Tauri resolves the webview root to `index.html`, hardcoded and reused as the 404 fallback. The mobile
 build's entry is `index.mobile.html`, and the mobile build script emits only that — nothing emits
 `index.html`. The desktop build is unaffected because its entry already is `index.html`.
 `scripts/check-bundle.mjs` accepts either basename and prefers `index.html`, so an alias does not
@@ -92,6 +92,48 @@ disturb the budget gate. `ui/vite.mobile.config.ts` carries a plugin that serves
 and emits an `index.html` alias at build; **`enforce: 'post'` is required**, because the HTML asset is
 emitted from `vite:build-html`'s own `generateBundle`, which runs after normal user plugins — without
 it the alias is silently never written and the build still exits 0.
+
+**Cause 2 — no window was declared, so no webview was ever created (measured 2026-09-19).** A blank
+*black* screen with the status bar painted, an app process that is alive and emits no chromium lines,
+and an activity whose content view is **empty** (`uiautomator dump` shows no `WebView` node;
+`dumpsys activity top` shows `android:id/content` with no child) means the webview was never created —
+not that one failed to load. `tauri.conf.json` `app.windows` is the list of windows built **at
+startup**: the `tauri` crate's `App::setup` iterates it with no platform gate and no mobile fallback,
+and the Android `wryCreate` JNI entry only installs a main-pipe listener. So `"windows": []` — which
+looks plausible for mobile — yields zero webviews on Android and the window stays black. The tell is
+`capabilities/*.json`: capabilities scope permissions by window label (`"windows": ["main"]`), so a
+capability file naming a window the config never declares is the inconsistency. The entry needs
+`"useHttpsScheme": true` for desktop parity, and **that is load-bearing, not cosmetic**: wry's
+`is_work_around_uri` matches the scheme strictly, while the CSP carries `upgrade-insecure-requests`, so
+an `http`-origin document would rewrite every asset URL to `https://tauri.localhost/…` that an
+`http`-configured interceptor never matches — the assets would not load. The CSP already naming
+`https://asset.localhost` is the giveaway that `https` was intended.
+
+**Cause 3 — the dev server bound to loopback, so the tablet cannot reach it (measured 2026-09-19).**
+A `dev` build loads `build.devUrl`, whose host the CLI rewrites to this machine's LAN address
+(`http://192.168.0.168:1422`). But `ui/vite.mobile.config.ts:107` is `host: host || false`, where
+`host = process.env.TAURI_DEV_HOST` — so **without `TAURI_DEV_HOST` Vite binds `localhost`, which on Windows is
+`::1` alone**, and nothing is reachable from the tablet. `cargo tauri android dev` sets
+`TAURI_DEV_HOST` itself (it is persisted nowhere on this host), so the CLI's own frontend server is fine;
+one you start by hand with `npm run dev:mobile` is not.
+
+Diagnose from the tablet, not the PC:
+
+```bash
+adb shell 'curl -s -m 8 -o /dev/null -w %{http_code} http://192.168.0.168:1422/'
+```
+
+`200` means it can reach the server; `000` means it cannot. Confirm which interface is bound with
+`Get-NetTCPConnection -LocalPort 1422 -State Listen`: a `::1`-only row is the broken case, a
+`192.168.0.168` row is the good one. `strictPort: true` means a stray server on the port makes the
+CLI's own Vite **fail** rather than fall back to another port, so stop any hand-started server first. Fix:
+`TAURI_DEV_HOST=192.168.0.168 npm run dev:mobile`, or simply let `cargo tauri android dev` own the server.
+
+**A black screenshot usually means the panel is off, not that the app is broken.** `screencap` returns a
+pure-black frame whenever the display is off, so read `dumpsys display` (`Display State=ON/OFF`) and
+`dumpsys window policy` (`showing=`, the keyguard) before drawing any conclusion — and note that
+`mWakefulness=Awake` can coexist with `Display State=OFF`. A locked device cannot be unlocked from
+adb when the user has a credential set; ask for it rather than interpreting black as a failure.
 
 **Changing the frontend does not re-embed it.** Neither `tauri-build` nor `tauri-codegen` emits
 `cargo:rerun-if-changed` for `frontendDist`, so Cargo sees no reason to recompile and the APK keeps the
@@ -219,7 +261,19 @@ unknown-sources. The phone-side fix is Developer options → "Install via USB" w
 SUCCEEDED over wireless** (`Performing Incremental Install / Performing Streamed Install / Success`,
 `lastUpdateTime` advanced, no gate). So the gate depends on the phone-side state, which changes between
 sessions — **attempt the install before assuming it will be blocked.** The practical artifact is the
-~28 MB `app-universal-release-signed.apk`; the ~857 MB debug APK transfers slowly over wireless.
+~28 MB `app-universal-release-signed.apk`; the debug APK is far larger (the `arm64` flavor measured
+420.7 MB, the `universal` one 857.9 MB) and transfers slowly over wireless.
+
+**Re-measured 2026-09-19 (second pass), on the debug APK a `dev` run produces:** the first
+`adb install -r …/apk/arm64/debug/app-arm64-debug.apk` failed with `INSTALL_FAILED_USER_RESTRICTED`,
+and the very next attempt — `adb install -r --user 0` — returned `Success`; a plain
+`adb install -r` and `-r -t --user 0` then **also** succeeded. The gate is therefore flaky rather than
+absolute: **retry, and try `--user 0`, before concluding it is phone-side.**
+
+That matters for `android dev` specifically, because the CLI installs with a bare `adb install` and
+exposes **no flag to add `--user 0`** (`cargo tauri android dev --help` lists no install options).
+When the gate bites, the run still reaches `Performing Streamed Install` and then dies: the build and the
+APK are fine and only the final push failed, so install by hand and launch, or fix the gate phone-side.
 
 Do **not** try to launch an APK on this device with `am start ACTION_VIEW` — `cmd package
 resolve-activity` for `application/vnd.android.package-archive` returns `cn.wps.moffice_eng` (WPS
