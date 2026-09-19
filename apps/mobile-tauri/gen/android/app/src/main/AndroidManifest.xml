@@ -41,34 +41,72 @@
          today; see the note at the bottom. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- ── Bluetooth: receipt printer, and the cash drawer through it ───────
+         Split by API level, because the capability moved. On API 31+
+         (Android 12+) BLUETOOTH_CONNECT and BLUETOOTH_SCAN are DANGEROUS
+         runtime permissions; on API 26-30 the same capability is the
+         install-time BLUETOOTH / BLUETOOTH_ADMIN pair, which is why those
+         carry maxSdkVersion=30 rather than being dropped — minSdk is 26.
+
+         neverForLocation: scan results are used to find a known printer,
+         never to infer where the tablet is. That exemption is what keeps
+         ACCESS_FINE_LOCATION out of this file. Drop the flag and Android
+         will demand location permission for scanning.
+
+         The drawer needs no transport of its own: HAL's PrinterKickCashDrawer
+         fires the RJ12 kick through the printer's ESC/POS port, so one
+         Bluetooth link drives both. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+
     <!--
       Declared above but NOT yet functional, and deliberately absent where a
-      line here would be noise. Audited 2026-09-19 against the sources, and the
-      merged manifest is checked after every build rather than assumed.
+      line here would be noise. Audited and re-audited 2026-09-19 against the
+      sources; the merged manifest is checked after every build, not assumed.
 
       Needs CODE, not just a line here:
-        CAMERA, POST_NOTIFICATIONS  both are dangerous; the app must request
-                                    them at runtime or they stay ungranted.
-        WAKE_LOCK                   no wake lock is acquired anywhere yet.
-        notifications               no channel and no NotificationManager call.
+        CAMERA, POST_NOTIFICATIONS,  all dangerous on the API levels above —
+        BLUETOOTH_CONNECT,           the app must request them at runtime or
+        BLUETOOTH_SCAN               they stay ungranted.
+        Bluetooth transport          see the long note below.
+        WAKE_LOCK                    no wake lock is acquired anywhere yet.
+        notifications                no channel, no NotificationManager call.
 
       Not needed, and absent on purpose:
-        BLUETOOTH_CONNECT / SCAN    no Bluetooth API is called anywhere. The
-                                    bt_* HAL drivers are type aliases for the
-                                    serial ones, and Android cannot open an SPP
-                                    port through the serialport crate anyway.
-        CHANGE_WIFI_MULTICAST_STATE the lan-mdns feature is not enabled for this
-                                    crate, so mdns-sd is absent from the graph.
-        RECORD_AUDIO                the app only plays sound, and Android has no
-                                    permission for audio OUTPUT. What actually
-                                    gates playback in a WebView is
-                                    setMediaPlaybackRequiresUserGesture; the
-                                    interactions are user-initiated, so they are
-                                    already allowed.
+        CHANGE_WIFI_MULTICAST_STATE  mDNS is out of scope by decision: the
+                                     lan-mdns feature is not enabled for this
+                                     crate, so mdns-sd is absent from the graph.
+        android.hardware.usb.host    USB is out of scope by decision. The
+                                     usb_printer / usb_scanner drivers exist
+                                     behind rusb, but Android needs the Java
+                                     UsbManager request-permission flow on top
+                                     of the feature declaration, and the tablet
+                                     is going Bluetooth instead.
+        RECORD_AUDIO                 the app only plays sound, and Android has
+                                     no permission for audio OUTPUT. What gates
+                                     playback in a WebView is
+                                     setMediaPlaybackRequiresUserGesture; the
+                                     interactions are user-initiated, so they
+                                     are already allowed.
+        ACCESS_FINE_LOCATION         not required, because BLUETOOTH_SCAN is
+                                     declared neverForLocation above.
 
-      USB hardware (usb_printer / usb_scanner via rusb) will need the
-      android.hardware.usb.host feature declared, plus the Java UsbManager
-      request-permission flow; that is a feature project, not a manifest line.
+      ⚠ BLUETOOTH IS NOT JUST A PERMISSION. Every bt_* driver in
+      crates/kasirmu-hal is a serial-port driver: bt_printer and bt_scanner
+      re-export SerialReceiptPrinter / SerialBarcodeScanner, and they reach
+      the device through the serialport crate. That works on Windows (a
+      paired SPP printer becomes COM7) and on Linux (/dev/rfcomm0), which is
+      exactly the list the driver docs give — Android is absent from it,
+      because Android exposes no /dev/rfcomm* to apps and pairs through its
+      own Java API instead. Driving the printer and drawer over Bluetooth on
+      this tablet therefore needs a real Android transport: BluetoothAdapter
+      plus createRfcommSocketToServiceRecord over JNI, or a Tauri plugin
+      wrapping it, wired in as the Android backend behind the existing
+      ReceiptPrinter / CashDrawer traits. Declaring these permissions is the
+      prerequisite, not the work.
     -->
 
     <!-- AndroidTV support -->
