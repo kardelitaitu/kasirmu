@@ -25,11 +25,12 @@
 export const LLMS_LOCALE = 'id';
 
 /**
- * Pages that exist on disk but must not be advertised. Kept identical to the
- * sitemap's own exclusion list in `astro.config.mjs`, so the two surfaces
- * describe the same public site.
+ * Pages that exist on disk but must not be advertised — re-exported from
+ * `src/lib/site.ts`, the single owner of that list (the sitemap filter and
+ * the pages' own `noindex` derive from it too). Kept as a re-export rather
+ * than a renamed import so existing imports of this module keep working.
  */
-export const NON_PUBLIC_PAGES = ['account', 'login', 'enterprise-trial'];
+export { NON_PUBLIC_PAGES } from './site';
 
 /** Ordered slugs. `''` is the locale home (`src/pages/[locale]/index.astro`). */
 export const LLMS_PAGE_SLUGS = [
@@ -49,7 +50,6 @@ export const LLMS_PAGE_SLUGS = [
   'kasir-murah',
   'kasir-qris',
   'aplikasi-kasir-android',
-  'signup',
   'legal/privacy',
   'legal/terms',
 ];
@@ -67,7 +67,6 @@ export const PAGE_LABELS: Record<string, string> = {
   support: 'Dukungan',
   cara: 'Cara Pakai',
   perbandingan: 'Perbandingan',
-  signup: 'Daftar',
   'legal/privacy': 'Kebijakan Privasi',
   'legal/terms': 'Syarat & Ketentuan',
 };

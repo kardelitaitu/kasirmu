@@ -1,0 +1,133 @@
+---
+/**
+ * The single owner of the document `<head>` for content pages.
+ *
+ * Base.astro and DocsLayout.astro each used to hand-roll this same tag set,
+ * and the copies had already drifted twice before unification: the docs copy
+ * was missing `rel="describedby"` entirely, and its theme script still read
+ * only the legacy `oz_theme` localStorage key after Base migrated to
+ * `kasirmu_theme`. Every new tag therefore had to be remembered in two files
+ * (the audit's F8 finding was literally "the second copy is missing a tag").
+ * Now a tag lands here once and both layouts get it.
+ *
+ * What is NOT here: structured data. JSON-LD is a per-page-type concern
+ * (marketing pages describe the SoftwareApplication/Organization/WebSite,
+ * docs pages describe a BreadcrumbList/Article), so each layout passes its
+ * own blocks through the default slot, rendered just before `<title>`.
+ * The locale-detect root stub (src/pages/index.astro) also stays separate on
+ * purpose: it is a redirect document with a deliberately minimal head, not a
+ * content page, and inflating it would add bytes to the most-visited URL for
+ * zero scraper value.
+ */
+import { ClientRouter } from 'astro:transitions';
+import { getAbsoluteLocaleUrl } from 'astro:i18n';
+import { locales } from '../i18n';
+
+interface Props {
+  /** Page title: <title> (unless titleTag overrides), og:title, twitter:title and both image alts. */
+  title: string;
+  /**
+   * Override only the <title> element — used by DocsLayout, whose document
+   * title appends the docs section name while its og/twitter titles stay the
+   * bare page title.
+   */
+  titleTag?: string;
+  description: string;
+  noindex?: boolean;
+  locale: string;
+  /**
+   * Emit /__oz/runtime-config.js? Only pages that hydrate islands read it,
+   * so docs pages (no islands) opt out to skip the request.
+   */
+  runtimeConfig?: boolean;
+}
+
+const { title, titleTag = title, description, noindex, locale, runtimeConfig = true } = Astro.props;
+const ogLocale = locale === 'id' ? 'id_ID' : 'en_US';
+const ogAltLocale = locale === 'id' ? 'en_US' : 'id_ID';
+// hreflang alternates for the same page in the other locale. Reuse the
+// locale-stripping logic from LocaleSwitcher so /en/docs/x → /id/docs/x.
+// The 404 page is served at /404 (no locale prefix) — fall back to home
+// like LocaleSwitcher so hreflang never points at /en/404/.
+const rawPath = Astro.url.pathname.replace(/^\/(?:en|id)(?:\/|$)/, '');
+const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : rawPath;
+---
+
+<ClientRouter />
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+{runtimeConfig && (
+  <>{/* Runtime backend URL: served by the Worker from [vars] so a backend
+       move needs no rebuild (see worker.ts); absent locally → falls back
+       to the build-time PUBLIC_LICENSE_API_URL. Deferred: it only feeds
+       hydration-time config reads, so it must not sit in the critical
+       path ahead of the LCP resources. Emitted only on island pages —
+       docs pages opt out to skip the request. */}
+  <script is:inline src="/__oz/runtime-config.js" defer></script>
+  </>
+)}
+<!-- Inter + JetBrains Mono are self-hosted (fontsource, bundled into
+     global.css as the 'Inter Variable' / 'JetBrains Mono Variable'
+     families) — no third-party font origin, no blocking font CSS. -->
+<!-- Apply the stored theme before first paint and on SPA swaps. -->
+<script is:inline>
+  (() => {
+    const applyTheme = () => {
+      // Read new key first, fall back to legacy key for migration
+      const t = localStorage.getItem('kasirmu_theme') ?? localStorage.getItem('oz_theme');
+      // Migrate legacy key if present
+      if (localStorage.getItem('oz_theme') !== null) {
+        localStorage.setItem('kasirmu_theme', localStorage.getItem('oz_theme'));
+        localStorage.removeItem('oz_theme');
+      }
+      document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light';
+    };
+    applyTheme();
+    document.addEventListener('astro:after-swap', applyTheme);
+  })();
+</script>
+<meta name="description" content={description} />
+{noindex && <meta name="robots" content="noindex" />}
+<link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
+<link rel="sitemap" href="/sitemap-index.xml" />
+<!-- llms.txt discovery. The only other pointer to it is a comment in
+     robots.txt, which no parser reads. Emitted on every page rather than
+     the homepage alone because llms.txt is site-scoped — there is no
+     per-page variant to point at, so the link is a constant and cannot be
+     forgotten on a new page. It is a hint for LLM/agent consumers, not a
+     ranking signal. See docs/records/seo-robots-llms-review-19-09-26.md
+     §2.2 L7. -->
+<link rel="describedby" href="/llms.txt" type="text/plain" />
+<!-- Preconnect: Cloudflare Web Analytics beacon (auto-injected by the edge).
+     Establishes TLS + DNS early so the RUM request at ~300ms doesn't
+     block the critical path while waiting for a cold connection. -->
+<link rel="preconnect" href="https://static.cloudflareinsights.com" crossorigin />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+{locales.map((code) => (
+  <link rel="alternate" hreflang={code} href={getAbsoluteLocaleUrl(code, path)} />
+))}
+<link rel="alternate" hreflang="x-default" href={getAbsoluteLocaleUrl('id', path)} />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="kasir.mu" />
+<meta property="og:locale" content={ogLocale} />
+<meta property="og:locale:alternate" content={ogAltLocale} />
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:url" content={new URL(Astro.url.pathname, Astro.site)} />
+<!-- PNG (not SVG): social scrapers (Facebook/Twitter) don't rasterize SVG. The source is public/og-image.svg — regenerate with: magick public/og-image.svg public/og-image.png -->
+<meta property="og:image" content={new URL('/og-image.png', Astro.site)} />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<!-- og:image:alt / twitter:image:alt describe the image for screen-reader
+     and low-vision users of social cards, and are used by scrapers when
+     the image itself cannot be fetched. Every page shares one brand card,
+     so the title is the accurate description. -->
+<meta property="og:image:alt" content={title} />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content={title} />
+<meta name="twitter:description" content={description} />
+<meta name="twitter:image" content={new URL('/og-image.png', Astro.site)} />
+<meta name="twitter:image:alt" content={title} />
+<slot />
+<title>{titleTag}</title>

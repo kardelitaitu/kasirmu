@@ -19,9 +19,11 @@
 //      hreflang="en" twice, the first pointing at the root itself. Duplicate
 //      hreflang values in one <url> are invalid and get discarded.
 import { createLastmodResolver } from './sitemap-lastmod.mjs';
+import { SITE, isNonPublic } from '../src/lib/site.ts';
 
-/** Canonical origin. Also astro.config's `site`, so the two cannot drift. */
-export const SITE = 'https://kasir.mu';
+// Re-exported for astro.config.mjs and the sitemap tests, so both keep one
+// import site even though the constant now lives in src/lib/site.ts.
+export { SITE };
 
 export function createSitemapOptions() {
   // Lazily reads the git log on first use, so `astro dev` never pays for it.
@@ -41,10 +43,11 @@ export function createSitemapOptions() {
       },
     },
 
-    // Skip the auth and gated pages — no indexable content on /account
-    // (session-gated), /login (form-only), /signup (form-only) or
-    // /enterprise-trial (approval-code-gated) — and the locale-detect root
-    // (rule 3 above).
+    // Skip the auth and gated pages (NON_PUBLIC_PAGES: no indexable content
+    // on /account (session-gated), /login (form-only), /signup (form-only)
+    // or /enterprise-trial (approval-code-gated)) and the locale-detect root
+    // (rule 3 above). The page's own noindex meta and the llms.txt page list
+    // derive from the same constant — one list, three agreeing surfaces.
     //
     // /signup was the odd one out: it carried no `noindex` meta (unlike
     // /login and /account) AND was submitted in the sitemap, i.e. the site
@@ -58,8 +61,7 @@ export function createSitemapOptions() {
     // The docs hub (/en/docs/, /id/docs/) IS a real page (4-card landing,
     // src/pages/[locale]/docs/index.astro) so it stays in the sitemap; only
     // the locale-less bare /docs/ path is noise.
-    filter: (page) =>
-      page !== `${SITE}/` && !/\/(account|login|signup|enterprise-trial)\/$/.test(page),
+    filter: (page) => page !== `${SITE}/` && !isNonPublic(page),
 
     serialize: (item) => {
       const lastmod = lastmodFor(item.url);

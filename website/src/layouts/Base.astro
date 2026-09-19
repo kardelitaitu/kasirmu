@@ -1,9 +1,8 @@
 ---
-import { ClientRouter } from 'astro:transitions';
-import { getAbsoluteLocaleUrl } from 'astro:i18n';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
-import { locales, t } from '../i18n';
+import SiteHead from '../components/SiteHead.astro';
+import { t } from '../i18n';
 import '../styles/global.css';
 
 interface Props {
@@ -26,136 +25,57 @@ interface Props {
 const { title, description, noindex, locale: localeOverride, offerPrice = '0', offerCurrency } = Astro.props;
 const locale = localeOverride ?? Astro.currentLocale ?? 'en';
 const resolvedCurrency = offerCurrency ?? (locale === 'id' ? 'IDR' : 'USD');
-const ogLocale = locale === 'id' ? 'id_ID' : 'en_US';
-const ogAltLocale = locale === 'id' ? 'en_US' : 'id_ID';
 const desc = description ?? t(locale, 'meta.description');
-// hreflang alternates for the same page in the other locale. Reuse the
-// locale-stripping logic from LocaleSwitcher so /en/docs/x → /id/docs/x.
-// The 404 page is served at /404 (no locale prefix) — fall back to home
-// like LocaleSwitcher so hreflang never points at /en/404/.
-const rawPath = Astro.url.pathname.replace(/^\/(?:en|id)(?:\/|$)/, '');
-const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : rawPath;
 ---
 
 <!doctype html>
 <html lang={locale}>
   <head>
-    <ClientRouter />
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- Runtime backend URL: served by the Worker from [vars] so a backend
-         move needs no rebuild (see worker.ts); absent locally → falls back
-         to the build-time PUBLIC_LICENSE_API_URL. Deferred: it only feeds
-         hydration-time config reads, so it must not sit in the critical
-         path ahead of the LCP resources. -->
-    <script is:inline src="/__oz/runtime-config.js" defer></script>
-    <!-- Inter + JetBrains Mono are self-hosted (fontsource, bundled into
-         global.css as the 'Inter Variable' / 'JetBrains Mono Variable'
-         families) — no third-party font origin, no blocking font CSS. -->
-<!-- Apply the stored theme before first paint and on SPA swaps. -->
-<script is:inline>
-  (() => {
-    const applyTheme = () => {
-      // Read new key first, fall back to legacy key for migration
-      const t = localStorage.getItem('kasirmu_theme') ?? localStorage.getItem('oz_theme');
-      // Migrate legacy key if present
-      if (localStorage.getItem('oz_theme') !== null) {
-        localStorage.setItem('kasirmu_theme', localStorage.getItem('oz_theme'));
-        localStorage.removeItem('oz_theme');
-      }
-      document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light';
-    };
-    applyTheme();
-    document.addEventListener('astro:after-swap', applyTheme);
-  })();
-</script>
-    <meta name="description" content={desc} />
-    {noindex && <meta name="robots" content="noindex" />}
-    <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
-    <link rel="sitemap" href="/sitemap-index.xml" />
-    <!-- llms.txt discovery. The only other pointer to it is a comment in
-         robots.txt, which no parser reads. Emitted on every page rather than
-         the homepage alone because llms.txt is site-scoped — there is no
-         per-page variant to point at, so the link is a constant and cannot be
-         forgotten on a new page. It is a hint for LLM/agent consumers, not a
-         ranking signal. See docs/records/seo-robots-llms-review-19-09-26.md
-         §2.2 L7. -->
-    <link rel="describedby" href="/llms.txt" type="text/plain" />
-    <!-- Preconnect: Cloudflare Web Analytics beacon (auto-injected by the edge).
-         Establishes TLS + DNS early so the RUM request at ~300ms doesn't
-         block the critical path while waiting for a cold connection. -->
-    <link rel="preconnect" href="https://static.cloudflareinsights.com" crossorigin />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    {locales.map((code) => (
-      <link rel="alternate" hreflang={code} href={getAbsoluteLocaleUrl(code, path)} />
-    ))}
-    <link rel="alternate" hreflang="x-default" href={getAbsoluteLocaleUrl('id', path)} />
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="kasir.mu" />
-    <meta property="og:locale" content={ogLocale} />
-    <meta property="og:locale:alternate" content={ogAltLocale} />
-    <meta property="og:title" content={title} />
-    <meta property="og:description" content={desc} />
-    <meta property="og:url" content={new URL(Astro.url.pathname, Astro.site)} />
-    <!-- PNG (not SVG): social scrapers (Facebook/Twitter) don't rasterize SVG. The source is public/og-image.svg — regenerate with: magick public/og-image.svg public/og-image.png -->
-    <meta property="og:image" content={new URL('/og-image.png', Astro.site)} />
-    <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <!-- og:image:alt / twitter:image:alt describe the image for screen-reader
-         and low-vision users of social cards, and are used by scrapers when
-         the image itself cannot be fetched. Every page shares one brand card,
-         so the title is the accurate description. -->
-    <meta property="og:image:alt" content={title} />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={title} />
-    <meta name="twitter:description" content={desc} />
-    <meta name="twitter:image" content={new URL('/og-image.png', Astro.site)} />
-    <meta name="twitter:image:alt" content={title} />
-    <script type="application/ld+json" is:inline set:html={JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "kasir.mu",
-      "applicationCategory": "BusinessApplication",
-      "operatingSystem": "Windows, Linux, macOS, Android",
-      "offers": {
-        "@type": "Offer",
-        "price": offerPrice,
-        "priceCurrency": resolvedCurrency
-      },
-      "description": desc
-    })} />
-    <script type="application/ld+json" is:inline set:html={JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "kasir.mu",
-      "url": "https://kasir.mu",
-      "logo": "https://kasir.mu/favicon.svg",
-      // sameAs lists profiles that IDENTIFY this entity elsewhere. It used to
-      // be ["https://kasir.mu"] — a self-reference, which tells Google nothing
-      // and is the one value that can never be a valid sameAs target. The
-      // community Discord is currently the only real profile this project
-      // owns: the four social icons in Footer.astro still point at the
-      // platforms' own homepages (https://x.com, https://www.instagram.com,
-      // …), not at kasir.mu accounts, so they must NOT be listed here — doing
-      // so would assert that kasir.mu IS x.com. Add each real profile URL to
-      // this array when it exists. See the SEO review, §3.1.
-      "sameAs": ["https://discord.gg/NdWDgEzNxx"],
-      "contactPoint": {
-        "@type": "ContactPoint",
-        "email": "support@kasir.mu",
-        "contactType": "customer support",
-        "availableLanguage": ["Indonesian", "English"]
-      }
-    })} />
-    <script type="application/ld+json" is:inline set:html={JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "kasir.mu",
-      "url": "https://kasir.mu",
-      "inLanguage": ["id", "en"]
-    })} />
-    <title>{title}</title>
+    <SiteHead title={title} description={desc} noindex={noindex} locale={locale}>
+      <script type="application/ld+json" is:inline set:html={JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "kasir.mu",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Windows, Linux, macOS, Android",
+        "offers": {
+          "@type": "Offer",
+          "price": offerPrice,
+          "priceCurrency": resolvedCurrency
+        },
+        "description": desc
+      })} />
+      <script type="application/ld+json" is:inline set:html={JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "kasir.mu",
+        "url": "https://kasir.mu",
+        "logo": "https://kasir.mu/favicon.svg",
+        // sameAs lists profiles that IDENTIFY this entity elsewhere. It used to
+        // be ["https://kasir.mu"] — a self-reference, which tells Google nothing
+        // and is the one value that can never be a valid sameAs target. The
+        // community Discord is currently the only real profile this project
+        // owns: the four social icons in Footer.astro still point at the
+        // platforms' own homepages (https://x.com, https://www.instagram.com,
+        // …), not at kasir.mu accounts, so they must NOT be listed here — doing
+        // so would assert that kasir.mu IS x.com. Add each real profile URL to
+        // this array when it exists. See the SEO review, §3.1.
+        "sameAs": ["https://discord.gg/NdWDgEzNxx"],
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "email": "support@kasir.mu",
+          "contactType": "customer support",
+          "availableLanguage": ["Indonesian", "English"]
+        }
+      })} />
+      <script type="application/ld+json" is:inline set:html={JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "kasir.mu",
+        "url": "https://kasir.mu",
+        "inLanguage": ["id", "en"]
+      })} />
+    </SiteHead>
   </head>
   <body class="flex min-h-screen flex-col bg text-ink antialiased">
     <Header />

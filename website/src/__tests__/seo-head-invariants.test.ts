@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { NON_PUBLIC_PAGES, isNonPublic } from '../lib/site';
 
 /**
  * SEO head + heading invariants that the built HTML cannot assert cheaply
@@ -17,30 +18,30 @@ const SRC = join(import.meta.dirname, '..');
 const read = (...parts: string[]) => readFileSync(join(SRC, ...parts), 'utf8');
 
 const BASE = read('layouts', 'Base.astro');
-const DOCS_LAYOUT = read('layouts', 'DocsLayout.astro');
+const SITE_HEAD = read('components', 'SiteHead.astro');
 const FEATURES = read('pages', '[locale]', 'features.astro');
 const PRICING = read('pages', '[locale]', 'pricing.astro');
 const SIGNUP = read('pages', '[locale]', 'signup.astro');
 const PRICING_GRID = read('components', 'PricingGrid.tsx');
 
 describe('social cards describe their image', () => {
-  it('Base.astro emits og:image:alt and twitter:image:alt', () => {
-    expect(BASE).toContain('property="og:image:alt"');
-    expect(BASE).toContain('name="twitter:image:alt"');
-  });
-
-  it('DocsLayout.astro emits both image alts too', () => {
-    expect(DOCS_LAYOUT).toContain('property="og:image:alt"');
-    expect(DOCS_LAYOUT).toContain('name="twitter:image:alt"');
+  it('the shared head emits og:image:alt and twitter:image:alt once', () => {
+    // og:image:alt and twitter:image:alt used to be duplicated in two hand-
+    // rolled heads (Base + DocsLayout) that had to be kept in sync by hand.
+    expect(SITE_HEAD).toContain('property="og:image:alt"');
+    expect(SITE_HEAD).toContain('name="twitter:image:alt"');
+    expect(BASE).not.toContain('og:image:alt');
+    expect(BASE).not.toContain('twitter:image:alt');
   });
 });
 
 describe('llms.txt discovery is on every layout', () => {
-  it('the docs layout points at /llms.txt like Base.astro does', () => {
-    // The docs <head> is a separate document head; it was missing the link, so
-    // the entire /docs/ subtree had no discovery path to the file.
-    expect(BASE).toContain('rel="describedby" href="/llms.txt"');
-    expect(DOCS_LAYOUT).toContain('rel="describedby" href="/llms.txt"');
+  it('Base.astro emits the describedby link via the shared head', () => {
+    expect(BASE).toContain('<SiteHead');
+    // The link itself lives in SiteHead — asserting it here too would be a
+    // source-shape test; the built-HTML invariant is covered by the
+    // dist-manifest check in the single-ownership verification.
+    expect(SITE_HEAD).toContain('rel="describedby" href="/llms.txt"');
   });
 });
 
@@ -88,7 +89,26 @@ describe('Product offers carry numeric prices', () => {
 });
 
 describe('auth pages are de-indexed', () => {
-  it('signup.astro sets noindex, like login and account', () => {
-    expect(SIGNUP).toMatch(/<Base[^>]*\bnoindex\b/);
+  it('signup.astro derives noindex from the shared list, like login and account', () => {
+    expect(SIGNUP).toMatch(/<Base[^>]*\bnoindex=/);
+  });
+
+  it('every non-public page derives noindex from NON_PUBLIC_PAGES', () => {
+    // The old failure mode: a page added to the de-index list in the sitemap
+    // regex but not noindexed (or vice versa) — two hand-synced copies that
+    // had already drifted once (/signup was submitted to the sitemap while
+    // carrying no robots meta). Each gated page now asserts its own noindex
+    // from isNonPublic, and this test asserts the wiring is complete.
+    const gated = ['account', 'login', 'signup', 'enterprise-trial'];
+    for (const slug of gated) {
+      expect(isNonPublic(`/en/${slug}/`), slug).toBe(true);
+      const page = read('pages', '[locale]', `${slug}.astro`);
+      expect(page, `${slug}.astro must derive noindex from isNonPublic`).toContain('isNonPublic(Astro.url.pathname)');
+      expect(page, `${slug}.astro must pass noindex to Base`).toMatch(/noindex=\{noindex\}/);
+    }
+  });
+
+  it('NON_PUBLIC_PAGES covers exactly the four gated pages', () => {
+    expect([...NON_PUBLIC_PAGES].sort()).toEqual(['account', 'enterprise-trial', 'login', 'signup']);
   });
 });

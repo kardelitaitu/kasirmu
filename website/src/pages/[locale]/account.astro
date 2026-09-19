@@ -5,15 +5,19 @@ export function getStaticPaths() {
 import Base from '../../layouts/Base.astro';
 import AccountView, { ACCOUNT_LABELS } from '../../components/AccountView.tsx';
 import { labelMap, t } from '../../i18n';
+import { isNonPublic } from '../../lib/site';
 
 const locale = Astro.currentLocale ?? 'en';
 // The island's strings travel with the document, so the browser never loads a
 // locale dictionary (see src/i18n/labels.ts).
 const accountLabels = labelMap(locale, ACCOUNT_LABELS);
 const pageTitle = `kasir.mu — ${t(locale, 'account.title')}`;
+// noindex is derived from the same NON_PUBLIC_PAGES list the sitemap filter
+// and llms.txt use (src/lib/site.ts) — the three surfaces cannot disagree.
+const noindex = isNonPublic(Astro.url.pathname);
 ---
 
-<Base title={pageTitle} description={t(locale, 'pageDesc.account')} noindex>
+<Base title={pageTitle} description={t(locale, 'pageDesc.account')} noindex={noindex}>
   <section data-reveal class="mx-auto max-w-6xl px-4 py-20">
     <h1 class="mb-10 text-center text-3xl font-bold">{t(locale, 'account.title')}</h1>
     <AccountView client:load locale={locale} labels={accountLabels} />

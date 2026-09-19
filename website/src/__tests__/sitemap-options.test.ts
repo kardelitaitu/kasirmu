@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SITE, createSitemapOptions } from '../../scripts/sitemap-options.mjs';
+import { NON_PUBLIC_PAGES } from '../../src/lib/site';
 
 /**
  * Tests for the sitemap rules that are easy to regress silently, because the
@@ -46,18 +47,16 @@ describe('filter', () => {
     expect(opts.filter(`${SITE}/id/`)).toBe(true);
   });
 
-  it('excludes the gated pages in both locales', () => {
-    // /signup belongs to this set for the same reason as /login: its whole
-    // content is a form, so it is noindexed (signup.astro) and must not also
-    // be submitted here — a sitemap entry for a noindexed URL contradicts
-    // itself. It was missing from both halves until the SEO review.
-    for (const path of ['account', 'login', 'signup', 'enterprise-trial']) {
+  it('excludes exactly the non-public pages, from the single source', () => {
+    // The filter itself consumes NON_PUBLIC_PAGES (src/lib/site.ts) via
+    // isNonPublic — this asserts the wiring, not a hand-copied expectation.
+    for (const path of NON_PUBLIC_PAGES) {
       expect(opts.filter(`${SITE}/en/${path}/`), path).toBe(false);
       expect(opts.filter(`${SITE}/id/${path}/`), path).toBe(false);
     }
   });
 
-  it('keeps the docs hub and ordinary pages', () => {
+  it('keeps every other ordinary page', () => {
     expect(opts.filter(`${SITE}/en/docs/`)).toBe(true);
     expect(opts.filter(`${SITE}/id/docs/welcome/`)).toBe(true);
     expect(opts.filter(`${SITE}/id/pricing/`)).toBe(true);
@@ -125,15 +124,13 @@ describe('serialize — lastmod', () => {
 });
 
 describe('agreement with the HTML', () => {
-  it('every layout points x-default at the id variant, as the sitemap does', () => {
-    for (const layout of ['Base.astro', 'DocsLayout.astro']) {
-      const src = readFileSync(join(WEBSITE, 'src', 'layouts', layout), 'utf8');
-      const line = src.split('\n').find((l) => l.includes('hreflang="x-default"'));
-      expect(line, `${layout} must declare an x-default alternate`).toBeTruthy();
-      expect(line, `${layout} x-default must target the id variant`).toContain(
-        "getAbsoluteLocaleUrl('id'",
-      );
-    }
+  it('SiteHead — the shared head — declares x-default, as the sitemap does', () => {
+    const src = readFileSync(join(WEBSITE, 'src', 'components', 'SiteHead.astro'), 'utf8');
+    const line = src.split('\n').find((l) => l.includes('hreflang="x-default"'));
+    expect(line, 'SiteHead.astro must declare an x-default alternate').toBeTruthy();
+    expect(line, 'SiteHead x-default must target the id variant').toContain(
+      "getAbsoluteLocaleUrl('id'",
+    );
   });
 
   it('the root page agrees too', () => {
