@@ -157,7 +157,7 @@ function renderScreen(withToken = true) {
     sessionToken: withToken ? HARNESS_SESSION_TOKEN : null,
   });
   handle = createRef<RoleAuthoringPanelHandle>();
-  return renderWithProvidersSync(<RoleAuthoringPanel handleRef={handle} />, staffFtl, sharedFtl);
+  return renderWithProvidersSync(<RoleAuthoringPanel active handleRef={handle} />, staffFtl, sharedFtl);
 }
 
 /** Open the create editor the way the header's "Add New Role" button does. */

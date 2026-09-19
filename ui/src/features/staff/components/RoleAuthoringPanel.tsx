@@ -152,6 +152,13 @@ function HolderDims({ h }: { h: RoleHolderDto }) {
 /** Props for the embedded roles panel. */
 export interface RoleAuthoringPanelProps {
   /**
+   * Whether this panel is the view on screen. The shell owns the tabs and the
+   * wrapper that hides this one, so it is also the only thing that knows when
+   * the view has gone — which is what the effect below needs to dismiss the
+   * panel's modal surfaces.
+   */
+  active: boolean;
+  /**
    * The shell's handle on this panel. The header's "Add New Role" action lives
    * outside this component while the editor's state lives inside it, so the
    * shell reaches in through this ref rather than the panel hoisting six
@@ -170,7 +177,7 @@ export interface RoleAuthoringPanelHandle {
   openCreate: () => void;
 }
 
-function RoleAuthoringPanel({ handleRef }: RoleAuthoringPanelProps) {
+function RoleAuthoringPanel({ active, handleRef }: RoleAuthoringPanelProps) {
   const { l10n } = useLocalization();
   const { sessionToken } = useWorkspace();
   const { addToast } = useToast();
@@ -282,6 +289,22 @@ function RoleAuthoringPanel({ handleRef }: RoleAuthoringPanelProps) {
     setDescription('');
     setGranted(new Set());
   }, []);
+
+  // A modal must not outlive the view it belongs to.
+  //
+  // Both the editor and the delete confirm are PORTALS, so hiding this panel
+  // does not hide them: they keep rendering into document.body and stay in the
+  // accessibility tree while the other tab is on screen, editing a view nobody
+  // is looking at. The tab strip is under their overlay, so a click cannot
+  // reach them that way — but a `hashchange` can: a deep link, or the browser's
+  // Back button, changes the route while the dialog is open. That path goes
+  // through no click handler, which is why this is an effect on `active`
+  // rather than a line in the shell's `selectTab`.
+  useEffect(() => {
+    if (active) return;
+    closeEditor();
+    setPendingDelete(null);
+  }, [active, closeEditor]);
 
   const toggleKey = (key: string) => {
     setGranted((prev) => {

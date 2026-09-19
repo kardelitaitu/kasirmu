@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor, within, fireEvent } from '@testing-library/react';
+import { screen, waitFor, within, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import {
@@ -181,6 +181,32 @@ describe('StaffManagementScreen', () => {
 
     fireEvent.click(addRole);
     expect(screen.getByRole('dialog')).toHaveTextContent('Add New Role');
+  });
+
+  it('dismisses the role editor when the route leaves the Roles tab', async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Roles' }));
+    await waitFor(() => expect(document.querySelector('.role-authoring')).not.toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Add New Role' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // Reached the way it really happens: the popup is a portal, so its overlay
+    // covers the tab strip and no CLICK can switch tabs underneath it. A
+    // hashchange can — a deep link, or the browser's Back button — and without
+    // the panel dismissing its own modals the dialog would outlive the view it
+    // edits, still mounted in document.body and still in the a11y tree.
+    act(() => {
+      window.location.hash = '#/staff';
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+
+    expect(screen.getByRole('tab', { name: 'Staff' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // The action follows the tab back, so the dismissed editor leaves no
+    // create affordance behind.
+    expect(screen.getByRole('button', { name: /add staff/i })).toBeInTheDocument();
   });
 
   it('renders staff table rows', async () => {

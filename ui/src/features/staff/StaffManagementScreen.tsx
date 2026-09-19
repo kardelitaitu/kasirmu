@@ -445,7 +445,7 @@ export default function StaffManagementScreen() {
             hidden={activeTab !== 'roles'}
           >
             {(rolesPanelMounted || activeTab === 'roles') && (
-              <RoleAuthoringPanel handleRef={rolesPanelRef} />
+              <RoleAuthoringPanel active={activeTab === 'roles'} handleRef={rolesPanelRef} />
             )}
           </div>
         )}
