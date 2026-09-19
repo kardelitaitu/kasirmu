@@ -156,6 +156,13 @@ function withStrictCSP(resp: Response): Response {
   headers.set('X-Frame-Options', 'DENY');
   headers.set('Referrer-Policy', 'no-referrer');
   headers.set('X-Content-Type-Options', 'nosniff');
+  // SEO: every response on this path is an auth-gated surface. Without this,
+  // admin.kasir.mu is a soft-404 — the gate below rewrites ANY unauthenticated
+  // path to /admin/login with a 200, so an unbounded URL space serves
+  // byte-identical HTML (no `robots` meta, no canonical). noindex is the
+  // correct tool; a robots.txt Disallow would hide the tag instead of acting
+  // on it. See docs/records/seo-robots-llms-review-19-09-26.md §1.3 R4.
+  headers.set('X-Robots-Tag', 'noindex');
   // SPA HTML is auth-gated — never cache it at the edge so a deploy (or a
   // session state change) is reflected immediately (M6).
   headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
