@@ -397,6 +397,10 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
         'fiscalnum-error',
       ],
       'sync-conflicts': ['sync-conflict-review'],
+      // Migrated 2026-09-19: the screen composes sections/DiagnosticsSection,
+      // whose feature list proves the body mounted (mocked IPC resolves each
+      // verdict, so the <ul> is present).
+      'system-diagnostics': ['settings-diagnostics-list'],
     };
 
     for (const item of NAV_ITEMS) {

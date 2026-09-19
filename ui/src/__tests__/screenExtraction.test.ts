@@ -1440,9 +1440,28 @@ const SCREENS: ScreenEntry[] = [
     css: ['settings/screens/screens-placeholder.css'],
   },
   {
+    // First scaffold filled in (2026-09-19): the screen composes the real
+    // DiagnosticsSection as its body. The walker reads this file's markup alone
+    // and does NOT follow the nested <DiagnosticsSection /> import, so the
+    // section's own settings-diagnostics-* classes (defined in
+    // sections/DiagnosticsSection.css, which the screen imports transitively via
+    // the section) are declared external here — the DiagnosticsSection entry
+    // (:763) already grades that sheet against its own markup, and these names are
+    // reached through composition, not spelled in this file. The screen's markup
+    // keeps settings-screen-placeholder + -title and now also -note (the migrating
+    // line it still renders), so no scaffold name is left dead by this entry.
     name: 'SystemDiagnosticsScreen',
     tsx: 'settings/screens/SystemDiagnosticsScreen.tsx',
     css: ['settings/screens/screens-placeholder.css'],
+    externalClasses: [
+      'settings-diagnostics-list',
+      'settings-diagnostics-row',
+      'settings-diagnostics-feature',
+      'settings-diagnostics-result',
+      'settings-diagnostics-badge',
+      'settings-diagnostics-badge--ok',
+      'settings-diagnostics-detail',
+    ],
   },
 
   // ── Memo ───────────────────────────────────────────────
