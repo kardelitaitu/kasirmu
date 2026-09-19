@@ -3,7 +3,7 @@ name: android-apk-build
 description: Build, sign and install the kasir.mu tablet app (apps/mobile-tauri, package mu.kasir.mobile) on a real Android device, and connect to it over wireless ADB. Use when running cargo tauri android build or android dev; when the build dies with "The PATHEXT environment variable isn't set"; when beforeBuildCommand fails with "Could not read package.json"; when the Vite mobile build reports it cannot load a .ftl file; when the produced APK is unsigned and refuses to install; when adb install returns INSTALL_FAILED_USER_RESTRICTED; or when adb devices is empty while adb mdns services still advertises the device.
 ---
 
-<!-- Audit stamp: 2026-09-19 · Budak-Korporat · status: ACCURATE · Derived from a full build/install/debug cycle on 2026-09-19 against the Redmi 23073RPBFG. Verified this pass: a signed release APK installed over wireless ADB (adb install -r → Success, lastUpdateTime advanced) and launched to mu.kasir.mobile/.MainActivity with no FATAL in logcat; aapt2 dump badging reports package mu.kasir.mobile and application-label Kasir.mu; the mobile entry is index.mobile.html and the vite.mobile.config.ts alias plugin is present; the SDK/NDK/build-tools/JDK paths below resolved on this host; both wireless-ADB failure modes were reproduced and the re-pairing recovery confirmed. The MIUI install-gate claim was corrected this pass — it is not absolute. -->
+<!-- Audit stamp: 2026-09-19 · Budak-Korporat · status: ACCURATE · Derived from a full build/install/debug cycle on 2026-09-19 against the Redmi 23073RPBFG. Verified this pass: a signed release APK installed over wireless ADB (adb install -r → Success, lastUpdateTime advanced) and launched to mu.kasir.mobile/.MainActivity with no FATAL in logcat; aapt2 dump badging reports package mu.kasir.mobile and application-label Kasir.mu; the mobile entry is index.mobile.html and the vite.mobile.config.ts alias plugin is present; the SDK/NDK/build-tools/JDK paths below resolved on this host; both wireless-ADB failure modes were reproduced and the re-pairing recovery confirmed. The MIUI install-gate claim was corrected this pass — it is not absolute. · Pass 2 (2026-09-19, Android build-repair lane): the JBR/JDK-25 trap in §1 was already correct and was re-confirmed end to end — the frozen failing command was reproduced (`> 25.0.3` from `JavaVersion.parse` while configuring `buildSrc`) and then repaired, and the durable `org.gradle.java.home` pin — which this skill did not previously mention — was added and verified against a deliberately hostile `JAVA_HOME`. New section added for the `:app:rustBuildArm64Debug` / `command 'cargo.bat'` decoy: its cause in `BuildTask.kt` rethrowing only the last fallback exception, and the verified stale-daemon remedy. A full debug APK built twice consecutively after the repair. Versions re-measured this pass: JDK 21.0.12.1+1, Android Studio JBR 25.0.3, NDK 30.0.14904198, build-tools 37.0.0, platform android-36, wrapper Gradle 8.14.3. -->
 
 # Android build, sign, install and wireless ADB
 
@@ -48,6 +48,22 @@ parse the JDK 25 version string, so every build dies at configuration with
 for "release built fine an hour ago, debug fails now" on identical commands. Re-measure `java -version`
 at the start of every session and pin a JDK 21 (AGP needs 17+, and 21 is the safe ceiling).
 
+**Pin it in Gradle, not only in the shell.** `JAVA_HOME` alone is not enough: a terminal opened
+before the variable was set keeps the stale value, and Studio re-points its JBR whenever it updates.
+`org.gradle.java.home` **takes precedence over** `JAVA_HOME`, so put it in the machine-local,
+never-committed `%USERPROFILE%\.gradle\gradle.properties`:
+
+```properties
+org.gradle.java.home=C:/Users/<you>/AppData/Local/Programs/Java/jdk-21.0.12.1+1
+```
+
+Verified 2026-09-19: with `JAVA_HOME` deliberately left on the JBR 25 path, `gradlew help` returns
+`BUILD SUCCESSFUL`. Do **not** put this line in the tracked `gen/android/gradle.properties` — it
+holds an absolute path and would break every other machine.
+
+`java` on `PATH` is Oracle **JDK 8** on this host (…Common Files\Oracle\Java\java8path`),`
+so `PATH` tells you nothing about the JVM Gradle actually uses.
+
 `cargo tauri info` prints **no Android environment section** even when SDK and NDK are correct — its
 absence is not evidence of a broken setup.
 
@@ -80,6 +96,37 @@ it the alias is silently never written and the build still exits 0.
 **Changing the frontend does not re-embed it.** Neither `tauri-build` nor `tauri-codegen` emits
 `cargo:rerun-if-changed` for `frontendDist`, so Cargo sees no reason to recompile and the APK keeps the
 old assets. After any frontend change, force it — `touch apps/mobile-tauri/src/lib.rs` — before building.
+
+### `:app:rustBuildArm64Debug` fails with `command 'cargo.bat'` — the message is a decoy
+
+**Symptom (measured 2026-09-19):** Gradle reports
+
+```
+Execution failed for task ':app:rustBuildArm64Debug'.
+> A problem occurred starting process 'command 'cargo.bat''
+```
+
+`cargo.bat` **does not exist on this machine**, and is not what failed. `BuildTask.kt` runs
+`cargo tauri android android-studio-script`, and on failure retries `cargo.exe`, `cargo.cmd` and
+`cargo.bat`, then rethrows only the **last** exception — so the genuine first failure is thrown away
+and the missing batch file is reported in its place. (`BuildTask.kt` now attaches the first failure as a
+suppressed exception; re-run with `--stacktrace` to read it.)
+
+The observed trigger was a **reused Gradle daemon holding a broken environment**. Gradle reuses a
+daemon across terminals and sessions regardless of their environments, and `Project.exec` starts
+children with the *daemon's* environment rather than the current shell's. The daemon log for the
+failing runs (`~/.gradle/daemon/8.14.3/daemon-<pid>.out.log`) shows one daemon serving a build from a
+Git Bash/MSYS session and the next from PowerShell.
+
+**Remedy, verified:** stop the daemons, then rebuild — two consecutive builds then succeeded.
+
+```bash
+cd apps/mobile-tauri/gen/android && ./gradlew.bat --stop
+```
+
+Ruled out by measurement, so do not chase them: a missing `cargo` on `PATH` (it resolves to
+`C:\Users\<you>\.cargo\bin\cargo.exe`, and Git Bash does hand native children a proper Windows `PATH`);
+and an oversized environment block (8 785 chars here, against the 32 767 CreateProcess limit).
 
 ### Measurement trap
 
