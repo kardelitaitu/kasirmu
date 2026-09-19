@@ -1,18 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getCurrentWindow } from '@/api/tauri';
-
-/**
- * True only inside a Tauri webview. Mirrors the check in `useFullscreen` so
- * the same seam behaves identically in the browser dev preview (:1420) and in
- * the packaged desktop app.
- */
-function isTauri(): boolean {
-  try {
-    return '__TAURI_INTERNALS__' in window;
-  } catch {
-    return false;
-  }
-}
+import { getCurrentWindow, isTauriWebview } from '@/api/tauri';
 
 export interface UnsavedChangesGuard {
   /** Render a confirmation prompt bound to these handlers while true. */
@@ -66,7 +53,13 @@ export function useUnsavedChangesGuard(isDirty: boolean): UnsavedChangesGuard {
   }, []);
 
   useEffect(() => {
-    if (!isTauri()) return;
+    // `isTauriWebview()` — not a key-presence test. The dev preview's
+    // `index.html` installs a PARTIAL `__TAURI_INTERNALS__` stub (it has
+    // `transformCallback` so `mockWindows` can bootstrap, but no `invoke`),
+    // so `'__TAURI_INTERNALS__' in window` answers "Tauri" in the browser and
+    // sends this effect down the real path — `getCurrentWindow()` →
+    // `Window.listen` → `invoke` → "not a function".
+    if (!isTauriWebview()) return;
     let unlisten: (() => void) | undefined;
     let cancelled = false;
 
@@ -80,6 +73,13 @@ export function useUnsavedChangesGuard(isDirty: boolean): UnsavedChangesGuard {
         // Registration is async; the component may already be gone.
         if (cancelled) fn();
         else unlisten = fn;
+      })
+      .catch((err: unknown) => {
+        // `onCloseRequested` can still reject in a real webview whose IPC is
+        // not up yet. `beforeunload` above covers that context, so degrade to
+        // it rather than raising an unhandled rejection that
+        // `GlobalErrorReporter` would toast as "Unexpected error".
+        console.warn('[useUnsavedChangesGuard] onCloseRequested unavailable:', err);
       });
 
     return () => {

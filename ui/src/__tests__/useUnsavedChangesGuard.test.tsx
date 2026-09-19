@@ -8,9 +8,9 @@
  * worked in the browser dev preview. The supported seam is
  * `getCurrentWindow().onCloseRequested()` + `event.preventDefault()`.
  *
- * FIRST TO FAIL PER SEEDED MUTATION (measured, 11 cases): useUnsavedChangesGuard/9
- * ALONE (1 failed / 10 passed) — the `.then` guard at
- * useUnsavedChangesGuard.ts:81-82 replaced by an unconditional `unlisten = fn`,
+ * FIRST TO FAIL PER SEEDED MUTATION (re-measured 2026-09-19, 13 cases):
+ * useUnsavedChangesGuard/9 ALONE (1 failed / 12 passed) — the `.then` guard at
+ * useUnsavedChangesGuard.ts:74-75 replaced by an unconditional `unlisten = fn`,
  * i.e. the late-settle cancel path deleted. /9 IS THE ONLY ASSERTION OF THAT
  * BRANCH here, and it claims nothing about the two other sites of the same
  * guard shape: ui/src/features/kds/useKdsRealtime.ts:95 (pinned by that file's
@@ -19,6 +19,8 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+// Type-only, so it is erased at runtime and cannot pre-load the mocked module.
+import type * as TauriApiModule from '@/api/tauri';
 
 // ── Tauri window mock ──────────────────────────────────────────────
 
@@ -39,16 +41,39 @@ const m = vi.hoisted(() => {
   return { handlers, unlisten, close, onCloseRequested };
 });
 
-vi.mock('@/api/tauri', () => ({
-  getCurrentWindow: () => ({ onCloseRequested: m.onCloseRequested, close: m.close }),
-}));
+// `importOriginal` keeps the REAL `isTauriWebview()` in play. Overriding the
+// whole module would replace the very predicate these cases are about with
+// `undefined`, and every Tauri-path assertion below would then be testing the
+// mock rather than the seam.
+vi.mock('@/api/tauri', async (importOriginal) => {
+  const actual = await importOriginal<typeof TauriApiModule>();
+  return {
+    ...actual,
+    getCurrentWindow: () => ({ onCloseRequested: m.onCloseRequested, close: m.close }),
+  };
+});
 
-/** Toggle the seam `isTauri()` probes. Bracket notation is required by the
- *  repo's noPropertyAccessFromIndexSignature rule. */
+/**
+ * Stand in for a live webview. `isTauriWebview()` keys on `invoke` being
+ * callable, NOT on `__TAURI_INTERNALS__` merely existing — a bare `{}` reads as
+ * "browser" and would send every Tauri-path case below down the browser branch
+ * while still looking green. Bracket notation is required by the repo's
+ * noPropertyAccessFromIndexSignature rule.
+ */
 function setTauri(on: boolean): void {
   const w = window as unknown as Record<string, unknown>;
-  if (on) w['__TAURI_INTERNALS__'] = {};
+  if (on) w['__TAURI_INTERNALS__'] = { invoke: () => Promise.resolve() };
   else delete w['__TAURI_INTERNALS__'];
+}
+
+/**
+ * The dev preview's partial stub. `ui/index.html` defines
+ * `__TAURI_INTERNALS__` as `{ transformCallback }` so the Tauri mocks lib can
+ * bootstrap in a plain browser — present, but with no `invoke`.
+ */
+function setPartialStub(): void {
+  const w = window as unknown as Record<string, unknown>;
+  w['__TAURI_INTERNALS__'] = { transformCallback: () => 1 };
 }
 
 function makeCloseEvent(): FakeCloseEvent {
@@ -169,17 +194,17 @@ describe('useUnsavedChangesGuard', () => {
 
   // ── the late-settle branch: registration resolves after the mount is gone ──
   it('calls the returned unlisten itself when onCloseRequested settles after unmount', async () => {
-    // useUnsavedChangesGuard.ts:81 `if (cancelled) fn();` — the same guard shape
+    // useUnsavedChangesGuard.ts:74 `if (cancelled) fn();` — the same guard shape
     // pinned in useKdsRealtime.test.ts (late/2), reached the same way. Every
     // other case in this file either never unmounts or awaits settle BEFORE
     // unmounting (the case just above), so the mocked onCloseRequested's
-    // already-resolved promise (:29) takes the else at :82 and it is the
-    // CLEANUP at :87 that unlistens. :81 never runs in any of them.
+    // already-resolved promise (:37) takes the else at :75 and it is the
+    // CLEANUP at :87 that unlistens. :74 never runs in any of them.
     //
     // Here unmount is called with no await after the mount, so no microtask
     // boundary is crossed: the cleanup executes while `unlisten` is still
     // undefined — :87 is a no-op — and :86 has already set cancelled = true.
-    // Once the flush lets the .then run, :81 is the ONLY code left that can
+    // Once the flush lets the .then run, :74 is the ONLY code left that can
     // release the handler. Drop it and the close handler leaks: a SettingsPage
     // unmount while the window API is still answering would leave an
     // intercepting handler behind on a component that no longer exists.
@@ -222,5 +247,42 @@ describe('useUnsavedChangesGuard', () => {
     const ev = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(ev);
     expect(ev.defaultPrevented).toBe(false);
+  });
+
+  // ── the predicate, not key-presence ────────────────────────────────
+  //
+  // Appended after /11 on purpose: the seeded-mutation contract in this file's
+  // header names cases by index, so inserting above would renumber /9.
+  it('does not register a Tauri handler against the dev preview partial stub', () => {
+    // `index.html` defines `__TAURI_INTERNALS__` as `{ transformCallback }` —
+    // present, but with no `invoke`. A key-presence test answers "Tauri" here
+    // and drives the hook into `getCurrentWindow()` → `Window.listen` →
+    // `invoke` → "not a function", toasted by GlobalErrorReporter. The
+    // predicate must read this as the browser it actually is.
+    setPartialStub();
+    renderHook(() => useUnsavedChangesGuard(true));
+    expect(m.onCloseRequested).not.toHaveBeenCalled();
+  });
+
+  it('degrades to beforeunload when onCloseRequested rejects', async () => {
+    // A real webview whose IPC is not up yet still rejects here. The rejection
+    // must be absorbed — an unhandled one surfaces as "Unexpected error" — and
+    // it must not take the `beforeunload` guard down with it.
+    m.onCloseRequested.mockRejectedValueOnce(new Error('ipc not ready'));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    renderHook(() => useUnsavedChangesGuard(true));
+    await act(async () => {});
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[useUnsavedChangesGuard] onCloseRequested unavailable:',
+      expect.any(Error),
+    );
+
+    const ev = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+
+    warnSpy.mockRestore();
   });
 });

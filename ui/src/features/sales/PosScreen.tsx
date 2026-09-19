@@ -8,6 +8,7 @@ import ProductLookupScreen from '@/features/products/ProductLookupScreen';
 import RestaurantMenu from '@/features/restaurant/RestaurantMenu';
 import type { RestaurantSidebarActions, RestaurantSidebarProfile } from '@/features/restaurant/components/RestaurantSidebar';
 import { open } from '@tauri-apps/plugin-dialog';
+import { isTauriWebview } from '@/api/tauri';
 import { getOwnAvatarScoped, setAvatarScoped } from '@/api/staff';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { FEATURES, useFeatures } from '@/hooks/useFeatures';
@@ -54,21 +55,6 @@ import './CartPanelFooterTotals.css';
 import './CartPanelActions.css';
 import './CartPanel.brand.css';
 import './CartPanelCourseBar.css';
-
-
-/**
- * True only inside a Tauri webview. Mirrors the check in `useFullscreen` and
- * `useUnsavedChangesGuard` so the same seam behaves identically in the browser
- * dev preview (:1420) and in the packaged app — the avatar picker needs it
- * because the dialog plugin only exists in the webview.
- */
-function isTauri(): boolean {
-  try {
-    return '__TAURI_INTERNALS__' in window;
-  } catch {
-    return false;
-  }
-}
 
 
 /**
@@ -227,9 +213,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
   const handleChangePhoto = useCallback(async () => {
     if (!sessionToken || !session?.user_id || avatarBusy) return;
-    if (!isTauri()) {
+    if (!isTauriWebview()) {
       // The browser dev preview has no dialog plugin; the dev-mock has no
       // real cache dir to write into either. Say so rather than failing mute.
+      // A key-presence test would answer "Tauri" here: `index.html` installs a
+      // partial `__TAURI_INTERNALS__` stub without `invoke`, and the dialog
+      // plugin would then reject on a path with no toast.
       addToast({ message: requiredLocalized(l10n, 'restaurant-avatar-desktop-only'), type: 'info' });
       return;
     }
