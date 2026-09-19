@@ -9,11 +9,29 @@ import { getRelativeLocaleUrl } from 'astro:i18n';
 import { t } from '../../i18n';
 import { pricing as enPricing, featureRows as enRows } from '../../content/pricing/en';
 import { pricing as idPricing, featureRows as idRows } from '../../content/pricing/id';
+import { schemaPrice } from '../../lib/schema-price';
 
 const locale = Astro.currentLocale ?? 'en';
 const pageTitle = `kasir.mu — ${t(locale, 'pricingPage.title')}`;
 const pricing = locale === 'id' ? idPricing : enPricing;
 const rows = locale === 'id' ? idRows : enRows;
+// schema.org `Offer.price` must be a NUMBER, but the tier cards render a
+// display string ('$4.99' / 'Rp 1.000.000' / 'Custom'). Emitting the display
+// string produced invalid offers ("price":"$0", "price":"Custom") that Google
+// drops, taking the Product rich result with them. Convert here and simply
+// omit the tiers that have no numeric price (Enterprise is quote-only) — an
+// absent offer is better than a wrong price. See lib/schema-price.ts.
+const offers = pricing.flatMap((tier) => {
+  const price = schemaPrice(tier.prices.monthly.price, tier.currency);
+  if (price === undefined) return [];
+  return [{
+    '@type': 'Offer',
+    name: tier.name,
+    price,
+    priceCurrency: tier.currency,
+    description: tier.description,
+  }];
+});
 const downloadHref = getRelativeLocaleUrl(locale, 'download');
 const contactHref = 'mailto:adikaradwiatmaja@gmail.com';
 ---
@@ -25,13 +43,9 @@ const contactHref = 'mailto:adikaradwiatmaja@gmail.com';
     "name": "kasir.mu",
     "description": t(locale, 'pricingPage.subtitle'),
     "brand": { "@type": "Brand", "name": "kasir.mu" },
-    "offers": pricing.map((tier) => ({
-      "@type": "Offer",
-      "name": tier.name,
-      "price": tier.prices.monthly.price,
-      "priceCurrency": tier.currency,
-      "description": tier.description
-    }))
+    "url": new URL(Astro.url.pathname, Astro.site).toString(),
+    "image": new URL('/og-image.png', Astro.site).toString(),
+    "offers": offers
   })} />
   <section class="mx-auto max-w-7xl px-4 py-16">
     <div data-reveal class="text-center">
