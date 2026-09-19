@@ -180,9 +180,10 @@ async fn owner_can_create_and_deactivate_locations() {
         "Secondary storage".into(),
     )
     .await;
-    // Release: the create is refused at the signature, so there is no id and
-    // the deactivation below has nothing to deactivate - it stays debug-only
-    // rather than being re-cut into a second assertion of the same cause.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the create below succeeds in both and
+    // the deactivation runs in both. This arm is reached only when the row
+    // exists but does not verify - there is no id, and nothing to deactivate.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&bridge, created, "free").await;
         return;
@@ -286,8 +287,11 @@ async fn owner_can_update_location_name_and_type() {
         String::new(),
     )
     .await;
-    // Release: refused before any row is written, so the rename round-trip
-    // below (update -> list -> find) has no referent to follow.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the rename round-trip below
+    // (update -> list -> find) runs in both. This arm is reached only when the
+    // row exists but does not verify - then no row is written and the
+    // round-trip has no referent to follow.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&bridge, created, "free").await;
         return;
@@ -343,11 +347,13 @@ async fn cashier_cannot_update_location() {
         String::new(),
     )
     .await;
-    // Release: the OWNER SETUP is what the signature kills here, and without
-    // it there is no target row - so the cashier-denial claim below is left
-    // uncovered in the shipping profile rather than propped up on a refused
-    // id. Its sibling `cashier_can_list_locations_but_cannot_create_them`
-    // still exercises the PermissionDenied arm in both profiles.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the owner setup below succeeds in both
+    // and the cashier-denial claim is asserted in both. This arm is reached only
+    // when the row exists but does not verify - then there is no target row, so
+    // the claim would be propped up on a refused id. Its sibling
+    // `cashier_can_list_locations_but_cannot_create_them` still exercises the
+    // PermissionDenied arm in both profiles.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&owner_bridge, created, "free").await;
         return;
@@ -421,8 +427,11 @@ async fn owner_can_start_and_end_inventory_shift() {
         String::new(),
     )
     .await;
-    // Release: no location id, so the whole shift lifecycle that hangs off it
-    // (start -> active -> end -> none) is debug-only.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the location id below exists in both and
+    // the whole shift lifecycle that hangs off it (start -> active -> end ->
+    // none) runs in both. This arm is reached only when the row exists but does
+    // not verify - then there is no id.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&bridge, created, "free").await;
         return;

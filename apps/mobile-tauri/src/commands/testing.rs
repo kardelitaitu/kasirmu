@@ -72,7 +72,7 @@ pub fn seeded_row_reaches_a_paid_tier() -> bool {
 
 /// The verdict a feature read projects when NO row verifies: the FAIL-CLOSED
 /// PROJECTION, not a licence verdict. Values mirror the bridge's `FAIL_CLOSED_*`
-/// consts (`crates/kasirmu-bridge/src/testing.rs:300-316`) rather than being
+/// consts (`crates/kasirmu-bridge/src/testing.rs:321-337`) rather than being
 /// remembered here — a second copy of a string is how the two crates drift.
 pub fn assert_verdict_fail_closed(v: &kasirmu_core::availability::FeatureVerdict) {
     assert!(!v.available, "no gate opens for an unverifiable row");
@@ -155,7 +155,7 @@ pub fn assert_refused_by_the_seeded_row<T>(
                 ..
             }
         ),
-        "the release refusal must be the propagated signature error, not a looser \
+        "the refusal must be the propagated signature error, not a looser \
          failure: {err:?}"
     );
 }

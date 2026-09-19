@@ -11,7 +11,7 @@ use super::*;
 use crate::testing::TestBridge;
 use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
-// -- The release leg for these listings (crate::testing, RULE at :204-208) --
+// -- The broken-seed leg for these listings (crate::testing, RULE at :217-221) --
 
 // ── Token Rejection ─────────────────────────────────────────────────
 
@@ -231,8 +231,10 @@ async fn list_workspaces_for_store_scoped_uses_session_role() {
     // store-a must not see owner-level instances (same as the ticket path).
     let listed =
         list_workspaces_for_store_scoped(&tb.ctx(), "cashier-token", "store-a".into()).await;
-    // Release: the listing is refused at the signature before any scoping or
-    // tier filter runs, so the empty-list claim below has no list to make.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the listing below returns in both and
+    // the empty-list claim is made in both. This arm is reached only when the
+    // row exists but does not verify - there is no list to make the claim about.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&tb, listed, "free").await;
         return;
@@ -311,8 +313,11 @@ async fn scoped_assignment_filters_session_workspace_listing() {
     mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
 
     let listed = list_workspaces_scoped(&tb.ctx(), "owner-token").await;
-    // Release: the assignment filter is never consulted - the row behind the
-    // tier and the allowed-types is unreadable, so the command fails first.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the command succeeds below in both and
+    // the assignment filter is consulted in both. This arm is reached only when
+    // the row exists but does not verify - then the command fails first and the
+    // filter is never reached.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&tb, listed, "free").await;
         return;
@@ -354,9 +359,12 @@ async fn scoped_assignment_branch_dimension_denies_out_of_scope_store_for_sessio
 
     let in_scope =
         list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into()).await;
-    // Release: BOTH legs are refused, in-scope store first - the branch
-    // dimension never gets to answer, so neither the "lists" nor the "denies"
-    // half of this case is reachable. Assert the refusal and stop.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the branch dimension answers below in
+    // both and both halves of this case are asserted. This arm is reached only
+    // when the row exists but does not verify - then BOTH legs are refused,
+    // in-scope store first, and neither the "lists" nor the "denies" half is
+    // reachable.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&tb, in_scope, "free").await;
         return;
@@ -413,7 +421,10 @@ async fn scoped_assignment_workspace_dimension_filters_for_store_listing() {
     mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
 
     let listed = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into()).await;
-    // Release: refused at the signature, so the filter below has no list.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the list below exists in both and the
+    // filter runs in both. This arm is reached only when the row exists but does
+    // not verify - then the filter has no list.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&tb, listed, "free").await;
         return;
@@ -445,7 +456,10 @@ async fn list_workspaces_for_store_scoped_filters_by_tier_entitlement() {
     mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
 
     let listed = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into()).await;
-    // Release: refused at the signature, so the filter below has no list.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the list below exists in both and the
+    // filter runs in both. This arm is reached only when the row exists but does
+    // not verify - then the filter has no list.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&tb, listed, "free").await;
         return;

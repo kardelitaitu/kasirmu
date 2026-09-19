@@ -244,7 +244,7 @@ async fn a_rejected_create_records_no_security_event() {
     // `sub.verify_signature()` at :1080 — a duplicate-username setup needs the
     // FIRST create to succeed, and in release that create dies at :1080 on the
     // BOOTSTRAP_FREE sentinel. No fixture in this crate can mint a verifying
-    // signature (testing.rs:103-148 — the licence private key is not in this
+    // signature (testing.rs:105-162 — the licence private key is not in this
     // checkout), so no seeded row lets it through: `before` was 0, the
     // duplicate was then refused at :1080 too, and `0 == 0` held for a reason
     // with nothing to do with the recorder. A permission refusal is UPSTREAM
@@ -290,7 +290,7 @@ async fn a_duplicate_username_create_records_no_security_event() {
     // instead of hiding it. The setup create must SUCCEED for a duplicate to
     // exist, and `create_staff_scoped` only reaches the duplicate check past
     // `sub.verify_signature()` (staff.rs:1080), which the release profile
-    // refuses — see testing.rs:103-148 on why no fixture can satisfy it. So in
+    // refuses — see testing.rs:105-162 on why no fixture can satisfy it. So in
     // release there is no `jdoe` and no reachable duplicate check: the release
     // leg asserts the REFUSAL (with the row's existence pinned by
     // `assert_refused_by_the_seeded_row`) and stops. The recorder-silence

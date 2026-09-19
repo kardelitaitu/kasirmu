@@ -575,9 +575,11 @@ async fn publish_reaches_a_terminal_registered_through_the_store_db() {
         },
     )
     .await;
-    // Release: the seeded subscription row this command validates does not
-    // verify, so no terminal is registered and the delivery half below would
-    // have nothing to test — assert the refusal rather than the outcome.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so a terminal is registered below in both
+    // and the delivery half runs in both. This arm is reached only when the row
+    // exists but does not verify - then no terminal is registered and the
+    // delivery half has nothing to test.
     if !crate::testing::seeded_row_loads() {
         crate::testing::assert_refused_by_the_seeded_row(&tb, registered, "free").await;
         return;
@@ -660,8 +662,10 @@ async fn publish_reaches_terminals_from_both_registration_homes() {
         },
     )
     .await;
-    // Release: the seeded subscription row does not verify, so the second
-    // home is never registered (see the case above for the full reason).
+    // Broken-seed fallback, not a profile fork - the seeded Free row verifies in
+    // BOTH profiles since 19-09-26, so the second home registers below in both.
+    // This arm is reached only when the row exists but does not verify (see the
+    // case above for the full reason).
     if !crate::testing::seeded_row_loads() {
         crate::testing::assert_refused_by_the_seeded_row(&tb, registered, "free").await;
         return;

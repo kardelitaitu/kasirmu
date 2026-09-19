@@ -13,15 +13,17 @@ use kasirmu_core::session::SessionContext;
 use kasirmu_core::subscription::TenantSubscription;
 use kasirmu_core::workspace_type::RESTAURANT_POS;
 
-// -- The release leg for a PROPAGATING command (crate::testing, RULE at :204-208) --
+// -- The broken-seed leg for a PROPAGATING command (crate::testing, RULE at :217-221) --
 
 /// The settlement commands this file drives do NOT project a fail-closed
 /// entitlement when the seeded row will not verify: they carry
 /// `verify_signature()?` straight out as an error, exactly the way
-/// `terminals.rs:432` does. So the release leg has no tier, no state and no
+/// `terminals.rs:432` does. So this leg has no tier, no state and no
 /// verdict to name - the settlement never happens, and every downstream
 /// assertion about a written sale row, a stamped idempotency key or a deducted
-/// stock quantity would describe a write this profile refuses to perform.
+/// stock quantity would describe a write that was refused. Since 19-09-26 the
+/// seeded Free row verifies in BOTH profiles, so a healthy tree never enters
+/// this leg and the downstream assertions run in both.
 ///
 /// Existence is pinned FIRST: `seeded_row_loads() == false` collapses five
 /// causes (lost row, load Err, public-key failure, the intended base64 reject,
@@ -61,7 +63,7 @@ async fn assert_signature_denial(
                 ..
             }
         ),
-        "the release refusal must be the propagated signature error, not a looser failure: {err:?}"
+        "the refusal must be the propagated signature error, not a looser failure: {err:?}"
     );
 }
 
@@ -447,9 +449,12 @@ async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
         },
     )
     .await;
-    // Release: the settlement is refused, so the stock quantities below never
-    // change - asserting them here would be asserting that nothing happened,
-    // not that the route prefers the warehouse. The error arm is the truth.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the settlement below lands in both and
+    // the stock quantities are asserted in both. This arm is reached only when
+    // the row exists but does not verify - then the quantities never change,
+    // and asserting them would be asserting that nothing happened rather than
+    // that the route prefers the warehouse.
     if !seeded_row_loads() {
         assert_signature_denial(&bridge, completed, "free").await;
         return;
@@ -1037,10 +1042,11 @@ async fn stale_attempt_id_on_a_different_cart_settles_a_new_sale() {
     .await
     .unwrap();
     let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
-    // Release: the settlement is refused, so there is no sale row, no
-    // idempotency key and no replay to talk about - the error arm is the whole
-    // truth this profile can offer, and the replay-guard story below belongs to
-    // a sale that was never written.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the sale below is written in both and
+    // the replay-guard story is asserted in both. This arm is reached only when
+    // the row exists but does not verify - then there is no sale row, no
+    // idempotency key and no replay to talk about.
     if !seeded_row_loads() {
         assert_signature_denial(&bridge, first, "free").await;
         return;
@@ -1211,10 +1217,11 @@ async fn replayed_attempt_answers_the_rekeyed_baskets_own_receipt() {
     .await
     .unwrap();
     let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
-    // Release: the settlement is refused, so there is no sale row, no
-    // idempotency key and no replay to talk about - the error arm is the whole
-    // truth this profile can offer, and the replay-guard story below belongs to
-    // a sale that was never written.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the sale below is written in both and
+    // the replay-guard story is asserted in both. This arm is reached only when
+    // the row exists but does not verify - then there is no sale row, no
+    // idempotency key and no replay to talk about.
     if !seeded_row_loads() {
         assert_signature_denial(&bridge, first, "free").await;
         return;
@@ -1299,10 +1306,11 @@ async fn voided_sale_does_not_satisfy_a_replay() {
     .await
     .unwrap();
     let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
-    // Release: the settlement is refused, so there is no sale row, no
-    // idempotency key and no replay to talk about - the error arm is the whole
-    // truth this profile can offer, and the replay-guard story below belongs to
-    // a sale that was never written.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the sale below is written in both and
+    // the replay-guard story is asserted in both. This arm is reached only when
+    // the row exists but does not verify - then there is no sale row, no
+    // idempotency key and no replay to talk about.
     if !seeded_row_loads() {
         assert_signature_denial(&bridge, first, "free").await;
         return;
@@ -1394,10 +1402,11 @@ async fn shortfall_retries_with_a_stable_attempt_settle_one_sale() {
     .await
     .unwrap();
     let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
-    // Release: the settlement is refused, so there is no sale row, no
-    // idempotency key and no replay to talk about - the error arm is the whole
-    // truth this profile can offer, and the replay-guard story below belongs to
-    // a sale that was never written.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the sale below is written in both and
+    // the replay-guard story is asserted in both. This arm is reached only when
+    // the row exists but does not verify - then there is no sale row, no
+    // idempotency key and no replay to talk about.
     if !seeded_row_loads() {
         assert_signature_denial(&bridge, first, "free").await;
         return;
@@ -1444,10 +1453,11 @@ async fn attempt_id_reuse_across_carts_settles_each_basket_under_its_own_key() {
     .await
     .unwrap();
     let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
-    // Release: the settlement is refused, so there is no sale row, no
-    // idempotency key and no replay to talk about - the error arm is the whole
-    // truth this profile can offer, and the replay-guard story below belongs to
-    // a sale that was never written.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the sale below is written in both and
+    // the replay-guard story is asserted in both. This arm is reached only when
+    // the row exists but does not verify - then there is no sale row, no
+    // idempotency key and no replay to talk about.
     if !seeded_row_loads() {
         assert_signature_denial(&bridge, first, "free").await;
         return;
@@ -1567,8 +1577,11 @@ async fn whitespace_only_attempt_id_is_unguarded_like_the_tablet() {
     .await
     .unwrap();
     let sale = settle_replay_cart(&bridge, "replay-tok", started.cart_id, Some("   ")).await;
-    // Release: refused at the signature before the normalizer is ever asked
-    // whether a whitespace-only attempt id stamps NULL - that question needs a
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the settlement below reaches the
+    // normalizer in both. This arm is reached only when the row exists but does
+    // not verify - then it is refused before the normalizer is ever asked
+    // whether a whitespace-only attempt id stamps NULL, a question that needs a
     // written payment row to be answerable.
     if !seeded_row_loads() {
         assert_signature_denial(&bridge, sale, "free").await;
@@ -1962,8 +1975,8 @@ async fn publish_course_fired_rejects_unknown_sale_and_empty_course() {
     )
     .await
     .map(|r| r.sale_id);
-    // Release profile: the settlement may be refused (missing signature row)
-    // — the empty-course rejection below does not depend on it.
+    // The settlement may still be refused (a missing or unverifiable signature
+    // row) — the empty-course rejection below does not depend on which it was.
     let empty_args = PublishCourseFiredArgs {
         sale_id: sale_id.unwrap_or_else(|_| "no-such-sale".into()),
         course_id: "  ".into(),

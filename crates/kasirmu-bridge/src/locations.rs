@@ -241,7 +241,7 @@ pub async fn create_location_profile_scoped(
     // The release arm is not reachable from a test and is parked beside
     // `license.rs:670-683` rather than faked. Reaching the quota call below
     // means getting past `sub.verify_signature()?` above, and no fixture can
-    // mint a verifying signature (`testing.rs:103-148` — the licence private
+    // mint a verifying signature (`testing.rs:105-162` — the licence private
     // key is not in this checkout). The permission gate at `:220` is upstream
     // of the signature read, so it makes a PERMISSION refusal assertable in
     // both profiles — it does not make this quota outcome reachable. Do not

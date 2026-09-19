@@ -24,17 +24,20 @@ fn caps(conn: &rusqlite::Connection) -> SubscriptionCapabilitiesDto {
     load_capabilities(conn).unwrap()
 }
 
-// -- The shared fork contract (crate::testing; RULE at testing.rs:204-208) --
+// -- The shared fork contract (crate::testing; RULE at testing.rs:217-221) --
 
 // Every entitlement expectation below is a RUNTIME fork, never a single
-// arm: seeded_row_loads() answers whether the seeded BOOTSTRAP_FREE row
-// verifies IN THE RUNNING PROFILE (debug yes, release no), and the
-// release-side arm asserts the FAIL-CLOSED PROJECTION rather than the debug
-// truth. No #[cfg(not(debug_assertions))] arm is introduced here: such an
-// arm cannot be reached through a runtime branch, and it also trips
-// unused_imports under RUSTFLAGS=-D warnings in dev-ci#cargo-check.
+// arm, and since 19-09-26 it forks on TWO predicates rather than one: a row
+// stamped `free` follows `seeded_row_verdict_for_tier("free")` =
+// `seeded_row_loads()` (true in BOTH profiles - the sentinel is honoured on a
+// free-tier row everywhere), while any PAID stamp follows
+// `seeded_row_reaches_a_paid_tier()` (debug only). The unverifiable arm
+// asserts the FAIL-CLOSED PROJECTION rather than the debug truth. No
+// #[cfg(not(debug_assertions))] arm is introduced here: such an arm cannot be
+// reached through a runtime branch, and it also trips unused_imports under
+// RUSTFLAGS=-D warnings in dev-ci#cargo-check.
 
-/// The guard every release-side arm runs FIRST. seeded_row_loads() == false
+/// The guard every unverifiable-row arm runs FIRST. seeded_row_loads() == false
 // collapses five causes (lost row, mis-shaped table, public-key failure, the
 // intended base64 reject, a real RSA mismatch), so a fail-closed assertion
 // about an ABSENT row proves nothing: pin the row, the tier stamp this

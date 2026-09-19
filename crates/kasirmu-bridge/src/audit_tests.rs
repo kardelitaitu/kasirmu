@@ -240,11 +240,13 @@ async fn list_command_passes_the_tier_gate_without_panicking() {
     //
     // `seeded_conn` stamps `tier_key = 'premium'` onto the migration-seeded
     // row and leaves that row's signature alone, so whether the gate can SEE
-    // the stamp is exactly what `seeded_row_loads()` answers by running the
-    // product's load path: debug verifies the BOOTSTRAP_FREE sentinel and
-    // reads premium, release rejects it and fails closed to Free. Both halves
-    // are product facts; the fixture was only ever dishonest in claiming the
-    // debug half for both profiles.
+    // the stamp is exactly what `seeded_row_verdict_for_tier("premium")`
+    // answers by running the product's load path: debug verifies the
+    // BOOTSTRAP_FREE sentinel and reads premium, release rejects it and fails
+    // closed to Free. Both halves are product facts; the fixture was only ever
+    // dishonest in claiming the debug half for both profiles. A `free` stamp is
+    // the OTHER curve since 19-09-26 - it loads in both profiles, so it takes
+    // the load arm in both rather than this fork.
     //
     // What this does NOT do is weaken either leg: the panic the test exists
     // for is a `blocking_lock()` on a tokio Mutex, which aborts in BOTH

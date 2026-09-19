@@ -440,12 +440,13 @@ async fn scoped_create_staff_blocked_at_free_tier_staff_limit() {
     )
     .await;
 
-    // Release: the QUOTA verdict asserted below is never reached in the shipping profile.
-    // staff.rs:1080 verifies the seeded row signature FIRST, so the free tier 1-staff
-    // limit is not consulted at all and the error that arrives is
-    // InvalidSubscriptionSignature - that ordering is a behaviour fact, and it is why
-    // this arm cannot reuse the match below. The release leg asserts the refusal that
-    // actually happens; the quota path stays a debug-profile claim.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so staff.rs:1080 proceeds past the
+    // signature in both and the QUOTA verdict below is asserted in both. This
+    // arm is reached only when the row exists but does not verify - then the
+    // signature gate refuses FIRST, the free tier 1-staff limit is never
+    // consulted, and the error that arrives is InvalidSubscriptionSignature.
+    // That ordering is why this arm cannot reuse the match below.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&bridge, result, "free").await;
         return;

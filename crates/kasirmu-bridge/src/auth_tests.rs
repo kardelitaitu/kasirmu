@@ -347,8 +347,10 @@ async fn create_session_allows_real_owner() {
         },
     )
     .await;
-    // Release: create_session propagates the seeded row's failed signature
-    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the session below is minted in both and
+    // this arm is reached only when the row exists but does not verify. See
+    // `seeded_row_loads`.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&app, settled, "free").await;
         return;
@@ -388,11 +390,10 @@ async fn create_session_denies_tier_disallowed_workspace_type() {
     .await;
 
     let err = result.expect_err("Free tier must not open a kds session");
-    // Release: the row that carries the tier and its allowed-types cannot be
-    // signed, so the command refuses at `verify_signature()?` before the tier
-    // gate is ever computed. That refusal is the propagated Core arm, not the
-    // BridgeError::Invalid the tier gate produces; the match below is the debug
-    // leg and stays intact, asserting both of its facts there.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the tier gate is what refuses below in
+    // both - the propagated Core arm this arm asserts is reached only when the
+    // row exists but does not verify. The match below runs in both profiles.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&app, Err::<(), BridgeError>(err), "free").await;
         return;
@@ -483,8 +484,10 @@ async fn refresh_picker_ticket_returns_fresh_ticket() {
         },
     )
     .await;
-    // Release: create_session propagates the seeded row's failed signature
-    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the session below is minted in both and
+    // this arm is reached only when the row exists but does not verify. See
+    // `seeded_row_loads`.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&app, settled, "free").await;
         return;
@@ -580,8 +583,10 @@ async fn refreshed_picker_ticket_can_be_used_for_create_session() {
         },
     )
     .await;
-    // Release: create_session propagates the seeded row's failed signature
-    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the session below is minted in both and
+    // this arm is reached only when the row exists but does not verify. See
+    // `seeded_row_loads`.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&app, settled, "free").await;
         return;
@@ -1147,8 +1152,10 @@ async fn l194_create_session_org_wide_user_gets_label() {
         },
     )
     .await;
-    // Release: create_session propagates the seeded row's failed signature
-    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the session below is minted in both and
+    // this arm is reached only when the row exists but does not verify. See
+    // `seeded_row_loads`.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&app, settled, "free").await;
         return;
@@ -1216,8 +1223,10 @@ async fn l194_switch_organization_old_token_dead() {
         },
     )
     .await;
-    // Release: create_session propagates the seeded row's failed signature
-    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the session below is minted in both and
+    // this arm is reached only when the row exists but does not verify. See
+    // `seeded_row_loads`.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&app, settled, "free").await;
         return;
@@ -1279,8 +1288,11 @@ async fn l194_switch_organization_records_an_org_switch_event() {
         },
     )
     .await;
-    // Release: create_session propagates the seeded row's failed signature
-    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    // Release: this fixture re-stamps the row to a PAID tier (`premium`), which
+    // the bootstrap sentinel cannot carry in release — it is honoured only on a
+    // free-tier row — so create_session propagates the failed signature check
+    // (the terminals.rs:432 shape) and no session exists to assert on. Debug
+    // takes the sentinel and mints the session. See `seeded_row_reaches_a_paid_tier`.
     if !seeded_row_reaches_a_paid_tier() {
         assert_refused_by_the_seeded_row(&app, settled, "premium").await;
         return;
@@ -1330,8 +1342,10 @@ async fn l194_switch_organization_wrong_pin_keeps_old_token() {
         },
     )
     .await;
-    // Release: create_session propagates the seeded row's failed signature
-    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the session below is minted in both and
+    // this arm is reached only when the row exists but does not verify. See
+    // `seeded_row_loads`.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&app, settled, "free").await;
         return;
@@ -1380,8 +1394,10 @@ async fn l194_switch_organization_enumerated_list_only() {
         },
     )
     .await;
-    // Release: create_session propagates the seeded row's failed signature
-    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the session below is minted in both and
+    // this arm is reached only when the row exists but does not verify. See
+    // `seeded_row_loads`.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&app, settled, "free").await;
         return;
@@ -1430,8 +1446,10 @@ async fn l194_switch_organization_requires_assignment_coverage() {
         },
     )
     .await;
-    // Release: create_session propagates the seeded row's failed signature
-    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the session below is minted in both and
+    // this arm is reached only when the row exists but does not verify. See
+    // `seeded_row_loads`.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&app, settled, "free").await;
         return;
@@ -1475,8 +1493,10 @@ async fn l194_switch_organization_no_grant_carryover() {
         },
     )
     .await;
-    // Release: create_session propagates the seeded row's failed signature
-    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the session below is minted in both and
+    // this arm is reached only when the row exists but does not verify. See
+    // `seeded_row_loads`.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&app, settled, "free").await;
         return;
@@ -1519,8 +1539,10 @@ async fn l194_switch_organization_rejects_tampered_db() {
         },
     )
     .await;
-    // Release: create_session propagates the seeded row's failed signature
-    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the session below is minted in both and
+    // this arm is reached only when the row exists but does not verify. See
+    // `seeded_row_loads`.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&app, settled, "free").await;
         return;
@@ -1573,8 +1595,10 @@ async fn l194_switch_organization_happy_path_returns_label_and_token() {
         },
     )
     .await;
-    // Release: create_session propagates the seeded row's failed signature
-    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the session below is minted in both and
+    // this arm is reached only when the row exists but does not verify. See
+    // `seeded_row_loads`.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&app, settled, "free").await;
         return;
