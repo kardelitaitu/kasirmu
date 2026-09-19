@@ -42,13 +42,24 @@ export function createSitemapOptions() {
     },
 
     // Skip the auth and gated pages — no indexable content on /account
-    // (session-gated), /login (form-only), or /enterprise-trial
-    // (approval-code-gated) — and the locale-detect root (rule 3 above).
-    // The docs hub (/en/docs/, /id/docs/) IS a real page now (4-card landing,
+    // (session-gated), /login (form-only), /signup (form-only) or
+    // /enterprise-trial (approval-code-gated) — and the locale-detect root
+    // (rule 3 above).
+    //
+    // /signup was the odd one out: it carried no `noindex` meta (unlike
+    // /login and /account) AND was submitted in the sitemap, i.e. the site
+    // explicitly invited Google to index a page whose entire content is a
+    // form. Measured on the live site before this change:
+    // `https://kasir.mu/en/signup/` → 200, no robots meta, listed in
+    // sitemap-0.xml. Both halves are fixed together — a sitemap entry for a
+    // noindexed URL is a self-contradiction, and the noindex alone would
+    // leave the contradiction in place.
+    //
+    // The docs hub (/en/docs/, /id/docs/) IS a real page (4-card landing,
     // src/pages/[locale]/docs/index.astro) so it stays in the sitemap; only
     // the locale-less bare /docs/ path is noise.
     filter: (page) =>
-      page !== `${SITE}/` && !/\/(account|login|enterprise-trial)\/$/.test(page),
+      page !== `${SITE}/` && !/\/(account|login|signup|enterprise-trial)\/$/.test(page),
 
     serialize: (item) => {
       const lastmod = lastmodFor(item.url);

@@ -141,8 +141,13 @@ export default function PricingGrid({ tiers, locale, downloadHref, contactHref }
                   {t(locale, 'pricingPage.mostPopular')}
                 </span>
               )}
-              {/* Row 1: Title */}
-              <h3 className="text-lg font-semibold">{tier.name}</h3>
+              {/* Row 1: Title.
+                  h2, not h3: the page's only other heading levels are the h1
+                  ("Pricing") and the plan names, so h3 skipped a level after
+                  the h1 (WCAG 1.3.1 / HIG heading order, and the outline a
+                  crawler reconstructs). Each plan IS a top-level section of a
+                  pricing page, which is exactly what h2 means. */}
+              <h2 className="text-lg font-semibold">{tier.name}</h2>
               {/* Row 2: Price */}
               <div className="mt-4 min-h-[58px] flex flex-col justify-start">
                 <p className="text-2xl font-bold whitespace-nowrap">

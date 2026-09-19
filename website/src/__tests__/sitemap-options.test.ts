@@ -47,7 +47,11 @@ describe('filter', () => {
   });
 
   it('excludes the gated pages in both locales', () => {
-    for (const path of ['account', 'login', 'enterprise-trial']) {
+    // /signup belongs to this set for the same reason as /login: its whole
+    // content is a form, so it is noindexed (signup.astro) and must not also
+    // be submitted here — a sitemap entry for a noindexed URL contradicts
+    // itself. It was missing from both halves until the SEO review.
+    for (const path of ['account', 'login', 'signup', 'enterprise-trial']) {
       expect(opts.filter(`${SITE}/en/${path}/`), path).toBe(false);
       expect(opts.filter(`${SITE}/id/${path}/`), path).toBe(false);
     }

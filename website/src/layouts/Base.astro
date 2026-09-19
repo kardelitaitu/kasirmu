@@ -94,10 +94,16 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
+    <!-- og:image:alt / twitter:image:alt describe the image for screen-reader
+         and low-vision users of social cards, and are used by scrapers when
+         the image itself cannot be fetched. Every page shares one brand card,
+         so the title is the accurate description. -->
+    <meta property="og:image:alt" content={title} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={desc} />
     <meta name="twitter:image" content={new URL('/og-image.png', Astro.site)} />
+    <meta name="twitter:image:alt" content={title} />
     <script type="application/ld+json" is:inline set:html={JSON.stringify({
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
@@ -117,7 +123,16 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
       "name": "kasir.mu",
       "url": "https://kasir.mu",
       "logo": "https://kasir.mu/favicon.svg",
-      "sameAs": ["https://kasir.mu"],
+      // sameAs lists profiles that IDENTIFY this entity elsewhere. It used to
+      // be ["https://kasir.mu"] — a self-reference, which tells Google nothing
+      // and is the one value that can never be a valid sameAs target. The
+      // community Discord is currently the only real profile this project
+      // owns: the four social icons in Footer.astro still point at the
+      // platforms' own homepages (https://x.com, https://www.instagram.com,
+      // …), not at kasir.mu accounts, so they must NOT be listed here — doing
+      // so would assert that kasir.mu IS x.com. Add each real profile URL to
+      // this array when it exists. See the SEO review, §3.1.
+      "sameAs": ["https://discord.gg/NdWDgEzNxx"],
       "contactPoint": {
         "@type": "ContactPoint",
         "email": "support@kasir.mu",

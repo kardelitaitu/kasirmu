@@ -53,6 +53,11 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
     <meta name="description" content={description ?? t(locale, 'docs.title')} />
     <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
     <link rel="sitemap" href="/sitemap-index.xml" />
+    <!-- llms.txt discovery. Base.astro emits this on every marketing page;
+         the docs layout is a separate <head> and was missing it, so the whole
+         /docs/ subtree had no pointer to the file at all. Same hint, same
+         rationale: docs/records/seo-robots-llms-review-19-09-26.md §2.2 L7. -->
+    <link rel="describedby" href="/llms.txt" type="text/plain" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     {locales.map((code) => (
       <link rel="alternate" hreflang={code} href={getAbsoluteLocaleUrl(code, path)} />
@@ -70,10 +75,12 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={title} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description ?? t(locale, 'docs.title')} />
     <meta name="twitter:image" content={new URL('/og-image.png', Astro.site)} />
+    <meta name="twitter:image:alt" content={title} />
     <script type="application/ld+json" is:inline set:html={JSON.stringify({
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
