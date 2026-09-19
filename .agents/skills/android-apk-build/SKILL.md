@@ -486,6 +486,56 @@ single check. Signature: `apksigner verify --verbose <apk>` should report `Verif
 true` with `Number of signers: 1`. The absence of `META-INF/*.RSA` means nothing — v2/v3 signatures live
 in the APK Signing Block, not in `META-INF`.
 
+## 8. Proving the app WORKS on the device — the positive check
+
+§2's causes tell you how to diagnose a *failure*. This is the complementary recipe, and it settles
+"is the app working" without a screenshot — which matters when the panel is off or the keyguard is up.
+Run it in order; each line is a distinct failure mode:
+
+```bash
+ADB="$ANDROID_HOME/platform-tools/adb.exe"
+"$ADB" shell ps -A | grep -i kasir                    # 1. app process
+"$ADB" shell ps -A | grep sandboxed_process           # 2. chromium renderer
+"$ADB" shell uiautomator dump /sdcard/ui.xml && \
+  "$ADB" shell cat /sdcard/ui.xml | tr '>' '>\n' | grep WebView
+"$ADB" shell dumpsys activity activities | grep topResumedActivity
+"$ADB" shell dumpsys activity top | grep -A2 'android:id/content'
+```
+
+Measured 2026-09-20 on a fresh release build, all five agreeing:
+
+```
+u0_a246  6568  ... R mu.kasir.mobile
+u0_i9188 6616  ... S com.google.android.webview:sandboxed_process0:...  (caller=mu.kasir.mobile)
+class="android.webkit.WebView"  bounds="[0,0][1920,1200]"
+topResumedActivity=ActivityRecord{... mu.kasir.mobile/.MainActivity t302}
+mu.kasir.mobile.RustWebView{67f6701 VFEDHVC.. ........ 0,0-1920,1200}
+```
+
+`RustWebView` as a child of `android:id/content` at full size is the one that matters — the broken
+signature was "`android:id/content` with no child", and the chromium line is something a
+never-created webview cannot produce. Then confirm it is *interactive*, not merely drawn: `input tap`
+the first field, `input text`, screenshot — the focus ring and the soft keyboard are the proof. On this
+app the login flow's step 2 is a 4-digit PIN pad, so tapping the submit arrow with any username
+advances the 2-dot step indicator: a cheap end-to-end check that the JS state machine **and** the
+backend round-trip both work, needing no credentials.
+
+**`grep -i kasirmu` does NOT match `mu.kasir.mobile`.** "kasirmu" is not a substring of
+"kasir.mobile", so `ps -A | grep kasirmu` returns empty while the app is running — which reads exactly
+like "the app died on launch". Measured 2026-09-20: it cost a false crash conclusion. **Use
+`grep -i kasir`.**
+
+**The build process hangs after the artifact is already complete.** Measured 2026-09-20: `cargo tauri
+android build` still reported running at 26 min while `app-universal-release.apk` had been complete and
+mtime-stable since minute 7. Do not wait on the process — poll the APK mtime, verify the artifact, then
+kill the task. `gradlew.bat --stop` afterwards.
+
+**A silent no-op looks exactly like success.** Un-escalated, `npm run build:mobile --prefix ui` exits
+**0** with **no output and no writes** (the shim blocking Vite's `emptyDir`, §6), while escalated it
+prints the vite banner and `✓ built in ~10s`. The exit code cannot tell you which happened — check that
+`ui/dist-mobile` mtimes moved. Same reason the "Proving the artifact" section exists: a green status is
+not evidence that the new code shipped.
+
 ---
 
-> last audited 19-09-26 by Budak-Korporat
+> last audited 20-09-26 by Budak-Korporat
