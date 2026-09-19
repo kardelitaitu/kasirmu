@@ -1,4 +1,4 @@
-import { t } from '../i18n';
+import { t, type Labels } from '../i18n/labels';
 import {
   passwordByteLength,
   passwordClassCount,
@@ -21,12 +21,28 @@ import {
  * rule the server enforces.
  */
 
+/**
+ * Keys this meter reads. Owned here because this is the component that reads
+ * them; every island that renders a password field spreads this list into its
+ * own alongside `PASSWORD_FIELD_LABELS`.
+ */
+export const PASSWORD_STRENGTH_LABELS = [
+  'password.hint',
+  'password.meterLabel',
+  'password.minLength',
+  'password.strengthGood',
+  'password.strengthStrong',
+  'password.strengthTooShort',
+  'password.strengthWeak',
+] as const;
+
 interface Props {
-  locale: string;
+  /** Strings this meter reads; the owning island passes its own map. */
+  labels: Labels;
   password: string;
 }
 
-export default function PasswordStrength({ locale, password }: Props) {
+export default function PasswordStrength({ labels, password }: Props) {
   const classes = passwordClassCount(password);
   const minLenOk =
     passwordByteLength(password) >= passwordMinLen &&
@@ -37,16 +53,16 @@ export default function PasswordStrength({ locale, password }: Props) {
   let color = 'var(--callout-danger)';
   if (minLenOk) {
     if (classes < passwordMinClasses) {
-      labelKey = t(locale, 'password.strengthWeak');
+      labelKey = t(labels, 'password.strengthWeak');
     } else if (classes === passwordMinClasses) {
-      labelKey = t(locale, 'password.strengthGood');
+      labelKey = t(labels, 'password.strengthGood');
       color = 'var(--callout-tip)';
     } else {
-      labelKey = t(locale, 'password.strengthStrong');
+      labelKey = t(labels, 'password.strengthStrong');
       color = 'var(--color-accent)';
     }
   } else {
-    labelKey = t(locale, 'password.strengthTooShort');
+    labelKey = t(labels, 'password.strengthTooShort');
   }
 
   return (
@@ -54,7 +70,7 @@ export default function PasswordStrength({ locale, password }: Props) {
       <div
         className="grid grid-cols-4 gap-1"
         role="meter"
-        aria-label={t(locale, 'password.meterLabel')}
+        aria-label={t(labels, 'password.meterLabel')}
         aria-valuemin={0}
         aria-valuemax={4}
         aria-valuenow={classes}
@@ -71,9 +87,9 @@ export default function PasswordStrength({ locale, password }: Props) {
       </div>
       <p className="text-xs text-muted">
         {labelKey}
-        {!minLenOk && <span> — {t(locale, 'password.minLength')}</span>}
+        {!minLenOk && <span> — {t(labels, 'password.minLength')}</span>}
       </p>
-      <p className="text-xs text-muted">{t(locale, 'password.hint')}</p>
+      <p className="text-xs text-muted">{t(labels, 'password.hint')}</p>
     </div>
   );
 }

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { t } from '../i18n';
+import { t, type Labels } from '../i18n/labels';
 import { isStrongPassword, passwordsMatch } from '../lib/passwordPolicy';
-import PasswordField from './PasswordField';
-import PasswordStrength from './PasswordStrength';
+import PasswordField, { PASSWORD_FIELD_LABELS } from './PasswordField';
+import PasswordStrength, { PASSWORD_STRENGTH_LABELS } from './PasswordStrength';
 import OtpInput from './OtpInput';
 import { licenseApiUrl } from '../lib/runtime-config';
 
@@ -22,8 +22,63 @@ import { licenseApiUrl } from '../lib/runtime-config';
  * PUBLIC_LICENSE_API_URL is unset.
  */
 
+/**
+ * Strings this island reads — itself, `PasswordField`, `PasswordStrength` and
+ * `useAuth`. `login.astro` turns the list into the `labels` prop with
+ * `labelMap`, so the browser gets these strings in the document instead of both
+ * locale dictionaries in the JS bundle;
+ * `src/__tests__/island-label-coverage.test.ts` keeps the list honest.
+ */
+export const AUTH_FORM_LABELS = [
+  'login.backToEmail',
+  'login.backToLogin',
+  'login.code',
+  'login.codePlaceholder',
+  'login.codeResent',
+  'login.codeSent',
+  'login.cooldown',
+  'login.createAccount',
+  'login.email',
+  'login.emailPlaceholder',
+  'login.errorCors',
+  'login.errorLogin',
+  'login.errorRateLimit',
+  'login.errorReset',
+  'login.errorResetRequest',
+  'login.errorSend',
+  'login.errorSmtp',
+  'login.errorVerify',
+  'login.forgotPassword',
+  'login.forgotPasswordLink',
+  'login.newAccount',
+  'login.newHere',
+  'login.newPassword',
+  'login.notConfigured',
+  'login.otpNote',
+  'login.password',
+  'login.passwordPlaceholder',
+  'login.resendCode',
+  'login.resendCooldown',
+  'login.resetCodeSent',
+  'login.resetPassword',
+  'login.resetTitle',
+  'login.sendCode',
+  'login.sendResetCode',
+  'login.signIn',
+  'login.tabEmailCode',
+  'login.tabPassword',
+  'login.title',
+  'login.verify',
+  ...PASSWORD_FIELD_LABELS,
+  ...PASSWORD_STRENGTH_LABELS,
+  'signup.errorExists',
+  'signup.errorRegister',
+] as const;
+
 interface Props {
   locale: string;
+  /** Strings this form reads; see `AUTH_FORM_LABELS`. */
+  labels: Labels;
 }
 
 type Mode = 'password' | 'otp';
@@ -31,7 +86,7 @@ type Step = 'form' | 'code';
 type View = 'login' | 'reset';
 type ResetStep = 'email' | 'code';
 
-export default function AuthForm({ locale }: Props) {
+export default function AuthForm({ locale, labels }: Props) {
   // Read API at component level so window.__OZ_CONFIG__ is available after hydration
   const API = licenseApiUrl();
   const [view, setView] = useState<View>('login');
@@ -75,7 +130,7 @@ export default function AuthForm({ locale }: Props) {
   useEffect(() => setMounted(true), []);
 
   if (!API && mounted) {
-    return <p className="rounded-md border border-ink/10 p-4 text-sm text-muted">{t(locale, 'login.notConfigured')}</p>;
+    return <p className="rounded-md border border-ink/10 p-4 text-sm text-muted">{t(labels, 'login.notConfigured')}</p>;
   }
 
   const redirectAfterAuth = async () => {
@@ -180,7 +235,7 @@ export default function AuthForm({ locale }: Props) {
       sessionStorage.setItem('oz_email', email);
       redirectAfterAuth();
     } catch {
-      setError(t(locale, 'login.errorLogin'));
+      setError(t(labels, 'login.errorLogin'));
     } finally {
       setLoading(false);
     }
@@ -200,20 +255,20 @@ export default function AuthForm({ locale }: Props) {
         const body = await res.json().catch(() => ({})) as { error?: string };
         const msg = body.error || `HTTP ${res.status}`;
         if (res.status === 429) {
-          setError(t(locale, 'login.errorRateLimit'));
+          setError(t(labels, 'login.errorRateLimit'));
         } else if (res.status === 403) {
-          setError(t(locale, 'login.errorCors'));
+          setError(t(labels, 'login.errorCors'));
         } else if (res.status === 503) {
-          setError(t(locale, 'login.errorSmtp'));
+          setError(t(labels, 'login.errorSmtp'));
         } else {
-          setError(`${t(locale, 'login.errorSend')} (${msg})`);
+          setError(`${t(labels, 'login.errorSend')} (${msg})`);
         }
         return;
       }
       setOtpSentAt(Date.now());
       setStep('code');
     } catch {
-      setError(t(locale, 'login.errorSend'));
+      setError(t(labels, 'login.errorSend'));
     } finally {
       setLoading(false);
     }
@@ -236,7 +291,7 @@ export default function AuthForm({ locale }: Props) {
       sessionStorage.setItem('oz_email', email);
       redirectAfterAuth();
     } catch {
-      setError(t(locale, 'login.errorVerify'));
+      setError(t(labels, 'login.errorVerify'));
     } finally {
       setLoading(false);
     }
@@ -256,7 +311,7 @@ export default function AuthForm({ locale }: Props) {
       const data = await res.json() as { cooldown_until?: string; error?: string };
       if (!res.ok) {
         // Show error with HTTP status code for debugging
-        setError(`${t(locale, 'login.errorResetRequest')} Code ${res.status}`);
+        setError(`${t(labels, 'login.errorResetRequest')} Code ${res.status}`);
         return;
       }
       // Email was sent — advance to code step
@@ -266,7 +321,7 @@ export default function AuthForm({ locale }: Props) {
       setResetStep('code');
     } catch (err) {
       // Network error or parse failure
-      setError(`${t(locale, 'login.errorResetRequest')} Code 0`);
+      setError(`${t(labels, 'login.errorResetRequest')} Code 0`);
     } finally {
       setLoading(false);
     }
@@ -289,7 +344,7 @@ export default function AuthForm({ locale }: Props) {
       sessionStorage.setItem('oz_email', resetEmail);
       redirectAfterAuth();
     } catch {
-      setError(t(locale, 'login.errorReset'));
+      setError(t(labels, 'login.errorReset'));
     } finally {
       setLoading(false);
     }
@@ -308,22 +363,22 @@ export default function AuthForm({ locale }: Props) {
     if (resetStep === 'email') {
       return (
         <div className="mx-auto w-full max-w-sm rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm">
-          <form onSubmit={requestResetCode} className="space-y-4" aria-label={t(locale, 'login.resetTitle')}>
+          <form onSubmit={requestResetCode} className="space-y-4" aria-label={t(labels, 'login.resetTitle')}>
             <label className="block">
-              <span className="mb-1 block text-sm text-muted">{t(locale, 'login.email')}</span>
+              <span className="mb-1 block text-sm text-muted">{t(labels, 'login.email')}</span>
               <input
                 type="email"
                 required
                 autoComplete="email"
                 value={resetEmail}
                 onChange={(e) => setResetEmail(e.target.value)}
-                placeholder={t(locale, 'login.emailPlaceholder')}
+                placeholder={t(labels, 'login.emailPlaceholder')}
                 className={inputClass}
               />
             </label>
             {resetCooldown && (
               <p className="text-sm text-muted" role="status">
-                {t(locale, 'login.cooldown')}{' '}
+                {t(labels, 'login.cooldown')}{' '}
                 {new Date(resetCooldown).toLocaleDateString(locale === 'id' ? 'id-ID' : 'en-US', {
                   year: 'numeric',
                   month: 'short',
@@ -338,14 +393,14 @@ export default function AuthForm({ locale }: Props) {
               disabled={loading}
               className="w-full rounded-md bg-primary px-4 py-3 text-sm font-semibold text-on-primary transition hover:bg-primary-hover disabled:opacity-60"
             >
-              {loading ? '…' : t(locale, 'login.sendResetCode')}
+              {loading ? '…' : t(labels, 'login.sendResetCode')}
             </button>
             <button
               type="button"
               onClick={() => setView('login')}
               className="w-full text-center text-xs text-muted transition hover:text-ink"
             >
-              {t(locale, 'login.backToLogin')}
+              {t(labels, 'login.backToLogin')}
             </button>
           </form>
         </div>
@@ -353,10 +408,10 @@ export default function AuthForm({ locale }: Props) {
     }
     return (
       <div className={`mx-auto w-full max-w-sm rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm ${error ? 'animate-shake' : ''}`}>
-        <p className="mb-4 text-sm text-muted">{t(locale, 'login.resetCodeSent')}</p>
-        <form onSubmit={submitResetPassword} className="space-y-4" aria-label={t(locale, 'login.resetTitle')}>
+        <p className="mb-4 text-sm text-muted">{t(labels, 'login.resetCodeSent')}</p>
+        <form onSubmit={submitResetPassword} className="space-y-4" aria-label={t(labels, 'login.resetTitle')}>
           <div>
-            <span className="mb-2 block text-sm text-muted">{t(locale, 'login.code')}</span>
+            <span className="mb-2 block text-sm text-muted">{t(labels, 'login.code')}</span>
             <OtpInput
               value={resetCode}
               onChange={(val) => {
@@ -369,32 +424,32 @@ export default function AuthForm({ locale }: Props) {
             />
           </div>
           <PasswordField
-            locale={locale}
+            labels={labels}
             id="reset-password"
-            label={t(locale, 'login.newPassword')}
+            label={t(labels, 'login.newPassword')}
             value={resetPassword}
             onChange={setResetPassword}
             autoComplete="new-password"
-            placeholder={t(locale, 'login.passwordPlaceholder')}
+            placeholder={t(labels, 'login.passwordPlaceholder')}
             showConfirm
             confirmValue={resetConfirm}
             onConfirmChange={setResetConfirm}
           />
-          <PasswordStrength locale={locale} password={resetPassword} />
+          <PasswordStrength labels={labels} password={resetPassword} />
           {error && <p className="text-sm text-danger" role="alert">{error}</p>}
           <button
             type="submit"
             disabled={loading || resetCode.length < 6 || !isStrongPassword(resetPassword) || !passwordsMatch(resetPassword, resetConfirm)}
             className="w-full rounded-md bg-primary px-4 py-3 text-sm font-semibold text-on-primary transition hover:bg-primary-hover disabled:opacity-60"
           >
-            {loading ? '…' : t(locale, 'login.resetPassword')}
+            {loading ? '…' : t(labels, 'login.resetPassword')}
           </button>
           <button
             type="button"
             onClick={() => setView('login')}
             className="w-full text-center text-xs text-muted transition hover:text-ink"
           >
-            {t(locale, 'login.backToLogin')}
+            {t(labels, 'login.backToLogin')}
           </button>
         </form>
       </div>
@@ -405,11 +460,11 @@ export default function AuthForm({ locale }: Props) {
   if (step === 'code') {
     return (
       <div className={`mx-auto w-full max-w-sm rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm ${error ? 'animate-shake' : ''}`}>
-        <p className="mb-4 text-sm text-muted">{t(locale, 'login.codeSent')}</p>
-        <form onSubmit={verifyOtp} className="space-y-4" aria-label={t(locale, 'login.title')}>
+        <p className="mb-4 text-sm text-muted">{t(labels, 'login.codeSent')}</p>
+        <form onSubmit={verifyOtp} className="space-y-4" aria-label={t(labels, 'login.title')}>
           <div>
-            <span className="mb-2 block text-sm text-muted">{t(locale, 'login.code')}</span>
-            <p className="mb-2 text-xs text-muted">{t(locale, 'login.codePlaceholder')}</p>
+            <span className="mb-2 block text-sm text-muted">{t(labels, 'login.code')}</span>
+            <p className="mb-2 text-xs text-muted">{t(labels, 'login.codePlaceholder')}</p>
             <OtpInput
               value={code}
               onChange={(val) => {
@@ -423,7 +478,7 @@ export default function AuthForm({ locale }: Props) {
           </div>
           {resendSuccess && (
             <p className="text-center text-xs font-medium text-green-500" role="status">
-              ✓ {t(locale, 'login.codeResent')}
+              ✓ {t(labels, 'login.codeResent')}
             </p>
           )}
           {error && <p className="text-sm text-danger" role="alert">{error}</p>}
@@ -432,11 +487,11 @@ export default function AuthForm({ locale }: Props) {
             disabled={loading || code.length < 6}
             className="w-full rounded-md bg-primary px-4 py-3 text-sm font-semibold text-on-primary transition hover:bg-primary-hover disabled:opacity-60"
           >
-            {loading ? '…' : t(locale, 'login.verify')}
+            {loading ? '…' : t(labels, 'login.verify')}
           </button>
           {resendCooldown > 0 ? (
             <p className="text-center text-xs text-muted" role="timer" aria-live="polite" aria-atomic="true">
-              {t(locale, 'login.resendCooldown')} {resendCooldown}s
+              {t(labels, 'login.resendCooldown')} {resendCooldown}s
             </p>
           ) : (
             <button
@@ -454,14 +509,14 @@ export default function AuthForm({ locale }: Props) {
                     if (!res.ok) {
                       const body = await res.json().catch(() => ({})) as { error?: string };
                       if (res.status === 429) {
-                        setError(t(locale, 'login.errorRateLimit'));
+                        setError(t(labels, 'login.errorRateLimit'));
                       } else if (res.status === 403) {
-                        setError(t(locale, 'login.errorCors'));
+                        setError(t(labels, 'login.errorCors'));
                       } else if (res.status === 503) {
-                        setError(t(locale, 'login.errorSmtp'));
+                        setError(t(labels, 'login.errorSmtp'));
                       } else {
                         const msg = body.error;
-                        setError(msg ? `${t(locale, 'login.errorSend')} (${msg})` : t(locale, 'login.errorSend'));
+                        setError(msg ? `${t(labels, 'login.errorSend')} (${msg})` : t(labels, 'login.errorSend'));
                       }
                       return;
                     }
@@ -469,7 +524,7 @@ export default function AuthForm({ locale }: Props) {
                     setResendSuccess(true);
                     setTimeout(() => setResendSuccess(false), 4000);
                   } catch {
-                    setError(t(locale, 'login.errorSend'));
+                    setError(t(labels, 'login.errorSend'));
                   } finally {
                     setLoading(false);
                   }
@@ -477,9 +532,9 @@ export default function AuthForm({ locale }: Props) {
               }}
               disabled={loading}
               className="w-full text-center text-xs text-link transition hover:underline"
-              aria-label={t(locale, 'login.resendCode')}
+              aria-label={t(labels, 'login.resendCode')}
             >
-              {t(locale, 'login.resendCode')}
+              {t(labels, 'login.resendCode')}
             </button>
           )}
           <button
@@ -487,7 +542,7 @@ export default function AuthForm({ locale }: Props) {
             onClick={() => setStep('form')}
             className="w-full text-center text-xs text-muted transition hover:text-ink"
           >
-            {t(locale, 'login.backToEmail')}
+            {t(labels, 'login.backToEmail')}
           </button>
         </form>
       </div>
@@ -499,50 +554,50 @@ export default function AuthForm({ locale }: Props) {
     <div className={`mx-auto w-full max-w-sm rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm ${error ? 'animate-shake' : ''}`}>
       <div
         role="tablist"
-        aria-label={t(locale, 'login.title')}
+        aria-label={t(labels, 'login.title')}
         className="mb-5 grid grid-cols-2 gap-1 rounded-lg bg-ink/10 p-1"
       >
         <button type="button" role="tab" aria-selected={mode === 'otp'} onClick={() => switchMode('otp')} className={tabClass(mode === 'otp')}>
-          {t(locale, 'login.tabEmailCode')}
+          {t(labels, 'login.tabEmailCode')}
         </button>
         <button type="button" role="tab" aria-selected={mode === 'password'} onClick={() => switchMode('password')} className={tabClass(mode === 'password')}>
-          {t(locale, 'login.tabPassword')}
+          {t(labels, 'login.tabPassword')}
         </button>
       </div>
 
       {/* Min-height prevents layout shift when switching tabs (password is taller) */}
       <div className="min-h-[320px]">
       {mode === 'password' ? (
-        <form onSubmit={loginPassword} className="space-y-4" aria-label={t(locale, 'login.tabPassword')}>
+        <form onSubmit={loginPassword} className="space-y-4" aria-label={t(labels, 'login.tabPassword')}>
           <label className="block">
-            <span className="mb-1 block text-sm text-muted">{t(locale, 'login.email')}</span>
+            <span className="mb-1 block text-sm text-muted">{t(labels, 'login.email')}</span>
             <input
               type="email"
               required
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder={t(locale, 'login.emailPlaceholder')}
+              placeholder={t(labels, 'login.emailPlaceholder')}
               className={inputClass}
             />
           </label>
           <PasswordField
-            locale={locale}
+            labels={labels}
             id="login-password"
-            label={t(locale, 'login.password')}
+            label={t(labels, 'login.password')}
             value={password}
             onChange={setPassword}
             autoComplete="current-password"
-            placeholder={t(locale, 'login.passwordPlaceholder')}
+            placeholder={t(labels, 'login.passwordPlaceholder')}
           />
           <div className="flex items-center justify-between text-xs">
-            <span className="text-muted">{t(locale, 'login.forgotPassword')}</span>
+            <span className="text-muted">{t(labels, 'login.forgotPassword')}</span>
             <button
               type="button"
               onClick={openReset}
               className="text-link transition hover:underline"
             >
-              {t(locale, 'login.forgotPasswordLink')}
+              {t(labels, 'login.forgotPasswordLink')}
             </button>
           </div>
           {error && <p className="text-sm text-danger" role="alert">{error}</p>}
@@ -551,26 +606,26 @@ export default function AuthForm({ locale }: Props) {
             disabled={loading}
             className="w-full rounded-md bg-primary px-4 py-3 text-sm font-semibold text-on-primary transition hover:bg-primary-hover disabled:opacity-60"
           >
-            {loading ? '…' : t(locale, 'login.signIn')}
+            {loading ? '…' : t(labels, 'login.signIn')}
           </button>
           <p className="text-center text-xs text-muted">
-            {t(locale, 'login.newHere')}{' '}
+            {t(labels, 'login.newHere')}{' '}
             <a href={`/${locale}/signup`} className="text-link transition hover:underline">
-              {t(locale, 'login.createAccount')}
+              {t(labels, 'login.createAccount')}
             </a>
           </p>
         </form>
       ) : (
-        <form onSubmit={requestOtp} className="space-y-4" aria-label={t(locale, 'login.tabEmailCode')}>
+        <form onSubmit={requestOtp} className="space-y-4" aria-label={t(labels, 'login.tabEmailCode')}>
           <label className="block">
-            <span className="mb-1 block text-sm text-muted">{t(locale, 'login.email')}</span>
+            <span className="mb-1 block text-sm text-muted">{t(labels, 'login.email')}</span>
             <input
               type="email"
               required
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder={t(locale, 'login.emailPlaceholder')}
+              placeholder={t(labels, 'login.emailPlaceholder')}
               className={inputClass}
             />
           </label>
@@ -580,14 +635,14 @@ export default function AuthForm({ locale }: Props) {
             disabled={loading}
             className="w-full rounded-md bg-primary px-4 py-3 text-sm font-semibold text-on-primary transition hover:bg-primary-hover disabled:opacity-60"
           >
-            {loading ? '…' : t(locale, 'login.sendCode')}
+            {loading ? '…' : t(labels, 'login.sendCode')}
           </button>
-          <p className="text-xs text-muted">{t(locale, 'login.otpNote')}</p>
-          <p className="text-xs text-muted">{t(locale, 'login.newAccount')}</p>
+          <p className="text-xs text-muted">{t(labels, 'login.otpNote')}</p>
+          <p className="text-xs text-muted">{t(labels, 'login.newAccount')}</p>
           <p className="text-center text-xs text-muted">
-            {t(locale, 'login.newHere')}{' '}
+            {t(labels, 'login.newHere')}{' '}
             <a href={`/${locale}/signup`} className="text-link transition hover:underline">
-              {t(locale, 'login.createAccount')}
+              {t(labels, 'login.createAccount')}
             </a>
           </p>
         </form>

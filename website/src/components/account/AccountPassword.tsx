@@ -1,4 +1,4 @@
-import { t } from '../../i18n';
+import { t, type Labels } from '../../i18n/labels';
 import { isStrongPassword, passwordsMatch } from '../../lib/passwordPolicy';
 import PasswordField from '../PasswordField';
 import PasswordStrength from '../PasswordStrength';
@@ -11,7 +11,8 @@ import PasswordStrength from '../PasswordStrength';
 export type PasswordMsg = 'idle' | 'saved' | 'error';
 
 interface Props {
-  locale: string;
+  /** Strings this section reads; AccountView passes its own map. */
+  labels: Labels;
   /** The signed-in account email — embedded as a hidden readonly field so
       Chrome's accessibility heuristics and password managers can associate
       the new password with the account (the form has no visible username
@@ -27,11 +28,11 @@ interface Props {
   onSave: (pw: string) => void;
 }
 
-export default function AccountPassword({ locale, email, pw, pwConfirm, msg, saving, onPwChange, onPwConfirmChange, onSave }: Props) {
+export default function AccountPassword({ labels, email, pw, pwConfirm, msg, saving, onPwChange, onPwConfirmChange, onSave }: Props) {
   return (
-    <section className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm" aria-label={t(locale, 'account.password')}>
-      <h2 className="text-lg font-semibold">{t(locale, 'account.password')}</h2>
-      <p className="mt-1 text-sm text-muted">{t(locale, 'account.passwordHelp')}</p>
+    <section className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm" aria-label={t(labels, 'account.password')}>
+      <h2 className="text-lg font-semibold">{t(labels, 'account.password')}</h2>
+      <p className="mt-1 text-sm text-muted">{t(labels, 'account.passwordHelp')}</p>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -52,30 +53,30 @@ export default function AccountPassword({ locale, email, pw, pwConfirm, msg, sav
           tabIndex={-1}
         />
         <PasswordField
-          locale={locale}
+          labels={labels}
           id="account-password"
-          label={t(locale, 'account.passwordPlaceholder')}
+          label={t(labels, 'account.passwordPlaceholder')}
           value={pw}
           onChange={onPwChange}
           autoComplete="new-password"
-          placeholder={t(locale, 'account.passwordPlaceholder')}
+          placeholder={t(labels, 'account.passwordPlaceholder')}
           showConfirm
           confirmValue={pwConfirm}
           onConfirmChange={onPwConfirmChange}
         />
         {msg === 'saved' && (
-          <p className="text-sm text-success" role="status">{t(locale, 'account.passwordSaved')}</p>
+          <p className="text-sm text-success" role="status">{t(labels, 'account.passwordSaved')}</p>
         )}
         {msg === 'error' && (
-          <p className="text-sm text-danger" role="alert">{t(locale, 'account.passwordError')}</p>
+          <p className="text-sm text-danger" role="alert">{t(labels, 'account.passwordError')}</p>
         )}
-        <PasswordStrength locale={locale} password={pw} />
+        <PasswordStrength labels={labels} password={pw} />
         <button
           type="submit"
           disabled={saving || !isStrongPassword(pw) || !passwordsMatch(pw, pwConfirm)}
           className="rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-on-primary transition hover:opacity-90 disabled:opacity-60"
         >
-          {saving ? '…' : t(locale, 'account.passwordSave')}
+          {saving ? '…' : t(labels, 'account.passwordSave')}
         </button>
       </form>
     </section>

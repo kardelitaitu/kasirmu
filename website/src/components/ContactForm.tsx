@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { t } from '../i18n';
+import { t, type Labels } from '../i18n/labels';
 
 /**
  * Support contact form. Posts { name, email, message } as JSON to
@@ -15,12 +15,28 @@ const API = '/api/contact';
 const SUPPORT_EMAIL = 'support@kasir.mu';
 
 interface Props {
-  locale: string;
+  /** Strings this form reads; `support.astro` builds it with `labelMap`. */
+  labels: Labels;
 }
+
+/** Keys this form reads, so the page can hand it exactly those strings. */
+export const SUPPORT_LABELS = [
+  'login.email',
+  'login.emailPlaceholder',
+  'support.formError',
+  'support.message',
+  'support.messagePlaceholder',
+  'support.name',
+  'support.namePlaceholder',
+  'support.sendAnother',
+  'support.sending',
+  'support.submit',
+  'support.success',
+] as const;
 
 type Status = 'idle' | 'sending' | 'success' | 'error';
 
-export default function ContactForm({ locale }: Props) {
+export default function ContactForm({ labels }: Props) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
@@ -65,23 +81,23 @@ export default function ContactForm({ locale }: Props) {
   if (status === 'success') {
     return (
       <div className="rounded-xl border border-ink/10 bg-surface/40 p-6 text-center">
-        <p className="text-sm text-ink">{t(locale, 'support.success')}</p>
+        <p className="text-sm text-ink">{t(labels, 'support.success')}</p>
         <button
           type="button"
           onClick={() => setStatus('idle')}
           className="mt-4 rounded-md border border-ink/15 px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink/5"
         >
-          {t(locale, 'support.sendAnother')}
+          {t(labels, 'support.sendAnother')}
         </button>
       </div>
     );
   }
 
   return (
-    <form onSubmit={submit} className="rounded-xl border border-ink/10 bg-surface/40 p-6" aria-label={t(locale, 'support.submit')}>
+    <form onSubmit={submit} className="rounded-xl border border-ink/10 bg-surface/40 p-6" aria-label={t(labels, 'support.submit')}>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block">
-          <span className={labelClass}>{t(locale, 'support.name')}</span>
+          <span className={labelClass}>{t(labels, 'support.name')}</span>
           <input
             type="text"
             required
@@ -89,12 +105,12 @@ export default function ContactForm({ locale }: Props) {
             autoComplete="name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder={t(locale, 'support.namePlaceholder')}
+            placeholder={t(labels, 'support.namePlaceholder')}
             className={inputClass}
           />
         </label>
         <label className="block">
-          <span className={labelClass}>{t(locale, 'login.email')}</span>
+          <span className={labelClass}>{t(labels, 'login.email')}</span>
           <input
             type="email"
             required
@@ -102,13 +118,13 @@ export default function ContactForm({ locale }: Props) {
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder={t(locale, 'login.emailPlaceholder')}
+            placeholder={t(labels, 'login.emailPlaceholder')}
             className={inputClass}
           />
         </label>
       </div>
       <label className="mt-4 block">
-        <span className={labelClass}>{t(locale, 'support.message')}</span>
+        <span className={labelClass}>{t(labels, 'support.message')}</span>
         <textarea
           required
           minLength={10}
@@ -116,7 +132,7 @@ export default function ContactForm({ locale }: Props) {
           rows={5}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          placeholder={t(locale, 'support.messagePlaceholder')}
+          placeholder={t(labels, 'support.messagePlaceholder')}
           className={`${inputClass} resize-y`}
         />
       </label>
@@ -134,7 +150,7 @@ export default function ContactForm({ locale }: Props) {
       </label>
       {status === 'error' && (
         <div className="mt-3 text-sm text-link" role="alert">
-          <p>{t(locale, 'support.formError')}</p>
+          <p>{t(labels, 'support.formError')}</p>
           <p className="mt-1 text-xs text-muted">
             <a
               href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Support: ${name || 'Inquiry'}`)}&body=${encodeURIComponent(message)}`}
@@ -150,7 +166,7 @@ export default function ContactForm({ locale }: Props) {
         disabled={status === 'sending'}
         className="mt-5 w-full rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition hover:bg-primary-hover disabled:opacity-60 sm:w-auto"
       >
-        {status === 'sending' ? t(locale, 'support.sending') : t(locale, 'support.submit')}
+        {status === 'sending' ? t(labels, 'support.sending') : t(labels, 'support.submit')}
       </button>
     </form>
   );

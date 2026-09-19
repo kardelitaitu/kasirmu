@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { t } from '../i18n';
+import { t, type Labels } from '../i18n/labels';
 import type { CheckoutTier } from '../content/pricing/types';
 import { hasSession, isPaddleConfigured, isPlaceholderPriceId, openPaddleCheckout, getSessionEmail } from './paddle';
 import { openMidtransCheckout } from './midtrans';
@@ -46,9 +46,18 @@ interface Props {
   /** Billing-resolved tier (price id for the selected period — see PricingGrid). */
   tier: CheckoutTier;
   locale: string;
+  /** Strings this button reads; see `CHECKOUT_LABELS`. */
+  labels: Labels;
 }
 
-export default function CheckoutButton({ tier, locale }: Props) {
+/** Keys this button reads — its owner shares them with the pricing island. */
+export const CHECKOUT_LABELS = [
+  'checkout.error',
+  'checkout.signInToSubscribe',
+  'checkout.unavailable',
+] as const;
+
+export default function CheckoutButton({ tier, locale, labels }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   // Distinct from `error`: set when the tier's checkout is not purchasable
@@ -136,16 +145,16 @@ export default function CheckoutButton({ tier, locale }: Props) {
         disabled={loading}
         className="block w-full rounded-md bg-accent px-4 py-2.5 text-center text-sm font-semibold text-on-primary whitespace-nowrap transition hover:opacity-90 disabled:opacity-60"
       >
-        {loading ? '…' : mounted && hasSession() ? tier.cta : t(locale, 'checkout.signInToSubscribe')}
+        {loading ? '…' : mounted && hasSession() ? tier.cta : t(labels, 'checkout.signInToSubscribe')}
       </button>
       {unavailable && (
         <p className="text-xs text-link" role="alert">
-          {t(locale, 'checkout.unavailable')}
+          {t(labels, 'checkout.unavailable')}
         </p>
       )}
       {error && (
         <p className="text-xs text-link" role="alert">
-          {t(locale, 'checkout.error')}
+          {t(labels, 'checkout.error')}
         </p>
       )}
     </div>

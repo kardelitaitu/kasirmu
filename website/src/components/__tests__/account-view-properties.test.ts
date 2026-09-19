@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
+import { ACCOUNT_LABELS } from '../AccountView';
 import { fmtDate, daysUntil, statusLabel, statusPillClass, renewsLabel } from '../AccountView';
+import { labelMap } from '../../i18n';
 
 /**
  * Property-style invariant tests for the dashboard's pure helpers.
@@ -94,7 +96,7 @@ describe('statusLabel invariants', () => {
   it('returns a non-empty string for every known status', () => {
     for (const locale of LOCALES) {
       for (const status of KNOWN) {
-        const label = statusLabel(locale, status);
+        const label = statusLabel(labelMap(locale, ACCOUNT_LABELS), status);
         expect(label).toBeTruthy();
         expect(label.length).toBeGreaterThan(0);
       }
@@ -102,12 +104,12 @@ describe('statusLabel invariants', () => {
   });
 
   it('returns the raw value for an unknown status', () => {
-    expect(statusLabel('en', 'suspended')).toBe('suspended');
-    expect(statusLabel('id', 'suspended')).toBe('suspended');
+    expect(statusLabel(labelMap('en', ACCOUNT_LABELS), 'suspended')).toBe('suspended');
+    expect(statusLabel(labelMap('id', ACCOUNT_LABELS), 'suspended')).toBe('suspended');
   });
 
   it('returns an em-dash for undefined', () => {
-    expect(statusLabel('en', undefined)).toBe('—');
+    expect(statusLabel(labelMap('en', ACCOUNT_LABELS), undefined)).toBe('—');
   });
 });
 
@@ -145,18 +147,19 @@ describe('renewsLabel invariants', () => {
 
   it('returns a non-empty string for every locale', () => {
     for (const locale of LOCALES) {
-      const label = renewsLabel(locale, 5);
+      const label = renewsLabel(labelMap(locale, ACCOUNT_LABELS), 5);
       expect(label).toBeTruthy();
       expect(label).toContain('5');
     }
   });
 
   it('uses the singular form for 1 day and plural form for other counts', () => {
-    const singularEn = renewsLabel('en', 1);
+    const enLabels = labelMap('en', ACCOUNT_LABELS);
+    const singularEn = renewsLabel(enLabels, 1);
     expect(singularEn).toContain('1 day');
     // plural forms
-    expect(renewsLabel('en', 0)).toContain('0 days');
-    expect(renewsLabel('en', 2)).toContain('2 days');
-    expect(renewsLabel('en', 10)).toContain('10 days');
+    expect(renewsLabel(enLabels, 0)).toContain('0 days');
+    expect(renewsLabel(enLabels, 2)).toContain('2 days');
+    expect(renewsLabel(enLabels, 10)).toContain('10 days');
   });
 });

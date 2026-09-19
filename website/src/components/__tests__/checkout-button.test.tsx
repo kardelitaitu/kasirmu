@@ -2,8 +2,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import CheckoutButton from '../CheckoutButton';
+import CheckoutButton, { CHECKOUT_LABELS } from '../CheckoutButton';
 import type { CheckoutTier } from '../../content/pricing/types';
+import { labelMap } from '../../i18n';
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -50,7 +51,7 @@ describe('CheckoutButton Component', () => {
     const root = createRoot(container);
 
     await act(async () => {
-      root.render(<CheckoutButton tier={tier} locale={locale} />);
+      root.render(<CheckoutButton tier={tier} locale={locale} labels={labelMap(locale, CHECKOUT_LABELS)} />);
     });
 
     return {

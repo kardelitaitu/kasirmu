@@ -3,16 +3,19 @@ export function getStaticPaths() {
   return [{ params: { locale: 'en' } }, { params: { locale: 'id' } }];
 }
 import Base from '../../layouts/Base.astro';
-import AccountView from '../../components/AccountView.tsx';
-import { t } from '../../i18n';
+import AccountView, { ACCOUNT_LABELS } from '../../components/AccountView.tsx';
+import { labelMap, t } from '../../i18n';
 
 const locale = Astro.currentLocale ?? 'en';
+// The island's strings travel with the document, so the browser never loads a
+// locale dictionary (see src/i18n/labels.ts).
+const accountLabels = labelMap(locale, ACCOUNT_LABELS);
 const pageTitle = `kasir.mu — ${t(locale, 'account.title')}`;
 ---
 
 <Base title={pageTitle} description={t(locale, 'pageDesc.account')} noindex>
   <section data-reveal class="mx-auto max-w-6xl px-4 py-20">
     <h1 class="mb-10 text-center text-3xl font-bold">{t(locale, 'account.title')}</h1>
-    <AccountView client:load locale={locale} />
+    <AccountView client:load locale={locale} labels={accountLabels} />
   </section>
 </Base>

@@ -1,4 +1,4 @@
-import { t } from '../../i18n';
+import { t, type Labels } from '../../i18n/labels';
 import { fmtDate } from './accountShared';
 
 /** A registered terminal/device from GET /api/v1/web/devices. */
@@ -13,6 +13,8 @@ export interface Device {
 
 interface Props {
   locale: string;
+  /** Strings this section reads; AccountView passes its own map. */
+  labels: Labels;
   devices: Device[] | null;
   /** License tier used for the "unlimited" entitlement hint when no live count exists. */
   licenseTierKey?: string;
@@ -27,20 +29,20 @@ interface Props {
  * Presentational: revoke is a callback so the API + session lifecycle stays
  * in the parent.
  */
-export default function AccountDevices({ locale, devices, licenseTierKey, revokingId, revokeError, onRevoke }: Props) {
+export default function AccountDevices({ locale, labels, devices, licenseTierKey, revokingId, revokeError, onRevoke }: Props) {
   return (
-    <section className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm" aria-label={t(locale, 'account.devices')}>
+    <section className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm" aria-label={t(labels, 'account.devices')}>
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">{t(locale, 'account.devices')}</h2>
+        <h2 className="text-lg font-semibold">{t(labels, 'account.devices')}</h2>
         <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-semibold text-link">
           {devices !== null
-            ? t(locale, 'account.terminalCountLive').replace('{count}', String(devices.length))
+            ? t(labels, 'account.terminalCountLive').replace('{count}', String(devices.length))
             : licenseTierKey === 'pro' || licenseTierKey === 'enterprise' || licenseTierKey === 'premium'
-              ? t(locale, 'account.terminalUnlimited')
-              : t(locale, 'account.terminalCount')}
+              ? t(labels, 'account.terminalUnlimited')
+              : t(labels, 'account.terminalCount')}
         </span>
       </div>
-      <p className="mt-1 text-sm text-muted">{t(locale, 'account.devicesHint')}</p>
+      <p className="mt-1 text-sm text-muted">{t(labels, 'account.devicesHint')}</p>
       {devices && devices.length > 0 ? (
         <div className="mt-4 space-y-2">
           {devices.slice(0, 5).map((d) => (
@@ -62,7 +64,7 @@ export default function AccountDevices({ locale, devices, licenseTierKey, revoki
                 <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                   d.revoked_at ? 'bg-danger/15 text-danger' : 'bg-success/15 text-success'
                 }`}>
-                  {d.revoked_at ? t(locale, 'account.statusRevoked') : t(locale, 'account.statusActive')}
+                  {d.revoked_at ? t(labels, 'account.statusRevoked') : t(labels, 'account.statusActive')}
                 </span>
                 {!d.revoked_at && d.id && (
                   <button
@@ -71,7 +73,7 @@ export default function AccountDevices({ locale, devices, licenseTierKey, revoki
                     disabled={revokingId === d.id}
                     className="inline-flex items-center gap-1 rounded border border-ink/15 bg-surface px-2 py-1 text-xs font-medium text-ink transition hover:bg-ink/5 hover:border-danger/40 disabled:opacity-50"
                   >
-                    {revokingId === d.id ? '…' : t(locale, 'account.revokeDevice')}
+                    {revokingId === d.id ? '…' : t(labels, 'account.revokeDevice')}
                   </button>
                 )}
               </div>
@@ -95,15 +97,15 @@ export default function AccountDevices({ locale, devices, licenseTierKey, revoki
               </svg>
             </div>
             <div>
-              <p className="text-sm font-medium text-ink">{t(locale, 'account.terminalSlots')}</p>
-              <p className="text-xs text-muted">{t(locale, 'account.unbindHint')}</p>
+              <p className="text-sm font-medium text-ink">{t(labels, 'account.terminalSlots')}</p>
+              <p className="text-xs text-muted">{t(labels, 'account.unbindHint')}</p>
             </div>
           </div>
           <a
             href={`/${locale}/docs/activation`}
             className="rounded-md border border-ink/15 bg-surface px-2.5 py-1 text-xs font-medium text-ink transition hover:bg-ink/5 flex-shrink-0 ml-2"
           >
-            {t(locale, 'account.activationGuide')}
+            {t(labels, 'account.activationGuide')}
           </a>
         </div>
       )}

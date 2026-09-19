@@ -1,7 +1,7 @@
 ---
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import { t } from '../i18n';
-import HeroCarousel from './HeroCarousel';
+import HeroCarousel from './HeroCarousel.astro';
 
 const locale = Astro.currentLocale ?? 'en';
 const download = getRelativeLocaleUrl(locale, 'download');
@@ -52,6 +52,6 @@ const carouselComingSoon = t(locale, 'hero.carousel.screenshotComingSoon');
   
   <!-- Hero Mockup Carousel — 5 slides (Restaurant/Retail/Kitchen/Warehouse/Topology) -->
   <div class="mt-12 mx-auto max-w-[1280px]">
-    <HeroCarousel client:idle labels={carouselLabels} descriptions={carouselDescriptions} comingSoon={carouselComingSoon} />
+    <HeroCarousel labels={carouselLabels} descriptions={carouselDescriptions} comingSoon={carouselComingSoon} />
   </div>
 </section>

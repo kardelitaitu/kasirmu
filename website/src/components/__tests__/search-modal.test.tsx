@@ -3,8 +3,9 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
-import SearchModal from '../SearchModal';
+import SearchModal, { SEARCH_LABELS } from '../SearchModal';
 import SearchTrigger from '../SearchTrigger';
+import { labelMap } from '../../i18n';
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -24,7 +25,14 @@ describe('SearchModal Component', () => {
     const root = createRoot(container);
 
     await act(async () => {
-      root.render(<SearchModal isOpen={isOpen} onClose={onClose} locale={locale} />);
+      root.render(
+        <SearchModal
+          isOpen={isOpen}
+          onClose={onClose}
+          locale={locale}
+          labels={labelMap(locale, SEARCH_LABELS)}
+        />,
+      );
     });
 
     return {
@@ -125,7 +133,9 @@ describe('SearchModal — keyboard navigation', () => {
     document.body.appendChild(container);
     const root = createRoot(container);
     await act(async () => {
-      root.render(<SearchModal isOpen onClose={vi.fn()} locale={locale} />);
+      root.render(
+        <SearchModal isOpen onClose={vi.fn()} locale={locale} labels={labelMap(locale, SEARCH_LABELS)} />,
+      );
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 10));
@@ -254,7 +264,7 @@ describe('SearchTrigger — toggle', () => {
     document.body.appendChild(container);
     const root = createRoot(container);
     await act(async () => {
-      root.render(<SearchTrigger locale={locale} />);
+      root.render(<SearchTrigger locale={locale} labels={labelMap(locale, SEARCH_LABELS)} />);
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 10));

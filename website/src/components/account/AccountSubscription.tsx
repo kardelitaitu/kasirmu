@@ -1,4 +1,4 @@
-import { t } from '../../i18n';
+import { t, type Labels } from '../../i18n/labels';
 import { licenseApiUrl } from '../../lib/runtime-config';
 import { isPaddleConfigured } from '../paddle';
 import { fmtDate, statusLabel, statusPillClass, daysUntil, renewsLabel } from './accountShared';
@@ -37,6 +37,8 @@ interface BundleInfo {
 
 interface Props {
   locale: string;
+  /** Strings this section reads; AccountView passes its own map. */
+  labels: Labels;
   subscription: Subscription | null;
   subscribable: SubscribablePlan[];
   /** The Plus bundle data (C3.2), undefined when unavailable. */
@@ -51,7 +53,7 @@ interface Props {
 }
 
 export default function AccountSubscription({
-  locale, subscription, subscribable, plusBundle, bundleYearly,
+  locale, labels, subscription, subscribable, plusBundle, bundleYearly,
   bundleCheckoutAvailable, useMidtrans, subscribing, subscribeError,
   refreshState, onSubscribe,
 }: Props) {
@@ -60,43 +62,43 @@ export default function AccountSubscription({
       {subscription ? (
         <section
           className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm"
-          aria-label={t(locale, 'account.subscription')}
+          aria-label={t(labels, 'account.subscription')}
         >
-          <h2 className="text-lg font-semibold">{t(locale, 'account.subscription')}</h2>
+          <h2 className="text-lg font-semibold">{t(labels, 'account.subscription')}</h2>
           <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
             <div>
-              <dt className="text-muted">{t(locale, 'account.tier')}</dt>
+              <dt className="text-muted">{t(labels, 'account.tier')}</dt>
               <dd className="capitalize">{subscription.tierKey}</dd>
             </div>
             <div>
-              <dt className="text-muted">{t(locale, 'account.status')}</dt>
+              <dt className="text-muted">{t(labels, 'account.status')}</dt>
               <dd className="capitalize">
                 <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPillClass(subscription.status)}`}>
-                  {statusLabel(locale, subscription.status)}
+                  {statusLabel(labels, subscription.status)}
                 </span>
               </dd>
             </div>
             <div>
-              <dt className="text-muted">{t(locale, 'account.starts')}</dt>
+              <dt className="text-muted">{t(labels, 'account.starts')}</dt>
               <dd>{fmtDate(subscription.startsAt, locale)}</dd>
             </div>
             <div>
-              <dt className="text-muted">{t(locale, 'account.expires')}</dt>
+              <dt className="text-muted">{t(labels, 'account.expires')}</dt>
               <dd className="flex items-center gap-2">
                 <span>{fmtDate(subscription.expiresAt, locale)}</span>
-                {renderRenewBadge(locale, subscription.status, subscription.expiresAt)}
+                {renderRenewBadge(labels, subscription.status, subscription.expiresAt)}
               </dd>
             </div>
             <div>
-              <dt className="text-muted">{t(locale, 'account.grace')}</dt>
+              <dt className="text-muted">{t(labels, 'account.grace')}</dt>
               <dd>{fmtDate(subscription.graceUntil, locale)}</dd>
             </div>
           </dl>
           {subscription.status !== 'active' && (
             <p className="mt-4 text-sm text-muted">
-              {t(locale, 'account.renewHint')}{' '}
+              {t(labels, 'account.renewHint')}{' '}
               <a href={`/${locale}/pricing`} className="text-link underline">
-                {t(locale, 'account.renewLink')}
+                {t(labels, 'account.renewLink')}
               </a>
             </p>
           )}
@@ -115,22 +117,22 @@ export default function AccountSubscription({
                 </p>
               </div>
               <p className="mt-1 text-sm text-muted">{plusBundle.note}</p>
-              <p className="mt-2 text-sm text-muted">{t(locale, 'account.bundleUpgradeHint')}</p>
+              <p className="mt-2 text-sm text-muted">{t(labels, 'account.bundleUpgradeHint')}</p>
               <button
                 type="button"
                 onClick={() => void onSubscribe(bundleYearly?.priceId ?? '', 'plus', plusBundle.id)}
                 disabled={subscribing !== null}
                 className="mt-3 block w-full rounded-md bg-accent px-4 py-2.5 text-center text-sm font-semibold text-on-primary transition hover:opacity-90 disabled:opacity-60"
               >
-                {subscribing === 'plus' ? '…' : t(locale, 'account.bundleUpgrade')}
+                {subscribing === 'plus' ? '…' : t(labels, 'account.bundleUpgrade')}
               </button>
             </div>
           )}
         </section>
       ) : (
-        <section className="rounded-xl border border-accent/40 bg-surface/40 p-6 shadow-sm" aria-label={t(locale, 'account.subscribe')}>
-          <h2 className="text-lg font-semibold">{t(locale, 'account.subscribe')}</h2>
-          <p className="mt-1 text-sm text-muted">{t(locale, 'account.noSubscription')}</p>
+        <section className="rounded-xl border border-accent/40 bg-surface/40 p-6 shadow-sm" aria-label={t(labels, 'account.subscribe')}>
+          <h2 className="text-lg font-semibold">{t(labels, 'account.subscribe')}</h2>
+          <p className="mt-1 text-sm text-muted">{t(labels, 'account.noSubscription')}</p>
           {(useMidtrans ? Boolean(licenseApiUrl()) : isPaddleConfigured()) && subscribable.length > 0 ? (
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {subscribable.map((plan) => (
@@ -148,14 +150,14 @@ export default function AccountSubscription({
                     disabled={subscribing !== null}
                     className="mt-3 block w-full rounded-md bg-accent px-4 py-2.5 text-center text-sm font-semibold text-on-primary transition hover:opacity-90 disabled:opacity-60"
                   >
-                    {subscribing === plan.tierKey ? '…' : t(locale, 'account.subscribe')}
+                    {subscribing === plan.tierKey ? '…' : t(labels, 'account.subscribe')}
                   </button>
                 </div>
               ))}
             </div>
           ) : (
             <p className="mt-4 text-sm text-muted" role="status">
-              {t(locale, 'account.checkoutUnavailable')}
+              {t(labels, 'account.checkoutUnavailable')}
             </p>
           )}
         </section>
@@ -165,17 +167,17 @@ export default function AccountSubscription({
           upgrade card (a Plus subscriber's bundle purchase also polls /me). */}
       {subscribeError && (
         <p className="text-sm text-danger" role="alert">
-          {t(locale, 'checkout.error')}
+          {t(labels, 'checkout.error')}
         </p>
       )}
       {refreshState === 'checking' && (
         <p className="text-sm text-muted" role="status">
-          {t(locale, 'account.checkingSubscription')}
+          {t(labels, 'account.checkingSubscription')}
         </p>
       )}
       {refreshState === 'pending' && (
         <p className="text-sm text-muted" role="status">
-          {t(locale, 'account.subscriptionPending')}
+          {t(labels, 'account.subscriptionPending')}
         </p>
       )}
     </>
@@ -183,7 +185,7 @@ export default function AccountSubscription({
 }
 
 /** Renewal countdown pill for an active subscription, color-coded by urgency. */
-function renderRenewBadge(locale: string, status: string | undefined, expiresAt: string | undefined) {
+function renderRenewBadge(labels: Labels, status: string | undefined, expiresAt: string | undefined) {
   if (status !== 'active' || !expiresAt) return null;
   const d = daysUntil(expiresAt);
   // A negative/past countdown is meaningless ("Renews in -3 days") — the
@@ -192,5 +194,5 @@ function renderRenewBadge(locale: string, status: string | undefined, expiresAt:
   // nonsensical countdown.
   if (d === null || d < 0) return null;
   const cls = d < 7 ? 'bg-danger/15 text-danger' : d < 30 ? 'bg-warning/15 text-warning' : 'bg-ink/10 text-muted';
-  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{renewsLabel(locale, d)}</span>;
+  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{renewsLabel(labels, d)}</span>;
 }

@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { t } from '../i18n';
+import { t, type Labels } from '../i18n/labels';
 import { pricingFor } from '../content/pricing';
 import { clearSession, getSessionEmail, isPaddleConfigured, isPlaceholderPriceId, openPaddleCheckout } from './paddle';
 import { openMidtransCheckout } from './midtrans';
 import { type Region, getRegion, getExplicitRegion, setRegion } from '../lib/region';
 import { licenseApiUrl } from '../lib/runtime-config';
 import { getSessionToken } from '../lib/session';
-import { statusLabel, statusPillClass, fmtDate, daysUntil, renewsLabel } from './account/accountShared';
 import AccountProfile from './account/AccountProfile';
 import AccountLicense from './account/AccountLicense';
 import AccountQuickActions from './account/AccountQuickActions';
 import AccountDevices, { type Device } from './account/AccountDevices';
 import AccountBilling from './account/AccountBilling';
 import AccountPassword, { type PasswordMsg } from './account/AccountPassword';
+import { PASSWORD_FIELD_LABELS } from './PasswordField';
+import { PASSWORD_STRENGTH_LABELS } from './PasswordStrength';
 import AccountRegion from './account/AccountRegion';
 import AccountSubscription from './account/AccountSubscription';
 
@@ -51,6 +52,7 @@ import AccountSubscription from './account/AccountSubscription';
 
 // Re-export the pure helpers so the property tests (and any consumer that
 // imports them from AccountView) keep working after the split.
+import { statusLabel, statusPillClass, fmtDate, daysUntil, renewsLabel } from './account/accountShared';
 export { statusLabel, statusPillClass, fmtDate, daysUntil, renewsLabel };
 
 interface MeResponse {
@@ -76,11 +78,91 @@ interface MeResponse {
   };
 }
 
+/**
+ * Strings this island reads — itself and every section in `./account/*`.
+ * `account.astro` turns the list into the `labels` prop with `labelMap`, so the
+ * browser gets these strings in the document instead of both locale dictionaries
+ * in the JS bundle; `src/__tests__/island-label-coverage.test.ts` keeps the list
+ * honest.
+ */
+export const ACCOUNT_LABELS = [
+  'account.activationGuide',
+  'account.billingInvoices',
+  'account.billingInvoicesHint',
+  'account.bundleUpgrade',
+  'account.bundleUpgradeHint',
+  'account.checkingSubscription',
+  'account.checkoutUnavailable',
+  'account.contactSupport',
+  'account.copied',
+  'account.copyKey',
+  'account.devices',
+  'account.devicesHint',
+  'account.downloadApp',
+  'account.emailVerified',
+  'account.error',
+  'account.expires',
+  'account.grace',
+  'account.invoiceNote',
+  'account.invoiceSubject',
+  'account.license',
+  'account.licenseKey',
+  'account.loading',
+  'account.logout',
+  'account.noSubscription',
+  'account.notConfigured',
+  'account.notSignedIn',
+  'account.notVerified',
+  'account.password',
+  'account.passwordError',
+  'account.passwordHelp',
+  'account.passwordPlaceholder',
+  'account.passwordSave',
+  'account.passwordSaved',
+  'account.quickActions',
+  'account.region',
+  'account.regionHint',
+  'account.regionSaved',
+  'account.renewHint',
+  'account.renewLink',
+  'account.renewsInDay',
+  'account.renewsInDays',
+  'account.revokeDevice',
+  'account.signIn',
+  'account.starts',
+  'account.status',
+  'account.statusActive',
+  'account.statusExpired',
+  'account.statusGracePeriod',
+  'account.statusPaused',
+  'account.statusRevoked',
+  'account.statusUnused',
+  'account.subscribe',
+  'account.subscription',
+  'account.subscriptionPending',
+  'account.terminalCount',
+  'account.terminalCountLive',
+  'account.terminalSlots',
+  'account.terminalUnlimited',
+  'account.tier',
+  'account.unbindHint',
+  'account.verified',
+  'account.viewReceipts',
+  'checkout.error',
+  'signup.regionGlobal',
+  'signup.regionIndonesia',
+  // The dashboard's password section renders these two directly.
+  ...PASSWORD_FIELD_LABELS,
+  ...PASSWORD_STRENGTH_LABELS,
+] as const;
+
 interface Props {
   locale: string;
+  /** Strings this island reads; see `ACCOUNT_LABELS`. */
+  labels: Labels;
 }
 
-export default function AccountView({ locale }: Props) {
+export default function AccountView({ locale, labels }: Props) {
   // Read API at component level so window.__OZ_CONFIG__ is available after hydration
   const API = licenseApiUrl();
   const [state, setState] = useState<'loading' | 'anon' | 'error' | 'ready'>('loading');
@@ -340,8 +422,8 @@ export default function AccountView({ locale }: Props) {
 
   if (state === 'loading') {
     return (
-      <div className="space-y-4 animate-pulse" role="status" aria-label={t(locale, 'account.loading')}>
-        <p className="sr-only">{t(locale, 'account.loading')}</p>
+      <div className="space-y-4 animate-pulse" role="status" aria-label={t(labels, 'account.loading')}>
+        <p className="sr-only">{t(labels, 'account.loading')}</p>
         <div className="rounded-xl border border-ink/10 bg-surface/40 p-6">
           <div className="flex items-center gap-3.5">
             <div className="w-11 h-11 rounded-full bg-ink/10" />
@@ -375,12 +457,12 @@ export default function AccountView({ locale }: Props) {
   if (state === 'anon') {
     return (
       <div className="rounded-xl border border-ink/10 bg-surface/40 p-6 text-center">
-        <p className="text-muted">{t(locale, 'account.notSignedIn')}</p>
+        <p className="text-muted">{t(labels, 'account.notSignedIn')}</p>
         <a
           href={`/${locale}/login`}
           className="mt-4 inline-block rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-on-primary transition hover:opacity-90"
         >
-          {t(locale, 'account.signIn')}
+          {t(labels, 'account.signIn')}
         </a>
       </div>
     );
@@ -389,7 +471,7 @@ export default function AccountView({ locale }: Props) {
   if (state === 'error') {
     return (
       <p className="rounded-md border border-ink/10 p-4 text-sm text-muted">
-        {API ? t(locale, 'account.error') : t(locale, 'account.notConfigured')}
+        {API ? t(labels, 'account.error') : t(labels, 'account.notConfigured')}
       </p>
     );
   }
@@ -442,20 +524,21 @@ export default function AccountView({ locale }: Props) {
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       {tenant && (
-        <AccountProfile locale={locale} tenant={tenant} onLogout={() => void handleLogout()} />
+        <AccountProfile labels={labels} tenant={tenant} onLogout={() => void handleLogout()} />
       )}
 
       {tenant && (
-        <AccountLicense locale={locale} tenantStatus={tenant.status} license={license} />
+        <AccountLicense locale={locale} labels={labels} tenantStatus={tenant.status} license={license} />
       )}
 
       {/* Quick Action Navigation Grid */}
-      {tenant && <AccountQuickActions locale={locale} />}
+      {tenant && <AccountQuickActions locale={locale} labels={labels} />}
 
       {/* Device / Terminal Management */}
       {tenant && (
         <AccountDevices
           locale={locale}
+          labels={labels}
           devices={devices}
           licenseTierKey={license?.tierKey}
           revokingId={revokingId}
@@ -465,11 +548,11 @@ export default function AccountView({ locale }: Props) {
       )}
 
       {/* Billing & Tax Invoices */}
-      {tenant && <AccountBilling locale={locale} tenantEmail={tenant.email} />}
+      {tenant && <AccountBilling labels={labels} tenantEmail={tenant.email} />}
 
       {tenant && (
         <AccountPassword
-          locale={locale}
+          labels={labels}
           email={tenant.email}
           pw={pw}
           pwConfirm={pwConfirm}
@@ -490,7 +573,7 @@ export default function AccountView({ locale }: Props) {
       {/* Region selector */}
       {tenant && (
         <AccountRegion
-          locale={locale}
+          labels={labels}
           region={region}
           onRegionChange={(next) => {
             setRegionState(next);
@@ -501,6 +584,7 @@ export default function AccountView({ locale }: Props) {
 
       <AccountSubscription
         locale={locale}
+        labels={labels}
         subscription={subscription ?? null}
         subscribable={subscribable}
         plusBundle={plusBundle}

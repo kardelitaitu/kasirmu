@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { t } from '../i18n';
+import { t, type Labels } from '../i18n/labels';
 import { isStrongPassword, passwordsMatch } from '../lib/passwordPolicy';
 import { type Region, setRegion } from '../lib/region';
-import PasswordField from './PasswordField';
-import PasswordStrength from './PasswordStrength';
+import PasswordField, { PASSWORD_FIELD_LABELS } from './PasswordField';
+import PasswordStrength, { PASSWORD_STRENGTH_LABELS } from './PasswordStrength';
 import OtpInput from './OtpInput';
 import { licenseApiUrl } from '../lib/runtime-config';
 
@@ -24,8 +24,56 @@ import { licenseApiUrl } from '../lib/runtime-config';
  * configured" notice when PUBLIC_LICENSE_API_URL is unset.
  */
 
+/**
+ * Strings this island reads — itself, `PasswordField` and `PasswordStrength`.
+ * `signup.astro` turns the list into the `labels` prop with `labelMap`, so the
+ * browser gets these strings in the document instead of both locale dictionaries
+ * in the JS bundle; `src/__tests__/island-label-coverage.test.ts` keeps the list
+ * honest.
+ */
+export const SIGNUP_FORM_LABELS = [
+  'legal.privacyTitle',
+  'legal.termsTitle',
+  'login.backToEmail',
+  'login.code',
+  'login.codeResent',
+  'login.errorCors',
+  'login.errorLogin',
+  'login.errorRateLimit',
+  'login.errorReset',
+  'login.errorResetRequest',
+  'login.errorSend',
+  'login.errorSmtp',
+  'login.errorVerify',
+  'login.notConfigured',
+  'login.resendCode',
+  'login.resendCooldown',
+  ...PASSWORD_FIELD_LABELS,
+  ...PASSWORD_STRENGTH_LABELS,
+  'signup.agreeBefore',
+  'signup.agreeSeparator',
+  'signup.codeSent',
+  'signup.createAccount',
+  'signup.email',
+  'signup.emailPlaceholder',
+  'signup.errorExists',
+  'signup.errorRegister',
+  'signup.haveAccount',
+  'signup.password',
+  'signup.passwordPlaceholder',
+  'signup.region',
+  'signup.regionGlobal',
+  'signup.regionHint',
+  'signup.regionIndonesia',
+  'signup.signInLink',
+  'signup.title',
+  'signup.verify',
+] as const;
+
 interface Props {
   locale: string;
+  /** Strings this form reads; see `SIGNUP_FORM_LABELS`. */
+  labels: Labels;
 }
 
 type Step = 'form' | 'code';
@@ -38,7 +86,7 @@ const regionOptions: { value: Region; labelKey: string }[] = [
   { value: 'id', labelKey: 'signup.regionIndonesia' },
 ];
 
-export default function SignupForm({ locale }: Props) {
+export default function SignupForm({ locale, labels }: Props) {
   // Read API at component level so window.__OZ_CONFIG__ is available after hydration
   const API = licenseApiUrl();
   const [step, setStep] = useState<Step>('form');
@@ -85,7 +133,7 @@ export default function SignupForm({ locale }: Props) {
   useEffect(() => setMounted(true), []);
 
   if (!API && mounted) {
-    return <p className="rounded-md border border-ink/10 p-4 text-sm text-muted">{t(locale, 'login.notConfigured')}</p>;
+    return <p className="rounded-md border border-ink/10 p-4 text-sm text-muted">{t(labels, 'login.notConfigured')}</p>;
   }
 
   const redirectAfterAuth = () => {
@@ -108,27 +156,27 @@ export default function SignupForm({ locale }: Props) {
         body: JSON.stringify({ email, password, password_confirm: confirm }),
       });
       if (res.status === 409) {
-        setError(t(locale, 'signup.errorExists'));
+        setError(t(labels, 'signup.errorExists'));
         return;
       }
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };
         const msg = body.error || `HTTP ${res.status}`;
         if (res.status === 429) {
-          setError(t(locale, 'login.errorRateLimit'));
+          setError(t(labels, 'login.errorRateLimit'));
         } else if (res.status === 403) {
-          setError(t(locale, 'login.errorCors'));
+          setError(t(labels, 'login.errorCors'));
         } else if (res.status === 503) {
-          setError(t(locale, 'login.errorSmtp'));
+          setError(t(labels, 'login.errorSmtp'));
         } else {
-          setError(`${t(locale, 'signup.errorRegister')} (${msg})`);
+          setError(`${t(labels, 'signup.errorRegister')} (${msg})`);
         }
         return;
       }
       setOtpSentAt(Date.now());
       setStep('code');
     } catch {
-      setError(t(locale, 'signup.errorRegister'));
+      setError(t(labels, 'signup.errorRegister'));
     } finally {
       setLoading(false);
     }
@@ -155,7 +203,7 @@ export default function SignupForm({ locale }: Props) {
       localStorage.setItem('oz_region', region);
       redirectAfterAuth();
     } catch {
-      setError(t(locale, 'login.errorVerify'));
+      setError(t(labels, 'login.errorVerify'));
     } finally {
       setLoading(false);
     }
@@ -166,10 +214,10 @@ export default function SignupForm({ locale }: Props) {
   if (step === 'code') {
     return (
       <div className={`mx-auto w-full max-w-sm rounded-xl border border-ink/10 bg-surface/40 p-6 ${error ? 'animate-shake' : ''}`}>
-        <p className="mb-4 text-sm text-muted">{t(locale, 'signup.codeSent')}</p>
-        <form onSubmit={verify} className="space-y-4" aria-label={t(locale, 'signup.title')}>
+        <p className="mb-4 text-sm text-muted">{t(labels, 'signup.codeSent')}</p>
+        <form onSubmit={verify} className="space-y-4" aria-label={t(labels, 'signup.title')}>
           <div>
-            <span className="mb-2 block text-sm text-muted">{t(locale, 'login.code')}</span>
+            <span className="mb-2 block text-sm text-muted">{t(labels, 'login.code')}</span>
             <OtpInput
               value={code}
               onChange={(val) => {
@@ -183,7 +231,7 @@ export default function SignupForm({ locale }: Props) {
           </div>
           {resendSuccess && (
             <p className="text-center text-xs font-medium text-green-500" role="status">
-              ✓ {t(locale, 'login.codeResent')}
+              ✓ {t(labels, 'login.codeResent')}
             </p>
           )}
           {error && <p className="text-sm text-link" role="alert">{error}</p>}
@@ -192,11 +240,11 @@ export default function SignupForm({ locale }: Props) {
             disabled={loading || code.length < 6}
             className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition hover:bg-primary-hover disabled:opacity-60"
           >
-            {loading ? '…' : t(locale, 'signup.verify')}
+            {loading ? '…' : t(labels, 'signup.verify')}
           </button>
           {resendCooldown > 0 ? (
             <p className="text-center text-xs text-muted" role="timer" aria-live="polite" aria-atomic="true">
-              {t(locale, 'login.resendCooldown')} {resendCooldown}s
+              {t(labels, 'login.resendCooldown')} {resendCooldown}s
             </p>
           ) : (
             <button
@@ -214,14 +262,14 @@ export default function SignupForm({ locale }: Props) {
                     if (!res.ok) {
                       const body = await res.json().catch(() => ({})) as { error?: string };
                       if (res.status === 429) {
-                        setError(t(locale, 'login.errorRateLimit'));
+                        setError(t(labels, 'login.errorRateLimit'));
                       } else if (res.status === 403) {
-                        setError(t(locale, 'login.errorCors'));
+                        setError(t(labels, 'login.errorCors'));
                       } else if (res.status === 503) {
-                        setError(t(locale, 'login.errorSmtp'));
+                        setError(t(labels, 'login.errorSmtp'));
                       } else {
                         const msg = body.error;
-                        setError(msg ? `${t(locale, 'login.errorSend')} (${msg})` : t(locale, 'login.errorSend'));
+                        setError(msg ? `${t(labels, 'login.errorSend')} (${msg})` : t(labels, 'login.errorSend'));
                       }
                       return;
                     }
@@ -229,7 +277,7 @@ export default function SignupForm({ locale }: Props) {
                     setResendSuccess(true);
                     setTimeout(() => setResendSuccess(false), 4000);
                   } catch {
-                    setError(t(locale, 'login.errorSend'));
+                    setError(t(labels, 'login.errorSend'));
                   } finally {
                     setLoading(false);
                   }
@@ -237,9 +285,9 @@ export default function SignupForm({ locale }: Props) {
               }}
               disabled={loading}
               className="w-full text-center text-xs text-link transition hover:underline"
-              aria-label={t(locale, 'login.resendCode')}
+              aria-label={t(labels, 'login.resendCode')}
             >
-              {t(locale, 'login.resendCode')}
+              {t(labels, 'login.resendCode')}
             </button>
           )}
           <button
@@ -247,7 +295,7 @@ export default function SignupForm({ locale }: Props) {
             onClick={() => setStep('form')}
             className="w-full text-center text-xs text-muted transition hover:text-ink"
           >
-            {t(locale, 'login.backToEmail')}
+            {t(labels, 'login.backToEmail')}
           </button>
         </form>
       </div>
@@ -256,16 +304,16 @@ export default function SignupForm({ locale }: Props) {
 
   return (
     <div className={`mx-auto w-full max-w-sm rounded-xl border border-ink/10 bg-surface/40 p-6 ${error ? 'animate-shake' : ''}`}>
-      <form onSubmit={register} className="space-y-4" aria-label={t(locale, 'signup.title')}>
+      <form onSubmit={register} className="space-y-4" aria-label={t(labels, 'signup.title')}>
         <div className="relative">
-          <span className="mb-1 block text-sm text-muted">{t(locale, 'signup.region')}</span>
+          <span className="mb-1 block text-sm text-muted">{t(labels, 'signup.region')}</span>
           <button
             type="button"
             onClick={() => setRegionOpen(!regionOpen)}
             onBlur={() => setTimeout(() => setRegionOpen(false), 150)}
             className="w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-left outline-none transition focus:border-accent flex items-center justify-between"
           >
-            <span>{t(locale, regionOptions.find((o) => o.value === region)?.labelKey ?? 'signup.regionGlobal')}</span>
+            <span>{t(labels, regionOptions.find((o) => o.value === region)?.labelKey ?? 'signup.regionGlobal')}</span>
             <svg
               className={`w-4 h-4 text-muted transition-transform duration-200 ${regionOpen ? 'rotate-180' : ''}`}
               viewBox="0 0 16 16"
@@ -289,15 +337,15 @@ export default function SignupForm({ locale }: Props) {
                     region === opt.value ? 'text-link font-medium' : 'text-ink hover:bg-ink/5'
                   }`}
                 >
-                  <span>{t(locale, opt.labelKey)}</span>
+                  <span>{t(labels, opt.labelKey)}</span>
                 </button>
               ))}
             </div>
           )}
-          <span className="mt-1 block text-xs text-muted">{t(locale, 'signup.regionHint')}</span>
+          <span className="mt-1 block text-xs text-muted">{t(labels, 'signup.regionHint')}</span>
         </div>
         <label className="block">
-          <span className="mb-1 block text-sm text-muted">{t(locale, 'signup.email')}</span>
+          <span className="mb-1 block text-sm text-muted">{t(labels, 'signup.email')}</span>
           <span className="relative block">
             <input
               type="email"
@@ -309,7 +357,7 @@ export default function SignupForm({ locale }: Props) {
                 setEmailTouched(true);
               }}
               onBlur={() => setEmailTouched(true)}
-              placeholder={t(locale, 'signup.emailPlaceholder')}
+              placeholder={t(labels, 'signup.emailPlaceholder')}
               className={`${inputClass} pr-10`}
             />
             {emailTouched && email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && (
@@ -322,40 +370,40 @@ export default function SignupForm({ locale }: Props) {
           </span>
         </label>
         <PasswordField
-          locale={locale}
+          labels={labels}
           id="signup-password"
-          label={t(locale, 'signup.password')}
+          label={t(labels, 'signup.password')}
           value={password}
           onChange={setPassword}
           autoComplete="new-password"
-          placeholder={t(locale, 'signup.passwordPlaceholder')}
+          placeholder={t(labels, 'signup.passwordPlaceholder')}
           showConfirm
           confirmValue={confirm}
           onConfirmChange={setConfirm}
         />
-        <PasswordStrength locale={locale} password={password} />
+        <PasswordStrength labels={labels} password={password} />
         {error && <p className="text-sm text-link" role="alert">{error}</p>}
         <button
           type="submit"
           disabled={loading || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !isStrongPassword(password) || !passwordsMatch(password, confirm)}
           className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition hover:bg-primary-hover disabled:opacity-60"
         >
-          {loading ? '…' : t(locale, 'signup.createAccount')}
+          {loading ? '…' : t(labels, 'signup.createAccount')}
         </button>
         <p className="text-center text-xs text-muted">
-          {t(locale, 'signup.agreeBefore')}{' '}
+          {t(labels, 'signup.agreeBefore')}{' '}
           <a href={`/${locale}/legal/terms`} className="text-link transition hover:underline">
-            {t(locale, 'legal.termsTitle')}
+            {t(labels, 'legal.termsTitle')}
           </a>{' '}
-          {t(locale, 'signup.agreeSeparator')}{' '}
+          {t(labels, 'signup.agreeSeparator')}{' '}
           <a href={`/${locale}/legal/privacy`} className="text-link transition hover:underline">
-            {t(locale, 'legal.privacyTitle')}
+            {t(labels, 'legal.privacyTitle')}
           </a>.
         </p>
         <p className="text-center text-xs text-muted">
-          {t(locale, 'signup.haveAccount')}{' '}
+          {t(labels, 'signup.haveAccount')}{' '}
           <a href={`/${locale}/login`} className="text-link transition hover:underline">
-            {t(locale, 'signup.signInLink')}
+            {t(labels, 'signup.signInLink')}
           </a>
         </p>
       </form>

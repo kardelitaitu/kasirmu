@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { t } from '../../i18n';
+import { t, type Labels } from '../../i18n/labels';
 import { type Region } from '../../lib/region';
 
 /** Region options for the billing-region selector. */
@@ -9,7 +9,8 @@ export const REGION_OPTIONS: { value: Region; labelKey: string }[] = [
 ];
 
 interface Props {
-  locale: string;
+  /** Strings this section reads; AccountView passes its own map. */
+  labels: Labels;
   region: Region;
   onRegionChange: (region: Region) => void;
 }
@@ -21,7 +22,7 @@ interface Props {
  * Owns only its open/confirm-feedback state; the chosen region is lifted to
  * the parent (it drives payment routing).
  */
-export default function AccountRegion({ locale, region, onRegionChange }: Props) {
+export default function AccountRegion({ labels, region, onRegionChange }: Props) {
   const [regionOpen, setRegionOpen] = useState(false);
   const [regionMsg, setRegionMsg] = useState(false);
   const timerRef = useRef<number | null>(null);
@@ -43,9 +44,9 @@ export default function AccountRegion({ locale, region, onRegionChange }: Props)
   };
 
   return (
-    <section ref={rootRef} className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm" aria-label={t(locale, 'account.region')}>
-      <h2 className="text-lg font-semibold">{t(locale, 'account.region')}</h2>
-      <p className="mt-1 text-sm text-muted">{t(locale, 'account.regionHint')}</p>
+    <section ref={rootRef} className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm" aria-label={t(labels, 'account.region')}>
+      <h2 className="text-lg font-semibold">{t(labels, 'account.region')}</h2>
+      <p className="mt-1 text-sm text-muted">{t(labels, 'account.regionHint')}</p>
       <div className="relative mt-3">
         <button
           type="button"
@@ -78,7 +79,7 @@ export default function AccountRegion({ locale, region, onRegionChange }: Props)
           aria-expanded={regionOpen}
           className="w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-left outline-none transition focus:border-accent flex items-center justify-between"
         >
-          <span>{t(locale, region === 'id' ? 'signup.regionIndonesia' : 'signup.regionGlobal')}</span>
+          <span>{t(labels, region === 'id' ? 'signup.regionIndonesia' : 'signup.regionGlobal')}</span>
           <svg
             className={`w-4 h-4 text-muted transition-transform duration-200 ${regionOpen ? 'rotate-180' : ''}`}
             viewBox="0 0 16 16"
@@ -95,7 +96,7 @@ export default function AccountRegion({ locale, region, onRegionChange }: Props)
           <div
             className="absolute z-50 mt-1 w-full rounded-md border border-ink/10 bg-surface shadow-lg overflow-hidden"
             role="listbox"
-            aria-label={t(locale, 'account.region')}
+            aria-label={t(labels, 'account.region')}
           >
             {REGION_OPTIONS.map((opt) => {
               const selected = region === opt.value;
@@ -132,7 +133,7 @@ export default function AccountRegion({ locale, region, onRegionChange }: Props)
                     selected ? 'text-link font-medium' : 'text-ink hover:bg-ink/5'
                   }`}
                 >
-                  <span>{t(locale, opt.labelKey)}</span>
+                  <span>{t(labels, opt.labelKey)}</span>
                   {selected && (
                     <svg className="w-4 h-4 ml-auto text-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <polyline points="20 6 9 17 4 12" />
@@ -145,7 +146,7 @@ export default function AccountRegion({ locale, region, onRegionChange }: Props)
         )}
       </div>
       {regionMsg && (
-        <p className="mt-2 text-sm text-success" role="status">{t(locale, 'account.regionSaved')}</p>
+        <p className="mt-2 text-sm text-success" role="status">{t(labels, 'account.regionSaved')}</p>
       )}
     </section>
   );

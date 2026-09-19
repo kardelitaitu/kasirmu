@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { labelMap } from '../../i18n';
 
 // React 19 requires the act environment flag for async act() to work.
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -52,9 +53,9 @@ async function renderAccount(locale: string) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
-  const { default: AccountView } = await import('../AccountView');
+  const { default: AccountView, ACCOUNT_LABELS } = await import('../AccountView');
   act(() => {
-    root.render(<AccountView locale={locale} />);
+    root.render(<AccountView locale={locale} labels={labelMap(locale, ACCOUNT_LABELS)} />);
   });
   await act(async () => {
     await new Promise((r) => setTimeout(r, 50));
@@ -1711,9 +1712,9 @@ describe('AccountView — post-checkout poll timeout', () => {
       const container = document.createElement('div');
       document.body.appendChild(container);
       const root = createRoot(container);
-      const { default: AccountView } = await import('../AccountView');
+      const { default: AccountView, ACCOUNT_LABELS } = await import('../AccountView');
       act(() => {
-        root.render(<AccountView locale="id" />);
+        root.render(<AccountView locale="id" labels={labelMap('id', ACCOUNT_LABELS)} />);
       });
       // Let the initial /me + /devices fetches settle under fake timers.
       await act(async () => {
@@ -1789,9 +1790,9 @@ describe('AccountView — post-checkout poll timeout', () => {
       const container = document.createElement('div');
       document.body.appendChild(container);
       const root = createRoot(container);
-      const { default: AccountView } = await import('../AccountView');
+      const { default: AccountView, ACCOUNT_LABELS } = await import('../AccountView');
       act(() => {
-        root.render(<AccountView locale="id" />);
+        root.render(<AccountView locale="id" labels={labelMap('id', ACCOUNT_LABELS)} />);
       });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(50);

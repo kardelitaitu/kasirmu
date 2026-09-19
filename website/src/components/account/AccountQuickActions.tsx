@@ -1,4 +1,4 @@
-import { t } from '../../i18n';
+import { t, type Labels } from '../../i18n/labels';
 
 /**
  * Quick-action navigation grid — download, activation guide, and support
@@ -6,12 +6,14 @@ import { t } from '../../i18n';
  */
 interface Props {
   locale: string;
+  /** Strings this section reads; AccountView passes its own map. */
+  labels: Labels;
 }
 
-export default function AccountQuickActions({ locale }: Props) {
+export default function AccountQuickActions({ locale, labels }: Props) {
   return (
-    <section className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm" aria-label={t(locale, 'account.quickActions')}>
-      <h2 className="text-lg font-semibold">{t(locale, 'account.quickActions')}</h2>
+    <section className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm" aria-label={t(labels, 'account.quickActions')}>
+      <h2 className="text-lg font-semibold">{t(labels, 'account.quickActions')}</h2>
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <a
           href={`/${locale}/download`}
@@ -22,7 +24,7 @@ export default function AccountQuickActions({ locale }: Props) {
             <polyline points="7 10 12 15 17 10" />
             <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
-          <span className="text-sm font-semibold text-ink">{t(locale, 'account.downloadApp')}</span>
+          <span className="text-sm font-semibold text-ink">{t(labels, 'account.downloadApp')}</span>
         </a>
         <a
           href={`/${locale}/docs/activation`}
@@ -32,7 +34,7 @@ export default function AccountQuickActions({ locale }: Props) {
             <circle cx="12" cy="12" r="10" />
             <polyline points="12 6 12 12 16 14" />
           </svg>
-          <span className="text-sm font-semibold text-ink">{t(locale, 'account.activationGuide')}</span>
+          <span className="text-sm font-semibold text-ink">{t(labels, 'account.activationGuide')}</span>
         </a>
         <a
           href={`/${locale}/support`}
@@ -41,7 +43,7 @@ export default function AccountQuickActions({ locale }: Props) {
           <svg className="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
           </svg>
-          <span className="text-sm font-semibold text-ink">{t(locale, 'account.contactSupport')}</span>
+          <span className="text-sm font-semibold text-ink">{t(labels, 'account.contactSupport')}</span>
         </a>
       </div>
     </section>

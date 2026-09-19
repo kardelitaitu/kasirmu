@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { labelMap } from '../../i18n';
 
 // React 19 requires the act environment flag for async act() to work.
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -31,9 +32,9 @@ async function renderAuthForm(locale: string) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
-  const { default: AuthForm } = await import('../AuthForm');
+  const { default: AuthForm, AUTH_FORM_LABELS } = await import('../AuthForm');
   act(() => {
-    root.render(<AuthForm locale={locale} />);
+    root.render(<AuthForm locale={locale} labels={labelMap(locale, AUTH_FORM_LABELS)} />);
   });
   await act(async () => {
     await new Promise((r) => setTimeout(r, 10));

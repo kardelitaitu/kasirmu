@@ -3,10 +3,13 @@ export function getStaticPaths() {
   return [{ params: { locale: 'en' } }, { params: { locale: 'id' } }];
 }
 import Base from '../../layouts/Base.astro';
-import SignupForm from '../../components/SignupForm.tsx';
-import { t } from '../../i18n';
+import SignupForm, { SIGNUP_FORM_LABELS } from '../../components/SignupForm.tsx';
+import { labelMap, t } from '../../i18n';
 
 const locale = Astro.currentLocale ?? 'en';
+// The island's strings travel with the document, so the browser never loads a
+// locale dictionary (see src/i18n/labels.ts).
+const formLabels = labelMap(locale, SIGNUP_FORM_LABELS);
 const pageTitle = `kasir.mu — ${t(locale, 'signup.title')}`;
 ---
 
@@ -17,7 +20,7 @@ const pageTitle = `kasir.mu — ${t(locale, 'signup.title')}`;
       <p class="mx-auto mt-3 max-w-md text-muted">{t(locale, 'signup.subtitle')}</p>
     </div>
     <div data-reveal>
-      <SignupForm client:load locale={locale} />
+      <SignupForm client:load locale={locale} labels={formLabels} />
     </div>
   </section>
 </Base>

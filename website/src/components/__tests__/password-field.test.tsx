@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { labelMap } from '../../i18n';
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -19,11 +20,11 @@ async function renderField(props: {
   document.body.appendChild(container);
   const root = createRoot(container);
 
-  const { default: PasswordField } = await import('../PasswordField');
+  const { default: PasswordField, PASSWORD_FIELD_LABELS } = await import('../PasswordField');
   await act(async () => {
     root.render(
       <PasswordField
-        locale={props.locale ?? 'en'}
+        labels={labelMap(props.locale ?? 'en', PASSWORD_FIELD_LABELS)}
         id="pw"
         label="Password"
         value={props.value ?? ''}

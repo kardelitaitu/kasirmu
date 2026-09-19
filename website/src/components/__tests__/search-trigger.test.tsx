@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import SearchTrigger from '../SearchTrigger';
+import { SEARCH_LABELS } from '../SearchModal';
+import { labelMap } from '../../i18n';
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -23,7 +25,7 @@ describe('SearchTrigger Component', () => {
     const root = createRoot(container);
 
     await act(async () => {
-      root.render(<SearchTrigger locale={locale} />);
+      root.render(<SearchTrigger locale={locale} labels={labelMap(locale, SEARCH_LABELS)} />);
     });
 
     return {
