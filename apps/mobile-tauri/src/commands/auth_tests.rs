@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::commands::testing::{assert_refused_by_the_seeded_row, seeded_row_reaches_a_paid_tier};
+
 #[test]
 fn staff_login_args_deserialize() {
     let json = r#"{"username":"cashier1","pin":"1234"}"#;
@@ -851,8 +853,12 @@ async fn l194_switch_organization_records_an_org_switch_event() {
         },
         app.state(),
     )
-    .await
-    .unwrap();
+    .await;
+    if !seeded_row_reaches_a_paid_tier() {
+        assert_refused_by_the_seeded_row(&login, "premium");
+        return;
+    }
+    let login = login.unwrap();
 
     switch_organization(
         login.session_token.clone(),

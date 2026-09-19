@@ -11,6 +11,8 @@
 
 use super::*;
 
+use crate::commands::testing::{assert_refused_by_the_seeded_row, seeded_row_reaches_a_paid_tier};
+
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
 
@@ -112,7 +114,7 @@ fn update_args(pin: Option<String>) -> UpdateStaffScopedArgs {
 #[tokio::test]
 async fn create_staff_scoped_records_a_security_event() {
     let app = owner_app("premium");
-    create_staff_scoped(
+    let created = create_staff_scoped(
         "owner-token".into(),
         CreateStaffScopedArgs {
             username: "jdoe".into(),
@@ -124,8 +126,12 @@ async fn create_staff_scoped_records_a_security_event() {
         },
         app.state(),
     )
-    .await
-    .unwrap();
+    .await;
+    if !seeded_row_reaches_a_paid_tier() {
+        assert_refused_by_the_seeded_row(&created, "premium");
+        return;
+    }
+    created.unwrap();
 
     let rows = audit_rows(&app).await;
     assert_eq!(rows.len(), 1, "one create event, got {rows:?}");
@@ -204,9 +210,12 @@ async fn a_rejected_create_records_no_security_event() {
         profile: profile(),
         assignment: None,
     };
-    create_staff_scoped("owner-token".into(), args(), app.state())
-        .await
-        .unwrap();
+    let first = create_staff_scoped("owner-token".into(), args(), app.state()).await;
+    if !seeded_row_reaches_a_paid_tier() {
+        assert_refused_by_the_seeded_row(&first, "premium");
+        return;
+    }
+    first.unwrap();
     let before = audit_rows(&app).await.len();
 
     let dup = create_staff_scoped("owner-token".into(), args(), app.state()).await;

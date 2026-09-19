@@ -100,6 +100,10 @@ pub mod tables;
 pub mod tax;
 /// Payment-terminal commands.
 pub mod terminals;
+/// Release-profile vocabulary shared by the `*_tests` modules (paid-tier fork
+/// predicate + the seeded-row refusal guard). Test-only.
+#[cfg(test)]
+pub(crate) mod testing;
 /// Void / cancel commands.
 pub mod void;
 /// Workspace listing + boot-resolution commands (audit-open-findings residual, desktop parity).
