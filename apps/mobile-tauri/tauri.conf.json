@@ -10,7 +10,13 @@
     "frontendDist": "../../ui/dist-mobile"
   },
   "app": {
-    "windows": [],
+    "windows": [
+      {
+        "label": "main",
+        "title": "Kasir.mu",
+        "useHttpsScheme": true
+      }
+    ],
     "security": {
 "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://license.ozpos.my.id; img-src 'self' data: asset: https://asset.localhost; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests",
       "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:1422 https://license.ozpos.my.id; img-src 'self' data: asset: https://asset.localhost; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
