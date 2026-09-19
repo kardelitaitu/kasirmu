@@ -1,6 +1,75 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- ── Network ─────────────────────────────────────────────────────────
+         INTERNET is the only permission the current code paths genuinely need:
+         the sync client, the license check and the image-download daemon all go
+         through reqwest, and the WebView needs it as well. A WebSocket to the
+         sync server rides on INTERNET too — there is no separate WiFi permission
+         for it. ACCESS_NETWORK_STATE / ACCESS_WIFI_STATE are normal permissions
+         that let the app *read* connectivity, so a dropped socket or a failed
+         sync can back off and retry instead of hammering blind. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Keep the CPU and radio up while a sync, print or payment is in flight.
+         Normal permission; inert until the code actually acquires a wake lock,
+         which nothing does yet — see the note at the bottom. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- ── Haptics ─────────────────────────────────────────────────────────
+         ui/src/utils/interaction.ts calls navigator.vibrate(15); the WebView
+         Vibration API is a silent no-op without this. Normal, auto-granted.
+         Every entry in INTERACTIONS currently sets vibrate:false, so it is
+         dormant today and takes effect the moment one is enabled. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- ── Camera, for reading QR / barcodes ───────────────────────────────
+         CAMERA is a DANGEROUS permission: declaring it is necessary but NOT
+         sufficient — the user must also be asked at runtime, and for a WebView
+         source the app has to answer WebChromeClient.onPermissionRequest for
+         getUserMedia. Neither exists yet; see the note at the bottom.
+         required="false" keeps the app installable on tablets with no camera,
+         which matters because scanning is an optional input sitting alongside
+         the serial / USB / BT hardware scanners. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
+    <!-- ── Notifications ───────────────────────────────────────────────────
+         DANGEROUS on API 33+ and likewise needs a runtime request, plus a
+         channel created before the first post. Nothing posts a notification
+         today; see the note at the bottom. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      Declared above but NOT yet functional, and deliberately absent where a
+      line here would be noise. Audited 2026-09-19 against the sources, and the
+      merged manifest is checked after every build rather than assumed.
+
+      Needs CODE, not just a line here:
+        CAMERA, POST_NOTIFICATIONS  both are dangerous; the app must request
+                                    them at runtime or they stay ungranted.
+        WAKE_LOCK                   no wake lock is acquired anywhere yet.
+        notifications               no channel and no NotificationManager call.
+
+      Not needed, and absent on purpose:
+        BLUETOOTH_CONNECT / SCAN    no Bluetooth API is called anywhere. The
+                                    bt_* HAL drivers are type aliases for the
+                                    serial ones, and Android cannot open an SPP
+                                    port through the serialport crate anyway.
+        CHANGE_WIFI_MULTICAST_STATE the lan-mdns feature is not enabled for this
+                                    crate, so mdns-sd is absent from the graph.
+        RECORD_AUDIO                the app only plays sound, and Android has no
+                                    permission for audio OUTPUT. What actually
+                                    gates playback in a WebView is
+                                    setMediaPlaybackRequiresUserGesture; the
+                                    interactions are user-initiated, so they are
+                                    already allowed.
+
+      USB hardware (usb_printer / usb_scanner via rusb) will need the
+      android.hardware.usb.host feature declared, plus the Java UsbManager
+      request-permission flow; that is a feature project, not a manifest line.
+    -->
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
