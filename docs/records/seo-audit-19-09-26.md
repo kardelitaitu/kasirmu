@@ -440,3 +440,33 @@ settled and how the carousel was exercised end to end.
 session's uncommitted edits**, so this record is not entered in it. Run
 `node scripts/generate-records-index.mjs` to add it once that file is clean — the index is not gated,
 so nothing fails in the meantime.
+
+### Single-ownership pass — one head, one de-index list (version n/a, commit pending)
+
+The audit's own DESIGN findings were structural: the `<head>` existed in three hand-synced copies and
+"which pages are de-indexed" in four. Both consolidations are now in place, **proven output-identical**:
+
+- **`src/components/SiteHead.astro`** owns the shared head (canonical, hreflang + x-default, OG/Twitter
+  cards, theme script, sitemap/describedby/icon links, runtime-config). `Base.astro` and
+  `DocsLayout.astro` now render it; each keeps only its own JSON-LD in a slot. Two latent bugs fixed by
+  the move: the docs theme script read only the legacy `oz_theme` key (Base had migrated to
+  `kasirmu_theme`), and docs pages now also get the Cloudflare-insights `preconnect` (Base had it, docs
+  didn't). Docs pages also stop requesting `/__oz/runtime-config.js` — they hydrate no islands.
+- **`src/lib/site.ts`** owns `SITE` + `NON_PUBLIC_PAGES`; the sitemap filter, the four gated pages'
+  `noindex` (via `isNonPublic`), and `llms.txt`'s page list (`llms-pages.ts` re-exports it) all derive
+  from that one array. This also fixed **real drift**: `llms.txt` advertised `/id/signup/` while the
+  sitemap excluded it and the page is `noindex` — the exact self-contradiction class this audit named.
+  Sitemap output is unchanged (72 URLs, verified byte-set-equal to live); the `llms.txt` signup line is
+  gone.
+- **Proof:** normalized tag-by-tag head comparison (comments/whitespace stripped, chunk hashes
+  normalized) of all built pages against the live pre-refactor host — every Base-layout page
+  **identical**; docs pages differ only by the two intentional additions above; `admin/*.html` diffs are
+  only the deploy-time `{{VERSION}}` cache-bust stamps. All gates re-run green (854 tests, check/links/
+  assets/build).
+
+### Follow-up housekeeping
+
+`docs/records/README.md` is the generated index for this directory and **currently carries another
+session's uncommitted edits**, so this record is not entered in it. Run
+`node scripts/generate-records-index.mjs` to add it once that file is clean — the index is not gated,
+so nothing fails in the meantime.
