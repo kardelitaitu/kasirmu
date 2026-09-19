@@ -4,7 +4,10 @@ import worker from '../../worker';
 describe('Cloudflare Worker — worker.ts', () => {
   const mockEnv = {
     ASSETS: {
-      fetch: vi.fn(async () => new Response('static asset')),
+      // Takes a Request so `fetch.mock.calls[0][0]` is typed (a zero-arg mock
+      // gives `calls` the tuple type `[]`, which has no index 0 — that broke
+      // `npm run check` from 4dd0cfe6c). Matches Env['ASSETS'] in worker.ts.
+      fetch: vi.fn(async (_req: Request) => new Response('static asset')),
     },
     LICENSE_API_URL: 'https://license.test.kasir.mu',
     CONTACT_WEBHOOK_URL: 'https://discord.com/api/webhooks/mock',
