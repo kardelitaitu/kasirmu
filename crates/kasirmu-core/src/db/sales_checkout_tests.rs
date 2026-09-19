@@ -264,7 +264,7 @@ fn checkout_freezes_receipt_hierarchy_code_and_it_is_readable() {
         s.sale_display_code(&sale.id).unwrap().as_deref(),
         Some(code.as_str())
     );
-    let batch = s.sale_display_codes(&[sale.id.clone()]).unwrap();
+    let batch = s.sale_display_codes(std::slice::from_ref(&sale.id)).unwrap();
     assert_eq!(batch.len(), 1);
     assert_eq!(batch[0].1.as_deref(), Some(code.as_str()));
 }

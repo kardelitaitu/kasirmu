@@ -106,6 +106,11 @@ impl crate::db::Store<'_> {
     /// Append-only and idempotent: re-retiring the same index is a no-op.
     /// This does not free the index — only `entity_index_cursors` decides
     /// what gets handed out, and it never goes backwards.
+    // One argument over clippy's default, deliberately: the list mirrors the
+    // `entity_index_tombstones` row it inserts — tenant, kind, index, entity,
+    // label, retired_at — plus `tx` and `now`. Grouping them into a struct
+    // would hide the correspondence that is this method's whole point.
+    #[allow(clippy::too_many_arguments)]
     pub fn retire_entity_index(
         &self,
         tx: &rusqlite::Transaction<'_>,
@@ -176,12 +181,12 @@ pub fn assemble_receipt_code(
     seq: i64,
 ) -> String {
     format!(
-        "{}-{}-{}-{}-{}",
+        "{}-{}-{}-{}-{:06}",
         index_hex(loc_idx),
         index_hex(term_idx),
         yymmdd,
         index_hex(staff_idx),
-        format!("{seq:06}")
+        seq
     )
 }
 
@@ -344,12 +349,11 @@ fn offset_seconds(tz: &str) -> Option<i64> {
     if tz.is_empty() || tz.eq_ignore_ascii_case("UTC") || tz.eq_ignore_ascii_case("Z") {
         return Some(0);
     }
+    // An offset with no sign at all is already `None` for this function, so
+    // `?` carries the second arm instead of a nested match that re-says it.
     let (sign, rest) = match tz.strip_prefix('+') {
         Some(r) => (1i64, r),
-        None => match tz.strip_prefix('-') {
-            Some(r) => (-1i64, r),
-            None => return None,
-        },
+        None => (-1i64, tz.strip_prefix('-')?),
     };
     let (h, m) = rest.split_once(':')?;
     let h: i64 = h.parse().ok()?;
