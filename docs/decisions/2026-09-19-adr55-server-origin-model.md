@@ -2,13 +2,14 @@
 num: 55
 area: security
 title: "ADR #55: One Server Origin — the compiled list, the fallback pair and the allowlists that must agree with it"
-status: Partially implemented (2026-09-19) — resolver, literal collapse and drift gate shipped; attestation and the reachability cascade proposed
+status: Partially implemented (2026-09-19) — resolver, literal collapse, drift gate and the attestation endpoint shipped; client verification and the reachability cascade proposed
 ---
 
 # ADR #55: One Server Origin
 
-**Status:** Partially implemented (2026-09-19). §2.1-§2.3 and §2.6 are shipped; §2.4
-(attestation) and §2.5 (cascade) are proposed and deliberately gated behind each other.
+**Status:** Partially implemented (2026-09-19). §2.1-§2.3 and §2.6 are shipped, together with
+the attestation endpoint (§2.4, server half); the client-side attestation verification and the
+reachability cascade (§2.5) are proposed and deliberately gated behind each other.
 **Date:** 2026-09-19
 **Recorded against:** branch `0.0.39` @ `ef0c0456d`
 **Tags:** security, config, sync, auth, deployment, drift
@@ -76,7 +77,7 @@ Both names must resolve to the same caddy host and the same data. A fallback ans
 different database would silently fork a shop's data, which is why §2.5 is only meaningful under
 that assumption. This is an operator invariant, not something the client can verify.
 
-### 2.4 Attestation before credential (proposed)
+### 2.4 Attestation before credential (endpoint shipped, client pending)
 
 `license.api_key`, the sync JWT and the ADR #54 terminal `device_secret` are bearer credentials,
 and a cascade widens where they can be sent to two domains plus a loopback port. Before any
@@ -84,6 +85,18 @@ fallback host is used, it must prove it holds the license keypair: an unauthenti
 challenge signed with the private key and verified client-side with the already-embedded
 `LICENSE_PUBLIC_KEY_PEM` (`license_verification.rs:44`, via `verify_license_signature`). A
 hijacked or lapsed fallback domain cannot sign, so it cannot harvest anything.
+
+**Shipped 2026-09-19 (server half):** `POST /api/v1/license/attest` (`apps/license-server/attest.go`)
+answers `{nonce}` with `{nonce, issuedAt, signature}`, signing the canonical payload
+`ozpos-origin-attest-v1:<nonce>` with the same RSA-2048 key and PKCS1v15/SHA-256 construction as
+subscription payloads — `signDetached` is now the single implementation of that primitive and
+`signSubscription` delegates to it. The namespaced prefix means an attestation signature cannot be
+replayed as a subscription payload, or the reverse.
+
+The oracle is scoped exactly as O1 asked: the nonce must be 16-64 characters of `[A-Za-z0-9_-]`, it
+is the only request data that reaches the signed bytes, no attacker-chosen payload is ever signed,
+and the handler shares the existing per-IP budget rather than minting a second lane. Client
+verification must use `LICENSE_PUBLIC_KEY_PEM` and must **not** accept the `BOOTSTRAP_FREE` sentinel.
 
 This is also what makes a *pinned* origin safe: URL keys are classified as endpoints rather
 than credentials (`settings_tests.rs:796`) and are therefore outside the sealed-settings
@@ -147,6 +160,10 @@ have caught the fork in §1.
 - `ui` — `SettingsContext`, `CloudSyncSettings` and `SettingsPage` suites, whose pinned defaults
   moved from the fallback name to the canonical origin (68 passed, 22 skipped).
 - `node scripts/check-server-origins.mjs` — green across all six surfaces.
+- `go -C apps/license-server test -short -run 'Attest|SignDetached'` — the payload shape, nonce bounds, and a
+  sign/verify round-trip over a generated keypair with a tampered-nonce negative case. Three
+  tests; the round-trip generates its own key rather than skipping, because a skipped security
+  test cannot fail.
 
 ## 6. Open questions
 
