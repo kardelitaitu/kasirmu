@@ -218,7 +218,12 @@ strip = true
 opt-level = 0
 incremental = true
 codegen-units = 256
-debug = true
+# `true` embedded full DWARF in every artifact. Measured 2026-09-19: the
+# Android debug .so was 413.5 MB and the debug APK 420.7 MB, against 26.9 MB
+# for release — linking, packaging and the wireless `adb install` all paid
+# for it on every iteration. `line-tables-only` keeps file:line in Rust
+# backtraces (enough to read a panic) and drops locals/inline frames.
+debug = "line-tables-only"
 overflow-checks = false
 split-debuginfo = "off"  # Skip DWARF splitting for faster linking on Windows
 
