@@ -10,13 +10,21 @@ interface Props {
   title: string;
   description?: string;
   noindex?: boolean;
+  /**
+   * Override the document language. Omit it — as every page except the
+   * locale-less 404 does — and `Astro.currentLocale` stays the sole source of
+   * `<html lang>`. Pass it only when the copy served is deliberately NOT in
+   * the locale the URL implies, or the document declares a language its text
+   * is not written in (WCAG 3.1.1).
+   */
+  locale?: string;
   /** Override the SoftwareApplication Offer price (default Free IDR 0). Pass locale pricing. */
   offerPrice?: string;
   offerCurrency?: string;
 }
 
-const { title, description, noindex, offerPrice = '0', offerCurrency } = Astro.props;
-const locale = Astro.currentLocale ?? 'en';
+const { title, description, noindex, locale: localeOverride, offerPrice = '0', offerCurrency } = Astro.props;
+const locale = localeOverride ?? Astro.currentLocale ?? 'en';
 const resolvedCurrency = offerCurrency ?? (locale === 'id' ? 'IDR' : 'USD');
 const ogLocale = locale === 'id' ? 'id_ID' : 'en_US';
 const ogAltLocale = locale === 'id' ? 'en_US' : 'id_ID';
