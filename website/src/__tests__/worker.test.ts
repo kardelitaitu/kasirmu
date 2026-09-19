@@ -304,6 +304,85 @@ describe('Cloudflare Worker — worker.ts', () => {
     expect(new URL(rewritten.url).pathname).toBe('/admin/login');
   });
 
+  // ── R3: subdomain robots.txt — each host must serve its own ─────────
+
+  it('R3: admin.kasir.mu serves its own robots.txt, not the login page', async () => {
+    // Measured before the fix: 200 text/html, the login page — which a
+    // crawler reads as "no robots.txt", i.e. the host is fully crawlable.
+    mockEnv.ASSETS.fetch.mockClear();
+    const res = await worker.fetch(new Request('https://admin.kasir.mu/robots.txt'), mockEnv);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toContain('text/plain');
+    expect(await res.text()).toBe('User-agent: *\nDisallow: /\n');
+    // Neither the login rewrite nor an asset may satisfy this path.
+    expect(mockEnv.ASSETS.fetch).not.toHaveBeenCalled();
+  });
+
+  it('R3: dashboard.kasir.mu serves its own robots.txt instead of redirecting it', async () => {
+    // Measured before the fix: 302 → an HTML page, same conclusion.
+    const res = await worker.fetch(new Request('https://dashboard.kasir.mu/robots.txt'), mockEnv);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toContain('text/plain');
+    expect(await res.text()).toContain('Disallow: /');
+    expect(res.headers.get('Location')).toBeNull();
+  });
+
+  it('R3: the marketing host still serves its static robots.txt', async () => {
+    // The interception is scoped to the auth subdomains; kasir.mu/robots.txt
+    // is a real file in public/ and must keep coming from the asset layer.
+    mockEnv.ASSETS.fetch.mockClear();
+    const req = new Request('https://kasir.mu/robots.txt');
+    const res = await worker.fetch(req, mockEnv);
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('static asset');
+    expect(mockEnv.ASSETS.fetch).toHaveBeenCalledWith(req);
+  });
+
+  // ── R4: the admin host is no longer a soft-404 ─────────────────────
+
+  it('R4: an unauthenticated non-login path redirects instead of returning 200', async () => {
+    mockEnv.ASSETS.fetch.mockClear();
+    const res = await worker.fetch(
+      new Request('https://admin.kasir.mu/definitely-not-a-real-page-xyz'),
+      mockEnv,
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe('/admin/login');
+    // Nothing is rendered, so there is no unbounded 200 URL space.
+    expect(mockEnv.ASSETS.fetch).not.toHaveBeenCalled();
+  });
+
+  it('R4: every unauthenticated admin path outside the login entries redirects', async () => {
+    for (const path of ['/settings', '/reports', '/admin/reports', '/admin/index.html', '/nope']) {
+      const res = await worker.fetch(new Request(`https://admin.kasir.mu${path}`), mockEnv);
+      expect(res.status, path).toBe(302);
+      expect(res.headers.get('Location'), path).toBe('/admin/login');
+    }
+  });
+
+  it('R4: the login entry points still serve the login page with a 200', async () => {
+    for (const path of ['/', '/admin', '/admin/', '/admin/login', '/admin/login.html']) {
+      mockEnv.ASSETS.fetch.mockClear();
+      const res = await worker.fetch(new Request(`https://admin.kasir.mu${path}`), mockEnv);
+
+      expect(res.status, path).toBe(200);
+      const rewritten = mockEnv.ASSETS.fetch.mock.calls[0][0] as Request;
+      // Served from the marketing host's bundle, so the /api/v1/ proxy
+      // (gated to DASHBOARD_HOSTS) stays on the host the browser is on.
+      expect(new URL(rewritten.url).hostname, path).toBe('kasir.mu');
+      expect(new URL(rewritten.url).pathname, path).toBe('/admin/login');
+    }
+  });
+
+  it('R4: the gate response carries noindex', async () => {
+    const res = await worker.fetch(new Request('https://admin.kasir.mu/'), mockEnv);
+    expect(res.headers.get('X-Robots-Tag')).toBe('noindex');
+  });
+
   // ── R1: account-portal httpOnly cookie on the marketing host ────────
 
   it('R1: serves /__oz/session on the marketing host from the cookie', async () => {

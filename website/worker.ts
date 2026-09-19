@@ -78,6 +78,44 @@ const CUSTOMER_DASHBOARD_HOST = 'dashboard.kasir.mu';
 /** Marketing site domain — no auth required. */
 const MARKETING_HOST = 'kasir.mu';
 
+/**
+ * Every host that is NOT the marketing host. Each needs its own robots.txt:
+ * robots.txt is per-authority, so `kasir.mu/robots.txt` governs nothing on
+ * admin.kasir.mu or dashboard.kasir.mu. Both subdomains are entirely
+ * auth-gated with nothing to index, but the file must be SERVED — a crawler
+ * that receives HTML, or a 302 to HTML, concludes there is no robots.txt and
+ * treats the whole host as crawlable.
+ * See docs/records/seo-robots-llms-review-19-09-26.md §1.3 R3.
+ */
+const SUBDOMAIN_HOSTS = new Set([...DASHBOARD_HOSTS, CUSTOMER_DASHBOARD_HOST]);
+
+/** Body served for /robots.txt on the auth subdomains (see SUBDOMAIN_HOSTS). */
+const SUBDOMAIN_ROBOTS = 'User-agent: *\nDisallow: /\n';
+
+/**
+ * Paths on admin.kasir.mu that serve the login page directly. `/` is the
+ * logout destination and the natural entry; `/admin` and `/admin/login` are
+ * the form used by the marketing-host redirect and by the login page's own
+ * asset paths. Any OTHER unauthenticated path redirects to the login page
+ * rather than being answered with a 200, so the host stops exposing an
+ * unbounded URL space of byte-identical HTML (a soft-404). It redirects
+ * rather than 404s because the one-time-code exchange (Step 1) sends a failed
+ * login back to a clean path like /settings, and a user with a stale bookmark
+ * should land on the login form, not a 404.
+ * See docs/records/seo-robots-llms-review-19-09-26.md §1.3 R4.
+ */
+const ADMIN_LOGIN_ENTRY_PATHS = new Set([
+  '/',
+  '/admin',
+  '/admin/',
+  '/admin/login',
+  '/admin/login/',
+  '/admin/login.html',
+]);
+
+/** Where an unauthenticated admin path is sent (see ADMIN_LOGIN_ENTRY_PATHS). */
+const ADMIN_LOGIN_PATH = '/admin/login';
+
 /** Origins the /api/v1/ proxy will echo as Access-Control-Allow-Origin
  * (WEB-2): the marketing host and the two auth-gated subdomains. Any
  * other Origin falls back to the marketing host. */
@@ -206,6 +244,25 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const hostname = url.hostname;
+
+    // ── Crawler policy on the auth subdomains (R3) ────────────────────
+    // robots.txt is per-authority: kasir.mu/robots.txt governs nothing on
+    // admin.kasir.mu or dashboard.kasir.mu, and neither can inherit it.
+    // Measured before this: admin.kasir.mu/robots.txt returned 200 text/html
+    // (the login page) and dashboard.kasir.mu/robots.txt 302'd to an HTML
+    // page — in both cases a crawler sees "no robots.txt" and treats the host
+    // as fully crawlable. This must come BEFORE the dashboard redirect and
+    // the admin gate below, both of which would otherwise swallow the path.
+    // The marketing host's own robots.txt is a static file in public/ and is
+    // deliberately left to the asset layer.
+    if (url.pathname === '/robots.txt' && SUBDOMAIN_HOSTS.has(hostname)) {
+      return new Response(SUBDOMAIN_ROBOTS, {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+        },
+      });
+    }
 
     // ── Customer dashboard subdomain redirect ─────────────────────────
     // dashboard.kasir.mu is no longer a separate SPA; it redirects
@@ -658,9 +715,24 @@ export default {
             asset.hostname = MARKETING_HOST;
             return env.ASSETS.fetch(new Request(asset.toString(), request));
           }
+          // R4: the login page is served only for the login entry points.
+          // Anything else used to be answered with the login page at a 200,
+          // which made admin.kasir.mu a soft-404 — an unbounded URL space of
+          // byte-identical HTML. Redirect to the login URL instead, so the
+          // host has exactly one 200 URL. See ADMIN_LOGIN_ENTRY_PATHS.
+          if (!ADMIN_LOGIN_ENTRY_PATHS.has(url.pathname)) {
+            return new Response(null, {
+              status: 302,
+              headers: {
+                Location: ADMIN_LOGIN_PATH,
+                'Cache-Control': 'no-store',
+                'Referrer-Policy': 'no-referrer',
+              },
+            });
+          }
           const rewritten = new URL(request.url);
           rewritten.hostname = MARKETING_HOST;
-          rewritten.pathname = '/admin/login';
+          rewritten.pathname = ADMIN_LOGIN_PATH;
           rewritten.search = '';
           return withStrictCSP(await env.ASSETS.fetch(new Request(rewritten.toString(), request)));
         }
