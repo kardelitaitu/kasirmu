@@ -11471,3 +11471,64 @@ red and no longer needs to be: `grep -rn "DELIBERATELY LEFT RED" crates/ apps/ -
 **Commit:** four — `fd925d5c7` (fix + bridge migration) · `b1d7118` (tablet twin) · `4761f1bd9`
 (cross-reference) · `31aa530fe` (comment repair); the live gate rationales and this entry ride the docs commit
 that follows. Never push without a direct user order.
+
+## 2026-09-20 — Absorb: the avatar write path lands on the desktop registration floor, and the ledger is regenerated rather than widened (desktop-tauri/records)
+
+**Context:**
+`f49170d3d` (feat(restaurant): add sidebar profile header, avatar write path, footer and row alignment)
+registered three names in `apps/desktop-tauri/src/lib.rs` — `commands::avatars::{set_avatar_scoped,
+get_own_avatar_scoped, clear_avatar_scoped}` — and touched neither the floor, the JOURNAL, nor the generated
+ledger. The floor is an EQUALITY against the tree (`registration_gate_tests.rs:746`), so it has been red on a
+clean checkout since that commit landed: `lib.rs registers 458 commands and this floor says 455`.
+
+The three arrived GATED: each shell body is a shim over `kasirmu_bridge::avatars`, and
+`crates/kasirmu-bridge/src/avatars.rs:61` calls `ctx.require_session_permission(session,
+permissions::STAFF_UPDATE)`. `gated_bridge_stems()` reads the bridge directory and `names_permission` sees that
+call, so no command entered the debt ledger and no ceiling moved — the same shape as `b07e8c3ac`'s coursing
+pair two days earlier, and the same reason only this one leg can see it.
+
+Found by closing a measurement gap, not by looking for it: every workspace run in the `BOOTSTRAP_FREE`
+campaign used `--exclude kasirmu-app`, so `apps/desktop-tauri` had never been run in either profile.
+`cargo test -p kasirmu-app --lib` read **156 passed / 2 failed** debug and **145 passed / 2 failed** release —
+the same two names in both, so neither is a consequence of that ruling, which is a strict no-op in debug.
+
+**Changes:**
+1. `apps/desktop-tauri/src/commands/registration_gate_tests.rs:92` — `REGISTERED_FLOOR` 455 → 458, the number
+   the harness prints rather than a chosen one. The doc comment carries the new measurement and keeps the
+   chain: 458 on 20-09-26 (455 on 16-09-26, 453 on 13-09-26).
+2. `registration_gate_debt.generated.rs:179` — regenerated with `KASIRMU_REGENERATE_GATE_LEDGER=1 cargo test -p
+   kasirmu-app --lib drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture`, which reported *69
+   debt row(s), registered total 458*. The diff is that const and its comment and nothing else: the
+   `DEBT_LEDGER` array has no hunk, so no row was added, deleted or moved.
+3. Deliberately untouched: both ceilings, `DEBT_CEILING` (69, `:185`), `REGISTERED_SLACK` (24, `:97`), and the
+   partition legs. A gated trio adds no debt.
+
+**What it means:**
+The regeneration is not the "wrong kind of green" that `f24a14b44` refused. That pass left the ledger 8 behind
+the tree because regenerating it then would have pulled a new name into `resolves_session_names_no_permission`
+and forced a ceiling decision in the same breath as a pin raise. Here the ledger's rows already agreed with the
+sweep — `drift_pin_generated_ledger_is_the_sweeps_own_output` was green *before* this pass — so the only thing
+regeneration could write was the measured total. The evidence is the diff itself: one const, no array hunk,
+both ceilings unmoved.
+
+The precedent's convention held in the other direction too. It recorded the superseded number as the dated
+predecessor rather than deleting it, and both the floor's doc comment and the ledger's prose now do the same —
+which is also why the ledger's comment is hand-maintained while its two counts are not: the generator replaces
+only the `DEBT_LEDGER` array and the `REGISTERED_TOTAL`/`UNSOURCED` digits, so prose left alone would have kept
+claiming 455 beside a const reading 458.
+
+**Verification:**
+- Before: `cargo test -p kasirmu-app --lib` → `156 passed; 2 failed` (debug) / `145 passed; 2 failed` (release),
+  the two names identical in both profiles.
+- After: `cargo test -p kasirmu-app --lib drift_pin` → **8 passed; 0 failed**, exit 0. `cargo test -p
+  kasirmu-app --lib` with the proxy variables unset → **158 passed; 0 failed**, exit 0.
+- The second failure was never ours: `commands::local_api::tests::set_port_restarts_running_server_on_new_port`
+  asserts `reqwest::get("http://127.0.0.1:{old_port}/…").await.is_err()`, and the sandbox's
+  `http_proxy=http://127.0.0.1:25011` answers it. It fails with the proxies set and passes without them — the
+  same class as the documented `request_token_sends_admin_key_header_when_provided` flake.
+- `dev-ci.yml:251` runs `cargo nextest run --workspace --all-features` with no `--exclude`, so this red was
+  going to fire on the next push whatever else was in the batch.
+
+**Commit:** single pathspec commit touching the gate file, the regenerated ledger and this file together — the
+assertion asks for one deliberate pass, so splitting the const from its record would reproduce the exact
+failure mode the message describes. Never push without a direct user order.

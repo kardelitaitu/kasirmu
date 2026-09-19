@@ -84,11 +84,12 @@ use std::path::{Path, PathBuf};
 #[path = "registration_gate_debt.generated.rs"]
 mod debt;
 
-/// The registered surface of this shell, measured from `../lib.rs` as 455 names on
-/// 16-09-26 (453 on 13-09-26). This is an EQUALITY and the leg below checks it against the tree, so a
-/// moved include_str path cannot pass by finding nothing and a registered name cannot
-/// pass by being gated. Raising this number records what landed; it does not approve it.
-const REGISTERED_FLOOR: usize = 455;
+/// The registered surface of this shell, measured from `../lib.rs` as 458 names on
+/// 20-09-26 (455 on 16-09-26, 453 on 13-09-26). This is an EQUALITY and the leg below checks it against
+/// the tree, so a moved include_str path cannot pass by finding nothing and a registered
+/// name cannot pass by being gated. Raising this number records what landed; it does not
+/// approve it.
+const REGISTERED_FLOOR: usize = 458;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is
