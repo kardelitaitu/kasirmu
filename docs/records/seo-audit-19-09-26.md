@@ -8,8 +8,8 @@ not read off the source. Re-run recipe in §7.
 
 > **Status: 11 findings fixed** — F1–F9 (§1) plus **O4** and **T1** (§3/§4). All of it is **committed
 > and deployed to production** and re-verified against the live host rather than the deploy log — see
-> §7 for the versions and the observed values. **9 items remain for a decision** (§5); each needs
-> copy, brand, or hosting input, not code. Every finding in §3 and §4 carries its location, why it
+> §7 for the versions and the observed values. **10 items remain for a decision** (§5); each needs
+> copy, brand, or hosting input — or a deliberate medium-risk code change (**D11**) — not a quick edit. Every finding in §3 and §4 carries its location, why it
 > hurts, the concrete fix, and a high/medium/low impact rating.
 >
 > This audit is the second pass over the same site. The first
@@ -157,14 +157,14 @@ Two distinct wastes, both now closed:
 - **Impact:** **Low**.
 - **Location:** platform behaviour, not code (Cloudflare trailing-slash normalisation); `website/public/_redirects` is empty and correctly so — there are no legacy URLs to migrate.
 - **Why it hurts:** measured in the previous review, `/id/pricing` → `307` → `/id/pricing/`. A temporary redirect passes no ranking signal and does not consolidate; a permanent one does. Every canonical form on this site carries the trailing slash, so this is the only redirect class in play.
-- **Fix (hosting — **D6**):** serve that normalisation as a `301`.
+- **Fix (hosting — D6):** serve that normalisation as a `301`.
 
 ### T5 — `www.kasir.mu` resolves to nothing
 
 - **Impact:** **Low**.
 - **Location:** DNS / hosting — `kasir.mu` has no `www` record.
 - **Why it hurts:** measured, `https://www.kasir.mu/` times out with zero bytes and `nslookup` returns no record. That is *fine for SEO* — no duplicate host, no split authority — but it means there is nothing catching a `www` link, so one appearing externally dead-ends for both users and crawlers.
-- **Fix (hosting — **D6**):** if a `www` record is ever added, redirect it to the apex with a `301` in the same change.
+- **Fix (hosting — D6):** if a `www` record is ever added, redirect it to the apex with a `301` in the same change.
 
 ### T6 — `llms.txt` is Indonesian-only
 
@@ -245,7 +245,7 @@ the locale stub are excluded from that count — a short description there costs
 - **Impact:** **Medium**.
 - **Location:** `website/src/pages/index.astro` — a deliberate locale-detect stub whose inline script calls `window.location.replace()` to `/id/` or `/en/`, with a `<noscript>` meta-refresh fallback; the fix itself belongs in `website/worker.ts`.
 - **Why it hurts:** the stub has a title, description, canonical (→ `/id/`) and correct `hreflang`, but an **empty `<body>`** — so no `H1` and no crawlable content. It is excluded from the sitemap and canonicalises to `/id/`, so Google should consolidate it; but `/` is the strongest URL in the domain's history and the one external links are most likely to point at, and it currently depends on the crawler rendering JS to reach real content.
-- **Fix (needs a hosting/architecture decision — **D6**):** a server-side `302` on the Worker for `/`, based on `Accept-Language` with a `Vary: Accept-Language`, makes the entry point a real redirect instead of a JS handoff. A cheaper stopgap is a `<noscript>` block with an `H1` and links to both locales — not applied, because it only helps non-JS agents and adds no crawl benefit for Googlebot.
+- **Fix (code-side, deliberate — D11):** a server-side `302` on the Worker for `/` — a route `worker.ts` does not handle today — based on `Accept-Language` with a `Vary: Accept-Language`, makes the entry point a real redirect instead of a JS handoff. Rated medium impact, medium risk: the `Vary` interacts with the edge cache key, and the current stub already works for users and for a JS-rendering Googlebot. A cheaper stopgap is a `<noscript>` block with an `H1` and links to both locales — not applied, because it only helps non-JS agents and adds no crawl benefit for Googlebot.
 
 ### O4 — The 404 page declared the wrong `lang` · **fixed in this pass**
 
@@ -265,7 +265,7 @@ the locale stub are excluded from that count — a short description there costs
 
 ## 5. Necessarily deferred — content & hosting decisions
 
-None of these can be resolved by a low-risk code edit; each needs a decision or copy.
+None of these can be resolved by a low-risk, high-impact code edit; each needs a decision or copy. D11 is the one code-side item — listed here because the change is deliberate (cache/`Vary` interaction), not because it needs new infrastructure.
 
 | # | Decision needed | Why it matters | Where |
 |---|---|---|---|
@@ -274,10 +274,11 @@ None of these can be resolved by a low-risk code edit; each needs a decision or 
 | **D3** | **Which support address is canonical** — `support@kasir.mu` or the personal Gmail currently in the Enterprise CTA? | Entity consistency + brand trust (**T8**) | `src/pages/[locale]/pricing.astro` |
 | **D4** | **Real social profile URLs** — the footer's X, Instagram, Facebook and Telegram icons point at *the platforms' own homepages* (`https://x.com`, `https://www.instagram.com`, …), not at kasir.mu accounts. Only the Discord invite is real | Today they are dead ends for users, and they are the reason `sameAs` can only list Discord (**F2**) | `src/components/Footer.astro` |
 | **D5** | **Diagram accessibility** — add `accTitle:` / `accDescription:` to the mermaid blocks (or accept `alt=""`) | Recovers diagram text for crawlers and screen readers (**T3**) | docs content, `astro.config.mjs` |
-| **D6** | **Hosting behaviour** — a `301` instead of the platform's `307` for trailing slashes; a `www` → apex `301` if a `www` record is ever added; a server-side `302` for the root `/` locale handoff | Redirect strength, duplicate-host safety, root entry point (**T4, T5, O3**) | Cloudflare / `worker.ts` |
+| **D6** | **Hosting behaviour** — a `301` instead of the platform's `307` for trailing slashes; a `www` → apex `301` if a `www` record is ever added | Redirect strength, duplicate-host safety (**T4, T5**) | Cloudflare |
 | **D7** | **`/docs/` hub depth** — 24 words of body copy on a page that is in the sitemap and is the doorway to 17 docs pages | Thin but *indexable* hub; worth 150–250 words of real orientation copy | `src/pages/[locale]/docs/index.astro` |
 | **D8** | **Vertical/landing depth** — measured body copy: `/en/` 480 words, `/en/features/` 325, `/en/pricing/` 265, `/en/restaurant/` 251, `/en/warehouse/` 162, `/en/cafe/` 157, `/en/kasir-gratis/` 151, `/en/warung/` 146, `/en/minimarket/` 138, `/en/cara/` 132, `/en/download/` 132; 47 of 81 pages are under 300 words | These are the money pages for commercial queries and they compete against competitors' long-form pages. The copy that exists is good and specific — there is just not much of it | `src/i18n/*.json` `vertical.*`, `landing.*` |
 | **D9** | **Whether `FAQPage` blocks stay** (weak rich-result bet, useful to AI answer engines) | Effort/benefit call | `support.astro`, `cara.astro`, `LandingPage.astro` |
+| **D11** | **Root `/` locale handoff** — keep the client-side JS redirect or replace it with a server-side `302` on the Worker (`Accept-Language` + `Vary`) | Code-side option, not hosting: `worker.ts` has no `/` route today; makes the entry point a real redirect (**O3**). Medium impact, medium risk — the `Vary` interacts with the edge cache key | `worker.ts` |
 
 **D10 — resolved.** Both passes are deployed and live-verified — `bash scripts/wrangler-deploy.sh`
 (Worker `oz-pos`): version `1b9f4bd3-a793-4a7f-85b4-1a3fc8270f45` from commit `138a77c46` (the
@@ -314,17 +315,23 @@ focused and should not be padded.
 
 ## 7. Verification
 
+Rows marked † record the state at the pass that introduced them and are kept as history — later passes
+re-ran the same gates (most recently: 156 files checked, 854 tests, 86 pages, build clean; see the
+single-ownership section at the end). Page counts differ by design: **81** is the Astro-built pages,
+**86** is everything served from `dist/` (81 + `404.html`, the two `admin/*.html`, the two `dev/`
+prototypes).
+
 | Check | Command | Result |
 |---|---|---|
-| Full gate (i18n audit + password policy + vitest + `astro check`) | `cd website && npm run check` | **exit 0**, 0 errors, 152 files |
-| Production build | `cd website && npm run build` | **exit 0**, 81 HTML files |
+| Full gate (i18n audit + password policy + vitest + `astro check`) | `cd website && npm run check` | **exit 0**, 0 errors, 152 files † |
+| Production build | `cd website && npm run build` | **exit 0**, 81 HTML files † |
 | Internal links | `cd website && npm run check:links` | `NO BROKEN INTERNAL LINKS` (86 pages checked) |
 | Asset budget / orphan rule | `python3 scripts/verify-website-assets.py` | exit 0, orphan rule active |
-| New unit tests | `npx vitest run src/lib/__tests__/schema-price.test.ts src/__tests__/seo-head-invariants.test.ts src/__tests__/sitemap-options.test.ts src/lib/__tests__/hero-carousel.test.ts src/__tests__/hero-carousel-contract.test.ts src/__tests__/island-label-coverage.test.ts` | 55 passed |
-| Whole suite | `npx vitest run` | **839 passed** (48 files) |
-| 404 `lang` fix introduced no other page change | diff of all 81 built documents before/after | 40 `en` + 40 `id` documents and the root stub **byte-identical**; only `404.html` changed |
-| Island refactor changed no visible copy | visible text of all 86 built pages, before vs after (`scripts` under §7 “how the two refactors were measured”) | **identical on every page**, 0 characters differ |
-| Island refactor removed the renderer from the homepage | `grep -c '<astro-island' dist/en/index.html` | **0** (was 1) |
+| New unit tests | `npx vitest run src/lib/__tests__/schema-price.test.ts src/__tests__/seo-head-invariants.test.ts src/__tests__/sitemap-options.test.ts src/lib/__tests__/hero-carousel.test.ts src/__tests__/hero-carousel-contract.test.ts src/__tests__/island-label-coverage.test.ts` | 55 passed † |
+| Whole suite | `npx vitest run` | **839 passed** (48 files) † |
+| 404 `lang` fix introduced no other page change † | diff of all 81 built documents before/after | 40 `en` + 40 `id` documents and the root stub **byte-identical**; only `404.html` changed |
+| Island refactor changed no visible copy † | visible text of all 86 built pages, before vs after (`scripts` under §7 “how the two refactors were measured”) | **identical on every page**, 0 characters differ |
+| Island refactor removed the renderer from the homepage † | `grep -c '<astro-island' dist/en/index.html` | **0** (was 1) |
 | Rendered in Chromium (`playwright` 1.61.1) | `.tmp-browser-check.mjs` → local `dist` over HTTP, 320/360/390 px + 1280 px | no horizontal overflow; carousel verified by interaction (below) |
 
 ### How the two refactors were measured
@@ -434,13 +441,6 @@ the same script run before and after is what produced the before/after column. R
 serve `dist/` over loopback and drive Chromium at any viewport — that is how the F5 claim above was
 settled and how the carousel was exercised end to end.
 
-### Follow-up housekeeping
-
-`docs/records/README.md` is the generated index for this directory and **currently carries another
-session's uncommitted edits**, so this record is not entered in it. Run
-`node scripts/generate-records-index.mjs` to add it once that file is clean — the index is not gated,
-so nothing fails in the meantime.
-
 ### Single-ownership pass — one head, one de-index list (version `0176d238-…`)
 
 The audit's own DESIGN findings were structural: the `<head>` existed in three hand-synced copies and
@@ -451,13 +451,16 @@ The audit's own DESIGN findings were structural: the `<head>` existed in three h
   `DocsLayout.astro` now render it; each keeps only its own JSON-LD in a slot. Two latent bugs fixed by
   the move: the docs theme script read only the legacy `oz_theme` key (Base had migrated to
   `kasirmu_theme`), and docs pages now also get the Cloudflare-insights `preconnect` (Base had it, docs
-  didn't). Docs pages also stop requesting `/__oz/runtime-config.js` — they hydrate no islands.
+  didn't). Docs pages also stop requesting `/__oz/runtime-config.js` — the one island they hydrate
+  (the header search trigger) never imported it, so the request was pure overhead there.
 - **`src/lib/site.ts`** owns `SITE` + `NON_PUBLIC_PAGES`; the sitemap filter, the four gated pages'
   `noindex` (via `isNonPublic`), and `llms.txt`'s page list (`llms-pages.ts` re-exports it) all derive
   from that one array. This also fixed **real drift**: `llms.txt` advertised `/id/signup/` while the
   sitemap excluded it and the page is `noindex` — the exact self-contradiction class this audit named.
   Sitemap output is unchanged (72 URLs, verified byte-set-equal to live); the `llms.txt` signup line is
-  gone.
+  gone. Docs pages stop requesting `/__oz/runtime-config.js`: they hydrate only the header search
+  island (`SearchTrigger`, Header.astro), whose chunks never imported runtime-config — so the request
+  was pure overhead there, unlike on the checkout/auth islands that read it at hydration time.
 - **Proof:** normalized tag-by-tag head comparison (comments/whitespace stripped, chunk hashes
   normalized) of all built pages against the live pre-refactor host — every Base-layout page
   **identical**; docs pages differ only by the two intentional additions above; `admin/*.html` diffs are
@@ -465,8 +468,3 @@ The audit's own DESIGN findings were structural: the `<head>` existed in three h
   assets/build).
 
 ### Follow-up housekeeping
-
-`docs/records/README.md` is the generated index for this directory and **currently carries another
-session's uncommitted edits**, so this record is not entered in it. Run
-`node scripts/generate-records-index.mjs` to add it once that file is clean — the index is not gated,
-so nothing fails in the meantime.
