@@ -6,9 +6,12 @@ and the Social/schema head of both layouts.
 **Method:** every number below is measured from the built output (`website/dist`) or the live host,
 not read off the source. Re-run recipe in §7.
 
-> **Status: 9 findings fixed locally** (§1). **10 findings are left for a decision** (§5) — each one
-> needs copy, brand, or hosting input, not code. **Nothing is deployed**; the live site still serves
-> the state measured in §3.
+> **Status: 10 findings fixed** — the nine in §1 plus **O4** (§4, commit `138a77c46`). All of it is
+> **committed and deployed to production** (Worker `oz-pos`, version
+> `1b9f4bd3-a793-4a7f-85b4-1a3fc8270f45`) and re-verified against the live host rather than the deploy
+> log — see §7. **9 items remain for a decision** (§5); each needs copy, brand, or hosting input, not
+> code. Every finding in §3 and §4 carries its location, why it hurts, the concrete fix, and a
+> high/medium/low impact rating.
 >
 > This audit is the second pass over the same site. The first
 > ([`seo-robots-llms-review-19-09-26.md`](./seo-robots-llms-review-19-09-26.md)) covered
@@ -97,11 +100,16 @@ These are load-bearing; several are the kind of thing a refactor quietly drops.
 
 ---
 
-## 3. Findings left open — technical SEO
+## 3. Findings — technical SEO
 
-### T1 — Pages with a React island ship 55 KB (gzip) of React, and translated islands another 19 KB (gzip) of dictionary · **High**
+### T1 — Pages with a React island ship 55 KB (gzip) of React, and translated islands another 19 KB (gzip) of dictionary
 
-Total blocking JS per page, gzipped, measured from the actual module graph (`component-url` +
+- **Impact:** **High** — these are the LCP- and conversion-critical pages.
+- **Location:** `website/src/i18n/index.ts` statically imports `en.json` and `id.json`, so any hydrated island that calls `t()` pulls both dictionaries — the consumers are `website/src/components/PricingGrid.tsx` and its siblings; the renderer cost is `website/src/components/HeroCarousel.tsx`, loaded by `website/src/pages/[locale]/index.astro`.
+- **Why it hurts:** 55–90 KB of gzip JS on top of a ~31 KB gzip document is the dominant INP/TBT cost on these pages, and on a mid-range Android phone it is most of the “time to interactive” budget.
+- **Fix (not applied — touches ≥5 components and their tests):** pass the strings each island needs as props (they mostly already receive data as props), then drop the module-level `t` import from the client components; and rewrite `HeroCarousel` as an Astro component with a tiny inline script, since its markup and mockups are already static. That cuts every island page to roughly the 6 KB baseline — by the repo's own numbers, the highest-value performance work available.
+
+**Evidence** — total blocking JS per page, gzipped, measured from the actual module graph (`component-url` +
 `renderer-url` + their transitive imports):
 
 | Page | JS (gzip) | Breakdown |
@@ -124,86 +132,68 @@ Two distinct wastes:
    CSS `transform` and five pill buttons. Its first slide is static markup; the other four are
    placeholders.
 
-**Why it hurts:** these are the LCP-critical and conversion-critical pages. 55–90 KB of gzip JS on
-top of a ~31 KB gzip document is the dominant INP/TBT cost, and on a mid-range Android phone it is
-most of the "time to interactive" budget.
+### T2 — HTML is never cacheable and carries the whole stylesheet on every page
 
-**Fix (not applied — touches ≥5 components and their tests):** pass the strings each island needs as
-props (they mostly already receive data as props), then drop the module-level `t` import from the
-client components; and rewrite `HeroCarousel` as an Astro component with a tiny inline script (the
-markup and mockups are already static). Removing React from the marketing pages would cut every
-island page to roughly the 6 KB baseline. Given the repo's own numbers this is the highest-value
-performance work available.
+- **Impact:** **Medium**.
+- **Location:** `website/public/_headers` (`/*` → `Cache-Control: public, max-age=0, must-revalidate`) and `website/astro.config.mjs` (`build: { inlineStylesheets: 'always' }`).
+- **Why it hurts:** `/en/` is 141.5 KB raw / **31 KB gzip**, and that inlined stylesheet is repeated in all 81 documents while every navigation revalidates — so repeat visits and back-navigation pay to re-render CSS they already downloaded.
+- **Fix:** a `stale-while-revalidate` on HTML, or `inlineStylesheets: 'auto'` for the largest pages, recovers most of it.
+- **Nuance worth keeping:** both choices are deliberate and documented (the inline CSS kills a documented FOUC regression; `max-age=0` makes deploys instantly visible), and the inline CSS removes a render-blocking request on first visit, so the first-visit cost is roughly neutral. This is a trade-off, not a defect — the comment in `_headers` that “HTML must never be cached” is the constraint to argue with, not a rule.
 
-### T2 — HTML is never cacheable and carries the whole stylesheet on every page · **Medium**
+### T3 — Mermaid diagrams are invisible to crawlers and cost 165 KB of HTML
 
-`public/_headers` sets `Cache-Control: public, max-age=0, must-revalidate` for `/*`, and
-`astro.config.mjs` sets `build: { inlineStylesheets: 'always' }`. Result: `/en/` is 141.5 KB raw /
-**31 KB gzip**, of which the inlined stylesheet is repeated in all 81 documents, and every navigation
-revalidates.
+- **Impact:** **Medium**.
+- **Location:** `website/astro.config.mjs` (`rehype-mermaid` with `strategy: 'img-svg'`); the affected diagrams are the fenced mermaid blocks under `website/src/content/docs/`, worst on `/en/docs/docs-authoring/`.
+- **Why it hurts:** each diagram is emitted as `<img src="data:image/svg+xml,…" alt="">`, so its text — node labels like “Checkout”, “Paddle webhook”, “Lisensi ada?” — exists **only inside the image**, and the empty `alt` gives a crawler and a screen reader nothing. Measured: `/en/docs/docs-authoring/` is **164.7 KB raw**, the largest page on the site, almost entirely two base64 diagrams.
+- **Fix:** mermaid's own `accTitle:` / `accDescription:` directives (or a `title` on the fenced block) give the image real alternative text, and `strategy: 'inline-svg'` puts the labels into the DOM as crawlable text while removing the base64 bloat. The content half of this is **D5**.
 
-**Nuance worth keeping:** both choices are deliberate and documented (the inline CSS exists to kill a
-documented FOUC regression; `max-age=0` exists so deploys are instantly visible). Repeat-visit cost is
-one 304 round-trip, and the inlined CSS removes a render-blocking request on first visit. This is a
-trade-off, not a defect — but a `stale-while-revalidate` on HTML, or `inlineStylesheets: 'auto'` for
-the largest pages, would recover most of it. The comment in `_headers` that "HTML must never be
-cached" is the constraint to argue with, not a rule.
+### T4 — Trailing-slash requests get a `307`, not a `301`
 
-### T3 — Mermaid diagrams are invisible to crawlers and cost 165 KB of HTML · **Medium**
+- **Impact:** **Low**.
+- **Location:** platform behaviour, not code (Cloudflare trailing-slash normalisation); `website/public/_redirects` is empty and correctly so — there are no legacy URLs to migrate.
+- **Why it hurts:** measured in the previous review, `/id/pricing` → `307` → `/id/pricing/`. A temporary redirect passes no ranking signal and does not consolidate; a permanent one does. Every canonical form on this site carries the trailing slash, so this is the only redirect class in play.
+- **Fix (hosting — **D6**):** serve that normalisation as a `301`.
 
-`rehype-mermaid` is configured with `strategy: 'img-svg'`, which emits each diagram as
-`<img src="data:image/svg+xml,…" alt="">`. The diagram's text — node labels like "Checkout",
-"Paddle webhook", "Lisensi ada?" — exists **only inside the image**, and the empty `alt` gives a
-crawler and a screen reader nothing. Measured: `/en/docs/docs-authoring/` is **164.7 KB raw**, the
-largest page on the site, almost entirely two base64 diagrams.
+### T5 — `www.kasir.mu` resolves to nothing
 
-**Fix:** mermaid's own `accTitle:` / `accDescription:` directives (or a `title` on the fenced block)
-would give the image real alternative text, and `strategy: 'inline-svg'` would put the text into the
-DOM as crawlable text while removing the base64 bloat. Content half of this is **D5**.
+- **Impact:** **Low**.
+- **Location:** DNS / hosting — `kasir.mu` has no `www` record.
+- **Why it hurts:** measured, `https://www.kasir.mu/` times out with zero bytes and `nslookup` returns no record. That is *fine for SEO* — no duplicate host, no split authority — but it means there is nothing catching a `www` link, so one appearing externally dead-ends for both users and crawlers.
+- **Fix (hosting — **D6**):** if a `www` record is ever added, redirect it to the apex with a `301` in the same change.
 
-### T4 — Trailing-slash requests get a `307`, not a `301` · **Low** (hosting)
+### T6 — `llms.txt` is Indonesian-only
 
-Measured in the previous review: `/id/pricing` → `307` → `/id/pricing/`. A temporary redirect passes
-no ranking signal and does not consolidate; a permanent one does. Every canonical form on this site
-has the trailing slash, so this is the only redirect class in play — but it is served by the platform,
-not by code, so it belongs with hosting (**D6**). `public/_redirects` is currently empty (and
-correctly so: there are no legacy URLs to migrate).
+- **Impact:** **Low** (informational — already a recorded decision).
+- **Location:** `website/public/llms.txt` ships a single `id` document for both locales.
+- **Why it hurts:** an English-language answer engine reading `llms.txt` gets Indonesian prose. No ranking effect; a discoverability one for AI answer engines only.
+- **Fix:** none — recorded as deliberate in the previous review (§6, L5), so this stays a decision rather than an oversight.
 
-### T5 — `www.kasir.mu` resolves to nothing · **Low** (hosting)
+### T7 — `FAQPage` markup is now a weak rich-result bet
 
-`https://www.kasir.mu/` times out with zero bytes and `nslookup` returns no record. That is *fine for
-SEO* — no duplicate host, no split authority — but it means there is nothing catching a `www` link.
-If a `www` record is ever added, it must redirect to the apex with a `301` in the same change.
-**(D6)**
+- **Impact:** **Low** (informational).
+- **Location:** the `FAQPage` JSON-LD in `website/src/pages/[locale]/support.astro`, `website/src/pages/[locale]/cara.astro` and `website/src/components/LandingPage.astro`.
+- **Why it hurts:** Google restricted FAQ rich results to authoritative government/health sites in 2023, so the blocks on `/support/`, `/cara/` and the four landing pages are unlikely to render as rich results at all.
+- **Fix:** none — they remain valid and harmless (and are useful to AI answer engines), so keep them, but do not count them as a ranking lever.
 
-### T6 — `llms.txt` is Indonesian-only · **Informational** (already a recorded decision)
+### T8 — Two different support addresses in the same page
 
-Recorded as deliberate in the previous review (§6, L5). Leaving it as a decision rather than an
-oversight. No action.
-
-### T7 — `FAQPage` markup is now a weak rich-result bet · **Informational**
-
-Google restricted FAQ rich results to authoritative government/health sites in 2023, so the
-`FAQPage` blocks on `/support/`, `/cara/` and the four landing pages are unlikely to render as rich
-results. They remain valid and harmless (and are useful to AI answer engines), so keep them — just do
-not count them as a ranking lever.
-
-### T8 — Two different support addresses in the same page · **Low**
-
-`/en/pricing/` renders `mailto:adikaradwiatmaja@gmail.com` (`pricing.astro`, the Enterprise "contact
-us" CTA) while the site-wide JSON-LD `ContactPoint`, the footer and `/support/` all use
-`support@kasir.mu`. A personal Gmail address on a commercial pricing page undercuts the brand and
-entity signals the rest of the site builds. **Fix is a decision (which address is real), not code —
-see D3.**
+- **Impact:** **Low**.
+- **Location:** `website/src/pages/[locale]/pricing.astro` (the Enterprise “contact us” CTA renders `mailto:adikaradwiatmaja@gmail.com`) against the site-wide `ContactPoint` in `website/src/layouts/Base.astro`, `website/src/components/Footer.astro` and `website/src/pages/[locale]/support.astro` (`support@kasir.mu`).
+- **Why it hurts:** a personal Gmail address on a commercial pricing page undercuts the brand and the entity signals the rest of the site builds.
+- **Fix:** a decision rather than code — choose the canonical address (**D3**), after which it is a one-string change.
 
 ---
 
-## 4. Findings left open — on-page
+## 4. Findings — on-page
 
-### O1 — Seven titles exceed 60 characters · **Medium**
+### O1 — Seven titles exceed 60 characters
 
-Google rewrites and truncates titles past ~60 characters, so the discriminating tail — the part
-carrying the keyword — is the part that disappears. Measured (rendered length):
+- **Impact:** **Medium**.
+- **Location:** the seven `pageTitle.*` keys in `website/src/i18n/en.json` + `website/src/i18n/id.json` (subtitle half only — the `kasir.mu — ` prefix costs 11 characters of the budget).
+- **Why it hurts:** Google rewrites and truncates titles past ~60 characters, so the discriminating tail — the part carrying the keyword — is the part that disappears.
+- **Fix (copy — **D1** decides whether the brand should lead at all):** shorten the subtitle half of those seven titles.
+
+Measured (rendered length):
 
 | URL | len | Title |
 |---|---|---|
@@ -215,14 +205,15 @@ carrying the keyword — is the part that disappears. Measured (rendered length)
 | `/id/kasir-gratis/` | 61 | `kasir.mu — Aplikasi Kasir Gratis untuk Warung, Kafe, dan Toko` |
 | `/en/restaurant/` | 61 | `kasir.mu — Restaurant POS App: Kitchen, Tables & QRIS in Sync` |
 
-**Fix:** shorten the subtitle half of those titles (the `kasir.mu — ` prefix is 11 characters of the
-budget; see **D1** for whether the brand should lead at all). This is copy work.
+### O2 — 72 meta descriptions fall short of the ~120-character mark
 
-### O2 — 72 meta descriptions fall short of the ~120-character mark · **Medium**
+- **Impact:** **Medium**.
+- **Location:** the `pageDesc.*` keys in `website/src/i18n/en.json` + `website/src/i18n/id.json` (27 marketing pages) and the `description:` front matter of `website/src/content/docs/**` (36 docs pages).
+- **Why it hurts:** the description is the field that wins the click once the ranking is set, and 72 of 81 pages leave roughly a third of that snippet blank — including money pages.
+- **Fix (copy — **D2**):** extend each to 120–160 characters that restates the page's target query.
 
-Every page has a description (a real strength) and **none is over-long** (0 pages exceed 160
-characters), but 72 of 81 are under 120 — so roughly a third of the available SERP snippet is left
-blank, including on money pages:
+Measured — every page has a description (a real strength) and **none is over-long** (0 of 81 exceed
+160 characters), but 72 of 81 are under 120:
 
 | Page | len | `description` |
 |---|---|---|
@@ -244,38 +235,26 @@ Plus **36 of the 37 `/docs/` pages**, which ship their front-matter summary verb
 The 8 noindexed auth pages (`/login/`, `/account/`, `/signup/`, `/enterprise-trial/` × 2 locales) and
 the locale stub are excluded from that count — a short description there costs nothing.
 
-**Fix:** extend the `description:` front matter of each docs page (and the `pageDesc.*` keys for
-marketing) to 120–160 characters that restates the page's target query. Copy work (**D2**).
+### O3 — The root `/` has no `H1`, no content, and redirects client-side
 
-### O3 — The root `/` has no `H1`, no content, and redirects client-side · **Medium**
+- **Impact:** **Medium**.
+- **Location:** `website/src/pages/index.astro` — a deliberate locale-detect stub whose inline script calls `window.location.replace()` to `/id/` or `/en/`, with a `<noscript>` meta-refresh fallback; the fix itself belongs in `website/worker.ts`.
+- **Why it hurts:** the stub has a title, description, canonical (→ `/id/`) and correct `hreflang`, but an **empty `<body>`** — so no `H1` and no crawlable content. It is excluded from the sitemap and canonicalises to `/id/`, so Google should consolidate it; but `/` is the strongest URL in the domain's history and the one external links are most likely to point at, and it currently depends on the crawler rendering JS to reach real content.
+- **Fix (needs a hosting/architecture decision — **D6**):** a server-side `302` on the Worker for `/`, based on `Accept-Language` with a `Vary: Accept-Language`, makes the entry point a real redirect instead of a JS handoff. A cheaper stopgap is a `<noscript>` block with an `H1` and links to both locales — not applied, because it only helps non-JS agents and adds no crawl benefit for Googlebot.
 
-`src/pages/index.astro` is a deliberate locale-detect stub: an inline script does
-`window.location.replace()` to `/id/` or `/en/`, with a `<noscript>` meta-refresh fallback. It has a
-title, description, canonical (→ `/id/`) and correct `hreflang`, but an **empty `<body>`**, so it has
-no `H1` and no crawlable content.
+### O4 — The 404 page declared the wrong `lang` · **fixed in this pass**
 
-It is excluded from the sitemap and canonicalises to `/id/`, so Google should consolidate it — but
-`/` is the strongest URL in the domain's history and the one external links are most likely to point
-at, and it currently depends on the crawler rendering JS to reach real content.
+- **Impact:** **Low** — a 404 is not indexed, but the document lied about its own language.
+- **Location:** `website/src/pages/404.astro` (hard-codes `const locale = 'en'` for its copy) and `website/src/layouts/Base.astro` (derived `<html lang>` from `Astro.currentLocale`, which for the locale-less `/404` is the site default `id`).
+- **Why it hurts:** the page rendered **`<html lang="id">` around English text** (and `og:locale = id_ID`) — a document misreporting its language to screen readers, translation tooling and search engines (WCAG 3.1.1). Confirmed live before the fix: HTTP **404**, `<html lang="id">`, `<h1>Page not found</h1>`.
+- **Fix (applied, commit `138a77c46`):** `Base.astro` takes an optional `locale` prop that overrides `Astro.currentLocale`, and only `404.astro` passes it (`locale={locale}`, `en`) — so no other page's `lang` can change. Verified over all 81 built pages: the 40 `en` and 40 `id` documents and the root stub are **byte-identical** to before, and the 404 now emits `lang="en"` / `og:locale = en_US`. Live re-check in §7.
 
-**Fix (needs a hosting/architecture decision, D6):** a server-side `302` on the Worker for `/` based
-on `Accept-Language` (with a `Vary: Accept-Language`) would make the entry point a real redirect
-instead of a JS handoff. A cheaper stopgap is a `<noscript>` block with an `H1` and links to both
-locales — not applied, because it only helps non-JS agents and adds no crawl benefit for Googlebot.
+### O5 — Brand-first title pattern
 
-### O4 — The 404 page declares the wrong `lang` · **Low**
-
-`src/pages/404.astro` hard-codes `const locale = 'en'` for its copy, but `Base.astro` derives
-`<html lang>` from `Astro.currentLocale`, which for the locale-less `/404` is the default locale —
-so the page renders **`<html lang="id">` with English text** (and `og:locale = id_ID`). Impact is
-small (a 404 is not indexed) but it is a correctness bug and a one-line fix once `Base` accepts a
-`locale` override.
-
-### O5 — Brand-first title pattern · **Informational** (judgment)
-
-Every title is `kasir.mu — <page>`. Brand-first trades keyword prominence for brand recognition, and
-for a brand this young the keyword is usually the better first characters. Not changed: it is a
-positioning call, and consistency across 81 pages has real value. **D1.**
+- **Impact:** **Low** (informational — a positioning call).
+- **Location:** all 81 `pageTitle.*` strings in `website/src/i18n/en.json` + `website/src/i18n/id.json` (every title is `kasir.mu — <page>`).
+- **Why it hurts:** brand-first trades keyword prominence for brand recognition, and for a brand this young the keyword is usually the better first characters.
+- **Fix:** none applied — it is a positioning call and consistency across 81 pages has real value (**D1**).
 
 ---
 
@@ -294,7 +273,10 @@ None of these can be resolved by a low-risk code edit; each needs a decision or 
 | **D7** | **`/docs/` hub depth** — 24 words of body copy on a page that is in the sitemap and is the doorway to 17 docs pages | Thin but *indexable* hub; worth 150–250 words of real orientation copy | `src/pages/[locale]/docs/index.astro` |
 | **D8** | **Vertical/landing depth** — measured body copy: `/en/` 480 words, `/en/features/` 325, `/en/pricing/` 265, `/en/restaurant/` 251, `/en/warehouse/` 162, `/en/cafe/` 157, `/en/kasir-gratis/` 151, `/en/warung/` 146, `/en/minimarket/` 138, `/en/cara/` 132, `/en/download/` 132; 47 of 81 pages are under 300 words | These are the money pages for commercial queries and they compete against competitors' long-form pages. The copy that exists is good and specific — there is just not much of it | `src/i18n/*.json` `vertical.*`, `landing.*` |
 | **D9** | **Whether `FAQPage` blocks stay** (weak rich-result bet, useful to AI answer engines) | Effort/benefit call | `support.astro`, `cara.astro`, `LandingPage.astro` |
-| **D10** | **Deployment** — none of this pass is live | The live site still serves the invalid `Offer.price`, the indexable `/signup/`, etc. | `website/` → `npm run deploy` (explicitly authorised step) |
+
+**D10 — resolved.** The pass is deployed and live-verified — `bash scripts/wrangler-deploy.sh`
+(Worker `oz-pos`), version `1b9f4bd3-a793-4a7f-85b4-1a3fc8270f45`, from commit `138a77c46`. Observed
+values in §7.
 
 ---
 
@@ -333,6 +315,31 @@ focused and should not be padded.
 | Internal links | `cd website && npm run check:links` | `NO BROKEN INTERNAL LINKS` (86 pages checked) |
 | Asset budget / orphan rule | `python3 scripts/verify-website-assets.py` | exit 0, orphan rule active |
 | New unit tests | `npx vitest run src/lib/__tests__/schema-price.test.ts src/__tests__/seo-head-invariants.test.ts src/__tests__/sitemap-options.test.ts` | 28 passed |
+| 404 `lang` fix introduced no other page change | diff of all 81 built documents before/after | 40 `en` + 40 `id` documents and the root stub **byte-identical**; only `404.html` changed |
+
+### Live verification after the deploy
+
+Every value below was fetched from the live host with `Cache-Control: no-cache` — an edge-cached copy
+served a stale `/en/signup/` for the first probe after the previous deploy, so no row here trusts a
+plain request or the deploy log.
+
+| # | Check | Observed |
+|---|---|---|
+| **A** | 404 document language matches its copy | `https://kasir.mu/definitely-missing-9f3a-verify/` → **HTTP 404**, `<html lang="en">`, `<title>404 — kasir.mu</title>`, `og:locale = en_US`, `<h1>Page not found</h1>`, and the body's `sha256` (`af574503a83548c9…`) is **identical to `website/dist/404.html`**, so the live page is the committed artifact. The same URL returned **`lang="id"`** before this pass |
+| **B** | Pricing offers numeric | `/en/pricing/` → Free **0**, Plus **4.99**, Pro **9.99**, Premium **39.99**, all `typeof number`, `USD`, with `Product.url` and `image` present, Enterprise omitted. `/id/pricing/` → Gratis **0**, Plus **49000**, Pro **99000**, Premium **399000**, `IDR` |
+| **C** | Signup still `noindex` | `/en/signup/` and `/id/signup/` both **HTTP 200** with `<meta name="robots" content="noindex">` |
+| **D** | Sitemap | `sitemap-0.xml` **HTTP 200**, `application/xml`, 25,910 bytes — **72 `<loc>`, 72 `<lastmod>`, 72 `x-default`, 0 occurrences of `signup`** |
+| **E** | `robots.txt` | **HTTP 200**, `text/plain`, 1,192 bytes — `User-agent: *`, `Allow: /`, `Disallow: /__oz/`, `Sitemap: https://kasir.mu/sitemap-index.xml` |
+| **F** | Checkout did not regress | The build-time Paddle token is still in the live bundle: `/_astro/midtrans.Dpvf2sGA.js` carries a `test_`-prefixed 32-character token whose `sha256` (`3f7d7c75f2a5…`) matches the repo's `PUBLIC_PADDLE_CLIENT_TOKEN` exactly |
+| **G** | Subdomain routes reissued by the deploy | Probed before and after, since redeploying the Worker also reissues its triggers: `admin.kasir.mu/` → **200**, `lang="en"`, `kasir.mu Admin — Sign in`, 3,751 bytes **identical**; `dashboard.kasir.mu/` → **1 redirect** → `https://kasir.mu/en/account/` → **200**, `lang="en"`, `kasir.mu — Account`, 105,946 bytes **identical**. No change on either host |
+
+**Deploy note (the trap that costs the most).** `dist/` can be fresh by timestamp and still be the
+wrong artifact: a build made *without* `PUBLIC_PADDLE_CLIENT_TOKEN` / `PUBLIC_PADDLE_ENVIRONMENT` in
+the environment produces a site with no checkout, and deploying it removes checkout silently.
+`scripts/wrangler-deploy.sh` rebuilds with those variables, so `.env` must be sourced before calling
+it — check **F** is the guard that proves it worked. The second trap is the edge: the first probe
+after a deploy can still be the previous version, which is why every row above sends
+`Cache-Control: no-cache`.
 
 Build-output invariants after the fixes (measured over the 81 built pages):
 
