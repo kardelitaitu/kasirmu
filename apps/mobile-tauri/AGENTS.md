@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, paths/claims verified) · capabilities/mobile.json exists; Cargo.toml crate-type ["staticlib","cdylib","rlib"] matches; src/commands/ exists; tauri.conf.json has android/minSdkVersion 26; CI-on-main note matches root AGENTS.md policy · the hardcoded ANDROID_NDK_HOME path (27.0.12077973) is a local env hint, not a code-claim error · REV 2 (09-09-26, DSH docs-auditor, CI-claim pass) — status: ACCURATE AFTER REPAIR (1 finding) + 2 adjacent CI claims in the same file corrected; the older text above is kept verbatim, including the "CI-on-main note matches root AGENTS.md policy" clause, which the rev-2 note below now contradicts (root AGENTS.md has since been rewritten: dev-ci.yml has NO push trigger). Finding: the Signing section asserted "CI (android.yml / nightly.yml) decodes the base64 keystore secret into gen/android/ and writes this file" — both workflows were renamed to .bak by 23c963303 on 2026-09-02 and GitHub never executes a .bak file, so nothing does this; replaced with the retired file plus the line range where the logic still reads (.github/workflows/android.yml.bak:119-132) and the plain statement that release.yml is desktop-only (.github/workflows/release.yml:24). Also fixed: the CI notes section claimed a CI job "should" build the APK for PRs to main without saying no such job exists, and "The CI-only trigger on main push/pull_request ... feature-branch pushes skip CI" — wrong in both halves (pull_request to main + workflow_dispatch only; a main push runs nothing). Re-verified true: gen/android/app/build.gradle.kts exists and is tracked, capabilities/mobile.json exists, tauri.conf.json still carries android/minSdkVersion 26, crate-type is unchanged. Left alone: the keystore-properties format and the build/flag tables (Tauri CLI behaviour, not a repo claim I can measure here). · REV 3 (2026-09-16, DSH agents-3 lane): the rev-2 note and the Signing section both assert that root AGENTS.md was rewritten to say dev-ci.yml has NO push trigger. That is inverted: `dev-ci.yml:3-8` declares `pull_request: branches: [main]`, `push: branches: [main]` and `workflow_dispatch:`, and root AGENTS.md names this very denial as one of two false CI claims it corrected. Both prose sites are fixed; the stamp keeps rev 2 verbatim because this file preserves superseded readings. No Android, signing or build claim moved. The per-directory mirror is NOT policed: `scripts/verify-agents-mirrors.py` compares root AGENTS.md with `.agents/AGENTS.md` only ("all 2 mirrors agree"), so a green from it says nothing about this file, which is how the false note survived a correction pass. -->
+<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, paths/claims verified) · capabilities/mobile.json exists; Cargo.toml crate-type ["staticlib","cdylib","rlib"] matches; src/commands/ exists; tauri.conf.json has android/minSdkVersion 26; CI-on-main note matches root AGENTS.md policy · the hardcoded ANDROID_NDK_HOME path (27.0.12077973) is a local env hint, not a code-claim error · REV 2 (09-09-26, DSH docs-auditor, CI-claim pass) — status: ACCURATE AFTER REPAIR (1 finding) + 2 adjacent CI claims in the same file corrected; the older text above is kept verbatim, including the "CI-on-main note matches root AGENTS.md policy" clause, which the rev-2 note below now contradicts (root AGENTS.md has since been rewritten: dev-ci.yml has NO push trigger). Finding: the Signing section asserted "CI (android.yml / nightly.yml) decodes the base64 keystore secret into gen/android/ and writes this file" — both workflows were renamed to .bak by 23c963303 on 2026-09-02 and GitHub never executes a .bak file, so nothing does this; replaced with the retired file plus the line range where the logic still reads (.github/workflows/android.yml.bak:119-132) and the plain statement that release.yml is desktop-only (.github/workflows/release.yml:24). Also fixed: the CI notes section claimed a CI job "should" build the APK for PRs to main without saying no such job exists, and "The CI-only trigger on main push/pull_request ... feature-branch pushes skip CI" — wrong in both halves (pull_request to main + workflow_dispatch only; a main push runs nothing). Re-verified true: gen/android/app/build.gradle.kts exists and is tracked, capabilities/mobile.json exists, tauri.conf.json still carries android/minSdkVersion 26, crate-type is unchanged. Left alone: the keystore-properties format and the build/flag tables (Tauri CLI behaviour, not a repo claim I can measure here). · REV 3 (2026-09-16, DSH agents-3 lane): the rev-2 note and the Signing section both assert that root AGENTS.md was rewritten to say dev-ci.yml has NO push trigger. That is inverted: `dev-ci.yml:3-8` declares `pull_request: branches: [main]`, `push: branches: [main]` and `workflow_dispatch:`, and root AGENTS.md names this very denial as one of two false CI claims it corrected. Both prose sites are fixed; the stamp keeps rev 2 verbatim because this file preserves superseded readings. No Android, signing or build claim moved. The per-directory mirror is NOT policed: `scripts/verify-agents-mirrors.py` compares root AGENTS.md with `.agents/AGENTS.md` only ("all 2 mirrors agree"), so a green from it says nothing about this file, which is how the false note survived a correction pass. · REV 4 (2026-09-19, Android build-repair lane): three measured defects in the Prerequisites block are corrected. (a) `JAVA_HOME` pointed at Android Studio's JBR; the installed JBR is JDK **25.0.3**, which Gradle 8.14.3 cannot run on, so every `cargo tauri android dev` died at configuration with `A problem occurred configuring project ':buildSrc'. > 25.0.3` / `Caused by: java.lang.IllegalArgumentException: 25.0.3` at `JavaVersion.parse`. That was the frozen root cause of the reported failure; it is repaired by pinning JDK 21 in `HKCU\Environment` plus `org.gradle.java.home` in the non-committed `%USERPROFILE%\.gradle\gradle.properties` (verified: `gradlew help` is `BUILD SUCCESSFUL` with `JAVA_HOME` deliberately left on JBR 25). (b) `ANDROID_NDK_HOME` named `ndk\27.0.12077973`; the only NDK installed is `30.0.14904198`; the same stale `27.x` figure sat in the Prerequisites table and is corrected too. (c) the scaffold tree claimed `gen/android/` is generated and "do not commit"; `git ls-files` shows 44 tracked files and root `.gitignore:166-175` documents the committed-scaffold policy, and the real file is `settings.gradle`, not `settings.gradle.kts`. Also corrected: the bundled UI path (`../../ui/dist` → `../../ui/dist-mobile`, per `tauri.conf.json` `frontendDist`) and the restored-workflow recipe's tool versions. Left alone: the Signing and CI-trigger sections, which rev 2/3 already settled. -->
 
 # Android Development — OZ-POS Tablet
 
@@ -11,9 +11,9 @@ This file covers the Android build pipeline, signing, and conventions for the
 
 | Tool | Version | Install |
 |------|---------|---------|
-| **JDK** | 17+ | Android Studio bundles one, or `winget install EclipseAdoptium.Temurin.17.JDK` |
-| **Android SDK** | 34+ | Android Studio SDK Manager |
-| **Android NDK** | 25+ / 27.x | SDK Manager → SDK Tools → NDK |
+| **JDK** | **21 (pin it)** | `winget install EclipseAdoptium.Temurin.21.JDK`. **Never** Android Studio's bundled JBR — see the JBR note below. |
+| **Android SDK** | 36 (platform `android-36`) | Android Studio SDK Manager |
+| **Android NDK** | 30.0.14904198 | SDK Manager → SDK Tools → NDK |
 | **cargo-ndk** | latest | `cargo install cargo-ndk` |
 | **Rust targets** | 3 targets | `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android` |
 
@@ -21,9 +21,46 @@ Set these environment variables (or add to `.env` in the project root):
 
 ```env
 ANDROID_HOME=C:\Users\Dika\AppData\Local\Android\Sdk
-ANDROID_NDK_HOME=C:\Users\Dika\AppData\Local\Android\Sdk\ndk\27.0.12077973
-JAVA_HOME=C:\Program Files\Android\Android Studio\jbr
+ANDROID_NDK_HOME=C:\Users\Dika\AppData\Local\Android\Sdk\ndk\30.0.14904198
+JAVA_HOME=C:\Users\Dika\AppData\Local\Programs\Java\jdk-21.0.12.1+1
 ```
+
+### ⚠️ `JAVA_HOME` must be a JDK 21 — never Android Studio's JBR
+
+The Gradle wrapper in `gen/android/` is **8.14.3**, which runs on Java 17–24.
+Android Studio's bundled JBR (`C:\Program Files\Android\Android Studio\jbr`) tracks the
+newest JDK and measured **25.0.3** on 2026-09-19. Studio can upgrade it mid-session, so
+"release built fine an hour ago, debug fails now" is the ordinary symptom, not a regression.
+On JDK 25 every Gradle invocation dies during configuration, because Gradle's embedded
+Kotlin cannot parse the version string:
+
+```
+FAILURE: Build failed with an exception.
+* What went wrong:
+A problem occurred configuring project ':buildSrc'.
+> 25.0.3
+
+Caused by: java.lang.IllegalArgumentException: 25.0.3
+    at org.jetbrains.kotlin.com.intellij.util.lang.JavaVersion.parse(JavaVersion.java:307)
+```
+
+Two guards, because the ambient `JAVA_HOME` is the unreliable part:
+
+1. The **user-scope** `JAVA_HOME` in `HKCU\Environment` points at the JDK 21 above.
+   A terminal opened *before* that change keeps the stale value — open a new one, or set
+   `$env:JAVA_HOME='C:\Users\Dika\AppData\Local\Programs\Java\jdk-21.0.12.1+1'` for the current shell.
+   `java -version` on `PATH` is Oracle **JDK 8** on this host, so never infer the Gradle
+   JVM from `PATH`.
+2. `org.gradle.java.home` in the **machine-local, never-committed**
+   `%USERPROFILE%\.gradle\gradle.properties`:
+
+   ```properties
+   org.gradle.java.home=C:/Users/Dika/AppData/Local/Programs/Java/jdk-21.0.12.1+1
+   ```
+
+   This **takes precedence over** `JAVA_HOME`, so `cargo tauri android dev|build` keeps working
+   regardless of what the shell or Studio exports. Verified 2026-09-19 with `JAVA_HOME` deliberately
+   left on the JBR 25 path: `gradlew help` reports `BUILD SUCCESSFUL`.
 
 ---
 
@@ -35,7 +72,10 @@ Run once from this directory (`apps/mobile-tauri/`):
 cargo tauri android init
 ```
 
-This **generates** (do not commit):
+This generates the scaffold below. **It is committed** — 44 files under
+`apps/mobile-tauri/gen/android/` are tracked, and the root `.gitignore` spells out the policy
+(lines 166–175): the scaffold ships so CI and contributors can build without the
+Tauri CLI. Tauri only regenerates it when it is missing:
 ```
 gen/android/
   app/build.gradle.kts
@@ -45,8 +85,8 @@ gen/android/
   gradle/
   gradle.properties
   gradlew / gradlew.bat
-  local.properties
-  settings.gradle.kts
+  local.properties      ← the only path listed here that is gitignored
+  settings.gradle
 ```
 
 After init you can customise `AndroidManifest.xml` (permissions, orientation,
@@ -148,7 +188,7 @@ and opens the Tauri dev server for hot-reload.
 - **`apps/mobile-tauri/tauri.conf.json`** — Android config lives in `bundle.android`
 - **`apps/mobile-tauri/capabilities/mobile.json`** — Mobile-specific permissions (add Tauri plugin permissions here)
 - **`apps/mobile-tauri/Cargo.toml`** — Crate type `["staticlib", "cdylib", "rlib"]` for mobile targets (already set)
-- **UI** at `../../ui/dist` is bundled into the APK by `beforeBuildCommand`
+- **UI** at `../../ui/dist-mobile` (the `frontendDist` in `tauri.conf.json`) is bundled into the APK by `beforeBuildCommand`
 - **Rust commands** follow the same pattern as desktop (`apps/mobile-tauri/src/commands/`)
 
 ---
@@ -161,7 +201,7 @@ lives in the inert `.github/workflows/android.yml.bak` (retired by `23c963303`,
 below is the recipe for whoever restores the workflow, not a description of
 today's CI. For PRs targeting `main`, a CI job should:
 
-1. Install JDK 17, Android SDK 34, NDK 27
+1. Install JDK 21, Android SDK 36, NDK 30
 2. `rustup target add aarch64-linux-android`
 3. `cargo install cargo-ndk`
 4. Decode keystore from `${{ secrets.ANDROID_KEYSTORE_BASE64 }}`
