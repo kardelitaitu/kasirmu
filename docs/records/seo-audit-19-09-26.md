@@ -441,7 +441,7 @@ session's uncommitted edits**, so this record is not entered in it. Run
 `node scripts/generate-records-index.mjs` to add it once that file is clean — the index is not gated,
 so nothing fails in the meantime.
 
-### Single-ownership pass — one head, one de-index list (version n/a, commit pending)
+### Single-ownership pass — one head, one de-index list (version `0176d238-…`)
 
 The audit's own DESIGN findings were structural: the `<head>` existed in three hand-synced copies and
 "which pages are de-indexed" in four. Both consolidations are now in place, **proven output-identical**:
