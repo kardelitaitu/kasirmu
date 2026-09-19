@@ -2,7 +2,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice C5: license_verification deep read)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: exemplary — RSA-2048 PKCS1v15/SHA-256 with build-embedded key; BOOTSTRAP_FREE sentinel accepted ONLY in debug builds (release requires a real signature); every server response signature-verified BEFORE trust; credentials travel only in Authorization headers (documented body-log-leak rationale); timeouts on all 5 HTTP clients (10/30/15/15s); api_key persisted plaintext in tenant_subscription (local threat model, COR-17/30 family)
+findings: exemplary — RSA-2048 PKCS1v15/SHA-256 with build-embedded key; BOOTSTRAP_FREE sentinel honoured in every profile but ONLY for a Free-tier row, the policy living in TenantSubscription::verify_signature since 19-09-26 (this module's own debug short-circuit stays any-payload); every server response signature-verified BEFORE trust; credentials travel only in Authorization headers (documented body-log-leak rationale); timeouts on all 5 HTTP clients (10/30/15/15s); api_key persisted plaintext in tenant_subscription (local threat model, COR-17/30 family)
 next: none | perf: N/A
 */
 //!
@@ -390,10 +390,15 @@ pub fn verify_license_signature(payload: &str, signature_base64: &str) -> Result
     // generated PostgreSQL twin repeats it at 20260813_init.pg.sql:2101 — edit the .sql and re-run
     // python3 scripts/generate-pg-migration.py; never hand-edit the .pg.sql. (The "(from migration 061)"
     // note above the seed, and the older copy of this comment, cite a pre-squash number: no file numbered 061
-    // exists in crates/kasirmu-core/migrations.) It is ONLY accepted in debug/dev builds; the release profile
-    // requires a real RSA signature, so there the same value falls through to the base64 decode below and is
-    // rejected as an invalid symbol 95 at offset 9 — the '_' of BOOTSTRAP_FREE — surfacing as
-    // CoreError::InvalidSubscriptionSignature.
+    // exists in crates/kasirmu-core/migrations.)
+    //
+    // This short-circuit is the DEBUG one, and it accepts the sentinel for any payload. The profile that
+    // matters is release, and release no longer reaches this function carrying a sentinel: the policy now
+    // lives in `TenantSubscription::verify_signature` (subscription.rs), which honours the sentinel in EVERY
+    // profile but only for a Free-tier row. A sentinel-signed row claiming a paid tier therefore still falls
+    // through to the base64 decode below and is rejected as an invalid symbol 95 at offset 9 — the '_' of
+    // BOOTSTRAP_FREE — surfacing as CoreError::InvalidSubscriptionSignature. Callers that hold nothing but a
+    // payload and a signature string (this module's own tests) keep the permissive debug behaviour.
     #[cfg(debug_assertions)]
     if signature_base64 == "BOOTSTRAP_FREE" {
         return Ok(());

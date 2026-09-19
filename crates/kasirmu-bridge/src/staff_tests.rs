@@ -11,6 +11,7 @@
 //! `AppError` -> `BridgeError` rename.
 use super::*;
 use crate::testing::TestBridge;
+use crate::testing::seeded_row_reaches_a_paid_tier;
 use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
 // ── Desktop-shaped adapters (relocation scaffolding) ─────────────────
@@ -406,7 +407,7 @@ async fn scoped_create_staff_allows_owner_session() {
     // Release: staff.rs:1080 verifies the seeded row signature BEFORE the tier gate
     // and before any write, so this refusal is not the staff-quota answer the
     // fixture is about and there is no DTO to read.
-    if !seeded_row_loads() {
+    if !seeded_row_reaches_a_paid_tier() {
         assert_refused_by_the_seeded_row(&bridge, result, "pro").await;
         return;
     }
@@ -487,7 +488,7 @@ async fn scoped_create_staff_allowed_with_headroom_tier() {
     // Release: staff.rs:1080 verifies the seeded row signature BEFORE the tier gate
     // and before any write, so this refusal is not the staff-quota answer the
     // fixture is about and there is no DTO to read.
-    if !seeded_row_loads() {
+    if !seeded_row_reaches_a_paid_tier() {
         assert_refused_by_the_seeded_row(&bridge, result, "plus").await;
         return;
     }
@@ -1293,7 +1294,7 @@ async fn scoped_staff_commands_use_global_identity_db_for_any_store() {
     // Release: staff.rs:1080 verifies the seeded row signature BEFORE the tier gate
     // and before any write, so this refusal is not the staff-quota answer the
     // fixture is about and there is no DTO to read.
-    if !seeded_row_loads() {
+    if !seeded_row_reaches_a_paid_tier() {
         assert_refused_by_the_seeded_row(&bridge, created, "pro").await;
         return;
     }

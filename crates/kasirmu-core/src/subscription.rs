@@ -27,6 +27,19 @@ use crate::workspace_type::{ADMIN, INVENTORY, RESTAURANT_POS, STORE_POS, WAREHOU
 /// without producing false positives on slow or paused devices.
 const CLOCK_SKEW_TOLERANCE_SECONDS: i64 = 30;
 
+/// The signature the initial schema seeds for an install that has never
+/// consulted a licence server.
+///
+/// Seeded at `crates/kasirmu-core/migrations/20260813_init.sql:1514` — whose
+/// generated PostgreSQL twin repeats it at `20260813_init.pg.sql:2101`, so
+/// edit the `.sql` and re-run `scripts/generate-pg-migration.py` — which means
+/// it is present on every fresh install, desktop and tablet alike.
+///
+/// It is not a signature. It is a marker meaning "no licence has been
+/// activated here yet", and [`TenantSubscription::verify_signature`] is the
+/// only place that gives it any meaning.
+pub const BOOTSTRAP_FREE_SIGNATURE: &str = "BOOTSTRAP_FREE";
+
 // ── Instance Status ─────────────────────────────────────────────────
 
 /// Three-state status for workspace instances, replacing the old
@@ -473,10 +486,38 @@ impl TenantSubscription {
 
     /// Verify the subscription signature using RSA-2048 PKCS1v15.
     ///
-    /// During local development / single-store deployments, the bootstrap
-    /// signature `BOOTSTRAP_FREE` is accepted. In production, the signature
-    /// must be validated against the embedded RSA public key.
+    /// The schema-seeded sentinel [`BOOTSTRAP_FREE_SIGNATURE`] is honoured in
+    /// **every** build profile, because an unlicensed install is not an
+    /// unlicensed *release*: shipping the sentinel in the schema and then
+    /// refusing it in release left the app unable to reach a session at all.
+    /// A release build now runs the seeded row as Free.
+    ///
+    /// The free-tier guard is what keeps the sentinel from becoming a
+    /// signature that mints entitlements. A row claiming Plus/Pro/Premium/
+    /// Enterprise while carrying the sentinel is not the row the schema
+    /// seeded, so it falls through to RSA verification and is rejected in
+    /// release. Granting Free is also granting nothing new: `from_db` maps
+    /// unknown tiers to Free and `entitlements::build_entitlements` fails
+    /// closed to Free, so the sentinel's ceiling is already the floor.
+    ///
+    /// The guard asks [`tier_key`](SubscriptionTier::tier_key) rather than
+    /// comparing `tier` directly, because `tier_key` is where this module already
+    /// decides what "free" means: it reports the deprecated `OneTime` variant
+    /// as `free`, which is how its rows have always been treated. Comparing
+    /// the enum instead would leave a sentinel-signed `one_time` row
+    /// unloadable in release, and an unloadable row is *not* the safe
+    /// direction here — `db::audit_security::record_security_event` records
+    /// when `ent.loaded` is false, so refusing the row makes it record more,
+    /// not less (see the asymmetry documented on that function).
+    ///
+    /// Debug behaviour is deliberately unchanged — the short-circuit in
+    /// `verify_license_signature` still accepts the sentinel for *any*
+    /// payload under `debug_assertions`, which is what keeps the
+    /// sentinel-with-paid-tier fixtures in the test suites passing there.
     pub fn verify_signature(&self) -> Result<(), CoreError> {
+        if self.signature == BOOTSTRAP_FREE_SIGNATURE && self.tier.tier_key() == "free" {
+            return Ok(());
+        }
         crate::license_verification::verify_license_signature(&self.signed_payload, &self.signature)
     }
 

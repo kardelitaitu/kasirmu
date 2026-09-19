@@ -2,6 +2,7 @@ use super::*;
 
 use crate::testing::{
     FAIL_CLOSED_GATES_LOCKED, FAIL_CLOSED_STATE, FAIL_CLOSED_TIER, seeded_row_loads,
+    seeded_row_reaches_a_paid_tier, seeded_row_verdict_for_tier,
 };
 use kasirmu_core::availability::AvailabilityReason;
 use kasirmu_core::migrations;
@@ -49,7 +50,7 @@ fn assert_seeded_row(conn: &rusqlite::Connection, stamped_tier: &str) -> TenantS
     );
     assert_eq!(
         row.verify_signature().is_ok(),
-        seeded_row_loads(),
+        seeded_row_verdict_for_tier(stamped_tier),
         "the row this fixture reads must be the row the fork predicate is about"
     );
     row
@@ -163,7 +164,7 @@ fn capabilities_reflect_plus_and_pro_tiers() {
     let conn = fresh_db();
     seed_tier(&conn, "plus");
     let dto = caps(&conn);
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert_eq!(dto.tier, "plus");
         assert_eq!(dto.max_locations, Some(1));
         assert_eq!(dto.max_pos_instances, Some(2));
@@ -199,7 +200,7 @@ fn capabilities_reflect_premium_tier() {
     let conn = fresh_db();
     seed_tier(&conn, "premium");
     let dto = caps(&conn);
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert_eq!(dto.tier, "premium");
         // C4.2: Premium allows up to 5 stores self-serve
         assert_eq!(dto.max_locations, Some(5));
@@ -298,7 +299,7 @@ fn capabilities_report_grace_state_within_offline_grace() {
     )
     .unwrap();
     let dto = caps(&conn);
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert_eq!(dto.state, "grace");
         assert_eq!(dto.status, "active");
         assert_eq!(dto.expires_at.as_deref(), Some(recent.as_str()));
@@ -333,7 +334,7 @@ fn capabilities_report_expired_state_and_free_entitlements() {
     )
     .unwrap();
     let dto = caps(&conn);
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert_eq!(dto.state, "expired");
         assert_eq!(dto.status, "active");
         assert_eq!(dto.expires_at.as_deref(), Some(old.as_str()));
@@ -371,7 +372,7 @@ fn capabilities_report_canceled_state_even_with_live_expiry() {
     )
     .unwrap();
     let dto = caps(&conn);
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert_eq!(dto.state, "canceled");
         assert_eq!(dto.tier, "free", "canceled is never within grace");
     } else {
@@ -397,7 +398,7 @@ fn capabilities_report_paused_state() {
     )
     .unwrap();
     let dto = caps(&conn);
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert_eq!(dto.state, "paused");
         assert_eq!(
             dto.tier, "plus",
@@ -423,7 +424,7 @@ fn capabilities_reflect_server_status_refresh() {
 
     // Initially active without expiry
     let before = caps(&conn);
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert_eq!(before.status, "active");
         assert_eq!(before.expires_at, None);
     } else {
@@ -446,7 +447,7 @@ fn capabilities_reflect_server_status_refresh() {
 
     // Cache should immediately reflect refreshed status and expiry
     let after = caps(&conn);
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert_eq!(after.status, "active");
         assert_eq!(after.expires_at.as_deref(), Some(future.as_str()));
         assert_eq!(after.state, "active");
@@ -478,7 +479,7 @@ fn capabilities_reflect_server_status_refresh() {
     .unwrap();
 
     let canceled = caps(&conn);
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert_eq!(canceled.status, "canceled");
         assert_eq!(canceled.state, "canceled");
     } else {
@@ -524,7 +525,7 @@ fn verdict_names_tier_when_the_flag_is_missing() {
     // registry, not from the subscription, so they are profile-independent.
     assert_eq!(v.feature, "supports_analytics");
     assert_eq!(v.detail.permission.as_deref(), Some("analytics:view"));
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert!(!v.available);
         assert_eq!(v.reason_code(), Some("tier"));
         assert_eq!(v.detail.state, "active");
@@ -547,7 +548,7 @@ fn verdict_names_quota_at_the_cap_and_clears_one_below() {
     )
     .unwrap();
     let v = verdict_with_owner(&conn, "locations");
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert!(!v.available, "pro at its 2-location cap must deny");
         assert_eq!(v.reason_code(), Some("quota"));
         assert_eq!(v.detail.limit, Some(2));
@@ -580,7 +581,7 @@ fn verdict_names_server_policy_when_the_tier_withholds_the_workspace_type() {
     let conn = fresh_db();
     seed_tier(&conn, "plus");
     let v = verdict_with_owner(&conn, "supports_qris");
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert!(v.available, "plus supports qris");
     } else {
         // Release: PLUS supports qris on the tier ladder and the row says so;
@@ -601,16 +602,15 @@ fn verdict_names_server_policy_when_the_tier_withholds_the_workspace_type() {
         v.detail.permission.as_deref(),
         Some("inventory:locations_manage")
     );
-    if seeded_row_loads() {
-        assert!(!v.available);
-        assert_eq!(v.reason_code(), Some("server_policy"));
-    } else {
-        // Release: the allowed workspace types live in the signed payload, so
-        // the server-policy answer is unreadable too and lifecycle is what is
-        // left standing.
-        assert_seeded_row(&conn, "free");
-        assert_verdict_fail_closed(&v);
-    }
+    // Since 19-09-26 the bootstrap Free row loads in release as well as in
+    // debug, so the allowed-workspace-types answer is readable in BOTH profiles
+    // and the fork that used to separate them is gone. The old release arm
+    // asserted fail-closed `lifecycle` on the premise that the payload was
+    // unreadable — the very premise the ruling removed — so keeping it would
+    // pin a verdict the product no longer produces.
+    assert_seeded_row(&conn, "free");
+    assert!(!v.available);
+    assert_eq!(v.reason_code(), Some("server_policy"));
 }
 
 #[test]
@@ -632,7 +632,7 @@ fn verdict_names_role_for_a_role_without_the_gate_permission() {
         "retail-pos",
     )
     .unwrap();
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         // Premium grants analytics on the tier; the caller's role is the
         // missing axis.
         assert!(!v.available);
@@ -651,7 +651,7 @@ fn verdict_names_role_for_a_role_without_the_gate_permission() {
         "retail-pos",
     )
     .unwrap();
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert!(v.available, "loyalty:view holds the loyalty gate");
     } else {
         // Release: the row exists and the role axis really does hold - the
@@ -678,7 +678,7 @@ fn verdict_names_lifecycle_for_an_expired_subscription() {
     let v = verdict_with_owner(&conn, "supports_loyalty");
     assert!(!v.available);
     assert_eq!(v.reason_code(), Some("lifecycle"));
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert_eq!(v.detail.state, "expired");
         assert_eq!(v.detail.expires_at.as_deref(), Some("2025-01-01T00:00:00Z"));
     } else {
@@ -711,7 +711,7 @@ fn verdict_in_grace_stays_available_and_carries_the_deadline() {
     )
     .unwrap();
     let v = verdict_with_owner(&conn, "supports_loyalty");
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert!(v.available, "grace passes operational entitlements (§B)");
         assert_eq!(v.reason_code(), None);
         assert_eq!(v.detail.state, "grace");
@@ -736,7 +736,7 @@ fn verdict_addon_grant_clears_the_tier_denial_for_analytics() {
     )
     .unwrap();
     let v = verdict_with_owner(&conn, "supports_analytics");
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert!(v.available, "the add-on answers the tier question");
         assert_eq!(v.reason_code(), None);
     } else {
@@ -892,7 +892,7 @@ fn verdict_scope_denies_when_the_assignment_excludes_the_session_location() {
     // The scope axis is an assignment question, not a subscription question,
     // so it answers the same way in either profile.
     assert_eq!(v.detail.scope_granted, Some(false));
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         // Premium + the gate permission both clear; scope is the missing axis.
         assert!(!v.available, "out-of-scope session location must deny");
         assert_eq!(v.reason_code(), Some("scope"));
@@ -921,7 +921,7 @@ fn verdict_scope_clears_inside_the_assigned_location() {
     // The scope axis is an assignment question, not a subscription question:
     // in-scope clears on the facts in either profile.
     assert_eq!(v.detail.scope_granted, Some(true));
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert!(v.available, "in-scope session location must clear");
         assert_eq!(v.reason_code(), None);
     } else {
@@ -947,7 +947,7 @@ fn verdict_scope_denies_when_the_workspace_dimension_excludes_the_session_type()
     )
     .unwrap();
     assert_eq!(v.detail.scope_granted, Some(false));
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert!(!v.available, "out-of-scope workspace type must deny");
         assert_eq!(v.reason_code(), Some("scope"));
     } else {
@@ -985,7 +985,7 @@ fn verdict_payload_false_withholds_where_tier_allows() {
         !v.available,
         "explicit false must withhold where the tier allows"
     );
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert_eq!(v.reason_code(), Some("server_policy"));
     } else {
         // Release: the explicit instruction lives INSIDE the signed payload,
@@ -1013,7 +1013,7 @@ fn verdict_payload_true_grants_beyond_tier() {
     // "beyond tier" behaviour.
     seed_payload(&conn, r#"{"features":{"supports_analytics":true}}"#);
     let v = verdict_with_owner(&conn, "supports_analytics");
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert!(v.available, "explicit true must grant beyond the tier");
         assert_eq!(v.reason_code(), None);
     } else {
@@ -1035,7 +1035,7 @@ fn verdict_absent_features_block_leaves_the_tier_answer() {
     // Premium natively supports analytics: with no `features` block the
     // tier answer stands (available, no denial reason).
     seed_tier(&conn, "premium");
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         let v = verdict_with_owner(&conn, "supports_analytics");
         assert!(
             v.available,

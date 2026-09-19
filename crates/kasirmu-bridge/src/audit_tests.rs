@@ -1,6 +1,7 @@
 use super::*;
 
-use crate::testing::seeded_row_loads;
+use crate::testing::seeded_row_reaches_a_paid_tier;
+use crate::testing::seeded_row_verdict_for_tier;
 use crate::testing::{FAIL_CLOSED_GATES_LOCKED, FAIL_CLOSED_STATE, FAIL_CLOSED_TIER, TestBridge};
 use kasirmu_core::subscription::TenantSubscription;
 
@@ -150,7 +151,7 @@ fn assert_gate_projection(conn: &rusqlite::Connection, stamped_tier: &str) {
     );
     assert_eq!(
         row.verify_signature().is_ok(),
-        seeded_row_loads(),
+        seeded_row_verdict_for_tier(stamped_tier),
         "the row this fixture reads must be the row the fork's predicate is about"
     );
 
@@ -158,10 +159,10 @@ fn assert_gate_projection(conn: &rusqlite::Connection, stamped_tier: &str) {
     let ent = build_entitlements(&store, UsageCounts::default(), true);
     assert_eq!(
         ent.loaded,
-        seeded_row_loads(),
+        seeded_row_verdict_for_tier(stamped_tier),
         "the read model's loaded flag must agree with the load path"
     );
-    if seeded_row_loads() {
+    if seeded_row_verdict_for_tier(stamped_tier) {
         // Debug: the sentinel verifies, so the stamped tier reaches the gate.
         assert_eq!(
             ent.tier.tier_key(),
@@ -252,7 +253,7 @@ async fn list_command_passes_the_tier_gate_without_panicking() {
     // denial is the fail-closed read rather than an unrelated error.
     let db = ctx.lock_global().await;
     assert_gate_projection(&db, "premium");
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         let page = page.expect("the seeded premium row verifies, so the gate must open");
         assert_eq!(page.total, 0);
     } else {
@@ -274,7 +275,7 @@ async fn review_status_command_passes_the_tier_gate_without_panicking() {
     // in each leg.
     let db = ctx.lock_global().await;
     assert_gate_projection(&db, "premium");
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert!(status.is_ok(), "{:?}", status.err());
     } else {
         assert!(
@@ -300,7 +301,7 @@ async fn export_command_passes_the_tier_gate_without_panicking() {
     // Shape 1 + 2, same fork as the sibling legs above.
     let db = ctx.lock_global().await;
     assert_gate_projection(&db, "premium");
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert!(exported.is_ok(), "{:?}", exported.err());
     } else {
         assert!(
@@ -338,7 +339,7 @@ async fn the_gate_still_denies_a_session_without_audit_view() {
     let db = ctx.lock_global().await;
     assert_gate_projection(&db, "premium");
     drop(db);
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert!(err.is_none(), "owner has audit:view: {err:?}");
     } else {
         assert!(
@@ -404,7 +405,7 @@ async fn the_gate_still_denies_a_session_without_audit_view() {
         matches!(direct, Err(BridgeError::PermissionDenied(_))),
         "a role without audit:view must be refused by the permission gate itself, not only by a tier gate standing in front of it: {direct:?}"
     );
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         // And the tier gate must NOT be what rescued the owner: on a verifying
         // row the owner clears the tier gate, so the refusal above is the only
         // difference between the two sessions.

@@ -115,8 +115,18 @@ fn verify_rejects_garbage_signatures() {
 // `debug_assertions` enabled -- is false, and that false premise is why
 // `verify_bootstrap_free_bypasses_rsa_in_debug` carried no guard: `cargo test
 // --release` clears `debug_assertions`, so the assertion was red by construction
-// in that profile. It is now `#[cfg(debug_assertions)]`-gated. No release-side
-// counterpart is added; see the doc comment on that test.
+// in that profile. It is now `#[cfg(debug_assertions)]`-gated; see the doc
+// comment on that test.
+//
+// UPDATE 19-09-26: everything above still holds for THIS function, which
+// continues to reject the sentinel in release -- so the debug-gated test stays
+// correctly gated. But it is no longer the path a real install takes. The
+// policy moved up to `TenantSubscription::verify_signature` (subscription.rs),
+// which honours the sentinel in every profile when the row's tier is Free, so
+// the migration-seeded row no longer fails in a release build. That is the
+// release-side counterpart this note used to say was deliberately absent, and
+// it now exists as `seeded_bootstrap_free_row_verifies_in_every_profile` and
+// `sentinel_does_not_carry_a_paid_tier` in subscription_tests.rs.
 
 #[test]
 fn embedded_public_key_is_loadable() {

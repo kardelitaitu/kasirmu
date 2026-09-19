@@ -217,6 +217,78 @@ pub fn seeded_row_loads() -> bool {
     sub.verify_signature().is_ok()
 }
 
+/// Whether the schema-seeded row can reach the caller carrying a **paid** tier
+/// in the profile running this test — derived from behaviour, never from `cfg!`.
+///
+/// This is the question the paid fixtures actually ask, and since 19-09-26 it
+/// is no longer the same question [`seeded_row_loads`] answers. Honouring the
+/// schema-seeded sentinel in release made the seeded row load in BOTH
+/// profiles, but only as Free: `TenantSubscription::verify_signature` accepts
+/// the sentinel only for a free-tier row, so a row carrying the sentinel with
+/// a PAID `tier_key` still falls through to RSA verification and is rejected
+/// there. While the sentinel was debug-only the two questions had one and the
+/// same answer, which is why a single helper served both — and why every paid
+/// fixture that forked on [`seeded_row_loads`] began taking the load-arm in
+/// release and asserting Plus/Pro/Premium caps a sentinel row cannot have.
+///
+/// # Two routes reach a paid tier, and this helper covers both
+///
+/// The name is deliberately not "rewritten", because only one of the two
+/// routes rewrites anything:
+///
+/// 1. **The fixture restamps the tier** — `seed_tier`, `owner_app("premium")`,
+///    `app_for(.., "pro")`, a direct `sub.tier = …`. Nothing verifies any more;
+///    the tier rides the sentinel through, and it rides it only in debug.
+/// 2. **The dev shim upgrades bootstrap Free** — debug builds promote the
+///    seeded Free row to Premium before the quota and audit-retention gates
+///    (mirroring `get_subscription_capabilities`). The fixture never touches
+///    the tier; it just asks whether the promotion is live.
+///
+/// Both are the same underlying fact — a row signed with the bootstrap
+/// sentinel can carry a paid tier in debug and cannot in release — so both
+/// fork on this helper. A "free"-stamped fixture such as
+/// `create_location_profile_scoped_end_to_end_owner` is route 2, not a
+/// mis-repoint of route 1.
+///
+/// Keep [`seeded_row_loads`] when the question is about the seeded row ITSELF —
+/// that one now answers `true` in both profiles, and its callers self-heal.
+///
+/// The restamp is on the in-memory struct only, and nothing is written back to
+/// the database, so like [`seeded_row_loads`] this stays a read and cannot
+/// perturb the fixture that calls it.
+#[must_use]
+pub fn seeded_row_reaches_a_paid_tier() -> bool {
+    let conn = temp_conn();
+    let Ok(Some(mut sub)) = TenantSubscription::load(&conn, "default") else {
+        return false;
+    };
+    sub.tier = SubscriptionTier::Plus;
+    sub.verify_signature().is_ok()
+}
+
+/// What `verify_signature` must answer for the seeded row once it carries
+/// `stamped_tier` — the invariant the four `assert_*_row` guards pin.
+///
+/// The sentinel is honoured exactly when the row's `tier_key()` is `free`, so
+/// a row stamped `free` follows [`seeded_row_loads`] (true in both profiles
+/// since 19-09-26) and any other stamp follows
+/// [`seeded_row_reaches_a_paid_tier`] (debug only). Before the ruling the two
+/// curves were the same curve, which is why one call site served both and why
+/// every guard began comparing a restamped PAID row against the unstamped
+/// answer — `false == true` in release, forty failures, one cause.
+///
+/// Passing the stamp rather than a bool is the point: the guard then says
+/// "this row must behave like the row the fork is about", which stays true if
+/// either predicate moves again.
+#[must_use]
+pub fn seeded_row_verdict_for_tier(stamped_tier: &str) -> bool {
+    if stamped_tier == "free" {
+        seeded_row_loads()
+    } else {
+        seeded_row_reaches_a_paid_tier()
+    }
+}
+
 /// The `state` / `status` a subscription read projects when NO row verifies:
 /// the FAIL-CLOSED PROJECTION, not a licence verdict.
 ///
@@ -294,7 +366,7 @@ pub async fn assert_refused_by_the_seeded_row<T>(
     );
     assert_eq!(
         row.verify_signature().is_ok(),
-        seeded_row_loads(),
+        seeded_row_verdict_for_tier(stamped_tier),
         "the row this fixture drives must be the row the fork predicate is about"
     );
     drop(db);
@@ -635,10 +707,31 @@ mod tests {
     /// `cargo test -p <crate> --release`. A lane that reads a green CI as proof the
     /// release arm still holds is reading the wrong box: this file's own blind spot,
     /// stated so no future reader has to rediscover it.
+    /// The 19-09-26 owner ruling: the schema-seeded Free row must load in
+    /// EVERY profile, so the old `== cfg!(debug_assertions)` claim is gone.
+    /// This test keeps the new truth pinned and is deliberately ungated — an
+    /// assertion that only ran in debug is how the release profile shipped
+    /// unable to reach a session in the first place.
     #[test]
-    fn seeded_row_loads_agrees_with_the_profile() {
-        assert_eq!(
+    fn seeded_row_loads_in_every_profile() {
+        assert!(
             seeded_row_loads(),
+            "the schema-seeded Free row must load in release as well as debug"
+        );
+    }
+
+    /// The tripwire, moved onto the question that is STILL profile-dependent.
+    ///
+    /// A rewritten paid tier rides the sentinel in debug (the any-payload
+    /// short-circuit) and must not ride it in release, or the sentinel becomes
+    /// a signature that mints entitlements. This is what
+    /// `seeded_row_loads_agrees_with_the_profile` used to carry: that name was
+    /// the tripwire for "someone made release accept the sentinel", and it
+    /// fired exactly as its doc predicted.
+    #[test]
+    fn seeded_row_reaches_a_paid_tier_agrees_with_the_profile() {
+        assert_eq!(
+            seeded_row_reaches_a_paid_tier(),
             cfg!(debug_assertions),
             "the helper must report what the load path did, not what cfg! claims"
         );
