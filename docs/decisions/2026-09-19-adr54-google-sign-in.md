@@ -486,6 +486,27 @@ code, and `consume` — reusing `login_lockout.go` and the `request-otp` limiter
 (`web_otp.go:575`) and counted per device + email, so neither door is the cheaper one to
 brute-force.
 
+**Shipped 2026-09-26 (server half):** `desktop_link_email.go` — `POST /api/v1/desktop/link/email/request`
+mails a code to the tenant's own address, and `.../consume` spends it and marks the account verified.
+The store is now **purpose-keyed** (`purposeLogin` / `purposeLink`), which is what makes the §2.6 rule real:
+a link code presented at `/web/verify-otp` is refused **and left in place**, so a mistaken login attempt
+cannot destroy the code the user was just sent — both halves are pinned by
+`TestStore_CodesArePurposeScoped`, and the HTTP refusal by `TestLinkCodesAreNotSpendableAsLogins`.
+
+The address must be the **tenant's own**: the device proves which tenant it holds with its api_key, so the
+submitted address is a confirmation rather than an identity claim, and a device can never aim a code at a
+mailbox it does not hold. No `tenant_identities` row is written — nothing federated was linked — and the
+proof of inbox control stays where the email flow already keeps it, `tenants.email_verified`.
+
+> **A consequence worth knowing:** the login lockout is shared, as §2.6 requires. A user who tries their
+> link code in the *login* form gets a 5-second (escalating) wait before the link door will answer. That is
+> the intended coupling — the alternative makes this endpoint the cheaper door to guess at — but it is a
+> real UX consequence, and it is why the test that pins refusal-without-consumption lives at the store level
+> rather than in an HTTP sequence.
+
+**Still owed:** the client half — the tablet's own wizard form (email, then code) and the bridge/core calls
+behind it — and the terminal credential both paths still owe (step 6).
+
 ### 2.7 Tablet: the email path, never the Google one
 
 The Google control is excluded from the tablet build. Google closes both browser routes on
