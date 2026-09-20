@@ -117,7 +117,7 @@ ui/src/dev-mock/**                             the invoke target for local dev
   `scripts/verify-agents-mirrors.py` polices that count, its names, and the job list in the
   workflows. Promoting this checker means editing the hook, `gates.json`, `check:all`, the
   workflows and the two docs together — a deliberate change, not a side effect.
-- **Lane-scoped CI.** Today one push runs ten jobs including the full 9,922-test suite. That
+- **Lane-scoped CI.** Today one push runs `dev-ci.yml`'s eleven jobs including the full 9,922-test suite. That
   is the real ceiling on how many lanes can land per hour, and splitting it is the highest
   value follow-up on this page.
 
