@@ -37,9 +37,9 @@ use crate::state::AppState;
 // it; the H-3 gate now runs here, restored field-for-field from the bridge).
 // Command bodies stay tablet-native.
 pub use kasirmu_bridge::auth::{
-    CheckUsernameArgs, CheckUsernameResult, CreateSessionArgs, CreateSessionResult,
-    HasUsersResult, OrganizationSummary, SessionContextDto, SessionKeepaliveResult,
-    StaffLoginArgs, StaffLoginResult,
+    CheckUsernameArgs, CheckUsernameResult, CreateSessionArgs, CreateSessionResult, HasUsersResult,
+    OrganizationSummary, SessionContextDto, SessionKeepaliveResult, StaffLoginArgs,
+    StaffLoginResult,
 };
 
 /// The tablet's single security-event sink — the auth paths and the
