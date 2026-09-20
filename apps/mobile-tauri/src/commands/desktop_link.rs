@@ -41,3 +41,39 @@ pub async fn link_device_google(
     .await
     .map_err(Into::into)
 }
+
+/// Email a link code to this device's account address (ADR #54 §2.6).
+///
+/// The no-browser route: the tablet cannot use Google's browser flows, and an account that is
+/// not a Google one needs a way to prove itself. The address is confirmed against the tenant the
+/// device already holds, so it can never aim a code at somebody else's mailbox.
+#[tauri::command]
+pub async fn link_device_email_request(
+    email: String,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let (api_key, machine_id) = {
+        let ctx = state.bridge_ctx();
+        kasirmu_bridge::license::stored_credentials(&ctx).await?
+    };
+    let base_url = kasirmu_core::attestation::resolved_origin().url;
+    kasirmu_core::desktop_link::request_desktop_link_code(&base_url, &api_key, &machine_id, &email)
+        .await
+        .map_err(Into::into)
+}
+
+/// Spend the emailed code and return the account it proved.
+#[tauri::command]
+pub async fn link_device_email_consume(
+    code: String,
+    state: State<'_, AppState>,
+) -> Result<kasirmu_core::desktop_link::VerifiedAccount, AppError> {
+    let (api_key, machine_id) = {
+        let ctx = state.bridge_ctx();
+        kasirmu_bridge::license::stored_credentials(&ctx).await?
+    };
+    let base_url = kasirmu_core::attestation::resolved_origin().url;
+    kasirmu_core::desktop_link::consume_desktop_link_code(&base_url, &api_key, &machine_id, &code)
+        .await
+        .map_err(Into::into)
+}

@@ -2,6 +2,67 @@
 
 use super::*;
 
+// ── the emailed-code path (ADR #54 §2.6) ─────────────────────────────
+
+#[cfg(feature = "sync-http")]
+#[tokio::test]
+async fn request_desktop_link_code_posts_the_account_address() {
+    let (origin, server) = one_shot_server("HTTP/1.1 200 OK", r#"{"status":"sent"}"#.to_string());
+    request_desktop_link_code(&origin, "key-abc", "mach-1", "owner@example.com")
+        .await
+        .expect("request");
+    let request = server.join().expect("server thread");
+
+    assert!(
+        request.starts_with(&format!("POST {LINK_EMAIL_REQUEST_PATH} ")),
+        "unexpected request line: {request}"
+    );
+    assert!(
+        request.contains(r#""email":"owner@example.com""#),
+        "the address the user typed must be what the server checks: {request}"
+    );
+    assert!(request.contains(r#""machine_id":"mach-1""#), "{request}");
+}
+
+#[cfg(feature = "sync-http")]
+#[tokio::test]
+async fn consume_desktop_link_code_parses_the_verified_account() {
+    let (origin, server) = one_shot_server(
+        "HTTP/1.1 200 OK",
+        r#"{"tenantId":"t-1","email":"owner@example.com","verified":true}"#.to_string(),
+    );
+    let account = consume_desktop_link_code(&origin, "key-abc", "mach-1", "654321")
+        .await
+        .expect("consume");
+    let request = server.join().expect("server thread");
+
+    assert_eq!(account.tenant_id, "t-1");
+    assert_eq!(account.email, "owner@example.com");
+    assert!(account.verified, "a spent code means a verified account");
+    assert!(
+        request.starts_with(&format!("POST {LINK_EMAIL_CONSUME_PATH} ")),
+        "unexpected request line: {request}"
+    );
+    assert!(request.contains(r#""code":"654321""#), "{request}");
+}
+
+#[cfg(feature = "sync-http")]
+#[tokio::test]
+async fn a_refused_address_or_a_rate_limit_maps_to_a_field_error() {
+    // Both are things the user can act on — retype the address, or wait — so neither may
+    // collapse into the generic "could not link" failure the UI shows for an outage.
+    for status in ["HTTP/1.1 403 Forbidden", "HTTP/1.1 429 Too Many Requests"] {
+        let (origin, server) = one_shot_server(status, r#"{"error":"nope"}"#.to_string());
+        let outcome =
+            request_desktop_link_code(&origin, "key-abc", "mach-1", "owner@example.com").await;
+        server.join().expect("server thread");
+        match outcome {
+            Err(CoreError::Validation { field, .. }) => assert_eq!(field, "email", "for {status}"),
+            other => panic!("{status} must map to an email validation, got {other:?}"),
+        }
+    }
+}
+
 /// Serve exactly one canned HTTP response and hand back the request the client sent.
 ///
 /// Reads until the declared body length arrives: a single `read` can return only the

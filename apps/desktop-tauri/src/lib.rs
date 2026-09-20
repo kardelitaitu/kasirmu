@@ -1204,6 +1204,8 @@ pub fn run() {
             commands::workspaces::list_workspace_screens_scoped,
             commands::license::activate_license,
             commands::desktop_link::link_device_google,
+        commands::desktop_link::link_device_email_request,
+        commands::desktop_link::link_device_email_consume,
         commands::license::get_machine_id,
             commands::license::get_machine_id_scoped,
             commands::license::get_hardware_fingerprint,

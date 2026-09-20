@@ -22,6 +22,10 @@ use crate::error::CoreError;
 pub const LINK_START_PATH: &str = "/api/v1/desktop/link/google/start";
 /// Path the loopback code is exchanged on.
 pub const LINK_CONSUME_PATH: &str = "/api/v1/desktop/link/consume";
+/// Path an emailed link code is requested on (ADR #54 §2.6): no browser involved.
+pub const LINK_EMAIL_REQUEST_PATH: &str = "/api/v1/desktop/link/email/request";
+/// Path an emailed link code is spent on.
+pub const LINK_EMAIL_CONSUME_PATH: &str = "/api/v1/desktop/link/email/consume";
 /// How long either link request may take.
 const LINK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
@@ -74,6 +78,18 @@ pub struct LinkedAccount {
     pub email: String,
 }
 
+/// The account an emailed code proved, as the licence server reports it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerifiedAccount {
+    /// Tenant record id the account belongs to.
+    pub tenant_id: String,
+    /// The address that received the code.
+    pub email: String,
+    /// Whether the account now counts as verified (true on success).
+    pub verified: bool,
+}
+
 #[derive(Deserialize)]
 struct StartResponse {
     #[serde(rename = "authorizeUrl")]
@@ -104,6 +120,7 @@ pub async fn start_desktop_link(
             "redirect_uri": redirect_uri,
         }),
         "link start",
+        "account",
     )
     .await?;
     let body: StartResponse = response
@@ -136,12 +153,60 @@ pub async fn consume_desktop_link(
         api_key,
         &serde_json::json!({ "link_code": link_code, "machine_id": machine_id }),
         "link consume",
+        "link_code",
     )
     .await?;
     response
         .json()
         .await
         .map_err(|e| CoreError::Internal(format!("link consume response: {e}")))
+}
+
+/// Asks the licence server to email a link code to this device's account address.
+///
+/// The server accepts only the tenant's OWN address (it is proven by the device's key), so a
+/// mismatch answers `403` and maps to a validation on `email` — a field the user typed and can
+/// correct, rather than an outage.
+#[cfg(feature = "sync-http")]
+pub async fn request_desktop_link_code(
+    base_url: &str,
+    api_key: &str,
+    machine_id: &str,
+    email: &str,
+) -> Result<(), CoreError> {
+    post_json(
+        base_url,
+        LINK_EMAIL_REQUEST_PATH,
+        api_key,
+        &serde_json::json!({ "machine_id": machine_id, "email": email }),
+        "link email request",
+        "email",
+    )
+    .await?;
+    Ok(())
+}
+
+/// Spends an emailed link code and returns the account it proved.
+#[cfg(feature = "sync-http")]
+pub async fn consume_desktop_link_code(
+    base_url: &str,
+    api_key: &str,
+    machine_id: &str,
+    code: &str,
+) -> Result<VerifiedAccount, CoreError> {
+    let response = post_json(
+        base_url,
+        LINK_EMAIL_CONSUME_PATH,
+        api_key,
+        &serde_json::json!({ "machine_id": machine_id, "code": code }),
+        "link email consume",
+        "code",
+    )
+    .await?;
+    response
+        .json()
+        .await
+        .map_err(|e| CoreError::Internal(format!("link email consume response: {e}")))
 }
 
 /// POSTs a JSON body with the device's bearer key, mapping failures to typed errors.
@@ -152,6 +217,7 @@ async fn post_json(
     api_key: &str,
     body: &serde_json::Value,
     what: &str,
+    field: &'static str,
 ) -> Result<reqwest::Response, CoreError> {
     let url = format!("{}{path}", base_url.trim_end_matches('/'));
     let client = reqwest::Client::builder()
@@ -169,13 +235,19 @@ async fn post_json(
     if status.is_success() {
         return Ok(response);
     }
-    // A refused code is the expected failure, not an outage: surface it as a field
-    // validation so the wizard can tell the user to start again.
-    if status == reqwest::StatusCode::BAD_REQUEST {
+    // The user-actionable refusals, not outages: 400 (a bad or spent code), 403 (an address
+    // that is not this store's, or an inactive account) and 429 (too many attempts) all become
+    // field validations, so the wizard can point at the field instead of saying "try again".
+    if matches!(
+        status,
+        reqwest::StatusCode::BAD_REQUEST
+            | reqwest::StatusCode::FORBIDDEN
+            | reqwest::StatusCode::TOO_MANY_REQUESTS
+    ) {
         let detail = response.text().await.unwrap_or_default();
         return Err(CoreError::Validation {
-            field: "link_code",
-            message: format!("the licence server refused this link: {detail}"),
+            field,
+            message: format!("the licence server refused {what}: {detail}"),
         });
     }
     Err(CoreError::Internal(format!(
