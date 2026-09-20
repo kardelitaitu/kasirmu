@@ -295,6 +295,14 @@ redirects to Google. It is hidden entirely when the API URL is absent, because o
 that can only 404 is worse than not offering it. Strings live in both dictionaries (`en`/`id`),
 declared in `AUTH_FORM_LABELS` and asserted used by the island-label-coverage guard.
 
+**Corrected 2026-09-26 — the SIGNUP page was never covered.** §7 P2 named `login.astro` *and* the
+signup page, and this note claimed the website half was done; but `/signup` renders `SignupForm.tsx`,
+a **separate component** from `AuthForm.tsx`, so the control existed only where sign-*in* lives. The
+explicit request was sign-in **and sign-up** with Google, so half of it was missing for eight rounds
+while three audits of this record read past it. `SignupForm` now offers the same anchor above its
+register form, reusing the two strings that were already in both dictionaries — the same control needs
+the same words — with the email path left intact (§1.2).
+
 **The admin login page deliberately gets no Google button.** The deployment admin address is
 refused by the resolver (§2.3), so the entry would only ever produce a 403 — the refusal and the
 absent button are the same decision seen from two sides.

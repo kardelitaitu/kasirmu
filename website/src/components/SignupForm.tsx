@@ -37,6 +37,7 @@ export const SIGNUP_FORM_LABELS = [
   'login.backToEmail',
   'login.code',
   'login.codeResent',
+  'login.continueWithGoogle',
   'login.errorCors',
   'login.errorLogin',
   'login.errorRateLimit',
@@ -46,6 +47,7 @@ export const SIGNUP_FORM_LABELS = [
   'login.errorSmtp',
   'login.errorVerify',
   'login.notConfigured',
+  'login.orUseEmail',
   'login.resendCode',
   'login.resendCooldown',
   ...PASSWORD_FIELD_LABELS,
@@ -304,6 +306,25 @@ export default function SignupForm({ locale, labels }: Props) {
 
   return (
     <div className={`mx-auto w-full max-w-sm rounded-xl border border-ink/10 bg-surface/40 p-6 ${error ? 'animate-shake' : ''}`}>
+      {/* ADR #54 §2.4 P2: the same entry as the login page. Sign-UP is the case the ADR
+          names, and this page is a separate component from AuthForm — so the control has to
+          exist here too, not only where sign-in lives. An anchor, not a form: the Worker CSP
+          sets form-action 'self'. */}
+      {API && (
+        <>
+          <a
+            href={API + '/api/v1/web/oauth/google/start?next=/' + locale + '/account'}
+            className="mb-4 block w-full rounded-lg border border-ink/10 bg-surface/40 px-4 py-2.5 text-center text-sm font-medium hover:bg-ink/5"
+          >
+            {t(labels, 'login.continueWithGoogle')}
+          </a>
+          <div className="mb-4 flex items-center gap-3 text-xs text-muted">
+            <span className="h-px flex-1 bg-ink/10" aria-hidden="true" />
+            {t(labels, 'login.orUseEmail')}
+            <span className="h-px flex-1 bg-ink/10" aria-hidden="true" />
+          </div>
+        </>
+      )}
       <form onSubmit={register} className="space-y-4" aria-label={t(labels, 'signup.title')}>
         <div className="relative">
           <span className="mb-1 block text-sm text-muted">{t(labels, 'signup.region')}</span>

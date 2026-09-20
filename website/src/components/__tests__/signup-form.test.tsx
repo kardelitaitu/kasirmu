@@ -120,6 +120,27 @@ afterEach(() => {
 
 // ── Registration flow ─────────────────────────────────────────────────
 
+describe('SignupForm — Google entry (ADR #54 §2.4 P2)', () => {
+  it('offers Continue with Google, pointing at the licence host start route', async () => {
+    // The ADR names sign-UP as the case; this page is a different component from the login
+    // form, so the control has to be asserted here and not inferred from that one.
+    const { container, root } = await renderSignupForm('en');
+    try {
+      const link = container.querySelector('a[href*="/api/v1/web/oauth/google/start"]');
+      expect(link).not.toBeNull();
+      expect(link?.getAttribute('href')).toContain('/api/v1/web/oauth/google/start?next=/en/account');
+      expect(link?.textContent).toContain('Continue with Google');
+      // The email path stays visible: Google is an addition, not a replacement (ADR #54 §1.2).
+      expect(container.querySelector('input[type="email"]')).not.toBeNull();
+      // An anchor, never a cross-origin form: the Worker CSP sets form-action 'self'.
+      expect(container.querySelector('form[action]')).toBeNull();
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+});
+
 describe('SignupForm — registration flow', () => {
   it('sends registration and advances to code step', async () => {
     const { container, root } = await renderSignupForm('en');
