@@ -279,7 +279,8 @@ The license server requires the RSA private key as an environment variable. **Ne
       and the device link is PKCE on top, so the app's own copy is useless even if extracted.
     - **Key:** `OZ_GOOGLE_REDIRECT_URI` (optional) — pin the callback instead of deriving it from
       the request Host (set it when a proxy rewrites Host). One override covers both paths: the
-      server takes its origin and adds whichever callback the flow needs, so the override's own two URIs are enough -- the unscoped
+      server takes its origin and adds whichever callback the flow needs,
+      so the override's own two URIs are enough -- the unscoped
       four-URI set above is what you need when it is left unset.
     - **Key:** `OZ_WEB_SITE_URL` (optional, default `https://kasir.mu`) — the host the flow
       returns to. It is the only place the return host is decided, which is why the
