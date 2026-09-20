@@ -102,9 +102,33 @@ fn one_shot_server(status_line: &'static str, body: String) -> (String, std::thr
     let port = listener.local_addr().expect("addr").port();
     let handle = std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().expect("accept");
-        let mut buffer = [0_u8; 8192];
-        let read = stream.read(&mut buffer).unwrap_or(0);
-        let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+        // Read until the declared body has arrived. A single read() can return only
+        // the headers — TCP is free to split them from the body — and asserting on a
+        // half-read request is exactly how this test flaked once under a full-suite run.
+        let mut buffer: Vec<u8> = Vec::new();
+        let mut chunk = [0_u8; 4096];
+        loop {
+            let read = stream.read(&mut chunk).unwrap_or(0);
+            if read == 0 {
+                break;
+            }
+            buffer.extend_from_slice(&chunk[..read]);
+            let text = String::from_utf8_lossy(&buffer);
+            if let Some(headers_end) = text.find("\r\n\r\n") {
+                let declared = text[..headers_end]
+                    .lines()
+                    .find_map(|line| {
+                        line.to_ascii_lowercase()
+                            .strip_prefix("content-length:")
+                            .and_then(|value| value.trim().parse::<usize>().ok())
+                    })
+                    .unwrap_or(0);
+                if buffer.len() >= headers_end + 4 + declared {
+                    break;
+                }
+            }
+        }
+        let request = String::from_utf8_lossy(&buffer).to_string();
         let response = format!(
             "{status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
