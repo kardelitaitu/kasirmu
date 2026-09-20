@@ -224,7 +224,9 @@ main question rather than an afterthought.
 
 - **O1 — Where does the attestation challenge live?** It must be served by the process holding
   the private key (PocketBase), but the cascade needs it *before* choosing a host, so the
-  endpoint must be unauthenticated and cheap. An unauthenticated signing oracle deserves its own
+  endpoint must be unauthenticated and cheap. An unauthenticated signing oracle deserved its own
+  review: scope it to a nonce of bounded length, with no attacker-chosen payload.
+
   **RESOLVED (implemented 2026-09-19, triaged 2026-09-20).** The review this question asked for
   happened, and its answers are §2.4: `POST /api/v1/license/attest` signs a payload the server
   builds itself (`ozpos-origin-attest-v1:<nonce>`) from a client nonce bounded to 16-64 characters
