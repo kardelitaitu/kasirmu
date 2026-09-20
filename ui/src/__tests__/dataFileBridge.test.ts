@@ -20,11 +20,11 @@ const mocks = vi.hoisted(() => ({
   remove: vi.fn(),
   appCacheDir: vi.fn(),
   join: vi.fn(),
-  invoke: vi.fn(),
+  logged: vi.fn(),
 }));
 
 vi.mock('@/utils/logged-invoke', () => ({
-  loggedInvoke: (...args: unknown[]) => mocks.invoke(...args),
+  loggedInvoke: (...args: unknown[]) => mocks.logged(...args),
 }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: mocks.open, save: mocks.save }));
 vi.mock('@tauri-apps/plugin-fs', () => ({
@@ -90,7 +90,7 @@ describe('pickExportPath / exportData', () => {
     const cachePath = await pickExportPath();
     expect(cachePath).toBeTruthy();
 
-    mocks.invoke.mockResolvedValue({
+    mocks.logged.mockResolvedValue({
       path: cachePath,
       sizeBytes: BYTES.length,
       types: ['products'],
@@ -114,7 +114,7 @@ describe('pickExportPath / exportData', () => {
   });
 
   it('does not bridge an export that was never picked through the picker', async () => {
-    mocks.invoke.mockResolvedValue({ path: '/tmp/direct.kasirpkg', sizeBytes: 1, types: [] });
+    mocks.logged.mockResolvedValue({ path: '/tmp/direct.kasirpkg', sizeBytes: 1, types: [] });
 
     const result = await exportData('tok', {
       types: [],
@@ -130,7 +130,7 @@ describe('pickExportPath / exportData', () => {
   it('leaves a pending destination alone when the command itself fails', async () => {
     mocks.save.mockResolvedValue(SAVE_URI);
     const cachePath = await pickExportPath();
-    mocks.invoke.mockRejectedValue(new Error('export failed'));
+    mocks.logged.mockRejectedValue(new Error('export failed'));
 
     await expect(
       exportData('tok', { types: [], password: 'secret', outputPath: cachePath! }),
