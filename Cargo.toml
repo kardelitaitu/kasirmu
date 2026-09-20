@@ -110,6 +110,12 @@ jsonwebtoken = "9"
 tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
 tauri-plugin-updater = "2"
 tauri-plugin-dialog = "2"
+# Promoted from transitive to direct by the tablet file-picker slice: the tablet
+# shell needs `tauri_plugin_fs::init()` registered so the JS content-URI bridge
+# (`ui/src/api/image-pick.ts`) can read/write an Android `content://` URI. Until
+# then the only edge was tauri-plugin-dialog -> tauri-plugin-fs, which registers
+# no `plugin:fs|*` commands and so could not be called from the webview.
+tauri-plugin-fs = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-window-state = "2"
 tauri-plugin-opener = "2"
