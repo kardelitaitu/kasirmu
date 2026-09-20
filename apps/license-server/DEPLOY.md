@@ -277,8 +277,13 @@ The license server requires the RSA private key as an environment variable. **Ne
 7c. **Sync credentials at link time (ADR #54 §2.5 step 6) — set this before onboarding devices.**
     Linking a device also registers it as a sync terminal, so the app leaves the wizard ready
     to sync.
-    - **Key:** `OZ_SYNC_API_URL` — the sync service's base URL (the unified deployment serves
-      both from one container). **No default**: addresses are declared, never guessed.
+    - **Key:** `OZ_SYNC_API_URL` — the sync service's base URL. **No default**: addresses are
+      declared, never guessed. For this deployment the value is **`http://127.0.0.1:3099`**: the
+      unified image runs both services in one container and the Rust service listens there
+      (`Dockerfile.unified:240` sets `OZ_API_PORT=3099`; `apps/unified/Caddyfile:18-23` path-routes
+      the sync API to it internally), so loopback needs no TLS hop and no public round trip. A
+      split deployment uses the sync service's own URL instead — the public host also works,
+      because caddy sends `/api/v1/*` to the Rust service, at the cost of that round trip.
     - **Key:** `OZ_ADMIN_KEY` — already required above. The sync service reads the *same*
       variable, so one deployment needs one value; two different keys simply yield
       `terminal.issued: false`.
