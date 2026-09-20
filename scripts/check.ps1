@@ -30,6 +30,12 @@ Set-Location ..
 $totalStart = Get-Date
 $script:stepCounter = 1
 
+# Captured BEFORE any step runs. Several steps legitimately write the tree -- step 15 rewrites
+# the tracked stats.json, the migration steps create and delete kasir.db -- so reading `git
+# status` at the END would always look dirty and disable the auto-fix below for the wrong
+# reason, while blaming another lane for this script's own output.
+$treeCleanAtEntry = (@(git status --porcelain).Count -eq 0)
+
 function Step {
     param(
         [string]$Name,
@@ -220,15 +226,14 @@ Step -Name "generate code stats" -RetryCommand "powershell -File scripts\stats.p
 # --- Auto-fix (convenience, LAST) ---------------------------------------
 # Runs strictly AFTER every check above, so it can never mask a violation.
 # Skipped on a dirty tree: --allow-dirty would rewrite another lane's in-flight files.
-$dirtyPaths = @(git status --porcelain)
-if ($dirtyPaths.Count -eq 0) {
+if ($treeCleanAtEntry) {
     Step -Name "clippy auto-fix" -RetryCommand "cargo clippy --fix --allow-dirty -- --allow warnings" -ScriptBlock {
         cargo clippy --fix --allow-dirty -- --allow warnings
     }
     Step -Name "cargo fmt" -RetryCommand "cargo fmt --all" -ScriptBlock { cargo fmt --all }
     Write-Host "tree is now formatted and lint-clean"
 } else {
-    Write-Host "SKIP auto-fix (working tree is dirty - $($dirtyPaths.Count) path(s) modified); no files were rewritten"
+    Write-Host "SKIP auto-fix (the working tree was already dirty when this run started); no files were rewritten"
 }
 
 # --- Done ---------------------------------------------------------------
