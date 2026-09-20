@@ -118,8 +118,15 @@ check(
 
 const bootstrap = read('apps/desktop-tauri/src/sync_bootstrap.rs');
 check(
-  bootstrap.includes('server_origin::FALLBACK_SERVER_ORIGIN'),
-  'apps/desktop-tauri/src/sync_bootstrap.rs: the dev bootstrap must reference server_origin::FALLBACK_SERVER_ORIGIN',
+  bootstrap.includes('server_origin::DEBUG_SYNC_ORIGIN'),
+  'apps/desktop-tauri/src/sync_bootstrap.rs: the dev bootstrap must reference server_origin::DEBUG_SYNC_ORIGIN (ADR #55 O2)',
+);
+// O2 is a decision, not a preference: a debug build must never auto-provision
+// against a real tenant. Encoding it here is what stops the next person quietly
+// repointing the dev bootstrap back at production.
+check(
+  !bootstrap.includes('FALLBACK_SERVER_ORIGIN') && !bootstrap.includes('MAIN_SERVER_ORIGIN'),
+  'apps/desktop-tauri/src/sync_bootstrap.rs: the dev bootstrap must not name a production origin (ADR #55 O2)',
 );
 check(
   !/"https:\/\/license\./.test(bootstrap),
