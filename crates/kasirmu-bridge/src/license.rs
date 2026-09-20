@@ -17,6 +17,7 @@
 //! get_system_uuid is ported unchanged: same process invocations, same argument vectors,
 //! same Linux/macOS machine-id file fallback, same per-process fallback cache.
 
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -113,18 +114,7 @@ pub async fn activate_license(
     // ciphertext to this specific installation's hardware.
     let stored_api_key: Option<String> = {
         let conn = ctx.lock_global().await;
-        let raw = Settings::get(&conn, "license.api_key")?.filter(|s| !s.is_empty());
-        raw.as_ref().map(|v| {
-            // Try decryption first (new format: base64 ciphertext).
-            // If that fails, assume the value is legacy plaintext and
-            // return it as-is. It will be encrypted on the next write.
-            decrypt_api_key(v, &machine_id).unwrap_or_else(|e| {
-                tracing::warn!(
-                    "license.api_key decryption failed, treating as legacy plaintext: {e}"
-                );
-                v.clone()
-            })
-        })
+        sealed_api_key(&conn, &machine_id)?
     };
 
     let phone_clone = phone.clone();
@@ -187,6 +177,46 @@ pub async fn activate_license(
     )?;
 
     Ok(true)
+}
+
+/// Reads and unseals the stored api_key: base64 ciphertext bound to the machine, or a legacy
+/// plaintext value the next write upgrades.
+///
+/// One rule, one place: activation writes this row and the device link reads it, and a second
+/// copy of "decrypt or fall back to plaintext" is exactly the kind of thing that drifts out of
+/// agreement in the less-exercised copy.
+fn sealed_api_key(conn: &Connection, machine_id: &str) -> Result<Option<String>, BridgeError> {
+    let raw = Settings::get(conn, "license.api_key")?.filter(|s| !s.is_empty());
+    Ok(raw.map(|value| {
+        decrypt_api_key(&value, machine_id).unwrap_or_else(|e| {
+            tracing::warn!("license.api_key decryption failed, treating as legacy plaintext: {e}");
+            value
+        })
+    }))
+}
+
+/// The device's own licence credentials: `(api_key, machine_id)`.
+///
+/// Read from the encrypted Settings row exactly as activation stores it — derived from the
+/// machine id, so the ciphertext is bound to this installation — which is why no caller and
+/// no renderer ever has to hold the key.
+///
+/// # Errors
+///
+/// `BridgeError::Invalid` when the device has not been activated: linking binds an identity
+/// to a tenant, and before activation there is no tenant to bind it to.
+pub async fn stored_credentials(ctx: &BridgeCtx<'_>) -> Result<(String, String), BridgeError> {
+    let machine_id = get_machine_id(ctx).await?;
+    let api_key = {
+        let conn = ctx.lock_global().await;
+        sealed_api_key(&conn, &machine_id)?
+    };
+    match api_key {
+        Some(key) if !key.is_empty() => Ok((key, machine_id)),
+        _ => Err(BridgeError::Invalid(
+            "this device is not activated yet".to_string(),
+        )),
+    }
 }
 
 /// Retrieves the unique hardware identifier for this installation.

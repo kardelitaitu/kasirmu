@@ -4,16 +4,17 @@
 //! bridge must not own — where the licence server is, and the OS opener — and maps the error
 //! back to `AppError`.
 //!
-//! The caller passes the device's own `api_key` and `machine_id` (the wizard holds both after
-//! activation), exactly as `activate_license` takes its credentials, so the command authorises
-//! nothing on its own: the licence server decides, from the key and the registered machine.
-//!
-//! It takes no `State` because it needs none — no database, no session map. An unused handle
-//! would be noise standing in for a dependency that does not exist.
+//! The device's own credentials are read here, from the encrypted Settings row
+//! (`stored_credentials`), and NOT passed from the renderer. `activate_license` takes them
+//! because the user types them; here the app already holds them, and a secret that never has to
+//! cross IPC should not — the renderer sees only the account it was linked to.
 
 use std::time::Duration;
 
+use tauri::State;
+
 use crate::error::AppError;
+use crate::state::AppState;
 
 /// How long the wizard waits for the browser round trip.
 ///
@@ -28,9 +29,12 @@ const LINK_WAIT: Duration = Duration::from_secs(300);
 /// identity was bound to.
 #[tauri::command]
 pub async fn link_device_google(
-    api_key: String,
-    machine_id: String,
+    state: State<'_, AppState>,
 ) -> Result<kasirmu_core::desktop_link::LinkedAccount, AppError> {
+    let (api_key, machine_id) = {
+        let ctx = state.bridge_ctx();
+        kasirmu_bridge::license::stored_credentials(&ctx).await?
+    };
     let base_url = kasirmu_core::attestation::resolved_origin().url;
     kasirmu_bridge::desktop_link::link_device(
         &base_url,
