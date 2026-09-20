@@ -124,15 +124,30 @@ describe('bucketing pipeline', () => {
     // day it was written (86867da2) and has failed on every day since, for everyone.
     // The dinein/takeaway cases above are immune only because they flatten every bucket
     // before asserting, so which bucket an order lands in never matters there.
-    const stamp = (minutesAgo: number) =>
-      new Date(Date.now() - minutesAgo * 60_000).toISOString();
-    const orders = [
-      { id: 'aaa', received_at: stamp(2) },
-      { id: 'bbb', received_at: stamp(1) },
-      { id: 'ccc', received_at: stamp(0) },
-    ];
-    const result = bucketOrders(orders);
-    expect(result.get('today')).toEqual(['aaa', 'bbb', 'ccc']);
+    // The clock is pinned to midday for the same reason the guard below pins it to
+    // 2027: `stamp(2)` is two minutes before "now", and `dayOffset` compares calendar
+    // days, so a run inside the first two minutes of a day puts `aaa` on YESTERDAY and
+    // drops it from the bucket. Measured 2026-09-20 at 00:01 — the suite was green at
+    // 23:50 and red at 00:01 with no code change in between. Pinning the clock to the
+    // real current date keeps this test distinct from the guard below (which asserts
+    // against a fixed far-future date) while making the boundary unreachable.
+    const noonToday = new Date();
+    noonToday.setHours(12, 0, 0, 0);
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(noonToday);
+      const stamp = (minutesAgo: number) =>
+        new Date(Date.now() - minutesAgo * 60_000).toISOString();
+      const orders = [
+        { id: 'aaa', received_at: stamp(2) },
+        { id: 'bbb', received_at: stamp(1) },
+        { id: 'ccc', received_at: stamp(0) },
+      ];
+      const result = bucketOrders(orders);
+      expect(result.get('today')).toEqual(['aaa', 'bbb', 'ccc']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('bucketing test data stays valid at an arbitrary future date', () => {
