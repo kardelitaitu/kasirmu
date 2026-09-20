@@ -10,6 +10,8 @@ import { buildCsv, downloadCsv } from './csv';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
+import { requiredLocalized } from '@/components';
+import { useToast } from '@/components/Toast';
 import './InventoryReportScreen.css';
 
 /** Inventory report screen — view and export low-stock alerts with configurable threshold, CSV download, and print support. */
@@ -22,6 +24,7 @@ export default function InventoryReportScreen() {
 
 function InventoryReportScreenContent() {
   const { l10n } = useLocalization();
+  const { addToast } = useToast();
   // R36-07: read the token through the useWorkspace() hook rather than the
 // raw context object. The global test harness mocks the hook, not the
 // context, so the direct form silently yielded an empty token and skipped
@@ -89,6 +92,16 @@ const { sessionToken: rawToken } = useWorkspace();
       subtotal: { minorUnits: 0, currency: 'USD' },
       total: { minorUnits: 0, currency: 'USD' },
       payments: [{ method: 'Report', amount: { minorUnits: 0, currency: 'USD' }, change: null }],
+    }).catch((printErr) => {
+      // This call had no catch at all, so the rejection escaped to the global
+      // handler and surfaced to the cashier as "Unexpected error" -- on the Android
+      // shell that was every tap, since the tablet registers no printer driver and
+      // the command always rejects with "no receipt printer registered".
+      console.error('inventory report print failed', printErr);
+      addToast({
+        message: requiredLocalized(l10n, 'payment-toast-print-failed'),
+        type: 'warning',
+      });
     });
   };
 

@@ -385,6 +385,29 @@ impl DriverRegistry {
         self.register_cash_drawer(&drawer_id, drawer).await;
     }
 
+    /// Register an Android Bluetooth (SPP) printer under the given id, plus
+    /// its companion cash drawer.
+    ///
+    /// Android-only (the crate compiles the helper out everywhere else):
+    /// there is no OS port name on Android, so the identity is the paired
+    /// device's MAC address and the driver talks ESC/POS over an RFCOMM
+    /// socket — see [`crate::drivers::bt_android_printer`]. The setup wizard
+    /// saves the address from
+    /// [`crate::transport::bt_android::paired_devices`]; this helper
+    /// rebuilds the printer from it at startup. The companion drawer is the
+    /// same `PrinterKickCashDrawer` the other transports register — one
+    /// Bluetooth link drives printer and drawer both.
+    #[cfg(target_os = "android")]
+    pub async fn register_bt_android_printer(&self, id: &str, address: &str, info: DeviceInfo) {
+        let printer_arc = Arc::new(
+            crate::drivers::bt_android_printer::AndroidBtReceiptPrinter::new(address, info),
+        );
+        self.register_printer(id, printer_arc.clone()).await;
+        let drawer_id = format!("drawer:kick:{id}");
+        let drawer = Arc::new(PrinterKickCashDrawer::new_pin2(printer_arc));
+        self.register_cash_drawer(&drawer_id, drawer).await;
+    }
+
     /// Register a serial customer display under the given id. The setup
     /// wizard calls this when the user configures a pole display by port name.
     pub async fn register_serial_display(&self, id: &str, port_name: &str, info: DeviceInfo) {

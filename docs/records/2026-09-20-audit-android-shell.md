@@ -225,6 +225,23 @@ wires (H3) and needs no Rust change; the backup/export flows need the Rust-side 
 Android. Not applied: it is a product call, and the plugin registration has no user-visible benefit
 until its bridge lands with it.
 
+### Ruled 2026-09-20: **(b) full — b-full**, not the mixed recommendation above
+
+The owner was asked to choose between desktop-gating everything (a), the mixed split above, and
+(b) full. The answer recorded was **"we want b-full"** — the tablet gets real file pickers *and*
+working backup/export/import, so the Rust-side bridge for gate 6 is in scope, not deferred. The
+mixed recommendation is **withdrawn**; backup/export/import are **not** desktop-gated.
+
+Execution plan: **`todo-tablet-dialog-content-uri.md`** (repo root), which extends this section.
+It sequences the six gates — ACL, `tauri-build` Gradle regeneration, IPC parity allowlist,
+registration-gate ledger, allowlist schema, and the `content://` bridge — precisely because three
+of them fail in the direction of "your change broke something you did not touch."
+
+**A second answer contradicted this one and was resolved.** A later question, asked without
+knowledge of the b-full ruling, returned "mixed: images yes, backup no". Presented back to the
+owner with both costs, the ruling was **b-full stands**; mixed was withdrawn. Two decision
+records now exist for one question — this paragraph is the one that governs.
+
 ---
 
 ## Confirmed NOT defects
@@ -333,13 +350,19 @@ cloud backup and device transfer.
   `BLUETOOTH_SCAN`:** nothing anywhere requests them, and the generated `PermissionHelper.kt` only
   *checks* (`hasPermissions`, `hasDefinedPermissions`) — it never requests. Play's
   unused-permission warning is real, but nothing depends on these yet and the manifest footer
-  (`AndroidManifest.xml:65-110`) already says so. Left as-is.
+  (`AndroidManifest.xml:65-110`) already says so. **Ruled 2026-09-20: keep them declared and
+  documented.** They are prerequisites for the camera-scanner, notification and Bluetooth-printer
+  transports; nothing depends on them yet, so nothing is broken, and stripping the declarations
+  would delete the record of intent. Revisit when a transport lands — that is when the runtime
+  request must appear alongside it.
 - **No orientation lock.** Confirmed: nothing sets `android:screenOrientation`. Corroborating
   detail revision 1 did not cite — `AndroidManifest.xml:124` declares
   `configChanges="orientation|…|screenSize|…"`, so the activity absorbs rotation without being
   recreated, which is consistent with free rotation rather than an accident. Cite corrected: the
   decision record is at `TabletAppShell.tsx:55-57` (the comment block spans `:36-57`), not
-  `:54-57`. Left as-is; reopen as a product decision.
+  `:54-57`. **Ruled 2026-09-20: stay unlocked.** The CSS is responsive and rotation is not
+  reported as a defect. If that changes, the manifest attribute — not the Web orientation API —
+  is the enforceable mechanism.
 - **The debug APK figure: right size, wrong cause.** Measured on disk 2026-09-20 under
   `gen/android/app/build/outputs/apk/`, with zip padding computed as `filesize − Σ compress_size`
   so that none of these is the incremental-packaging padding trap recorded at
@@ -391,11 +414,16 @@ cloud backup and device transfer.
 Two cross-shell defects, both from the same cause — the shared renderer does not account for which
 plugins each shell registers. **D1** (`window.open()` is a silent no-op on the Android WebView) is
 fixed at all four sites. **D3** (`plugin-dialog` is absent on mobile while three tablet-reachable
-paths call it) is open and needs one product call.
+paths call it) is **ruled** — the owner chose **(b) full**, executed by
+`todo-tablet-dialog-content-uri.md`.
 
 Two findings were withdrawn on inspection (versionCode, `file_paths.xml`) — both looked like
-defects and are not. The remaining items are product/Play decisions, not code defects: ADR #38
-opener routing, the three unrequested permissions, the orientation lock, and D3's two options.
+defects and are not.
+
+**All four open decisions are now ruled (2026-09-20), and none of them needs code moved:**
+ADR #38 opener routing → keep plugin-direct, `openExternalUrl()` is the seam; the three
+unrequested permissions → keep declared and documented; orientation → stay unlocked; D3 →
+b-full. What remains is execution of the b-full plan, which has its own gates and its own file.
 
 Revision 2 narrowed one of those: the permission item is **three** permissions
 (`POST_NOTIFICATIONS`, `BLUETOOTH_CONNECT`, `BLUETOOTH_SCAN`), not four — CAMERA's runtime

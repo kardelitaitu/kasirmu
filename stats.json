@@ -1,36 +1,36 @@
-{
-  "schemaVersion": 1,
-  "label": "code size",
-  "message": "625.7k lines",
-  "color": "blue",
-  "stats": {
-    "totalLines": 625714,
-    "totalFiles": 2117,
-    "languages": {
-      "typescript": {
-        "lines": 248382,
-        "files": 945
-      },
-      "sql": {
-        "lines": 4007,
-        "files": 20
-      },
-      "css": {
-        "lines": 49222,
-        "files": 180
-      },
-      "html": {
-        "lines": 6227,
-        "files": 12
-      },
-      "go": {
-        "lines": 29312,
-        "files": 66
-      },
-      "rust": {
-        "lines": 288564,
-        "files": 894
-      }
-    }
-  }
+﻿{
+    "schemaVersion":  1,
+    "label":  "code size",
+    "message":  "883.3k lines",
+    "color":  "blue",
+    "stats":  {
+                  "totalLines":  883328,
+                  "totalFiles":  2993,
+                  "languages":  {
+                                    "sql":  {
+                                                "lines":  7960,
+                                                "files":  61
+                                            },
+                                    "rust":  {
+                                                 "lines":  432646,
+                                                 "files":  1206
+                                             },
+                                    "go":  {
+                                               "lines":  38908,
+                                               "files":  91
+                                           },
+                                    "css":  {
+                                                "lines":  56148,
+                                                "files":  208
+                                            },
+                                    "html":  {
+                                                 "lines":  5930,
+                                                 "files":  14
+                                             },
+                                    "typescript":  {
+                                                       "lines":  341736,
+                                                       "files":  1413
+                                                   }
+                                }
+              }
 }

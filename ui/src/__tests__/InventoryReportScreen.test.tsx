@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { ToastProvider } from '@/components/Toast';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
 import InventoryReportScreen from '@/features/reports/InventoryReportScreen';
@@ -98,7 +99,11 @@ function buildSampleAlert(overrides: Partial<{
 function renderScreen() {
   return render(
     <LocalizationProvider l10n={l10n}>
-      <InventoryReportScreen />
+      {/* The report's print button now reports a failed print through the toast
+          context, so the screen has to render under a ToastProvider. */}
+      <ToastProvider>
+        <InventoryReportScreen />
+      </ToastProvider>
     </LocalizationProvider>,
   );
 }

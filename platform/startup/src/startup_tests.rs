@@ -317,3 +317,29 @@ fn open_reaper_connection_reuses_existing_db() {
         .unwrap();
     assert_eq!(sales_table, 1, "reaper connection must see the app schema");
 }
+
+// ── One-shot task spawn ───────────────────────────────────────────────
+
+/// `spawn_once` must actually run the future it is handed.
+///
+/// A careless refactor of the shared `spawn_watched` body could drop the task
+/// entirely, leaving boot work silently unperformed. Called from a plain
+/// `#[test]` on purpose — the synchronous `setup` hook path is the one under
+/// test, so there must be no ambient runtime for the call to borrow.
+///
+/// What this does NOT cover: that a completed one-shot logs no warning. That
+/// is the `announce_exit` flag, and it is checked where it is observable — a
+/// recorded tablet boot log, which carries one `WARN ... exited unexpectedly`
+/// per wrongly-routed task.
+#[test]
+fn spawn_once_runs_the_future_to_completion() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    spawn_once("test one-shot", async move {
+        let _ = tx.send("finished");
+    });
+    assert_eq!(
+        rx.recv_timeout(std::time::Duration::from_secs(5))
+            .expect("spawn_once never ran its future"),
+        "finished"
+    );
+}

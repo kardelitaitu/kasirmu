@@ -10,6 +10,9 @@ next: none | perf: N/A
 //! Mocks live in `mock.rs` and are compiled unconditionally so tests
 //! never need a `mock` feature flag.
 
+/// Android Bluetooth (SPP) receipt printer driver — RFCOMM over JNI.
+#[cfg(target_os = "android")]
+pub mod bt_android_printer;
 /// Bluetooth receipt printer driver.
 pub mod bt_printer;
 /// Bluetooth barcode scanner driver.

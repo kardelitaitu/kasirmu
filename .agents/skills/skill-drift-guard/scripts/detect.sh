@@ -264,7 +264,10 @@ if should_run paths; then
     # batch_validate_audit_dates above.
     while read -r path; do
       case "$path" in
-        http*|https*|file://*|node_modules*|target/*|dist/*) continue ;;
+        # Build outputs and installed deps, bare or under a package dir. They exist on a dev
+        # machine and never in a clean checkout, so without this the check flags them as drift
+        # on CI only -- the `ui/`-prefixed forms were invisible to the bare patterns below.
+        http*|https*|file://*|node_modules*|*node_modules*|target/*|dist/*|ui/dist*) continue ;;
       esac
       # Skip regex-truncation artifacts. The extractor has no notion of a
       # glob or an ellipsis, so `crates/kasirmu-*` yields `crates/kasirmu-` and prose

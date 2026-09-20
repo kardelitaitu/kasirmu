@@ -140,9 +140,13 @@ func handleStatus(app core.App) func(e *core.RequestEvent) error {
 				log.Printf("/status: tenant=%q has no active subscription", tenantID)
 			}
 			return e.JSON(http.StatusOK, map[string]any{
-				"tenant_id":        tenantID,
-				"status":           tenant.GetString("status"),
-				"tier":             "unknown",
+				"tenant_id": tenantID,
+				"status":    tenant.GetString("status"),
+				// No active subscription means the FREE tier, which is the floor, not an
+				// unknown: a tier a customer cannot be missing is "unknown" to nobody, and
+				// a client rendering that string blank is a bug we already shipped once.
+				// `active: false` below still tells the caller there is nothing paid here.
+				"tier":             "free",
 				"active":           false,
 				"device_revoked":   deviceRevoked,
 				"revoke_performed": revokePerformed,

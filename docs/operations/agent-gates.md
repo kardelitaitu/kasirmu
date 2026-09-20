@@ -18,11 +18,12 @@ Removed 2026-09-13: the `cargo fmt --all` pre-commit step (reformatted other age
 
 ## What CI actually runs
 
-Live workflows: `dev-ci.yml` and `release.yml` (desktop-only, `v*` tags). Everything else in `.github/workflows/` is inert `.bak`.
+Live workflows: `dev-ci.yml` and `release.yml` (desktop-only, `v*` tags). Everything else lives in `.github/workflows/attic/` as inert `.bak`.
 `dev-ci.yml` triggers: `pull_request` to `main`, `push` to `main`, `workflow_dispatch`. A push to `main` runs CI and deploys (`northflank-deploy`); a push to a non-`main` branch runs nothing.
-Jobs (10): `changes`, `website`, `cargo-check`, `cargo-nextest`, `ui-test`, `i18n`, `ci-docs-drift`, `static-gates`, `release-readiness`, `northflank-deploy`. `northflank-deploy` needs 7 of them (excludes `ci-docs-drift` and `release-readiness`).
+Jobs (11): `changes`, `website`, `cargo-check`, `cargo-nextest`, `ui-test`, `i18n`, `ci-docs-drift`, `static-gates`, `release-readiness`,
+`release-bridge-test` (push-only, desktop bridge tests in release profile), `northflank-deploy`. `northflank-deploy` needs 7 of them (excludes `ci-docs-drift` and `release-readiness`).
 `cargo-check` is `cargo fmt -- --check` then `cargo check --workspace --all-targets --all-features`. **No live workflow runs clippy** — it is local-only via `scripts/check.sh` and `scripts/release.sh`.
-`scripts/verify-agents-mirrors.py` polices mirror claims about gate counts, step names, commit types, version, and per-workflow triggers — but never opens a job's `run:` lines. Canonical CI reference: `docs/operations/ci-pipeline.md`.
+`scripts/verify-agents-mirrors.py` polices mirror claims about gate counts, step names, commit types, version, per-workflow triggers, stated job totals, and the live workflow a "mirrors <workflow>" claim names — but never opens a job's `run:` lines. Canonical CI reference: `docs/operations/ci-pipeline.md`.
 
 ## CSS has no linter — verify stylesheets with the walker suites
 
@@ -34,6 +35,11 @@ npx vitest run src/__tests__/themeTokenCompliance.test.ts src/__tests__/composed
 ```
 
 Caveats: each suite grades a fixed set of shapes (a printed denominator, not full coverage); walkers read the working tree, so record dirty `.css` paths alongside any result. Full analysis: `docs/frontend/css-verification.md`.
+
+## Lanes, chokepoints and parallel work
+
+The lane map, the chokepoint list, the manager loop and a quick-start tutorial live in
+[agent-lanes.md](agent-lanes.md). Read it before starting a second lane.
 
 ## A red suite in a shared checkout: check ownership before you believe it
 

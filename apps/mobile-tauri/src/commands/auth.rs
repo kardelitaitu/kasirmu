@@ -37,7 +37,7 @@ use crate::state::AppState;
 // it; the H-3 gate now runs here, restored field-for-field from the bridge).
 // Command bodies stay tablet-native.
 pub use kasirmu_bridge::auth::{
-    CheckUsernameArgs, CheckUsernameResult, CreateSessionArgs, CreateSessionResult,
+    CheckUsernameArgs, CheckUsernameResult, CreateSessionArgs, CreateSessionResult, HasUsersResult,
     OrganizationSummary, SessionContextDto, SessionKeepaliveResult, StaffLoginArgs,
     StaffLoginResult,
 };
@@ -90,6 +90,23 @@ pub(crate) fn record_security_event(store: &Store, event: &SecurityEvent) {
             "security event write failed — authentication continues"
         ),
     }
+}
+
+/// Check whether any staff accounts exist in the database.
+///
+/// Used on startup to decide whether to show the owner bootstrap
+/// screen (CreatePinScreen) or the regular login screen. This is a
+/// pre-auth query — it does not reveal any account details, only
+/// whether the `users` table is non-empty. Mirrors the desktop door
+/// (`apps/desktop-tauri/src/commands/auth.rs`) one-for-one; without it
+/// the tablet has no first-run owner bootstrap and a completed wizard
+/// with zero users dead-ends on a login that can never succeed.
+#[command]
+pub async fn has_users(state: State<'_, AppState>) -> Result<HasUsersResult, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::auth::has_users(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 /// Check a username before the PIN step (STAFF-06).

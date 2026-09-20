@@ -79,6 +79,57 @@ WHAT IT CHECKS
      per workflow (the workflow the sentence names decides), never OR-ed across them.
      Every exemption reaches only as far as its reason: a dated record, a quoted phrase,
      a branch FILTER, checker prose adjacent to the claim -- not the whole paragraph.
+  7. JOB TOTALS -- a claim of the form "N jobs" / "ten jobs" / "eleven jobs" (and five
+     other shapes: the "Jobs (N):" heading, a table row "| Jobs | N |", a plain-colon
+     "Job count: N" / "jobs: N", a restated "eleven (11) jobs", and a table cell) must
+     equal the number of top-level jobs across the LIVE workflows -- or, when the claim
+     names a workflow, that workflow's own count. The word table reaches fifteen, and
+     the patterns are BUILT from it so the two cannot drift. Six prose files carry the
+     number: the two MIRRORS plus scripts/check.sh, docs/operations/agent-gates.md and
+     CONTRIBUTING.md, and (added after a falsification pass measured them carrying the
+     same claim ungraded) docs/operations/agent-lanes.md, .agents/skills/pr-repair/
+     SKILL.md, .agents/skills/tdd/SKILL.md and docs/operations/ci-pipeline.md. The
+     original three carried the WRONG total for two releases because nothing compared it
+     to the real list. Ground truth is read per workflow, then summed.
+  8. MIRROR TARGETS -- a claim naming a workflow ("mirrors .github/workflows/ci.yml",
+     "mirrors CI \`dev-ci.yml#website\`") must name a LIVE workflow, and where it names
+     a job, that job must be a key under jobs: in the workflow it names -- or in some
+     live workflow when it names none. A job is reached three ways: a code span, a
+     workflow#job token, and (added 2026-09-21) a BARE name in a sentence that also names
+     a live workflow -- "mirrors CI static-gates job in dev-ci.yml" was the same claim
+     made invisible by a missing backtick. A target under attic/ or ending .bak is a
+     failure: naming a RETIRED workflow as the thing you mirror is the claim, and no
+     checker saw it because "mirrors" used to be a checker-prose EXEMPTION token -- which
+     is how scripts/check.ps1's header kept pointing at attic/ci.yml.bak. The rule's own
+     negation skip is two-sided and past-tense aware, because a file that RECORDS a
+     retirement ("mirrors no workflow: ... was retired to ...bak") is not a claim that
+     its target is live; self-test case (18a) pins both halves -- the record stays silent
+     while a present-tense claim on the same file is graded.
+
+RESIDUAL GAPS (named, not silent)
+=================================
+
+Every rule below states what it cannot see, in its own docstring, at the place a reader
+would look for it. These are the ones a falsification pass raised and this file does NOT
+close, with the reason:
+
+  * A job total written as "1,000 jobs" or as a range ("10-14 jobs") is not read. A
+    thousands separator splits the number from its noun and prose here writes both a job
+    count and a test count in that form; a range is two claims, not one. No shipped file
+    uses either shape, so closing it would add a rule nothing exercises -- see
+    job_total_claims().  [rule 7]
+  * The heading and table total forms must OPEN their line, so "| x | Jobs | 10 |" is
+    not read. Loosening the anchor is how the word "Jobs" starts matching ordinary prose.
+    [rule 7]
+  * Rule 1b's enumeration membership still reads only "N. **label**" runs, so a mirror
+    that renders its steps as a table leaves the numeral checked and the names ungraded.
+    Widening the matcher to tables was built and removed once already (the loose name
+    matcher turned a one-word cell in an unrelated table into evidence); it stays open
+    until the cardinality/ambiguity rule is written.  [rule 1b]
+  * A bare, un-backticked job name is read ONLY inside a sentence that also names a live
+    workflow. An unscoped bare name cannot be graded without a heuristic about what
+    "reads like a job", which is the false positive the scoping exists to avoid -- see
+    mirror_target_findings().  [rule 8]
 
 Usage:
     python3 scripts/verify-agents-mirrors.py
@@ -136,9 +187,54 @@ DEFAULT_ROOT, ROOT_SOURCE = resolve_root()
 
 MIRRORS = ["AGENTS.md", ".agents/management/AGENTS.md"]
 
+# Files whose prose states a job TOTAL, or scopes a gate to a CI job by name. The two
+# MIRRORS carry the rules; the other three carry the same claims in their own words --
+# scripts/check.sh in its gate headers, agent-gates.md in its "Jobs (N)" heading, and
+# CONTRIBUTING.md in the paragraph that warns contributors off a retired job. All three
+# carried the wrong total for two releases (the audit that produced rule 7), and none of
+# them is a mirror, so a MIRRORS-only walk would leave the rot exactly where it was.
+PROSE_FILES = MIRRORS + ["scripts/check.sh", "docs/operations/agent-gates.md",
+                         "CONTRIBUTING.md", "scripts/check.ps1"]
+
+# The LIVE carriers of the same claims, measured rather than assumed: each is a file
+# that states a job total or a "mirrors <target>" TODAY, and none of them was policed.
+# agent-lanes.md says "dev-ci.yml's eleven jobs" in its Lane-scoped CI bullet, and
+# pr-repair/SKILL.md says "runs 11 jobs" twice (its own correction of a stale "38+ jobs"
+# claim -- exactly the kind of repaired number a checker must hold in place). Skills are
+# otherwise reached only by the step-count rule; the job-total and mirror-target rules
+# scanned MIRRORS + PROSE_FILES and so read neither file. Kept as its own constant rather
+# than appended to PROSE_FILES because PROSE_FILES is what the "five prose files carry the
+# number" contract of rule (7) names, and a file ABSENT from here is skipped by the
+# caller -- which is how ci-pipeline.md stays out below.
+JOB_PROSE_FILES = ["docs/operations/agent-lanes.md",
+                   ".agents/skills/pr-repair/SKILL.md",
+                   # tdd/SKILL.md names the retired `ci.yml` in a sentence that RECORDS the
+                   # retirement ("mirrors no workflow: ... was retired to .../ci.yml.bak").
+                   # It is policed precisely because it is the file whose addition to the
+                   # set exposed the over-narrow negation skip -- see MIRROR_NEGATION_RE.
+                   ".agents/skills/tdd/SKILL.md",
+                   # ci-pipeline.md is the canonical CI dashboard and states both claim
+                   # shapes: its job matrix is the only place a job total appears as a
+                   # table, and its northflank row scoped a total ("seven of eleven jobs").
+                   # It is policed only because its stale numbers were corrected from the
+                   # workflow in the same change: dev-ci.yml defines 11 jobs and the
+                   # northflank `needs:` list at dev-ci.yml:745 carries 7 of them, excluding
+                   # 3 -- the row said "seven of ten ... excludes two". Its line-22 sentence
+                   # (four live jobs went unlisted) is a record of the CHECKER'S own
+                   # history and carries a HISTORICAL_MARKERS word so it reads as one.
+                   "docs/operations/ci-pipeline.md"]
+
 WORD_NUM = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
             "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
-            "twelve": 12}
+            "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15}
+
+# The words JOB_TOTAL_RES can spell, BUILT FROM WORD_NUM so the table and the pattern
+# cannot drift apart. They did: the pattern listed one..twelve literally while WORD_NUM
+# was the mapping, and "thirteen jobs" -- a total no word in the pattern could reach --
+# produced ZERO claims, so a wrong total was not reported, it was invisible. The numeral
+# branch has the mirror-image hole (a 13-digit... no: an implausible 2+ digit count is
+# simply never written), which is why this gap and not that one was the live defect.
+WORD_NUM_ALT = "|".join(WORD_NUM)
 
 
 def read(root: Path, rel: str) -> str:
@@ -334,6 +430,444 @@ def workflow_jobs(text: str) -> list[str]:
     return re.findall(r"^  ([a-zA-Z0-9_-]+):\s*$", text[jstart:], re.M)
 
 
+# ── Job TOTALS and MIRROR TARGETS ───────────────────────────
+#
+# Two claims that nothing above can see, both of which were measurably false in this
+# repo. (7) A stated job TOTAL: "dev-ci.yml's eleven jobs are ..." read as green while
+# the workflow held a different number, because no rule compared a count to the list
+# under it -- scripts/check.sh:150, docs/operations/agent-gates.md:23 and
+# CONTRIBUTING.md:265 all carried the same wrong total for two releases. (8) The
+# TARGET of a "mirrors <workflow>" claim: "mirrors" was a token in CHECKER_PROSE_RE,
+# so a sentence naming a workflow was exempted from inspection BY THE WORD THAT MADE IT
+# A CLAIM, and scripts/check.ps1's header pointed at a workflow retired into
+# .github/workflows/attic/ci.yml.bak without a finding.
+#
+# Both read ground truth the way every rule above does: from the files being claimed
+# ABOUT. The total is summed over live workflows read per workflow, never asserted, and
+# a target is resolved against the same live set and the same jobs: parse.
+
+def live_job_totals(root: Path) -> dict[str, list[str]]:
+    """Job ids per LIVE workflow -- the ground truth every job claim is graded against.
+
+    attic/*.bak never enters: live_workflows() globs *.yml only, and the .bak set is
+    exactly what a total must not be measured against -- the retired ci.yml alone holds
+    a dozen jobs that run nowhere. Returned per workflow rather than summed, because a
+    claim can scope itself to one workflow ("dev-ci.yml's eleven jobs") and grading
+    that against the sum would pass a count no single workflow holds.
+    """
+    return {n: workflow_jobs(t) for n, t in live_workflows(root).items()}
+
+
+# The optional "\.bak" suffix is part of the TOKEN on purpose: ".ya?ml" stops before it, so a
+# retired name would be captured as its live-looking stem and then reported as a workflow
+# that is not live -- punishing the sentence that records the retirement, which is exactly
+# the claim this rule must leave alone. Capturing the suffix lets _is_bak() see what the
+# file actually wrote.
+WORKFLOW_REF_RE = re.compile(r"(?:\.github/workflows/)?([A-Za-z0-9_.-]+\.ya?ml(?:\.bak)?)")
+
+# Two ways a mirrors-sentence says "this target is NOT what I copy", both of which the
+# old single negation pattern missed and both of which are TRUE PROSE being read as a
+# claim. Kept as written prose, so what is exempted is on the screen.
+#
+# The retirement branch leans on "was/were/being/has been ... retired" rather than the
+# bare word "retired": the sentence must say the TARGET was retired, and a sentence
+# merely containing the word is not enough.
+MIRROR_NEGATION_RE = re.compile(
+    r"\b(?:nothing|none|never|nor|neither|no\s+part)\b[^.;\n]{0,80}?\bmirrors?\b"
+    # The negation must be a WORD of its own: "mirrors no workflow" is a denial, but
+    # "mirrors CI no-such-gate job" is a claim naming a job that does not exist, and a
+    # bare \bno\b matches the first three letters of the second. The trailing lookahead is
+    # the whole difference between the two, and it is why this branch is written with an
+    # explicit (?![-\w]) rather than a plain \b.
+    r"|\bmirrors?\b[^.;\n]{0,80}?(?<![-\w])(?:no|not|never|nothing|neither)(?![-\w])"
+    r"|\b(?:does|do|did|is|are|was|were)\s+not\s+(?:\w+\s+){0,2}mirrors?\b",
+    re.I)
+MIRROR_RETIRED_RE = re.compile(
+    r"\b(?:was|were|is|are|has\s+been|had\s+been|being|wasn't|weren't)\s+"
+    r"(?:\w+\s+){0,2}retired\b", re.I)
+
+# "mirrors CI <id> job" with the id left BARE -- no backticks, no workflow#job token. The
+# candidate is the token immediately in front of the noun, which is the only position this
+# phrasing puts it in; the workflow named elsewhere in the sentence decides whether the
+# token is a real job, so nothing here has to guess from its shape alone (see
+# mirror_target_findings). Anchored on the \bmirrors?\b the sentence already matched, so a
+# stray "<id> job" in prose about something else is not read as a mirror target.
+BARE_JOB_REF_RE = re.compile(
+    r"\b(?:CI\s+)?([A-Za-z][A-Za-z0-9_-]*)\s+jobs?\b", re.I)
+JOB_REF_RE = re.compile(r"`([a-z0-9][a-z0-9_-]*)`")
+# `dev-ci.yml#website`: workflow and job in one backticked token. The
+# workflow side carries the optional .bak for the same reason WORKFLOW_REF_RE does.
+WF_HASH_JOB_RE = re.compile(r"([A-Za-z0-9_.-]+\.ya?ml(?:\.bak)?)#([a-z0-9][a-z0-9_-]*)")
+
+# Group 1 = an optional workflow qualifier ("dev-ci.yml's"), group 2 = digits, group 3
+# = a word numeral. The trailing job noun is REQUIRED: without it "the two live
+# workflows" and "all ten `dev-ci.yml` job names" read as totals, which is a false
+# positive on true prose -- the classic false positive that gets a gate switched off.
+# The digit and word branches share the group numbering deliberately, and the word branch
+# is capturing for the reason SKILL_COUNT_RES documents: a non-capturing one makes a
+# word numeral raise IndexError instead of reporting a count.
+#
+# SIX shapes, not two, and the four that were added are the four the falsification pass
+# measured as invisible: a table row ("| Jobs | 10 |"), a plain-colon total ("jobs: 10"),
+# a parenthesised numeral on the wrong side of the word ("eleven (11) jobs"), and the
+# same bare total in a table cell ("| Jobs (10) | x |"). Each added shape was required to
+# produce ZERO matches across all eight prose files before it landed; the shapes that did
+# NOT survive that measurement are named in job_total_claims() rather than left implicit.
+#
+# Two invariants hold across every pattern here, and both are load-bearing:
+#   * the numeral must be followed by the job NOUN as a SEPARATE word ("jobs", "jobs.",
+#     "jobs,"), never "job" -- "one job's total" is about one job, and a trailing \b
+#     alone let "jobs-" and "job's" through;
+#   * every pattern exposes the SAME group layout the reader below uses -- group 1 an
+#     optional workflow qualifier, group 2 digits, group 3 the word numeral -- so
+#     job_total_claims() never has to know which shape matched. The heading and table
+#     forms carry an EMPTY group 1 for exactly that reason; without it they raise
+#     IndexError on group 3 instead of reporting a count.
+JOB_TOTAL_RES = (
+    re.compile(r"(?:([A-Za-z0-9_.-]+\.ya?ml)(?:'s|s)?\s+)?\*{0,2}(?:(?<![\d:.])(\d+)|"
+               r"(" + WORD_NUM_ALT + r"))"
+               r"\*{0,2}\s+(?:live\s+|top-level\s+|CI\s+)?jobs\b", re.I),
+    # "Jobs (11):" -- the heading form agent-gates.md uses. The colon is what keeps this
+    # off a bare parenthesised number in ordinary prose. "Job count:" is spelled out as
+    # optional here rather than given its own pattern: the two words are one claim shape.
+    re.compile(r"^\s*()(?:Job\s+count|Jobs)\s*\(\s*(?:(\d+)|(" + WORD_NUM_ALT +
+               r"))\s*\)\s*(?::|[-\u2013\u2014]|\||$)", re.I | re.M),
+    # "| Jobs | 10 |" -- a markdown table row. The trailing PIPE is required, so the
+    # pattern cannot fire on prose; width is [ \t]* rather than \s* so a table row can
+    # never straddle a newline.
+    re.compile(r"^\s*\|[ \t]*()Jobs?[ \t]*\|[ \t]*(?:(\d+)|(" + WORD_NUM_ALT +
+               r"))\*{0,2}[ \t]*\|", re.I | re.M),
+    # "| Jobs (10) | x |" -- the heading form as a table cell. Bounded by pipes on both
+    # sides, which is what keeps it off a parenthesised number in ordinary prose -- the
+    # reason the heading form's colon matters and this form needs its own boundary.
+    re.compile(r"^\s*\|[ \t]*()Jobs?\s*\(\s*(?:(\d+)|(" + WORD_NUM_ALT +
+               r"))[ \t]*\)[ \t]*\|", re.I | re.M),
+    # "Job count: 10" / "jobs: 10" / "total jobs = 10". THREE things make the number a
+    # total rather than any other figure after the word "job": the label immediately on the
+    # other side of the colon/equals, the OPTIONAL noun after the number (a heading states
+    # "Job count: 10" with no noun at all), and -- when that noun is absent -- the number
+    # having to END the line or clause. Measured against the shapes that must NOT fire:
+    # "13:00 jobs" (a clock), "job: 5 items" (a breakdown, not a total).
+    re.compile(r"(?<![\d:])(?<!\d\d)()\bjobs?\s*(?:count\s*)?[:=]\s*(?:(\d+)|(" +
+               WORD_NUM_ALT + r"))\b(?:\s+(?:live\s+|top-level\s+|CI\s+)?jobs\b|\s*$)",
+               re.I),
+    # "eleven (11) jobs" -- a word that RESTATES one number and then repeats it in
+    # parentheses. The old word branch required the noun immediately after the word, so
+    # the parenthesised numeral swallowed the pair and the sentence scored nothing. This
+    # is the ONE shape that carries its two numerals in BOTH orders, so it is the one
+    # pattern read through pair_groups() below: group 2 holds the WORD and group 3 the
+    # parenthesised numeral, both filled, and disagreement between them is REPORTED as a
+    # contradiction -- not silently resolved toward whichever half the parser kept, which
+    # is exactly how "twelve (11) jobs" used to pass while stating twelve.
+    re.compile(r"()\*{0,2}(" + WORD_NUM_ALT + r")\*{0,2}\s*\(\s*(\d+)\s*\)"
+               r"\s*\*{0,2}(?:live\s+|top-level\s+|CI\s+)?jobs?\b", re.I),
+)
+
+
+def job_total_claims(text: str) -> list[tuple[int, int]]:
+    """[(line, claimed total)] for every job-total claim in TEXT.
+
+    Six forms, all observed in this repo or in the falsification pass that found the four
+    missing ones (JOB_TOTAL_RES names each):
+
+      "dev-ci.yml's eleven jobs are changes, website, ..."  (check.sh:150)
+      "Jobs (11): `changes`, `website`, ..."                 (agent-gates.md:23)
+      "| Jobs | 10 |"                                       (table row)
+      "Job count: 10" / "jobs: 10"                          (plain colon)
+      "eleven (11) jobs"                                    (numeral restated)
+      "| Jobs (10) | x |"                                   (table cell)
+
+    A dated record is evidence, not a claim, so HISTORICAL_MARKERS lines are skipped --
+    the same exclusion every other rule in this file makes, for the same reason.
+
+    KNOWN GAPS, named rather than left to be rediscovered. Each was measured against the
+    eight shipped prose files and fires on ZERO of them, so each is a hole in coverage
+    and not a false-positive risk:
+
+    * "1,000 jobs" and "9,922-test suites": a thousands separator splits the number from
+      its noun, and the hyphen in "N-test" is not a word boundary. A separator-form
+      pattern would have to decide whether the number names the total or the test count,
+      and prose here writes both; it is not written.
+    * a total stated as a table's length ("the eleven rows below") or as a range
+      ("10-14 jobs") is unreachable -- no shape exists in these files to calibrate one
+      against, and a range is two claims, not one.
+    * the heading and table forms require the claim to OPEN its line, so a total buried
+      mid-table-cell ("| x | Jobs | 10 |") is not read. Loosening the anchor is how a
+      word like "Jobs" starts matching an ordinary sentence.
+    """
+    out: list[tuple[int, int]] = []
+    for ln, line in enumerate(text.splitlines(), 1):
+        if any(marker in line.lower() for marker in HISTORICAL_MARKERS):
+            continue
+        for rx in JOB_TOTAL_RES:
+            for m in rx.finditer(line):
+                # group 1 = the workflow qualifier, 2 = digits, 3 = the word numeral --
+                # EXCEPT the parenthesised-restatement pattern, where the two are the other
+                # way round (2 = word, 3 = numeral). pair_groups() is the one place that
+                # knows the difference, so no reader has to remember which shape it is
+                # looking at.
+                digits, word = pair_groups(m)
+                if digits is None and not word:
+                    continue
+                n = WORD_NUM.get(word.lower()) if word else int(digits)
+                if n is not None:
+                    out.append((ln, n))
+    return out
+
+
+def pair_groups(m: re.Match) -> tuple[str | None, str]:
+    """(digits, word) from a JOB_TOTAL_RES match, whichever shape WROTE them.
+
+    Two of the six shapes swap the numeral and the word between groups 2 and 3, and one
+    line of arithmetic here is cheaper -- and far harder to get wrong -- than six callers
+    each remembering which shape they hold. A group that is empty comes back as None or
+    "" so the caller's "neither is set" test stays a single expression.
+    """
+    if m.re is JOB_TOTAL_RES[-1]:
+        # "eleven (11) jobs": group 2 is the WORD, group 3 the parenthesised numeral.
+        return (m.group(3), m.group(2) or "")
+    return (m.group(2), m.group(3) or "")
+
+
+def contradictory_pairs(text: str) -> list[tuple[int, int, str]]:
+    """[(line, claimed, reading)] where ONE claim was written two ways that disagree.
+
+    Rule (7) grades a total against the workflows, so a self-contradicting claim is
+    decided by whichever half the parser kept -- "twelve (11) jobs" was read as 11 and so
+    PASSED while the sentence said twelve. Picking a winner is unavoidable (a claim needs
+    one number); saying out loud that the sentence contradicts itself is the part that
+    must not be lost, and is what this returns and job_total_findings() reports.
+    """
+    out: list[tuple[int, int, str]] = []
+    for ln, line in enumerate(text.splitlines(), 1):
+        if any(marker in line.lower() for marker in HISTORICAL_MARKERS):
+            continue
+        for rx in JOB_TOTAL_RES:
+            for hit in rx.finditer(line):
+                digits, word = pair_groups(hit)
+                if not (digits and word):
+                    continue
+                n = WORD_NUM.get(word.lower())
+                if n is not None and n != int(digits):
+                    out.append((ln, n, hit.group(0).strip()))
+    return out
+
+
+def job_total_findings(text: str, rel: str, wfs: dict[str, str],
+                       per_jobs: dict[str, list[str]]) -> list[str]:
+    """Findings for a job total that disagrees with the LIVE workflows.
+
+    Scope is the workflow the claim names, or every live workflow when it names none --
+    the same "scope, else all" rule the push-trigger check uses, so a claim saying
+    "dev-ci.yml's eleven jobs" is graded against dev-ci.yml rather than the total.
+    """
+    findings: list[str] = []
+    lines = text.splitlines()
+    for ln, claimed in job_total_claims(text):
+        # Scoped by FILE NAME only. workflow_name_aliases() also carries each workflow's
+        # own "name:" header, which is right for trigger prose ("Dev CI is triggered by a
+        # push") and wrong here: release.yml's header is "Release", so the jobs list in
+        # agent-gates.md:23 -- which names release-readiness and release-bridge-test --
+        # matched it as a substring and the repository total was graded against
+        # release.yml's 3. A job TOTAL is stated about the workflow FILE, so the file name
+        # is the only qualifier that can scope it.
+        scope = [n for n in wfs if n.lower() in lines[ln - 1].lower()]
+        if not scope:
+            # The heading form ("Jobs (11):") states its scope one line up, in the
+            # paragraph it heads: agent-gates.md:22 says "dev-ci.yml triggers: ..." and :23
+            # then enumerates dev-ci.yml's eleven jobs. Reading only the claim's own line
+            # graded that against the repository total (14) and reported true prose as a
+            # failure. So the scope is the LAST workflow named in the non-blank lines
+            # above, stopping at a blank line -- the block the heading belongs to, which
+            # is the same "as far as its reason reaches" bound the exemptions elsewhere
+            # apply. No workflow named in that block means the claim is about all of them.
+            for above in reversed(lines[:ln - 1]):
+                if not above.strip():
+                    break
+                scope = [n for n in wfs if n.lower() in above.lower()]
+                if scope:
+                    break
+        if scope:
+            real = sum(len(per_jobs[n]) for n in scope)
+            where = " and ".join(f"{n} defines {len(per_jobs[n])}"
+                                 for n in sorted(scope))
+        else:
+            real = sum(len(j) for j in per_jobs.values())
+            where = "the live workflows define " + ", ".join(
+                f"{n}: {len(per_jobs[n])}" for n in sorted(per_jobs))
+        if claimed != real:
+            findings.append(
+                f"{rel}:{ln} claims {claimed} jobs, but {where} (total {real})")
+    # A claim that contradicts ITSELF is reported whichever way the workflow falls: the
+    # parsed half is graded above, the discarded half is the one a reader would believe.
+    for ln, word, reading in contradictory_pairs(text):
+        findings.append(
+            f"{rel}:{ln} states its job total two ways that disagree -- the word reads "
+            f"{word} where the numeral reads another value (phrase: {reading!r}), so the "
+            "claim is graded on the word and the sentence is wrong either way")
+    return findings
+
+
+def mirror_target_findings(text: str, rel: str, wfs: dict[str, str],
+                           per_jobs: dict[str, list[str]]) -> list[str]:
+    """Findings for a "mirrors <target>" claim whose target is not live.
+
+    Both halves are graded: a named WORKFLOW must be one of the live *.yml files, and a
+    named JOB must be a key under jobs: in the workflow it names -- or in some live
+    workflow when it names none.
+
+    A job is reached THREE ways, and the third closed a measured hole: a backticked id
+    (a code span), a workflow#job token, and -- since
+    2026-09-21 -- a BARE word. "the local runner mirrors CI static-gates job in
+    dev-ci.yml" was invisible before, and nothing about it is less of a claim for being
+    un-backticked; the code-span requirement was a convenience, not a discriminator. The
+    bare form is bounded so it cannot become one: it is read ONLY inside a sentence that
+    NAMES a live workflow, where the candidate set is that workflow's own job ids, and
+    only for the token immediately before the word "job(s)". Guessing from shape alone
+    was never needed -- naming the workflow supplies the vocabulary.
+
+    A `.bak` or `attic/` target is a FAILURE, not an exemption, and that is deliberate:
+    "mirrors .github/workflows/attic/ci.yml.bak" is the exact claim this rule exists to
+    catch -- the retired workflow scripts/check.ps1's header kept naming. The exemption a
+    retirement RECORD needs is the one every rule here already has (a quotation, or a
+    HISTORICAL_MARKERS line); outside those, the verb "mirrors" asserts the target is the
+    thing being copied, and a file in attic/ is never that. Verified against this tree:
+    every .bak mention in the five prose files sits in a sentence with no "mirrors" in
+    it, so the two are cleanly separable in practice and not only in principle.
+    """
+    findings: list[str] = []
+    all_jobs = {j for js in per_jobs.values() for j in js}
+    for ln, line in enumerate(text.splitlines(), 1):
+        if any(marker in line.lower() for marker in HISTORICAL_MARKERS):
+            continue
+        quoted = [(m.start(), m.end()) for m in QUOTED_PHRASE_RE.finditer(line)]
+        for off, sent in line_sentences(line):
+            if not re.search(r"\bmirrors?\b|\bmirroring\b", sent, re.I):
+                continue
+            # A NEGATED, PAST-TENSE mirror sentence is the opposite of a claim that the
+            # target is live: "Nothing here mirrors .github/workflows/ci.yml either" and
+            # "`.githooks/pre-push` ... mirrors no workflow: the `ci.yml` workflow ... was
+            # retired to .../ci.yml.bak" both RECORD a retirement. Reading either as an
+            # assertion reports the correction as the defect -- the same inversion every
+            # other rule in this file guards against.
+            #
+            # Widened 2026-09-21, and the widening IS a measured fix: adding
+            # tdd/SKILL.md to the policed set made the real run fail with "mirrors
+            # 'ci.yml'" and "mirrors 'ci.yml.bak'" on a line that records the
+            # retirement, because the old skip required the negation within 40
+            # characters AND BEFORE the verb -- while in both files the negation ("no
+            # workflow", "Nothing") is exactly what the verb points AT, after it. The fix
+            # is not a longer window (a window is a LENGTH; the relation is a DIRECTION)
+            # but the missing direction, plus the preterite: a sentence saying the target
+            # "was retired" states history about the file, and rule (8) grades a claim
+            # about the present tense of a target.
+            if MIRROR_NEGATION_RE.search(sent) or MIRROR_RETIRED_RE.search(sent):
+                continue
+
+            def quoted_span(a: int, b: int) -> bool:
+                return any(s <= off + a and off + b <= e for s, e in quoted)
+
+            # workflow#job first: one token carrying both halves.
+            for m in WF_HASH_JOB_RE.finditer(sent):
+                if quoted_span(m.start(), m.end()):
+                    continue
+                findings.extend(_grade_target(rel, ln, m.group(1), m.group(2), wfs,
+                                              per_jobs))
+            # A bare workflow file name. A name already consumed by a wf#job token above
+            # is skipped: that token already reported both halves, and reporting the
+            # workflow half twice would double the count of one defect -- the reason
+            # verify-ci-docs-drift.py states for not listing an item under two headings.
+            claimed_wfs = {m.group(1) for m in WF_HASH_JOB_RE.finditer(sent)
+                           if not quoted_span(m.start(), m.end())}
+            for m in WORKFLOW_REF_RE.finditer(sent):
+                if quoted_span(m.start(), m.end()):
+                    continue
+                if m.group(1) in claimed_wfs:
+                    continue
+                if m.group(1) not in wfs:
+                    findings.append(
+                        f"{rel}:{ln} mirrors {m.group(1)!r}, which is not a live "
+                        "workflow -- live: " + (", ".join(sorted(wfs)) or "(none)"))
+            # A backticked job id, when no workflow name in the sentence scopes it.
+            named_wf = [n for n in wfs
+                        if any(a in sent.lower()
+                               for a in workflow_name_aliases(n, wfs[n]))]
+            for m in JOB_REF_RE.finditer(sent):
+                job = m.group(1)
+                if quoted_span(m.start(), m.end()) or job in all_jobs or job in wfs:
+                    continue
+                # Only a token shaped like a job id: a mirrors-sentence is full of
+                # backticked scripts, env vars and config keys, and flagging those
+                # would fire the rule on every honest sentence.
+                if not _looks_like_job_ref(job):
+                    continue
+                if named_wf:
+                    findings.extend(_grade_target(rel, ln, named_wf[0], job, wfs,
+                                                  per_jobs))
+                else:
+                    findings.append(
+                        f"{rel}:{ln} mirrors CI job {job!r}, which no live workflow "
+                        "defines -- live jobs: "
+                        + (", ".join(sorted(all_jobs)) or "(none)"))
+            # A BARE, un-backticked job name -- "mirrors CI static-gates job in dev-ci.yml".
+            # Read only when the sentence names a live workflow, and only from the token
+            # immediately before "job"/"jobs": naming the workflow supplies the vocabulary,
+            # so a word that is not one of its job ids is a claim about a job that does not
+            # exist, and no heuristic about what "looks like a job" has to be invented. The
+            # token must itself look like an id (lowercase, hyphenated or single lowercase
+            # word) so an ordinary English phrase in front of the word "job" -- "this job",
+            # "a CI job" -- is not read as a target.
+            if named_wf:
+                for m in BARE_JOB_REF_RE.finditer(sent):
+                    tok = m.group(1)
+                    if quoted_span(m.start(), m.end()) or tok.lower() in (
+                            "no", "the", "a", "an", "this", "that", "job", "jobs",
+                            "ci", "its", "our", "your"):
+                        continue
+                    if not re.fullmatch(r"[a-z][a-z0-9]*(?:[a-z0-9-]*[a-z0-9])?", tok):
+                        continue
+                    if tok in all_jobs:
+                        continue
+                    findings.extend(_grade_target(rel, ln, named_wf[0], tok, wfs,
+                                                  per_jobs))
+    return findings
+
+
+def _is_bak(token: str) -> bool:
+    return token.endswith(".bak")
+
+
+def _looks_like_job_ref(tok: str) -> bool:
+    """Does TOK read as a job id rather than a script, a variable or a config key?
+
+    The discriminator is the SHAPE these files give a job id: lowercase words joined by
+    hyphens. Scripts carry an extension or a slash, config keys are single words, and
+    every genuine job id in this repo (`static-gates`, `cargo-nextest`, `ui-test`,
+    `northflank-deploy`, `ci-docs-drift`, `release-bridge-test`) is hyphenated.
+    Requiring a hyphen is deliberately narrow: the rule fires on the ids it was written
+    for and stays silent on single-word tokens a wider matcher would report as phantom
+    jobs while scanning ordinary sentences.
+    """
+    return bool(re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)+", tok))
+
+
+def _grade_target(rel: str, ln: int, wf: str, job: str, wfs: dict[str, str],
+                  per_jobs: dict[str, list[str]]) -> list[str]:
+    """Findings for one (workflow, job) pair: both halves must exist and be live."""
+    if wf not in wfs:
+        # A .bak is called out by name: the difference between "this file is not live"
+        # (maybe a typo) and "this file was RETIRED" is the whole point of the claim, and
+        # the reader fixing it needs to know which one they are looking at.
+        kind = ("is retired" if _is_bak(wf) else "is not a live workflow")
+        return [f"{rel}:{ln} mirrors {wf}#{job}, but {wf} {kind} "
+                "-- live: " + (", ".join(sorted(wfs)) or "(none)")]
+    if job not in per_jobs.get(wf, []):
+        return [f"{rel}:{ln} mirrors job {job!r} in {wf}, but {wf} defines no such "
+                "job under jobs: -- it defines "
+                + (", ".join(per_jobs.get(wf, [])) or "(none)")]
+    return []
+
+
 def triggers_of(text: str) -> list[str]:
     r"""Event names in the `on:` block, taken at the block's own indent.
 
@@ -423,13 +957,21 @@ PUSH_DENIAL_RES = (
 # qualifier is what tells the two apart, so a filtered sentence is not graded.
 BRANCH_QUALIFIER_RE = re.compile(r"non-[\s*\x60]*main", re.I)
 
-# Sentences whose subject is the checker, a mirror, a finding or the rule are meta: they
-# quote a phrasing instead of claiming the fact. Both mirrors' scope paragraphs run
-# this way, and one of them is the paragraph that describes this very check. Tested
-# against the CLAIM plus a window (CHECKER_PROSE_WINDOW) rather than the whole slice --
-# see the window's comment for why a slice-wide test inverted this guard.
+# Sentences whose subject is the checker, a finding or the rule are meta: they quote a
+# phrasing instead of claiming the fact. Both mirrors' scope paragraphs run this way, and
+# one of them is the paragraph that describes this very check. Tested against the CLAIM
+# plus a window (CHECKER_PROSE_WINDOW) rather than the whole slice -- see the window's
+# comment for why a slice-wide test inverted this guard.
+#
+# "\bmirrors?\b" USED to be a token here and is deliberately gone. It exempted a sentence
+# from inspection by the very word that made it a claim: "scripts/check.sh mirrors
+# .github/workflows/ci.yml" asserts something about a workflow, so reading "mirrors" as
+# checker prose meant nothing ever checked its target -- which is how check.ps1's header
+# kept naming a workflow retired into attic/ci.yml.bak. Rule (8) now inspects that target
+# instead. The tokens that remain name the checker, a finding, or prose ABOUT claims; none
+# of them is a claim's own object.
 CHECKER_PROSE_RE = re.compile(
-    r"verify-agents-mirrors|says_push|any_push|\bmirrors?\b|\bchecker\b|\bfinding\w*\b"
+    r"verify-agents-mirrors|says_push|any_push|\bchecker\b|\bfinding\w*\b"
     r"|\bunenforced\b|\brules?\b|\bprose\b|\bpolic(?:e|es|ing)\b|\bgates?\b", re.I)
 
 # How far either side of a claim span the checker-prose exemption reaches. It used to be
@@ -808,6 +1350,9 @@ def scan(root: Path, head_hook_text: str | None = None,
     # One parsed on: set per workflow, read once and reused by the trigger rule and by
     # the GROUND TRUTH block, so what the gate compares prose against is on screen.
     wf_trigs = {n: triggers_of(t) for n, t in wfs.items()}
+    # Job ids per live workflow, read once and shared by rules (7) and (8): two counts of
+    # the same file computed in two places is how one of them goes false on its own.
+    per_jobs = live_job_totals(root)
     all_ci_text = "\n".join(wfs.values())
     types = accepted_commit_types(root)
     # (ordinal, name, line) for the gates an enumeration is graded against, plus the line
@@ -1073,6 +1618,27 @@ def scan(root: Path, head_hook_text: str | None = None,
             if job not in real_jobs:
                 problems.append(f"{rel}: cites workflow job #{job}, which no live workflow defines")
 
+    # (7) JOB TOTALS and (8) MIRROR TARGETS, over every file that carries those claims.
+    #
+    # Separate from the MIRRORS loop above because these two claims are not mirror-only:
+    # the wrong total lived in scripts/check.sh, docs/operations/agent-gates.md and
+    # CONTRIBUTING.md for two releases, and the retired-workflow target lived in
+    # scripts/check.ps1's header. Policing only MIRRORS would leave the rot exactly where
+    # the audit found it.
+    #
+    # A missing workflow or job is not a claim at all, so nothing here is a NOTICE: both
+    # rules compare a claim the file MAKES against ground truth READ from the workflows,
+    # and a disagreement is the failure. The only absent-ground-truth case -- no live
+    # workflow at all -- is named in the finding rather than silently passing.
+    for rel in PROSE_FILES + JOB_PROSE_FILES:
+        if rel not in MIRRORS and not (root / rel).is_file():
+            continue
+        text = read(root, rel)
+        if not text:
+            continue
+        problems.extend(job_total_findings(text, rel, wfs, per_jobs))
+        problems.extend(mirror_target_findings(text, rel, wfs, per_jobs))
+
     # (4) SKILL FILES. A mirror must state the count; a skill need not mention it at all.
     # But when a skill DOES state one it is a claim agents follow, and two of them went
     # stale silently as steps 9 and 10 landed -- skill-drift-guard cannot see this because
@@ -1277,6 +1843,11 @@ def make_fixture(src: Path, dst: Path) -> None:
     if wfdir.is_dir():
         needed += [f".github/workflows/{p.name}" for p in sorted(wfdir.glob("*.yml"))]
     needed += MIRRORS
+    # PROSE_FILES too, for the same reason the skills are: rules (7) and (8) read these
+    # files, and a fixture that omits them would make those rules check nothing while
+    # the self-test still reported every case CAUGHT -- the vacuous pass this helper
+    # already documents for SKILL.md.
+    needed += [rel for rel in PROSE_FILES + JOB_PROSE_FILES if rel not in MIRRORS]
     # Skills are scanned too, so they must be in the fixture. Omitting them would not fail
     # loudly: scan() globs the fixture, finds no SKILL.md, checks nothing, and the self-test
     # reports every mutation caught while the skill branch never ran at all.
@@ -1926,6 +2497,234 @@ def _self_test_cases() -> int:
                     print(f"  MISSED  {mirror16:20s} assertion on a push-less fixture "
                           f"workflow -- {[p[:70] for p in probs16[:3]]}")
                     bad += 1
+
+    # (17) JOB TOTALS and MIRROR TARGETS -- rules (7) and (8). Cases for every claim
+    # shape the audit found: the correct total passes, a wrong total fails, a live job
+    # name passes, an attic/.bak target fails, a nonexistent workflow name fails, and a
+    # nonexistent job name fails.
+    #
+    # Every case guards against passing vacuously, because the failure mode for a
+    # plant-and-check case is a needle that matches nothing and a claim that was never
+    # planted: the mutation must change the bytes, and the finding must be one the file
+    # does not produce unmutated. The same discipline MUTATIONS uses.
+    pj = live_job_totals(src)
+    total = sum(len(v) for v in pj.values())
+    prose_rel = "scripts/check.sh"  # carries both claim shapes
+    base17 = read(src, prose_rel)
+    wf_name = "dev-ci.yml"
+    wf_total = len(pj.get(wf_name, []))
+    if not base17 or not wf_total:
+        print(f"  WRONG {prose_rel}: absent, or the fixture holds no dev-ci.yml jobs, so "
+              "rules (7) and (8) cannot be exercised")
+        bad += 1
+    else:
+        # The anchor for every target case is the LIVE `dev-ci.yml#website` claim on the
+        # shell header at scripts/check.sh:343. It is a positive claim in a non-negated
+        # sentence, so replacing it tests the rule; pointing at line 9 instead would test
+        # the negation skip, which is a different rule and reads as a MISSED case.
+        live_target = "`dev-ci.yml#website`"
+        cases17 = [
+            ("correct total passes",
+             f"{wf_name}'s eleven jobs", f"{wf_name}'s {wf_total} jobs",
+             False, None),
+            ("wrong total fails",
+             f"{wf_name}'s eleven jobs", f"{wf_name}'s {wf_total + 1} jobs",
+             True, "claims"),
+            # A PASS case still has to change bytes, or the vacuous-mutation guard
+            # reports it WRONG -- and rightly: a mutation that replaces a needle with
+            # itself proves nothing about the rule. This one retargets the claim at
+            # another job that really is in dev-ci.yml, so the file is genuinely
+            # different and still true.
+            ("live job name passes",
+             live_target, "`dev-ci.yml#static-gates`", False, None),
+            # The audit's own example: the target is a RETIRED workflow. A "mirrors"
+            # claim that names one is the defect, not a record of it, so this must FAIL.
+            ("attic/.bak name fails",
+             live_target, "`attic/ci.yml.bak#website`", True, "is retired"),
+            ("nonexistent workflow name fails",
+             live_target, "`legacy.yml#website`", True, "not a live workflow"),
+            ("nonexistent job name fails",
+             live_target, "`dev-ci.yml#no-such-job-name`", True, "no such job"),
+        ]
+        if live_target not in base17:
+            print(f"  WRONG {prose_rel}: case (17) cannot anchor -- {live_target!r} is not "
+                  "in the file, so every target case would be vacuous")
+            bad += 1
+            cases17 = []
+        for desc, needle, repl, want_problem, needle_finding in cases17:
+            mut = base17.replace(needle, repl, 1)
+            if mut == base17:
+                print(f"  WRONG {prose_rel}: case (17) '{desc}' anchored on nothing -- "
+                      f"{needle!r} is not in the file")
+                bad += 1
+                continue
+            with tempfile.TemporaryDirectory() as td:
+                tmp = Path(td)
+                make_fixture(src, tmp)
+                io.open(tmp / prose_rel, "w", encoding="utf-8",
+                        newline="\n").write(mut)
+                probs17 = scan(tmp)
+                # The claim must be READ, not merely planted: a mutation the parser
+                # never sees is a case that cannot fail, which reads exactly like a
+                # rule that works.
+                hit = [x for x in probs17 if prose_rel in x
+                       and (needle_finding is None or needle_finding in x)]
+                if want_problem:
+                    if hit:
+                        print(f"  CAUGHT  {prose_rel:20s} {desc} -- {hit[0][:76]}")
+                    else:
+                        print(f"  MISSED  {prose_rel:20s} {desc} -- {len(probs17)} "
+                              f"finding(s), none matching; totals parsed "
+                              f"{[c for _, c in job_total_claims(mut)]}, live {total}")
+                        bad += 1
+                elif hit:
+                    print(f"  MISSED  {prose_rel:20s} {desc} -- a true claim was "
+                          f"failed: {[x[:70] for x in hit]}")
+                    bad += 1
+                else:
+                    print(f"  CLEAN   {prose_rel:20s} {desc} -- no finding")
+
+        # The totals the SHIPPED files state must equal what the workflows hold, or the
+        # corrections this rule exists to protect have silently reverted. Graded by
+        # parsing those files, not by remembering a number.
+        stated = {rel: [c for _, c in job_total_claims(read(src, rel))]
+                  for rel in PROSE_FILES + JOB_PROSE_FILES}
+        bad_total = {rel: cs for rel, cs in stated.items()
+                     if any(c not in (total, wf_total) for c in cs)}
+        if bad_total:
+            print(f"  WRONG {prose_rel:20s} a shipped job total disagrees with the live "
+                  f"workflows (total {total}, {wf_name} {wf_total}): {bad_total}")
+            bad += 1
+        else:
+            print(f"  CAUGHT  {prose_rel:20s} every stated job total matches the live "
+                  f"workflows (total {total}, {wf_name} {wf_total})")
+
+    # (18) CLOSING THE FIVE EVASIONS a falsification pass reproduced. Each case is the
+    # SMALLEST input that shows the rule fires, or -- for the retirement record -- that
+    # it stays silent, and every one is graded through the real parsers rather than
+    # through a needle planted in a document, because a parser that stopped reading a
+    # shape is precisely what these five defects were.
+    #
+    # (18a) THE MIRROR-NEGATION FALSE POSITIVE. A file recording a retirement says its
+    # local gate "mirrors no workflow" and that the retired workflow "was retired to
+    # attic/ci.yml.bak". Adding such a file to the policed set once made the real run
+    # fail on it, so both halves are asserted TOGETHER: the record must be silent.
+    # The v1 negation pattern is asserted NOT to cover the line first, so the case
+    # cannot pass by the old, narrow skip happening to cover the new input too.
+    retirement = ("`.githooks/pre-push` mirrors no workflow: the `ci.yml` workflow was "
+                  "retired to `.github/workflows/attic/ci.yml.bak`")
+    neg_v2 = bool(MIRROR_NEGATION_RE.search(retirement)
+                  or MIRROR_RETIRED_RE.search(retirement))
+    neg_v1 = bool(re.search(r"\b(?:nothing|no\s+part|never|not)\b[^.;\n]{0,40}?"
+                          r"\bmirrors?\b", retirement, re.I))
+    if not neg_v2:
+        print(f"  WRONG {MIRRORS[0]:20s} the retirement record is not recognised as one,"
+              " so the false positive this rule was fixed for is back")
+        bad += 1
+    elif neg_v1:
+        print(f"  WRONG {MIRRORS[0]:20s} the OLD skip already covered this line -- the"
+              " probe does not demonstrate the widening")
+        bad += 1
+    else:
+        # The probe file must be one rule (8) actually READS. tdd/SKILL.md was the first
+        # choice and it was WRONG: rule (8) walks MIRRORS + PROSE_FILES + JOB_PROSE_FILES,
+        # not the skills directory, so a probe planted there is never read and the case
+        # would report a MISSED that says nothing about the rule. agent-lanes.md is in the
+        # policed set, so the same bytes exercise the rule that was fixed.
+        probe_rel = "docs/operations/agent-lanes.md"
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            make_fixture(src, tmp)
+            io.open(tmp / probe_rel, "w", encoding="utf-8", newline="\n").write(
+                "# probe\n\n" + retirement + "\n"
+                "This gate mirrors .github/workflows/attic/ci.yml.bak\n")
+            probs18 = scan(tmp)
+            rec = [p for p in probs18
+                   if probe_rel in p and "attic/ci.yml.bak" in p]
+            other = [p for p in probs18
+                     if probe_rel in p and "attic/ci.yml.bak" not in p]
+            if not rec and other:
+                print(f"  CAUGHT  {MIRRORS[0]:20s} the retirement record is left alone by"
+                      " rule (8) while a present-tense claim on the same file is graded"
+                      f" ({len(other)} finding(s) for the live claim)")
+            else:
+                print(f"  MISSED  {MIRRORS[0]:20s} record findings {len(rec)}, live-claim"
+                      f" findings {len(other)} -- expected 0 and >0")
+                bad += 1
+
+    # (18b) A WORD NUMERAL THE TABLE COULD NOT REACH. thirteen..fifteen exist in
+    # WORD_NUM and the pattern is BUILT from it, so the two cannot drift apart again.
+    # All three properties are asserted, because fixing the table alone would leave the
+    # pattern blind -- which is exactly how "thirteen jobs" produced zero claims.
+    words18b = ("thirteen", "fourteen", "fifteen")
+    parsed18b = [c for _, c in job_total_claims("dev-ci.yml's thirteen jobs")]
+    if parsed18b == [13] and all(w in WORD_NUM for w in words18b) \
+            and all(w in JOB_TOTAL_RES[0].pattern for w in words18b):
+        print(f"  CAUGHT  {MIRRORS[0]:20s} a three-'teen word numeral parses to"
+              f" {parsed18b[0]} and the pattern spells it (table and regex agree)")
+    else:
+        print(f"  MISSED  {MIRRORS[0]:20s} 'thirteen jobs' parsed to {parsed18b};"
+              " WORD_NUM and JOB_TOTAL_RES would report different totals")
+        bad += 1
+
+    # (18c) THE SHAPES THAT EVADED. Each is a total the falsification pass typed and
+    # got ZERO claims from. Value AND count are asserted: a shape that fired twice on
+    # one sentence would be its own defect, and a shape that parsed the wrong number
+    # a worse one.
+    shapes18c = [
+        ("| Jobs | 10 |", [10]),
+        ("Job count: 10", [10]),
+        ("jobs: 10", [10]),
+        ("Jobs (10) - x", [10]),
+        ("| Jobs (10) | x |", [10]),
+    ]
+    bad18c = [(s, [c for _, c in job_total_claims(s)]) for s, want in shapes18c
+              if [c for _, c in job_total_claims(s)] != want]
+    if not bad18c:
+        print(f"  CAUGHT  {MIRRORS[0]:20s} table, plain-colon and parenthesised totals"
+              f" all parse ({len(shapes18c)} shapes, one claim each)")
+    else:
+        print(f"  MISSED  {MIRRORS[0]:20s} these shapes still parse to no claim: {bad18c}")
+        bad += 1
+
+    # (18d) A WORD RESTATED AS A NUMERAL. "eleven (11) jobs" read as nothing at all;
+    # it must now read as ELEVEN -- and a pair that DISAGREES must be REPORTED as a
+    # contradiction rather than silently resolved toward whichever half survived.
+    ok18d = [c for _, c in job_total_claims("dev-ci.yml's eleven (11) jobs")] == [11]
+    contradicted = ([c for _, c in job_total_claims("dev-ci.yml's twelve (11) jobs")]
+                    == [12]
+                    and bool(contradictory_pairs("dev-ci.yml's twelve (11) jobs")))
+    if ok18d and contradicted:
+        print(f"  CAUGHT  {MIRRORS[0]:20s} 'eleven (11) jobs' parses to 11, and a"
+              " self-contradicting pair is REPORTED rather than resolved silently")
+    else:
+        print(f"  MISSED  {MIRRORS[0]:20s} parenthesised numeral: agreement={ok18d},"
+              f" contradiction reported={contradicted}")
+        bad += 1
+
+    # (18e) A BARE, UN-BACKTICKED JOB NAME. Rule (8) reached job ids only inside code
+    # spans and the wf#job token, so "the local runner mirrors CI static-gates job in
+    # dev-ci.yml" -- the same claim with no backticks -- was invisible. Scoped to a
+    # NAMED workflow, where the candidate set is that workflow's own job ids and needs
+    # no guess about what "reads like a job"; a real id and an invented one are both
+    # asserted, because a rule that fires on neither is the state being fixed.
+    wfs18e = live_workflows(src)
+    pj18e = live_job_totals(src)
+    bare_real = "the local runner mirrors CI static-gates job in dev-ci.yml"
+    # The invented id must be SHAPED like one this repo uses (hyphenated) or the bare form
+    # would not even try to read it, and a case that cannot fire proves nothing.
+    bare_fake = "the local runner mirrors CI no-such-gate job in dev-ci.yml"
+    fire18e = mirror_target_findings(bare_real, "scripts/check.sh", wfs18e, pj18e)
+    fire18e_fake = mirror_target_findings(bare_fake, "scripts/check.sh", wfs18e, pj18e)
+    silent_bare = [x for x in fire18e if "static-gates" in x and "no such job" in x]
+    if not silent_bare and fire18e_fake:
+        print(f"  CAUGHT  {MIRRORS[0]:20s} a bare job name is graded: the live id is"
+              " silent, the invented one fails -- "
+              + fire18e_fake[0][:64])
+    else:
+        print(f"  MISSED  {MIRRORS[0]:20s} bare job name: false finding on a live id="
+              f"{silent_bare}, findings on an invented id={len(fire18e_fake)}")
+        bad += 1
 
     print(f"\n  {'self-test: all mutations caught' if not bad else f'{bad} gap(s)'}")
     return 1 if bad else 0

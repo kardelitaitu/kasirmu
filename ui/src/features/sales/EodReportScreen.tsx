@@ -14,6 +14,8 @@ import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
 import { printReceiptScoped } from '@/api/hardware';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { requiredLocalized } from '@/components';
+import { useToast } from '@/components/Toast';
 import './EodReportScreen.css';
 
 /**
@@ -275,6 +277,7 @@ export default function EodReportScreen() {
   const { l10n } = useLocalization();
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
+  const { addToast } = useToast();
   const [report, setReport] = useState<EodReport | null>(null);
   const [shifts, setShifts] = useState<ShiftDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -371,8 +374,16 @@ export default function EodReportScreen() {
       body += line('');
 
       await printReceiptScoped(sessionToken, { body });
-    } catch {
-      // Printing error — silently handled.
+    } catch (printErr) {
+      // Was `catch {}` — "Printing error — silently handled". A print button that
+      // prints nothing and says nothing is indistinguishable from one that worked,
+      // and on the Android shell it failed every time (no driver is ever registered
+      // there, so the command rejects with "no receipt printer registered").
+      console.error('EOD report print failed', printErr);
+      addToast({
+        message: requiredLocalized(l10n, 'payment-toast-print-failed'),
+        type: 'warning',
+      });
     } finally {
       setPrinting(false);
     }
@@ -381,7 +392,7 @@ export default function EodReportScreen() {
     // the end-of-day report print presents a destroyed session, rejects, and the button simply
     // does nothing -- on the one screen an operator expects to produce a signed record. deps
     // listed only lastRefresh, which the refresh button changes and a session switch does not.
-  }, [lastRefresh, sessionToken]);
+  }, [lastRefresh, sessionToken, l10n, addToast]);
 
   const exportCsv = useCallback(() => {
     const r = reportRef.current;

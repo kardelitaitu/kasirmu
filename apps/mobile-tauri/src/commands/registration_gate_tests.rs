@@ -91,7 +91,24 @@ mod debt;
 /// `pos::set_line_course_scoped` and `pos::publish_course_fired_scoped`, and `d29a7c0f4`
 /// retired `settings::set_hardware_settings`, netting one more name than the ledger's
 /// total recorded.
-const REGISTERED_FLOOR: usize = 324;
+///
+/// The 20-09-20 step (324 -> 332) is the tablet file-picker pass, and it is eight rather
+/// than seven for a reason worth keeping visible: `data::export_data`,
+/// `data::import_preview`, `data::import_data`, `avatars::set_avatar_scoped`,
+/// `avatars::clear_avatar_scoped`, `products_images::products_set_image_scoped` and
+/// `products_images::products_clear_image_scoped` are ADR #49 shims over `kasirmu-bridge`
+/// modules that name a permission, so `gated_bridge_stems()` reads them Gated and they
+/// moved no ceiling and no ledger row. The eighth, `auth::has_users`, was authored in
+/// another lane and travelled here because `lib.rs` could not be committed without it —
+/// it is the single new debt row, and it is recorded in docs/records/JOURNAL.md. Raising
+/// this records what landed; it does not approve it.
+///
+/// The 20-09-20 backup closeout step (332 -> 333) adds `data::create_backup_to`, the
+/// tablet-only backup-to-destination twin (b-full Phase 3 open item, §3.3 / §9 of
+/// todo-tablet-dialog-content-uri.md). It is a Gated ADR #49 shim over `kasirmu_bridge`,
+/// so it moves no ceiling and no ledger row — purely a surface-count increase, exactly
+/// like the seven file-picker shims. Raising this records what landed; it does not approve it.
+const REGISTERED_FLOOR: usize = 333;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.

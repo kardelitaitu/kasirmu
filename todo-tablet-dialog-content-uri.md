@@ -7,6 +7,22 @@
 **Goal:** Make the tablet's file pickers, backup, export and import work, by registering `tauri-plugin-dialog` on the mobile shell and bridging the `content://` ↔ filesystem-path gap that Android's Storage Access Framework opens.
 **Acceptance:** per phase, its own named command. AGENTS.md §4 governs the rename: the `todo-` token stays until every phase's acceptance command has been RUN and PASSED.
 
+### Phase status (measured 2026-09-20, HEAD `1ac42758e`)
+
+| Phase | State | Blocked on |
+|---|---|---|
+| 1 — declare + register the plugins | **Done.** `dd4082e2a` (declarations + capability), `5ffe3b170` (registration). | — |
+| 2 — the two image pickers | **Done** (`68a43eab7`). | — |
+| 3 — export / import | **Done.** `a50f1941a` shared bridge, `357dbdb7a` the two pickers, `ab2f23715` the Rust shims, `5ffe3b170` their registration. Backup closed out (2026-09-20) as the **tablet-only `create_backup_to` variant** — see §3.3 and §9. | — |
+| 4 — reconcile the six gates | **Done** (`1ac42758e`): 8 allowlist entries removed, ledger regenerated, three hand-kept pins moved, JOURNAL entry filed. | — |
+
+Two things this table does **not** say, and both are load-bearing:
+
+1. **`apps/mobile-tauri/src/lib.rs` carries another lane's `commands::auth::has_users`, whose definition is still not in HEAD's `auth.rs`.** The owner ruled (2026-09-20) to commit lib.rs anyway, so the checkout compiles and every gate is green *locally*, but a CI checkout of `5ffe3b170` cannot: `auth::has_users` is undefined at that commit. **RESOLVED 2026-09-20:** that lane's `auth.rs` (`has_users`) was committed (`699992de9`) and `cargo check -p kasirmu-mobile` is green at HEAD, so the undefined reference that made CI red is gone. The debt row, the ceiling rise and the JOURNAL entry were all filed as an **absorb, not an authorship** — the same standing as the QRIS-auto absorb in `docs/records/JOURNAL.md`.
+2. **Nothing here has been run on a device.** No APK was built and no tablet was attached in this pass; every claim about Android runtime behaviour is still `[unrun]`, which is why this file keeps its `todo-` token even though all four phases' non-device acceptance commands pass. **Narrowed 2026-09-20:** the host `cargo check -p kasirmu-mobile` is green (the crate compiles), but a real Android cross-compile was attempted and failed on an environment gap, not on code — `cargo build --target aarch64-linux-android` dies in `libsqlite3-sys` C compilation with `failed to find tool "aarch64-linux-android-clang"` and `sqlite3.c: fatal error: 'stdio.h' file not found`. The NDK C cross-compiler wrapper is not on PATH / has no sysroot in this checkout, so it cannot stand in as a device-run proof; that is a toolchain config gap to flag, not a defect in this plan's code.
+
+Verified this pass: `cargo test -p kasirmu-mobile` → 677 passed / 0 failed; `python3 scripts/verify-ipc-parity.py` → exit 0; `python3 scripts/allowlist-schema.py --self-test` → OK; `cd ui && npm run test` → 596 files / 10165 tests passed.
+
 ---
 
 ## 0. Why this document exists
@@ -216,13 +232,22 @@ Phase 2's bridge runs **toward** the picker (read bytes, write a real path). Pha
 - **Export / backup (outbound) — the other direction.** `export_data` takes `outputPath` (`ui/src/api/data.ts:22-28`) and the Rust side writes a file there. A `content://` URI is not a path `tokio::fs` can open, so the Rust side cannot write to it. Bridge it as: let Rust write to a **cache path**, then JS `readFile(cachePath)` → `writeFile(contentUri, bytes)` via `plugin-fs` (§1.1 — the write mode is `"wt"`). The user still gets the system save dialog and still chooses the destination; only the final byte movement crosses back through JS.
 - **`create_backup` / `get_backup_status` take no destination at all** — measured at `data.rs:294` and `:337`, `create_backup(db_path)` and `get_backup_status(db_path)`. They write where the shell tells them to. Check whether the tablet's existing callers expect a path back before wiring a picker to them; a backup that lands in the app cache with no user-visible destination is a different feature from one the user chooses a home for, and **this plan does not settle which one the tablet should get.**
 
-> **Open item, needs the owner.** The three groups are not equally ready. Import and export are mechanical once Phase 2's helper exists. **Backup is not** — it has no destination parameter, and giving it one is a contract change to a command the desktop also calls. Phase 3 can land import + export and leave backup allowlisted; that is the honest partial, and it should be chosen deliberately rather than discovered.
+> **Open item — SETTLED 2026-09-20 by the owner: tablet-only `create_backup_to`.** The three groups are not equally ready. Import and export are mechanical once Phase 2's helper exists. **Backup was the open one** — it has no destination parameter, and giving it one is a contract change to a command the desktop also calls. The owner chose *not* to change the desktop contract: instead a new tablet-only command `create_backup_to(target_path)` lands in the bridge (`crates/kasirmu-bridge/src/data.rs`) and a Gated shim (`apps/mobile-tauri/src/commands/data.rs`) registers it on the tablet only. The desktop's `create_backup` / `get_backup_status` (and `_scoped` twins) are untouched. The tablet's `handleBackup` now opens the save dialog, bridges the chosen `content://` URI to a cache path, points `create_backup_to` at it, then walks the bytes out — the same two-leg cross as export. Status read keeps calling the desktop's `get_backup_status(_scoped)` (no destination concern), which is why those two stay in the tablet allowlist as gaps. This is recorded as a decision, not a gap being filled.
 
 ### 3.4 `ui/src/api/data.ts`
 
 `pickExportPath` (`:64-70`) and `pickImportFile` (`:73-79`) return `path` straight from the dialog plugin. They are the two functions the content-URI bridge must wrap, and they are the right place for it: every caller (`useExportWizard`, `useImportWizard`, `useBackupStatus`) goes through them, so no screen needs to learn about `content://`.
 
 Note `ui/src/api/data.ts:123-142`: `importPreview` and `importData` already take a `filePath` string, and the args are sent as `{ file_path: filePath, password }`. The bridge changes what that string *is*, not its type.
+
+#### 3.5 What landed, and the two decisions it forced
+
+`a50f1941a` extracted the Phase-2 bridge into `ui/src/api/file-bridge.ts` (`copyUriToCache` / `copyCacheToUri` / `cachePathFor`) so both phases share one implementation. `357dbdb7a` wrapped the two pickers. Two calls had to be made, and both are recorded here because a future pass will otherwise "fix" them:
+
+- **Export needs a one-slot handoff, not a cache.** `export_data` receives one path and Rust cannot write to a URI, so `pickExportPath` returns a cache path and holds the user's URI in a single module-level slot that `exportData` consumes. This is deliberately *not* a Map: only one export can be in flight (`useExportWizard` guards with `exportingRef`), and a slot that is overwritten by the next pick cannot leak across sessions the way a registry can. `result.path` is then reported as the URI, because the cache copy has been deleted by the time `ExportSection.tsx:263` renders "Data exported to:" — pointing that at a dead temp file is worse than pointing at the destination the user chose.
+- **Import's copy is deliberately never deleted.** It is read twice (`import_preview`, then `import_data`) with a password prompt and a confirm dialog between, so no single call site knows when the flow is over; Android reclaims the app cache on its own. This is the opposite of the image pickers, whose single ingest call is followed by an explicit `release()`. The asymmetry is intentional, not an oversight.
+
+`fs:allow-remove` had to be added to the capability alongside the two new `$APPCACHE` stems: `fs:allow-write-file` enables only `write_file` / `open` / `write` (`tauri-plugin-fs-2.5.1/permissions/autogenerated/commands/write_file.toml`), so without it every `remove` is denied and the temp copies silently accumulate — a failure no test and no type error would have surfaced.
 
 ---
 
@@ -283,5 +308,26 @@ Do not run `git push` without an explicit order.
 
 - **No device was attached and no APK was built in this pass.** Every `[unrun]` marker is an acceptance item, not a fact. The Android runtime behaviour of the four new permissions is inferred from the capability/ACL system and the vendored plugin sources, not observed.
 - **The `plugin-fs` scope-bypass finding is read from source, not tested.** It is stated as a code path (`commands.rs:1448-1477`), which is what it is.
-- **Phase 3's backup half is unresolved by design** (§3.3). Import and export are ready; backup needs a destination decision that belongs to the owner.
+- **Phase 3's backup half is now resolved** (§3.3, §9) as the tablet-only `create_backup_to` variant, settled by the owner 2026-09-20. Import and export landed earlier; backup no longer needs a destination decision — it has a tablet-only home, and the desktop's `create_backup` / `get_backup_status` are untouched.
 - **No measurement of the debug-APK size effect** of adding two plugins. `tauri-plugin-fs` is already in the lock graph as a transitive dependency of `tauri-plugin-dialog`, so the marginal native code is small — but that is reasoning, not a measurement, and this document does not put a number on it.
+
+---
+
+## 9. Backup closeout — the tablet-only `create_backup_to` variant (2026-09-20)
+
+**The decision.** The owner chose the *tablet-only variant* over changing the desktop's `create_backup` contract: add a new `create_backup_to(target_path)` command registered on the tablet only, leaving `create_backup` / `get_backup_status` (and their `_scoped` twins) untouched so the desktop is unaffected. The tablet's save dialog bridges the `content://` URI the same way export does.
+
+**What changed (this closeout slice).**
+
+| Layer | Change |
+|---|---|
+| Bridge | `crates/kasirmu-bridge/src/data.rs` — new `create_backup_to(ctx, session_token, target_path)`: resolves the session, enforces `permissions::DATA_EXPORT`, rejects `..` traversal (C-1), then `Store::backup(target_path)`. Gated, so it adds no debt row. |
+| Tablet shim | `apps/mobile-tauri/src/commands/data.rs` — `create_backup_to` Gated shim (ADR #49 shape). `data.rs`'s "Deliberately absent" header rewritten to record status pair stays out, backup-to-destination twin added. |
+| Registration | `apps/mobile-tauri/src/lib.rs` — `commands::data::create_backup_to` added to `generate_handler!`. `REGISTERED_TOTAL` / `REGISTERED_FLOOR` 332 → 333, `DEBT_CEILING` unchanged (Gated). |
+| Capability | `apps/mobile-tauri/capabilities/mobile.json` — `$APPCACHE/backup-*` added to `fs:scope` (the outbound cache write leg). `fs:allow-write-file` + `fs:allow-remove` already present. |
+| UI | `ui/src/api/data.ts` — `BACKUP_STEM`, `pickBackupPath` (save dialog → cache path, holding destination), `createBackupTo` (bridges bytes out via `copyCacheToUri`). `ui/src/features/settings/hooks/useBackupStatus.ts` — `handleBackup` branches on `isTabletShell()`: tablet opens the dialog and calls `createBackupTo`; desktop keeps `createBackup` / `createBackupScoped`. |
+| Parity | `scripts/ipc-parity-allowlist.json` — `create_backup_to` added to `/tablet`. `create_backup` / `create_backup_scoped` / `get_backup_status` / `get_backup_status_scoped` stay (status read still calls them; thin wrappers remain for desktop). |
+
+**Why status stays unscoped on the tablet.** `useBackupStatus` mount fetch still calls `get_backup_status(_scoped)`; the tablet registers neither, so the "Last backup" line is a silent no-op on the tablet exactly as before — that is the pre-existing F-017 open hole (logged as `backup_ungated_no_session`), not a regression this slice introduces. The owner scoped only the *write* (which needed a destination), not the read.
+
+**Remains `[unrun]`.** No APK was built and no tablet attached for this slice either; the two-leg bridge is inferred from source (§1.1) and the desktop parity of the export flow, not observed on a device.

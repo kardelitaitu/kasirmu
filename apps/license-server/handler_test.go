@@ -799,8 +799,10 @@ func TestStatusHandler_TenantNoSubscription(t *testing.T) {
 	if body["active"] != false {
 		t.Errorf("expected active=false, got %v", body["active"])
 	}
-	if body["tier"] != "unknown" {
-		t.Errorf("expected tier 'unknown', got %v", body["tier"])
+	// A tenant with no active subscription is on the free tier -- the floor. This used to
+	// expect "unknown", which clients rendered as a blank tier.
+	if body["tier"] != "free" {
+		t.Errorf("expected tier 'free', got %v", body["tier"])
 	}
 }
 

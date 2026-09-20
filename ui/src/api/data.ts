@@ -2,6 +2,12 @@
 
 import { loggedInvoke } from '@/utils/logged-invoke';
 import { open, save } from '@tauri-apps/plugin-dialog';
+import {
+  cachePathFor,
+  copyCacheToUri,
+  copyUriToCache,
+  isContentUri,
+} from '@/api/file-bridge';
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -59,23 +65,142 @@ export interface ImportDataResult {
 }
 
 // ── File dialog helpers ───────────────────────────────────────
+//
+// Both pickers return a string that the callers pass straight to Rust as a
+// path, and a `content://` URI is not one. So each of them bridges what the
+// dialog gave it (see `@/api/file-bridge` for the mechanism and for the
+// scope asymmetry that makes a cache path need an `fs:scope` entry while a URI
+// does not). The bridge changes what the string *is*, never its type — no
+// caller in `features/settings/` learns that Android has two kinds of file.
+//
+// Each stem below is mirrored by an `$APPCACHE/` allow-pattern in
+// `apps/mobile-tauri/capabilities/mobile.json`.
 
-/** Open a save dialog to choose an export file path. Returns the chosen path or null. */
+/** Leading part of the export's cache filename. Mirrored by `$APPCACHE/export-*`. */
+const EXPORT_STEM = 'export-';
+
+/** Leading part of the import's cache filename. Mirrored by `$APPCACHE/import-*`. */
+const IMPORT_STEM = 'import-';
+
+/** Leading part of the backup's cache filename. Mirrored by `$APPCACHE/backup-*`. */
+const BACKUP_STEM = 'backup-';
+
+/** Extension of a `.kasirpkg` package, on both sides of the bridge. */
+const PACKAGE_EXTENSION = '.kasirpkg';
+
+/**
+ * Where the user's chosen export destination is, while the export is in flight.
+ *
+ * The outbound bridge needs two values but `exportData` only receives one:
+ * Rust can write to a cache path and cannot write to a URI, so the command is
+ * handed the cache path and the URI the user actually picked has to survive
+ * until the bytes exist. A single slot, overwritten by the next pick and
+ * cleared by the export that consumes it — not a registry, because only one
+ * export can be in flight (`useExportWizard` guards with `exportingRef`).
+ */
+let pendingExport: { cachePath: string; destination: string } | null = null;
+
+/**
+ * Where the user's chosen backup destination is, while the backup is in flight.
+ *
+ * The tablet's `create_backup_to` writes to a cache path (Rust cannot open a
+ * `content://` URI), and the bytes are walked out to the destination the user
+ * actually picked afterwards — the same two-leg cross `pendingExport` drives for
+ * export. A single slot, overwritten by the next pick and cleared by the backup
+ * that consumes it.
+ */
+let pendingBackup: { cachePath: string; destination: string } | null = null;
+
+/**
+ * Open a save dialog to choose an export destination.
+ *
+ * Returns a path `export_data` can write to — which on Android is a cache path,
+ * not the destination the user chose. The real destination is carried by
+ * `pendingExport` and applied by `exportData`, so the caller's contract is
+ * unchanged: hand back what this returned.
+ *
+ * Returns `null` when the user dismissed the dialog, on both shells.
+ */
 export const pickExportPath = async (): Promise<string | null> => {
-  const path = await save({
+  const chosen = await save({
     defaultPath: `kasir_export_${new Date().toISOString().slice(0, 10)}.kasirpkg`,
     filters: [{ name: 'kasir.mu Package', extensions: ['kasirpkg', 'ozpkg'] }],
   });
-  return path;
+  if (!chosen) return null;
+
+  // Desktop: the chosen value is already a writable path.
+  if (!isContentUri(chosen)) {
+    pendingExport = null;
+    return chosen;
+  }
+
+  const cachePath = await cachePathFor(EXPORT_STEM, PACKAGE_EXTENSION);
+  pendingExport = { cachePath, destination: chosen };
+  return cachePath;
 };
 
-/** Open a file picker dialog to select an .kasirpkg import file. Returns the chosen path or null. */
+/**
+ * Open a file picker to select an `.kasirpkg` import file.
+ *
+ * On Android the picked URI is copied into the app cache and the copy's path is
+ * returned, because `import_preview` and `import_data` read the file with
+ * `tokio::fs` and a URI is not openable that way.
+ *
+ * The copy is deliberately **not** deleted afterwards. It is read twice — once
+ * to preview, once to import — with a password prompt and a confirm dialog in
+ * between, so it has to outlive this call, and there is no point in the flow
+ * where every consumer is known to be finished. Android reclaims the app cache
+ * on its own; a package left there costs disk the OS was going to take back
+ * anyway. (Contrast the image pickers, whose single ingest call is followed by
+ * an explicit `release`.) What is shown to the operator as the selected file is
+ * this path, which is the same kind of absolute path desktop already showed.
+ *
+ * Returns `null` when the user dismissed the dialog, on both shells.
+ */
 export const pickImportFile = async (): Promise<string | null> => {
-  const path = await open({
+  const picked = await open({
     filters: [{ name: 'kasir.mu Package', extensions: ['kasirpkg', 'ozpkg'] }],
     multiple: false,
   });
-  return path;
+  if (!picked) return null;
+
+  const source = Array.isArray(picked) ? picked[0] : picked;
+  if (!source) return null;
+
+  if (!isContentUri(source)) return source;
+
+  const bridged = await copyUriToCache(source, IMPORT_STEM, PACKAGE_EXTENSION);
+  return bridged.path;
+};
+
+/**
+ * Open a save dialog to choose a backup destination (tablet only).
+ *
+ * The desktop's `create_backup` / `create_backup_scoped` write to the shell's
+ * `default_backup_path` with no destination, so the tablet uses a different
+ * command, `create_backup_to`, which takes the path this returns. On Android that
+ * is a cache path, not the destination the user chose — the real destination rides
+ * `pendingBackup` and is applied by `createBackupTo`, so the caller's contract is
+ * unchanged: hand back what this returned.
+ *
+ * Returns `null` when the user dismissed the dialog, on both shells.
+ */
+export const pickBackupPath = async (): Promise<string | null> => {
+  const chosen = await save({
+    defaultPath: `kasir_backup_${new Date().toISOString().slice(0, 10)}.backup.db`,
+    filters: [{ name: 'kasir.mu Backup', extensions: ['backup.db', 'db'] }],
+  });
+  if (!chosen) return null;
+
+  // Desktop: the chosen value is already a writable path.
+  if (!isContentUri(chosen)) {
+    pendingBackup = null;
+    return chosen;
+  }
+
+  const cachePath = await cachePathFor(BACKUP_STEM, '.backup.db');
+  pendingBackup = { cachePath, destination: chosen };
+  return cachePath;
 };
 
 // ── IPC calls ─────────────────────────────────────────────────
@@ -109,15 +234,64 @@ export const createBackup = (): Promise<BackupResult> =>
 export const createBackupScoped = (sessionToken: string): Promise<BackupResult> =>
   loggedInvoke<BackupResult>('create_backup_scoped', { sessionToken });
 
-/** Export store data to an encrypted .kasirpkg file. */
-export const exportData = (
+/**
+ * Backup to an operator-chosen destination (tablet only).
+ *
+ * `targetPath` must be what `pickBackupPath` returned. On Android that is a cache
+ * path, so once the command has written it the bytes still have to reach the
+ * destination the user actually chose — `copyCacheToUri` moves them and drops the
+ * cache copy, mirroring `exportData`. `result.path` is reported as the user's
+ * destination rather than the cache path, for the same reason export does.
+ *
+ * The desktop never calls this: it keeps `create_backup` / `create_backup_scoped`,
+ * which take no destination. Only the tablet shell registers `create_backup_to`.
+ */
+export const createBackupTo = async (
+  sessionToken: string,
+  targetPath: string,
+): Promise<BackupResult> => {
+  const result = await loggedInvoke<BackupResult>('create_backup_to', {
+    sessionToken,
+    targetPath,
+  });
+
+  const pending = pendingBackup;
+  if (!pending || pending.cachePath !== targetPath) return result;
+
+  pendingBackup = null;
+  await copyCacheToUri(pending.cachePath, pending.destination);
+  return { ...result, path: pending.destination };
+};
+
+/**
+ * Export store data to an encrypted .kasirpkg file.
+ *
+ * `args.outputPath` must be what `pickExportPath` returned. On Android that is
+ * a cache path, so once the command has written it the bytes still have to
+ * reach the destination the user actually chose — `copyCacheToUri` moves them
+ * and drops the cache copy.
+ *
+ * `result.path` is reported as the user's destination rather than the cache
+ * path, because the cache copy is gone by the time the caller shows it, and
+ * "Data exported to:" pointing at a deleted temp file is worse than pointing at
+ * the URI the user picked.
+ */
+export const exportData = async (
   sessionToken: string,
   args: ExportDataArgs,
-): Promise<ExportDataResult> =>
-  loggedInvoke<ExportDataResult>('export_data', {
+): Promise<ExportDataResult> => {
+  const result = await loggedInvoke<ExportDataResult>('export_data', {
     sessionToken,
     args,
   });
+
+  const pending = pendingExport;
+  if (!pending || pending.cachePath !== args.outputPath) return result;
+
+  pendingExport = null;
+  await copyCacheToUri(pending.cachePath, pending.destination);
+  return { ...result, path: pending.destination };
+};
 
 /** Preview an .kasirpkg import file to see its contents before importing. */
 export const importPreview = (

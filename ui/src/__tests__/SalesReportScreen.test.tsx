@@ -5,6 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
+import { ToastProvider } from '@/components/Toast';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
 import userEvent from '@testing-library/user-event';
@@ -241,7 +242,11 @@ const l10n = new ReactLocalization([bundle]);
 function renderScreen() {
   return render(
     <LocalizationProvider l10n={l10n}>
-      <SalesReportScreen />
+      {/* The report's print button now reports a failed print through the toast
+          context, so the screen has to render under a ToastProvider. */}
+      <ToastProvider>
+        <SalesReportScreen />
+      </ToastProvider>
     </LocalizationProvider>,
   );
 }

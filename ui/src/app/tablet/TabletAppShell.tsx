@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef, lazy } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import TabletAppLayout from './TabletAppLayout';
-import { completeSetup, dismissSetupWizard, getSetupStatus } from '@/api/settings';
+import { completeSetup, dismissSetupWizard } from '@/api/settings';
+import { readBootGate } from '@/utils/boot-retry';
 import { useFeatures } from '@/hooks/useFeatures';
 import { getPage, isPageAccessible } from '@/registries/page-registry';
 import PermissionDenied from '@/components/PermissionDenied';
@@ -16,6 +17,7 @@ import { toWorkspaceType, type WorkspaceType } from '@/features/settings/workspa
 // ── PERF-01: workspace/flow screens load on demand ────────────────
 const SetupWizard = lazy(() => import('@/features/setup/SetupWizard'));
 const StaffLoginScreen = lazy(() => import('@/features/auth/StaffLoginScreen'));
+const CreatePinScreen = lazy(() => import('@/features/auth/CreatePinScreen'));
 const SessionLockScreen = lazy(() => import('@/features/auth/SessionLockScreen'));
 const WorkspaceHome = lazy(() => import('@/features/workspaces/WorkspaceHome'));
 const RetailPosScreen = lazy(() => import('@/features/retail/RetailPosScreen'));
@@ -56,6 +58,11 @@ export default function TabletAppShell() {
 
   const [loading, setLoading] = useState(true);
   const [hasCompletedSetup, setHasCompletedSetup] = useState(false);
+  // null = UNKNOWN. Mirrors AppShell's hasAnyUsers: `false` is the value that
+  // opens CreatePinScreen, so a failed/absent has_users read must stay null
+  // and fall through to staff login — an unavailable capability is never
+  // reported as the positive assertion "this store has no users".
+  const [hasAnyUsers, setHasAnyUsers] = useState<boolean | null>(null);
   const [currentRoute, setCurrentRoute] = useState('pos');
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
@@ -106,24 +113,28 @@ export default function TabletAppShell() {
     return () => document.removeEventListener('keydown', handler);
   }, [activeWorkspace]);
 
-  // On mount, check if setup was already completed.
+  // On mount, check if setup was already completed and whether any staff
+  // account exists. readBootGate runs the two reads in parallel with
+  // independent verdicts — one read's failure cannot forge the other's.
+  // Both reads are wrapped in the lost-response retry (boot-retry.ts): on
+  // Android, invokes issued while the backend is still initialising can be
+  // answered into the void (Rust resolves; the response never reaches the
+  // WebView), and without re-issuing the gate hung on the splash forever on
+  // a fresh install. Measured 2026-09-20 on a pm-clear'd tablet.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const status = await getSetupStatus();
-        if (!cancelled) {
-          setHasCompletedSetup(status.completed);
-        }
-      } catch {
-        if (!cancelled) {
-          setHasCompletedSetup(false);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
+      const [setupRes, usersRes] = await readBootGate();
+      if (cancelled) return;
+      // A failed setup read pins to `false` (the wizard) — pinned by
+      // TabletAppShell.test.tsx as the safer failure direction: on a device
+      // whose setup state is unknown, the wizard is the only route forward.
+      setHasCompletedSetup(setupRes.ok ? setupRes.value.completed : false);
+      // Same unknown-is-not-no-users discipline as AppShell: a failed read
+      // leaves hasAnyUsers at null, which falls through to staff login.
+      // Only an answered `false` opens the owner bootstrap screen.
+      setHasAnyUsers(usersRes.ok ? usersRes.value.has_users : null);
+      setLoading(false);
     })();
     return () => { cancelled = true; };
   }, []);
@@ -226,10 +237,13 @@ export default function TabletAppShell() {
   // `dismissSetupWizard` fails, so this cannot trap the terminal.
   //
   // The desktop AppShell keeps the wizard after `!session`, and must: it runs two
-  // earlier pre-login gates the tablet cannot — `!bootAllowed` (licence
-  // activation) and `hasUsers === false` (owner bootstrap). The tablet registers
-  // neither `get_license_status` nor `has_users`, so without this branch its
-  // first-run funnel is empty.
+  // earlier pre-login gates the tablet historically could not — `!bootAllowed`
+  // (licence activation) and `hasUsers === false` (owner bootstrap). Licence
+  // activation remains desktop-only. Owner bootstrap now exists here too: the
+  // tablet registers `has_users` (bridge twin of the desktop door) and gates
+  // CreatePinScreen below — without it a completed wizard with zero users
+  // dead-ended on a login that could never succeed, because nothing on the
+  // tablet called `bootstrap_owner` (the one command that seeds roles).
   //
   // Known consequence of moving this branch, recorded so it is not rediscovered as
   // a bug: the mount read's catch sets `hasCompletedSetup = false`, so a FAILED
@@ -251,6 +265,26 @@ export default function TabletAppShell() {
   }
 
   if (!session) {
+    // Owner bootstrap (mirrors the desktop AppShell's hasUsers === false
+    // branch): the wizard configures the store but deliberately does not
+    // seed roles or users — that is `bootstrap_owner`'s job, and nothing on
+    // the tablet reached it before this branch existed. The result was a
+    // first-run dead end: a login screen with zero users, unrecoverable
+    // without adb. `null` (read failed / command absent) stays on login —
+    // unknown is not "no users".
+    if (hasAnyUsers === false) {
+      return (
+        <LazyBoundary>
+          <CreatePinScreen
+            onCreated={() => {
+              setHasAnyUsers(true);
+              // After bootstrap, the user is auto-logged-in by
+              // CreatePinScreen via swapSession — no further action needed.
+            }}
+          />
+        </LazyBoundary>
+      );
+    }
     return (
       <LazyBoundary>
         <StaffLoginScreen />

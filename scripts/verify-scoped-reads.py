@@ -596,6 +596,45 @@ BAIL_RE = re.compile(
     r"\s*\{?\s*(?:return|throw)\b", re.S)
 
 
+def _in_force(head, pattern, strict_block=False):
+    """True when a match of `pattern` is still in force at the end of `head`.
+
+    The window's last line IS the graded call, so the only question is whether anything between
+    the guard and that line closed the block the guard sat in. Answered with a brace-depth walk,
+    not with a search: a guard inside a callback that has already returned to its caller guards
+    nothing. A guard whose own block closed at DEPTH 0 reads as still open, which no guard in
+    this tree is: each sits inside a function.
+    """
+    head = head.rstrip()
+    cut = head.rfind("\n")
+    if cut > 0:
+        head = head[:cut + 1]
+    for m in pattern.finditer(head):
+        depth = 0
+        guard_depth = None
+        opened = False
+        for i, ch in enumerate(head):
+            if i == m.start():
+                guard_depth = depth
+            if ch == "{":
+                depth += 1
+                if guard_depth is not None and depth > guard_depth:
+                    opened = True
+            elif ch == "}":
+                depth -= 1
+                # strict_block: the block the guard OPENED must still be open. Without it a
+                # guard at the match's own depth reads as in force after its block has closed,
+                # which is only harmless where the guard sits deeper than the block it guards.
+                if guard_depth is not None and depth < guard_depth:
+                    break
+                if strict_block and guard_depth is not None and opened and depth <= guard_depth:
+                    break
+        if guard_depth is not None and (
+                depth > guard_depth if strict_block else depth >= guard_depth):
+            return True
+    return False
+
+
 def _dominating_bail(window):
     """True when a negated token bail is still in force at the end of the window.
 
@@ -608,26 +647,23 @@ def _dominating_bail(window):
     # trailing '}' -- the line that closes the function in every fixture, and in the tree -- look
     # like the bail's own block had ended, and every bail in this repo sits inside a function that
     # closes eventually. That mistake was caught by case 3 below, which stayed a violation.
-    head = window.rstrip()
-    cut = head.rfind("\n")
-    if cut > 0:
-        head = head[:cut + 1]
-    for m in BAIL_RE.finditer(head):
-        depth = 0
-        bail_depth = None
-        for i, ch in enumerate(head):
-            if i == m.start():
-                bail_depth = depth
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if bail_depth is not None and depth < bail_depth:
-                    break
-        if bail_depth is not None and depth >= bail_depth:
-            return True
-    return False
+    return _in_force(window, BAIL_RE)
 
+
+def _platform_guard_excludes_shell(text, pos, shell):
+    """True when the graded call sits inside an `if` that excludes the shell being graded.
+
+    A platform guard is a real gate for the shell it excludes -- and the one shape this file
+    could not see before. `if (isTabletShell()) { ... createBackupTo(...) }` reaches a
+    tablet-only command with no scoped twin to route through, so the ADR #7 token arms above
+    can never clear it. Read from the FILE rather than the 9-line window, because the enclosing
+    `if` sits routinely further up than the window reaches. Only the POSITIVE form counts:
+    `!isTabletShell()` is the desktop branch, where the call is reachable. IPC parity grades
+    registration per shell independently, so this cannot hide a genuinely missing one.
+    """
+    other = "isDesktopShell" if shell == "tablet" else "isTabletShell"
+    pattern = re.compile(r"\bif\s*\(\s*" + other + r"\s*\(\s*\)\s*\)")
+    return _in_force(text[:pos + 1], pattern, strict_block=True)
 
 def _window_is_guarded(window):
     # Three independent facts make a window guarded, tested in the order that says the most first:
@@ -1049,7 +1085,8 @@ def audit(shells, repo=REPO, allowlist=ALLOWLIST):
                             continue
                         upto = text[:m.start()].count("\n")
                         window = "\n".join(text.split("\n")[max(0, upto - 8):upto + 1])
-                        if _window_is_guarded(window):
+                        if _window_is_guarded(window) or _platform_guard_excludes_shell(
+                                text, m.start(), shell):
                             cleared.append(
                                 (shell, cmd, os.path.relpath(path, repo).replace(chr(92), "/"),
                                  upto + 1))
@@ -2891,6 +2928,38 @@ def _exclusion_predicate_self_test():
     return failures
 
 
+def _platform_guard_self_test():
+    """The platform-guard arm, on the shapes it must and must not clear."""
+    cases = (
+        ("tablet branch, graded desktop",
+         "if (isTabletShell()) {\n  result = await createBackupTo(sessionToken, cache);\n}",
+         "desktop", True),
+        ("the same branch, graded tablet",
+         "if (isTabletShell()) {\n  result = await createBackupTo(sessionToken, cache);\n}",
+         "tablet", False),
+        ("negated form is the desktop branch, not a guard",
+         "if (!isTabletShell()) {\n  result = await createBackupTo(sessionToken, cache);\n}",
+         "desktop", False),
+        # Wrapped in a function: every guard in the tree sits in one, and a guard at depth 0
+        # whose block closes returns to its own depth -- indistinguishable from still-open here.
+        ("the guard closed before the call",
+         "const h = async () => {\n  if (isTabletShell()) {\n    pick();\n  }\n  return createBackupTo(sessionToken, cache);\n};",
+         "desktop", False),
+        ("desktop branch, graded tablet",
+         "if (isDesktopShell()) {\n  result = await createBackupTo(sessionToken, cache);\n}",
+         "tablet", True),
+    )
+    failures = 0
+    for label, body, shell, expect in cases:
+        stripped = strip_comments(body)
+        m = re.search(r"\bcreateBackupTo\s*\(", stripped)
+        got = bool(m) and _platform_guard_excludes_shell(stripped, m.start(), shell)
+        ok = got == expect
+        print(f"    {'ok  ' if ok else 'FAIL'} platform guard: {label}")
+        if not ok:
+            failures += 1
+    return failures
+
 def self_test():
     print("  verify-scoped-reads self-test")
     failures = 0
@@ -2921,6 +2990,7 @@ def self_test():
         failures += 1
     else:
         print("    ok   classifier can report a violation (not vacuous)")
+    failures += _platform_guard_self_test()
     failures += _shape_self_test()
     failures += _read_retry_self_test()
     failures += _aim_self_test()

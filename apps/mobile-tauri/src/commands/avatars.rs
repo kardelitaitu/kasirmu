@@ -1,4 +1,5 @@
-//! Own-avatar read command — the tablet half of the desktop's `avatars.rs`.
+//! Own-avatar read and avatar write commands — the tablet half of the desktop's
+//! `avatars.rs`.
 //!
 //! ## Why this module exists (parity gap, closed 2026-09-19)
 //!
@@ -24,26 +25,45 @@
 //! indistinguishable and the sidebar header's avatar was permanently the
 //! initials fallback.
 //!
-//! ## Why only the READ is registered here
+//! ## Why only the READ *was* registered here — and why that is overturned
 //!
-//! That split is an owner ruling (2026-09-19), not an omission:
+//! The split was an owner ruling (2026-09-19), and its reasoning was correct at
+//! the time:
 //!
 //! * the read **completes an existing surface** — `PosScreen` calls it
 //!   unconditionally on mount and the tablet renders that screen, so the door is
 //!   already invoked by shipped UI;
 //! * the two writes would **invent a surface**, which this repo does not do. Their
-//!   affordance is the restaurant sidebar's "Change photo", whose own string reads
+//!   affordance is the restaurant sidebar's "Change photo", whose string then read
 //!   `restaurant-avatar-desktop-only = Changing your photo needs the desktop app`,
-//!   and this shell bundles no dialog plugin to pick a file with. They are recorded
-//!   as a desktop-only product choice in `scripts/ipc-parity-allowlist.json`,
-//!   following the memo-authoring and legal-entity precedents.
+//!   and **this shell bundled no dialog plugin to pick a file with**. They were
+//!   recorded as a desktop-only product choice in
+//!   `scripts/ipc-parity-allowlist.json`, following the memo-authoring and
+//!   legal-entity precedents.
+//!
+//! Both premises are now false, and it is the owner who reversed the ruling
+//! (2026-09-20, "we want b-full"):
+//!
+//! * the dialog plugin **is** bundled — `tauri_plugin_dialog` and
+//!   `tauri_plugin_fs` were promoted to direct dependencies of this shell and
+//!   registered in `lib.rs`, with `dialog:allow-open` / `dialog:allow-save` and a
+//!   narrow `fs:scope` granted in `capabilities/mobile.json`;
+//! * the string is **gone**. `PosScreen` now routes "Change photo" through
+//!   `ui/src/api/image-pick.ts`, which bridges the `content://` URI Android
+//!   returns into a real cache path, and the guard string is `image-pick-app-only`
+//!   — "app", not "desktop", because what it excludes is the browser dev preview,
+//!   not the tablet.
+//!
+//! So the two writes are registered below, and the allowlist entry that called
+//! them desktop-only is stale from the moment this file carries them.
 //!
 //! ## ADR #49
 //!
-//! The body is the bridge's. This shim borrows a `BridgeCtx` and maps `BridgeError`
-//! back to `AppError`; it holds no SQL, no gate and no lock. No media root is
-//! injected — unlike `set_avatar_scoped`, the read touches no file, so
-//! `BridgeCtx::media_cache_dir` is not needed here.
+//! Every body is the bridge's. Each shim borrows a `BridgeCtx` and maps
+//! `BridgeError` back to `AppError`; none holds SQL, a gate or a lock. The read
+//! injects no media root — unlike `set_avatar_scoped`, it touches no file — while
+//! the write takes the same root `AppState::bridge_ctx()` already resolved from
+//! `app_cache_dir()` (`apps/mobile-tauri/src/state.rs:449-458`).
 //!
 //! Classification, measured rather than assumed: `crates/kasirmu-bridge/src/avatars.rs`
 //! names a permission constant, so its file stem is in `gated_bridge_stems()`, and a
@@ -74,6 +94,64 @@ pub async fn get_own_avatar_scoped(
 ) -> Result<Option<String>, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::avatars::get_own_avatar_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// The error text both shells report when the media root cannot be resolved.
+///
+/// `bridge_ctx()` logs the underlying error and degrades to `None`; a caller
+/// still has to be told, and told the same thing on both shells.
+const MEDIA_ROOT_UNAVAILABLE: &str = "resolving app cache dir: media root unavailable";
+
+// ── Command: write avatar ──────────────────────────────────────────────
+
+/// Set `user_id`'s avatar from the image at `source_path`.
+///
+/// Zero image bytes cross the IPC boundary — what arrives is a path, and on
+/// Android that path is the cache copy `ui/src/api/file-bridge.ts` made from the
+/// `content://` URI the picker returned. Self-writes need no grant; writing
+/// another user's avatar requires `staff:update`, decided in the bridge.
+///
+/// Returns the 16-hex-char content hash now stored in `users.avatar`.
+#[command]
+pub async fn set_avatar_scoped(
+    session_token: String,
+    user_id: String,
+    source_path: String,
+    state: State<'_, AppState>,
+) -> Result<String, AppError> {
+    let ctx = state.bridge_ctx();
+    let image_root = ctx
+        .media_cache_dir
+        .clone()
+        .ok_or_else(|| AppError::Internal(MEDIA_ROOT_UNAVAILABLE.into()))?;
+    kasirmu_bridge::avatars::set_avatar_scoped(
+        &ctx,
+        &session_token,
+        &user_id,
+        &source_path,
+        &image_root,
+    )
+    .await
+    .map_err(Into::into)
+}
+
+// ── Command: clear avatar ──────────────────────────────────────────────
+
+/// Clear `user_id`'s avatar back to the initials fallback.
+///
+/// Only the column is cleared; the file on disk is left for the GC sweep, since
+/// content-addressed dedup means the same bytes may still be referenced by a
+/// product or another user.
+#[command]
+pub async fn clear_avatar_scoped(
+    session_token: String,
+    user_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::avatars::clear_avatar_scoped(&ctx, &session_token, &user_id)
         .await
         .map_err(Into::into)
 }

@@ -304,22 +304,58 @@ fn spawn_detached(fut: impl std::future::Future<Output = ()> + Send + 'static) {
 /// detection is done via a `oneshot` channel: if the daemon future
 /// panics, the channel sender is dropped during unwind and the
 /// watchdog sees a `RecvError`.
+///
+/// Use this only for a future that is meant never to resolve. A task that is
+/// *expected* to finish belongs in [`spawn_once`], which reports the same
+/// panic but does not report a healthy completion as a failure.
 pub fn spawn_daemon(
     name: &'static str,
     fut: impl std::future::Future<Output = ()> + Send + 'static,
 ) {
+    spawn_watched(name, fut, true);
+}
+
+/// Spawn a detached one-shot background task.
+///
+/// Identical to [`spawn_daemon`] except in what a normal completion means.
+/// `spawn_daemon`'s watchdog exists to report a *loop* that stopped looping,
+/// so a future that simply returns is reported as
+/// `WARN <name> exited unexpectedly`. That is the right signal for a daemon and
+/// the wrong one for boot work — a probe or a registration pass that finishes
+/// is not a failure. Booting either shell used to log two such warnings per
+/// launch purely from one-shot tasks, which trains everyone reading the log to
+/// ignore the one warning that matters.
+///
+/// A panic is still reported, by the same `oneshot` mechanism: the sender is
+/// dropped during unwind and the watchdog sees a `RecvError`.
+pub fn spawn_once(name: &'static str, fut: impl std::future::Future<Output = ()> + Send + 'static) {
+    spawn_watched(name, fut, false);
+}
+
+/// Shared body of [`spawn_daemon`] and [`spawn_once`].
+///
+/// `announce_exit` is the whole difference between them: with it, a resolved
+/// future is a warning; without it, only a panic is. Both keep panic
+/// detection, because losing it on the one-shot path would hide a boot task
+/// that died before doing its work — the case most likely to be missed.
+fn spawn_watched(
+    name: &'static str,
+    fut: impl std::future::Future<Output = ()> + Send + 'static,
+    announce_exit: bool,
+) {
     spawn_detached(async move {
         let (tx, rx) = tokio::sync::oneshot::channel();
 
-        // Watchdog: fired when the daemon future resolves or panics.
+        // Watchdog: fired when the task future resolves or panics.
         spawn_detached(async move {
             match rx.await {
-                Ok(()) => tracing::warn!("{name} exited unexpectedly"),
+                Ok(()) if announce_exit => tracing::warn!("{name} exited unexpectedly"),
+                Ok(()) => {}
                 Err(_) => tracing::error!("{name} panicked"),
             }
         });
 
-        // Run the daemon.  If it panics, the `tx` drop during unwind
+        // Run the task.  If it panics, the `tx` drop during unwind
         // causes the watchdog to receive `Err(RecvError)`.
         fut.await;
         let _ = tx.send(());

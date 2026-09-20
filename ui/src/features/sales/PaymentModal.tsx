@@ -1385,11 +1385,23 @@ export default function PaymentModal({
             onPrint={async () => {
               try {
                 await printSalesReceipt(sessionToken!, receiptArgs);
-                animateLeave(onComplete);
-              } catch {
-                // Printer error — still dismiss
-                animateLeave(onComplete);
+              } catch (printErr) {
+                // A print that failed must not read as a success. This catch used to
+                // swallow the error and fall through to the same `onComplete` as a
+                // successful print, which fires the success toast and the success
+                // sound — so the cashier saw "Sale complete" with no paper out. On the
+                // Android shell that was every single sale: nothing in kasirmu-hal
+                // targets Android and the tablet's registry is empty, so
+                // print_sales_receipt_scoped always rejects with "no receipt printer
+                // registered". Same shape as the KDS ticket above: the sale is already
+                // committed, so warn and dismiss rather than block.
+                console.error('printSalesReceipt failed', printErr);
+                addToast({
+                  message: requiredLocalized(l10n, 'payment-toast-print-failed'),
+                  type: 'warning',
+                });
               }
+              animateLeave(onComplete);
             }}
             onSkip={() => animateLeave(onComplete)}
           />
@@ -1412,9 +1424,7 @@ export default function PaymentModal({
                 </span>
               </div>
             )}
-            <Localized id="payment-done-receipt">
-              <p className="payment-done-note">Receipt printed</p>
-            </Localized>
+
           </div>
         ) : (
           <>

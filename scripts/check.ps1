@@ -1,4 +1,18 @@
-# scripts/check.ps1 — Windows pre-push gate. Mirrors .github/workflows/ci.yml.
+# scripts/check.ps1 — Windows dev gate: a set of CHECKS, with an optional auto-fix afterwards.
+#
+# This is NOT a mirror of CI, whatever an older header here said. The workflow it used to
+# name (ci.yml) is retired at .github/workflows/attic/ci.yml.bak; the live ones are
+# dev-ci.yml and release.yml, and their job set is a strict superset of what runs below --
+# the whole static-gates family (i18n parity, PG drift, ipc parity, scoped reads, the
+# Go checks, the website job) has no equivalent here. For the full local matrix run
+# scripts/check.sh; for what a push actually gates see .githooks/pre-push ->
+# scripts/run-pre-push.py, which is path-routed.
+#
+# Order matters and is deliberate: every verify step (fmt --check, clippy -D warnings)
+# runs FIRST and can fail the run. The auto-fix step runs LAST and only as a convenience
+# on a clean tree -- it is skipped with a printed reason whenever `git status --porcelain`
+# is non-empty, so it can never rewrite another lane's in-flight files in a shared
+# checkout (the reason the repo dropped cargo fmt from pre-commit on 2026-09-13).
 #
 # Usage:  powershell -File scripts\check.ps1
 #         powershell -File scripts\check.ps1 -Fast   (dev: unit tests + fmt + clippy only)
@@ -15,6 +29,12 @@ Set-Location ..
 
 $totalStart = Get-Date
 $script:stepCounter = 1
+
+# Captured BEFORE any step runs. Several steps legitimately write the tree -- step 15 rewrites
+# the tracked stats.json, the migration steps create and delete kasir.db -- so reading `git
+# status` at the END would always look dirty and disable the auto-fix below for the wrong
+# reason, while blaming another lane for this script's own output.
+$treeCleanAtEntry = (@(git status --porcelain).Count -eq 0)
 
 function Step {
     param(
@@ -76,11 +96,7 @@ function Step {
     }
 }
 
-# --- Phase 1: auto-fix --------------------------------------------------
-Step -Name "clippy auto-fix" -RetryCommand "cargo clippy --fix --allow-dirty -- --allow warnings" -ScriptBlock {
-    cargo clippy --fix --allow-dirty -- --allow warnings
-}
-Step -Name "cargo fmt" -RetryCommand "cargo fmt --all" -ScriptBlock { cargo fmt --all }
+# --- Phase 1: checks ----------------------------------------------------
 $pythonCommand = if (Get-Command "python3" -ErrorAction SilentlyContinue) { "python3" } elseif (Get-Command "python" -ErrorAction SilentlyContinue) { "python" } else { $null }
 if ($pythonCommand) {
     Step -Name "architecture boundaries" -RetryCommand "$pythonCommand scripts/verify-architecture-boundaries.py --strict" -ScriptBlock { & $pythonCommand scripts/verify-architecture-boundaries.py --strict }
@@ -94,8 +110,8 @@ if ($pythonCommand) {
 Step -Name "cargo fmt (verify)" -RetryCommand "cargo fmt --all -- --check" -ScriptBlock {
     cargo fmt --all -- --check
 }
-Step -Name "clippy workspace" -RetryCommand "cargo clippy --workspace --all-targets -- -D warnings" -ScriptBlock {
-    cargo clippy --workspace --all-targets -- -D warnings
+Step -Name "clippy workspace" -RetryCommand "cargo clippy --workspace --all-targets --all-features -- -D warnings" -ScriptBlock {
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
 }
 
 $cpuCount = $env:NUMBER_OF_PROCESSORS
@@ -173,10 +189,12 @@ if ((Get-Command "npm" -ErrorAction SilentlyContinue) -and (Test-Path "ui/packag
             $ErrorActionPreference = "SilentlyContinue"
             try {
                 $global:LASTEXITCODE = 0
-                $e2eResult = npx playwright test --config e2e/playwright.config.ts --project=desktop 2>&1
+                # repo entry point: boots the Docker backend + Vite, then runs Playwright
+                $e2eResult = npm run e2e 2>&1
                 if ($LASTEXITCODE -ne 0) {
                     Write-Host "WARN (some tests failed)" -ForegroundColor Yellow
-                    Write-Host "  E2E failures are non-blocking - check output above for details."
+                    Write-Host "  E2E failures are non-blocking. Last lines of the run:"
+                    $e2eResult | Select-Object -Last 15 | ForEach-Object { Write-Host ("  " + $_) }
                 } else {
                     $elapsed = (Get-Date) - $e2eStart
                     $elapsedSec = [math]::Round($elapsed.TotalSeconds, 1)
@@ -203,6 +221,19 @@ if ((Get-Command "npm" -ErrorAction SilentlyContinue) -and (Test-Path "ui/packag
 # --- Generate stats.json -------------------------------------------------
 Step -Name "generate code stats" -RetryCommand "powershell -File scripts\stats.ps1" -ScriptBlock {
     & powershell -File scripts\stats.ps1
+}
+
+# --- Auto-fix (convenience, LAST) ---------------------------------------
+# Runs strictly AFTER every check above, so it can never mask a violation.
+# Skipped on a dirty tree: --allow-dirty would rewrite another lane's in-flight files.
+if ($treeCleanAtEntry) {
+    Step -Name "clippy auto-fix" -RetryCommand "cargo clippy --fix --allow-dirty -- --allow warnings" -ScriptBlock {
+        cargo clippy --fix --allow-dirty -- --allow warnings
+    }
+    Step -Name "cargo fmt" -RetryCommand "cargo fmt --all" -ScriptBlock { cargo fmt --all }
+    Write-Host "tree is now formatted and lint-clean"
+} else {
+    Write-Host "SKIP auto-fix (the working tree was already dirty when this run started); no files were rewritten"
 }
 
 # --- Done ---------------------------------------------------------------
