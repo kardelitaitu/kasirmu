@@ -225,7 +225,13 @@ main question rather than an afterthought.
 - **O1 — Where does the attestation challenge live?** It must be served by the process holding
   the private key (PocketBase), but the cascade needs it *before* choosing a host, so the
   endpoint must be unauthenticated and cheap. An unauthenticated signing oracle deserves its own
-  review: scope it to a nonce of bounded length, with no attacker-chosen payload.
+  **RESOLVED (implemented 2026-09-19, triaged 2026-09-20).** The review this question asked for
+  happened, and its answers are §2.4: `POST /api/v1/license/attest` signs a payload the server
+  builds itself (`ozpos-origin-attest-v1:<nonce>`) from a client nonce bounded to 16-64 characters
+  of `[A-Za-z0-9_-]`, so a caller chooses only an opaque value and never the signed bytes; the key
+  lives in the PocketBase process, and the endpoint shares the per-IP limiter. The remaining
+  property — that the answers cannot be replayed as a credential — is structural: the signature
+  is verified against an embedded public key and used only to pick a host, never to authenticate.
 - **O2 — RESOLVED (2026-09-19): yes, and it now targets `DEBUG_SYNC_ORIGIN`.** The debug
   bootstrap had pointed at the production fallback name, which let a debug build silently
   auto-provision against a real tenant — pulling production data over a developer's database and
@@ -236,6 +242,10 @@ main question rather than an afterthought.
   production fallback name, which means a developer's machine can silently sync to production.
 - **O3 — Should the gate gain CI coverage?** It is local-only today (`scripts/gates.json`
   `server-origins`, no `ci` block), which is honest rather than omitted.
+  **Re-verified 2026-09-20:** still true, and now measured rather than asserted — `gates.json:587-593`
+  declares only a `check.sh` runner with no `ci` block, `check.sh:99` runs it, and `dev-ci.yml`
+  names neither the gate nor `check.sh`. So the gap is real and deliberate: closing it is a
+  one-line manifest change plus the workflow step whenever that is wanted.
 - **O4 — ANSWERED BY MEASUREMENT (2026-09-19): there is no marketing-host fork.** Both
   `kasir.mu` and `ozpos.my.id` return byte-identical `/llms.txt` (7256 bytes) and the same 302 on
   `/admin/login`, so they are one Worker bound to two custom domains; `MARKETING_HOST =
