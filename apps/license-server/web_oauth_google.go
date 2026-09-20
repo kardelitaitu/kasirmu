@@ -292,7 +292,8 @@ func oauthNextPath(raw string) string {
 // page is what turns it into a sentence. The desktop equivalent has always done this; the web
 // half answered a browser with JSON until it was pointed out.
 func webOAuthFailure(e *core.RequestEvent, reason string) error {
-	return e.Redirect(http.StatusFound, oauthSiteURL()+"/en/login?oauth="+url.QueryEscape(reason))
+	return e.Redirect(http.StatusFound,
+		oauthSiteURL()+"/"+oauthLocaleFromCookie(e)+"/login?oauth="+url.QueryEscape(reason))
 }
 
 // oauthRedirectURI is the callback URL Google must have registered. The explicit
@@ -307,8 +308,62 @@ func oauthRedirectURI(e *core.RequestEvent) string {
 
 // clearOAuthStateCookie expires the browser binding for a finished flow.
 func clearOAuthStateCookie(e *core.RequestEvent) {
+	clearOAuthLocaleCookie(e)
 	http.SetCookie(e.Response, &http.Cookie{
 		Name:     oauthStateCookie,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// oauthLocaleCookie carries the site locale the flow must return to. The failure redirects
+// choose a /<locale>/login URL, the only source for that choice is the `next` path the user
+// started with, and the pending record can be gone by the time they fail — so it travels in a
+// cookie beside the state rather than through more server state.
+const oauthLocaleCookie = "oz_oauth_locale"
+
+// oauthLocaleOf reports the locale a validated `next` path names, defaulting to "en".
+// `oauthNextPath` has already reduced `next` to a same-site path, and only an exact "id"
+// matches here, so nothing attacker-shaped can select a locale.
+func oauthLocaleOf(next string) string {
+	segment, _, _ := strings.Cut(strings.TrimPrefix(next, "/"), "/")
+	if segment == "id" {
+		return "id"
+	}
+	return "en"
+}
+
+// oauthLocaleFromCookie is the locale the flow started in, defaulting to "en".
+func oauthLocaleFromCookie(e *core.RequestEvent) string {
+	cookie, err := e.Request.Cookie(oauthLocaleCookie)
+	if err != nil || cookie.Value != "id" {
+		return "en"
+	}
+	return "id"
+}
+
+// setOAuthLocaleCookie records that locale for the callback, with the state cookie's own
+// attributes and lifetime.
+func setOAuthLocaleCookie(e *core.RequestEvent, locale string) {
+	http.SetCookie(e.Response, &http.Cookie{
+		Name:     oauthLocaleCookie,
+		Value:    locale,
+		Path:     "/",
+		MaxAge:   int(oauthStateTTL.Seconds()),
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// clearOAuthLocaleCookie expires it wherever the state cookie is cleared.
+func clearOAuthLocaleCookie(e *core.RequestEvent) {
+	http.SetCookie(e.Response, &http.Cookie{
+		Name:     oauthLocaleCookie,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
@@ -347,8 +402,9 @@ func handleWebOAuthGoogleStart(app core.App) func(e *core.RequestEvent) error {
 			log.Printf("/web/oauth/google/start: %v", err)
 			return e.JSON(http.StatusInternalServerError, map[string]any{"error": "could not start sign-in"})
 		}
+		next := oauthNextPath(e.Request.URL.Query().Get("next"))
 		if !googleOAuthState.put(state, &oauthPending{
-			next:      oauthNextPath(e.Request.URL.Query().Get("next")),
+			next:      next,
 			verifier:  verifier,
 			expiresAt: time.Now().Add(oauthStateTTL),
 		}) {
@@ -356,6 +412,8 @@ func handleWebOAuthGoogleStart(app core.App) func(e *core.RequestEvent) error {
 				"error": "too many sign-ins in progress, try again shortly",
 			})
 		}
+		// After the put, so a refused start leaves no cookie either.
+		setOAuthLocaleCookie(e, oauthLocaleOf(next))
 
 		// Bind the state to THIS browser: a state value that leaks into a log or a
 		// referrer cannot then be completed from somewhere else (login CSRF).

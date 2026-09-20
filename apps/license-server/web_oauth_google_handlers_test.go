@@ -322,6 +322,66 @@ func TestOAuthCallbackRedirectsWhenTheTokenExchangeFails(t *testing.T) {
 	})
 }
 
+func TestOAuthStartCarriesTheLocaleItWillReturnTo(t *testing.T) {
+	// The failure redirects must pick a /<locale>/login page, and this cookie is the only thing
+	// that remembers which locale the user is reading in.
+	t.Setenv("OZ_GOOGLE_CLIENT_ID", "client-abc")
+	for _, tc := range []struct{ name, next, want string }{
+		{"indonesian path", "/id/account", "id"},
+		{"english path", "/en/account", "en"},
+		{"no locale segment", "/pricing", "en"},
+	} {
+		tc := tc
+		runScenario(t, &tests.ApiScenario{
+			Name:           tc.name,
+			Method:         "GET",
+			URL:            "/api/v1/web/oauth/google/start?next=" + tc.next,
+			ExpectedStatus: http.StatusFound,
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, res *http.Response) {
+				seen := ""
+				for _, c := range res.Cookies() {
+					if c.Name == oauthLocaleCookie {
+						seen = c.Value
+					}
+				}
+				if seen != tc.want {
+					t.Errorf("locale cookie = %q, want %q", seen, tc.want)
+				}
+			},
+		})
+	}
+}
+
+func TestOAuthFailureReturnsToTheLocaleTheFlowStartedIn(t *testing.T) {
+	// An Indonesian merchant must not be handed an English error page: the flow started with
+	// ?next=/id/account, so the refusal has to come back to /id/login.
+	t.Setenv("OZ_GOOGLE_CLIENT_ID", "client-abc")
+	t.Setenv("OZ_GOOGLE_CLIENT_SECRET", "secret")
+	claims := validClaims("client-abc")
+	claims["email_verified"] = false
+	restore := fakeGoogleToken(t, claims)
+	defer restore()
+
+	state, verifier, _, err := newOAuthState()
+	if err != nil {
+		t.Fatalf("newOAuthState: %v", err)
+	}
+	runScenario(t, &tests.ApiScenario{
+		Method:  "GET",
+		URL:     "/api/v1/web/oauth/google/callback?state=" + state + "&code=auth-code",
+		Headers: map[string]string{"Cookie": oauthStateCookie + "=" + state + "; " + oauthLocaleCookie + "=id"},
+		BeforeTestFunc: func(t testing.TB, app *tests.TestApp, e *core.ServeEvent) {
+			googleOAuthState.put(state, &oauthPending{next: "/id/account", verifier: verifier, expiresAt: time.Now().Add(time.Minute)})
+		},
+		ExpectedStatus: http.StatusFound,
+		AfterTestFunc: func(t testing.TB, app *tests.TestApp, res *http.Response) {
+			if location := res.Header.Get("Location"); !strings.Contains(location, "/id/login?oauth=unverified") {
+				t.Errorf("Location = %q, want the Indonesian login page", location)
+			}
+		},
+	})
+}
+
 // ── small helpers ──────────────────────────────────────────────────
 
 func queryParam(t testing.TB, rawURL, name string) string {
