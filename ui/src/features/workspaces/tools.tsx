@@ -1,4 +1,4 @@
-// ── Home-screen Tools catalogue (todo-tools.md) ────────────────────
+// ── Home-screen Tools catalogue (.agents/archived/done-todo/done-todo-tools.md) ────────────────────
 //
 // Declarative access policy per the agreed role/tier matrix: each tool
 // declares `access.minimumRole` (hierarchical — owner inherits admin
@@ -21,14 +21,18 @@
 // gate is authoritative: `registerPage` declares `requiredRole` +
 // `requiredPermission`, and `passesGate` (registries/page-registry) consults the
 // permission whenever the session carries granted keys. Home-stricter is the
-// documented policy (todo-tools.md:730), so a card hidden here does NOT mean the
+// documented policy (.agents/archived/done-todo/done-todo-tools.md:733), so a
+// card hidden here does NOT mean the
 // route would refuse it — the two surfaces are meant to differ. Measured
 // 2026-09-16, six of these 17 tools do differ: `staff` `shifts` `analytics`
 // `reports` `audit` `settings`, and in five of the six the role that would gain
 // the card is `auditor`, which holds the read keys but ranks below the home
-// floor. Whether that stays policy or the grid moves to the permission
-// vocabulary is an open owner ruling, filed in
-// docs/records/audit-open-findings.md (2026-09-16).
+// floor. RULED 2026-09-20 (`todo-owner-rulings.md` R20): the rank stays
+// authoritative for the home grid, and 3a.2 is narrowed to the gates that
+// have no route twin. The permission-vocabulary alternative was refused — it
+// would have handed five admin-surface cards to a read-only role under a
+// commit that reads as a refactor. The finding this paragraph was filed
+// under is docs/records/audit-open-findings.md (2026-09-16).
 
 import type { ReactNode } from 'react';
 import type { TierKey } from '@/utils/tierLevel';
@@ -140,7 +144,7 @@ export const TOOLS: ToolItem[] = [
       </svg>
     ),
   },
-  // Shifts tier policy is deliberately TBD (todo-tools.md matrix);
+  // Shifts tier policy is deliberately TBD (.agents/archived/done-todo/done-todo-tools.md matrix);
   // retained role-only in Operations until it is confirmed.
   {
     id: 'shifts',
@@ -292,7 +296,7 @@ export const TOOLS: ToolItem[] = [
     ),
   },
   // Basic Offline Queue visibility is available to all active tiers
-  // (todo-tools.md §IA ownership boundaries); advanced conflict tools
+  // (.agents/archived/done-todo/done-todo-tools.md §IA ownership boundaries); advanced conflict tools
   // are Plus+ and are gated inside the page itself.
   {
     id: 'offline-queue',
