@@ -96,9 +96,21 @@ ROOTS = ["crates", "apps", "platform", "modules"]
 # Dev-only artifacts that never ship in production builds: benchmark
 # harnesses (only compiled by `cargo bench`) and helper modules that are
 # gated behind `#[cfg(test)]` in their parent `mod` declaration.
+#
+# `testing.rs` belongs here by that same rule and was simply missed. Both
+# copies of it are gated in their PARENT module, which is why the file-level
+# `#[cfg(test)]` tracking below never saw them:
+#   apps/mobile-tauri/src/commands/mod.rs:107-108  `#[cfg(test)] pub(crate) mod testing;`
+#   crates/kasirmu-bridge/src/lib.rs:159-160       `#[cfg(test)] mod testing;`
+# Enumerated, not assumed: `git ls-files | grep -E '(^|/)testing\.rs$'` returns
+# exactly those two, and both parents carry the attribute. Leaving the entry out
+# made the gate report 3 recoverable unwrap/expect calls in a file that compiles
+# only into the test binary -- a red that no change to shipped code can clear,
+# which is how a gate stops being read.
 DEV_ONLY_PATHS = (
     "/benches/",  # cargo bench harnesses
     "test_helpers.rs",  # #[cfg(test)]-gated from parent mod
+    "testing.rs",  # #[cfg(test)]-gated from parent mod (both copies, see above)
 )
 
 UNWRAP_RE = re.compile(r"\.unwrap\(\)")
