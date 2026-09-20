@@ -93,14 +93,6 @@ function tierValue(container: HTMLElement): string | null {
   return dt?.nextElementSibling?.textContent ?? null;
 }
 
-// A just-signed-up account has neither a subscription nor an activated license, and the
-// tier row still has to name a real tier: `free` is the floor. It used to render an empty
-// dash, which is what a new Google signup saw.
-it('shows the free tier for a brand-new account instead of a blank', async () => {
-  stubMe(null, null);
-  const { container } = await renderAccount('en');
-  expect(tierValue(container)).toBe('free');
-});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -115,6 +107,22 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
+});
+
+// A just-signed-up account has neither a subscription nor an activated license, and the
+// tier row still has to name a real tier: `free` is the floor. It used to render an empty
+// dash, which is what a new Google signup saw.
+it('shows the free tier for a brand-new account instead of a blank', async () => {
+  // A session, or the view renders the signed-out state and fetches nothing.
+  sessionStorage.setItem('oz_session', 'tok-brand-new');
+  stubMe(null, null);
+  const { container, root } = await renderAccount('en');
+  try {
+    expect(tierValue(container)).toBe('free');
+  } finally {
+    act(() => root.unmount());
+    container.remove();
+  }
 });
 
 // ── Not signed in state ───────────────────────────────────────────────
