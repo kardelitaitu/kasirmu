@@ -35,6 +35,11 @@ npx vitest run src/__tests__/themeTokenCompliance.test.ts src/__tests__/composed
 
 Caveats: each suite grades a fixed set of shapes (a printed denominator, not full coverage); walkers read the working tree, so record dirty `.css` paths alongside any result. Full analysis: `docs/frontend/css-verification.md`.
 
+## Lanes, chokepoints and parallel work
+
+The lane map, the chokepoint list, the manager loop and a quick-start tutorial live in
+[agent-lanes.md](agent-lanes.md). Read it before starting a second lane.
+
 ## A red suite in a shared checkout: check ownership before you believe it
 
 Several agents commit to one branch, so a failing suite is not automatically *yours*. Measured twice in
