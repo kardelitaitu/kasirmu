@@ -23,7 +23,7 @@ Live workflows: `dev-ci.yml` and `release.yml` (desktop-only, `v*` tags). Everyt
 Jobs (11): `changes`, `website`, `cargo-check`, `cargo-nextest`, `ui-test`, `i18n`, `ci-docs-drift`, `static-gates`, `release-readiness`,
 `release-bridge-test` (push-only, desktop bridge tests in release profile), `northflank-deploy`. `northflank-deploy` needs 7 of them (excludes `ci-docs-drift` and `release-readiness`).
 `cargo-check` is `cargo fmt -- --check` then `cargo check --workspace --all-targets --all-features`. **No live workflow runs clippy** — it is local-only via `scripts/check.sh` and `scripts/release.sh`.
-`scripts/verify-agents-mirrors.py` polices mirror claims about gate counts, step names, commit types, version, and per-workflow triggers — but never opens a job's `run:` lines. Canonical CI reference: `docs/operations/ci-pipeline.md`.
+`scripts/verify-agents-mirrors.py` polices mirror claims about gate counts, step names, commit types, version, per-workflow triggers, stated job totals, and the live workflow a "mirrors <workflow>" claim names — but never opens a job's `run:` lines. Canonical CI reference: `docs/operations/ci-pipeline.md`.
 
 ## CSS has no linter — verify stylesheets with the walker suites
 
