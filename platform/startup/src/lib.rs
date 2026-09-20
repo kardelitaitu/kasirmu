@@ -328,10 +328,7 @@ pub fn spawn_daemon(
 ///
 /// A panic is still reported, by the same `oneshot` mechanism: the sender is
 /// dropped during unwind and the watchdog sees a `RecvError`.
-pub fn spawn_once(
-    name: &'static str,
-    fut: impl std::future::Future<Output = ()> + Send + 'static,
-) {
+pub fn spawn_once(name: &'static str, fut: impl std::future::Future<Output = ()> + Send + 'static) {
     spawn_watched(name, fut, false);
 }
 
