@@ -4,6 +4,7 @@ import { Localized } from '@/components/Localized';
 import { requiredLocalized } from '@/components';
 import { useLocalization } from '@fluent/react';
 import { linkDeviceGoogle, type LinkedAccountDto } from '@/api/license';
+import { isTabletShell } from '@/utils/shellKind';
 
 /** What the step is doing right now — one value, so no two can disagree. */
 type LinkState =
@@ -40,13 +41,46 @@ export default function StepAccount() {
       <h2 className="setup-step-title">{requiredLocalized(l10n, 'setup-account-title')}</h2>
       <p className="setup-step-desc">{requiredLocalized(l10n, 'setup-account-desc')}</p>
 
-      <Button
-        variant="primary"
-        onClick={() => void link()}
-        disabled={state.kind === 'linking'}
-      >
-        <Localized id="setup-account-google">Continue with Google</Localized>
-      </Button>
+      {/* ADR #54 §2.7: Google's browser routes are closed on Android, so the tablet
+          build has no Google control at all — and says where linking happens instead
+          of offering a button that cannot work. */}
+      {isTabletShell() ? (
+        <p className="setup-step-note">
+          <Localized id="setup-account-tablet">
+            Sign in with Google on the web and the account links itself to this store.
+          </Localized>
+        </p>
+      ) : (
+        <>
+          <Button
+            variant="primary"
+            onClick={() => void link()}
+            disabled={state.kind === 'linking'}
+          >
+            <Localized id="setup-account-google">Continue with Google</Localized>
+          </Button>
+
+          {state.kind === 'linking' && (
+            <p className="setup-step-note" role="status">
+              <Localized id="setup-account-waiting">Waiting for your browser…</Localized>
+            </p>
+          )}
+          {state.kind === 'linked' && (
+            <p className="setup-step-note" role="status">
+              <Localized id="setup-account-linked" vars={{ email: state.account.email }}>
+                {'Linked to { $email }.'}
+              </Localized>
+            </p>
+          )}
+          {state.kind === 'failed' && (
+            <p className="setup-step-error" role="alert">
+              <Localized id="setup-account-failed">
+                Could not link this device. You can try again, or skip and link it later.
+              </Localized>
+            </p>
+          )}
+        </>
+      )}
 
       {state.kind === 'linking' && (
         <p className="setup-step-note" role="status">

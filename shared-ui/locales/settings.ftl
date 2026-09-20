@@ -63,6 +63,7 @@ setup-account-waiting = Waiting for your browser…
 setup-account-linked = Linked to { $email }.
 setup-account-failed = Could not link this device. You can try again, or skip and link it later.
 setup-account-optional = You can skip this. Your licence key still runs the POS.
+setup-account-tablet = Sign in with Google on the web and the account links itself to this store.
 
 setup-progress-aria = Setup progress
 

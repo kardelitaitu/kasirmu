@@ -15,6 +15,7 @@ import { ToastProvider } from '@/components/Toast';
 import TabletAppShell from '@/app/tablet/TabletAppShell';
 import { registerAllFeatures } from '@/features';
 import { installPerfProbe } from './utils/perf-metrics';
+import { setShellKind } from './utils/shellKind';
 import './theme/reset.css';
 import './theme/fonts.css';
 import './theme/tokens.css';
@@ -26,6 +27,9 @@ registerAllFeatures();
 
 // PERF-06: expose aggregate-only runtime metrics to automated checks.
 installPerfProbe();
+
+// ADR #54 §2.7: the Google control is excluded from the tablet build.
+setShellKind('tablet');
 
 // ── Render ───────────────────────────────────────────────────────
 

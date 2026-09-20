@@ -144,6 +144,7 @@ setup-account-waiting = Menunggu browser Anda…
 setup-account-linked = Tertaut ke { $email }.
 setup-account-failed = Tidak dapat menautkan perangkat ini. Coba lagi, atau lewati dan tautkan nanti.
 setup-account-optional = Anda bisa melewati ini. Kunci lisensi Anda tetap menjalankan POS.
+setup-account-tablet = Masuk dengan Google di web dan akun akan tertaut sendiri ke toko ini.
 setup-progress-aria = Kemajuan setup
 setup-preset-question = Toko seperti apa yang Anda jalankan?
 setup-preset-desc = Pilih preset untuk memulai dengan cepat, atau sesuaikan setiap fitur nanti.

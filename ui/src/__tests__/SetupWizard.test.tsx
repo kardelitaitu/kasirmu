@@ -6,13 +6,15 @@
 // singleton to avoid re-creating Fluent resources per render.
 // 21 tests (3 sync render tests moved to SetupWizardRender.test.tsx).
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { LocalizationProvider, ReactLocalization } from '@fluent/react';
 import type { ReactNode } from 'react';
 import SetupWizard, { type WizardState } from '@/features/setup/SetupWizard';
+import StepAccount from '@/features/setup/components/StepAccount';
+import { setShellKind } from '@/utils/shellKind';
 import settingsFtl from '@/locales/settings.ftl?raw';
 import salesFtl from '@/locales/sales.ftl?raw';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -86,7 +88,35 @@ async function toggleFeature(label: string) {
 
 // ── Tests ───────────────────────────────────────────────────────────
 
-describe('SetupWizard — interactions', () => {
+// ── Account step: the ADR #54 §2.7 shell split ──────────────────────
+//
+// The desktop and tablet builds share this component and differ only in their
+// entry point, which is why the split is a shell flag rather than a prop: the
+// decision is "the Google control is excluded from the tablet build", and a
+// prop would let a caller re-enable it.
+
+describe('StepAccount — shell split (ADR #54 §2.7)', () => {
+  afterEach(() => setShellKind('desktop'));
+
+  it('offers the Google control on the desktop shell', () => {
+    setShellKind('desktop');
+    render(<StepAccount />, { wrapper: FluentWrapper });
+
+    expect(screen.getByText('Continue with Google')).toBeInTheDocument();
+  });
+
+  it('excludes the Google control from the tablet build and says where linking happens', () => {
+    setShellKind('tablet');
+    render(<StepAccount />, { wrapper: FluentWrapper });
+
+    expect(screen.queryByText('Continue with Google')).toBeNull();
+    expect(
+      screen.getByText('Sign in with Google on the web and the account links itself to this store.'),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('SetupWizard — OTP login flow', () => {
   // ── Preset selection ────────────────────────────────────────────
 
   it('selecting a preset advances to step 2', () => {
