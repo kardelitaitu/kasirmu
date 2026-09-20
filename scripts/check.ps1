@@ -1,4 +1,18 @@
-# scripts/check.ps1 — Windows pre-push gate. Mirrors .github/workflows/ci.yml.
+# scripts/check.ps1 — Windows dev gate: a fixer first, then a set of checks.
+#
+# This is NOT a mirror of CI, whatever an older header here said. The workflow it used to
+# name (ci.yml) is retired at .github/workflows/attic/ci.yml.bak; the live ones are
+# dev-ci.yml and release.yml, and their job set is a strict superset of what runs below --
+# the whole static-gates family (i18n parity, PG drift, ipc parity, scoped reads, the
+# Go checks, the website job) has no equivalent here. For the full local matrix run
+# scripts/check.sh; for what a push actually gates see .githooks/pre-push ->
+# scripts/run-pre-push.py, which is path-routed.
+#
+# It also REWRITES the tree. Steps 1-2 auto-fix clippy and fmt *before* the verify steps,
+# so a formatting or lint violation is silently repaired rather than reported -- the
+# `fmt --all -- --check` below cannot fail on anything those steps can fix. `--allow-dirty`
+# lets that happen on a dirty shared checkout, where it can edit another lane's in-flight
+# files. Treat a green run here as "my machine builds", never as "CI will pass".
 #
 # Usage:  powershell -File scripts\check.ps1
 #         powershell -File scripts\check.ps1 -Fast   (dev: unit tests + fmt + clippy only)
@@ -176,7 +190,8 @@ if ((Get-Command "npm" -ErrorAction SilentlyContinue) -and (Test-Path "ui/packag
                 $e2eResult = npx playwright test --config e2e/playwright.config.ts --project=desktop 2>&1
                 if ($LASTEXITCODE -ne 0) {
                     Write-Host "WARN (some tests failed)" -ForegroundColor Yellow
-                    Write-Host "  E2E failures are non-blocking - check output above for details."
+                    Write-Host "  E2E failures are non-blocking. Last lines of the run:"
+                    $e2eResult | Select-Object -Last 15 | ForEach-Object { Write-Host ("  " + $_) }
                 } else {
                     $elapsed = (Get-Date) - $e2eStart
                     $elapsedSec = [math]::Round($elapsed.TotalSeconds, 1)
