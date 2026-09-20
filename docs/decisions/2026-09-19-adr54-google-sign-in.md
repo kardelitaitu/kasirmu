@@ -208,7 +208,9 @@ flow and the desktop device-link flow consume the same decision instead of re-de
 flips `email_verified`, the reserved-address refusal (including a case-variant address, since
 the reservation compares normalised), the unverified-address refusal, the ordering guard that
 the reservation fires *before* the verification gate, the conflict that never rebinds, and the
-device path's email-match requirement.
+device path's email-match requirement. A further case pins that a re-sign-in **refreshes `last_login`** rather than being a
+silent no-op — a stale stamp misreports when an identity was last used, which is the value an operator
+reads mid-incident.
 
 ### 2.4 Web: server-side redirect, reusing the F1 handoff
 
@@ -259,6 +261,8 @@ login page with the reason rather than to a JSON error.
 
 Two bounds worth naming. `/start` is unauthenticated and writes into a map, so the store now
 refuses past `oauthMaxPending` rather than growing without limit within its TTL. And the
+Both halves of that bound are now tested: the ceiling refuses the entry past it, and expired
+entries are swept on insert, so a full map cannot wedge the endpoint shut.
 post-login path is validated by `oauthNextPath`, the server-side twin of `lib/safe-next.ts` —
 same shape, same rejections (`//`, `/\`, `/<tab>/`), because the two guards must not disagree
 about what a same-site path is. The redirect *host* is never attacker-influenced: it comes from
