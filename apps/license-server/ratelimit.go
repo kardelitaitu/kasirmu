@@ -40,10 +40,33 @@ type tokenBucket struct {
 const ipCleanupInterval = 30 * time.Minute
 const ipBucketTTL = 2 * time.Hour
 
+// attestMaxPerHr is the boot-time attest probe's own per-IP budget. It is
+// deliberately 12x the credential budget: a plain app launch spends a token
+// here, and five launches in an hour must not leave the user's activation
+// attempts answering 429.
+const attestMaxPerHr = 60
+
 // ipRateLimiter limits activation attempts to 5 per IP per hour.
 var ipRateLimiter = &rateLimiter{
 	buckets:  make(map[string]*tokenBucket),
 	maxPerHr: 5,
+}
+
+// attestLimiter is the SEPARATE per-IP budget for POST /api/v1/license/attest
+// (see attest.go). It exists so the unauthenticated boot-time attest probe —
+// which verifies no credential and mints only a fixed-size signature over a
+// charset-bounded nonce — cannot drain the 5/hr credential budget shared by
+// activate/recover/renew/status/pause/resume/trial/enterprise-trial. Launching
+// the app is not an abuse signal; trying five license keys in an hour is.
+//
+// It stays in-memory only (like contactRateLimiter): the persisted
+// rate_limit_ip_buckets table is keyed by IP alone, so a second persisted
+// limiter would clobber ipRateLimiter's tokens for the same IP. A restart
+// resetting a probe budget is harmless — the endpoint is cheap and the
+// credential limiter keeps its restart-survival guarantee.
+var attestLimiter = &rateLimiter{
+	buckets:  make(map[string]*tokenBucket),
+	maxPerHr: attestMaxPerHr,
 }
 
 // startCleanup launches a background goroutine that periodically sweeps
@@ -658,6 +681,7 @@ func init() {
 	ipRateLimiter.startCleanup()
 	keyFailTracker.startCleanup()
 	contactRateLimiter.startCleanup()
+	attestLimiter.startCleanup()
 
 	// Web OTP store + windowed limiters (web_otp.go) sweep on the same
 	// 30-min cadence so expired codes/sessions and old windows don't
