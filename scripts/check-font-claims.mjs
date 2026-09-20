@@ -34,9 +34,19 @@ const results = [];
 let cleanNote = '';
 let worst = 0;
 
+// vitest colourises whenever COLORTERM is set -- it is set on this machine
+// (COLORTERM=truecolor), even through a pipe -- and the escapes land INSIDE the
+// summary line, between the label and the numbers:
+//   "      Tests \u001b[22m \u001b[1m\u001b[32m52 passed\u001b[39m\u001b[22m..."
+// The summary regex below needs a digit straight after `Tests\s+`, so it matched
+// nothing and the row reported "could not parse the vitest summary (did the run
+// start?)" about a run that had started and passed all 52 cases. Strip once, in
+// run(), so every row reads text rather than terminal control codes.
+const stripAnsi = (s) => String(s).replace(/\u001b\[[0-9;]*m/g, '');
+
 function run(args, opts = {}) {
   try {
-    const out = execFileSync(args[0], args.slice(1), { cwd: REPO, encoding: 'utf-8', ...opts });
+    const out = stripAnsi(execFileSync(args[0], args.slice(1), { cwd: REPO, encoding: 'utf-8', ...opts }));
     return { out, status: 0, ran: true };
   } catch (e) {
     // git grep exits 1 when nothing matched, and for several rows that IS the expected
@@ -44,7 +54,7 @@ function run(args, opts = {}) {
     // guard exists for: the first version returned { ok: true, out: '' } for ANY error,
     // which let `git ls-files` outside a repository -- status 128, empty stdout -- read
     // as the expected emptiness. A broken pipeline is not a zero.
-    const out = typeof e.stdout === 'string' ? e.stdout : '';
+    const out = typeof e.stdout === 'string' ? stripAnsi(e.stdout) : '';
     const status = typeof e.status === 'number' ? e.status : -1;
     return { out, status, ran: status >= 0 && status !== 128 };
   }
@@ -242,9 +252,9 @@ if (!fs.existsSync(VITEST_BIN)) {
     // notes.md item 39's published number, executed rather than remembered.
     const reach = run(['node', '-e', "const g=require('./scripts/gates.json').gates;const r=g.filter(x=>x.status==='required'&&!x.ci);console.log(r.length+'|'+r.map(x=>x.id).join(','))"]);
     const [rc, ids] = (reach.out || '').trim().split('|');
-    check('notes.md item 39: the count of required rows with no ci block', reach.status === 0 && rc === '8',
+    check('notes.md item 39: the count of required rows with no ci block', reach.status === 0 && rc === '10',
       `${rc} row(s): ${ids}`,
-      '8 -- if this drifts a row gained or lost CI coverage: repair item 39 and this literal together. 6 -> 8 on 2026-09-19: root-policy had already joined without a re-count (the seventh), and the ADR #55 lane added server-origins, which is local-only by design. bundle-budget left this set in d3ae1e201.');
+      '10 -- if this drifts a row gained or lost CI coverage: repair item 39 and this literal together. 6 -> 8 on 2026-09-19: root-policy had already joined without a re-count (the seventh), and the ADR #55 lane added server-origins, which is local-only by design. bundle-budget left this set in d3ae1e201. 8 -> 10 on 2026-09-20: env-docs joined at 226812432 (ci(gates): require every read env var to be documented) and unified-routes at eac292c91 (fix(unified): route the device-link endpoints to the licence server). Both carry status required, no ci key, and a single scripts/check.sh runner -- the same local-only shape as server-origins and root-policy, not a ci key that went missing.');
 
     // Informational, not a verdict: in a shared checkout the tree is dirty more often
     // than it is clean, and a tool that reports that as drift every day is a tool whose
