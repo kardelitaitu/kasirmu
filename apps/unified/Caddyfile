@@ -53,10 +53,12 @@
 		import security_headers
 		reverse_proxy localhost:8080
 	}
-	handle /api/v1/desktop/* {
-	reverse_proxy localhost:8080
-}
-handle /api/v1/paddle/* {
+		handle /api/v1/desktop/* {
+		import security_headers
+		reverse_proxy localhost:8080
+	}
+
+	handle /api/v1/paddle/* {
 		import security_headers
 		reverse_proxy localhost:8080
 	}

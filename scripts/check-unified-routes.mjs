@@ -37,7 +37,7 @@ for (const block of caddy.split('handle ').slice(1)) {
   const pattern = block.split(/\s/)[0];
   if (!pattern.startsWith('/api/')) continue;
   const target = block.match(/reverse_proxy\s+(\S+)/)?.[1] ?? '';
-  handles.push({ pattern, pocketbase: target.endsWith(':8080') });
+  handles.push({ pattern, pocketbase: target.endsWith(':8080'), headers: block.includes('import security_headers') });
 }
 if (handles.length === 0) {
   console.error('unified-routes: found no /api handle blocks in apps/unified/Caddyfile');
@@ -56,7 +56,12 @@ function resolvesTo(prefix) {
 
 const missing = [...prefixes].filter((prefix) => resolvesTo(prefix) !== 'pocketbase').sort();
 
-if (missing.length === 0) {
+// Every block must import the shared header snippet: a carve-out added without it serves its
+// endpoints with no nosniff, no frame-deny, no referrer policy and no HSTS, which is invisible
+// in a diff that only reads the routing. Caught one such block (the device-link carve-out).
+const bare = handles.filter((h) => !h.headers).map((h) => h.pattern);
+
+if (missing.length === 0 && bare.length === 0) {
   console.log(
     'unified-routes: OK — ' + prefixes.size + ' licence-server route prefix(es), each resolving to :8080',
   );
@@ -64,6 +69,9 @@ if (missing.length === 0) {
   process.exit(0);
 }
 
+for (const pattern of bare) {
+  console.error('  - ' + pattern + ' does not `import security_headers`');
+}
 console.error('unified-routes: ' + missing.length + ' route prefix(es) reach the Rust service by default');
 for (const prefix of missing) console.error('  - ' + prefix + '/* is not carved out; add a matching handle block');
 console.error('A route without a carve-out answers 404 in production while its tests pass.');
