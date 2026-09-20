@@ -57,11 +57,7 @@ platform-core = { workspace = true }
 platform-kernel = { workspace = true }
 platform-startup = { workspace = true }
 tauri = { workspace = true, features = ["protocol-asset"] }
-# NOTE: tauri-plugin-window-state is KEPT — apps/mobile-tauri/capabilities/default.json
-# references the `window-state:default` permission, which requires the plugin crate at
-# build time even though no Rust code calls `.plugin(...)` (udeps cannot see capability refs).
 tauri-plugin-clipboard-manager = { workspace = true }
-tauri-plugin-window-state = { workspace = true }
 tauri-plugin-opener = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
