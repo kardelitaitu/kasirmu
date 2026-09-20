@@ -15,9 +15,9 @@ otherwise") and it was never true of the name in question.
 So: do not restate this rule in prose. Run this.
 
 Usage:
-    python .agents/mock-key-census.py            # populations + the two partitions' closures
-    python .agents/mock-key-census.py --inert    # name the keys with no alias role and no caller
-    python .agents/mock-key-census.py --seeds    # name the keys a deletion would orphan
+    python .agents/scripts/mock-key-census.py            # populations + the two partitions' closures
+    python .agents/scripts/mock-key-census.py --inert    # name the keys with no alias role and no caller
+    python .agents/scripts/mock-key-census.py --seeds    # name the keys a deletion would orphan
 """
 from __future__ import annotations
 
@@ -29,7 +29,12 @@ import sys
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+# Three levels up, not two: this file lives in `.agents/scripts/`, so `parent.parent` is
+# `.agents` and `ROOT / "scripts" / "verify-ipc-parity.py"` resolves to a path that does not
+# exist — the census then dies on import with FileNotFoundError, which reads as "the gate
+# moved" rather than "the root is wrong". The sibling `verify-plan-citations.py` had the
+# identical defect, found the same day.
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 
 
 def load_gate():
