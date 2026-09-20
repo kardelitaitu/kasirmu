@@ -208,6 +208,21 @@ describe('TabletAppLayout', () => {
     expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('places the tab bar after the main content in DOM order', () => {
+    // Half of the "bar is at the bottom" pair; the other half is the
+    // `display: flex` + `flex-direction: column` rule on `.app-layout`,
+    // pinned in tabletShellLayout.test.ts. With DOM order [main, nav] a
+    // plain column puts the bar at the bottom; `column-reverse` would put
+    // it at the top, which is the bug ed6ec31f8 introduced.
+    renderLayout();
+    const main = document.getElementById('tablet-main-content');
+    const nav = document.querySelector('.tablet-tab-bar-nav');
+    expect(main).toBeTruthy();
+    expect(nav).toBeTruthy();
+    const position = main!.compareDocumentPosition(nav!);
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   // ── A11Y-05: tablist roving tabindex + arrow-key navigation ──
 
   it('keeps only the active tab in the tab order (roving tabindex)', () => {

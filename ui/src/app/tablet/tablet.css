@@ -25,11 +25,27 @@
 /* ── Layout ───────────────────────────────────────── */
 /* TAB-02: the tablet entry never loads AppLayout.css, so the base
  * `.app-layout` rules (display:flex etc.) must be re-declared here for
- * the shell to be self-contained. `flex-direction: column-reverse` puts
- * the tab bar at the bottom (thumb-reachable). */
+ * the shell to be self-contained.
+ *
+ * `column`, NOT `column-reverse`. The DOM order in TabletAppLayout.tsx is
+ * [skip link, main, nav], so `column` puts the tab bar at the BOTTOM
+ * (thumb-reachable) and `column-reverse` puts it at the TOP.
+ *
+ * This rule carried `column-reverse` from the file's creation, but it was
+ * INERT: the rule had no `display: flex`, so it stayed a block and the
+ * children stacked in DOM order — which is why the bar appeared at the
+ * bottom and nobody noticed. Adding `display: flex` in ed6ec31f8
+ * (2026-08-02, "make tablet shell layout self-contained") activated the
+ * dormant `column-reverse` and moved the bar to the top for ~7 weeks.
+ * Measured in Chromium at 1024x1366: bar at y 0-65 with the content
+ * starting at 65; with `column` the bar sits at y 1301-1366.
+ *
+ * Two more signals agree with the bottom edge: the height token is
+ * `--tablet-bottom-nav-height`, and the bar consumes
+ * `padding-bottom: var(--inset-bottom)`. */
 .tablet-shell .app-layout {
   display: flex;
-  flex-direction: column-reverse;
+  flex-direction: column;
   height: 100dvh;
   overflow: hidden;
   background: var(--color-bg);
@@ -43,10 +59,19 @@
 /* ── Bottom tab navigation ────────────────────────── */
 /* The bar is a horizontally SWIPEABLE strip, not a fixed row of at most seven
    tabs. It used to be `justify-content: space-around` with no overflow rule,
-   while the caller sliced the registry to seven items — so every further tab
-   was silently dropped and the seven that remained were squeezed narrower than
-   their own labels. Now the strip scrolls: items keep their natural width, and
-   a half-visible tab at the edge is the cue that there is more.
+   while the caller sliced the tab set to seven items — so every further tab was
+   silently dropped, and the tabs that remained had no way to grow.
+
+   The flex rules below are load-bearing, not cosmetic, and they are what makes
+   a longer tab set possible at all. Measured in Chromium with the 13 `admin`
+   screens that are registered nav items (natural width 1222px): keeping
+   `flex: 0 1 auto` and dropping the overflow rule collapses the strip to the
+   48px tap-target floor in portrait (widths 48,48,48,48,61,...) and wraps 6 of
+   the 13 labels onto a second line inside a 64px bar. `flex: 0 0 auto` holds
+   every tab at its natural width, and `overflow-x: auto` then scrolls the
+   overflow instead of compressing it. At the pre-change cap of 7 tabs nothing
+   was squeezed — the defect was the silent drop, and this is what the fix must
+   not reintroduce now that more tabs are allowed through.
 
    `justify-content: safe center` centres the strip while it fits and falls back
    to start-aligned once it overflows. Plain `center` cannot: it would push the

@@ -59,9 +59,11 @@ describe('tablet tab bar scrolls horizontally', () => {
   });
 
   it('keeps every tab at its natural width so the strip overflows', () => {
-    // The flex default (`flex-shrink: 1`) lets a long strip compress items
-    // below their own labels instead of overflowing — the bug that made the
-    // bar look like it "fit" while dropping tabs.
+    // Measured in Chromium with the 13 `admin` screens (natural width 1222px):
+    // the flex default (`flex-shrink: 1`) collapses the strip to the 48px
+    // tap-target floor in portrait and wraps 6 of the 13 labels to a second
+    // line inside the 64px bar. `flex: 0 0 auto` is what holds each tab at its
+    // natural width so the overflow rule has something to scroll.
     expect(ruleBody(ITEM)).toMatch(/flex:\s*0 0 auto/);
     expect(ruleBody(NAV)).toMatch(/flex:\s*0 0 auto/);
   });
