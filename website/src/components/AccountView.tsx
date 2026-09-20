@@ -12,6 +12,7 @@ import AccountQuickActions from './account/AccountQuickActions';
 import AccountDevices, { type Device } from './account/AccountDevices';
 import AccountBilling from './account/AccountBilling';
 import AccountPassword, { type PasswordMsg } from './account/AccountPassword';
+import AccountSignInMethods, { type SignInMethod } from './account/AccountSignInMethods';
 import { PASSWORD_FIELD_LABELS } from './PasswordField';
 import { PASSWORD_STRENGTH_LABELS } from './PasswordStrength';
 import AccountRegion from './account/AccountRegion';
@@ -119,6 +120,7 @@ export const ACCOUNT_LABELS = [
   'account.passwordPlaceholder',
   'account.passwordSave',
   'account.passwordSaved',
+  'account.providerGoogle',
   'account.quickActions',
   'account.region',
   'account.regionHint',
@@ -129,6 +131,10 @@ export const ACCOUNT_LABELS = [
   'account.renewsInDays',
   'account.revokeDevice',
   'account.signIn',
+  'account.signInMethods',
+  'account.signInMethodsAlwaysEmail',
+  'account.signInMethodsEmpty',
+  'account.signInMethodsHint',
   'account.starts',
   'account.status',
   'account.statusActive',
@@ -146,6 +152,9 @@ export const ACCOUNT_LABELS = [
   'account.terminalUnlimited',
   'account.tier',
   'account.unbindHint',
+  'account.unlink',
+  'account.unlinkError',
+  'account.unlinking',
   'account.verified',
   'account.viewReceipts',
   'checkout.error',
@@ -214,6 +223,22 @@ export default function AccountView({ locale, labels }: Props) {
     }
   }, []);
 
+  /** Fetch the tenant's linked sign-in methods (best-effort; null on any error). */
+  const fetchIdentities = useCallback(async (): Promise<SignInMethod[] | null> => {
+    const token = await getSessionToken();
+    if (!token || !API) return null;
+    try {
+      const res = await fetch(`${API}/api/v1/web/identities`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return null;
+      const body = (await res.json()) as { identities?: SignInMethod[] };
+      return body.identities ?? [];
+    } catch {
+      return null;
+    }
+  }, []);
+
   // Password state: the optional login credential managed via set-password.
   const [pw, setPw] = useState('');
   const [pwConfirm, setPwConfirm] = useState('');
@@ -236,6 +261,12 @@ export default function AccountView({ locale, labels }: Props) {
   // failure message (shown inline on the device row).
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
+
+  // Linked sign-in methods (ADR #54). null means "not loaded yet", which is why the
+  // section renders nothing rather than an empty state while the fetch is in flight.
+  const [identities, setIdentities] = useState<SignInMethod[] | null>(null);
+  const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
+  const [unlinkError, setUnlinkError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!API) {
@@ -269,7 +300,15 @@ export default function AccountView({ locale, labels }: Props) {
       .catch(() => {
         if (mountedRef.current) setDevices(null);
       });
-  }, [fetchMe, fetchDevices]);
+    // Same contract for the linked sign-in methods.
+    void fetchIdentities()
+      .then((list) => {
+        if (mountedRef.current) setIdentities(list);
+      })
+      .catch(() => {
+        if (mountedRef.current) setIdentities(null);
+      });
+  }, [fetchMe, fetchDevices, fetchIdentities]);
 
   const savePassword = async (password: string) => {
     setPwMsg('idle');
@@ -392,6 +431,32 @@ export default function AccountView({ locale, labels }: Props) {
       if (mountedRef.current) setRevokeError(err instanceof Error ? err.message : String(err));
     } finally {
       if (mountedRef.current) setRevokingId(null);
+    }
+  };
+
+  /** Unlink a sign-in method via DELETE /web/identities/{id}, then refresh. */
+  const unlinkIdentity = async (method: SignInMethod) => {
+    if (!method.id || !API) return;
+    const token = await getSessionToken();
+    if (!token) return;
+    setUnlinkingId(method.id);
+    setUnlinkError(null);
+    try {
+      const res = await fetch(`${API}/api/v1/web/identities/${encodeURIComponent(method.id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      // Drop the row locally, then reconcile with the server list. If the
+      // refresh fails (null) the removal still stands — the DELETE succeeded.
+      const fresh = await fetchIdentities();
+      if (mountedRef.current) {
+        setIdentities((prev) => (fresh ?? (prev ?? []).filter((m) => m.id !== method.id)));
+      }
+    } catch {
+      if (mountedRef.current) setUnlinkError(t(labels, 'account.unlinkError'));
+    } finally {
+      if (mountedRef.current) setUnlinkingId(null);
     }
   };
 
@@ -544,6 +609,17 @@ export default function AccountView({ locale, labels }: Props) {
           revokingId={revokingId}
           revokeError={revokeError}
           onRevoke={(d) => void revokeDevice(d)}
+        />
+      )}
+
+      {/* Linked sign-in methods (ADR #54) */}
+      {tenant && (
+        <AccountSignInMethods
+          labels={labels}
+          identities={identities}
+          unlinkingId={unlinkingId}
+          unlinkError={unlinkError}
+          onUnlink={(m) => void unlinkIdentity(m)}
         />
       )}
 
