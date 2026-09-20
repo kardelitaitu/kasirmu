@@ -1580,6 +1580,12 @@ export default function PaymentModal({
                       </label>
                     ))}
                     <div className="payment-method-label">
+                      {/* This row is a div, not a label, because it holds two controls —
+                          the radio and the name field. Nothing in the row therefore names the
+                          radio, and an unselected "Other" shows an empty DISABLED input, so the
+                          accessible name has to come from here or the radio announces as bare
+                          "radio button". */}
+                      <Localized id="payment-method-other" attrs={{ 'aria-label': true }}>
                       <input
                         type="radio"
                         name="payment-method"
@@ -1587,6 +1593,7 @@ export default function PaymentModal({
                         checked={method === 'other'}
                         onChange={() => setMethod('other')}
                       />
+                      </Localized>
                       {/* .payment-method-name on the text input below is not decoration:
                           the checked-tender rule (PaymentModal.css:184) is an ADJACENT-SIBLING
                           selector, so that input - the radio's next sibling, and the element

@@ -278,6 +278,16 @@ describe('PaymentModal — rendering & fast interaction', () => {
     expect(other!.getAttribute('placeholder')).toBe('Lainnya…');
     expect(other!.getAttribute('aria-label')).toBe('Nama metode pembayaran lain');
 
+    // The Other row is a div rather than a label (it holds the radio AND the
+    // name field), so nothing in the row names the radio. Unselected, its name
+    // field is an empty disabled input, so without its own aria-label the radio
+    // announced as a bare "radio button".
+    const otherRadio = document.querySelector<HTMLInputElement>(
+      '.payment-method-label input[value="other"]',
+    );
+    expect(otherRadio, 'other-method radio should render').not.toBeNull();
+    expect(otherRadio!.getAttribute('aria-label')).toBe('Metode pembayaran lain');
+
     const quickBtns = document.querySelectorAll('.payment-quick-btn');
     expect(quickBtns.length).toBeGreaterThan(0);
     expect(quickBtns[quickBtns.length - 1]!.getAttribute('aria-label')).toBe('Bayar tepat');
