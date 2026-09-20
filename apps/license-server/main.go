@@ -350,6 +350,11 @@ func main() {
 		if err := ensureTrialEmailLogCollection(app); err != nil {
 			log.Printf("warning: failed to create trial_email_log collection: %v", err)
 		}
+		// Federated identity links (ADR #54): created programmatically so a fresh
+		// volume and an existing one take the same path.
+		if err := ensureTenantIdentitiesCollection(app); err != nil {
+			return err
+		}
 		go startTrialEmailScheduler(app)
 
 		// ── Auto-resume scanner (LSE-15) ───────────────────────────
