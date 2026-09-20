@@ -618,6 +618,12 @@ requested (`codeSent`), retyping clears the error, and the test that pins it was
 before it was trusted: with the condition reverted it fails, and it names the reason in its
 title rather than in a comment.
 
+The failure copy had the same defect in words: it offered to "skip and link it later", but the
+Account step is the **only** surface that can link a device (`linkDeviceGoogle` is referenced
+nowhere else, and sign-in is wizard-scoped by request), and nothing re-opens the wizard once the
+setup flag is set — so the app promised a path it does not have. It now says "continue without
+linking", in both dictionaries and both JSX fallbacks.
+
 ### 2.8 Console configuration
 
 | Client | Type | Redirect | Secret |
