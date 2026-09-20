@@ -497,6 +497,19 @@ and therefore still works on Android. Excluding the whole feature on tablet woul
 lazier choice and is rejected.
 
 Native Android Google sign-in (Android-type client + SHA-1 + Credential Manager behind a
+
+**Enforced 2026-09-19:** the exclusion is now real and tested. The shell flag lives in
+`ui/src/utils/shellKind.ts`, set by each entry point before the first render — `main.tsx` marks
+desktop, `main.mobile.tsx` marks tablet — because the two builds share every component and differ
+only in their entry, which is the seam this section names. `StepAccount` renders the Google
+control on desktop and, on tablet, a line saying the account links itself when you sign in with
+Google **on the web**. Two tests pin both halves.
+
+> **Still owed from this section:** the tablet's own path — linking *via the emailed code* — is not
+> built. The interim is truthful rather than a stand-in: §2.3's web flow attaches the identity to
+> the tenant whose address the provider verified, so signing in on the web really does link the
+> store's account. What is missing is doing it **from the device** without a browser round trip,
+> which is the half that needs the emailed-code flow.
 Tauri mobile plugin) is future work, and iOS is out of scope until it is paired with Sign in
 with Apple, which App Store Review Guideline 4.8 requires when third-party social login is
 offered.
