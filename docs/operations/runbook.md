@@ -479,6 +479,21 @@ Sessions are in-memory (`web_otp.go:13-19`), so a restart drops admin sessions: 
 
 ### Verification checklist (post-deploy)
 
+**Run one command first.** `python scripts/verify-deployment.py` probes this surface and exits
+non-zero while any ADR #54 route is missing, printing the expected status for each. Measured
+2026-09-26 on the live host: `POST /api/v1/license/activate` and the pre-existing `/api/v1/web/*`
+routes answered (400/401), `/api/sync/snapshot` answered 401, while every `/api/v1/desktop/link/*`
+and `/api/v1/web/oauth/*` route answered **404** -- the container predated ADR #54. On a tablet the
+sign-in path is the emailed code and the link response is what carries the sync credential, so
+that one gap presents as "the app cannot reach auth or sync", and the client gets blamed.
+
+> Two traps in this area, both measured. **Probe with the right method**: PocketBase answers 404,
+> not 405, for a wrong method on an existing route, so `GET /api/v1/web/request-otp` looks dead
+> while `POST` returns 400. And **pace the probes**: `license.ozpos.my.id` is fronted by
+> Cloudflare and a burst from one IP gets 403 for every `/api/v1/*` path, which reads as a broken
+> deployment until a single paced request returns the real status. The verifier stops at the first
+> throttle for this reason.
+
 ```bash
 BASE="https://license.ozpos.my.id"
 curl -s "$BASE/health"                                  # sync pill → 200 ok
