@@ -291,6 +291,24 @@ describe('TabletAppShell — routing', () => {
       });
       expect(screen.queryByTestId('staff-login-screen')).not.toBeInTheDocument();
     });
+
+    it('still prefers the setup wizard over login when getSetupStatus rejects', async () => {
+      // The last cell of the boot cross-product, and the one the reorder
+      // changed: a FAILED setup read (the catch pins the flag to `false`)
+      // combined with no session. Before the reorder `!session` won and this
+      // landed on login; now it reaches the wizard, which is the only route
+      // forward on a device whose setup state is unknown. Pinned so that
+      // flipping it back is a deliberate decision, not a silent cleanup.
+      vi.mocked(getSetupStatus).mockRejectedValue(new Error('boom'));
+      mockNoSession();
+
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('setup-wizard')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('staff-login-screen')).not.toBeInTheDocument();
+    });
   });
 
   // ── Auth gating ───────────────────────────────────────────────

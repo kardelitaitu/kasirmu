@@ -214,6 +214,18 @@ export default function TabletAppShell() {
   // activation) and `hasUsers === false` (owner bootstrap). The tablet registers
   // neither `get_license_status` nor `has_users`, so without this branch its
   // first-run funnel is empty.
+  //
+  // Known consequence of moving this branch, recorded so it is not rediscovered as
+  // a bug: the mount read's catch sets `hasCompletedSetup = false`, so a FAILED
+  // `get_setup_status` now reaches the wizard BEFORE login rather than after it.
+  // Both failure directions are recoverable and this one is the safer of the two —
+  // `onSkip` sets the flag regardless of whether `dismissSetupWizard` resolves, and
+  // on a genuinely fresh device the wizard is the only route forward, whereas login
+  // would be a dead end. The desktop instead treats an unknown read as "not
+  // first-run" (see the `has_users: unknown is not "no users"` note in AppShell.tsx)
+  // and falls through to login. The tablet's catch is pinned by two tests in
+  // TabletAppShell.test.tsx — a rejecting read with a session and a rejecting
+  // read without one — so changing it is a decision, not a cleanup.
   if (!hasCompletedSetup) {
     return (
       <LazyBoundary>
