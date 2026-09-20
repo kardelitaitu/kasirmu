@@ -370,12 +370,6 @@
   margin-bottom: var(--space-3);
 }
 
-.payment-done-note {
-  font-size: var(--text-sm);
-  color: var(--color-fg-tertiary);
-  margin: 0;
-}
-
 /* ── Split Payment ───────────────────────────── */
 .payment-split-toggle {
   padding: var(--space-2) var(--space-5);
@@ -772,10 +766,6 @@
 
   .payment-change {
     animation: payment-done-fade-in 400ms var(--ease-out) 350ms both;
-  }
-
-  .payment-done-note {
-    animation: payment-done-fade-in 400ms var(--ease-out) 450ms both;
   }
 
   @keyframes payment-checkmark-draw {

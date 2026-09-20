@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import AdminLockedFeature from '@/components/AdminLockedFeature';
 import { useAdminGate } from '@/contexts/SubscriptionContext';
 import { requiredLocalized } from '@/components';
+import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Localized, useLocalization } from '@fluent/react';
 import {
@@ -109,6 +110,7 @@ export default function SalesReportScreen() {
 
 function SalesReportScreenContent() {
   const { l10n } = useLocalization();
+  const { addToast } = useToast();
   const numLocale = [...l10n.bundles][0]?.locales[0] ?? 'en';
   // R36-07: read the token through the useWorkspace() hook rather than the
 // raw context object. The global test harness mocks the hook, not the
@@ -336,6 +338,16 @@ const { sessionToken: rawToken } = useWorkspace();
       subtotal: { minorUnits: totalMinor, currency },
       total: { minorUnits: totalMinor, currency },
       payments: [{ method: 'Report', amount: { minorUnits: totalMinor, currency }, change: null }],
+    }).catch((printErr) => {
+      // This call had no catch at all, so the rejection escaped to the global
+      // handler and surfaced to the cashier as "Unexpected error" -- on the Android
+      // shell that was every tap, since the tablet registers no printer driver and
+      // the command always rejects with "no receipt printer registered".
+      console.error('sales report print failed', printErr);
+      addToast({
+        message: requiredLocalized(l10n, 'payment-toast-print-failed'),
+        type: 'warning',
+      });
     });
   };
 

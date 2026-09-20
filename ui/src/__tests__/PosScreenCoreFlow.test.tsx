@@ -332,7 +332,6 @@ pos-cart-subtotal = Subtotal
 pos-cart-options-expand-aria = Show discount, tip, service charge
 pos-cart-options-collapse-aria = Hide discount, tip, service charge
 payment-done-title = Sale Complete
-payment-done-receipt = Receipt printed
 payment-change-label = Change due
 payment-done-note = Receipt printed
 pos-cart-discount-label = Discount ({ \$label })

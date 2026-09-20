@@ -210,6 +210,45 @@ describe('PaymentModal — sale flow', () => {
     }, { timeout: 5000 });
   });
 
+  it('warns instead of reporting success when the receipt cannot print', async () => {
+    // The Android shape: nothing in kasirmu-hal targets Android and the tablet's
+    // registry is empty, so print_sales_receipt_scoped rejects with "no receipt
+    // printer registered" on every sale. That rejection used to be swallowed and
+    // the modal dismissed through the SAME onComplete as a printed receipt —
+    // success toast, success sound, no paper — so the cashier had no way to know.
+    invokeMock.mockImplementation((cmd: string): Promise<unknown> => {
+      if (cmd === 'print_sales_receipt_scoped') {
+        return Promise.reject(new Error('no receipt printer registered'));
+      }
+      return defaultInvokeImpl(cmd) as Promise<unknown>;
+    });
+
+    const onComplete = vi.fn();
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem()]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="mock-token"
+        onComplete={onComplete}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByLabelText(/amount tendered/i);
+    await userEvent.type(input, '10');
+    await userEvent.click(screen.getByRole('button', { name: /^complete$/i }));
+
+    const printBtn = await screen.findByRole('button', { name: /Print Receipt/i });
+    await userEvent.click(printBtn);
+
+    // The cashier is told nothing printed, and the sale still completes — it is
+    // already committed, so the failure is a warning, not a block.
+    expect(await screen.findByText(/Nothing was printed/i)).toBeInTheDocument();
+    await waitFor(() => expect(onComplete).toHaveBeenCalled(), { timeout: 5000 });
+  });
+
   it('shows change due in done state for cash', async () => {
     await renderWithFluent(
       <PaymentModal

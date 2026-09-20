@@ -29,6 +29,7 @@ import { l10nErrorMessage } from '@/utils/app-error';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { EmptyState, ErrorState, requiredLocalized } from '@/components';
+import { useToast } from '@/components/Toast';
 import { NoSalesIcon, NotFoundIcon } from '@/components/EmptyStateIllustrations';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import RefundModal from './RefundModal';
@@ -167,6 +168,7 @@ function SalesHistoryCapTeaser({ onUpgrade }: { onUpgrade: () => void }) {
 
 export default function SalesHistoryScreen() {
   const { l10n } = useLocalization();
+  const { addToast } = useToast();
   // C1.2 upgrade link needs the active locale for the pricing URL; tests
   // render without LocaleContext, so default to English there.
   const locale = useContext(LocaleContext)?.locale ?? 'en';
@@ -465,8 +467,17 @@ export default function SalesHistoryScreen() {
           },
         ],
       });
-    } catch {
-      // Ignore print errors.
+    } catch (printErr) {
+      // Was `catch { /* Ignore print errors. */ }` — the quietest failure on this
+      // screen: the reprint button stopped doing anything and said nothing. On the
+      // Android shell it could never do anything (the tablet registers no driver,
+      // so the command always rejects), and a cashier reprinting a receipt needs to
+      // know the printer, not the app, is what failed.
+      console.error('printSalesReceipt (reprint) failed', printErr);
+      addToast({
+        message: requiredLocalized(l10n, 'payment-toast-print-failed'),
+        type: 'warning',
+      });
     } finally {
       setPrinting(false);
     }
@@ -475,7 +486,7 @@ export default function SalesHistoryScreen() {
     // token, the call rejects, and the UI shows nothing at all -- no toast, no error, just a
     // button that stops doing anything. Listing the token at least makes the next attempt use
     // a live one.
-  }, [detail, l10n, sessionToken]);
+  }, [detail, l10n, sessionToken, addToast]);
 
   // ── Refund handlers ──────────────────────────────────────────
   const openRefund = useCallback(() => {

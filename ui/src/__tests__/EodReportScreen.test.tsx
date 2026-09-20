@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { renderWithFluentSync } from '@/__tests__/test-utils/render';
+// renderWithProviders* (not renderWithFluentSync): the EOD screen's print button now
+// reports a failed print through the toast context, so it needs a ToastProvider.
+import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import salesFtl from '@/locales/sales.ftl?raw';
 import shiftsFtl from '@/locales/shifts.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
@@ -94,7 +96,7 @@ function makeShift(overrides: Record<string, unknown> = {}) {
 }
 
 function renderScreen() {
-  return renderWithFluentSync(<EodReportScreen />, salesFtl, shiftsFtl, sharedFtl);
+  return renderWithProvidersSync(<EodReportScreen />, salesFtl, shiftsFtl, sharedFtl);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
