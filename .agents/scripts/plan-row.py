@@ -15,8 +15,8 @@ and it generalises: the warning was written about prose this lane edits, and nev
 this lane TICKS.
 
 Usage:
-    python .agents/plan-row.py [row-number] [--file PATH]      # print that row, whole
-    python .agents/plan-row.py --audit [--file PATH] [--min N] # which rows outstrip a clip?
+    python .agents/scripts/plan-row.py [row-number] [--file PATH]      # print that row, whole
+    python .agents/scripts/plan-row.py --audit [--file PATH] [--min N] # which rows outstrip a clip?
 """
 from __future__ import annotations
 
@@ -33,6 +33,15 @@ if hasattr(sys.stdout, "reconfigure"):
 CLIP = 2000  # what a `read` tool call returns for one long line
 ROW_RE = re.compile(r"^[ \t]*[-*][ \t]+\[[ x]\][ \t]+\*\*(.+?)\*\*")
 
+# Three levels up: this file lives in `.agents/scripts/`, so `.parent.parent` would be
+# `.agents`. The default is anchored here rather than left relative to the CWD, because the
+# work-order it names has moved once already (`.agents/` -> `.agents/reviews/`, plus the
+# rebrand's `kasirmu` -> `oz-pos` and a `done-` prefix), and a bare relative default resolves
+# to nothing from anywhere but the directory it used to sit in — which is how this tool came
+# to answer `--audit` with "not found" instead of the row census it exists to print.
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
+DEFAULT_PLAN = ROOT / ".agents" / "reviews" / "done-todo-refactor-oz-pos-app-agents-3.md"
+
 
 def rows(path: pathlib.Path) -> list[tuple[int, str]]:
     return [(i, line) for i, line in enumerate(path.read_text(encoding="utf-8").split("\n"), 1)
@@ -47,7 +56,7 @@ def label_of(line: str) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("row", nargs="?", type=int)
-    ap.add_argument("--file", default="todo-refactor-kasirmu-app-agents-3.md")
+    ap.add_argument("--file", default=str(DEFAULT_PLAN))
     ap.add_argument("--audit", action="store_true")
     ap.add_argument("--min", type=int, default=CLIP)
     ap.add_argument("--start", type=int, default=0)
