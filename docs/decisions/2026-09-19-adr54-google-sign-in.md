@@ -432,6 +432,20 @@ forcing Google would degrade the email path that is the account root (§1.2). Th
 the account email; the server sends a code to `tenants.email`; the app submits it and lands
 on the identical `link/consume` and the identical terminal credential.
 
+**Corrected the same day (credentials):** the command's first signature took `api_key` and
+`machine_id` as arguments — modelled on `activate_license`, which is wrong here. That command
+takes credentials because the *user types them*; this device already holds them, encrypted, in
+Settings. The command now resolves them itself through a new `license::stored_credentials`, so
+**no licence secret crosses the IPC boundary** and the renderer sees only the account it was
+linked to. Reading them is also the honest precondition check: before activation there is no
+tenant to bind an identity to, so an unactivated device gets `Invalid` rather than a 403 from
+the server.
+
+The unsealing rule (base64 ciphertext bound to the machine id, else legacy plaintext) was
+**extracted into one function** shared with activation rather than copied: two copies of
+"decrypt or fall back to plaintext" is exactly what drifts out of agreement in the
+less-exercised copy.
+
 **Link codes are purpose-bound.** A code issued for device linking must not be replayable
 into `/web/verify-otp`, and vice versa; the store keys by purpose, not just by email.
 
