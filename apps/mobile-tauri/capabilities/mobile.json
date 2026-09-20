@@ -1,6 +1,7 @@
 {
+  "$schema": "../gen/schemas/mobile-schema.json",
   "identifier": "mobile-capability",
-  "description": "Capabilities for the tablet / mobile app (M-1: narrowed from wildcard). The four dialog/fs grants added 2026-09-20 by the tablet file-picker slice are deliberately command-scoped rather than dialog:default / fs:default, keeping the M-1 narrowing intact; no fs:scope entry is granted because the mobile resolve_file Url arm does not consult the scope for a content:// URI (tauri-plugin-fs commands.rs:1448-1477), so a scope entry would read like enforcement without being any.",
+  "description": "Capabilities for the tablet / mobile app (M-1: narrowed from wildcard). The dialog/fs grants added 2026-09-20 by the tablet file-picker slice are deliberately command-scoped rather than dialog:default / fs:default, keeping the M-1 narrowing intact. The two legs of the content-URI bridge need different things and the difference is not obvious: READING the picked content:// URI needs no scope entry at all, because tauri-plugin-fs's mobile resolve_file matches the Url arm and returns before the scope is consulted (tauri-plugin-fs commands.rs:1448-1477); WRITING the bridged copy to the app cache is a plain Path, so it takes the scope-checked arm (same file, :1474-1479 -> resolve_path at :1573) and therefore does need the fs:scope entry below. That entry is narrow on purpose -- a single leading segment with no separator wildcard, so require_literal_separator confines it to direct children of the app cache and it cannot reach $APPCACHE/images/, which is the media store BridgeCtx::media_cache_dir points the image ingest at. The image-pick- prefix is mirrored by TEMP_PREFIX in ui/src/api/image-pick.ts; renaming one without the other is a runtime 'forbidden path' error, not a type error.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -10,6 +11,10 @@
     "dialog:allow-open",
     "dialog:allow-save",
     "fs:allow-read-file",
-    "fs:allow-write-file"
+    "fs:allow-write-file",
+    {
+      "identifier": "fs:scope",
+      "allow": ["$APPCACHE/image-pick-*"]
+    }
   ]
 }

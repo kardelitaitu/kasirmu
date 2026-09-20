@@ -5,7 +5,6 @@ restaurant-menu-search-placeholder = Search Menu
 restaurant-menu-hamburger-aria = Menu
 restaurant-sidebar-toggle-aria = Sidebar
 restaurant-avatar-edit-aria = Change profile photo for { $name }
-restaurant-avatar-desktop-only = Changing your photo needs the desktop app
 restaurant-sidebar-copyright = © 2026 kasir.mu. All rights reserved.
 restaurant-size-decrease-aria = Decrease size
 restaurant-size-increase-aria = Increase size

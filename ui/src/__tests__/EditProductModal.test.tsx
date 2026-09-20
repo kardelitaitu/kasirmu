@@ -11,13 +11,32 @@ import type * as ProductsModule from '@/api/products';
 // ── Mocks ─────────────────────────────────────────────────────────────
 
 const mocks = vi.hoisted(() => ({
-  open: vi.fn(),
+  pickImage: vi.fn(),
   setImage: vi.fn(),
   clearImage: vi.fn(),
   listImages: vi.fn(),
 }));
 
-vi.mock('@tauri-apps/plugin-dialog', () => ({ open: mocks.open }));
+// The modal no longer calls the dialog plugin directly: it goes through
+// `pickImageFile`, which owns the Android content-URI bridge. Mocking that seam
+// keeps this file about the modal, and leaves the bridge to its own test
+// (`imagePick.test.ts`). It also means these tests no longer need
+// `@tauri-apps/plugin-fs` or `@tauri-apps/api/path` mocked at all.
+vi.mock('@/api/image-pick', () => ({ pickImageFile: mocks.pickImage }));
+
+/**
+ * jsdom has no `__TAURI_INTERNALS__`, so `isTauriWebview()` reads false and the
+ * modal's new picker guard short-circuits before the mocked helper is reached.
+ * The predicate tests for a CALLABLE `invoke`, not for the key's presence — a
+ * bare `{}` does not count, and neither does the dev preview's
+ * `{ transformCallback }` stub (`api/tauri.ts:29-57`). Same stub shape as
+ * `useUnsavedChangesGuard.test.tsx:65`.
+ */
+function stubTauriWebview(on: boolean): void {
+  const w = window as unknown as { __TAURI_INTERNALS__?: unknown };
+  if (on) w.__TAURI_INTERNALS__ = { invoke: () => Promise.resolve() };
+  else delete w.__TAURI_INTERNALS__;
+}
 
 vi.mock('@/api/products', async (importActual) => {
   const actual = await importActual<typeof ProductsModule>();
@@ -76,6 +95,7 @@ retail-edit-image-uploading = Uploading image…
 retail-edit-image-error = Could not update the image. Try again.
 retail-edit-image-menu-note = Menu items always have exactly one image.
 retail-edit-image-alt = { $name } image { $slot }
+image-pick-app-only = Choosing a photo needs the kasir.mu app
 `;
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -89,7 +109,10 @@ function wrapper({ children }: { children: React.ReactNode }) {
 describe('EditProductModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.open.mockReset();
+    // Baseline: not a Tauri webview. Tests that need the picker opt in, so a
+    // leftover stub from an earlier test cannot make a guard look exercised.
+    stubTauriWebview(false);
+    mocks.pickImage.mockReset();
     mocks.setImage.mockReset();
     mocks.clearImage.mockReset();
     mocks.listImages.mockReset();
@@ -250,9 +273,11 @@ describe('EditProductModal', () => {
     expect(screen.getByText('Additional images')).toBeInTheDocument();
   });
 
-  it('sets the primary image through the file dialog + scoped command', async () => {
+  it('sets the primary image through the picker bridge + scoped command', async () => {
     const user = userEvent.setup();
-    mocks.open.mockResolvedValue('/path/to/photo.png');
+    stubTauriWebview(true);
+    const release = vi.fn();
+    mocks.pickImage.mockResolvedValue({ path: '/path/to/photo.png', release });
     mocks.setImage.mockResolvedValue('cafe0000cafe0000');
     mocks.listImages.mockResolvedValue([]);
 
@@ -272,12 +297,45 @@ describe('EditProductModal', () => {
     });
     await user.click(screen.getByRole('button', { name: /Choose a new image/ }));
 
-    expect(mocks.open).toHaveBeenCalledWith(expect.objectContaining({ multiple: false }));
+    // The path the bridge resolved is what reaches the scoped command — on
+    // Android that is the cache copy, never the `content://` URI.
     await waitFor(() => {
       expect(mocks.setImage).toHaveBeenCalledWith('tok-1', 'prod-1', 1, '/path/to/photo.png');
     });
+    // The bridged temp copy is released once the ingest has settled.
+    expect(release).toHaveBeenCalled();
     // Reloads the list after setting.
     expect(mocks.listImages).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports the app-only message instead of throwing outside a webview', async () => {
+    const user = userEvent.setup();
+    mocks.listImages.mockResolvedValue([]);
+
+    render(
+      <EditProductModal
+        product={{ ...sampleProduct, id: 'prod-1' }}
+        isOpen={true}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        sessionToken="tok-1"
+      />,
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Product Images')).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('button', { name: /Choose a new image/ }));
+
+    // Before this guard existed the browser dev preview reached `open()` and
+    // threw `__TAURI_INTERNALS__.invoke is not a function`, so the click
+    // reported a hard failure. It now says what is actually wrong.
+    await waitFor(() => {
+      expect(screen.getByText('Choosing a photo needs the kasir.mu app')).toBeInTheDocument();
+    });
+    expect(mocks.pickImage).not.toHaveBeenCalled();
+    expect(mocks.setImage).not.toHaveBeenCalled();
   });
 
   it('clears an assigned alternative slot via the scoped command', async () => {

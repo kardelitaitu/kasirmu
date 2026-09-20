@@ -7,8 +7,8 @@ import { useLocalization } from '@fluent/react';
 import ProductLookupScreen from '@/features/products/ProductLookupScreen';
 import RestaurantMenu from '@/features/restaurant/RestaurantMenu';
 import type { RestaurantSidebarActions, RestaurantSidebarProfile } from '@/features/restaurant/components/RestaurantSidebar';
-import { open } from '@tauri-apps/plugin-dialog';
 import { isTauriWebview } from '@/api/tauri';
+import { pickImageFile } from '@/api/image-pick';
 import { getOwnAvatarScoped, setAvatarScoped } from '@/api/staff';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { FEATURES, useFeatures } from '@/hooks/useFeatures';
@@ -214,25 +214,28 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const handleChangePhoto = useCallback(async () => {
     if (!sessionToken || !session?.user_id || avatarBusy) return;
     if (!isTauriWebview()) {
-      // The browser dev preview has no dialog plugin; the dev-mock has no
-      // real cache dir to write into either. Say so rather than failing mute.
-      // A key-presence test would answer "Tauri" here: `index.html` installs a
-      // partial `__TAURI_INTERNALS__` stub without `invoke`, and the dialog
-      // plugin would then reject on a path with no toast.
-      addToast({ message: requiredLocalized(l10n, 'restaurant-avatar-desktop-only'), type: 'info' });
+      // The browser dev preview has no dialog plugin, so `pickImageFile`
+      // returns null there — indistinguishable from a cancel. Say so rather
+      // than failing mute. A key-presence test would answer "Tauri" here:
+      // `index.html` installs a partial `__TAURI_INTERNALS__` stub without
+      // `invoke`, and the dialog plugin would then reject on a path with no
+      // toast. Note this is NOT a desktop-only restriction any more: both
+      // shells can change a photo, this guard is about the browser.
+      addToast({ message: requiredLocalized(l10n, 'image-pick-app-only'), type: 'info' });
       return;
     }
     try {
-      const picked = await open({
-        multiple: false,
-        filters: [{ name: 'Images', extensions: ['webp', 'png', 'jpg', 'jpeg'] }],
-      });
-      if (!picked) return;
-      const path = Array.isArray(picked) ? picked[0] : picked;
-      if (!path) return;
+      const picked = await pickImageFile();
+      if (!picked) return; // the user cancelled — not an error
       setAvatarBusy(true);
-      const hash = await setAvatarScoped(sessionToken, session.user_id, path);
-      setAvatarHash(hash);
+      try {
+        const hash = await setAvatarScoped(sessionToken, session.user_id, picked.path);
+        setAvatarHash(hash);
+      } finally {
+        // Drops the bridged temp copy; a no-op on desktop, where `path` is the
+        // user's own file.
+        picked.release();
+      }
     } catch {
       addToast({ message: requiredLocalized(l10n, 'retail-edit-image-error'), type: 'error' });
     } finally {

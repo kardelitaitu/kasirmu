@@ -65,6 +65,13 @@ toggle = Toggle
 no-results = No results found
 error-occurred = An error occurred
 
+# Capability hints. Shown when an affordance needs a real app shell: the file
+# pickers go through `@tauri-apps/plugin-dialog`, which the browser dev preview
+# cannot reach (its `__TAURI_INTERNALS__` stub has no `invoke`). Replaces
+# `restaurant-avatar-desktop-only`, which asserted the photo feature was
+# desktop-only — true until the tablet gained the picker, false after.
+image-pick-app-only = Choosing a photo needs the kasir.mu app
+
 # Common aria-label attributes for generic UI actions
 clear-aria = Clear
 backspace-aria = Backspace
