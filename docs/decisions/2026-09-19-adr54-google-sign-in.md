@@ -842,7 +842,7 @@ cd ui; npm run test -- SetupWizard stepAccountCopy                # wizard step 
 cd ../website; npm run precheck; npm run check                    # login banner, signup entry
 
 # the deployment-shaped gates this feature added or leans on
-node scripts/check-env-docs.mjs; node scripts/check-unified-routes.mjs
+python .agents/skills/docs-auditor/scripts/check-env-docs.py; node scripts/check-unified-routes.mjs
 node scripts/check-server-origins.mjs; python scripts/verify-ipc-parity.py
 ```
 

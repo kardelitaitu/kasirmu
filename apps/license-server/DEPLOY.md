@@ -425,7 +425,7 @@ Read from the admin surface:
 > existing gate, and the drift checker only compares docs to *gates*):
 >
 > ```bash
-> python3 .agents/skills/docs-auditor/scripts/check-env-docs.py          # 27 names, 0 undocumented
+> python3 .agents/skills/docs-auditor/scripts/check-env-docs.py          # prints the live count; 0 undocumented is clean
 > python3 .agents/skills/docs-auditor/scripts/check-env-docs.py --self-test   # 9 cases, touches no files
 > ```
 >
