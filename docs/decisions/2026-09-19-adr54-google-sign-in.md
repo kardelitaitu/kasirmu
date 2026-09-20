@@ -403,6 +403,17 @@ Three details that are the difference between working and nearly working:
 
 ### 2.6 Desktop alternative: an emailed code, same destination
 
+**Shipped 2026-09-19 (orchestration):** `link_device` runs the flow from bind to linked account —
+bind, PKCE, start, hand the consent URL to the launcher, wait, consume — and takes the launcher
+as an injected `FnOnce(String) -> Result<(), BridgeError>`. That injection is the point: it keeps
+the function free of any UI toolkit and lets four tests drive the **whole flow against a stub
+licence server and a fake browser** — including the PKCE verifier reaching the server, the code
+from the loopback URL being what gets spent, the device named on both calls, and a declined
+consent surfacing as `Invalid` rather than as a transport error. Twelve tests in this module now.
+
+The browser is opened only *after* the server records the pending link: a browser that arrives
+before the state exists has nothing to complete.
+
 The same step offers *email me a code instead*, because not every account is Google and
 forcing Google would degrade the email path that is the account root (§1.2). The user enters
 the account email; the server sends a code to `tenants.email`; the app submits it and lands
