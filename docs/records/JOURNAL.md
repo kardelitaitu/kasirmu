@@ -11532,3 +11532,92 @@ claiming 455 beside a const reading 458.
 **Commit:** single pathspec commit touching the gate file, the regenerated ledger and this file together — the
 assertion asks for one deliberate pass, so splitting the const from its record would reproduce the exact
 failure mode the message describes. Never push without a direct user order.
+## 2026-09-20 — Absorb: the emailed-code device link lands on BOTH registration floors, and the first ceiling RISE either ledger has taken (mobile-tauri/desktop-tauri/records)
+
+**Context:**
+The tablet shell's own ratchet was red at HEAD, on two legs. Found by running the shell, not by reading a
+diff: `cargo test -p kasirmu-mobile` read **675 passed / 2 failed**,
+and the two names were the pins, not the feature —
+`drift_pin_registration_floor_is_met` (*"hand-written floor of 320 disagrees with the ledger's measured
+total of 324"*, `registration_gate_tests.rs:731`) and `drift_pin_debt_ceilings_only_shrink` (*"88 ungated
+registered commands against a ceiling of 85"*, `:870`).
+
+Provenance is two commits, neither of which touched a pin: `3f0e8c4c3` (feat(ui): add the google account
+link step) registered `desktop_link::link_device_google`, and `da6a4a8d4` (feat(core): expose the
+emailed-code device link to both shells) registered `desktop_link::link_device_email_request` and
+`desktop_link::link_device_email_consume`. Each regenerated the generated ledger — rows and
+`REGISTERED_TOTAL` — which is all the generator is allowed to write. The four numbers a sweep cannot
+measure stayed where they were:
+
+| shell | floor written | measured / ledger total | ceiling written | measured ungated | class-1 count written | measured |
+|---|---|---|---|---|---|---|
+| tablet | 320 | 324 | 85 | 88 | 41 | 44 |
+| desktop | 458 | 461 | 69 | 72 | 42 | 45 |
+
+The distinction is structural, not an oversight, and `rendered_ledger_file` says so in its own doc:
+`DEBT_CEILING` and the two class counts are *pins* — "a pin is a decision … a generator that recomputed
+one would be inventing policy" — and the floor is an EQUALITY against the tree on desktop and against the
+ledger's total on tablet. So a registration pass that does not also touch the pins leaves them stale by
+construction, which is what both commits did.
+
+**Changes:**
+1. `apps/mobile-tauri/src/commands/registration_gate_tests.rs:87` — `REGISTERED_FLOOR` 320 → 324, the
+   number the harness prints rather than a chosen one, with the 20-09-26 step named (`link_device_google`
+   plus the emailed-code pair) and the 18-09-26 step kept as the dated predecessor.
+2. `apps/mobile-tauri/src/commands/registration_gate_debt.generated.rs:280` — `DEBT_CEILING` 85 → 88,
+   `NO_SESSION_RESOLUTION` 41 → 44, and the partition comment 44 + 41 = 85 → 44 + 44 = 88.
+3. `apps/desktop-tauri/src/commands/registration_gate_tests.rs:92` — `REGISTERED_FLOOR` 458 → 461.
+4. `apps/desktop-tauri/src/commands/registration_gate_debt.generated.rs:188` — `DEBT_CEILING` 69 → 72,
+   `NO_SESSION_RESOLUTION` 42 → 45, partition comment 42 + 27 = 69 → 45 + 27 = 72.
+5. Both ledger prose blocks carry the movement as a dated entry above the const, the way the descent
+   history above them already does, and neither `REGISTERED_TOTAL` nor the `DEBT_LEDGER` array is touched
+   — the generator's own output is left exactly as it was written.
+6. Deliberately untouched: `REGISTERED_SLACK` (24) in both shells, every partition leg, and both
+   `UNSOURCED` consts.
+
+**What it means:**
+**This is the first rise either ceiling has ever taken**, and it is the direction the pin's own message
+forbids without a reason: *"a rise means a newly registered command shipped ungated: record the reason in
+docs/records/JOURNAL.md before the number moves."* The reason is that class 1 is STRUCTURAL for
+`desktop_link`, not an omission being absorbed. The account-link step lives in the setup wizard, which runs
+**before any staff session exists** — there is no session to resolve and no permission to name, which is why
+`license::activate_license` and `license::get_machine_id` have sat in that same class since the gate was
+written. The device proves *which tenant* it holds to the licence server with its own stored credentials
+(`api_key`), read shell-side by `stored_credentials`; the door is authenticated, just not by a session. A
+`session_token` parameter here would be a permission check no caller could ever satisfy, which is worse than
+a recorded row.
+
+The three rows are also *not* new surface for the gate's own census: `link_device_google` was the tablet's
+and desktop's only `desktop_link` row before this, and the pair that joins it is the same feature's second
+door (ADR #54 §2.6 — the no-browser route, which is the one Android can actually take, §1.7). The ceiling
+rise prices three names, and it prices them where the previous pass priced the first one.
+
+A narrower pass was not available. The floor leg compares the floor to the ledger's total on tablet and to
+the tree on desktop, so the two files can only be made equal together; the ceiling leg counts what the
+partition leg measures, so a ceiling moved without the class count re-partitions into a lie. Splitting them
+would reproduce the failure this pass exists to end — which is why all four numbers per shell move in one
+commit with this record.
+
+Not in this pass: the client half of the emailed-code flow (the tablet's own wizard form). It was in flight
+in another lane's working tree while this pass was made — `ui/src/api/license.ts`, `StepAccount.tsx`, both
+locale files and the bridge module were dirty — so it is neither audited nor committed here. One ordering
+constraint is worth recording for whoever lands it: `scripts/verify-ipc-parity.py` fails a UI command string
+that no shell's `generate_handler!` registers, so the form cannot land before the two registrations it calls,
+and it must not land alone.
+
+**Verification:**
+- Before: `cargo test -p kasirmu-mobile` → **675 passed; 2 failed**, the two pins above.
+- After: `cargo test -p kasirmu-mobile drift_pin` → **8 passed; 0 failed**, exit 0.
+- After: `cargo test -p kasirmu-app --lib drift_pin` → **8 passed; 0 failed**, exit 0. The desktop legs
+  were NOT run before this pass — its before-state above is derived from two consts (floor 458 against the
+  tree's 461) and the generator's own row count (72 against a ceiling of 69), and this run is the
+  after-state. The tablet's before-state is the measured 675/2 above, not a derivation.
+- The counts are read, not chosen: 88 = 44 + 44 and 72 = 45 + 27 are the row counts of the two
+  `DEBT_LEDGER` arrays as the generator wrote them, and 324 / 461 are the two `REGISTERED_TOTAL`
+  consts the same runs wrote.
+- `dev-ci.yml:251` runs `cargo nextest run --workspace --all-features` with no `--exclude`, so both reds
+  were going to fire on the next push regardless of what else was in the batch.
+
+**Commit:** one pathspec commit touching the two gate files, the two ledgers and this file together — the
+assertions ask for one deliberate pass, so splitting a const from its record would reproduce the exact
+failure mode the message describes. Never push without a direct user order.

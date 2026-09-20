@@ -84,12 +84,17 @@ use std::path::{Path, PathBuf};
 #[path = "registration_gate_debt.generated.rs"]
 mod debt;
 
-/// The registered surface of this shell, measured from `../lib.rs` as 458 names on
-/// 20-09-26 (455 on 16-09-26, 453 on 13-09-26). This is an EQUALITY and the leg below checks it against
+/// The registered surface of this shell, measured from `../lib.rs` as 461 names on
+/// 20-09-26 (458 earlier the same day, 455 on 16-09-26, 453 on 13-09-26). This is an EQUALITY and the leg below checks it against
 /// the tree, so a moved include_str path cannot pass by finding nothing and a registered
 /// name cannot pass by being gated. Raising this number records what landed; it does not
 /// approve it.
-const REGISTERED_FLOOR: usize = 458;
+///
+/// The 458 -> 461 step is the device-link half of ADR #54: `link_device_google` arrived
+/// first, then `link_device_email_request` / `link_device_email_consume` with the emailed
+/// code. Unlike the three `qris_auto` names the 453 step absorbed, these three are NOT
+/// gated, so the same pass moves a ceiling and the class counts in the ledger beside it.
+const REGISTERED_FLOOR: usize = 461;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is

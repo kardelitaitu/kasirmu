@@ -74,17 +74,24 @@ use std::path::{Path, PathBuf};
 #[path = "registration_gate_debt.generated.rs"]
 mod debt;
 
-/// The registered surface of this shell, measured from `../lib.rs` as 320 names on
-/// 18-09-26 — one more than the 319 this floor and the ledger's `REGISTERED_TOTAL` had
-/// carried together since the 09-16 passes. A moved include_str path must not be able to
-/// pass by finding nothing, and the ledger's total is asserted EQUAL to this, so the
-/// generator bringing that total current forces this number to move in the same pass.
+/// The registered surface of this shell, measured from `../lib.rs` as 324 names on
+/// 20-09-26 (320 on 18-09-26, one more than the 319 the floor and the ledger's
+/// `REGISTERED_TOTAL` had carried together since the 09-16 passes). A moved include_str
+/// path must not be able to pass by finding nothing, and the ledger's total is asserted
+/// EQUAL to this, so the generator bringing that total current forces this number to move
+/// in the same pass.
 ///
-/// The +1 is named rather than counted, which is this file's convention: `b07e8c3ac`
-/// registered `pos::set_line_course_scoped` and `pos::publish_course_fired_scoped`, and
-/// `d29a7c0f4` retired `settings::set_hardware_settings`, netting one more name than the
-/// ledger's total recorded. Raising this records what landed; it does not approve it.
-const REGISTERED_FLOOR: usize = 320;
+/// The 20-09-26 step is named rather than counted, which is this file's convention:
+/// `3f0e8c4c3` registered `desktop_link::link_device_google` and `da6a4a8d4` registered
+/// `desktop_link::link_device_email_request` / `desktop_link::link_device_email_consume`,
+/// three names that arrived already ungated — so they moved a ceiling and three ledger
+/// rows too, and all four numbers moved together in the pass that raised this one.
+/// Raising this records what landed; it does not approve it. The earlier step is kept
+/// because it is the same story one order smaller: `b07e8c3ac` registered
+/// `pos::set_line_course_scoped` and `pos::publish_course_fired_scoped`, and `d29a7c0f4`
+/// retired `settings::set_hardware_settings`, netting one more name than the ledger's
+/// total recorded.
+const REGISTERED_FLOOR: usize = 324;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.
