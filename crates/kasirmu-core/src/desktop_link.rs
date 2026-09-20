@@ -66,6 +66,24 @@ pub fn generate_pkce() -> Pkce {
     }
 }
 
+/// The sync credential a completed link earned (ADR #54 §2.5 step 6).
+///
+/// `issued` is always present, so a caller can tell a device that was linked but holds no
+/// credential — the sync service was unconfigured, unreachable, or refused the key — from one
+/// that got everything. A missing field parses as `None`, so an older server is still readable.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalCredential {
+    /// Whether the sync service issued a credential.
+    pub issued: bool,
+    /// The registered terminal id, when one was issued.
+    pub terminal_id: Option<String>,
+    /// The device secret, shown once, when one was issued.
+    pub device_secret: Option<String>,
+    /// Why nothing was issued, when `issued` is false.
+    pub reason: Option<String>,
+}
+
 /// The account a device was linked to, as the licence server reports it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -76,6 +94,8 @@ pub struct LinkedAccount {
     pub provider: String,
     /// The address the provider verified.
     pub email: String,
+    /// The sync credential this link earned, when the server issued one.
+    pub terminal: Option<TerminalCredential>,
 }
 
 /// The account an emailed code proved, as the licence server reports it.
@@ -88,6 +108,8 @@ pub struct VerifiedAccount {
     pub email: String,
     /// Whether the account now counts as verified (true on success).
     pub verified: bool,
+    /// The sync credential this link earned, when the server issued one.
+    pub terminal: Option<TerminalCredential>,
 }
 
 #[derive(Deserialize)]

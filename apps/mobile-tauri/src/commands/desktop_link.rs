@@ -27,7 +27,7 @@ pub async fn link_device_google(
         kasirmu_bridge::license::stored_credentials(&ctx).await?
     };
     let base_url = kasirmu_core::attestation::resolved_origin().url;
-    kasirmu_bridge::desktop_link::link_device(
+    let account = kasirmu_bridge::desktop_link::link_device(
         &base_url,
         &api_key,
         &machine_id,
@@ -38,8 +38,11 @@ pub async fn link_device_google(
                 .map_err(|e| kasirmu_bridge::error::BridgeError::Internal(e.to_string()))
         },
     )
-    .await
-    .map_err(Into::into)
+    .await?;
+    // The link earned a sync credential whenever the server could issue one; store it now so
+    // the device is ready to sync (ADR #54 §2.5 step 7).
+    store_earned_credential(&state, account.terminal.as_ref()).await?;
+    Ok(account)
 }
 
 /// Email a link code to this device's account address (ADR #54 §2.6).
@@ -73,7 +76,22 @@ pub async fn link_device_email_consume(
         kasirmu_bridge::license::stored_credentials(&ctx).await?
     };
     let base_url = kasirmu_core::attestation::resolved_origin().url;
-    kasirmu_core::desktop_link::consume_desktop_link_code(&base_url, &api_key, &machine_id, &code)
-        .await
-        .map_err(Into::into)
+    let account =
+        kasirmu_core::desktop_link::consume_desktop_link_code(&base_url, &api_key, &machine_id, &code)
+            .await?;
+    store_earned_credential(&state, account.terminal.as_ref()).await?;
+    Ok(account)
+}
+
+/// Stores the sync credential a completed link earned, when one was issued.
+///
+/// A link that earned nothing is not an error: the account is linked either way, and the reply's
+/// `issued` flag is what tells the two apart.
+async fn store_earned_credential(
+    state: &State<'_, AppState>,
+    terminal: Option<&kasirmu_core::desktop_link::TerminalCredential>,
+) -> Result<(), AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::sync::store_linked_terminal(&ctx, terminal).await?;
+    Ok(())
 }

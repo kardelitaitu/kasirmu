@@ -135,10 +135,13 @@ func handleDesktopLinkEmailConsume(app core.App) func(e *core.RequestEvent) erro
 			}
 		}
 		log.Printf("/desktop/link/email: tenant %s verified by emailed code", tenant.Id)
+		// Same destination as the Google path: the account is proven, and the device earns its
+		// sync credential on the way out.
 		return e.JSON(http.StatusOK, map[string]any{
 			"tenantId": tenant.Id,
 			"email":    email,
 			"verified": true,
+			"terminal": terminalPayloadForLink(req.MachineID, tenant.Id),
 		})
 	}
 }

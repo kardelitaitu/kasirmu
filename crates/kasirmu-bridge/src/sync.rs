@@ -29,6 +29,39 @@ use kasirmu_core::sync_client::{self, PullResult, SyncAttemptResult, SyncConfig}
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
 
+/// Stores the sync credential a completed device link earned (ADR #54 §2.5 step 7).
+///
+/// The two keys are the ones the sync daemon already reads, so turning sync on afterwards finds
+/// them. The secret goes through its typed encrypting setter rather than a raw settings write:
+/// the credential-storage-form gate treats `sync_terminal_secret` as device-protected, and a
+/// plain write would both fail that gate and leave a secret in the clear.
+///
+/// Returns whether anything was stored; a link that earned no credential is not an error.
+pub async fn store_linked_terminal(
+    ctx: &BridgeCtx<'_>,
+    terminal: Option<&kasirmu_core::desktop_link::TerminalCredential>,
+) -> Result<bool, BridgeError> {
+    let Some(terminal) = terminal else {
+        return Ok(false);
+    };
+    if !terminal.issued {
+        return Ok(false);
+    }
+    let (Some(terminal_id), Some(device_secret)) = (
+        terminal.terminal_id.as_deref(),
+        terminal.device_secret.as_deref(),
+    ) else {
+        // `issued` without both halves is a server contract violation, not a user problem.
+        return Err(BridgeError::Internal(
+            "the link reply claimed a credential without one".to_string(),
+        ));
+    };
+    let conn = ctx.lock_global().await;
+    Settings::set_sync_terminal_id(&conn, terminal_id)?;
+    Settings::set_sync_terminal_secret(&conn, device_secret)?;
+    Ok(true)
+}
+
 /// Get the current sync configuration settings.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

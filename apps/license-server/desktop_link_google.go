@@ -321,10 +321,13 @@ func handleDesktopLinkConsume(app core.App) func(e *core.RequestEvent) error {
 			// wasted two-minute window, not a link, and the legitimate device simply retries.
 			return e.JSON(http.StatusBadRequest, map[string]any{"error": "invalid or expired link code"})
 		}
+		// The device is linked; the sync credential is what lets it sync as a registered
+		// terminal (ADR #54 §2.5 step 6). Best-effort: see sync_terminals.go.
 		return e.JSON(http.StatusOK, map[string]any{
 			"tenantId": tenant.Id,
 			"provider": providerGoogle,
 			"email":    code.email,
+			"terminal": terminalPayloadForLink(code.machineID, tenant.Id),
 		})
 	}
 }
