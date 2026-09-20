@@ -38,8 +38,8 @@ function classify(name, registered, debt) {
   return { kind: 'C', twin };
 }
 const shells = {
-  desktop: ['apps/desktop-client/src/lib.rs', 'apps/desktop-client/src/commands/registration_gate_debt.generated.rs'],
-  tablet: ['apps/tablet-client/src/lib.rs', 'apps/tablet-client/src/commands/registration_gate_debt.generated.rs'],
+  desktop: ['apps/desktop-tauri/src/lib.rs', 'apps/desktop-tauri/src/commands/registration_gate_debt.generated.rs'],
+  tablet: ['apps/mobile-tauri/src/lib.rs', 'apps/mobile-tauri/src/commands/registration_gate_debt.generated.rs'],
 };
 const B = {};
 for (const [shell, [lp, dp]] of Object.entries(shells)) {

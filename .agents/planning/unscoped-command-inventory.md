@@ -24,7 +24,7 @@
 > (`require_inventory_count_permission` and kin), so tablet debt is **overstated** — 105 on the
 > widened vocabulary. Safe direction: a ceiling correction, not a hole.
 
-Measured 2026-09-13 against HEAD `90b7132ca` (branch `0.0.37`). Read-only run: no source file edited, nothing committed, no build. Reproducible via `.agents/measure_gate_gap.mjs`; raw output in `.agents/gate-gap.raw.txt`.
+Measured 2026-09-13 against HEAD `90b7132ca` (branch `0.0.37`). Read-only run: no source file edited, nothing committed, no build. Reproducible via `.agents/scripts/measure_gate_gap.mjs`; raw output in `.agents/gate-gap.raw.txt`.
 
 ---
 
