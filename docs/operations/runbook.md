@@ -627,8 +627,10 @@ and its `northflank-deploy` successor **is live** in `dev-ci.yml` and **does** f
 (`:753-763`): a merge to `main` deploys, a dispatch **from `main`** deploys, and a dispatch
 from a `0.0.*` branch is refused on purpose. The sentence that stood here claimed the deploy
 "cannot fire on push"; the workflow's own comment at `:749-751` names that claim as false.
-So today the native git trigger is the **only** automatic option — which is the
-outcome this paragraph used to call the less auditable one.
+So the native git trigger is an **alternative** automatic path, not the only one —
+`dev-ci.yml` deploys on a push to `main` as well. The difference is *visibility*, not
+capability: the GitHub job is auditable in the Actions UI and reports its own failures, while
+the Northflank git trigger is invisible from this repository.
 
 ### 8.6 Logging & Debugging
 
