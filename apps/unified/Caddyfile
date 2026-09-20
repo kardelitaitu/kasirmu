@@ -10,7 +10,7 @@
 #
 #   PocketBase :8080
 #     /_/*                                  admin SPA
-#     /api/v1/{license,web,paddle}/*        license-server custom hooks
+	#     /api/v1/{license,web,admin,paddle,desktop}/*
 #     /api/* (default)                      admin UI API: /api/collections,
 #                                           /api/settings, /api/superusers,
 #                                           /api/logs, /api/backups,
