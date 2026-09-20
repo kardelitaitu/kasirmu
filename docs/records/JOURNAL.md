@@ -1,4 +1,22 @@
 
+## 2026-09-20 — Absorb: `auth::has_users` raises the tablet debt ceiling 88 → 89 (mobile/tablet)
+
+**Context:**
+The b-full tablet pass (`todo-tablet-dialog-content-uri.md`) registered seven commands in `apps/mobile-tauri/src/lib.rs`: `data::export_data`, `data::import_preview`, `data::import_data`, `avatars::set_avatar_scoped`, `avatars::clear_avatar_scoped`, `products_images::products_set_image_scoped` and `products_images::products_clear_image_scoped`. All seven are ADR #49 shims that forward to `kasirmu-bridge` modules naming a permission, so `gated_bridge_stems()` classifies them **Gated**: they added no ledger rows and moved no ceiling. `REGISTERED_TOTAL` went 324 → 332, which the generator writes.
+
+The eighth name in that commit is not this pass's. `apps/mobile-tauri/src/lib.rs` was already dirty with another lane's uncommitted `commands::auth::has_users` registration, whose definition is not in HEAD's `commands/auth.rs` — so the file could not be committed without carrying that line, nor left uncommitted without the whole phase stalling. The owner ruled (2026-09-20): commit it. `has_users` answers "does any staff account exist?" so the shell can pick the first-run owner bootstrap over the login screen; it is a pre-auth query with no session to resolve, so the sweep measures it as class 1 (`no_session_resolution`) and the ledger grows by one, 88 → 89 rows against a ceiling of 88.
+
+**Changes:**
+1. `apps/mobile-tauri/src/commands/registration_gate_debt.generated.rs` — regenerated (`KASIRMU_REGENERATE_GATE_LEDGER=1`): one new row `("auth::has_users", "no_session_resolution")`, `REGISTERED_TOTAL` 324 → 332. `DEBT_CEILING` 88 → 89, the hand-kept half the generator does not write, with the reason recorded above the const.
+2. `scripts/ipc-parity-allowlist.json` — the eight now-registered names left the `/tablet` list (140 → 132 entries), which is what the parity gate demands of a registration.
+
+**What it means:**
+Provenance, stated because it matters here: **this entry records the absorb and does not author `has_users`** — the door, its permission posture and its justification belong to the auth lane, and the ceiling rise is filed only because the pin is red at HEAD and a rise needs a JOURNAL line. If that lane's slice is reverted, the row, the ceiling and the `has_users` registration must come off together.
+
+**Verification:**
+- `KASIRMU_REGENERATE_GATE_LEDGER=1 cargo test -p kasirmu-mobile --lib drift_pin_generated_ledger_is_the_sweeps_own_output` → 1 passed, 0 failed; the generator reported "89 debt row(s), registered total 332".
+- `python3 scripts/verify-ipc-parity.py` → exit 0, no stale entries (132 unregistered UI names, 132 allowlisted).
+
 ## 2026-09-17 — Absorb: registration gate debt & gate audit census pins (desktop-client/records)
 
 **Context:**

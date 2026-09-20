@@ -12,6 +12,7 @@
 /// The measured debt ledger: (registered name, state).
 pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("auth::staff_login", "no_session_resolution"),
+    ("auth::has_users", "no_session_resolution"),
     ("auth::staff_check_username", "no_session_resolution"),
     (
         "auth::create_session",
@@ -254,7 +255,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// (Re-read 20-09-26: 324, and the floor was raised to it in the same pass as the
 /// ceilings below. The generator writing this number does not move the floor, so the
 /// two are only ever equal in a pass that touches both files.)
-pub const REGISTERED_TOTAL: usize = 324;
+pub const REGISTERED_TOTAL: usize = 332;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///
@@ -293,7 +294,21 @@ pub const REGISTERED_TOTAL: usize = 324;
 /// stored credentials (the api_key), exactly as `license::activate_license` does — a
 /// session permission here would guard a door no session can reach. The reason is
 /// recorded in docs/records/JOURNAL.md, which is what this pin asks of a rise.
-pub const DEBT_CEILING: usize = 88;
+///
+/// RAISED from 88 to 89 by the tablet file-picker pass (b-full, 2026-09-20):
+/// `auth::has_users` joined the ledger as class 1 (`no_session_resolution`).
+/// Class 1 is STRUCTURAL for this door rather than an omission — it answers
+/// "does any staff account exist?" so the shell can choose between the
+/// first-run owner bootstrap and the login screen, which is a question that
+/// must be answerable before any session exists. It mirrors the desktop door
+/// one-for-one. The row is what the sweep measures; the registration itself
+/// was authored in another lane and travelled into `lib.rs` on an owner
+/// ruling, so **this entry records the absorb and does not author the door** —
+/// the same standing as the QRIS-auto absorb in docs/records/JOURNAL.md.
+/// Nothing else in that pass moved the count: the seven commands registered
+/// alongside it (`data::*`, `avatars::*` writes, `products_images::*`) are all
+/// `Gated` shims over `kasirmu-bridge` and added no rows.
+pub const DEBT_CEILING: usize = 89;
 
 /// Lowered from 89 by T11: `settings::set_hardware_settings` shed its row by deletion,
 /// not by gating. Its only argument beyond the DTO was a renderer-supplied `user_id` --
@@ -308,10 +323,15 @@ pub const DEBT_CEILING: usize = 88;
 /// 41 -> 44 with the three `desktop_link::` rows above: they join the largest class
 /// here, and `NO_SESSION_RESOLUTION` is a pin the generator does not recompute, so it
 /// moved by hand in the same pass that raised `DEBT_CEILING`.
-pub const NO_SESSION_RESOLUTION: usize = 44;
+///
+/// 44 -> 45 with `auth::has_users`, the one new row of the 2026-09-20 b-full pass:
+/// a pre-auth bootstrap query cannot resolve a session, so class 1 is where it
+/// belongs. The other class did not move (see `DEBT_CEILING` above for why the
+/// seven commands registered beside it added nothing).
+pub const NO_SESSION_RESOLUTION: usize = 45;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
-/// 44 + 44 = 88 = `DEBT_CEILING`, as the class counts must sum to the ledger.
+/// 45 + 44 = 89 = `DEBT_CEILING`, as the class counts must sum to the ledger.
 pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 44;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).
