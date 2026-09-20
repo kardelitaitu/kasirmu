@@ -6,8 +6,8 @@ between React <Localized> consumers and Fluent locale bundles.
 WHY
 ====
 
-The i18n quality gate (`scripts/lint-i18n.sh` mirroring
-`.github/workflows/ci.yml`) catches two leak categories of bug:
+The i18n quality gate (`scripts/lint-i18n.sh`, run by
+`.github/workflows/dev-ci.yml`) catches two leak categories of bug:
   1. `[i18n]` — a .id.ftl file is byte-identical to its .ftl sibling.
   2. `Attempt to override an existing message` — same key defined in
      two .ftl files in the joined bundle.
