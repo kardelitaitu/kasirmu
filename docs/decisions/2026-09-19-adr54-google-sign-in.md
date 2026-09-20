@@ -526,11 +526,8 @@ credential-storage-form gate is satisfied rather than sidestepped.
 > reads these two keys, and the push and pull paths read them again **on every operation**
 > (`kasirmu-bridge/src/sync.rs:576-595` and `:908-927`) rather than caching them at daemon start —
 > so a credential stored at link time is used by the next sync, and a rotation on re-link is picked
-> up instead of leaving a stale secret in a running process. Same sentence as before:
->
-> (the bootstrap's own read follows)
-> reads exactly these two keys, which is what makes storing them at link time worth doing. That file
-> also *writes* them on its own pairing path, so the two are two ways to the same state rather than a
+> up instead of leaving a stale secret in a running process. That file also *writes* them on its own
+> pairing path, so the two are two ways to the same state rather than a
 > conflict: whichever ran last holds a credential the server has registered, and a superseded
 > `sync_terminals` row is inert because verification looks up by `(terminal_id, secret_hash)`.
 >
