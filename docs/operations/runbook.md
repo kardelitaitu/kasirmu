@@ -566,10 +566,13 @@ failures to expect, and what each means:
 
 
 - `redirect_uri_mismatch` from Google: the callback for **this** host **and this flow** is not
-  registered. Four URIs are needed — both hosts crossed with both paths, `/api/v1/web/oauth/`
-  for the web form and `/api/v1/desktop/link/` for the device link (step 7b of the
-  licence-server deploy). A web sign-in that works while the wizard's Google button does not
-  is exactly this: the desktop path missing from the console.
+  registered. With `OZ_GOOGLE_REDIRECT_URI` pinned to the web callback (`DEPLOY.md` section 7b)
+  that host's **two** paths are enough — `/api/v1/web/oauth/` and `/api/v1/desktop/link/` —
+  because the link flow rewrites the path of the override, and a pinned one-URI console is
+  simpler to keep correct. Leave the override unset and all **four** are needed: both hosts
+  crossed with both paths, since each flow then derives its callback from the request's Host.
+  A web sign-in that works while the wizard's Google button does not is exactly this: the
+  desktop path missing from the console.
   > **You can check registration without the console.** Ask Google: build the authorize URL
   > with the client id and the callback under test and GET it. An unregistered `redirect_uri`
   > answers `400 redirect_uri_mismatch` *before* consent; a registered one answers `302`
