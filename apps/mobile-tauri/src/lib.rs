@@ -72,6 +72,16 @@ pub fn run() {
         let result: Result<(), AppError> = tauri::Builder::default()
             .plugin(tauri_plugin_clipboard_manager::init())
             .plugin(tauri_plugin_opener::init())
+            // Tablet file pickers (todo-tablet-dialog-content-uri.md Phase 1).
+            // Registered here and nowhere else on this shell: the desktop client
+            // has had the dialog plugin since apps/desktop-tauri/src/lib.rs:106.
+            .plugin(tauri_plugin_dialog::init())
+            // `fs` is registered for the webview's benefit, not this crate's: the
+            // Android picker returns a `content://` URI that no Rust consumer can
+            // open as a path, so the UI reads the bytes through `plugin:fs|*`
+            // (which resolves the URI via the content resolver) and writes them to
+            // a real cache path first. See the module note in Cargo.toml.
+            .plugin(tauri_plugin_fs::init())
             .setup(|app| {
                 let state = AppState::new(app.handle())
                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
@@ -502,6 +512,7 @@ pub fn run() {
                 // the store-scoped audit list above — see the command doc.
                 commands::audit::list_security_events_scoped,
                 commands::auth::staff_login,
+                commands::auth::has_users,
                 commands::auth::staff_check_username,
                 commands::auth::create_session,
                 commands::auth::destroy_session,
@@ -513,9 +524,12 @@ pub fn run() {
                 commands::auth::switch_organization,
                 // Own-avatar read (parity gap closed 2026-09-19): the shared
                 // PosScreen restaurant sidebar reads this on mount and this shell
-                // renders that screen. The write half stays desktop-only by owner
-                // ruling — see commands/avatars.rs and the parity allowlist.
+                // renders that screen. The two writes join it in b-full Phase 3,
+                // after the owner reversed the 2026-09-19 desktop-only ruling —
+                // see commands/avatars.rs for what changed and why.
                 commands::avatars::get_own_avatar_scoped,
+                commands::avatars::set_avatar_scoped,
+                commands::avatars::clear_avatar_scoped,
                 commands::branding::get_brand_settings,
                 commands::branding::set_brand_primary_colour,
                 commands::branding::set_brand_logo_path,
@@ -565,6 +579,12 @@ pub fn run() {
                 commands::currencies::get_default_currency_scoped,
                 commands::currencies::set_default_currency,
                 commands::currencies::set_default_currency_scoped,
+                // Data Management (b-full Phase 3): the shared Settings screen
+                // invokes all three, and the picked file reaches them as a path
+                // in the app cache — commands/data.rs.
+                commands::data::export_data,
+                commands::data::import_preview,
+                commands::data::import_data,
                 commands::exchange_rates::list_exchange_rates_scoped,
                 commands::exchange_rates::list_latest_exchange_rates_scoped,
                 commands::exchange_rates::create_exchange_rate_scoped,
@@ -766,6 +786,11 @@ pub fn run() {
                 commands::products::lookup_product_by_sku_scoped,
                 commands::products::record_product_search_scoped,
                 commands::products::update_product_scoped,
+                // Product image writes (b-full Phase 3): EditProductModal calls
+                // both and the tablet mounts it. Without them the Phase-2 picker
+                // succeeds and then the write fails as "command not found".
+                commands::products_images::products_set_image_scoped,
+                commands::products_images::products_clear_image_scoped,
                 commands::promotions::apply_promotion_scoped,
                 commands::promotions::create_promotion_scoped,
                 commands::promotions::delete_promotion_scoped,
