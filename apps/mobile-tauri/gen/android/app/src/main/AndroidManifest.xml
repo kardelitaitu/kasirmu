@@ -27,7 +27,14 @@
          CAMERA is a DANGEROUS permission: declaring it is necessary but NOT
          sufficient — the user must also be asked at runtime, and for a WebView
          source the app has to answer WebChromeClient.onPermissionRequest for
-         getUserMedia. Neither exists yet; see the note at the bottom.
+         getUserMedia. BOTH already exist, but in wry, not here: the generated
+         RustWebChromeClient (wry 0.55.1, the version this workspace locks)
+         maps VIDEO_CAPTURE -> CAMERA, fires the OS permission dialog through
+         its own permissionLauncher and grants or denies the WebView request
+         from the result. Verified 2026-09-20 against the wry-v0.55.1 source,
+         so no app-side runtime request is needed; the note at the bottom was
+         corrected the same day. When tauri 2.12 ships the permission-handler
+         exposure (merged upstream, milestone 2.12), this stays true.
          required="false" keeps the app installable on tablets with no camera,
          which matters because scanning is an optional input sitting alongside
          the serial / USB / BT hardware scanners. -->
@@ -68,12 +75,17 @@
       sources; the merged manifest is checked after every build, not assumed.
 
       Needs CODE, not just a line here:
-        CAMERA, POST_NOTIFICATIONS,  all dangerous on the API levels above —
+        POST_NOTIFICATIONS,  all dangerous on the API levels above —
         BLUETOOTH_CONNECT,           the app must request them at runtime or
         BLUETOOTH_SCAN               they stay ungranted.
         Bluetooth transport          see the long note below.
         WAKE_LOCK                    no wake lock is acquired anywhere yet.
         notifications                no channel, no NotificationManager call.
+
+      Handled by wry itself — no app-side code (corrected 2026-09-20):
+        CAMERA                       the generated RustWebChromeClient answers
+                                     onPermissionRequest and raises the OS
+                                     dialog; see the CAMERA block above.
 
       Not needed, and absent on purpose:
         CHANGE_WIFI_MULTICAST_STATE  mDNS is out of scope by decision: the
