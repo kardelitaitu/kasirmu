@@ -329,6 +329,16 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`update_count_line_scoped`** [D+T] — Update a line belonging to an editable count in the session's store.
 - **`update_stock_count_status_scoped`** [D+T] — Move an editable count to `in_progress` or `cancelled`.
 
+### `commands::desktop_link` (3)
+
+> Added 2026-09-26: these three shipped with ADR #54 §2.5 and were never listed here. The
+> `check-api-surface.py` checker had been unable to run since `apps/desktop-client` was renamed,
+> which is why nothing noticed; reviving it is what surfaced them.
+
+- **`link_device_google`** [D+T] — Link this device to the account that signs in with Google.
+- **`link_device_email_request`** [D+T] — Email a 6-digit code to the account address (the tablet's route).
+- **`link_device_email_consume`** [D+T] — Spend that code and link the device.
+
 ### `commands::kds` (14)
 
 - **`create_kds_order_from_sale`** [not an IPC command] — Service method in `kasirmu_core::db`. The callable surface is `create_kds_order_from_sale_scoped`.
