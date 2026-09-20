@@ -1055,7 +1055,7 @@ pub async fn session_keepalive(
 /// duplicate entry made the exemption look like coverage. Both entries are gone with
 /// this command. What the renderer does with the rejection on a tablet that had no
 /// such command is a separate question, recorded as T5-5 in
-/// `todo-refactor-oz-pos-app-agents-3.md`.
+/// `.agents/reviews/done-todo-refactor-oz-pos-app-agents-3.md`.
 #[command]
 pub async fn refresh_picker_ticket(
     session_token: String,

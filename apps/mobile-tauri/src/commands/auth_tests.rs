@@ -1260,7 +1260,7 @@ fn the_debug_upgrade_policy_is_per_client_by_design() {
         tablet.contains("record_security_event(event, false)"),
         "the tablet's recorder no longer passes debug_upgrade: false. If the policies are \
          genuinely being merged, change crates/kasirmu-core/src/db/audit_security.rs's per-client \
-         paragraph and T5-3 in todo-refactor-oz-pos-app-agents-3.md in the same pass -- \
+         paragraph and T5-3 in .agents/reviews/done-todo-refactor-oz-pos-app-agents-3.md in the same pass -- \
          flipping one call site is not a decision about the other"
     );
     assert!(
