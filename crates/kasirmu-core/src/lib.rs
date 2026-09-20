@@ -25,6 +25,8 @@ next: none — all open COR findings from the closed campaign resolved | perf: N
 #![deny(unsafe_code)]
 
 /// Immutable audit log — cash management and data-modification events.
+pub mod attestation;
+
 pub mod audit;
 /// Authentication and session management.
 pub mod auth;

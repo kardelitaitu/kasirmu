@@ -49,9 +49,12 @@ pub const LICENSE_PUBLIC_KEY_PEM: &str = include_str!("../oz-license.key.pub");
 /// has exactly one implementation. A blank or malformed override is ignored
 /// rather than producing an empty base URL.
 pub fn license_server_url() -> String {
+    // Precedence per ADR #55: an explicit override, then an origin the boot-time
+    // cascade already attested, then the canonical compiled origin. The attested
+    // value is only ever populated by a successful attestation.
     crate::server_origin::resolve_origin(
         std::env::var(crate::server_origin::ORIGIN_ENV_OVERRIDE).ok(),
-        None,
+        crate::attestation::cached_origin().map(|origin| origin.url),
     )
     .url
 }
