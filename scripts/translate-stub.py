@@ -4,7 +4,7 @@ r"""Generate translator scaffolds for byte-identical .id.ftl bundles.
 Why this script exists
 ----------------------
 
-Per the "no byte-identical" principle documented in ``docs/i18n-todo.md``,
+Per the "no byte-identical" principle documented in ``docs/archived/i18n-todo.md``,
 we cannot ship a ``.id.ftl`` that matches its ``.ftl`` sibling verbatim:
 that would render English content under the Indonesian locale tag, which
 is *worse* than letting Fluent's runtime fallback chain show a yellow
