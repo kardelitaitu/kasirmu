@@ -4,6 +4,9 @@ crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: clean
 next: none | perf: N/A
 */
+/// Android Bluetooth (SPP/RFCOMM) transport — JNI over BluetoothSocket.
+#[cfg(target_os = "android")]
+pub mod bt_android;
 pub mod serial;
 pub mod tcp;
 pub mod usb;

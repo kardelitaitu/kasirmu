@@ -20,5 +20,11 @@ tokio = { workspace = true }
 rusb = { workspace = true }
 serialport = { workspace = true }
 
+# Android-only: the Bluetooth SPP transport reaches the Java stack over JNI
+# (transport/bt_android.rs is cfg(target_os = "android") and never compiles
+# into the desktop shells).
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { workspace = true }
+
 [dev-dependencies]
 serde_json = { workspace = true }
