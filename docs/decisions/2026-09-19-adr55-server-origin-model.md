@@ -198,6 +198,17 @@ have caught the fork in §1.
   sign/verify round-trip over a generated keypair with a tampered-nonce negative case. Three
   tests; the round-trip generates its own key rather than skipping, because a skipped security
   test cannot fail.
+- `cargo test -p kasirmu-core --lib attestation` — eleven tests, three of them on the **wire**,
+  which the payload-literal pair could not prove: a one-shot local server asserts the request line is
+  `POST /api/v1/license/attest`, that the nonce travels under its wire name, and that a non-200, a
+  non-JSON body, a missing signature and an answer for a *different* nonce are all refused. That
+  closes the gap this record flagged when the endpoint shipped.
+
+**A latent inconsistency found while gating that module:** its HTTP half is now behind `sync-http`
+like the rest of the crate, but `--no-default-features` does **not** build here at all —
+`license_verification.rs:86-91` (`ping_license_server`) and `sync_auth.rs:14` use reqwest ungated.
+Recorded rather than fixed: the feature is on by default, so nothing consumes that configuration,
+and gating a function the shells call would cascade.
 
 ## 6. Open questions
 
