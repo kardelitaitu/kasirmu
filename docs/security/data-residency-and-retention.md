@@ -37,7 +37,7 @@ deployment (the Northflank service and its Postgres addon), not a per-tenant
 choice. §K's ruling — residency selected at organization creation, moved only
 via an explicit support/migration workflow — is **decided, not implemented**:
 `legal_entities` carries no region column
-(`crates/oz-core/migrations/20260908_legal_entities.sql`), and nothing in the
+(`crates/kasirmu-core/migrations/20260908_legal_entities.sql`), and nothing in the
 schema or API expresses per-tenant residency. When that lands, this section is
 the contract it must satisfy.
 
@@ -48,12 +48,12 @@ Cloud Postgres (row-level-security enforced on all tenant-bearing tables —
 `07197574`):
 
 - **Sales data**: `sales`, `sale_lines`, `refunds` — pushed from devices
-  (`POST /api/v1/sales`, `crates/oz-api/src/lib.rs`). Sale lines are what a
+  (`POST /api/v1/sales`, `crates/kasirmu-api/src/lib.rs`). Sale lines are what a
   receipt records; the client-side export deliberately omits them (§5).
 - **Catalog & inventory**: `products`, variants/taxes/bundles, `tax_rates`,
   `inventory`, `stock_movements`, `stock_summary`, `categories`, `settings`.
 - **Staff accounts**: `users` — `username`, `display_name`, `role_id`,
-  **`pin_hash`** (`INSERT INTO users`, `crates/oz-api/src/pg.rs`). Staff PIN
+  **`pin_hash`** (`INSERT INTO users`, `crates/kasirmu-api/src/pg.rs`). Staff PIN
   *hashes* replicate to the cloud; raw PINs never leave the device — PINs are
   hashed with Argon2id at creation (`hash_pin`, `platform/core/src/auth.rs`).
   Treat the cloud user table as personal data.
@@ -66,7 +66,7 @@ Cloud Postgres (row-level-security enforced on all tenant-bearing tables —
   one narrow exception since `20260920_audit_retention.sql`: DELETE is allowed
   only while a `settings` row with key `audit.retention_sweep_active` exists,
   which `Store::sweep_audit_retention` writes around its own deletes
-  (`SWEEP_MARKER_KEY`, `crates/oz-core/src/db/audit.rs:126`, inserted at :196/
+  (`SWEEP_MARKER_KEY`, `crates/kasirmu-core/src/db/audit.rs:126`, inserted at :196/
   :204 and removed at :226/:231). An auditor asking whether audit rows can be
   deleted therefore gets a two-part answer: not by any ordinary path, and yes
   by the tier retention sweep, which announces itself in the same database.
@@ -77,7 +77,7 @@ Cloud Postgres (row-level-security enforced on all tenant-bearing tables —
   `registration_number` are financial-identity data), `user_location_access`.
 
 **Stays device-local** (never synced): `customers` (names, phones, emails —
-no customers write path exists in `crates/oz-api`), client-side outbox rows,
+no customers write path exists in `crates/kasirmu-api`), client-side outbox rows,
 branding/media files, and the full local sale history beyond what was pushed.
 
 Auth DB (PocketBase): tenant **emails** (login identity + receipt contact),
@@ -109,7 +109,7 @@ leave via metrics has to look at the sync server, not at the absence of a route 
 | Memos (device) | archived → purged at **30 days** | retention sweep (`c8d2a54f` enforced via `archived_at`; daemon `5ee1064a`; `20260914_memo_retention.sql`) |
 | `audit_log` (tenant-facing) | **tier window**, enforced | hourly daemon sweep: `Store::sweep_audit_retention` (`db/audit.rs:162`), called from `apps/desktop-tauri/src/lib.rs:614`/`:639` and `apps/mobile-tauri/src/lib.rs:284`. Plus 90d / Pro 180d / Premium 365d / Enterprise 1095d / Free & OneTime no entitlement (`subscription.rs:243-251`) |
 | `audit_log` rows within the window | **infinite**, immutable by trigger | the sweep only deletes PAST the window; see the trigger exception in §2 |
-| Sales, catalog, inventory, users, memos (cloud) | **no expiry** — kept while the tenant exists | no purge path in `crates/oz-api` (verified: no per-tenant `DELETE`) |
+| Sales, catalog, inventory, users, memos (cloud) | **no expiry** — kept while the tenant exists | no purge path in `crates/kasirmu-api` (verified: no per-tenant `DELETE`) |
 | Local device DB | kept until operator action (backup/restore) | — |
 
 **Correction (2026-09-09, section J audit-baseline scoping).** This row and the
@@ -121,7 +121,7 @@ wired into both apps' daemons.
 
 How the error survived a verification pass is worth recording, because the page
 was audited the same day and stamped "every retention number holds". The number
-that was checked is `RETENTION_DAYS = 90` in `crates/oz-api/src/prune.rs:20` — a
+that was checked is `RETENTION_DAYS = 90` in `apps/cloud-server/src/prune.rs:20` — a
 different mechanism, on a different table, in a different process (the cloud sync
 prune). It is a *correct* citation for the rows above it and says nothing about
 `audit_log`. Verifying one retention constant and generalizing to "no purge
@@ -129,7 +129,7 @@ exists" is the instrument-mismatch shape: the answer was produced by a tool that
 was never pointed at the question.
 
 **Actually open**: the Enterprise *configurable contract override* on the 3-year
-default. `Entitlements::audit_retention_days` (`crates/oz-core/src/entitlements.rs
+default. `Entitlements::audit_retention_days` (`crates/kasirmu-core/src/entitlements.rs
 :189`) is a pure `self.tier.audit_retention_days()` delegation, so there is no seam
 through which a contract could widen the window; adding one means a signed-payload
 change in `apps/license-server` (a payload-schema ownership decision), not a local
@@ -150,7 +150,7 @@ Implemented today:
 
 - **Client data export** — `export_data` (session + `SETTINGS_EDIT`, path
   contained, `apps/desktop-tauri/src/commands/data.rs`) writes an `.ozpkg`
-  payload (`crates/oz-core/src/ozpkg.rs`): products, categories, settings,
+  payload (`crates/kasirmu-core/src/kasirpkg.rs`): products, categories, settings,
   and *optionally* sale **headers only** ("no lines for privacy"), customers,
   and users **without PIN hashes**. `import_preview`/`import_data` restore it.
 - **Client backup/restore** — `create_backup_scoped` produces a full SQLite
@@ -165,7 +165,7 @@ Implemented today:
 **Open gaps — recorded, not glossed:**
 
 1. **No sync-DB purge.** License-server tenant deletion does not touch the
-   Postgres sync DB: there is no per-tenant **erasure** in `crates/oz-api`
+   Postgres sync DB: there is no per-tenant **erasure** in `crates/kasirmu-api`
    (verified at HEAD). Wording matters here, because the crate does contain one
    tenant-scoped `DELETE` in production code — `pg.rs:1975`,
    `DELETE FROM memos WHERE tenant_id = $1 AND NOT (id = ANY($2))` — and it is
