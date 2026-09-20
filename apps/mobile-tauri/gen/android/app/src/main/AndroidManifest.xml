@@ -115,7 +115,7 @@
     <application
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:theme="@style/Theme.oz_pos_tablet"
+        android:theme="@style/Theme.kasirmu_mobile"
         android:usesCleartextTraffic="${usesCleartextTraffic}"
         android:allowBackup="false"
         android:fullBackupContent="@xml/backup_rules"
