@@ -127,8 +127,17 @@ def check():
     return out
 
 def self_test():
-    r = repo_root()
-    nav, tree = build(r, 'en')
+    # Synthetic fixtures, deliberately: a self-test that reads the live nav fails whenever the UI
+    # is refactored, which says nothing about the logic it exists to pin. It did exactly that — the
+    # Staff screen was renamed, `staff` left the nav model, and this test reported WRONG for long
+    # enough that nobody trusted it — because nothing in the repo runs these self-tests.
+    nav = {
+        'tools': {'route': 'tools', 'label': 'Tools', 'section_label': 'Tools', 'names': {'tools'}},
+        'staff': {'route': 'staff', 'label': 'Staff', 'section_label': 'Tools', 'names': {'staff'}},
+        'license': {'route': 'license', 'label': 'License', 'section_label': 'Settings',
+                    'names': {'license'}},
+    }
+    tree = {'license'}
     good = [('x.md', 'open **Tools \u2192 Staff** here')]
     base = len(check_docs(good, nav, tree, 'en'))
     cases = []
