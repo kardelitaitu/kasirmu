@@ -36,15 +36,26 @@ CHECKS = [
     ('GET', '/api/health', None, {200}, 'ops health'),
     ('POST', '/api/v1/web/request-otp', {}, {400, 429}, 'control: pre-existing web route'),
     ('GET', '/api/v1/web/me', None, {401}, 'control: session-authed route'),
-    ('GET', '/api/v1/web/oauth/google/start', None, {302, 303, 307, 503}, 'ADR54 web oauth start'),
-    ('GET', '/api/v1/web/oauth/google/callback', None, {400, 302, 303, 307, 503}, 'ADR54 web oauth callback'),
     ('GET', '/api/v1/web/identities', None, {401}, 'ADR54 identities'),
     ('POST', '/api/v1/desktop/link/email/request', {}, {400, 429}, 'ADR54 tablet link: request'),
     ('POST', '/api/v1/desktop/link/email/consume', {}, {400, 401}, 'ADR54 tablet link: consume'),
     ('POST', '/api/v1/desktop/link/google/start', {}, {400, 401}, 'ADR54 desktop link: start'),
     ('GET', '/api/sync/snapshot', None, {401, 403}, 'sync service auth'),
     ('POST', '/api/v1/terminals', {}, {401, 403, 422}, 'sync terminal registration'),
+    # Last on purpose: these two redirect, and a throttle here must not hide the routes above.
+    ('GET', '/api/v1/web/oauth/google/start', None, {302, 303, 307, 503}, 'ADR54 web oauth start'),
+    ('GET', '/api/v1/web/oauth/google/callback', None, {400, 302, 303, 307, 503}, 'ADR54 web oauth callback'),
 ]
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Refuse to follow 3xx: a redirect IS the answer here (it means configured)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+_OPENER = urllib.request.build_opener(
+    _NoRedirect, urllib.request.HTTPSHandler(context=ssl.create_default_context())
+)
 
 def probe(base: str, method: str, path: str, body):
     url = base.rstrip('/') + path
@@ -52,9 +63,8 @@ def probe(base: str, method: str, path: str, body):
     req = urllib.request.Request(url, data=data, method=method)
     if data is not None:
         req.add_header('Content-Type', 'application/json')
-    ctx = ssl.create_default_context()
     try:
-        with urllib.request.urlopen(req, timeout=15, context=ctx) as r:
+        with _OPENER.open(req, timeout=15) as r:
             return r.status, r.headers.get('Location') or ''
     except urllib.error.HTTPError as e:
         return e.code, e.headers.get('Location') or ''
@@ -107,13 +117,23 @@ def main() -> int:
     incomplete, broken, throttled = [], [], []
     for base in bases:
         print('== ' + base)
+        # A rollout (an env change restarts the container) answers 503 on everything. Say so
+        # rather than reporting every route as broken — that false alarm costs a diagnostic round.
+        hp, _ = probe(base, 'GET', '/api/health', None)
+        if hp == 503:
+            print('  503 on /api/health: the service is still rolling out. Re-run in a minute.')
+            return 1
         stop = False
         for method, path, body, want, label in CHECKS:
             if stop:
                 break
             got, extra = probe(base, method, path, body)
-            time.sleep(0.5)  # stay under the edge's tolerance for one IP
+            time.sleep(1.5)  # stay under the edge's tolerance for one IP
             verdict = classify(got, want)
+            if verdict == 'THROTTLED':  # one patient retry beats a false alarm
+                time.sleep(8)
+                got, extra = probe(base, method, path, body)
+                verdict = classify(got, want)
             if verdict == 'TRANSPORT':
                 detail = extra
                 broken.append((base, path, 'transport'))
