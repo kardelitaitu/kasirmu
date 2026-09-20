@@ -18,7 +18,7 @@ is `libkasirmu_mobile_lib.so`, and minifiers strip the space from a media query 
 build that was piped through `tail` instead of handed a log file — the APK is complete, `apksigner
 verify` is what separates written from half-written, and **killing the stalled wrapper also kills the
 sccache server**, so the next build dies with `os error 10054` reported as `could not compile
-kasirmu-core` and needs a plain re-run. · Pass 7 (2026-09-20, Android audit lane): **the Pass-6 claim that `cargo tauri android build` never runs `build.beforeBuildCommand` was WRONG, and the section it heads is corrected in place.** The grep it rested on (`run_hook` 0 times under `src/mobile/`) is a false negative — the call is in the shared `crate::build::setup`, which `src/mobile/android/build.rs:197` invokes with `mobile = true`. Re-measured two ways: 2.11.4's source (`src/build.rs:187-196`, inside `setup`) and a real `cargo tauri android build --apk --target aarch64` on the installed 2.11.1, whose log printed `Running beforeBuildCommand` and advanced `ui/dist-mobile/index.html` mtime 11:32:18 -> 12:27:04 inside the build. The corrected section keeps the hazard that IS real (a gitignored dist plus a Gradle/Studio-driven `cargo`, which has no hook) and records the other defect this lane found: `apps/mobile-tauri/build-android-frontend.bat` ran the DESKTOP build (`ui/dist`) — a filename that promises the Android frontend and prepared an artifact no Android build reads, and the likeliest source of the `10:42:31` figure the old text cited. · -->
+kasirmu-core` and needs a plain re-run. · Pass 7 (2026-09-20, Android audit lane): **the Pass-6 claim that `cargo tauri android build` never runs `build.beforeBuildCommand` was WRONG, and the section it heads is corrected in place.** The grep it rested on (`run_hook` 0 times under `src/mobile/`) is a false negative — the call is in the shared `crate::build::setup`, which `src/mobile/android/build.rs:197` invokes with `mobile = true`. Re-measured two ways: 2.11.4's source (`src/build.rs:187-196`, inside `setup`) and a real `cargo tauri android build --apk --target aarch64` on the installed 2.11.1, whose log printed `Running beforeBuildCommand` and advanced `ui/dist-mobile/index.html` mtime 11:32:18 -> 12:27:04 inside the build. The corrected section keeps the hazard that IS real (a gitignored dist plus a Gradle/Studio-driven `cargo`, which has no hook) and records the other defect this lane found: `apps/mobile-tauri/build-android-frontend.bat` ran the DESKTOP build (`ui/dist`) — a filename that promises the Android frontend and prepared an artifact no Android build reads, and the likeliest source of the `10:42:31` figure the old text cited. · Pass 8 (2026-09-20, device-verification lane): the §8 `adb pull` note was upgraded from a LOUD failure to a SILENT one. Reproduced: a pull reported success (28 330 571 B written) while the shell hashed a stale 10:22 file of 28 188 739 B sitting at the POSIX path, and the conclusion drawn from it — "the installer rewrote the `.so`, so my change is not on the device" — was false, the `.so` delta being exactly that shortfall. The device's own `base.apk` md5'd identically to the artifact (`ff1b1eb3…`), and the installed `.so` was then confirmed by content to carry this lane's frontend (`index-BIAs4Zbr.css`, `SetupWizard-D4zMuoUQ.css`) plus a peer's `link_device_google`. The section now prefers `adb shell md5sum` over any pull. Also verified on hardware this pass: the immersive `MainActivity` (`statusBars` and `navigationBars` both `visible=false` in `dumpsys window`, in BOTH orientations) and the setup wizard's landscape layout (presets three-up plus a right-hand `Feature Preview` column) against portrait (two-up, panel stacked below) — a genuine DOM re-layout on rotation, not just a CSS query flip. Pass 7's refutation of this lane's own Pass-6 claim about the frontend hook stands and was NOT re-litigated; note also that this lane's build passed `beforeBuildCommand: null` explicitly, which is why its log shows no `Running beforeBuildCommand`. · -->
 
 # Android build, sign, install and wireless ADB
 
@@ -574,18 +574,25 @@ feature, not merely running a re-signed copy. Cheapest tell first:
 
 ```bash
 "$ADB" shell dumpsys package mu.kasir.mobile | grep -E 'lastUpdateTime|versionName|flags='
-# then pull and md5-compare — a match is the strongest single check
-"$ADB" pull "$("$ADB" shell pm path mu.kasir.mobile | sed 's/^package://' | tr -d '\r')" \
-  "C:/Users/<you>/AppData/Local/Temp/installed.apk"
-md5sum "C:/Users/<you>/AppData/Local/Temp/installed.apk" "$APK"
+# then hash the device's OWN file — no pull, so no local path to disagree about
+"$ADB" shell "md5sum '$("$ADB" shell pm path mu.kasir.mobile | sed 's/^package://' | tr -d '\r')'"
+md5sum "$APK"
 ```
 
 Measured: the stale install md5'd `cc6245b2…` (28 191 963 B) against the artifact's `80ac7bd2…`
 (28 190 795 B), and its `.so` differed too (`bf7dcc96…` vs `604c3597…`). After `adb install -r` the two
-APK md5s matched exactly. **`adb pull` needs a Windows destination path**: it is a Windows binary, so
-given `/tmp/x.apk` the file lands in `C:\tmp\` and the following `ls`/`md5sum` on the POSIX path reports
-"not found" — the same class of trap as the §1 and §7 notes. `lastUpdateTime` alone settles it without
-any pull.
+APK md5s matched exactly.
+
+**Prefer `adb shell md5sum` to `adb pull`. A pull to a POSIX path fails SILENTLY, not loudly.** `adb` is
+a Windows binary: given `/tmp/x.apk` it writes `C:\tmp\x.apk`, while the shell's `/tmp` is
+`%LOCALAPPDATA%\Temp`. With nothing at the POSIX path you get a loud `not found` — but if a file is
+already sitting there, e.g. one an *earlier* session pulled, `md5sum` **happily hashes that stale file**
+and hands you a plausible wrong answer. Measured 2026-09-20: a pull reported success (28 330 571 B
+written) while the shell hashed a 10:22 file of 28 188 739 B, and the conclusion drawn — *"the installer
+rewrote the `.so`, so my change is not on the device"* — was false. The `.so` delta was *exactly* the
+stale file's shortfall, which is what made it look like real evidence. The device's own `base.apk`
+md5'd identically to the artifact. Same class as the §1 and §7 notes. `lastUpdateTime` alone settles it
+without any pull at all.
 
 **`grep -i kasirmu` does NOT match `mu.kasir.mobile`.** "kasirmu" is not a substring of
 "kasir.mobile", so `ps -A | grep kasirmu` returns empty while the app is running — which reads exactly
