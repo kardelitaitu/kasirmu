@@ -56,6 +56,17 @@ KNOWN LIMITATIONS (deliberate, and worth knowing before you trust a clean run):
     `go test -run` regex and matches twelve tests, so an exact-existence rule would report the
     one reference that is most deliberately correct as dead.
 
+  * Section anchors are not checked either, and measurement says they cannot be cheaply. Counted
+    2026-09-26: 1,915 `§` references across 489 files, 174 distinct tokens. Most infer their
+    target from the surrounding prose ("spec 0046b §3.4" vs "ADR #54 §2.3" vs "runbook §8"),
+    so a checker would first have to guess WHICH document is meant. The one unambiguous form —
+    an explicit `ADR #N §X.Y`, resolvable through each ADR's `num:` frontmatter — occurs 15
+    times, 9 distinct pairs: too few to justify a gate. A sample resolution of those 9 produced
+    two apparent misses, and both were the checker's fault, not the docs': ADR #45 numbers its
+    headings `## §4.2 …` (the `§` is in the heading), and ADR #49's `§4` is an item INSIDE a
+    named section (`## Decision`), not a heading at all. A rule wrong on a nine-item sample
+    teaches people to ignore the tool, which is the failure this list exists to prevent.
+
   Opt-out pragma: put "dead-ref: ok" in an HTML comment on the line, or on the line
   above it. Same contract as eslint-disable-next-line or #[allow(...)]: the doc states
   the reference is intentional, in one token, where a reader can see it.
