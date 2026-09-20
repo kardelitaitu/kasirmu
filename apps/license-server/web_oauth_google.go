@@ -28,7 +28,6 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -73,59 +72,16 @@ type oauthPending struct {
 	expiresAt time.Time
 }
 
-// oauthStateStore holds pending sign-ins. Expired entries are swept opportunistically
-// on every insert rather than by a goroutine: the map is bounded by the rate limiter
-// and the TTL, so a background sweeper would be machinery without a purpose.
-type oauthStateStore struct {
-	mu      sync.Mutex
-	pending map[string]*oauthPending
-}
+// expires satisfies pendingEntry.
+func (p *oauthPending) expires() time.Time { return p.expiresAt }
 
-var googleOAuthState = &oauthStateStore{pending: make(map[string]*oauthPending)}
+var googleOAuthState = newPendingStore[*oauthPending](oauthMaxPending)
 
 // oauthStartLimiter is a per-IP bucket on beginning a sign-in (see oauthStartMax).
 var oauthStartLimiter = &windowLimiter{
 	entries: make(map[string]*windowEntry),
 	limit:   oauthStartMax,
 	window:  oauthStartWindow,
-}
-
-// put records a pending sign-in, dropping anything already expired.
-//
-// Returns false when the in-flight ceiling is reached: /start is unauthenticated, so
-// an unbounded map would let one host hold the process's memory for a TTL window.
-func (s *oauthStateStore) put(state string, p *oauthPending) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	now := time.Now()
-	for key, entry := range s.pending {
-		if now.After(entry.expiresAt) {
-			delete(s.pending, key)
-		}
-	}
-	if len(s.pending) >= oauthMaxPending {
-		return false
-	}
-	s.pending[state] = p
-	return true
-}
-
-// take atomically reads and deletes the pending sign-in for a state value.
-// A missing, expired, or already-used state returns (nil, false) — all three are
-// the same answer to the caller, which is what makes a replay indistinguishable
-// from a bad request.
-func (s *oauthStateStore) take(state string) (*oauthPending, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	p, exists := s.pending[state]
-	if !exists {
-		return nil, false
-	}
-	delete(s.pending, state) // single-use, whether or not it is still valid
-	if time.Now().After(p.expiresAt) {
-		return nil, false
-	}
-	return p, true
 }
 
 // newOAuthState mints the state value, the PKCE verifier, and its S256 challenge.

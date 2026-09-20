@@ -30,7 +30,7 @@ func TestAttestPayloadIsNamespacedAndCarriesTheNonce(t *testing.T) {
 	}
 }
 
-func TestValidAttestNonceBounds(t *testing.T) {
+func TestValidOpaqueTokenBounds(t *testing.T) {
 	cases := []struct {
 		name  string
 		nonce string
@@ -48,8 +48,8 @@ func TestValidAttestNonceBounds(t *testing.T) {
 		{"empty", "", false},
 	}
 	for _, c := range cases {
-		if got := validAttestNonce(c.nonce); got != c.ok {
-			t.Errorf("%s: validAttestNonce(%q) = %v, want %v", c.name, c.nonce, got, c.ok)
+		if got := validOpaqueToken(c.nonce); got != c.ok {
+			t.Errorf("%s: validOpaqueToken(%q) = %v, want %v", c.name, c.nonce, got, c.ok)
 		}
 	}
 }

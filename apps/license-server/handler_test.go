@@ -332,6 +332,10 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		// Google sign-in (ADR #54).
 		se.Router.GET("/api/v1/web/oauth/google/start", handleWebOAuthGoogleStart(app))
 		se.Router.GET("/api/v1/web/oauth/google/callback", handleWebOAuthGoogleCallback(app))
+		// Desktop device link (ADR #54 §2.5).
+		se.Router.POST("/api/v1/desktop/link/google/start", handleDesktopLinkStart(app))
+		se.Router.GET("/api/v1/desktop/link/google/callback", handleDesktopLinkCallback(app))
+		se.Router.POST("/api/v1/desktop/link/consume", handleDesktopLinkConsume(app))
 		// ADR #42 dashboard endpoints (user + admin).
 		se.Router.GET("/api/v1/web/usage", handleWebUsage(app))
 		se.Router.GET("/api/v1/web/devices", handleWebDevices(app))

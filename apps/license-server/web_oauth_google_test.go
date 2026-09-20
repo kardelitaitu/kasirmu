@@ -65,7 +65,7 @@ func TestNewOAuthStateIsUniqueAndPKCECorrect(t *testing.T) {
 }
 
 func TestOAuthStateStoreIsSingleUse(t *testing.T) {
-	store := &oauthStateStore{pending: make(map[string]*oauthPending)}
+	store := newPendingStore[*oauthPending](oauthMaxPending)
 	store.put("st-1", &oauthPending{next: "/en/account", verifier: "v", expiresAt: time.Now().Add(time.Minute)})
 	got, ok := store.take("st-1")
 	if !ok || got.next != "/en/account" {
@@ -84,7 +84,7 @@ func TestOAuthStateStoreEnforcesAndFreesItsCeiling(t *testing.T) {
 	// thing standing between one host and the process's memory for a TTL window. Both
 	// halves matter: the cap must hold, and it must not wedge the endpoint shut — a map
 	// full of expired entries that refuses every insert is a permanent outage.
-	store := &oauthStateStore{pending: make(map[string]*oauthPending)}
+	store := newPendingStore[*oauthPending](oauthMaxPending)
 	for i := 0; i < oauthMaxPending; i++ {
 		if !store.put(fmt.Sprintf("st-%d", i), &oauthPending{expiresAt: time.Now().Add(time.Minute)}) {
 			t.Fatalf("the ceiling must admit %d entries; refused at %d", oauthMaxPending, i)
@@ -94,7 +94,7 @@ func TestOAuthStateStoreEnforcesAndFreesItsCeiling(t *testing.T) {
 		t.Fatal("a full store must refuse a new pending sign-in")
 	}
 
-	stale := &oauthStateStore{pending: make(map[string]*oauthPending)}
+	stale := newPendingStore[*oauthPending](oauthMaxPending)
 	for i := 0; i < oauthMaxPending; i++ {
 		stale.put(fmt.Sprintf("st-%d", i), &oauthPending{expiresAt: time.Now().Add(-time.Second)})
 	}
@@ -104,7 +104,7 @@ func TestOAuthStateStoreEnforcesAndFreesItsCeiling(t *testing.T) {
 }
 
 func TestOAuthStateStoreRejectsExpiredAndSweepsOnInsert(t *testing.T) {
-	store := &oauthStateStore{pending: make(map[string]*oauthPending)}
+	store := newPendingStore[*oauthPending](oauthMaxPending)
 	store.put("st-old", &oauthPending{expiresAt: time.Now().Add(-time.Second)})
 	store.put("st-new", &oauthPending{expiresAt: time.Now().Add(time.Minute)})
 	if _, ok := store.take("st-old"); ok {

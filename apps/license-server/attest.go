@@ -42,9 +42,12 @@ func attestPayload(nonce string) string {
 	return attestPayloadPrefix + nonce
 }
 
-// validAttestNonce reports whether the nonce is within bounds and uses only the
-// unreserved characters a hex, UUID or base64url token can contain.
-func validAttestNonce(nonce string) bool {
+// validOpaqueToken reports whether a client-supplied opaque token — an attestation
+// nonce, an OAuth state value — is within bounds and uses only the unreserved
+// characters a hex, UUID or base64url token can contain.
+//
+// Bounded because these values end up in maps keyed by the value the client chose.
+func validOpaqueToken(nonce string) bool {
 	if len(nonce) < attestNonceMin || len(nonce) > attestNonceMax {
 		return false
 	}
@@ -81,7 +84,7 @@ func handleAttest(app core.App) func(e *core.RequestEvent) error {
 			ipRateLimiter.allow(clientIP)
 			return e.JSON(http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
 		}
-		if !validAttestNonce(req.Nonce) {
+		if !validOpaqueToken(req.Nonce) {
 			ipRateLimiter.allow(clientIP)
 			return e.JSON(http.StatusBadRequest, map[string]any{
 				"error": "nonce must be 16-64 characters of [A-Za-z0-9_-]",
