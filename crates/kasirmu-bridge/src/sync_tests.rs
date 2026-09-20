@@ -13,11 +13,17 @@ fn sync_settings_serialize() {
         server_url: Some("https://sync.example.com".into()),
         has_api_key: true,
         enabled: true,
+        resolved_origin: "https://license.kasir.mu".into(),
+        resolved_origin_source: "main".into(),
     };
     let json = serde_json::to_value(&s).unwrap();
     assert_eq!(json["serverUrl"], "https://sync.example.com");
     assert_eq!(json["hasApiKey"], true);
     assert_eq!(json["enabled"], true);
+    // The resolved origin is diagnostics, not a setting: it must reach the UI under
+    // its camelCase keys or the settings surface cannot show which tier won.
+    assert_eq!(json["resolvedOrigin"], "https://license.kasir.mu");
+    assert_eq!(json["resolvedOriginSource"], "main");
 }
 
 #[test]
@@ -26,6 +32,8 @@ fn sync_settings_no_url_disabled() {
         server_url: None,
         has_api_key: false,
         enabled: false,
+        resolved_origin: "https://license.kasir.mu".into(),
+        resolved_origin_source: "main".into(),
     };
     let json = serde_json::to_value(&s).unwrap();
     assert!(json["serverUrl"].is_null());

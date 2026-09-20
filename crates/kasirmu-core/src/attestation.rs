@@ -172,6 +172,20 @@ pub fn cache_origin(origin: ResolvedServerOrigin) -> bool {
     ATTESTED_ORIGIN.set(origin).is_ok()
 }
 
+/// The origin the app will use, together with the tier that won.
+///
+/// This is the single implementation of ADR #55's precedence — environment
+/// override, then an origin the boot-time cascade already attested, then the
+/// canonical compiled origin — so the credential path and the settings surface
+/// report the same value instead of each deriving their own. The attested tier is
+/// only ever populated by a successful attestation.
+pub fn resolved_origin() -> ResolvedServerOrigin {
+    crate::server_origin::resolve_origin(
+        std::env::var(crate::server_origin::ORIGIN_ENV_OVERRIDE).ok(),
+        cached_origin().map(|origin| origin.url),
+    )
+}
+
 /// Resolve the origin to use by walking the compiled ladder, canonical first.
 ///
 /// A candidate is accepted only when it *attests*; a transport failure or a bad
