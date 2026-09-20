@@ -102,7 +102,7 @@ check('font binaries tracked in git', cleanAbsence(bins, [0]),
   'empty -- the files live in ui/node_modules and reach the build through Vite');
 
 // ---- row: the type scale the bench measures --------------------------------------
-const scale = run(['git', '--no-optional-locks', 'grep', '-n', '-e', '--text-', '--', 'ui/src/frontend/themes/tokens.css']);
+const scale = run(['git', '--no-optional-locks', 'grep', '-n', '-e', '--text-', '--', 'ui/src/theme/tokens.css']);
 if (!scale.ran) { console.error('the scale grep could not run (status ' + scale.status + ')'); process.exit(2); }
 const steps = scale.out.trim().split('\n').filter((l) => /--text-[a-z0-9]+:/.test(l));
 const remOnly = steps.every((l) => /:\s*\.?[0-9.]+rem;/.test(l.split(/--text/)[1].replace(/^[^:]*:/, ':')) || /rem/.test(l));
