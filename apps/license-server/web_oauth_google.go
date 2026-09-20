@@ -284,6 +284,17 @@ func oauthNextPath(raw string) string {
 	return raw
 }
 
+// webOAuthFailure sends the browser back to the login page with a short reason token.
+//
+// This endpoint is a NAVIGATION TARGET — Google sends the user's browser here — so a JSON body
+// is a dead end: no way back, no message. The token is from this file's own vocabulary, never
+// provider text and never configuration detail (the log carries those instead), and the login
+// page is what turns it into a sentence. The desktop equivalent has always done this; the web
+// half answered a browser with JSON until it was pointed out.
+func webOAuthFailure(e *core.RequestEvent, reason string) error {
+	return e.Redirect(http.StatusFound, oauthSiteURL()+"/en/login?oauth="+url.QueryEscape(reason))
+}
+
 // oauthRedirectURI is the callback URL Google must have registered. The explicit
 // override wins; otherwise it is derived from the host this request arrived on,
 // which is the host the browser used and therefore the one the operator registered.
@@ -381,23 +392,25 @@ func handleWebOAuthGoogleCallback(app core.App) func(e *core.RequestEvent) error
 		// login page rather than on a JSON error they cannot act on.
 		if refused := query.Get("error"); refused != "" {
 			log.Printf("/web/oauth/google/callback: provider refused: %s", refused)
-			return e.Redirect(http.StatusFound, oauthSiteURL()+"/en/login?oauth="+url.QueryEscape(refused))
+			return webOAuthFailure(e, refused)
 		}
 		state := query.Get("state")
 		code := query.Get("code")
 		if state == "" || code == "" {
-			return e.JSON(http.StatusBadRequest, map[string]any{"error": "missing state or code"})
+			clearOAuthStateCookie(e)
+			return webOAuthFailure(e, "state")
 		}
 		cookie, cookieErr := e.Request.Cookie(oauthStateCookie)
 		if cookieErr != nil || cookie.Value == "" ||
 			subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(state)) != 1 {
-			return e.JSON(http.StatusBadRequest, map[string]any{"error": "invalid oauth state"})
+			clearOAuthStateCookie(e)
+			return webOAuthFailure(e, "state")
 		}
 		pending, ok := googleOAuthState.take(state)
 		clearOAuthStateCookie(e)
 		if !ok {
 			// Unknown, expired, or already used — one answer for all three.
-			return e.JSON(http.StatusBadRequest, map[string]any{"error": "invalid oauth state"})
+			return webOAuthFailure(e, "state")
 		}
 
 		token, err := exchangeOAuthCode(googleTokenEndpoint, clientID, clientSecret,
@@ -406,32 +419,32 @@ func handleWebOAuthGoogleCallback(app core.App) func(e *core.RequestEvent) error
 			// The body can carry a redirect_uri or client_id diagnosis; log it, answer
 			// generically so nothing about our configuration reaches the browser.
 			log.Printf("/web/oauth/google/callback: token exchange failed: %v", err)
-			return e.JSON(http.StatusBadGateway, map[string]any{"error": "sign-in could not be completed"})
+			return webOAuthFailure(e, "failed")
 		}
 		claims, err := validateIDToken(token.IDToken, clientID, time.Now())
 		if err != nil {
 			log.Printf("/web/oauth/google/callback: id_token rejected: %v", err)
-			return e.JSON(http.StatusUnauthorized, map[string]any{"error": "sign-in could not be completed"})
+			return webOAuthFailure(e, "failed")
 		}
 
 		tenant, outcome, err := resolveIdentity(app, providerGoogle, claims.Subject,
 			claims.Email, claims.EmailVerified, "")
 		if err != nil {
 			log.Printf("/web/oauth/google/callback: resolve failed: %v", err)
-			return e.JSON(http.StatusInternalServerError, map[string]any{"error": "sign-in could not be completed"})
+			return webOAuthFailure(e, "failed")
 		}
 		switch outcome {
 		case IdentityBound, IdentityLinked, IdentityCreated:
 			log.Printf("/web/oauth/google: %s identity for tenant %s (%s)", providerGoogle, tenant.Id, outcome)
 		case IdentityRefusedReserved:
-			return e.JSON(http.StatusForbidden, map[string]any{"error": "this address cannot sign in"})
+			return webOAuthFailure(e, "reserved")
 		case IdentityRefusedUnverified:
-			return e.JSON(http.StatusForbidden, map[string]any{"error": "your email address is not verified with Google"})
+			return webOAuthFailure(e, "unverified")
 		case IdentityConflict:
-			return e.JSON(http.StatusConflict, map[string]any{"error": "this identity is linked to another account"})
+			return webOAuthFailure(e, "conflict")
 		default:
 			log.Printf("/web/oauth/google/callback: unexpected outcome %q", outcome)
-			return e.JSON(http.StatusInternalServerError, map[string]any{"error": "sign-in could not be completed"})
+			return webOAuthFailure(e, "failed")
 		}
 
 		// The session token itself must never reach a URL: hand the Worker a

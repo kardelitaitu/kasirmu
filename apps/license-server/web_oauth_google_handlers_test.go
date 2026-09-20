@@ -171,21 +171,26 @@ func TestOAuthStartLimiterDoesNotConsumeBudgetWhenUnconfigured(t *testing.T) {
 func TestOAuthCallbackRejectsAMissingOrUnknownState(t *testing.T) {
 	t.Setenv("OZ_GOOGLE_CLIENT_ID", "client-abc")
 	t.Setenv("OZ_GOOGLE_CLIENT_SECRET", "secret")
-	// No cookie at all: the browser binding is what makes a leaked state useless.
-	runScenario(t, &tests.ApiScenario{
-		Method:          "GET",
-		URL:             "/api/v1/web/oauth/google/callback?state=abc&code=x",
-		ExpectedStatus:  http.StatusBadRequest,
-		ExpectedContent: []string{"invalid oauth state"},
-	})
-	// A cookie that matches, but a state nobody issued.
-	runScenario(t, &tests.ApiScenario{
-		Method:          "GET",
-		URL:             "/api/v1/web/oauth/google/callback?state=abc&code=x",
-		Headers:         map[string]string{"Cookie": oauthStateCookie + "=abc"},
-		ExpectedStatus:  http.StatusBadRequest,
-		ExpectedContent: []string{"invalid oauth state"},
-	})
+	// No cookie at all: the browser binding is what makes a leaked state useless. The answer is
+	// a NAVIGATION back to the login page — this URL is where Google sends a browser, so a JSON
+	// body leaves the user with no way forward and nothing to read.
+	for _, tc := range []struct {
+		name    string
+		headers map[string]string
+	}{{"no cookie", nil}, {"cookie that matches, state nobody issued", map[string]string{"Cookie": oauthStateCookie + "=abc"}}} {
+		runScenario(t, &tests.ApiScenario{
+			Name:           tc.name,
+			Method:         "GET",
+			URL:            "/api/v1/web/oauth/google/callback?state=abc&code=x",
+			Headers:        tc.headers,
+			ExpectedStatus: http.StatusFound,
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, res *http.Response) {
+				if location := res.Header.Get("Location"); !strings.Contains(location, "/en/login?oauth=state") {
+					t.Errorf("Location = %q, want the login page carrying the reason", location)
+				}
+			},
+		})
+	}
 }
 
 func TestOAuthCallbackRedirectsBackWhenTheUserDeclines(t *testing.T) {
@@ -279,8 +284,41 @@ func TestOAuthCallbackRefusesAnUnverifiedEmail(t *testing.T) {
 		BeforeTestFunc: func(t testing.TB, app *tests.TestApp, e *core.ServeEvent) {
 			googleOAuthState.put(state, &oauthPending{next: "/en/pricing", verifier: verifier, expiresAt: time.Now().Add(time.Minute)})
 		},
-		ExpectedStatus:  http.StatusForbidden,
-		ExpectedContent: []string{"not verified with Google"},
+		ExpectedStatus: http.StatusFound,
+		AfterTestFunc: func(t testing.TB, app *tests.TestApp, res *http.Response) {
+			if location := res.Header.Get("Location"); !strings.Contains(location, "/en/login?oauth=unverified") {
+				t.Errorf("Location = %q, want the login page carrying the reason", location)
+			}
+		},
+	})
+}
+
+func TestOAuthCallbackRedirectsWhenTheTokenExchangeFails(t *testing.T) {
+	// A dead token endpoint stands in for a wrong client secret or an outage: the user must
+	// still land on the login page with a reason, and the diagnosis must stay in the log.
+	t.Setenv("OZ_GOOGLE_CLIENT_ID", "client-abc")
+	t.Setenv("OZ_GOOGLE_CLIENT_SECRET", "secret")
+	previous := googleTokenEndpoint
+	googleTokenEndpoint = "http://127.0.0.1:1/token"
+	defer func() { googleTokenEndpoint = previous }()
+
+	state, verifier, _, err := newOAuthState()
+	if err != nil {
+		t.Fatalf("newOAuthState: %v", err)
+	}
+	runScenario(t, &tests.ApiScenario{
+		Method:  "GET",
+		URL:     "/api/v1/web/oauth/google/callback?state=" + state + "&code=auth-code",
+		Headers: map[string]string{"Cookie": oauthStateCookie + "=" + state},
+		BeforeTestFunc: func(t testing.TB, app *tests.TestApp, e *core.ServeEvent) {
+			googleOAuthState.put(state, &oauthPending{next: "/en/pricing", verifier: verifier, expiresAt: time.Now().Add(time.Minute)})
+		},
+		ExpectedStatus: http.StatusFound,
+		AfterTestFunc: func(t testing.TB, app *tests.TestApp, res *http.Response) {
+			if location := res.Header.Get("Location"); !strings.Contains(location, "/en/login?oauth=failed") {
+				t.Errorf("Location = %q, want the login page carrying the reason", location)
+			}
+		},
 	})
 }
 
