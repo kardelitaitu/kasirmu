@@ -143,6 +143,15 @@ both are pinned by tests, together with a foreign-key rejection and a cross-nonc
 
 ### 2.6 Allowlists carry both names, and a gate keeps them honest
 
+**Shipped 2026-09-26 (the CORS default too).** One allowlist had not caught up: the licence
+server's compiled `OZ_WEB_ALLOWED_ORIGINS` default named `https://kasir.mu` but not
+`https://ozpos.my.id` — while `/en/account/` answers **200 on both** (re-measured this pass,
+and `/llms.txt` is byte-identical at 7256 bytes). A merchant signing in on the second name
+sent `Origin: https://ozpos.my.id` and every web endpoint refused it: sign-in, sign-out, and
+the account portal's sign-in methods. The default now carries both, and `check-server-origins.mjs`
+gained a fifth section that derives both marketing names from the licence constants and fails
+if the file stops naming either — so this cannot quietly regress the way it quietly appeared.
+
 Both origins are live, so every allowlist must admit both: both Tauri `connect-src` (production
 and dev), the Worker CSP, and the Worker's `LICENSE_API_URL` fallback. The settings draft
 proposes `MAIN`, never the second name.
