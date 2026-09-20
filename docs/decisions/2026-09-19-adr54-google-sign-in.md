@@ -806,12 +806,35 @@ Each phase ships independently.
   validation (loopback only; a non-loopback or non-ephemeral redirect is refused).
 - UI: the wizard step's states (idle, browser opened, awaiting, linked, refused, cancelled,
   timeout) and the tablet exclusion.
-- Sandbox end-to-end, before P2 lands: the exact redirect-URI behaviour of the Desktop-type
-  client, the consent screen with basic scopes only, and the `hostname`-scoped cookie
-  surviving the `?code=` handoff.
-- Gates as usual: `npm run check:all` from `ui/`, the Go gate, and the seven pre-commit
-  steps — none of which this record's own commit should trip (documentation only).
+- **Sandbox end-to-end — what is still worth confirming there.** The original plan named the exact
+  redirect-URI behaviour of a Desktop-type client; that question is **moot** in the shipped design
+  (§5, 2026-09-26): Google never sees the app's port, because the registered callback belongs to the
+  licence server and the loopback handoff is a local HTTP redirect. What remains is the consent screen
+  with basic scopes only, the `hostname`-scoped state cookie surviving the `?code=` handoff, and the
+  four callback URIs registered (both hosts × both paths — step 7b of the licence-server deploy).
 
+The commands behind these claims, runnable from a checkout:
+
+```powershell
+# server: resolver matrix, state store, routes, redirect reasons, device-link endpoints
+go -C apps/license-server test -short ./...                       # ~3 min, the whole package
+go -C apps/license-server test -short -run 'OAuth|DesktopLink|Identity' -v
+
+# the client half: PKCE, the wire contracts, the loopback wait, the relay page
+cargo test -p kasirmu-core --lib desktop_link
+cargo test -p kasirmu-bridge --lib desktop_link
+
+# the surfaces a merchant touches
+cd ui; npm run test -- SetupWizard stepAccountCopy                # wizard step and its copy
+cd ../website; npm run precheck; npm run check                    # login banner, signup entry
+
+# the deployment-shaped gates this feature added or leans on
+node scripts/check-env-docs.mjs; node scripts/check-unified-routes.mjs
+node scripts/check-server-origins.mjs; python scripts/verify-ipc-parity.py
+```
+
+Post-deploy, the runbook's Google sign-in block is the check: one real sign-in in a browser, and the
+`/api/v1/terminals` answer that proves the sync endpoint is protected.
 ## 9. Open questions
 
 - **O1 — Which host set is canonical?** The code says `kasir.mu` / `admin.kasir.mu` /
