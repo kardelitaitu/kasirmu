@@ -256,9 +256,10 @@ navigation to another origin (`[backslash]` becomes `/`, and tab/CR/LF are strip
 parsing). All three were measured against the parser before the fix; two of them escaped.
 Because the fix is an origin check rather than a new prefix test, it also covers the shapes
 nobody enumerated. The OAuth callback returns through this same parameter, so §2.4 must reuse
-that helper and must not write a second, weaker guard. `oauthNextPath`, the server-side twin of `lib/safe-next.ts` —
+that helper and must not write a second, weaker guard.
 
-The post-login path is validated bysame shape, same rejections (`//`, `/\`, `/<tab>/`), because the two guards must not disagree
+The post-login path is validated by `oauthNextPath`, the server-side twin of `lib/safe-next.ts` —
+same shape, same rejections (`//`, `/\`, `/<tab>/`), because the two guards must not disagree
 about what a same-site path is. The redirect *host* is never attacker-influenced: it comes from
 `OZ_WEB_SITE_URL`, so only the path needed validating and no host allowlist was required.
 
