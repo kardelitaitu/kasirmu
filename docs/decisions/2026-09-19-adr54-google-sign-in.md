@@ -415,6 +415,19 @@ The browser is opened only *after* the server records the pending link: a browse
 before the state exists has nothing to complete.
 
 The same step offers *email me a code instead*, because not every account is Google and
+
+**Shipped 2026-09-19 (IPC surface):** `link_device_google` in the desktop shell is a shim — it
+supplies the resolved licence origin and the app's own opener (ADR #38's https-only one) and
+forwards to the bridge. The launcher is therefore **async** in `link_device`, because every real
+opener is and wrapping one in a blocking call would park the runtime the command itself runs on.
+
+Two shell gates had to be satisfied rather than argued with. The **registration gate** parses every
+registered command name and demands each be gated or carried in a generated debt ledger, so the
+new name needed a regenerated ledger row — `no_session_resolution`, which is the honest
+classification: this command authorises through the device's licence key and its registered
+machine, not through a session, and `REGISTERED_TOTAL` moved 458 → 459. The **IPC parity** gate
+reports OK: the tablet shell does not register this command, and no UI file names it yet, so there
+is no gap to allowlist — that entry arrives with the wizard step, which is the next piece.
 forcing Google would degrade the email path that is the account root (§1.2). The user enters
 the account email; the server sends a code to `tenants.email`; the app submits it and lands
 on the identical `link/consume` and the identical terminal credential.
