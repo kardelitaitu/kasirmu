@@ -415,8 +415,6 @@ Three details that are the difference between working and nearly working:
   non-blocking mode is platform-defined; if it does, `read_line` returns empty before the request
   arrives and the callback is silently lost.
 
-### 2.6 Desktop alternative: an emailed code, same destination
-
 **Shipped 2026-09-19 (orchestration):** `link_device` runs the flow from bind to linked account —
 bind, PKCE, start, hand the consent URL to the launcher, wait, consume — and takes the launcher
 as an injected `FnOnce(String) -> Result<(), BridgeError>`. That injection is the point: it keeps
@@ -427,8 +425,6 @@ consent surfacing as `Invalid` rather than as a transport error. Twelve tests in
 
 The browser is opened only *after* the server records the pending link: a browser that arrives
 before the state exists has nothing to complete.
-
-The same step offers *email me a code instead*, because not every account is Google and
 
 **Shipped 2026-09-19 (IPC surface):** `link_device_google` in the desktop shell is a shim — it
 supplies the resolved licence origin and the app's own opener (ADR #38's https-only one) and
@@ -442,9 +438,6 @@ classification: this command authorises through the device's licence key and its
 machine, not through a session, and `REGISTERED_TOTAL` moved 458 → 459. The **IPC parity** gate
 reports OK: the tablet shell does not register this command, and no UI file names it yet, so there
 is no gap to allowlist — that entry arrives with the wizard step, which is the next piece.
-forcing Google would degrade the email path that is the account root (§1.2). The user enters
-the account email; the server sends a code to `tenants.email`; the app submits it and lands
-on the identical `link/consume` and the identical terminal credential.
 
 **Shipped 2026-09-19 (wizard step):** the setup wizard gained a ninth step — Account — before
 Review, with `StepAccount.tsx` calling `link_device_google`. It is optional by design and says
@@ -477,6 +470,13 @@ The unsealing rule (base64 ciphertext bound to the machine id, else legacy plain
 **extracted into one function** shared with activation rather than copied: two copies of
 "decrypt or fall back to plaintext" is exactly what drifts out of agreement in the
 less-exercised copy.
+
+### 2.6 Desktop alternative: an emailed code, same destination
+
+The same step offers *email me a code instead*, because not every account is Google and
+forcing Google would degrade the email path that is the account root (§1.2). The user enters
+the account email; the server sends a code to `tenants.email`; the app submits it and lands
+on the identical `link/consume` and the identical terminal credential.
 
 **Link codes are purpose-bound.** A code issued for device linking must not be replayable
 into `/web/verify-otp`, and vice versa; the store keys by purpose, not just by email.
