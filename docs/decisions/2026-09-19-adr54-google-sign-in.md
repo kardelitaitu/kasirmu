@@ -555,6 +555,13 @@ can follow is the pair of `log.Printf` lines the path emits — “link code sen
 request and “tenant … verified by emailed code” on the consume — which is what the runbook's check
 reads when a merchant reports that linking failed.
 
+**Its sender is the shared one, and that was checked rather than assumed (2026-09-26).** The door
+calls `sendOTPEmail`, the same sender the login codes use, which reads `OZ_SMTP_FROM`, falls back
+to a default only when it is unset, and is covered by the boot-time fail-fast (`main.go:97`) and the
+sender-identity health probe (`health.go:307`, which calls the unowned default an error). The
+display name stays `kasir.mu` in every sender: ADR #55 makes that the canonical name, so it is
+correct under an `ozpos.my.id` deployment rather than a mismatch to fix.
+
 > **A consequence worth knowing:** the login lockout is shared, as §2.6 requires. A user who tries their
 > link code in the *login* form gets a 5-second (escalating) wait before the link door will answer. That is
 > the intended coupling — the alternative makes this endpoint the cheaper door to guess at — but it is a
