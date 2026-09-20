@@ -123,7 +123,7 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`destroy_session`** [D+T] — Destroy an active session, invalidating the token.
 - **`has_users`** [D] — Check whether any staff accounts exist in the database.
 - **`impersonate_user_scoped`** [D+T] — Begin an operator impersonation session for support. The caller must present a valid operator session that holds the.
-- **`refresh_picker_ticket`** [D] — Mint a fresh picker ticket for a caller who already holds a valid session token.
+- **`refresh_picker_ticket`** [D+T] — Mint a fresh picker ticket for a caller who already holds a valid session token.
 - **`session_keepalive`** [D+T] — Refresh the current session's TTL so long-lived screens (analytics,
 - **`staff_check_username`** [D+T] — Check a username before the PIN step (STAFF-06).
 - **`staff_login`** [D+T] — Authenticate a staff member by username and PIN.
@@ -664,7 +664,7 @@ Product image slot assignment (slots 1..=5). The bytes live on disk; these comma
 - **`set_receipt_settings_scoped`** [D+T] — Set receipt settings resolved from a session token. ADR #7.
 - **`set_setting`** [D+T] — **Deprecated — use `set_setting_scoped` (ADR #7).**
 - **`set_setting_scoped`** [D+T] — Write (or overwrite) a single setting value resolved from a session token. ADR #7.
-- **`set_settings_scoped`** [D] — Write (or overwrite) multiple settings in a single transaction, resolved from a session token. ADR #7.
+- **`set_settings_scoped`** [D+T] — Write (or overwrite) multiple settings in a single transaction, resolved from a session token. ADR #7.
 - **`set_store_settings`** [T] — Set store settings.
 - **`set_store_settings_scoped`** [D+T] — Set store settings resolved from a session token. ADR #7.
 - **`set_user_preferences_scoped`** [D+T] — Set user preferences resolved from a session token. ADR #7.
