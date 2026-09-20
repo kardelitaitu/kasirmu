@@ -157,7 +157,7 @@ MIRRORS = ["AGENTS.md", ".agents/management/AGENTS.md"]
 # carried the wrong total for two releases (the audit that produced rule 7), and none of
 # them is a mirror, so a MIRRORS-only walk would leave the rot exactly where it was.
 PROSE_FILES = MIRRORS + ["scripts/check.sh", "docs/operations/agent-gates.md",
-                         "CONTRIBUTING.md"]
+                         "CONTRIBUTING.md", "scripts/check.ps1"]
 
 WORD_NUM = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
             "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
