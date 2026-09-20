@@ -335,6 +335,9 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		// ADR #42 dashboard endpoints (user + admin).
 		se.Router.GET("/api/v1/web/usage", handleWebUsage(app))
 		se.Router.GET("/api/v1/web/devices", handleWebDevices(app))
+		// Linked sign-in methods (ADR #54).
+		se.Router.GET("/api/v1/web/identities", handleWebIdentities(app))
+		se.Router.DELETE("/api/v1/web/identities/{id}", handleWebUnlinkIdentity(app))
 		se.Router.POST("/api/v1/web/devices/{id}/revoke", handleWebRevokeDevice(app))
 		se.Router.GET("/api/v1/admin/tenants", handleAdminListTenants(app))
 		se.Router.GET("/api/v1/admin/tenants/{id}", handleAdminGetTenant(app))

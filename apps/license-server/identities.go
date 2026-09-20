@@ -89,6 +89,10 @@ func ensureTenantIdentitiesCollection(app core.App) error {
 		MaxSelect:    1,
 	})
 	collection.Fields.Add(&core.DateField{Name: "last_login", Required: false})
+	// Autodate mirrors every other collection in the schema: without it a
+	// "-created" sort — which the dashboard list uses — fails at query time.
+	collection.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
+	collection.Fields.Add(&core.AutodateField{Name: "updated", OnCreate: true, OnUpdate: true})
 	collection.Indexes = append(collection.Indexes,
 		"CREATE UNIQUE INDEX idx_tenant_identities_subject ON tenant_identities (provider, subject)")
 

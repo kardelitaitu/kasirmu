@@ -310,6 +310,9 @@ func main() {
 		// User dashboard (ADR #42 Phase 2) — session-authed read endpoints.
 		se.Router.GET("/api/v1/web/usage", handleWebUsage(app))
 		se.Router.GET("/api/v1/web/devices", handleWebDevices(app))
+		// Linked sign-in methods (ADR #54).
+		se.Router.GET("/api/v1/web/identities", handleWebIdentities(app))
+		se.Router.DELETE("/api/v1/web/identities/{id}", handleWebUnlinkIdentity(app))
 		se.Router.POST("/api/v1/web/devices/{id}/revoke", handleWebRevokeDevice(app))
 		// Admin dashboard (ADR #42 Phase 3) — OZ_ADMIN_KEY gated.
 		se.Router.GET("/api/v1/admin/tenants", handleAdminListTenants(app))
