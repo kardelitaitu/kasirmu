@@ -271,7 +271,7 @@ async fn link_device_walks_bind_start_redirect_consume() {
         Duration::from_secs(5),
         |url: String| {
             fake_browser(&url, "/?link_code=code-1");
-            Ok(())
+            async { Ok(()) }
         },
     )
     .await
@@ -318,7 +318,7 @@ async fn link_device_reports_a_refused_flow_as_invalid() {
         Duration::from_secs(5),
         |url: String| {
             fake_browser(&url, "/?link_error=access_denied");
-            Ok(())
+            async { Ok(()) }
         },
     )
     .await;
@@ -345,7 +345,7 @@ async fn link_device_gives_up_when_the_browser_never_returns() {
         "key-abc",
         "mach-1",
         Duration::from_millis(150),
-        |_| Ok(()),
+        |_| async { Ok(()) },
     )
     .await;
     server.join().expect("stub thread");
@@ -364,7 +364,7 @@ async fn link_device_propagates_an_opener_failure() {
         Box::new(|_, _| (ok_status(), r#"{"authorizeUrl":"https://accounts.google.com/auth"}"#.to_string())),
     );
 
-    let outcome = link_device(&stub, "key-abc", "mach-1", Duration::from_secs(5), |_| {
+    let outcome = link_device(&stub, "key-abc", "mach-1", Duration::from_secs(5), |_| async {
         Err(BridgeError::Internal("no browser available".to_string()))
     })
     .await;

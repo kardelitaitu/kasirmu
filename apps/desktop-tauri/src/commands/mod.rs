@@ -29,6 +29,8 @@ pub mod currencies;
 pub mod customers;
 /// Data export / import commands.
 pub mod data;
+/// Device-link commands (ADR #54 §2.5).
+pub mod desktop_link;
 /// EDC card-present payment terminal commands.
 pub mod edc;
 /// Email report commands.

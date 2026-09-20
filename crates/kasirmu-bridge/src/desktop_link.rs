@@ -217,12 +217,14 @@ fn decode_component(raw: &str) -> String {
 ///
 /// `open` receives the consent URL and is responsible for launching the browser; injecting
 /// it is what keeps this function free of any UI toolkit, and lets a test drive the whole
-/// flow — bind, PKCE, start, redirect, consume — without a window or a real browser.
+/// flow — bind, PKCE, start, redirect, consume — without a window or a real browser. It is
+/// async because every real opener is (the Tauri plugin is), and wrapping that in a
+/// blocking call would park the very runtime the command runs on.
 ///
 /// A failure the server reports through the redirect (`link_error`) becomes
 /// [`BridgeError::Invalid`] so the wizard can explain it; a transport failure or a silent
 /// browser stays [`BridgeError::Internal`].
-pub async fn link_device<F>(
+pub async fn link_device<F, Fut>(
     base_url: &str,
     api_key: &str,
     machine_id: &str,
@@ -230,7 +232,8 @@ pub async fn link_device<F>(
     open: F,
 ) -> Result<kasirmu_core::desktop_link::LinkedAccount, BridgeError>
 where
-    F: FnOnce(String) -> Result<(), BridgeError>,
+    F: FnOnce(String) -> Fut,
+    Fut: std::future::Future<Output = Result<(), BridgeError>>,
 {
     use kasirmu_core::desktop_link::{generate_pkce, start_desktop_link, consume_desktop_link};
 
@@ -251,7 +254,7 @@ where
 
     // Open only after the flow is recorded server-side: a browser that arrives before the
     // pending state exists has nothing to complete.
-    open(authorize_url)?;
+    open(authorize_url).await?;
 
     // The wait blocks; parking it keeps the caller's runtime free.
     let outcome = tokio::task::spawn_blocking(move || listener.wait_for_callback(timeout))

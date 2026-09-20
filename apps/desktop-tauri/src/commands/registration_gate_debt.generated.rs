@@ -100,6 +100,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ),
     ("workspaces::resolve_boot_store", "no_session_resolution"),
     ("license::activate_license", "no_session_resolution"),
+    ("desktop_link::link_device_google", "no_session_resolution"),
     ("license::get_machine_id", "no_session_resolution"),
     ("license::get_hardware_fingerprint", "no_session_resolution"),
     ("license::renew_license", "no_session_resolution"),
@@ -176,7 +177,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// is overdue rather than that a build will fail. (Corrected 18-09-26 with the generator;
 /// this comment described the earlier ledger-versus-ledger comparison the floor leg
 /// replaced. Re-read 20-09-26: regenerated with the floor's raise to 458.)
-pub const REGISTERED_TOTAL: usize = 458;
+pub const REGISTERED_TOTAL: usize = 459;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 /// 70 -> 69: `security::rotate_encryption_key` was deregistered, and its ledger row
