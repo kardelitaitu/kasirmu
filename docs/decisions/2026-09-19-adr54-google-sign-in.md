@@ -244,8 +244,36 @@ No new Worker code: the callback lands on the licence host (the marketing host h
 `/api/v1` proxy) and rejoins the existing consumer. `next` must be validated against an
 allowlist of our hosts and relative paths or it is an open redirect.
 
+No Google-hosted script, so `script-src` and `frame-src` are untouched and `form-action`
+is respected by using a link.
+
 That clause shipped as code on 2026-09-19, and it shipped because it was not merely
 aspirational: `website/src/lib/safe-next.ts` resolves `?next=` by **origin comparison**, and the
+guard it replaced was bypassable. `AuthForm.tsx` tested `next.startsWith('/') &&
+!next.startsWith('//')`, which correctly rejects `//evil.com` — and passes `/[backslash]evil.com`
+and `/<tab>/evil.com`, both of which the URL parser normalises into a protocol-relative
+navigation to another origin (`[backslash]` becomes `/`, and tab/CR/LF are stripped before
+parsing). All three were measured against the parser before the fix; two of them escaped.
+Because the fix is an origin check rather than a new prefix test, it also covers the shapes
+nobody enumerated. The OAuth callback returns through this same parameter, so §2.4 must reuse
+that helper and must not write a second, weaker guard. `oauthNextPath`, the server-side twin of `lib/safe-next.ts` —
+
+The post-login path is validated bysame shape, same rejections (`//`, `/\`, `/<tab>/`), because the two guards must not disagree
+about what a same-site path is. The redirect *host* is never attacker-influenced: it comes from
+`OZ_WEB_SITE_URL`, so only the path needed validating and no host allowlist was required.
+
+Two bounds worth naming. `/start` is unauthenticated and writes into a map, so the store now
+refuses past `oauthMaxPending` rather than growing without limit within its TTL.
+
+A third bound followed from asking what the ceiling does *not* protect: it bounds **memory**, not
+**availability**, so a host could still spend everyone else's sign-ins by filling the map and forcing
+`503`s for a TTL window. `/start` now takes a per-IP bucket (30/15 min — looser than the OTP limiter's
+10, because a shared office IP signs several people in and a withdrawn consent is a legitimate retry),
+and a `503` from an unconfigured deployment deliberately does *not* consume that budget, or an operator
+who sets the client id last would find every sign-in refused for fifteen minutes.
+
+Both halves of that bound are now tested: the ceiling refuses the entry past it, and expired
+entries are swept on insert, so a full map cannot wedge the endpoint shut.
 
 **Shipped 2026-09-19 (OAuth security core):** `apps/license-server/web_oauth_google.go` carries
 the parts that decide whether a callback may sign anyone in, and every one of them is testable
@@ -262,6 +290,7 @@ choice to exchange server-side: the token arrives over TLS from Google's token e
 response to our request, so no third party can inject one — and that is also why no JWKS
 machinery is needed in Go. The claim checks stay, because a token minted for a different client,
 or an expired one replayed out of a log, must not authenticate here. Ten tests pin this,
+including the three refusals that matter most: replayed state, foreign audience, expired token.
 
 **Shipped 2026-09-19 (routes):** `GET /api/v1/web/oauth/google/start` and
 `.../callback` are registered in `main.go` and mirrored in the test app's route table, so the
@@ -272,21 +301,6 @@ to the consent screen; `/callback` checks the state against **both** the store a
 server-side, validates the claims, calls `resolveIdentity`, and hands the marketing host a
 single-use F1 code — never a session token in a URL. A declined consent returns the user to the
 login page with the reason rather than to a JSON error.
-
-Two bounds worth naming. `/start` is unauthenticated and writes into a map, so the store now
-refuses past `oauthMaxPending` rather than growing without limit within its TTL. And the
-A third bound followed from asking what the ceiling does *not* protect: it bounds **memory**, not
-**availability**, so a host could still spend everyone else's sign-ins by filling the map and forcing
-`503`s for a TTL window. `/start` now takes a per-IP bucket (30/15 min — looser than the OTP limiter's
-10, because a shared office IP signs several people in and a withdrawn consent is a legitimate retry),
-and a `503` from an unconfigured deployment deliberately does *not* consume that budget, or an operator
-who sets the client id last would find every sign-in refused for fifteen minutes.
-Both halves of that bound are now tested: the ceiling refuses the entry past it, and expired
-entries are swept on insert, so a full map cannot wedge the endpoint shut.
-post-login path is validated by `oauthNextPath`, the server-side twin of `lib/safe-next.ts` —
-same shape, same rejections (`//`, `/\`, `/<tab>/`), because the two guards must not disagree
-about what a same-site path is. The redirect *host* is never attacker-influenced: it comes from
-`OZ_WEB_SITE_URL`, so only the path needed validating and no host allowlist was required.
 
 **Shipped 2026-09-19 (website):** the login form offers "Continue with Google" above the
 email/password tabs, with an "or use your email" divider — an **anchor, not a form**, since the
@@ -313,18 +327,6 @@ absent button are the same decision seen from two sides.
 each naming the failure it prevents. The console-first order is stated as a requirement: redirect
 URIs match exactly, so registering both callback URIs **before** deploying is what keeps either
 live host from failing every sign-in with `redirect_uri_mismatch`.
-including the three refusals that matter most: replayed state, foreign audience, expired token.
-guard it replaced was bypassable. `AuthForm.tsx` tested `next.startsWith('/') &&
-!next.startsWith('//')`, which correctly rejects `//evil.com` — and passes `/[backslash]evil.com`
-and `/<tab>/evil.com`, both of which the URL parser normalises into a protocol-relative
-navigation to another origin (`[backslash]` becomes `/`, and tab/CR/LF are stripped before
-parsing). All three were measured against the parser before the fix; two of them escaped.
-Because the fix is an origin check rather than a new prefix test, it also covers the shapes
-nobody enumerated. The OAuth callback returns through this same parameter, so §2.4 must reuse
-that helper and must not write a second, weaker guard.
-
-No Google-hosted script, so `script-src` and `frame-src` are untouched and `form-action`
-is respected by using a link.
 
 **Corrected 2026-09-26 — the web half answered a browser with JSON.** Only a *declined consent*
 reached the login page; every other failure — a stale state, a failed exchange, an unverified or
@@ -335,12 +337,6 @@ vocabulary is fixed in the handler and never carries provider text or configurat
 keeps the diagnosis), and the login page maps it to a sentence: `state`, the three refusals, and
 `failed` for everything else. An unknown token renders `failed` rather than a blank, in a
 `role="alert"` banner above the form.
-
-> **Structural debt in THIS section, recorded rather than left implicit:** the notes below were
-> appended across many rounds and several landed mid-paragraph, so §2.4's prose is now interleaved
-> with its own implementation history — the same damage §2.6 was repaired for. The next pass should
-> reassemble it the same way: the ADR's original text first (the diagram and the `safe-next` clause),
-> then the shipped notes in order.
 
 ### 2.5 Desktop: loopback + PKCE, exchanged server-side, handed off once
 
