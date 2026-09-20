@@ -28,13 +28,13 @@ function badRequest(status: number) {
   return { ok: false, status, json: async () => ({}) };
 }
 
-async function renderAuthForm(locale: string) {
+async function renderAuthForm(locale: string, oauthReason?: string) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
   const { default: AuthForm, AUTH_FORM_LABELS } = await import('../AuthForm');
   act(() => {
-    root.render(<AuthForm locale={locale} labels={labelMap(locale, AUTH_FORM_LABELS)} />);
+    root.render(<AuthForm locale={locale} labels={labelMap(locale, AUTH_FORM_LABELS)} oauthReason={oauthReason} />);
   });
   await act(async () => {
     await new Promise((r) => setTimeout(r, 10));
@@ -413,6 +413,23 @@ describe('AuthForm — forgot password flow', () => {
 });
 
 // ── Open redirect guard ───────────────────────────────────────────────
+
+describe('AuthForm — Google failure reasons', () => {
+  it('shows the sentence that matches the reason the server sent', async () => {
+    // A Google failure is a navigation, so the login page is where the user learns what
+    // happened; an unknown token must still get the generic sentence rather than a blank.
+    const { container } = await renderAuthForm('en', 'state');
+    expect(container.textContent).toContain('expired or was already used');
+  });
+
+  it('shows the refusal sentence for a refused address and nothing when there is no reason', async () => {
+    const refused = await renderAuthForm('en', 'unverified');
+    expect(refused.container.textContent).toContain('cannot be used for this account');
+
+    const plain = await renderAuthForm('en');
+    expect(plain.container.querySelector('[role="alert"]')).toBeNull();
+  });
+});
 
 describe('AuthForm — Google sign-in entry', () => {
   it('offers Continue with Google, pointing at the licence host start route', async () => {

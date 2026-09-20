@@ -58,6 +58,9 @@ export const AUTH_FORM_LABELS = [
   'login.notConfigured',
   'login.otpNote',
   'login.password',
+  'login.oauthFailed',
+  'login.oauthRefused',
+  'login.oauthStateExpired',
   'login.orUseEmail',
   'login.passwordPlaceholder',
   'login.resendCode',
@@ -82,6 +85,13 @@ interface Props {
   locale: string;
   /** Strings this form reads; see `AUTH_FORM_LABELS`. */
   labels: Labels;
+  /**
+   * The reason token the licence server sent the browser back with (`?oauth=…`).
+   *
+   * A failure of the Google flow is a NAVIGATION, not a JSON response, so this is how the user
+   * learns what happened; an unknown token still gets the generic sentence rather than a blank.
+   */
+  oauthReason?: string;
 }
 
 type Mode = 'password' | 'otp';
@@ -89,7 +99,14 @@ type Step = 'form' | 'code';
 type View = 'login' | 'reset';
 type ResetStep = 'email' | 'code';
 
-export default function AuthForm({ locale, labels }: Props) {
+/** Maps a server reason token to the sentence the user needs. */
+function oauthReasonKey(reason: string): string {
+  if (reason === 'state') return 'login.oauthStateExpired';
+  if (reason === 'reserved' || reason === 'unverified' || reason === 'conflict') return 'login.oauthRefused';
+  return 'login.oauthFailed';
+}
+
+export default function AuthForm({ locale, labels, oauthReason }: Props) {
   // Read API at component level so window.__OZ_CONFIG__ is available after hydration
   const API = licenseApiUrl();
   const [view, setView] = useState<View>('login');
@@ -558,6 +575,12 @@ export default function AuthForm({ locale, labels }: Props) {
   // ── Sign-in view (tabs) ──────────────────────────────────────────
   return (
     <div className={`mx-auto w-full max-w-sm rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm ${error ? 'animate-shake' : ''}`}>
+      {oauthReason && (
+        <p className="mb-4 rounded-lg border border-ink/10 bg-danger/10 p-3 text-sm text-ink" role="alert">
+          {t(labels, oauthReasonKey(oauthReason))}
+        </p>
+      )}
+
       {API && (
         <>
           {/* An anchor, not a form: the Worker CSP sets form-action 'self', and this

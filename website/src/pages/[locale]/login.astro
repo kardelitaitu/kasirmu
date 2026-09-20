@@ -24,7 +24,12 @@ const noindex = isNonPublic(Astro.url.pathname);
       <p class="mx-auto mt-3 max-w-md text-muted">{t(locale, 'login.subtitle')}</p>
     </div>
     <div data-reveal>
-      <AuthForm client:load locale={locale} labels={formLabels} />
+      <AuthForm
+          client:load
+          locale={locale}
+          labels={formLabels}
+          oauthReason={Astro.url.searchParams.get('oauth') ?? undefined}
+        />
     </div>
   </section>
 </Base>
