@@ -7,6 +7,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
@@ -229,6 +230,29 @@ func TestResolveIdentityConflictsWhenBoundToAnotherTenant(t *testing.T) {
 	rows := identityRows(t, app, providerGoogle, "sub-conflict")
 	if len(rows) != 1 || rows[0].GetString("tenant") != owner.Id {
 		t.Error("a conflict must never rebind the identity")
+	}
+}
+
+func TestResolveIdentityRefreshesTheLastSignInStamp(t *testing.T) {
+	app := newIdentityApp(t)
+	if _, outcome, err := resolveIdentity(app, providerGoogle, "sub-touch", "touch@example.com", true, ""); err != nil || outcome != IdentityCreated {
+		t.Fatalf("setup: %v %s", err, outcome)
+	}
+	rows := identityRows(t, app, providerGoogle, "sub-touch")
+	if len(rows) != 1 || rows[0].GetString("last_login") == "" {
+		t.Fatal("the first link must stamp last_login")
+	}
+	first := rows[0].GetString("last_login")
+
+	// A re-sign-in is not a no-op: a stale stamp misreports when the identity was last
+	// used, which is the value an operator reads while investigating an incident.
+	time.Sleep(50 * time.Millisecond)
+	if _, outcome, err := resolveIdentity(app, providerGoogle, "sub-touch", "touch@example.com", true, ""); err != nil || outcome != IdentityBound {
+		t.Fatalf("re-sign-in: %v %s", err, outcome)
+	}
+	after := identityRows(t, app, providerGoogle, "sub-touch")[0].GetString("last_login")
+	if after == first {
+		t.Errorf("last_login must advance on a re-sign-in, still %q", first)
 	}
 }
 

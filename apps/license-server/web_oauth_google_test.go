@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -75,6 +76,30 @@ func TestOAuthStateStoreIsSingleUse(t *testing.T) {
 	}
 	if _, ok := store.take("never-issued"); ok {
 		t.Error("an unknown state must not be honoured")
+	}
+}
+
+func TestOAuthStateStoreEnforcesAndFreesItsCeiling(t *testing.T) {
+	// `/start` is unauthenticated and writes into this map, so the ceiling is the only
+	// thing standing between one host and the process's memory for a TTL window. Both
+	// halves matter: the cap must hold, and it must not wedge the endpoint shut — a map
+	// full of expired entries that refuses every insert is a permanent outage.
+	store := &oauthStateStore{pending: make(map[string]*oauthPending)}
+	for i := 0; i < oauthMaxPending; i++ {
+		if !store.put(fmt.Sprintf("st-%d", i), &oauthPending{expiresAt: time.Now().Add(time.Minute)}) {
+			t.Fatalf("the ceiling must admit %d entries; refused at %d", oauthMaxPending, i)
+		}
+	}
+	if store.put("one-too-many", &oauthPending{expiresAt: time.Now().Add(time.Minute)}) {
+		t.Fatal("a full store must refuse a new pending sign-in")
+	}
+
+	stale := &oauthStateStore{pending: make(map[string]*oauthPending)}
+	for i := 0; i < oauthMaxPending; i++ {
+		stale.put(fmt.Sprintf("st-%d", i), &oauthPending{expiresAt: time.Now().Add(-time.Second)})
+	}
+	if !stale.put("fresh", &oauthPending{expiresAt: time.Now().Add(time.Minute)}) {
+		t.Fatal("expired entries must be swept, or the cap becomes a permanent outage")
 	}
 }
 
