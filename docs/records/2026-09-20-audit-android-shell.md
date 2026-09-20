@@ -8,27 +8,37 @@ dependency source (`wry-0.55.1`), not against assumption.
 Repo state at audit time: HEAD `c45497c12`, 34 dirty files (all peers'), `cargo check -p
 kasirmu-mobile` clean, IPC parity 25 scoped orphans (unchanged).
 
-**Revision 2 — 2026-09-20, re-audit of the "Hardening notes" section only.** All five notes were
-re-derived against the artifacts on disk rather than re-read. The revision-1 readings are
-preserved verbatim in git at `c45497c12`. Sections D1–D2 and N1–N7 are revision 1 and were not
-re-measured — except D1, whose status line was updated to FIXED when that work landed. Repo state
-at revision 2: HEAD `c45497c12`, 42 dirty files (all peers').
+**Revision 2 — 2026-09-20, re-audit of the hardening notes and the N-claims.** The five hardening
+notes and every N-claim were re-derived against the sources and artifacts rather than re-read. The
+revision-1 readings are preserved verbatim in git at `c45497c12`. Repo state at revision 2: HEAD
+`c45497c12`, 42 dirty files (all peers').
 
-| Note | Revision 1 said | Revision 2 finds |
+| Item | Revision 1 said | Revision 2 finds |
 |---|---|---|
 | H1 `file_paths.xml` | over-broad; narrow it if used | **withdrawn** — the root path is load-bearing |
 | H2 `backup_rules.xml` | duplicate line | duplicate removed; the note's stated cause was wrong |
 | H3 permissions | nothing requests them | scope was the wrong layer; CAMERA is wired; three permissions, not four |
 | H4 orientation | no lock | confirmed; cite corrected |
 | H5 debug APK | 583 MB, no `abiFilters` | size right, cause wrong in two places |
+| N1 updater | degrades cleanly | confirmed |
+| N1 dialog | "the tablet never mounts them" | **wrong — a real defect; promoted to D3** |
+| N1 window-state | desktop-only | confirmed |
+| N2 `UpdateBanner` | desktop-only | confirmed |
+| N3 versions | correct | confirmed, and re-confirmed in the built APK |
+| N4 asset scope | correct | confirmed |
+| N5 CSP | correct | confirmed |
+| N6 R8 | correct | confirmed, including in the release dex |
+| N7 backup exclusion | correct | confirmed, with the load-bearing file named in H2 |
+| D1 / D2 | open, then fixed | fix verified at all four sites; D2's dead permission is now exercised |
 
-**A false zero this re-audit produced, recorded because it nearly became a finding.** Checking
-H1 first ran `grep -rn --no-ignore …` — a ripgrep flag GNU grep rejects. The error went to
-`2>/dev/null`, stdout was empty, and that emptiness was read as "no such code exists"; on that
-basis H1's withdrawal was briefly treated as unsupported. The code is at
-`RustWebChromeClient.kt:471`. Two lessons, the first already implied by H3: the `generated/` tree
-must be searched with a tool that genuinely ignores `.gitignore` (ripgrep, or `grep` with no flag
-at all), and **a suppressed stderr must never be read as evidence.**
+**A trap this revision hit three times, recorded because it produced two false zeros.** The Android
+Kotlin and the wry ProGuard rules live under
+`gen/android/app/src/main/java/mu/kasir/mobile/generated/`, which `gen/android/app/.gitignore:1`
+excludes. A default `git grep` / ripgrep therefore cannot see the FileProvider call (H1), the
+permission launcher (H3) or `proguard-wry.pro` (N6), and each absence was briefly read as evidence.
+Worse, the first check of H1 ran `grep -rn --no-ignore …` — a ripgrep flag GNU grep rejects — with
+the error sent to `2>/dev/null`, so an empty stdout looked like a finding. **Search that tree with
+ripgrep, or with `grep` and no flag at all, and never read a suppressed stderr as evidence.**
 
 ---
 
@@ -78,8 +88,10 @@ upgrade CTA on a locked tier gets a dead button.
 (`capabilities/default.json`, `capabilities/mobile.json`). Its `openUrl()` is the supported
 cross-shell route and works on Android.
 
-**D2 — the granted permission is dead code.** `grep -rn "openUrl\|plugin-opener" ui/src`
-returns nothing. The permission exists for precisely this purpose and no code exercises it.
+**D2 — the granted permission was dead code.** `grep -rn "openUrl\|plugin-opener" ui/src`
+returned nothing: the permission existed for precisely this purpose and no code exercised it.
+**Retired by the fix above** — `ui/src/api/browser.ts:42-43` is now its one caller, which is the
+only place it should be.
 
 ### What was applied
 
@@ -126,6 +138,72 @@ right seam either way — only its body would change.
 
 ---
 
+## D3 — `plugin-dialog` is absent on mobile, but three tablet-reachable paths call it (confirmed, MEDIUM — open)
+
+Found while re-measuring N1, which reasoned about which *screens* the tablet mounts and so missed
+which *call sites* it reaches. Same class as D1: a shell divergence the shared renderer does not
+account for.
+
+### The plugin is unavailable on the tablet, twice over
+
+- `apps/mobile-tauri/src/lib.rs:73-74` registers exactly two plugins
+  (`tauri_plugin_clipboard_manager`, `tauri_plugin_opener`), and
+  `apps/mobile-tauri/Cargo.toml:60-61` carries no `tauri-plugin-dialog`. Desktop registers it at
+  `apps/desktop-tauri/src/lib.rs:106`.
+- `apps/mobile-tauri/capabilities/mobile.json` grants no `dialog:*` permission — only
+  `core:default`, `core:event:default`, `clipboard-manager:allow-write-text` and
+  `opener:allow-open-url`. So registering the plugin would not be sufficient on its own.
+
+An unregistered plugin command rejects, so every call below fails at the invoke.
+
+### Three tablet-reachable consumers
+
+| Call site | Reached by | Guard |
+|---|---|---|
+| `ui/src/api/data.ts:65` (`save`), `:74` (`open`) | `useExportWizard`, `useImportWizard`, `useBackupStatus` → the Data management screen | none |
+| `ui/src/features/sales/PosScreen.tsx:226` (avatar picker) | `PosScreen.tsx:752` → `RestaurantMenu.tsx:485` → `RestaurantSidebar.tsx:314` | `isTauriWebview()` (`:216`) |
+| `ui/src/features/retail/EditProductModal.tsx:88` (product image) | `RetailPosScreen.tsx:1643` → `RetailModals.tsx:755` | none |
+
+Each link is load-bearing and was checked:
+
+- **The Data management screen is reachable on a tablet.** N1 said it is "not in the page
+  registry"; it is — `ui/src/features/settings/register.tsx:31` registers route `data-management`
+  with a nav item (`:32-39`, `requiredRole: 'owner'`). What actually gates it is the workspace
+  screen allowlist: `TabletAppLayout.tsx:68-84` filters nav items by `workspaceScreens`, and
+  `('admin', 'data-management', 8)` is in the seed
+  (`crates/kasirmu-core/migrations/20260813_init.sql:1487`) with a default admin instance
+  (`:1509`) that the free tier allows (`:1514`).
+- **`PosScreen` and `RetailPosScreen` are tablet-mounted** —
+  `ui/src/app/tablet/TabletAppShell.tsx:23-24` lazy-loads both.
+- **`isTauriWebview()` is the wrong test for that guard.** It separates browser from Tauri, not
+  desktop from tablet, so on the tablet it passes and the honest message that already exists —
+  `restaurant-avatar-desktop-only`, "Changing your photo needs the desktop app"
+  (`shared-ui/locales/products.ftl:8`) — is never shown. The user gets the generic
+  `retail-edit-image-error` instead.
+
+### Failure mode
+
+Not a crash: each call sits inside a `try`, so the rejection surfaces as an error toast (or an
+inline `setImageError`). The cost is a dead feature that reports the wrong reason, on the screen
+where a merchant would go to back up their data.
+
+### Owner decision — two options
+
+- **(a) Desktop-gate the three sites.** Smallest change, and it matches what the avatar picker
+  already intends: branch on a shell predicate instead of `isTauriWebview()` and show
+  `restaurant-avatar-desktop-only` (or a sibling key) rather than an error.
+- **(b) Register `tauri-plugin-dialog` on mobile and grant `dialog:allow-open` /
+  `dialog:allow-save`.** Android's system document picker works, so the tablet gains real image
+  picking and real backup/export paths. Larger surface: a new ACL entry, and the two image
+  commands take a filesystem path the app must then be able to read.
+
+Recommendation: **(b) for the two image pickers, (a) for backup/export/import** — image capture on
+the tablet pairs with the camera path the scaffold already wires (H3), whereas the backup/export
+flows write to a user-chosen path and are desktop-shaped. Not applied: it is a product call, and
+either option is one edit.
+
+---
+
 ## Confirmed NOT defects
 
 Each of these looked wrong and was checked rather than reported.
@@ -139,10 +217,12 @@ Missing-plugin invokes usually throw. They do not here:
   `try`, and the `catch` is explicit: *"Updater plugin not available (browser / dev) — not an
   update."* It degrades to `{ state: 'latest' }`. Its consumers are `UpdateBanner`
   (desktop-only), `StatusBar.tsx` and `RestaurantSidebar.tsx` — all survive that.
-- **dialog** — `plugin-dialog.open()/save()` appear in `ui/src/api/data.ts:65,74`,
-  `EditProductModal.tsx`, `PosScreen.tsx`. The file-picking screens
-  (`DataManagementScreen` → `BackupSection`/`ExportSection`/`ImportSection`) are **not** in
-  `WorkspaceSettingsModal` and **not** in the page registry, so the tablet never mounts them.
+- **dialog** — **this one is a defect, not a non-defect: see D3.** `plugin-dialog.open()/save()`
+  appear in `ui/src/api/data.ts:65,74`, `EditProductModal.tsx:88` and `PosScreen.tsx:226`, and all
+  three are tablet-reachable. The reasoning that retired them — "the file-picking screens are not
+  in the page registry, so the tablet never mounts them" — is wrong twice: `data-management` *is*
+  registered (`settings/register.tsx:31`), and what gates it is the `workspaceScreens` allowlist,
+  which includes it for the `admin` type.
 - **window-state** — desktop-only; nothing on the tablet reads it.
 
 ### N2 — `UpdateBanner` is desktop-only
@@ -284,12 +364,16 @@ cloud backup and device transfer.
 
 ## Verdict
 
-One real, high-severity, cross-shell defect (D1), now fixed at all four sites. Two findings
-were withdrawn on inspection (versionCode, `file_paths.xml`) — both looked like defects and
-are not. Remaining items are product/Play decisions (ADR #38 opener routing, runtime
-permission requests, orientation lock), not code defects.
+Two cross-shell defects, both from the same cause — the shared renderer does not account for which
+plugins each shell registers. **D1** (`window.open()` is a silent no-op on the Android WebView) is
+fixed at all four sites. **D3** (`plugin-dialog` is absent on mobile while three tablet-reachable
+paths call it) is open and needs one product call.
 
-Revision 2 narrows one of those: the permission item is **three** permissions
+Two findings were withdrawn on inspection (versionCode, `file_paths.xml`) — both looked like
+defects and are not. The remaining items are product/Play decisions, not code defects: ADR #38
+opener routing, the three unrequested permissions, the orientation lock, and D3's two options.
+
+Revision 2 narrowed one of those: the permission item is **three** permissions
 (`POST_NOTIFICATIONS`, `BLUETOOTH_CONNECT`, `BLUETOOTH_SCAN`), not four — CAMERA's runtime
 request path already exists in the generated scaffold and only lacks code that asks for the
 camera. It also leaves one documentation item open rather than settled: the build-cost table in
