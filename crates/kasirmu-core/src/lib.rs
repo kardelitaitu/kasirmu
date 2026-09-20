@@ -26,6 +26,8 @@ next: none — all open COR findings from the closed campaign resolved | perf: N
 
 /// Immutable audit log — cash management and data-modification events.
 pub mod attestation;
+/// Desktop device-link client (ADR #54 §2.5): PKCE plus the two link calls.
+pub mod desktop_link;
 
 pub mod audit;
 /// Authentication and session management.
