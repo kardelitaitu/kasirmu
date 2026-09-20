@@ -77,6 +77,15 @@ KNOWN LIMITATIONS (deliberate, and worth knowing before you trust a clean run):
     was deleted after three rounds. The four repairs it motivated are in the tree; the general
     case stays a hand audit.
 
+  * Paths inside FENCED CODE BLOCKS are not checked, which is the one place a command is most
+    likely to rot. Measured 2026-09-26: a `node scripts/check-env-docs.mjs` line sat in ADR #54's
+    verification block for eight rounds after that script was deleted, and every checker here was
+    green -- ADRs are historical, and a fenced line is not a prose reference. Scanning fences was
+    tried: the five docs that matter (ADR #54, the runbook, agent-gates, DEPLOY, the dev compose)
+    yielded four hits and all four were HOST paths in operational commands (`/opt/oz/backup-pb.sh`,
+    `/tmp/attest.json`), so a fence scanner cannot tell a repo path from a server path without
+    knowing which commands run where. Until it can, a command block is a hand check.
+
   Opt-out pragma: put "dead-ref: ok" in an HTML comment on the line, or on the line
   above it. Same contract as eslint-disable-next-line or #[allow(...)]: the doc states
   the reference is intentional, in one token, where a reader can see it.
