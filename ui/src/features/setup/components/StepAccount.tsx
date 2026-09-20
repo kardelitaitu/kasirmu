@@ -136,9 +136,18 @@ export default function StepAccount() {
             </>
           )}
 
+          {/* The tablet opens no browser: this state is an email being sent, and saying
+              "waiting for your browser" here named a step the user does not have. */}
           {emailState === 'sending' && (
             <p className="setup-step-note" role="status">
-              <Localized id="setup-account-waiting">Waiting for your browser…</Localized>
+              <Localized id="setup-account-sending">Sending the code…</Localized>
+            </p>
+          )}
+          {/* Verifying disables the field and the button, so without this the user gets no
+              signal at all between the click and the result. */}
+          {emailState === 'verifying' && (
+            <p className="setup-step-note" role="status">
+              <Localized id="setup-account-verifying">Checking the code…</Localized>
             </p>
           )}
           {emailState === 'verified' && (

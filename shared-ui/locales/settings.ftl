@@ -69,6 +69,10 @@ setup-account-send = Email me a code
 setup-account-sent = Code sent. It expires in 15 minutes.
 setup-account-code = 6-digit code
 setup-account-verify = Verify
+# The tablet's in-flight states. `setup-account-waiting` above names a browser and stays with
+# the Google control, which really does open one.
+setup-account-sending = Sending the code…
+setup-account-verifying = Checking the code…
 
 setup-progress-aria = Setup progress
 

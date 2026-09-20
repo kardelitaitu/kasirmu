@@ -150,6 +150,10 @@ setup-account-send = Kirim kode ke email
 setup-account-sent = Kode terkirim. Kedaluwarsa dalam 15 menit.
 setup-account-code = Kode 6 digit
 setup-account-verify = Verifikasi
+# Status saat proses (tablet). `setup-account-waiting` di atas menyebut browser dan tetap
+# dipakai kontrol Google, yang memang membuka browser.
+setup-account-sending = Mengirim kode…
+setup-account-verifying = Memeriksa kode…
 setup-progress-aria = Kemajuan setup
 setup-preset-question = Toko seperti apa yang Anda jalankan?
 setup-preset-desc = Pilih preset untuk memulai dengan cepat, atau sesuaikan setiap fitur nanti.
