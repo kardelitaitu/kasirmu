@@ -117,12 +117,21 @@ pub fn normalize_origin(raw: &str) -> Option<String> {
 /// origin persisted from a previous boot. Both are ignored when blank or
 /// malformed, so a stray "OZ_LICENSE_SERVER_URL=" line cannot blank out the base
 /// URL.
-pub fn resolve_origin(env_override: Option<String>, pinned: Option<String>) -> ResolvedServerOrigin {
+pub fn resolve_origin(
+    env_override: Option<String>,
+    pinned: Option<String>,
+) -> ResolvedServerOrigin {
     if let Some(url) = env_override.as_deref().and_then(normalize_origin) {
-        return ResolvedServerOrigin { url, source: OriginSource::EnvOverride };
+        return ResolvedServerOrigin {
+            url,
+            source: OriginSource::EnvOverride,
+        };
     }
     if let Some(url) = pinned.as_deref().and_then(normalize_origin) {
-        return ResolvedServerOrigin { url, source: OriginSource::Pinned };
+        return ResolvedServerOrigin {
+            url,
+            source: OriginSource::Pinned,
+        };
     }
     ResolvedServerOrigin {
         url: MAIN_SERVER_ORIGIN.to_string(),

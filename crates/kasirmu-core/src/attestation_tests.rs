@@ -94,7 +94,10 @@ fn sources_are_labelled_only_for_compiled_origins() {
 
 /// Serve exactly one canned HTTP response and hand back the request the client sent.
 #[cfg(feature = "sync-http")]
-fn one_shot_server(status_line: &'static str, body: String) -> (String, std::thread::JoinHandle<String>) {
+fn one_shot_server(
+    status_line: &'static str,
+    body: String,
+) -> (String, std::thread::JoinHandle<String>) {
     use std::io::{Read, Write};
     use std::net::TcpListener;
 
@@ -189,9 +192,17 @@ async fn attest_origin_rejects_an_answer_for_a_different_nonce() {
 async fn attest_origin_rejects_transport_and_body_failures() {
     let (_key, pem) = keypair();
     for (name, status, body) in [
-        ("non-200", "HTTP/1.1 503 Service Unavailable", "{}".to_string()),
+        (
+            "non-200",
+            "HTTP/1.1 503 Service Unavailable",
+            "{}".to_string(),
+        ),
         ("not json", "HTTP/1.1 200 OK", "not json".to_string()),
-        ("no signature", "HTTP/1.1 200 OK", "{\"nonce\":\"0123456789abcdef\"}".to_string()),
+        (
+            "no signature",
+            "HTTP/1.1 200 OK",
+            "{\"nonce\":\"0123456789abcdef\"}".to_string(),
+        ),
     ] {
         let (origin, server) = one_shot_server(status, body);
         let result = attest_origin_with(&origin, "0123456789abcdef", &pem).await;
@@ -199,4 +210,3 @@ async fn attest_origin_rejects_transport_and_body_failures() {
         assert!(result.is_err(), "{name} must be refused");
     }
 }
-

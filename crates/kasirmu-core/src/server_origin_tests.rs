@@ -66,7 +66,10 @@ fn malformed_override_falls_through_to_the_next_tier() {
 
 #[test]
 fn release_ladder_is_main_then_fallback() {
-    assert_eq!(release_ladder(), [MAIN_SERVER_ORIGIN, FALLBACK_SERVER_ORIGIN]);
+    assert_eq!(
+        release_ladder(),
+        [MAIN_SERVER_ORIGIN, FALLBACK_SERVER_ORIGIN]
+    );
 }
 
 #[test]
@@ -75,8 +78,14 @@ fn ladder_entries_are_https_and_not_loopback() {
     assert_ne!(ladder[0], ladder[1]);
     for origin in ladder {
         assert!(origin.starts_with("https://"), "must be https: {origin}");
-        assert!(!origin.contains("localhost"), "must not be loopback: {origin}");
-        assert!(!origin.contains("127.0.0.1"), "must not be loopback: {origin}");
+        assert!(
+            !origin.contains("localhost"),
+            "must not be loopback: {origin}"
+        );
+        assert!(
+            !origin.contains("127.0.0.1"),
+            "must not be loopback: {origin}"
+        );
     }
 }
 

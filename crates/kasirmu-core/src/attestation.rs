@@ -89,16 +89,22 @@ pub fn verify_attestation_signature(
     let sig_bytes = base64::engine::general_purpose::STANDARD
         .decode(signature_base64)
         .map_err(|e| {
-            CoreError::InvalidSubscriptionSignature(format!("attestation signature is not base64: {e}"))
+            CoreError::InvalidSubscriptionSignature(format!(
+                "attestation signature is not base64: {e}"
+            ))
         })?;
     let signature = rsa::pkcs1v15::Signature::try_from(sig_bytes.as_slice()).map_err(|e| {
-        CoreError::InvalidSubscriptionSignature(format!("invalid attestation signature format: {e}"))
+        CoreError::InvalidSubscriptionSignature(format!(
+            "invalid attestation signature format: {e}"
+        ))
     })?;
     let verifying_key = VerifyingKey::<Sha256>::new(public_key);
     verifying_key
         .verify(attestation_payload(nonce).as_bytes(), &signature)
         .map_err(|_| {
-            CoreError::InvalidSubscriptionSignature("attestation signature did not verify".to_string())
+            CoreError::InvalidSubscriptionSignature(
+                "attestation signature did not verify".to_string(),
+            )
         })
 }
 
@@ -166,7 +172,12 @@ pub async fn attest_origin_with(
 /// Ask one origin to attest a nonce, verifying against the embedded key.
 #[cfg(feature = "sync-http")]
 pub async fn attest_origin(origin: &str, nonce: &str) -> Result<(), CoreError> {
-    attest_origin_with(origin, nonce, crate::license_verification::LICENSE_PUBLIC_KEY_PEM).await
+    attest_origin_with(
+        origin,
+        nonce,
+        crate::license_verification::LICENSE_PUBLIC_KEY_PEM,
+    )
+    .await
 }
 
 /// The cached attested origin, when the cascade has already resolved one.
