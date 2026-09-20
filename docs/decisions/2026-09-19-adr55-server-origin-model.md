@@ -120,6 +120,15 @@ safely — a failed attestation caches nothing, so `license_server_url()` stays 
 MAIN — which means the cascade is inert, and correct, until the licence server ships first.
   auth-side cascade fills.
 
+**Shipped 2026-09-19 (observability):** the resolved origin and the tier that won are now
+reported on the settings surface. `kasirmu_core::attestation::resolved_origin()` is the single
+precedence implementation — `license_server_url()` delegates to it, so the credential path and
+the UI cannot disagree — and `SyncSettingsDto` carries `resolvedOrigin` +
+`resolvedOriginSource` through both shells' IPC DTOs into Settings → Sync, where the line is
+rendered (and hidden when the field is absent, since the payload crosses IPC). Until this
+landed, the only evidence that a client had fallen back was a `tracing` line in the app log,
+which meant the cascade could do its job silently and nobody would learn the primary was gone.
+
 **Shipped 2026-09-19 (client):** `crates/kasirmu-core/src/attestation.rs` generates the nonce,
 posts it, verifies the answer against `LICENSE_PUBLIC_KEY_PEM` and caches the winner in a
 process-wide `OnceLock`; `license_server_url()` then prefers that cached origin, so every
@@ -177,6 +186,13 @@ have caught the fork in §1.
   counterpart, unchanged in value by the literal collapse.
 - `ui` — `SettingsContext`, `CloudSyncSettings` and `SettingsPage` suites, whose pinned defaults
   moved from the fallback name to the canonical origin (68 passed, 22 skipped).
+- `crates/kasirmu-core` + both shells: `resolved_origin()` is covered by the resolver suite, and
+  the two DTOs are pinned by the tablet's cross-DTO wire-key test plus the bridge's camelCase
+  assertions, so a field that fails to cross the IPC boundary reads red rather than rendering
+  `undefined`.
+- `ui`: two SyncSection tests — the line shows the origin and tier, and is omitted entirely when
+  the payload omits the field. The full UI suite (10,100+ tests) and `tsc` were run, not just the
+  touched files.
 - `node scripts/check-server-origins.mjs` — green across all six surfaces.
 - `go -C apps/license-server test -short -run 'Attest|SignDetached'` — the payload shape, nonce bounds, and a
   sign/verify round-trip over a generated keypair with a tampered-nonce negative case. Three
