@@ -162,7 +162,9 @@ have caught the fork in §1.
 - **`useDeviceIp` calls `https://api.ipify.org`, which is in neither Tauri CSP**
   (`ui/src/hooks/useDeviceIp.ts:40`). The KDS footer therefore falls back to the local IP. Left
   as-is: enabling a third-party call is a privacy decision, not an origin decision.
-- **The debug bootstrap still targets the production fallback name**, preserving its existing
+- **The debug bootstrap no longer targets production** (O2): it points at
+  `DEBUG_SYNC_ORIGIN`. The residue is that a debug build with no local Docker stack running gets
+  no sync auto-connection at all — deliberate, and preferable to a silent production connection.
   behaviour rather than silently repointing developer sync at loopback. Whether a debug build
   should auto-provision to `DEBUG_SYNC_ORIGIN` instead is unresolved (§6 O2).
 
@@ -187,7 +189,13 @@ have caught the fork in §1.
   the private key (PocketBase), but the cascade needs it *before* choosing a host, so the
   endpoint must be unauthenticated and cheap. An unauthenticated signing oracle deserves its own
   review: scope it to a nonce of bounded length, with no attacker-chosen payload.
-- **O2 — Should a debug build auto-provision to `DEBUG_SYNC_ORIGIN`?** Today it points at the
+- **O2 — RESOLVED (2026-09-19): yes, and it now targets `DEBUG_SYNC_ORIGIN`.** The debug
+  bootstrap had pointed at the production fallback name, which let a debug build silently
+  auto-provision against a real tenant — pulling production data over a developer's database and
+  pushing test sales into it. The probe still gates every write, and `should_auto_provision`
+  returns false whenever a URL is configured, so a developer who deliberately pointed the machine
+  at production keeps that setting. A debug build with no local stack running now simply does not
+  auto-connect, which is the correct explicit-configuration behaviour.
   production fallback name, which means a developer's machine can silently sync to production.
 - **O3 — Should the gate gain CI coverage?** It is local-only today (`scripts/gates.json`
   `server-origins`, no `ci` block), which is honest rather than omitted.
