@@ -241,6 +241,26 @@ pub fn run() {
                 });
             }
 
+            // ── Attest the server origin (ADR #55) ──────────────────────
+            // The cascade is what makes `main -> fallback` real: it asks each
+            // compiled origin to prove it holds the license keypair and caches the
+            // winner for the process, which `license_server_url()` then prefers.
+            // Fire-and-forget on purpose: boot is never blocked on a probe, and an
+            // unreachable MAIN degrades to the canonical default exactly as it does
+            // today until the cascade resolves to the fallback.
+            platform_startup::spawn_daemon("server origin attestation", async move {
+                let nonce = kasirmu_core::attestation::generate_nonce();
+                match kasirmu_core::attestation::resolve_attested_origin(&nonce).await {
+                    Some(resolved) => tracing::info!(
+                        origin = %resolved.url,
+                        source = resolved.source.as_str(),
+                        "server origin attested"
+                    ),
+                    None => tracing::warn!(
+                        "no server origin could be attested; staying on the compiled default"
+                    ),
+                }
+            });
             // ── Background sync daemon ────────────────────────────────
             let db = app.state::<AppState>().db.clone();
             let app_handle = app.handle().clone();
