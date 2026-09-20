@@ -33,6 +33,8 @@
 | R20 | **The home Tools grid's vocabulary** | **Phase 3a.2** | **Keep the rank, narrow 3a.2** | Medium — visibility |
 | R21 | **Open-bills list at zero held bills** | 1 dead locale string | **Delete it, or add an entry point** | Low |
 
+**All 21 entries above were ruled by the owner on 2026-09-20.** Each ruling is recorded as a dated line under its own entry, per the convention at the top of this file; the measured text of every entry is left untouched. **R14 and R16 are recorded amended, not as the entry's own recommendation** — both were re-measured in this checkout and the fix is smaller than the entry prices it (R14's "second parser" already exists; R16's text edit does not fix the running container). Every other ruling adopts the entry's recommendation.
+
 **Already ruled — do not re-open:** the fail-closed default for an unknown role floor (owner, 2026-09-16: an unknown floor on an admin-tool gate must **deny**; landed as `a8c1fb4c5`).
 
 ---
@@ -54,6 +56,8 @@
 
 **Price of being wrong.** Low. The arm is a status payload, not an authorisation decision; if it ever regresses, the symptom is a licence that reports active past grace, and the both-profile test at `auth_tests.rs:400-402` still pins the forged-row refusal.
 
+**RULING (owner, 2026-09-20): (i) — leave the arm parked and record the reason in the doc comment. No production change.**
+
 ### R2 — The `sync_tests.rs` debug gate
 
 **What is blocked.** `:111`. `crates/kasirmu-bridge/src/sync_tests.rs:35-37` is `#[cfg(test)]` + `#[cfg(debug_assertions)]`, which is the whole of the debug/release total gap (`1318 − 1317 = 1`).
@@ -63,6 +67,8 @@
 **Options.** (i) Keep the gate and treat the gap as explained — the second branch of the box; (ii) drop the gate and fork the assertion per profile.
 
 **Recommendation: (i), and tick the box.** The explanation now exists in this file, which is exactly what the box's second branch asked for. A per-profile fork here buys coverage of a dev-only fallback.
+
+**RULING (owner, 2026-09-20): (i) — keep the `cfg` gate, declare the debug/release gap explained, and tick the box.**
 
 ---
 
@@ -90,6 +96,8 @@ So if the tablet's setup wizard is the creation path, a fresh tablet install rea
 
 **Price of being wrong.** Medium, and it is data-shaped. `seed_default_roles` **upserts and overwrites** every preset row (`crates/kasirmu-core/src/db/staff.rs:69`, doc at `:11`), so seeding in the wrong place can rewrite a preset a tenant has edited — though `roles.rs:14-16` notes preset ids are not authorable through the UI, which limits the blast radius. Confirm that before shipping (i).
 
+**RULING (owner, 2026-09-20): (i) as the immediate fix, plus (ii) as the belt-and-braces — mirror the leading `seed_default_roles()` into `write_setup` as leg 0, and register `seed_default_roles_scoped` on the mobile shell.**
+
 ### R4 — The `AppState` → `BridgeCtx` seam
 
 **What is blocked.** `:169`. Measured field-by-field and deferred: **7 of 14** fields match; `Arc`-ing `db`/`terminal_id` is mechanical; `plugins` would drag the `mlua` Lua VM into the Android APK for a field that is forever `None` on that shell.
@@ -97,6 +105,8 @@ So if the tablet's setup wizard is the creation path, a fresh tablet install rea
 **Options.** (i) Merge fully into one `BridgeCtx`; (ii) share the mechanical fields and keep `plugins` shell-local; (iii) leave two contexts.
 
 **Recommendation: (ii).** The seam is worth having for the nine fields that can move; it is not worth having at the price of a Lua VM in the mobile binary for a field mobile never populates. This also needs a Phase-1-fence decision on the bridge side, since the change lands in `crates/kasirmu-bridge`.
+
+**RULING (owner, 2026-09-20): (ii) — a partial seam. Share the mechanical fields; keep `plugins` shell-local so the `mlua` Lua VM does not enter the Android APK.**
 
 ---
 
@@ -116,6 +126,8 @@ So if the tablet's setup wizard is the creation path, a fresh tablet install rea
 **Recommendation: (i) if the product needs org-wide roles, otherwise (iii).** The decision the owner can make today is binary and cheap — *does any customer need a role that spans stores?* If yes, commission the doc and expect question 2 to dominate it. If no, (iii) is strictly cheaper than (ii): (ii) buys a new axis with no new table and still has to answer question 2, because a derived grouping is still a cross-store scope.
 
 **Price of being wrong.** High. This is the only ruling in this document that produces a **migration**, and a wrong axis is a migration plus an evaluation path plus gate wiring to unwind.
+
+**RULING (owner, 2026-09-20): (iii) by default — decline the organisation axis and close 3b as out-of-scope.** The ruling flips to (i) only if a customer is named who needs a role that spans stores; option (ii) is rejected as a trap, since a derived grouping is still a cross-store scope and must still answer question 2.
 
 ### R20 — The home Tools grid's vocabulary: rank or permission  ⚠️ blocks Phase 3a.2, and the block is a green test
 
@@ -165,6 +177,8 @@ Permission-gating the grid therefore makes the card **exactly equal** to the rou
 
 **Price of being wrong.** **Medium, and it is a visibility change either way.** (i) leaves a read-only role unable to see cards for pages it can open from the nav — the mismatch `audit-open-findings.md:1532` describes, cosmetic but real, and what makes this feel like a bug. (ii) hands five admin-surface cards to the auditor, which is not cosmetic. The asymmetry is the argument: (i)'s cost is a confusing nav/grid mismatch, (ii)'s cost is an authorisation widening, and only one of those is reversible by a later commit.
 
+**RULING (owner, 2026-09-20): (i) — the rank stays authoritative for the home grid; 3a.2 is narrowed to the gates that have no route twin, and the policy is cited at the site.** The widening in (ii) is refused: it would hand five admin-surface cards to a read-only role under a commit that reads as a refactor.
+
 ---
 
 ## Phase 4 — payment
@@ -184,6 +198,8 @@ Permission-gating the grid therefore makes the card **exactly equal** to the rou
 
 **Price of being wrong.** Medium. Either choice touches the schema and the alias; (i) additionally needs a uniqueness constraint to stay honest, and would need revisiting the moment a second register exists.
 
+**RULING (owner, 2026-09-20): (ii) — commands take an explicit `terminal_id` and the UI supplies it.** The binding belongs to the register; `is_default` on the terminal table cannot express it.
+
 ### R7 — A QRIS-enabled sandbox credential (R6)
 
 **What is blocked.** `:250` and `:279`. Four acquirer behaviours are unproven by anything in this repo: generic-QR interop, the targeted-QR restriction, real refund behaviour, and per-merchant acquirer activation.
@@ -196,6 +212,8 @@ Permission-gating the grid therefore makes the card **exactly equal** to the rou
 
 **Recommendation: (i).** It is one secret of a class you already hold, and (iii) is the tempting wrong answer — it makes the suite look stronger while proving nothing about interop. If (i) is not available, (ii) is honest and costs nothing; what is not acceptable is closing R6 on a green mock suite.
 
+**RULING (owner, 2026-09-20): (i) — supply the Midtrans/Xendit sandbox `MIDTRANS_SERVER_KEY` on a QRIS-enabled merchant account and run the four behaviours.** If that key cannot be obtained, (ii) is the honest close, naming the four behaviours; (iii) is refused — it strengthens the look of the suite while proving nothing about interop.
+
 ### R8 — A vendor wire protocol (R7)
 
 **What is blocked.** `:250` and `:280`. The repo holds **no spec, no capture and 0 fixtures**: `crates/kasirmu-hal/src/drivers/edc/wired.rs` (112 lines), `wireless.rs` (132) and `protocol/{pax,ingenico,verifone}.rs` (46 each) are self-labelled PLANNED stubs failing closed with `HalError::Unsupported`, and `protocol/protocol_tests.rs` holds no golden vectors.
@@ -205,6 +223,8 @@ Permission-gating the grid therefore makes the card **exactly equal** to the rou
 **Options.** (i) Name one model and obtain its spec or a capture; (ii) decline EDC hardware support and delete the stubs; (iii) build the loopback terminal simulator only.
 
 **Recommendation: (iii) now, (i) if a merchant relationship exists.** The simulator covers the state machine — timeout, retry, cancel, receipt, fail-closed on an incomplete read — with **no vendor at all**, and it is a lane's work rather than a business decision. Asking *which single model is the target* is a cheap question with a 3-documents-or-1-capture answer, and it is the only thing that unblocks (i). **Do not invent framing from a plausible reading of a third-party document** — an invented codec passes its own tests and fails at a counter.
+
+**RULING (owner, 2026-09-20): (iii) now — build the loopback terminal simulator, which needs no vendor; (i) only if a merchant relationship exists to supply a spec or capture for one named model.**
 
 ### R9 — R5 resilience: write the doc, then wire it or delete it
 
@@ -221,6 +241,8 @@ Permission-gating the grid therefore makes the card **exactly equal** to the rou
 - **"Wire it into the registry" would protect nothing.** The one production `PaymentRequest` construction is `apps/cloud-server/src/payment_api.rs:239`, on a **concrete** `QrisPaymentProcessor` (`:79`, built `:132-135`), calling `processor.sale()` at `:251`. `PaymentProcessorRegistry` is not on that path, and the whole fallback/resilience layer has **0 production callers** — the only references outside `registry.rs`/`resilience.rs` are in `registry_tests.rs`. So (i)'s price is *one construction site*, not a registry campaign — **cheaper than this entry assumed**.
 - **The double-charge hole is real and cheap to close.** `:246` takes the gateway key off the HTTP body, so it can be `None`; `sale` is what the decorator retries; a keyless retry mints a fresh gateway key (`drivers/qris.rs:5`, `processor.rs:78-80`). But `sale_id` is required (`:222-224`) and already sent as `reference` (`:244`), so a deterministic fallback key is available server-side. **That makes the safe version of (i) additive rather than a behaviour reduction** — it fixes retries that are unsafe today instead of removing them.
 - **One trap that would corrupt the fix.** Two fields are named `idempotency_key`: the local `payments` row (deliberately optional, contract at `20261001_sale_idempotency.sql:18`) and the gateway key (unguarded). A lane that makes the former mandatory to fix the latter is breaking a written contract. The doc's §1.3 separates them; a ruling on (i) should say *gateway key* explicitly.
+
+**RULING (owner, 2026-09-20): (i) — wire the decorator, and say "gateway key" explicitly.** Two halves, and the first is separable: (a) derive the **gateway** idempotency key from the already-required `sale_id` at `apps/cloud-server/src/payment_api.rs`, which makes every existing retry safe with no schema, type or client change and is ruled to proceed independently; (b) wire `ResilientProcessor` at the single construction site rather than the registry, since the registry is not on the production path. The `payments` row's own optional `idempotency_key` contract is NOT touched.
 
 ---
 
@@ -246,6 +268,8 @@ Permission-gating the grid therefore makes the card **exactly equal** to the rou
 
 **Price of being wrong.** **High, and it is the one item here I would not ship without a written ruling.** (i) is a behaviour change: roles that could act on the tablet may stop being able to, and vice versa. That is correct if the tablet's gate was the bug, and a denial-of-service on legitimate users if the tablet's laxer gate was deliberate. It must be a ruling rather than a lane's judgement, which is exactly what §4 says.
 
+**RULING (owner, 2026-09-20): (i) — the scope-aware, gate-first gate is authoritative wherever the two shells disagree, and the gate-order half is folded in explicitly.** Concretely: `customers` adopts the bridge's scope-aware form and gate-first order; `settings`' bridge setters adopt the scope-aware form the shell already runs; `history` and `receipt_format` get the stronger of the two on each axis. (ii) is refused as a security regression on customer data; (iii) is refused as the status quo that has held 16 doors for a week.
+
 ### R11 — The `debug_upgrade` audit flag (BR-S10)
 
 **What is blocked.** `update_staff_scoped` cannot be delegated because the two shells disagree on **what gets audited**. `Store::record_security_event(event, debug_upgrade)` (`crates/kasirmu-core/src/db/audit_security.rs:382-392`) drops the write for a confirmed Free tier, and `debug_upgrade` decides whether the desktop's dev Free→Premium promotion applies first. The tablet wrapper passes **`false`**, the bridge passes **`true`**.
@@ -255,6 +279,8 @@ Permission-gating the grid therefore makes the card **exactly equal** to the rou
 **Options.** (i) `false` is authoritative — the recorder stops depending on a debug-only tier promotion, and the bridge changes; (ii) `true` is authoritative — the tablet starts writing them; (iii) keep the fork.
 
 **Recommendation: (i).** **An audit record must not depend on the build profile.** That principle decides it without needing to know which shell was ported from which, and it points at the bridge as the side to change — which is the opposite of what (i) in R10 does, and worth stating so the two are not conflated: R10 moves gates toward the stricter side, and this moves the recorder toward the profile-independent side. The two happen to select different shells, and that is correct.
+
+**RULING (owner, 2026-09-20): (i) — `false` is authoritative. An audit record must not depend on the build profile, so the recorder stops depending on a debug-only tier promotion and the bridge changes.** Note this selects the opposite shell from R10, which is correct and not a contradiction: R10 moves gates toward the stricter side, this moves the recorder toward the profile-independent side.
 
 ---
 
@@ -268,11 +294,15 @@ Permission-gating the grid therefore makes the card **exactly equal** to the rou
 
 **Recommendation: (ii) now, (i) once the container half is proven.** Its green half is *unsatisfiable without Docker*, so a gate added today is a gate that can only fail — and a permanently-red gate is one people learn to ignore, which is worse than no gate.
 
+**RULING (owner, 2026-09-20): (ii) now — name the script in the acceptance line of each plan doc whose box needs PG; (i) once the container half is proven.**
+
 ### R13 — The 2 Redis arms
 
 **What is blocked.** `:512`. `redis_backend_tests.rs` carries 2 skip arms inside `test_backend()`, unreachable behind three `#[ignore]`s. The honest options are to delete them or to drop the ignores and add a Redis service — not to keep dead skip code implying a live skip path.
 
 **Recommendation: leave them and record the choice**, which is the recommendation already on record and the one I would repeat: dropping the ignores costs a dev-CI service nobody asked for, and deleting the arms invites the next lane to re-add the helper's guards. A recorded choice is not the same as dead code.
+
+**RULING (owner, 2026-09-20): leave the 2 Redis arms and record the choice.** Dropping the ignores costs a dev-CI service nobody asked for; deleting the arms invites the next lane to re-add the helper's guards.
 
 ### R14 — nextest retries hiding real flakiness
 
@@ -284,17 +314,23 @@ Permission-gating the grid therefore makes the card **exactly equal** to the rou
 
 **Recommendation: (ii).** One extra job answers the actual question — *is CI hiding flakes?* — for the cost of a job, and it does not require the guard to learn a second log format. (i) is the thorough answer and can follow if (ii) finds real flakes. Note this is the **third** masking layer on this suite, independent of the other two: print-then-`return` turns a non-run into a pass, libtest suppresses a passing test's stdout, and retries turn an intermittent failure into a pass.
 
+**RULING (owner, 2026-09-20): (i), amended after re-measurement — wire the existing `--nextest-junit` flag to the JUnit artifact CI already produces.** The entry above prices (i) as needing "a second parser"; that parser already exists (`scripts/verify-pg-tests-ran.py:903`, with `parse_junit`/`grade_junit` and fixtures), and `.config/nextest.toml:43-44` writes `target/nextest/default/junit.xml` on every CI run while nothing reads it. That is cheaper than adding a job, and it answers *is CI hiding flakes?* directly. Add (ii)'s no-retry leg only if (i) finds real flakes.
+
 ### R15 — Adopt the `slow-tests` idiom
 
 **What is blocked.** `:507`, gated on "if this phase is ever funded". The mechanism already exists three directories from the debt: a no-op feature plus `#[cfg_attr(not(feature = "X"), ignore)]`.
 
 **Recommendation: adopt `pg-tests = []` if the phase is funded.** It satisfies every constraint at once — CI keeps the tests because CI passes `--all-features`; a local run without the container stops reading as a pass because both runners print `N ignored` **in the summary line**, which needs no `--nocapture`; and the skip is reversible by one flag instead of 64 call sites. One coupling to carry: the guard's source floor is baseline **64** and this migration deletes the arms it counts, so `ARM_FLOOR` will fire — that is the floor working, and the re-baseline belongs in the same commit.
 
+**RULING (owner, 2026-09-20): adopt the `pg-tests = []` idiom if this phase is funded, and re-baseline `ARM_FLOOR` in the same commit.**
+
 ### R16 — Dev Postgres 16 vs CI 17
 
 **What is blocked.** `:506`, and it is the reason every local PG figure in the program doc was produced on a major version CI does not test. `dev-ci.yml:209` is `postgres:17-alpine`, while `scripts/reset-dev-pg.sh` names **16** twice — in its usage comment (`:22`) and in the message it prints (`:43`).
 
 **Recommendation: move the script to 17.** Two string literals. Local figures should be produced on the version CI tests; if 16 is deliberate for dev, the script should say why, and nothing currently does.
+
+**RULING (owner, 2026-09-20): move the script to 17, amended after re-measurement — and recreate the container, because the text edit alone does not fix it.** The two literals are `scripts/reset-dev-pg.sh:22` and `:43`, while CI is `postgres:17-alpine` (`.github/workflows/dev-ci.yml:214`). But `oz-pg-test-15432` is already running 16 and the script only *prints* the `docker run` line, so editing the text leaves the drift in place silently; the ruling is not satisfied until the container is recreated at 17.
 
 ### R17 — The skip message that misdiagnoses
 
@@ -305,6 +341,8 @@ Permission-gating the grid therefore makes the card **exactly equal** to the rou
 **Recommendation: (ii) first, (i) when the race is settled.** (ii) is one line and removes a false diagnosis immediately. (i) is the better message and needs the race decision, because the two failure modes are the two candidate explanations for the race itself. Separately, the race's own status is **"moved or revealed, undetermined"** and settling it needs a clean A/B — revert the fix, re-run the same six-run protocol — which is cheap, unfunded, and nobody has done it. That is a lane's job, not a ruling; it is listed here only because it is the prerequisite for (i).
 
 **Ruling (ii) is implemented — 2026-09-18, commit `0384d6681`, no owner input needed.** All **seven** arms were corrected, not only the one quoted above: the `unreachable` parenthetical is gone from `crates/kasirmu-api/src/pg_tests.rs`, and each arm now prints the observation (`… skipped: throwaway_test_pool returned None ({url})`). Two facts found while doing it, both of which strengthen the case and neither of which was in this entry: (a) `raw_pool:153` **already** prints the real error (`PG integration: admin pool get failed: {e}`) before returning `None`, so for a genuine connection failure the parenthetical was a *worse duplicate* of a message already on stderr; (b) the file's own older arms already used the correct shape — `:236`, `:901`, `:1340` name the stage and carry the server error — so the parenthetical was the outlier against this file's own convention, not a convention. The helper's doc block (`:174`) now records the contract: `None` comes from four stages and the last three are **silent**. **(i) remains open and still needs the race A/B** — nothing here changes that.
+
+**RULING (owner, 2026-09-20): (ii) is confirmed done (`0384d6681`); fund the race A/B, which is the prerequisite for (i) and is a lane's job, not a ruling.** A clean A/B — revert the fix, re-run the same six-run protocol — is cheap, unfunded, and nobody has done it.
 
 ---
 
@@ -318,11 +356,15 @@ Permission-gating the grid therefore makes the card **exactly equal** to the rou
 
 **Recommendation: (i), and the file already says why.** Its own `:18` records that the fences already partition the tree, so no cross-file coordination is lost, and `:19` records that there is no program-level command — which is the whole reason a single filename misleads. Do not split by *task*, only by phase.
 
+**RULING (owner, 2026-09-20): (i) — split by phase.** The fences already partition the tree, and there is no program-level command, so one filename cannot honestly claim the set.
+
 ### R19 — Should the commit-scope token have an allowlist?
 
 **What is blocked.** Nothing; recorded as an open item. `.githooks/commit-msg` enumerates types but leaves the scope as "non-empty and parenthesis-free", with no allowlist — its own comment says "Optional scope". A typo in the area is accepted silently.
 
 **Recommendation: leave it permissive.** An allowlist needs maintenance and the rebrand is still moving names — the same rename that made this document necessary would make a hard-coded area list wrong twice over.
+
+**RULING (owner, 2026-09-20): leave it permissive.** No allowlist on the commit scope token.
 
 ### R21 — Can the open-bills list be opened when no bill is held?
 
@@ -335,6 +377,8 @@ Permission-gating the grid therefore makes the card **exactly equal** to the rou
 **Price.** Low either way — no schema, no migration, no wire change. (i) touches two `.ftl` rows and one component branch; (ii) touches one component and needs a design word on where the entry point goes.
 
 **Provenance.** Re-derived 2026-09-19 at HEAD; five `PosScreen.integration` cases that clicked the badge at zero bills were stale against this behaviour and were rewired in `410494319` (they now seed a held bill). The empty-state case was retired rather than deleted silently, and its reasoning is recorded in the test file.
+
+**RULING (owner, 2026-09-20): (i) — accept it and delete `pos-open-bills-empty` and both locale rows.** UI that cannot be reached cannot be verified or regression-tested; (iii) is refused because leaving the string in place makes the next session repeat this analysis.
 
 ### Housekeeping — not rulings, but they will be asked about
 
