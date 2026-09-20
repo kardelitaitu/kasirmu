@@ -24,9 +24,12 @@ Each rule below was bought with a real false positive during development:
     that says "deploy.yml does not exist" is correct, and flagging it would teach
     people to ignore the tool. See NEGATIVE_MARKERS.
   * Treats dated records (ADRs, records, archives, _done specs, release notes, any
-    file whose name starts with a date) as HISTORICAL: they describe the world at the
-    time of writing, are reported separately, and are never counted as drift. The
-    audit convention in this repo is to annotate such files, not rewrite them.
+    file whose name starts with a date, and any doc that declares itself one in its
+    header via `status: HISTORICAL-RECORD` / `STALE` / `REVIEW` or an `Anchor: HEAD`
+    line) as HISTORICAL: they describe the world at the time of writing, are reported
+    separately, and are never counted as drift. The audit convention in this repo is
+    to annotate such files, not rewrite them. The header rule exists because four
+    audit records live in `docs/security/` and no directory or name rule catches them.
 
 KNOWN LIMITATIONS (deliberate, and worth knowing before you trust a clean run):
 
@@ -79,7 +82,13 @@ HIST_DIR_PREFIXES = ("docs/decisions/", "docs/records/", "docs/archived/",
 # Also /pr_body.md: a generated pull-request body left in the worktree (.gitignore
 # has it). Scanning it as documentation invents findings about a throwaway artifact.
 SCRATCH = (".freebuff/", "orchestrator-journal.md", "skill-drift-report.md",
-           "pr_body.md", "-journal.md")
+           "pr_body.md", "-journal",
+           # Agent work products, not documentation of the product. The .agents/ sandbox
+           # was reorganized into record subdirectories by edd97e5c0, and these two hold
+           # reviews, audits, inventories and plans. Deliberately NOT all of .agents/:
+           # skills/ holds live SKILL.md contracts and management/ holds the live AGENTS
+           # mirror, and exempting those would hide real drift in a policed contract.
+           ".agents/planning/", ".agents/reviews/")
 
 # Words meaning "this reference is deliberately about something that is absent".
 NEGATIVE_MARKERS = re.compile(
@@ -88,7 +97,13 @@ NEGATIVE_MARKERS = re.compile(
     r"squashed|used to|until 0|absent|missing|stale|no such|not present|has never|"
     r"never existed|nowhere|deliberately not|false positive|there (is|are) no|"
     r"proposed|planned|to be created|would (create|live)|not yet|would be|"
-    r"2>/dev/null|copy .* to |or .*bucket|\badd(?:ing)? .* to\b",
+    r"2>/dev/null|copy .* to |or .*bucket|\badd(?:ing)? .* to\b|"
+    # Rename provenance in a structure diagram: README's restructure tree annotates each
+    # new path with "-> <old path>" (U+2190), which is the same claim as "moved to" above.
+    # And "became a ghost" is README's own wording for a directory that was removed -- the
+    # one place the repo names a dead path without using any word above.
+    "\u2190\\s*(?:crates|apps|ui|platform|shared-ui|modules|foundation|scripts|docs|website)/|"
+    r"became a ghost",
     re.I,
 )
 
@@ -108,6 +123,23 @@ PLACEHOLDER = re.compile(r"[{}<>*?\[\]\u2026]|\.{3}|X{2,}|Y{2,}|\bTODO\b|\bFIXME
 # A date ANYWHERE in the filename makes it a dated record: baseline-2026-07-20.md is
 # as much a snapshot as 2026-07-20-baseline.md.
 DATE_NAME = re.compile(r"(?:\d{4}-\d{2}-\d{2}|^audit-|^hardening-|^sast-|^license-audit-|^baseline-)")
+
+# A doc that declares itself a record in its own header IS one, whatever its directory or
+# name -- the repo convention is to annotate such a file, not rewrite it (module docstring
+# above), and docs/security/ holds four audit records that no directory or name rule
+# catches. Read the HEADER only: these are stamps that sit at the top, and scanning the
+# whole body would exempt any live doc that merely mentions another file's status.
+#
+# "status: VERIFIED-TRUE" is deliberately NOT a marker. A page whose stamp says its claims
+# were verified against code is a maintained policy page (data-residency-and-retention.md),
+# not a frozen snapshot, so its body citations must stay live and be corrected forward.
+RECORD_HEADER_LINES = 15
+RECORD_MARKER = re.compile(
+    r"status:\s*(?:HISTORICAL-RECORD|STALE|REVIEW|SUPERSEDED)\b|"
+    r"treat as a historical|"
+    r"(?:anchor|reviewed)\s*:?\s*HEAD\b",
+    re.I,
+)
 
 
 def build_index():
@@ -214,6 +246,11 @@ def is_historical_doc(path, text):
         return True
     if DATE_NAME.match(name):
         return True
+    # A self-declared record (see RECORD_MARKER). Checked last, so the cheap directory and
+    # name rules still win, and read from the header only.
+    if RECORD_MARKER.search("\n".join(text.splitlines()[:RECORD_HEADER_LINES])):
+        return True
+    return False
 
 def resolve_ok(token, files, dirs, basenames):
     b = token.split("#")[0].rstrip("/").rstrip(".-")
