@@ -5,7 +5,9 @@ CSS Token Compliance Scanner
 Extracts all CSS custom properties (--*) defined in tokens.css,
 then scans every .css file in ui/src/ for var(--...) references,
 reporting:
-  1. Non-existent tokens (used but not defined)
+  1. Tokens defined in NO sheet (used but not defined anywhere). A token a
+     feature sheet defines for itself is reported separately as a NOTE, not a
+     finding -- see SECTION 1.
   2. Mismatched fallback hexes (fallback doesn't match actual token value)
   3. Orphaned tokens (defined but never used outside tokens.css)
 """
@@ -41,6 +43,13 @@ MULTI_LINE_TOKEN_START_RE = re.compile(r"^\s{2}--([a-zA-Z0-9_/-]+):\s*(.+?)$")
 CONTINUATION_LINE_RE = re.compile(r"^\s+(.+?)$")
 VAR_REF_RE = re.compile(r"var\(--([a-zA-Z0-9_/-]+)\s*(?:,\s*(.*?))?\)")
 COMMENT_BLOCK_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+# Any `--name:` a sheet defines for itself, at any indentation. Deliberately
+# looser than the tokens.css regexes above, which anchor to exactly two leading
+# spaces because that is the tokens.css house style; a feature sheet indents its
+# own block however it likes, and `--analytics-bg-surface` in
+# `features/analytics/AnalyticsScreen.css` is a legitimate token that this tool
+# used to count as missing.
+TOKEN_DEF_ANY_RE = re.compile(r"^\s*--([a-zA-Z0-9_./-]+)\s*:", re.M)
 
 def parse_tokens(filepath: Path) -> dict[str, str]:
     """Return dict of token_name -> raw_value from :root block."""
@@ -171,9 +180,12 @@ def main():
     print(f"[FILES] CSS files scanned (excluding tokens.css): {len(css_files)}")
     print()
 
-    # Scan for var() references
+    # Scan for var() references. The same pass collects every `--name:` these
+    # sheets DEFINE, because `known_tokens` above is tokens.css only and a token
+    # a feature sheet defines for itself is not a finding.
     all_refs: list[tuple[Path, int, str, str | None]] = []
     token_usage_count: dict[str, int] = defaultdict(int)
+    locally_defined: dict[str, Path] = {}
 
     for css_file in css_files:
         rel_path = css_file.relative_to(PROJECT_ROOT)
@@ -181,21 +193,38 @@ def main():
         for line_no, token, fallback in refs:
             all_refs.append((rel_path, line_no, token, fallback))
             token_usage_count[token] += 1
+        try:
+            text = css_file.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for name in TOKEN_DEF_ANY_RE.findall(COMMENT_BLOCK_RE.sub("", text)):
+            locally_defined.setdefault(name, rel_path)
 
     print(f"[REFS] Total var() references found: {len(all_refs)}")
     print()
 
-    # ── Report 1: Non-existent tokens ───────────────────────────────
-    non_existent = sorted([
-        (token, count) for token, count in token_usage_count.items()
-        if token not in known_tokens
-    ], key=lambda x: -x[1])
+    # ── Report 1: tokens with no definition anywhere ────────────────
+    # `known_tokens` is tokens.css ONLY, so a token a feature sheet defines for
+    # itself used to land in this list too. Measured 2026-09-20: of the 186
+    # tokens absent from tokens.css, 134 are defined by the very sheet that uses
+    # them and only 52 are defined in no sheet at all. Reporting all 186 as
+    # "non-existent" overstated the real number by 3.5x, which is how a report
+    # stops being read. The two classes are now separated: only the second is a
+    # finding, and the first is printed so the distinction is visible rather
+    # than something a reader has to reconstruct from a count.
+    absent_from_tokens_css = sorted(
+        [(token, count) for token, count in token_usage_count.items() if token not in known_tokens],
+        key=lambda x: -x[1],
+    )
+    locally_owned = [(t, c) for t, c in absent_from_tokens_css if t in locally_defined]
+    non_existent = [(t, c) for t, c in absent_from_tokens_css if t not in locally_defined]
 
     print("=" * 72)
-    print("  SECTION 1: NON-EXISTENT TOKENS (used but not defined)")
+    print("  SECTION 1: TOKENS DEFINED IN NO SHEET (used but not defined anywhere)")
     print("=" * 72)
     if non_existent:
-        print(f"  FAIL: {len(non_existent)} non-existent tokens found ({sum(c for _, c in non_existent)} references)")
+        print(f"  FAIL: {len(non_existent)} token(s) are referenced and defined in no sheet "
+              f"({sum(c for _, c in non_existent)} references)")
         print()
         for token, count in non_existent:
             print(f"    --{token}  ({count} reference{'s' if count > 1 else ''})")
@@ -205,7 +234,15 @@ def main():
                     print(f"        {fpath}:{lno}{fb_str}")
             print()
     else:
-        print("  PASS: All var() references use known tokens!")
+        print("  PASS: every var() reference resolves to a definition somewhere in ui/src.")
+        print()
+    if locally_owned:
+        print(f"  NOTE: {len(locally_owned)} further token(s) are absent from tokens.css but ARE")
+        print("        defined by the sheet that uses them, so they are not findings. Listed")
+        print("        so the split is visible instead of inferred from a single count:")
+        for token, count in locally_owned:
+            print(f"    --{token}  ({count} reference{'s' if count > 1 else ''})"
+                  f"  defined at {locally_defined[token]}")
         print()
 
     # ── Report 2: Mismatched fallback hexes ─────────────────────────
@@ -287,6 +324,7 @@ def main():
     print(f"  Total CSS files scanned:   {len(css_files)}")
     print(f"  Total var() references:    {len(all_refs)}")
     print(f"  Non-existent tokens:       {len(non_existent)}")
+    print(f"  Defined by their own sheet:{len(locally_owned):>4}  (absent from tokens.css, not findings)")
     print(f"  Mismatched fallbacks:      {len(mismatches)}")
     print(f"  Orphaned tokens:           {len(orphaned)}")
     print()
