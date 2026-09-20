@@ -4,7 +4,7 @@ description: Build, sign and install the kasir.mu tablet app (apps/mobile-tauri,
 hang long after the APK has already been written.
 ---
 
-<!-- Audit stamp: 2026-09-19 · Budak-Korporat · status: ACCURATE · Derived from a full build/install/debug cycle on 2026-09-19 against the Redmi 23073RPBFG. Verified this pass: a signed release APK installed over wireless ADB (adb install -r → Success, lastUpdateTime advanced) and launched to mu.kasir.mobile/.MainActivity with no FATAL in logcat; aapt2 dump badging reports package mu.kasir.mobile and application-label Kasir.mu; the mobile entry is index.mobile.html and the vite.mobile.config.ts alias plugin is present; the SDK/NDK/build-tools/JDK paths below resolved on this host; both wireless-ADB failure modes were reproduced and the re-pairing recovery confirmed. The MIUI install-gate claim was corrected this pass — it is not absolute. · Pass 2 (2026-09-19, Android build-repair lane): the JBR/JDK-25 trap in §1 was already correct and was re-confirmed end to end — the frozen failing command was reproduced (`> 25.0.3` from `JavaVersion.parse` while configuring `buildSrc`) and then repaired, and the durable `org.gradle.java.home` pin — which this skill did not previously mention — was added and verified against a deliberately hostile `JAVA_HOME`. New section added for the `:app:rustBuildArm64Debug` / `command 'cargo.bat'` decoy: its cause in `BuildTask.kt` rethrowing only the last fallback exception, and the verified stale-daemon remedy. A full debug APK built twice consecutively after the repair. Versions re-measured this pass: JDK 21.0.12.1+1, Android Studio JBR 25.0.3, NDK 30.0.14904198, build-tools 37.0.0, platform android-36, wrapper Gradle 8.14.3. · Pass 3 (2026-09-19, same lane, end-to-end `dev`): a full `cargo tauri android dev` against the Redmi 23073RPBFG was driven to completion — device auto-detected (aarch64), Rust compiled, Gradle assembled `apk/arm64/debug/app-arm64-debug.apk` (420.7 MB), and the app then installed, launched, became the focused activity and rendered the real UI (a 2 063 599-byte screenshot with 9 228 distinct colours, brand green ≈#495A30) with no FATAL. Two new traps recorded from that run: a hand-started `npm run dev:mobile` binds loopback only, because `ui/vite.mobile.config.ts:107` is `host: host || false` and only `cargo tauri android dev` sets `TAURI_DEV_HOST` (this is now Cause 3 of the blank-screen section); and the MIUI install gate is flaky rather than absolute (§4). Also recorded: `screencap` returns pure black while `Display State=OFF`, which coexists with `mWakefulness=Awake` and is easily mistaken for an app failure. The two earlier passes' claims were re-confirmed, none contradicted. · Pass 4 (2026-09-20, build-hang lane): the §8 note "the build process hangs after the artifact is already complete" was **wrong in its diagnosis** and is replaced. The build never hangs — Gradle marks its daemon idle at the exact APK mtime — it is the **background wrapper** that never completes, because it waits for its captured stdout to reach EOF and the build's surviving descendants (`rustup.exe`, `cargo.exe`, and the `sccache` server that `.cargo/config.toml`'s `rustc-wrapper` starts) inherited the write end. Isolated by a controlled A/B with no Rust involved, and the fix — redirect stdout to a file, stdin from `/dev/null` — was verified end to end (started 08:13:11, `EXITCODE:0`, `END 08:15:44`, 153 s, notification delivered normally). Also added: the `.so`-md5 staleness check, which showed a nine-commits-behind HEAD did **not** make the APK stale. · -->
+<!-- Audit stamp: 2026-09-19 · Budak-Korporat · status: ACCURATE · Derived from a full build/install/debug cycle on 2026-09-19 against the Redmi 23073RPBFG. Verified this pass: a signed release APK installed over wireless ADB (adb install -r → Success, lastUpdateTime advanced) and launched to mu.kasir.mobile/.MainActivity with no FATAL in logcat; aapt2 dump badging reports package mu.kasir.mobile and application-label Kasir.mu; the mobile entry is index.mobile.html and the vite.mobile.config.ts alias plugin is present; the SDK/NDK/build-tools/JDK paths below resolved on this host; both wireless-ADB failure modes were reproduced and the re-pairing recovery confirmed. The MIUI install-gate claim was corrected this pass — it is not absolute. · Pass 2 (2026-09-19, Android build-repair lane): the JBR/JDK-25 trap in §1 was already correct and was re-confirmed end to end — the frozen failing command was reproduced (`> 25.0.3` from `JavaVersion.parse` while configuring `buildSrc`) and then repaired, and the durable `org.gradle.java.home` pin — which this skill did not previously mention — was added and verified against a deliberately hostile `JAVA_HOME`. New section added for the `:app:rustBuildArm64Debug` / `command 'cargo.bat'` decoy: its cause in `BuildTask.kt` rethrowing only the last fallback exception, and the verified stale-daemon remedy. A full debug APK built twice consecutively after the repair. Versions re-measured this pass: JDK 21.0.12.1+1, Android Studio JBR 25.0.3, NDK 30.0.14904198, build-tools 37.0.0, platform android-36, wrapper Gradle 8.14.3. · Pass 3 (2026-09-19, same lane, end-to-end `dev`): a full `cargo tauri android dev` against the Redmi 23073RPBFG was driven to completion — device auto-detected (aarch64), Rust compiled, Gradle assembled `apk/arm64/debug/app-arm64-debug.apk` (420.7 MB), and the app then installed, launched, became the focused activity and rendered the real UI (a 2 063 599-byte screenshot with 9 228 distinct colours, brand green ≈#495A30) with no FATAL. Two new traps recorded from that run: a hand-started `npm run dev:mobile` binds loopback only, because `ui/vite.mobile.config.ts:107` is `host: host || false` and only `cargo tauri android dev` sets `TAURI_DEV_HOST` (this is now Cause 3 of the blank-screen section); and the MIUI install gate is flaky rather than absolute (§4). Also recorded: `screencap` returns pure black while `Display State=OFF`, which coexists with `mWakefulness=Awake` and is easily mistaken for an app failure. The two earlier passes' claims were re-confirmed, none contradicted. · Pass 4 (2026-09-20, build-hang lane): the §8 note "the build process hangs after the artifact is already complete" was **wrong in its diagnosis** and is replaced. The build never hangs — Gradle marks its daemon idle at the exact APK mtime — it is the **background wrapper** that never completes, because it waits for its captured stdout to reach EOF and the build's surviving descendants (`rustup.exe`, `cargo.exe`, and the `sccache` server that `.cargo/config.toml`'s `rustc-wrapper` starts) inherited the write end. Isolated by a controlled A/B with no Rust involved, and the fix — redirect stdout to a file, stdin from `/dev/null` — was verified end to end (started 08:13:11, `EXITCODE:0`, `END 08:15:44`, 153 s, notification delivered normally). Also added: the `.so`-md5 staleness check, which showed a nine-commits-behind HEAD did **not** make the APK stale. · Pass 5 (2026-09-20, rebuild-hygiene lane): the §8 recipe turned out to be executable only from `apps/mobile-tauri` **and** with the §1 env exports, and it stated neither. Reproduced both failures two seconds apart: from the repo root `cargo tauri` falls back to `apps/desktop-tauri` (there is no root `tauri.conf.json`) and dies with `Android Studio project directory C:\dev\ozpos\apps\desktop-tauri\gen/android doesn't exist` — whose `tauri android init` advice is a decoy, since that directory is not supposed to exist and only `apps/mobile-tauri` has an Android project; from the correct directory without the exports it dies with the `PATHEXT` error instead. The recipe now carries the `cd`, the exports and `pwd` in the log header. Also narrowed the `touch apps/mobile-tauri/src/lib.rs` workaround: it is a **fallback for a frontend-only change**, because `generate_context!` reads `frontendDist` at compile time and a cached `.so` would otherwise carry the old bundle — verified that a build whose log shows `Compiling kasirmu-mobile` re-embeds without the `touch`, so the tell is whether the log reaches Gradle with `Compiling` lines or without them. And located the Gradle JDK pin precisely: it is `~/.gradle/gradle.properties:21` in the **user-global** config, not the tracked `apps/mobile-tauri/gen/android/gradle.properties`, which has no such line. · -->
 
 # Android build, sign, install and wireless ADB
 
@@ -238,6 +238,16 @@ cargo tauri android build --apk --target aarch64 -c '{"build":{"beforeBuildComma
 peer is disturbed. **The frontend must be built first** — with the hook nulled, nothing else produces
 `frontendDist`, and Tauri will embed whatever is already there. Proven: 7m51s, then `Finished 1 APK at:
 …/universal/release/app-universal-release-unsigned.apk`.
+
+**When the `touch` is actually needed — and when it is not.** `generate_context!` reads `frontendDist`
+at *compile* time, so the embedded assets only refresh if the crate is recompiled. `touch` is a
+**fallback for a frontend-only change**: nothing in the Rust graph moved, so cargo would hand back the
+cached `.so` and the APK would silently carry the previous bundle. When *anything* in the Rust graph is
+dirty — a peer's `crates/` commit, or a config change — the app is relinked anyway and the fresh
+`frontendDist` is picked up without the `touch`. Measured 2026-09-20: a build with no `touch` compiled
+`kasirmu-hal`, `kasirmu-reporting`, `platform-startup` and `kasirmu-bridge`, which is proof enough that
+the re-embed will happen. Tell them apart by watching the log for `Compiling` lines before it reaches
+Gradle — if the log goes straight to Gradle, add the `touch`.
 
 **Do not try to pre-clear `ui/dist-mobile` instead.** The safe-delete shim now intercepts a plain
 `rm -rf ui/dist-mobile` (`SAFE_DELETE_FAIL_CLOSED … reason: trash-failed`) and `mv ui/dist-mobile …`
@@ -600,15 +610,49 @@ redirecting the orphan's own stdout is what makes it pass, so a version that red
 concludes "no hang" proves nothing (that mistake was made here first).
 
 **Recipe — hand the build a file, not a pipe.** Verified end to end 2026-09-20: started `08:13:11`,
-`EXITCODE:0`, `END 08:15:44` (**153 s**), completion notification delivered normally.
+`EXITCODE:0`, `END 08:15:44` (**153 s**), completion notification delivered normally. The `cd` and the
+env exports are **not optional** — see the two traps below.
 
 ```bash
+export PATHEXT='.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC'
+export SystemRoot='C:\WINDOWS';  export COMSPEC='C:\WINDOWS\system32\cmd.exe'
+export ProgramData='C:\ProgramData'; export APPDATA='C:\Users\<you>\AppData\Roaming'
+export ProgramFiles='C:\Program Files'
+export JAVA_HOME='C:\Users\<you>\AppData\Local\Programs\Java\jdk-21.0.12.1+1'
+export ANDROID_HOME='C:\Users\<you>\AppData\Local\Android\Sdk'
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+export ANDROID_NDK_HOME="$ANDROID_HOME\ndk\30.0.14904198"
+cd /c/dev/ozpos/apps/mobile-tauri          # NOT the repo root — see below
 LOG=/tmp/tauri-build.log
-{ date +'START %T'; } > "$LOG"
+{ date +'START %T'; pwd; } > "$LOG"
 cargo tauri android build --apk --target aarch64 \
   -c '{"build":{"beforeBuildCommand":null}}' >> "$LOG" 2>&1 < /dev/null
 echo "EXITCODE:$?" >> "$LOG"; date +'END %T' >> "$LOG"
 ```
+
+**Running it from the repo root silently builds the *desktop* app.** The root has no `tauri.conf.json`,
+so `cargo tauri` falls back to the workspace default — `apps/desktop-tauri` — and dies in two seconds
+with a message that names the wrong app and the wrong problem:
+
+```
+Error Android Studio project directory C:\dev\ozpos\apps\desktop-tauri\gen/android
+      doesn't exist. Please run `tauri android init` and try again.
+```
+
+There is nothing to `init`: `apps/desktop-tauri/gen/android` **should not exist** (only
+`apps/mobile-tauri` has an Android project). The fix is the `cd`, not an `android init`. Measured
+2026-09-20 — it cost a build cycle, and the "run `tauri android init`" advice in the message is a decoy
+that would create a desktop Android project nobody wants.
+
+**And the env exports are mandatory on every run.** Without them the *same command from the right
+directory* dies instead with `failed to setup Android environment: The PATHEXT environment variable
+isn't set` (§1). Two different errors, both two seconds, both about the harness rather than the code.
+
+The Gradle JDK pin is at **`~/.gradle/gradle.properties:21`** (`org.gradle.java.home=…jdk-21.0.12.1+1`),
+i.e. in the *user-global* Gradle config — **not** in the repo's `apps/mobile-tauri/gen/android/
+gradle.properties`, which has no such line and is tracked. Do not "fix" the tracked file by adding it;
+`org.gradle.java.home` takes precedence over `JAVA_HOME` precisely so a hostile shell cannot pick the
+wrong JDK, and that only works if it stays outside the repo.
 
 Poll `$LOG` for `EXITCODE:` and the APK mtime. **Never read a "running" task status as a failed build** —
 check the log's last line first, because from the task list a hung wrapper and a finished build are
@@ -617,6 +661,44 @@ indistinguishable. `gradlew.bat --stop` afterwards is still tidy.
 `ps -W` accumulates the corpses: after the killed runs it still listed `rustup.exe`, `cargo.exe` and
 `cargo-tauri.exe` from the *previous day*, each holding a pipe whose reader is long gone. Check the
 `STIME` column before concluding a build is currently running — a stale entry looks like a live one.
+
+### The sccache server can die mid-build — and the APK you keep is the previous one
+
+Measured 2026-09-20. The build ran, compiled for **4m 43s**, then exited **1** with the APK mtime
+*unchanged* — so the failure is easy to misread as "the build did nothing". The tell is at the top of
+the Rust output, not the bottom:
+
+```
+sccache: error: failed to execute compile
+sccache: caused by: error reading compile response from server
+sccache: caused by: Failed to read response header
+sccache: caused by: An existing connection was forcibly closed by the remote host. (os error 10054)
+error: could not compile `kasirmu-core` (lib)
+…
+Execution failed for task ':app:rustBuildArm64Release'.
+BUILD FAILED in 47s
+```
+
+**This is not a code error.** `.cargo/config.toml` sets `rustc-wrapper = "sccache"`, so every `rustc`
+call is proxied through a persistent server (§8's pipe trap describes the same process). When that
+server is killed or crashes — a sandbox teardown, a `taskkill`, a neighbouring agent's cleanup — the
+in-flight compile dies with `os error 10054` and cargo reports it as a *compile* failure of whatever
+crate was in flight. Here that was `kasirmu-core`, and the cascade reached Gradle.
+
+**Diagnose it in one command**, because the wrapper's own stats separate "dead" from "slow":
+
+```bash
+sccache --show-stats | head -8     # Compile requests executed 0 + Cache errors 0 on a long build = it restarted
+ps -W | grep -i sccache            # check STIME: a server younger than your build start is a new one
+```
+
+**Remedy:** re-run the build. The wrapper starts a fresh server on the next `rustc` invocation, and
+cargo reuses every artifact that compiled before the death, so the retry only redoes the failed
+subtree. Do **not** reach for `RUSTC_WRAPPER=""` as the first move — it works, but it throws away the
+whole Android cache and turns a 5-minute retry into a ~15-minute cold build.
+
+`gradlew.bat --stop` first is still worthwhile: a daemon that inherited the dead server's environment
+is the §2 trap, and it will otherwise re-report the same failure from a cached environment.
 
 **A silent no-op looks exactly like success.** Un-escalated, `npm run build:mobile --prefix ui` exits
 **0** with **no output and no writes** (the shim blocking Vite's `emptyDir`, §6), while escalated it
