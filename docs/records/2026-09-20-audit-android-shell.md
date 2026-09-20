@@ -128,13 +128,16 @@ Sites converted: `upgrade.ts:16`, `browser.ts` (the `open_product_images_scoped`
 (`${WEBSITE_ORIGIN}/pricing/#addon-${id}`), with `WEBSITE_ORIGIN = 'https://ozpos.my.id'`
 exported from `api/browser.ts` and reused by `upgradePricingUrl`.
 
-### Still gated on an owner decision
+### Ruled 2026-09-20: keep plugin-direct
 
 `crates/kasirmu-bridge/src/browser.rs` is a stub for the ADR #38 opener surface
-(`lib.rs:130`: "External-browser command bodies (ADR #38 opener surface) (Wave F)"). If that
-lane is the intended home for external-browser opens, the renderer should call the bridge
-command (session-scoped, auditable) instead of the plugin directly. The helper above is the
-right seam either way — only its body would change.
+(`lib.rs:130`: "External-browser command bodies (ADR #38 opener surface) (Wave F)").
+
+**Decision: the renderer keeps calling `tauri-plugin-opener` directly.**
+`openExternalUrl()` is the single seam, so if the bridge lane later becomes the home for
+external-browser opens, only that one function body changes — no call site moves. The
+alternative (building the session-scoped Rust command now) was rejected as speculative and as
+work that lane may already own. Revisit only when `browser.rs` stops being a stub.
 
 ---
 
@@ -193,14 +196,34 @@ where a merchant would go to back up their data.
   already intends: branch on a shell predicate instead of `isTauriWebview()` and show
   `restaurant-avatar-desktop-only` (or a sibling key) rather than an error.
 - **(b) Register `tauri-plugin-dialog` on mobile and grant `dialog:allow-open` /
-  `dialog:allow-save`.** Android's system document picker works, so the tablet gains real image
-  picking and real backup/export paths. Larger surface: a new ACL entry, and the two image
-  commands take a filesystem path the app must then be able to read.
+  `dialog:allow-save`.** Necessary, but **not sufficient — measured 2026-09-20, and this is the
+  correction that matters.** On Android the plugin returns a `content://` URI, not a filesystem
+  path: `DialogPlugin.kt:108-126` (`createPickFilesResult`) resolves `uri.toString()` and never
+  calls the `getPathFromUri` helper sitting unused beside it (`FilePickerUtils.kt:29`), and
+  `saveFileDialogResult` (`:223-245`) does the same for `save`. Nothing in this repo handles a
+  `content://` URI, and every consumer reads the value as a path —
+  `crates/kasirmu-bridge/src/products_images.rs:113` is a bare `tokio::fs::read(source_path)`, and
+  `set_avatar_scoped` reaches it through the shared `ingest_to_store` (`avatars.rs:94`), whose own
+  comment at `:68` says it "hands it the value the dialog plugin returned". That assumption holds
+  on desktop and breaks on Android. Registering the plugin alone therefore moves the failure one
+  step later: the picker opens, the user chooses a file, and the command then fails. Two bridges
+  close the gap, with very different costs:
+  - **JS-side, fits the two image pickers.** `@tauri-apps/plugin-fs` is content-URI-aware on
+    Android — `FsPlugin.kt:40-71` opens any URI through
+    `contentResolver.openAssetFileDescriptor`. Pick, read the bytes, write them into the app cache,
+    hand the Rust command a real path. Costs the `fs` plugin on mobile, a scope-limited ACL grant,
+    and one shared helper in `ui/src/api/`.
+  - **Rust-side, needed for backup/export/import.** Those flows are produced and consumed in Rust
+    (`exportData`, `importData`), so writing to a picked destination or reading a picked package
+    means either a JNI `ContentResolver` path or shipping the bytes through IPC to a JS writer.
+    This is the part that is genuinely desktop-shaped today, and it is a project rather than an
+    edit.
 
-Recommendation: **(b) for the two image pickers, (a) for backup/export/import** — image capture on
-the tablet pairs with the camera path the scaffold already wires (H3), whereas the backup/export
-flows write to a user-chosen path and are desktop-shaped. Not applied: it is a product call, and
-either option is one edit.
+Recommendation: **(b) for the two image pickers via the JS-side bridge, (a) for
+backup/export/import.** Image capture on the tablet pairs with the camera path the scaffold already
+wires (H3) and needs no Rust change; the backup/export flows need the Rust-side bridge to work on
+Android. Not applied: it is a product call, and the plugin registration has no user-visible benefit
+until its bridge lands with it.
 
 ---
 
