@@ -18,6 +18,7 @@ import TabletAppShell from '@/app/tablet/TabletAppShell';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import { registerPage, clearPages } from '@/registries/page-registry';
 import { getSetupStatus, type SetupStatus } from '@/api/settings';
+import { bootRetryConfig } from '@/utils/boot-retry';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
 // ── Mock lazy screens (TabletAppShell lazy-imports these) ────────
@@ -28,6 +29,14 @@ vi.mock('@/features/setup/SetupWizard', () => ({
 
 vi.mock('@/features/auth/StaffLoginScreen', () => ({
   default: () => <div data-testid="staff-login-screen">Login</div>,
+}));
+
+vi.mock('@/features/auth/CreatePinScreen', () => ({
+  default: ({ onCreated }: { onCreated: () => void }) => (
+    <div data-testid="create-pin-screen">
+      <button type="button" onClick={onCreated}>created</button>
+    </div>
+  ),
 }));
 
 // Session lock stub — the shell lazy-loads the real screen only while locked.
@@ -115,6 +124,18 @@ vi.mock('@/api/settings', () => ({
   completeSetup: vi.fn(),
   dismissSetupWizard: vi.fn(),
 }));
+
+// Extend the real module rather than replace it: StaffLoginScreen imports
+// `checkUsername` from the same path, and a bare `{ hasUsers }` mock would
+// hand it undefined. Only `hasUsers` — the read the shell boot gate makes —
+// is overridden; the default `true` keeps every pre-existing test (users
+// exist → login screen) exactly where it was.
+vi.mock('@/api/staff', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  hasUsers: vi.fn(() => Promise.resolve({ has_users: true })),
+}));
+
+import { hasUsers } from '@/api/staff';
 
 // ── Mock auth context (dynamic per test) ───────────────────────
 
@@ -224,6 +245,11 @@ describe('TabletAppShell — routing', () => {
   beforeEach(() => {
     vi.mocked(getSetupStatus).mockReset();
     vi.mocked(getSetupStatus).mockResolvedValue({ completed: true, preset: null });
+    vi.mocked(hasUsers).mockReset();
+    vi.mocked(hasUsers).mockResolvedValue({ has_users: true });
+    // Shrink the lost-response retry window so the recovery test below
+    // exercises real timeouts without waiting seconds per attempt.
+    bootRetryConfig.timeoutMs = 25;
     mockOwnerSession();
     mockWorkspaceValue();
     clearPages();
@@ -236,6 +262,11 @@ describe('TabletAppShell — routing', () => {
 
   describe('setup bootstrap', () => {
     it('renders a loading state while getSetupStatus is in flight', async () => {
+      // Keep the full retry window: this pin resolves the deferred promise
+      // after render, and that resolution must win the attempt-1 race (a
+      // shrunken window would let the timeout exhaust into the wizard branch
+      // and make this test flaky).
+      bootRetryConfig.timeoutMs = 5000;
       let resolveStatus!: (v: SetupStatus) => void;
       vi.mocked(getSetupStatus).mockReturnValue(
         new Promise((resolve) => { resolveStatus = resolve; }),
@@ -322,6 +353,81 @@ describe('TabletAppShell — routing', () => {
       await waitFor(() => {
         expect(screen.getByTestId('staff-login-screen')).toBeInTheDocument();
       });
+    });
+
+    it('renders owner bootstrap when there is no session and no users', async () => {
+      // The first-run dead end, pinned: setup completed but zero staff
+      // accounts. Before the has_users gate this landed on StaffLoginScreen,
+      // which can never succeed (no user exists) and had no route to
+      // bootstrap_owner — the terminal was unrecoverable without adb.
+      mockNoSession();
+      vi.mocked(hasUsers).mockResolvedValue({ has_users: false });
+
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('create-pin-screen')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('staff-login-screen')).not.toBeInTheDocument();
+    });
+
+    it('recovers when a boot read is answered into the void (lost IPC response)', async () => {
+      // The measured fresh-install failure mode on Android: the shell's boot
+      // invokes fire while the backend is still applying migrations; the Rust
+      // side resolves but the response never reaches the WebView, and the
+      // pending promise neither resolves nor rejects — the shell hung on the
+      // splash forever. The gate must re-issue the read and recover.
+      vi.mocked(getSetupStatus)
+        .mockImplementationOnce(() => new Promise(() => {})) // first call: never settles
+        .mockResolvedValue({ completed: true, preset: null });
+      mockNoSession();
+
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+
+      // The shell must end on the login screen — not stranded on the splash.
+      await waitFor(
+        () => {
+          expect(screen.getByTestId('staff-login-screen')).toBeInTheDocument();
+        },
+        { timeout: 4000 },
+      );
+      // And it must have got there by re-issuing the swallowed read.
+      expect(vi.mocked(getSetupStatus).mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('falls through to login when the has_users read fails (unknown is not "no users")', async () => {
+      // `false` is the value that opens CreatePinScreen, so a REJECTED read
+      // must leave the gate's answer at unknown (null) — mirroring AppShell's
+      // has_users discipline — and render the login screen, not bootstrap.
+      mockNoSession();
+      vi.mocked(hasUsers).mockRejectedValue(new Error('boom'));
+
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('staff-login-screen')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('create-pin-screen')).not.toBeInTheDocument();
+    });
+
+    it('replaces owner bootstrap with login after onCreated fires', async () => {
+      // bootstrap_owner auto-logs-in via swapSession; the shell only has to
+      // flip hasAnyUsers back to true. With a session still absent (the mock
+      // does not model auto-login), the next render must be the login screen
+      // — never a second bootstrap pass over a store that now has an owner.
+      mockNoSession();
+      vi.mocked(hasUsers).mockResolvedValue({ has_users: false });
+
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('create-pin-screen')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByRole('button', { name: /created/i }));
+      await waitFor(() => {
+        expect(screen.getByTestId('staff-login-screen')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('create-pin-screen')).not.toBeInTheDocument();
     });
   });
 
