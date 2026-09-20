@@ -521,6 +521,12 @@ credential-storage-form gate is satisfied rather than sidestepped.
 > registration reaching the stub with the admin key and the right body, the unconfigured case, a
 > 401 from the sync service (with the identity still linked), and the email door issuing the same
 > credential. `OZ_SYNC_API_URL` has no default — addresses are declared, never guessed (#55).
+>
+> **Verified, so the credential is not inert:** `apps/desktop-tauri/src/sync_bootstrap.rs:256-257`
+> reads exactly these two keys, which is what makes storing them at link time worth doing. That file
+> also *writes* them on its own pairing path, so the two are two ways to the same state rather than a
+> conflict: whichever ran last holds a credential the server has registered, and a superseded
+> `sync_terminals` row is inert because verification looks up by `(terminal_id, secret_hash)`.
 behind it — and the terminal credential both paths still owe (step 6).
 
 ### 2.7 Tablet: the email path, never the Google one
