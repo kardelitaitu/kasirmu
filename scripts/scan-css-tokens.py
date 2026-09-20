@@ -17,10 +17,16 @@ from collections import defaultdict
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-# THM-01: the design tokens live in ui/src/frontend/themes/tokens.css.
+# THM-01: the design tokens live in ui/src/theme/tokens.css.
 # (The old ui/src/styles/tokens.css path never existed — the scanner
-# errored out immediately and could never run.)
-TOKENS_FILE = PROJECT_ROOT / "ui" / "src" / "frontend" / "themes" / "tokens.css"
+# errored out immediately and could never run. A SECOND move did the same
+# thing again: 7866197c7 "refactor(ui): move frontend/themes to theme/ and
+# fix filesystem references" renamed the directory and fixed every reference
+# EXCEPT the ones under scripts/, so this constant kept pointing at a path
+# that no longer existed and the scanner went back to erroring out on line 1.
+# Both stale names are kept in this comment on purpose: the next rename should
+# grep for them.)
+TOKENS_FILE = PROJECT_ROOT / "ui" / "src" / "theme" / "tokens.css"
 UI_SRC_DIR = PROJECT_ROOT / "ui" / "src"
 EXCLUDE_DIRS = {"node_modules"}
 
@@ -154,7 +160,7 @@ def main():
         sys.exit(1)
 
     tokens = parse_tokens(TOKENS_FILE)
-    print(f"[TOKENS] Tokens from frontend/themes/tokens.css: {len(tokens)}")
+    print(f"[TOKENS] Tokens from theme/tokens.css: {len(tokens)}")
     print()
 
     known_tokens = set(tokens.keys())
