@@ -263,6 +263,17 @@ The license server requires the RSA private key as an environment variable. **Ne
       link does not redirect to the app: Google returns to the licence server, which exchanges the
       code and hands the app a one-time code on its loopback listener, so no app-chosen port is ever
       registered here.
+      **Or register two, and pin the host.** `OZ_GOOGLE_REDIRECT_URI` is read by both flows, and
+      the device link *rewrites the path* of whatever value it finds (`desktop_link_google.go:119-123`,
+      "this flow's callback shares its host"), so one value covers both callbacks:
+      `OZ_GOOGLE_REDIRECT_URI=https://license.kasir.mu/api/v1/web/oauth/google/callback` registers
+      only the two `license.kasir.mu` URIs above. The two `license.ozpos.my.id` URIs are then not
+      needed: the device link keeps its own state server-side (no host cookie) so a link started on
+      the alias still completes on the canonical host, and the web flow cannot start on the alias at
+      all because `website/wrangler.toml:31` pins `LICENSE_API_URL` to `https://license.kasir.mu`.
+      Leave the override unset and all four are required -- the web flow's `oz_oauth_state` cookie
+      is host-scoped, so a flow started on one name and returned on the other dies at
+      `400 invalid oauth state`.
     - **Key:** `OZ_GOOGLE_CLIENT_ID` — the Web-application client id.
     - **Key:** `OZ_GOOGLE_CLIENT_SECRET` — its secret. Server-side only: the app never carries it,
       and the device link is PKCE on top, so the app's own copy is useless even if extracted.
