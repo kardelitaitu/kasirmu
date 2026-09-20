@@ -5,9 +5,11 @@ scripts/verify-agents-mirrors.py — Keep the AGENTS.md mirrors telling the trut
 WHY THIS EXISTS
 ===============
 
-There are two copies of the agent rules: root `AGENTS.md` and `.agents/AGENTS.md`.
+There are two copies of the agent rules: root `AGENTS.md` and
+`.agents/management/AGENTS.md` (moved there from `.agents/AGENTS.md` by
+`edd97e5c0`, which reorganized `.agents/` into subdirectories).
 A third, `.prime/AGENTS.md`, existed until 08-09-26 and was deleted with the `.prime/`
-tree; the per-mirror mutation table it needed went with it. `.agents/AGENTS.md`
+tree; the per-mirror mutation table it needed went with it. `.agents/management/AGENTS.md`
 documents the hazard itself:
 
   "scripts/bump-version.ps1 updates the *version* lines in these mirrors but
@@ -132,7 +134,7 @@ def resolve_root(start: Path | None = None) -> tuple[Path, str]:
 
 DEFAULT_ROOT, ROOT_SOURCE = resolve_root()
 
-MIRRORS = ["AGENTS.md", ".agents/AGENTS.md"]
+MIRRORS = ["AGENTS.md", ".agents/management/AGENTS.md"]
 
 WORD_NUM = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
             "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
