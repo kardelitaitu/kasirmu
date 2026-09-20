@@ -210,6 +210,16 @@ like the rest of the crate, but `--no-default-features` does **not** build here 
 Recorded rather than fixed: the feature is on by default, so nothing consumes that configuration,
 and gating a function the shells call would cascade.
 
+**Decision (round 20) — leave it broken, and say so.** Making that configuration build needs
+seven `#[cfg(not(feature = "sync-http"))]` stubs in `license_verification.rs` (its six HTTP
+functions carry no gate at all; `sync_auth.rs` already pairs each gate with a stub). Each stub
+decides what an offline build *reports about a licence*, and the only correct answer is a loud
+failure — six new places where a future edit could report a valid licence is a worse trade than
+a configuration nothing consumes failing to compile. Nothing builds without `sync-http` today:
+the feature is default, every shell enables it, and no workflow passes `--no-default-features`.
+Revisit only if something actually needs it, and then treat the stub semantics as the review's
+main question rather than an afterthought.
+
 ## 6. Open questions
 
 - **O1 — Where does the attestation challenge live?** It must be served by the process holding
