@@ -13,26 +13,12 @@
 // response, and the plugin's Rust side deserialises it straight into
 // `FilePath::Url` (`tauri-plugin-dialog src/mobile.rs:49`).
 //
-// Nothing on the Rust side can open that as a path. The consumer is
-// `kasirmu_bridge::products_images::ingest_to_store`, which reads the picked
-// file with `tokio::fs::read(source_path)`
+// The consumer is `kasirmu_bridge::products_images::ingest_to_store`, which
+// reads the picked file with `tokio::fs::read(source_path)`
 // (`crates/kasirmu-bridge/src/products_images.rs:113`) — a `content://` string
-// is not a filesystem path, so the read fails and the ingest rejects.
-//
-// ## Why this bridge is `@tauri-apps/plugin-fs` and not a Rust change
-//
-// `plugin-fs` is content-URI-aware on Android: it resolves a URI through the
-// platform content resolver rather than the filesystem
-// (`tauri-plugin-fs android/.../FsPlugin.kt:63` —
-// `contentResolver.openAssetFileDescriptor(uri, mode)`). So the bytes can be
-// read out of the URI and written to a real path that Rust can open.
-//
-// The alternative — teaching the bridge to accept a `content://` URI — would
-// need JNI content-resolver plumbing inside `kasirmu-bridge`, a crate whose
-// stated invariant is that no tauri type enters it (see
-// `apps/mobile-tauri/src/state.rs:66-68`, which resolves `media_cache_dir` in
-// the shell for exactly this reason). Bridging here keeps that invariant and
-// costs one read and one write per picked image.
+// is not a filesystem path, so the read fails and the ingest rejects. The
+// crossing itself lives in `@/api/file-bridge`; this module is the picker plus
+// the image-specific bits.
 //
 // ## This module is SHARED by both shells
 //
@@ -43,6 +29,7 @@
 // bridged, and everything else is returned as the path it already is.
 
 import { isTauriWebview } from '@/api/tauri';
+import { copyUriToCache, isContentUri, type BridgedFile } from '@/api/file-bridge';
 
 /**
  * Leading part of the bridged copy's filename in the app cache.
@@ -62,25 +49,11 @@ import { isTauriWebview } from '@/api/tauri';
  */
 const TEMP_FILE_STEM = 'image-pick-';
 
-/** Android's Storage Access Framework scheme. */
-const CONTENT_SCHEME = 'content://';
-
 /** Extensions the picker offers, and the set the ingest pipeline accepts. */
 const IMAGE_EXTENSIONS = ['webp', 'png', 'jpg', 'jpeg'];
 
 /** A picked image, resolved to a path the Rust ingest commands can open. */
-export interface PickedImageFile {
-  /** A real filesystem path — `tokio::fs::read`-able, on either shell. */
-  path: string;
-  /**
-   * Delete the bridged temp file.
-   *
-   * Call once the ingest has settled, success or failure. A no-op on desktop,
-   * where the path is the user's own file and must NOT be deleted. Safe to call
-   * more than once, and never rejects.
-   */
-  release: () => void;
-}
+export type PickedImageFile = BridgedFile;
 
 /**
  * Best-effort extension for the bridged copy.
@@ -110,9 +83,7 @@ function extensionOf(uri: string): string {
  * error toast therefore fires on every dismissed picker.
  *
  * Also returns `null` outside a real webview (browser dev preview, dev-mock),
- * where there is no picker to show at all — `@tauri-apps/plugin-dialog` would
- * otherwise throw `__TAURI_INTERNALS__.invoke is not a function` out of the
- * dev preview's deliberately partial stub (`ui/index.html:146`).
+ * where there is no picker to show at all.
  *
  * Throws only for a genuine failure (plugin missing, permission refused,
  * unreadable URI). Callers should surface that as an error.
@@ -120,9 +91,9 @@ function extensionOf(uri: string): string {
 export async function pickImageFile(): Promise<PickedImageFile | null> {
   if (!isTauriWebview()) return null;
 
-  // Dynamic imports so neither plugin lands in the browser bundle — the same
+  // Dynamic import so the plugin stays out of the browser bundle — the same
   // treatment `api/browser.ts` gives `@tauri-apps/plugin-opener`, and for the
-  // same reason: the dev preview never reaches these lines.
+  // same reason: the dev preview never reaches this line.
   const { open } = await import('@tauri-apps/plugin-dialog');
   const picked = await open({
     multiple: false,
@@ -135,33 +106,9 @@ export async function pickImageFile(): Promise<PickedImageFile | null> {
   if (!source) return null;
 
   // Desktop: already a real path. Hand it straight back, and never delete it.
-  if (!source.startsWith(CONTENT_SCHEME)) {
+  if (!isContentUri(source)) {
     return { path: source, release: () => {} };
   }
 
-  const { readFile, writeFile, remove, BaseDirectory } = await import('@tauri-apps/plugin-fs');
-  const { appCacheDir, join } = await import('@tauri-apps/api/path');
-
-  const name = `${TEMP_FILE_STEM}${crypto.randomUUID()}${extensionOf(source)}`;
-
-  // Read through the content resolver, write to the app cache.
-  const bytes = await readFile(source);
-  // Relative name + baseDir, rather than an absolute path: the plugin resolves
-  // it with the same `path().app_cache_dir()` the capability's `$APPCACHE`
-  // pattern expands from, so the scope match cannot drift. The absolute form is
-  // needed only for the Rust side, below.
-  await writeFile(name, bytes, { baseDir: BaseDirectory.AppCache });
-
-  // Rust needs the ABSOLUTE path — `ingest_to_store` hands it to
-  // `tokio::fs::read`, which has no notion of a base directory.
-  const absolutePath = await join(await appCacheDir(), name);
-
-  return {
-    path: absolutePath,
-    release: () => {
-      // The file may already be gone (Android reclaimed the cache, or a retry
-      // path released twice); a failed cleanup is not worth surfacing.
-      void remove(name, { baseDir: BaseDirectory.AppCache }).catch(() => {});
-    },
-  };
+  return copyUriToCache(source, TEMP_FILE_STEM, extensionOf(source));
 }
