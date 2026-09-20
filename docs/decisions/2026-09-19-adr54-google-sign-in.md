@@ -479,6 +479,22 @@ The unsealing rule (base64 ciphertext bound to the machine id, else legacy plain
 "decrypt or fall back to plaintext" is exactly what drifts out of agreement in the
 less-exercised copy.
 
+**Deployed routing, found 2026-09-26 — the endpoints would have 404'd.** Everything above was
+tested against the router, and the router is not what a deployment talks to. The unified image
+path-routes one public port to two services, and caddy's `handle` is **first-match-wins**: the
+file sends `/api/v1/license|web|admin|paddle/*` to the PocketBase (licence) process and
+everything else under `/api/v1/*` to the Rust sync service. `/api/v1/desktop/*` matched nothing
+of its own, so the consent URL, Google's callback, the loopback consume and the emailed-code
+pair all landed on a service with no such routes — a 404 for the whole wizard flow, invisible to
+every test because tests never traverse caddy.
+
+`apps/unified/Caddyfile` now carves `/api/v1/desktop/*` out to the licence process, and
+`scripts/check-unified-routes.mjs` (gate `unified-routes`) enumerates the licence server's route
+literals and requires the **first matching** handle for each to reach `:8080` — so the next route
+added under a new prefix cannot repeat this. The gate was falsified before it was trusted: its
+first version reported OK for the unrouted prefix, because it ignored order and the file's generic
+`/api/*` block (which exists for PocketBase's bare admin API) appeared to cover everything.
+
 ### 2.6 Desktop alternative: an emailed code, same destination
 
 The same step offers *email me a code instead*, because not every account is Google and
