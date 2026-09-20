@@ -27,6 +27,8 @@ pub mod categories;
 pub mod currencies;
 /// Customer CRUD commands.
 pub mod customers;
+/// Export / import commands — ADR #49 shims over `kasirmu_bridge::data`.
+pub mod data;
 /// Device-link commands (ADR #54 §2.5).
 pub mod desktop_link;
 /// Exchange-rate commands.
@@ -65,6 +67,9 @@ pub mod pos;
 pub mod product_variants;
 /// Product CRUD commands.
 pub mod products;
+/// Product image write commands — ADR #49 shims over
+/// `kasirmu_bridge::products_images`.
+pub mod products_images;
 /// Promotion commands.
 pub mod promotions;
 /// Purchasing / supplier / purchase-order commands.
