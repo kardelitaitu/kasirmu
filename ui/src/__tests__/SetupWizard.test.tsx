@@ -15,6 +15,7 @@ import type { ReactNode } from 'react';
 import SetupWizard, { type WizardState } from '@/features/setup/SetupWizard';
 import StepAccount from '@/features/setup/components/StepAccount';
 import { setShellKind } from '@/utils/shellKind';
+import * as licenseApi from '@/api/license';
 import settingsFtl from '@/locales/settings.ftl?raw';
 import salesFtl from '@/locales/sales.ftl?raw';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -115,6 +116,30 @@ describe('StepAccount — shell split (ADR #54 §2.7)', () => {
     expect(screen.getByText('Email me a code')).toBeInTheDocument();
     // The code field appears only after a code has been sent, so it must not be here yet.
     expect(screen.queryByLabelText('6-digit code')).toBeNull();
+  });
+
+  it('keeps the code field after a failed verification, so retrying costs no second email', async () => {
+    // The failure message says "try again". Before this test the code field was rendered only
+    // while the state was 'sent', so a wrong code collapsed it — the only way back was to
+    // request another code, spending a second email and a second rate-limit slot.
+    setShellKind('tablet');
+    const request = vi.spyOn(licenseApi, 'requestDeviceLinkCode').mockResolvedValue(undefined);
+    const consume = vi.spyOn(licenseApi, 'consumeDeviceLinkCode').mockRejectedValue(new Error('bad_code'));
+    try {
+      render(<StepAccount />, { wrapper: FluentWrapper });
+
+      await userEvent.type(screen.getByLabelText('Account email'), 'owner@example.com');
+      fireEvent.click(screen.getByText('Email me a code'));
+      const codeField = await screen.findByLabelText('6-digit code');
+      await userEvent.type(codeField, '123456');
+      fireEvent.click(screen.getByText('Verify'));
+
+      expect(await screen.findByText(/Could not link this device/)).toBeInTheDocument();
+      expect(screen.getByLabelText('6-digit code')).toBeInTheDocument();
+    } finally {
+      request.mockRestore();
+      consume.mockRestore();
+    }
   });
 });
 

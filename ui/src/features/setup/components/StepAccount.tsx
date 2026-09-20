@@ -38,6 +38,9 @@ export default function StepAccount() {
   const [code, setCode] = useState('');
   const [emailState, setEmailState] = useState<EmailState>('idle');
   const [linkedEmail, setLinkedEmail] = useState('');
+  // A code that was requested but not yet spent: a FAILED VERIFICATION must keep the code field
+  // on screen, or "try again" costs the merchant another email and another rate-limit slot.
+  const [codeSent, setCodeSent] = useState(false);
   const busy = link.kind === 'linking' || emailState === 'sending' || emailState === 'verifying';
 
   const linkWithGoogle = async () => {
@@ -56,6 +59,7 @@ export default function StepAccount() {
     setEmailState('sending');
     try {
       await requestDeviceLinkCode(email);
+      setCodeSent(true);
       setEmailState('sent');
     } catch {
       setEmailState('failed');
@@ -109,7 +113,7 @@ export default function StepAccount() {
             <Localized id="setup-account-send">Email me a code</Localized>
           </Button>
 
-          {emailState === 'sent' && (
+          {(emailState === 'sent' || (emailState === 'failed' && codeSent)) && (
             <>
               <p className="setup-step-note" role="status">
                 <Localized id="setup-account-sent">Code sent. It expires in 15 minutes.</Localized>
@@ -124,7 +128,10 @@ export default function StepAccount() {
                 autoComplete="one-time-code"
                 value={code}
                 disabled={busy}
-                onChange={(ev) => setCode(ev.target.value)}
+                onChange={(ev) => {
+                  setCode(ev.target.value);
+                  if (emailState === 'failed') setEmailState('sent');
+                }}
               />
               <Button
                 variant="primary"
