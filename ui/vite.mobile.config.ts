@@ -126,7 +126,20 @@ export default defineConfig(({ command }) => ({
         fileURLToPath(new URL('../shared-ui', import.meta.url)),
       ],
     },
-    host: host || false,
+    // The tablet WebView reaches the dev server via the host's LAN IP, not
+    // its own loopback. Tauri 2's `cargo tauri android dev` auto-detects the
+    // LAN IP (e.g. 192.168.0.168) and rewrites `devUrl` to point there, so the
+    // dev server must be listening on all interfaces — `host: false` only
+    // binds to localhost, which the device can't reach. The fallback string
+    // MUST be `'0.0.0.0'`, NOT the JS boolean `true`: Vite 6 then tries to
+    // DNS-resolve "true" and the server dies with `getaddrinfo ENOTFOUND
+    // true`. Setting `TAURI_DEV_HOST=<lan-ip>` keeps HMR working; without it,
+    // HMR falls back to Vite's defaults and the dev session still loads
+    // correctly. Measured 2026-09-20 against a Redmi Pad SE over wireless
+    // ADB: with `false` the CLI hung at "Waiting for your frontend dev server
+    // to start on http://192.168.0.168:1422/" forever; with the JS boolean
+    // `true` Vite crashed at startup with `getaddrinfo ENOTFOUND true`.
+    host: host || '0.0.0.0',
     hmr: host
       ? { protocol: 'ws', host, port: 1423 }
       : undefined,
