@@ -667,6 +667,23 @@ pub async fn get_license_status(ctx: &BridgeCtx<'_>) -> Result<LicenseStatusDto,
                     message: None,
                 })
             }
+            // ── PARKED ARM — unreachable by construction (owner ruling, 2026-09-20) ──
+            // This release-only branch cannot be executed from this crate, and the
+            // reason is structural rather than an oversight: reaching it needs a
+            // payload whose signature VERIFIES, and `verify_license_signature` takes
+            // no key parameter — it reads a build-time `include_str!` public key at
+            // `kasirmu-core/src/license_verification.rs:36`, while the private half
+            // is gitignored (`*.key`) and absent from this checkout. No fixture here
+            // can mint a signature that verifies, so no seeded row reaches this arm.
+            //
+            // Ruled 2026-09-20 (`todo-owner-rulings.md` R1; box
+            // `todo-open-debt-program.md:138`): leave it parked. Both alternatives
+            // change the licence path itself — injecting a verification seam puts a
+            // substitution point on the one code path whose job is to refuse forged
+            // licences, and compiling a test key into the crate ships a private key
+            // in the source tree — while the payoff is one branch of an expiry
+            // ladder whose siblings are already covered. The forged-row refusal
+            // stays pinned in both profiles at `auth_tests.rs:400-402`.
             #[cfg(not(debug_assertions))]
             {
                 return Ok(LicenseStatusDto {
