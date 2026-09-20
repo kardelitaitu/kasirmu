@@ -5,6 +5,8 @@
 package main
 
 import (
+	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -317,6 +319,64 @@ func TestResolveIdentitySurvivesAMissingAuditSink(t *testing.T) {
 
 	if _, outcome, err := resolveIdentity(app, providerGoogle, "aud-x", "survivor@example.com", true, ""); err != nil || outcome != IdentityCreated {
 		t.Fatalf("a missing audit sink must not break linking: %v %s", err, outcome)
+	}
+}
+
+// §8's equivalence claim: the two signup doors — an emailed code and a Google
+// assertion — produce the same tenant shape, so a future change that gives one door
+// its own provisioning cannot pass unnoticed.
+func TestBothSignupDoorsProduceEquivalentTenantRows(t *testing.T) {
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+
+	// Door 1: request-otp for an unknown address registers it (web_otp.go's
+	// createTenantForEmail call).
+	var sentCode string
+	restore := stubOTPEmail(t, &sentCode)
+	defer restore()
+	rec := doJSON(mux, http.MethodPost, "/api/v1/web/request-otp", "",
+		`{"email":"eq-otp@example.com"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("request-otp: %d %s", rec.Code, rec.Body.String())
+	}
+	otpTenant, err := app.FindFirstRecordByData("tenants", "email", "eq-otp@example.com")
+	if err != nil {
+		t.Fatalf("the OTP door must have registered the address: %v", err)
+	}
+
+	// Door 2: the Google web flow creates the account from the provider's assertion.
+	googleTenant, outcome, err := resolveIdentity(app, providerGoogle, "eq-google",
+		"eq-google@example.com", true, "")
+	if err != nil || outcome != IdentityCreated {
+		t.Fatalf("google door: %v %s", err, outcome)
+	}
+
+	// Every field the schema carries must match, except the ones that identify the row,
+	// the credential material (random per tenant by design), and the verification state,
+	// which the doors legitimately reach at different moments.
+	exempt := map[string]bool{
+		"id": true, "created": true, "updated": true, "email": true,
+		"api_key": true, "api_key_lookup": true, "email_verified": true,
+	}
+	for _, field := range googleTenant.Collection().Fields {
+		name := field.GetName()
+		if exempt[name] {
+			continue
+		}
+		got, want := otpTenant.Get(name), googleTenant.Get(name)
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("field %q differs between the signup doors: OTP %v, Google %v",
+				name, got, want)
+		}
+	}
+
+	// The exemption is pinned rather than assumed: the OTP door withholds verification
+	// until verify-otp runs, while the provider's own assertion is the proof.
+	if otpTenant.GetBool("email_verified") {
+		t.Error("the OTP door must not mark an address verified before verify-otp")
+	}
+	if !googleTenant.GetBool("email_verified") {
+		t.Error("the Google door proved the address and must mark it verified")
 	}
 }
 
