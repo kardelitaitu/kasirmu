@@ -200,6 +200,17 @@ PocketBase stores its SQLite database and admin credentials in `/pb/pb_data`. Th
 
 The license server requires the RSA private key as an environment variable. **Never hardcode this in the Dockerfile or commit it.**
 
+> **Setting these by API rather than by hand.** The service is a *combined* service, so its update
+> route is `PATCH /v1/projects/{projectId}/services/combined/{serviceId}`. The generic
+> `/v1/projects/{projectId}/services/{serviceId}` path answers `405` with `Allow: HEAD, GET,
+> DELETE`, which reads as "no update endpoint exists" rather than "wrong path" — measured
+> 2026-09-26 while adding the Google keys. Send the **complete** `runtimeEnvironment` object, not
+> just the new keys: that is idempotent whether the route merges or replaces, so it cannot drop a
+> secret. Also measured then: 18 -> 22 keys, all 18 pre-existing values byte-identical afterwards,
+> and the PATCH **redeployed the running image** (a brief `503`, then healthy with `uptime=6s`) —
+> it does not start a build, so the new code still needs its own deploy. Endpoint list:
+> `https://northflank.com/docs/llms.txt`.
+
 ### 7.1 Create a Secret Group
 
 1. Go to your project → **Secrets** tab.
