@@ -246,9 +246,9 @@ The license server requires the RSA private key as an environment variable. **Ne
     login page is gated on the **API URL**, not on this key, so it still renders and the
     click lands on that JSON `503`. Set the keys before announcing the feature; do not add a
     second switch to hide the button, because two switches that must agree is how they drift.
-    - **Register BOTH callback URIs first**, in Google Cloud → APIs & Services →
+    - **Register all four callback URIs first**, in Google Cloud → APIs & Services →
       Credentials → the Web-application OAuth client. Redirect URIs match exactly, so a
-      host that is live but unregistered fails every sign-in with `redirect_uri_mismatch`:
+      host (or a path) that is live but unregistered fails that flow with `redirect_uri_mismatch`:
       - `https://license.kasir.mu/api/v1/web/oauth/google/callback`
       - `https://license.ozpos.my.id/api/v1/web/oauth/google/callback`
       - `https://license.kasir.mu/api/v1/desktop/link/google/callback`
@@ -260,8 +260,8 @@ The license server requires the RSA private key as an environment variable. **Ne
       code and hands the app a one-time code on its loopback listener, so no app-chosen port is ever
       registered here.
     - **Key:** `OZ_GOOGLE_CLIENT_ID` — the Web-application client id.
-    - **Key:** `OZ_GOOGLE_CLIENT_SECRET` — its secret. Server-side only: the desktop flow
-      is PKCE and never carries one.
+    - **Key:** `OZ_GOOGLE_CLIENT_SECRET` — its secret. Server-side only: the app never carries it,
+      and the device link is PKCE on top, so the app's own copy is useless even if extracted.
     - **Key:** `OZ_GOOGLE_REDIRECT_URI` (optional) — pin the callback URL instead of
       deriving it from the request Host (set it when a proxy rewrites Host).
     - **Key:** `OZ_WEB_SITE_URL` (optional, default `https://kasir.mu`) — the host the flow
