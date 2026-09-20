@@ -38,7 +38,7 @@ vi.mock('@tauri-apps/api/path', () => ({
   join: mocks.join,
 }));
 
-import { exportData, pickExportPath, pickImportFile } from '@/api/data';
+import { exportData, pickExportPath, pickImportFile, pickBackupPath, createBackupTo } from '@/api/data';
 
 /** A URI of the kind the SAF save dialog returns on Android. */
 const SAVE_URI = 'content://com.android.providers.downloads.documents/document/msf%3A99';
@@ -197,5 +197,78 @@ describe('pickImportFile', () => {
     // pick. Nothing here knows when the flow is finished.
     expect(mocks.remove).not.toHaveBeenCalled();
     expect(path).toContain('/cache/import-');
+  });
+});
+
+// ── Backup to a chosen destination (tablet-only create_backup_to) ──
+//
+// The tablet has no desktop analogue for backup either: `create_backup_to`
+// writes to a cache path and the bytes are walked out to the operator's URI in
+// JS, exactly the same two-leg cross `exportData` performs. These cases pin
+// that leg, since the `content://` branch is the one a developer machine cannot
+// click through but the tablet actually runs.
+
+describe('pickBackupPath / createBackupTo', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.appCacheDir.mockResolvedValue(CACHE_DIR);
+    mocks.join.mockImplementation(async (...parts: string[]) => parts.join('/'));
+    mocks.remove.mockResolvedValue(undefined);
+    mocks.readFile.mockResolvedValue(BYTES);
+  });
+
+  it('returns null when the save dialog is dismissed', async () => {
+    mocks.save.mockResolvedValue(null);
+
+    await expect(pickBackupPath()).resolves.toBeNull();
+  });
+
+  it('passes a desktop destination through untouched, with no cache round trip', async () => {
+    mocks.save.mockResolvedValue('C:\\Users\\me\\Documents\\kasir.backup.db');
+
+    const target = await pickBackupPath();
+
+    expect(target).toBe('C:\\Users\\me\\Documents\\kasir.backup.db');
+    expect(mocks.appCacheDir).not.toHaveBeenCalled();
+  });
+
+  it('turns a content:// destination into a cache path the command can write', async () => {
+    mocks.save.mockResolvedValue(SAVE_URI);
+
+    const target = await pickBackupPath();
+
+    expect(target).toMatch(/^\/data\/user\/0\/mu\.kasir\.mobile\/cache\/backup-[0-9a-f-]{36}\.backup\.db$/);
+    // Nothing is copied yet — there are no bytes to move.
+    expect(mocks.writeFile).not.toHaveBeenCalled();
+  });
+
+  it('copies the written cache file out to the URI the user chose, then drops it', async () => {
+    mocks.save.mockResolvedValue(SAVE_URI);
+    const cachePath = await pickBackupPath();
+    expect(cachePath).toBeTruthy();
+
+    mocks.logged.mockResolvedValue({ path: cachePath, sizeBytes: BYTES.length });
+
+    const result = await createBackupTo('tok', cachePath!);
+
+    expect(mocks.readFile).toHaveBeenCalledWith(cachePath);
+    expect(mocks.writeFile).toHaveBeenCalledWith(SAVE_URI, BYTES);
+    // The cache copy is the only other copy; leaving it behind is not a backup.
+    expect(mocks.remove).toHaveBeenCalledWith(cachePath);
+
+    // What the UI shows is the user's destination, not a cache path that no
+    // longer exists by the time it is rendered.
+    expect(result.path).toBe(SAVE_URI);
+    expect(result.sizeBytes).toBe(BYTES.length);
+  });
+
+  it('does not bridge a backup that was never picked through the picker', async () => {
+    mocks.logged.mockResolvedValue({ path: '/tmp/direct.backup.db', sizeBytes: 1 });
+
+    const result = await createBackupTo('tok', '/tmp/direct.backup.db');
+
+    expect(mocks.readFile).not.toHaveBeenCalled();
+    expect(mocks.writeFile).not.toHaveBeenCalled();
+    expect(result.path).toBe('/tmp/direct.backup.db');
   });
 });

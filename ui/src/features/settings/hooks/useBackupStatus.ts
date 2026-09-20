@@ -15,7 +15,10 @@ import {
   getBackupStatusScoped,
   createBackup,
   createBackupScoped,
+  pickBackupPath,
+  createBackupTo,
 } from '@/api/data';
+import { isTabletShell } from '@/utils/shellKind';
 import { type BackupInfo } from '../dataManagementModel';
 
 /**
@@ -90,13 +93,30 @@ export function useBackupStatus({ sessionToken, triggerFlash }: {
   const handleBackup = useCallback(async () => {
     setBackup((prev) => ({ ...prev, backingUp: true }));
     try {
-      // create_backup writes a full copy of the database to disk and, unscoped, checks no
-      // permission whatsoever. create_backup_scoped (added in 62e30fd7 for F-017) enforces
-      // permissions::DATA_EXPORT; until this line called it, that check existed only in code
-      // nothing reached.
-      const result = sessionToken
-        ? await createBackupScoped(sessionToken)
-        : await createBackup();
+      let result;
+      if (isTabletShell()) {
+        // Tablet: the operator must choose a destination. The desktop's
+        // create_backup writes to default_backup_path, which on Android lands in
+        // private storage the operator cannot open. Bridge the chosen content://
+        // URI to a cache path, write there, then walk the bytes out — the same
+        // two-leg cross as export. create_backup_to is the tablet-only twin and
+        // enforces permissions::DATA_EXPORT, so a session token is required.
+        const cachePath = await pickBackupPath();
+        if (!cachePath) {
+          // User dismissed the save dialog — no backup taken, no error.
+          setBackup((prev) => ({ ...prev, backingUp: false }));
+          return;
+        }
+        result = await createBackupTo(sessionToken, cachePath);
+      } else {
+        // create_backup writes a full copy of the database to disk and, unscoped, checks no
+        // permission whatsoever. create_backup_scoped (added in 62e30fd7 for F-017) enforces
+        // permissions::DATA_EXPORT; until this line called it, that check existed only in code
+        // nothing reached.
+        result = sessionToken
+          ? await createBackupScoped(sessionToken)
+          : await createBackup();
+      }
       setBackup({
         lastBackup: new Date().toLocaleString(),
         lastBackupSize: `${(result.sizeBytes / 1024 / 1024).toFixed(1)} MB`,
