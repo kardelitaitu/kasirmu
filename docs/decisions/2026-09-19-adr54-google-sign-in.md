@@ -384,6 +384,23 @@ against Google.
 browser, and the wizard step that calls these two functions — and the terminal credential of
 step 6.
 
+**Shipped 2026-09-19 (loopback listener):** `kasirmu-bridge/src/desktop_link.rs` binds an
+ephemeral port, hands out the literal `http://127.0.0.1:<port>` redirect URI, and waits for the
+redirect — answering the browser with a static page and returning what it carried. Eight tests.
+
+Three details that are the difference between working and nearly working:
+
+- **The favicon is the trap.** Browsers request `/favicon.ico` immediately after the redirect, so a
+  listener that ends its one-shot accept on the first request loses the callback and strands the
+  user. A request carrying neither parameter is answered `404` and skipped — pinned by a test that
+  sends the favicon first.
+- **The served page is static and never reflects the query.** Anything can navigate the user's
+  browser at the loopback port, so interpolating `link_error` would be script injection into a page
+  they are looking at. A test drives a `<script>` payload through and asserts the page stays clean.
+- **The accepted socket is set back to blocking explicitly.** Whether it inherits the listener's
+  non-blocking mode is platform-defined; if it does, `read_line` returns empty before the request
+  arrives and the callback is silently lost.
+
 ### 2.6 Desktop alternative: an emailed code, same destination
 
 The same step offers *email me a code instead*, because not every account is Google and
