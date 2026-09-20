@@ -264,6 +264,17 @@ The license server requires the RSA private key as an environment variable. **Ne
       consent screen shows the bare project id until brand verification passes.
     - **The admin login page deliberately has no Google button:** the deployment admin
       address is refused by the resolver (ADR #54 §2.3), so offering it would only yield a 403.
+7c. **Sync credentials at link time (ADR #54 §2.5 step 6) — set this before onboarding devices.**
+    Linking a device also registers it as a sync terminal, so the app leaves the wizard ready
+    to sync.
+    - **Key:** `OZ_SYNC_API_URL` — the sync service's base URL (the unified deployment serves
+      both from one container). **No default**: addresses are declared, never guessed.
+    - **Key:** `OZ_ADMIN_KEY` — already required above. The sync service reads the *same*
+      variable, so one deployment needs one value; two different keys simply yield
+      `terminal.issued: false`.
+    - **Without it:** the link still succeeds and answers `terminal.issued: false` with a
+      reason, which the server also logs. The account is linked — the device just holds no sync
+      credential, so its sync will not work until this is set and the device links again.
 8. Add the **billing webhook** secrets (required for the checkout → provisioning flow — Paddle for global, Midtrans for Indonesia, ADR #39):
    - **Key:** `PADDLE_WEBHOOK_SECRET` — the endpoint secret key from Paddle → Developer tools → Notifications → Edit destination. Without it the webhook answers `503 not configured`. **Boot gate:** the server fails fast at startup if this (or `PADDLE_PRICE_TIERS`) is missing or malformed, so a misconfigured deploy can never silently answer 503/500 on every event.
    - **Key:** `PADDLE_PRICE_TIERS` — comma-separated `price_id:tier_key:period[:bundle_id]` pairs mapping every Paddle price to a tier, e.g. `pri_01h7abc123:pro,pri_01h7def456:premium` (the `:period` segment is "month" or "year" — the webhook cross-checks it against billing_cycle.interval; the optional `:bundle_id` segment marks a vertical-bundle price, C3.2 — see below). **The six sandbox prices are catalogued (2026-08-31)** — the website carries the real ids for Plus/Pro/Premium × monthly/yearly; only the bundle and the Pro A/B variant still use `pri_placeholder_*` ids (degrading those checkouts to the mailto fallback). Current sandbox map (see also `docs/operations/go-live-checklist.md`):

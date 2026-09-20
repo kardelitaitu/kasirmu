@@ -510,6 +510,20 @@ curl -s -D - -o /dev/null "$BASE/api/v1/web/oauth/google/start?next=/en/account"
   | grep -Ei '^(HTTP|location|set-cookie)'
 #   Location must be https://accounts.google.com/... and Set-Cookie must carry
 #   oz_oauth_state (HttpOnly, Secure, Lax).
+
+# The tablet's path (ADR #54 §2.6-§2.7), end to end with a real device and its mailbox.
+# It is also the only check that exercises OZ_SYNC_API_URL:
+KEY="<tenant api_key>"; MACHINE="<registered machine id>"; ACCOUNT="<the tenant email>"
+curl -s -X POST "$BASE/api/v1/desktop/link/email/request" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $KEY" \
+  -d "{\"machine_id\":\"$MACHINE\",\"email\":\"$ACCOUNT\"}"
+#   503 -> OZ_SMTP_HOST is unset        403 -> not this store's account address
+# ...then read the 6-digit code out of the mailbox and spend it:
+curl -s -X POST "$BASE/api/v1/desktop/link/email/consume" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $KEY" -d "{\"machine_id\":\"$MACHINE\",\"code\":\"<code>\"}"
+#   expect {"tenantId":...,"verified":true,"terminal":{"issued":true,...}}
+#   terminal.issued=false means OZ_SYNC_API_URL is unset or the sync service refused the
+#   admin key: the account is linked, the device simply holds no sync credential.
 ```
 
 Then finish **one real sign-in in a browser** and confirm the account portal lists it
