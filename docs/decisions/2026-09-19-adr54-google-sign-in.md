@@ -163,6 +163,12 @@ existing `pb_data` volumes upgrade in place.
 > an existing one alike, so one code path covers both and the collection definition
 > cannot drift from the code that reads it. `pb_schema.json` is deliberately left
 > alone; it is not added to `requiredCollections`, because nothing at boot requires
+>
+> **The collection needs its `created` / `updated` autodate fields explicitly.**
+> `core.NewBaseCollection` does not add them, and the dashboard list sorts by `-created`:
+> without them the endpoint answers 500 `invalid sort field "created"` at query time. Caught
+> by a test, not by inspection — a reminder that this list is a schema, so a later field
+> addition needs its own `ensure*Field` migration the way the tenants collection has them.
 > the table and listing it there would turn a missing identity table into a
 > failed deployment.
 
