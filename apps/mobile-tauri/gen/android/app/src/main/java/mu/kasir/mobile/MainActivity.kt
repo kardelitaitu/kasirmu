@@ -22,8 +22,15 @@ import androidx.core.view.WindowInsetsControllerCompat
  *
  * The WebView is `viewport-fit=cover` (`ui/index.mobile.html`), so hiding the
  * bars hands their space to the layout; whatever insets remain (a display
- * cutout) are read by the shell as `env(safe-area-inset-*)`
- * (`ui/src/app/tablet/tablet.css`), which is what keeps content clear of it.
+ * cutout) are read by the shell and keep content clear of it.
+ *
+ * Where they are read moved on 2026-09-20 (`4734ce5cb`) and this comment
+ * followed it: `env(safe-area-inset-*)` is now read in exactly ONE place,
+ * `ui/src/theme/tokens.css` — declared once as `--inset-top/right/bottom/left`
+ * — and the sheets consume the token (`ui/src/app/tablet/tablet.css`), rather
+ * than each re-deriving `env()` for itself. Keeping the declaration in the
+ * token layer is what `themeTokenCompliance` counts, so a sheet that restates
+ * `env()` is the thing that guard refuses.
  */
 class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
