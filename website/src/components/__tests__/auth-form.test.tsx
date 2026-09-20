@@ -414,6 +414,23 @@ describe('AuthForm — forgot password flow', () => {
 
 // ── Open redirect guard ───────────────────────────────────────────────
 
+describe('AuthForm — Google sign-in entry', () => {
+  it('offers Continue with Google, pointing at the licence host start route', async () => {
+    // The button is the visible half of ADR #54's web flow: it must reach the
+    // SERVER route, which is what mints state and PKCE before touching Google.
+    const { container } = await renderAuthForm('en');
+    const link = container.querySelector('a[href*="/api/v1/web/oauth/google/start"]');
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe(
+      'https://license.test/api/v1/web/oauth/google/start?next=/en/account',
+    );
+    expect(link?.textContent).toContain('Continue with Google');
+    // An anchor, never a cross-origin form: the Worker CSP sets form-action 'self'.
+    expect(container.querySelector('form[action]')).toBeNull();
+  });
+
+});
+
 describe('AuthForm — open redirect guard', () => {
   it('blocks external URLs in ?next= and defaults to account page', async () => {
     mockFetch((url) => {
@@ -638,6 +655,9 @@ describe('AuthForm — not-configured state', () => {
     const { container, root } = await renderAuthForm('en');
     try {
       assertText(container, 'The auth API is not configured on this deployment.');
+      // The Google entry is hidden with it: it navigates to the licence host, so
+      // offering it without an API URL would only produce a 404 for the user.
+      expect(container.querySelector('a[href*="/api/v1/web/oauth/google/start"]')).toBeNull();
     } finally {
       act(() => root.unmount());
       container.remove();

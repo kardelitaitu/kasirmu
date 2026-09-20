@@ -37,6 +37,7 @@ export const AUTH_FORM_LABELS = [
   'login.codePlaceholder',
   'login.codeResent',
   'login.codeSent',
+  'login.continueWithGoogle',
   'login.cooldown',
   'login.createAccount',
   'login.email',
@@ -57,6 +58,7 @@ export const AUTH_FORM_LABELS = [
   'login.notConfigured',
   'login.otpNote',
   'login.password',
+  'login.orUseEmail',
   'login.passwordPlaceholder',
   'login.resendCode',
   'login.resendCooldown',
@@ -556,6 +558,25 @@ export default function AuthForm({ locale, labels }: Props) {
   // ── Sign-in view (tabs) ──────────────────────────────────────────
   return (
     <div className={`mx-auto w-full max-w-sm rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm ${error ? 'animate-shake' : ''}`}>
+      {API && (
+        <>
+          {/* An anchor, not a form: the Worker CSP sets form-action 'self', and this
+              navigates to the licence host, which then redirects to Google. The
+              server validates `next` itself (oauthNextPath), so passing the account
+              path here is a convenience, not the guard. */}
+          <a
+            href={API + '/api/v1/web/oauth/google/start?next=/' + locale + '/account'}
+            className="mb-4 block w-full rounded-lg border border-ink/10 bg-surface/40 px-4 py-2.5 text-center text-sm font-medium hover:bg-ink/5"
+          >
+            {t(labels, 'login.continueWithGoogle')}
+          </a>
+          <div className="mb-4 flex items-center gap-3 text-xs text-muted">
+            <span className="h-px flex-1 bg-ink/10" aria-hidden="true" />
+            {t(labels, 'login.orUseEmail')}
+            <span className="h-px flex-1 bg-ink/10" aria-hidden="true" />
+          </div>
+        </>
+      )}
       <div
         role="tablist"
         aria-label={t(labels, 'login.title')}

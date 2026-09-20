@@ -318,6 +318,8 @@
     "errorSend": "Tidak dapat mengirim kode. Silakan coba lagi nanti.",
     "errorVerify": "Kode tidak valid atau kedaluwarsa. Silakan coba lagi.",
     "notConfigured": "API autentikasi belum dikonfigurasi pada deployment ini.",
+    "continueWithGoogle": "Lanjutkan dengan Google",
+    "orUseEmail": "atau gunakan email Anda",
     "tabEmailCode": "Kode email",
     "tabPassword": "Kata sandi",
     "password": "Kata sandi",

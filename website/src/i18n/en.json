@@ -314,6 +314,8 @@
     "errorSend": "Couldn't send the code. Please try again later.",
     "errorVerify": "Invalid or expired code. Please try again.",
     "notConfigured": "The auth API is not configured on this deployment.",
+    "continueWithGoogle": "Continue with Google",
+    "orUseEmail": "or use your email",
     "tabEmailCode": "Email code",
     "tabPassword": "Password",
     "password": "Password",
