@@ -341,6 +341,32 @@ user proves they own `tenants.email`. Binding a *different* verified identity to
 device's tenant is refused, because otherwise anyone with two minutes of physical access
 could attach a personal Google account to the shop's tenant and keep access.
 
+**Shipped 2026-09-19 (desktop server side):** `apps/license-server/desktop_link_google.go`
+implements all three endpoints — `/start` (device-authenticated, returns the consent URL),
+`/callback` (Google's return, which binds and redirects to the loopback listener), and
+`/consume` (loopback code in, linked account out). Five tests cover the properties that make
+it safe: only a **loopback http redirect with an explicit port** is accepted (the value comes
+from the app and the callback redirects to it verbatim, so anything else is an open redirect
+that hands a one-time code to whoever asked); the tenant is proven by the device's `api_key`
+**plus a machine registered to it**, never by the request; PKCE runs app → server → Google, so
+the exchange stays server-side; and the code is single-use *and* bound to the machine that
+started the flow.
+
+Two decisions worth naming. A **mismatched consume burns the code**, like a one-time password:
+the cost of a leaked code is a wasted two-minute window rather than a link, and the legitimate
+device simply retries. And the pending-state store was **extracted** (`pending_store.go`) rather
+than copied for this flow — a second copy of a security control is how one of them quietly
+loses a bound the other still has.
+
+> **The test earned its keep on the first run.** A comment edit to this handler dropped the
+> `return` from the device-binding branch, so a foreign machine's consume fell through to `200`
+> — an authorization bypass, caught because the test asserted the refusal rather than the happy
+> path alone. Worth remembering when a "documentation only" edit touches a guard.
+
+**Still to do on this path:** the client half (bridge PKCE, the Tauri loopback listener, the
+wizard step) and the terminal credential of step 6 — the latter needs the sync API's admin-key
+registration call, and is the piece ADR #55 §5 already flags as the first thing to cut.
+
 ### 2.6 Desktop alternative: an emailed code, same destination
 
 The same step offers *email me a code instead*, because not every account is Google and
