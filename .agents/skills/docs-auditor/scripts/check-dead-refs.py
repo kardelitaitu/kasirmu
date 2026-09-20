@@ -67,6 +67,16 @@ KNOWN LIMITATIONS (deliberate, and worth knowing before you trust a clean run):
     named section (`## Decision`), not a heading at all. A rule wrong on a nine-item sample
     teaches people to ignore the tool, which is the failure this list exists to prevent.
 
+  * Prose splits are NOT checked, and an attempt was withdrawn rather than shipped noisy. Three
+    sections of ADR #54 and one runbook paragraph had a note inserted into the middle of a
+    sentence (a numbered rule read "...the admin row already exists with", then ten lines of
+    history, then "email_verified = false"). A checker was written for it on 2026-09-26: it found
+    those three, plus 60+ false positives, because the hard part is not the punctuation test but
+    SEGMENTING markdown prose into paragraphs -- a continuation line starting with `**bold**` or
+    `1.4` looks like a list item, and every rule added to compensate cost another real case. It
+    was deleted after three rounds. The four repairs it motivated are in the tree; the general
+    case stays a hand audit.
+
   Opt-out pragma: put "dead-ref: ok" in an HTML comment on the line, or on the line
   above it. Same contract as eslint-disable-next-line or #[allow(...)]: the doc states
   the reference is intentional, in one token, where a reader can see it.
