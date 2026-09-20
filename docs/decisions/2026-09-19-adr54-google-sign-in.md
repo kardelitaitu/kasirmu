@@ -596,7 +596,12 @@ on the consent screen.
 > **Amended 2026-09-19 by ADR #55:** the Web flow cannot fall back between hosts — a browser
 > redirect goes where it goes and Google matches redirect URIs exactly. Both callback URIs above
 > must therefore be registered, and the Worker configured with whichever host serves the flow.
-> Naming both hosts in the §2.4 `next` allowlist is the remaining half of O1.
+> **Amended 2026-09-26:** naming both hosts in a `next` allowlist turned out to be unnecessary, and the
+> "remaining half of O1" was never owed. The shipped flow returns the browser to `oauthSiteURL()` —
+> `OZ_WEB_SITE_URL`, default `https://kasir.mu` (`web_oauth_google.go:263`, used at `:444`) — and
+> validates only the *path* (`oauthNextPath`, `:276`, applied at `:340`). There is no
+> attacker-influenced host to allowlist, so this is not an open item: both callback URIs still need
+> registering (above), which is a console task rather than a code one.
 
 ### 2.9 Secrets
 
