@@ -3,36 +3,73 @@ import { Button } from '@/components/Button';
 import { Localized } from '@/components/Localized';
 import { requiredLocalized } from '@/components';
 import { useLocalization } from '@fluent/react';
-import { linkDeviceGoogle, type LinkedAccountDto } from '@/api/license';
+import {
+  consumeDeviceLinkCode,
+  linkDeviceGoogle,
+  requestDeviceLinkCode,
+  type LinkedAccountDto,
+} from '@/api/license';
 import { isTabletShell } from '@/utils/shellKind';
 
-/** What the step is doing right now — one value, so no two can disagree. */
+/** The Google control's state — one value, so no two can disagree. */
 type LinkState =
   | { kind: 'idle' }
   | { kind: 'linking' }
   | { kind: 'linked'; account: LinkedAccountDto }
   | { kind: 'failed' };
 
+/** The emailed-code path's state, which has two more steps than the browser one. */
+type EmailState = 'idle' | 'sending' | 'sent' | 'verifying' | 'verified' | 'failed';
+
 /**
- * Wizard step: link this POS to an account with Google (ADR #54 §2.5).
+ * Wizard step: link this device to an account (ADR #54 §2.5-§2.7).
  *
  * Optional by design — the app runs on its licence key alone, so this step never blocks
- * Continue. The long wait is the user finishing a browser consent screen, which is why the
- * button reports what it is waiting for rather than appearing hung.
+ * Continue. The two shells get different controls because the decision says so: the desktop
+ * opens the system browser (`link_device_google`), while the tablet cannot — Google closes both
+ * browser routes on Android — and proves the account with a code emailed to the address it
+ * already owns. A prop could re-enable the Google control on tablet, which is exactly what
+ * §2.7 excludes, so the split reads the shell flag instead.
  */
 export default function StepAccount() {
   const { l10n } = useLocalization();
-  const [state, setState] = useState<LinkState>({ kind: 'idle' });
+  const [link, setLink] = useState<LinkState>({ kind: 'idle' });
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [emailState, setEmailState] = useState<EmailState>('idle');
+  const [linkedEmail, setLinkedEmail] = useState('');
+  const busy = link.kind === 'linking' || emailState === 'sending' || emailState === 'verifying';
 
-  const link = async () => {
-    setState({ kind: 'linking' });
+  const linkWithGoogle = async () => {
+    setLink({ kind: 'linking' });
     try {
       const account = await linkDeviceGoogle();
-      setState({ kind: 'linked', account });
+      setLink({ kind: 'linked', account });
     } catch {
       // The reason is already logged by `loggedInvoke`; ERR-10 keeps raw IPC error text
       // out of the UI, and a merchant cannot act on a Rust string anyway.
-      setState({ kind: 'failed' });
+      setLink({ kind: 'failed' });
+    }
+  };
+
+  const sendCode = async () => {
+    setEmailState('sending');
+    try {
+      await requestDeviceLinkCode(email);
+      setEmailState('sent');
+    } catch {
+      setEmailState('failed');
+    }
+  };
+
+  const verifyCode = async () => {
+    setEmailState('verifying');
+    try {
+      const account = await consumeDeviceLinkCode(code);
+      setLinkedEmail(account.email);
+      setEmailState('verified');
+    } catch {
+      setEmailState('failed');
     }
   };
 
@@ -41,38 +78,77 @@ export default function StepAccount() {
       <h2 className="setup-step-title">{requiredLocalized(l10n, 'setup-account-title')}</h2>
       <p className="setup-step-desc">{requiredLocalized(l10n, 'setup-account-desc')}</p>
 
-      {/* ADR #54 §2.7: Google's browser routes are closed on Android, so the tablet
-          build has no Google control at all — and says where linking happens instead
-          of offering a button that cannot work. */}
       {isTabletShell() ? (
-        <p className="setup-step-note">
-          <Localized id="setup-account-tablet">
-            Sign in with Google on the web and the account links itself to this store.
-          </Localized>
-        </p>
-      ) : (
         <>
+          <p className="setup-step-note">
+            <Localized id="setup-account-tablet">
+              Use the code sent to your account email to link this device.
+            </Localized>
+          </p>
+
+          <label className="setup-account-field" htmlFor="setup-account-email">
+            <Localized id="setup-account-email">Account email</Localized>
+          </label>
+          <input
+            id="setup-account-email"
+            className="setup-account-input"
+            type="email"
+            autoComplete="email"
+            value={email}
+            disabled={busy || emailState === 'verified'}
+            onChange={(ev) => {
+              setEmail(ev.target.value);
+              if (emailState === 'failed' || emailState === 'sent') setEmailState('idle');
+            }}
+          />
           <Button
             variant="primary"
-            onClick={() => void link()}
-            disabled={state.kind === 'linking'}
+            onClick={() => void sendCode()}
+            disabled={busy || email.trim() === '' || emailState === 'verified'}
           >
-            <Localized id="setup-account-google">Continue with Google</Localized>
+            <Localized id="setup-account-send">Email me a code</Localized>
           </Button>
 
-          {state.kind === 'linking' && (
+          {emailState === 'sent' && (
+            <>
+              <p className="setup-step-note" role="status">
+                <Localized id="setup-account-sent">Code sent. It expires in 15 minutes.</Localized>
+              </p>
+              <label className="setup-account-field" htmlFor="setup-account-code">
+                <Localized id="setup-account-code">6-digit code</Localized>
+              </label>
+              <input
+                id="setup-account-code"
+                className="setup-account-input"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={code}
+                disabled={busy}
+                onChange={(ev) => setCode(ev.target.value)}
+              />
+              <Button
+                variant="primary"
+                onClick={() => void verifyCode()}
+                disabled={busy || code.trim() === ''}
+              >
+                <Localized id="setup-account-verify">Verify</Localized>
+              </Button>
+            </>
+          )}
+
+          {emailState === 'sending' && (
             <p className="setup-step-note" role="status">
               <Localized id="setup-account-waiting">Waiting for your browser…</Localized>
             </p>
           )}
-          {state.kind === 'linked' && (
+          {emailState === 'verified' && (
             <p className="setup-step-note" role="status">
-              <Localized id="setup-account-linked" vars={{ email: state.account.email }}>
+              <Localized id="setup-account-linked" vars={{ email: linkedEmail }}>
                 {'Linked to { $email }.'}
               </Localized>
             </p>
           )}
-          {state.kind === 'failed' && (
+          {emailState === 'failed' && (
             <p className="setup-step-error" role="alert">
               <Localized id="setup-account-failed">
                 Could not link this device. You can try again, or skip and link it later.
@@ -80,26 +156,36 @@ export default function StepAccount() {
             </p>
           )}
         </>
-      )}
+      ) : (
+        <>
+          <Button
+            variant="primary"
+            onClick={() => void linkWithGoogle()}
+            disabled={link.kind === 'linking'}
+          >
+            <Localized id="setup-account-google">Continue with Google</Localized>
+          </Button>
 
-      {state.kind === 'linking' && (
-        <p className="setup-step-note" role="status">
-          <Localized id="setup-account-waiting">Waiting for your browser…</Localized>
-        </p>
-      )}
-      {state.kind === 'linked' && (
-        <p className="setup-step-note" role="status">
-          <Localized id="setup-account-linked" vars={{ email: state.account.email }}>
-            {'Linked to { $email }.'}
-          </Localized>
-        </p>
-      )}
-      {state.kind === 'failed' && (
-        <p className="setup-step-error" role="alert">
-          <Localized id="setup-account-failed">
-            Could not link this device. You can try again, or skip and link it later.
-          </Localized>
-        </p>
+          {link.kind === 'linking' && (
+            <p className="setup-step-note" role="status">
+              <Localized id="setup-account-waiting">Waiting for your browser…</Localized>
+            </p>
+          )}
+          {link.kind === 'linked' && (
+            <p className="setup-step-note" role="status">
+              <Localized id="setup-account-linked" vars={{ email: link.account.email }}>
+                {'Linked to { $email }.'}
+              </Localized>
+            </p>
+          )}
+          {link.kind === 'failed' && (
+            <p className="setup-step-error" role="alert">
+              <Localized id="setup-account-failed">
+                Could not link this device. You can try again, or skip and link it later.
+              </Localized>
+            </p>
+          )}
+        </>
       )}
 
       <p className="setup-step-note">

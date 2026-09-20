@@ -188,6 +188,14 @@
       "reason": "ADR #54 §2.5. The real command opens the system browser and blocks on a loopback port for up to five minutes waiting for the licence server's redirect; a headless mock cannot answer that, so the wizard step shows its own failure path under dev-mock. The desktop and tablet shells both register it, which is where the flow actually runs."
     },
     {
+      "name": "link_device_email_request",
+      "reason": "ADR #54 §2.6. Mails a code to the tenant's own address through the licence server's configured SMTP relay; nothing headless can answer it, so the tablet step shows its failure line under dev-mock. Both shells register it."
+    },
+    {
+      "name": "link_device_email_consume",
+      "reason": "ADR #54 §2.6. Spends the emailed code against the licence server and flips the account's verified flag; like the request above, no mock can stand in for it. Both shells register it."
+    },
+    {
       "name": "delete_topology_template",
       "reason": "Deletes one per-branch diagram template from the store DB (crates/kasirmu-bridge/src/topology/commands.rs::delete_topology_template -> template_delete, behind authorize_topology_write / TOPOLOGY_WRITE). NOT hardware- or shell-bound: dev-mock already keeps a localStorage topology slice (ui/src/dev-mock/handlers/topology.ts, handlers/topology-state.ts) with graph, apply and revision handlers, so a parallel template map is writable. LIKELY OWED rather than accepted -- no rationale recorded beyond the dev-mock hot-file rule in _dev_mock_comment. NEEDS-OWNER-INPUT."
     },

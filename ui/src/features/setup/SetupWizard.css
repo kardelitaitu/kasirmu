@@ -170,6 +170,27 @@
   color: var(--color-danger);
 }
 
+/* The emailed-code form on the tablet's account step. */
+.setup-account-field {
+  display: block;
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+.setup-account-input {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-1);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-base);
+  color: var(--color-fg-primary);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
 /* ── Preset selection cards ─────────────────────────── */
 .setup-presets {
   display: grid;

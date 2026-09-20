@@ -105,14 +105,16 @@ describe('StepAccount — shell split (ADR #54 §2.7)', () => {
     expect(screen.getByText('Continue with Google')).toBeInTheDocument();
   });
 
-  it('excludes the Google control from the tablet build and says where linking happens', () => {
+  it('excludes the Google control from the tablet build and offers the emailed code', () => {
     setShellKind('tablet');
     render(<StepAccount />, { wrapper: FluentWrapper });
 
     expect(screen.queryByText('Continue with Google')).toBeNull();
-    expect(
-      screen.getByText('Sign in with Google on the web and the account links itself to this store.'),
-    ).toBeInTheDocument();
+    // The tablet's own route: the address, a code mailed to it, and a way to spend it.
+    expect(screen.getByLabelText('Account email')).toBeInTheDocument();
+    expect(screen.getByText('Email me a code')).toBeInTheDocument();
+    // The code field appears only after a code has been sent, so it must not be here yet.
+    expect(screen.queryByLabelText('6-digit code')).toBeNull();
   });
 });
 
