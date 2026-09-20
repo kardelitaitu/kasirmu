@@ -185,6 +185,20 @@ Resolve a demonstrated identity (Google `sub`, or an emailed code) to a tenant:
    (`web_otp.go:595-600`). Never create and never link. **This check must precede the link
    step**: creation is already guarded inside `createTenant` (`web_otp.go:696-698`), but
    nothing guards *linking*, and the admin's own `tenants` row already exists with
+
+**Shipped 2026-09-19 (audit trail):** `identity_events` records one row per resolution —
+provider, subject, provider address, outcome, and the tenant when there is one — written from
+`resolveIdentity`'s single exit rather than from each branch, so a branch added later cannot be
+audited by omission. **Refusals are recorded too**: `refused_reserved`, `refused_unverified`,
+`refused_mismatch` and `conflict` are precisely what an investigation into "why can't I sign
+in?" or "who attached this account?" needs, and they are the rows a happy-path-only trail would
+have dropped. Two tests pin it: one drives all five outcomes and checks the rows, one drops the
+collection and proves linking still succeeds.
+
+The write is **best-effort by design** — a failed insert is logged loudly and the sign-in
+proceeds. Refusing a legitimate sign-in because the audit sink hiccuped costs the user more than
+the gap it leaves. The reader is the licence server's own PocketBase admin console; no bespoke
+audit UI is built, and none is promised here.
    `email_verified = false` — so a link attempt would attach a Google identity to the admin
    tenant and flip it verified.
 4. Not bound, but the email resolves to a tenant → **link** (insert the identity row), flip
