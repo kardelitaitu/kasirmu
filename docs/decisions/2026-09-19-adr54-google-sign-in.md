@@ -432,6 +432,24 @@ forcing Google would degrade the email path that is the account root (§1.2). Th
 the account email; the server sends a code to `tenants.email`; the app submits it and lands
 on the identical `link/consume` and the identical terminal credential.
 
+**Shipped 2026-09-19 (wizard step):** the setup wizard gained a ninth step — Account — before
+Review, with `StepAccount.tsx` calling `link_device_google`. It is optional by design and says
+so: the app runs on its licence key alone, so the step never blocks Continue, and a failure
+shows a fixed localized line rather than the raw IPC error (ERR-10; the reason is already
+logged by `loggedInvoke`).
+
+Two results fell out of wiring it. The **tablet shell needed the command too** — the wizard
+lives in the shared `ui/`, so the step renders there and a desktop-only command would have
+been a runtime parity gap; a forty-line mirror plus its own regenerated ledger row
+(`REGISTERED_TOTAL` 320 → 322) fixes it. And the **dev-mock cannot answer this command**, so
+`scripts/ipc-parity-allowlist.json` carries it with a reason: the real call opens a browser and
+blocks on a loopback port, which nothing headless can do.
+
+Four gate failures were fixed on the way and all four were real: the wizard's step arithmetic
+(8 → 9), the dead-class walk needing `additionalTsx` for the new sub-component and
+`externalClasses: ['lsp-root']` for a class the sheet only names inside a `:has()` (it belongs
+to a child component), and the two locale dictionaries.
+
 **Corrected the same day (credentials):** the command's first signature took `api_key` and
 `machine_id` as arguments — modelled on `activate_license`, which is wrong here. That command
 takes credentials because the *user types them*; this device already holds them, encrypted, in
