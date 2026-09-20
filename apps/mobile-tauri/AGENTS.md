@@ -46,6 +46,12 @@ Caused by: java.lang.IllegalArgumentException: 25.0.3
 
 Two guards, because the ambient `JAVA_HOME` is the unreliable part:
 
+0. **Automated:** `bash scripts/android-preflight.sh` (added 2026-09-20) checks all of
+   this before a build — Gradle-JVM precedence (`org.gradle.java.home` pin over
+   `JAVA_HOME`, matching Gradle), `ANDROID_HOME`/`ANDROID_NDK_HOME`, the
+   `aarch64-linux-android` rust target, `cargo-ndk`, a `CARGO_BUILD_JOBS` cap at
+   process *or* user scope, and the shared-`%TEMP%` advisory — and exits 1 with the
+   remediation on any fatal miss. Run it before `cargo tauri android build|dev`.
 1. The **user-scope** `JAVA_HOME` in `HKCU\Environment` points at the JDK 21 above.
    A terminal opened *before* that change keeps the stale value — open a new one, or set
    `$env:JAVA_HOME='C:\Users\Dika\AppData\Local\Programs\Java\jdk-21.0.12.1+1'` for the current shell.

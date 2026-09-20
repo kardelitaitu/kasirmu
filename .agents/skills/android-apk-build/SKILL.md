@@ -31,6 +31,14 @@ background.
 
 ## 1. Environment: Git Bash, with the Windows vars exported
 
+> **Preflight first (added 2026-09-20):** run `bash scripts/android-preflight.sh`
+> (repo root, via Git's bash) before any `cargo tauri android build|dev`. It fails
+> fast with the remediation on the traps this section and §2 describe: unset
+> `PATHEXT`, a Gradle JVM that is not JDK 21 (it validates the
+> `org.gradle.java.home` pin over `JAVA_HOME` in Gradle's own precedence order),
+> missing `ANDROID_HOME`/`ANDROID_NDK_HOME`, a missing `aarch64-linux-android`
+> rust target, a `CARGO_BUILD_JOBS` cap, and the shared-`%TEMP%` race.
+
 Git Bash does not surface `PATHEXT`, `SystemRoot`, `COMSPEC`, `APPDATA`, `ProgramFiles` or
 `ProgramData`. Without `PATHEXT`, Tauri dies in two seconds with "The `PATHEXT` environment variable
 isn't set, which is quite weird" — which looks like a broken SDK and is not one.
