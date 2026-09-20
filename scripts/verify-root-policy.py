@@ -57,6 +57,7 @@ ROOT_FILE_ALLOWLIST = frozenset({
     "todo-open-debt-program.md", "todo-review-type.md",
     "todo-owner-rulings.md",
     "todo-project-folder-restructure.md",
+    "todo-logo-mark-optical-centring.md",
     # Measured exception (§5): not a duplicate of scripts/stats.json —
     # scripts/stats.ps1 and scripts/check.ps1 read this name.
     "stats.json",
