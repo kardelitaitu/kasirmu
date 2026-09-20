@@ -34,3 +34,22 @@ npx vitest run src/__tests__/themeTokenCompliance.test.ts src/__tests__/composed
 ```
 
 Caveats: each suite grades a fixed set of shapes (a printed denominator, not full coverage); walkers read the working tree, so record dirty `.css` paths alongside any result. Full analysis: `docs/frontend/css-verification.md`.
+
+## A red suite in a shared checkout: check ownership before you believe it
+
+Several agents commit to one branch, so a failing suite is not automatically *yours*. Measured twice in
+one session: `npm run test` reported `1 failed | 10142 passed`, then `115 failed`, with the feature under
+test untouched — another session was mid-edit on shared UI files both times.
+
+Before debugging, or "fixing", a failure you cannot connect to your own diff:
+
+1. `git --no-optional-locks status --porcelain -- ui` — uncommitted files are someone's live edit, and the
+   paths you did not touch are the ones to look at first.
+2. Run the failing file alone. A failure that passes in isolation is an interaction or a flake; one that
+   reproduces is real.
+3. `git log --oneline -3` — if a fresh commit names the area, start there.
+
+Do not edit another session's in-flight file to turn a suite green: it is a moving target and the commit
+would sweep their half-finished work. Report it instead, and verify your own change directly — the
+smallest command that covers it (`npm run test -- <file>`) is stronger evidence than a whole-suite run
+you cannot attribute.
