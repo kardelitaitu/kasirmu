@@ -7,16 +7,21 @@
 **Goal:** Make the tablet's file pickers, backup, export and import work, by registering `tauri-plugin-dialog` on the mobile shell and bridging the `content://` ↔ filesystem-path gap that Android's Storage Access Framework opens.
 **Acceptance:** per phase, its own named command. AGENTS.md §4 governs the rename: the `todo-` token stays until every phase's acceptance command has been RUN and PASSED.
 
-### Phase status (measured 2026-09-20, HEAD `357dbdb7a`)
+### Phase status (measured 2026-09-20, HEAD `1ac42758e`)
 
 | Phase | State | Blocked on |
 |---|---|---|
-| 1 — declare + register the plugins | **Split.** Declarations and grants committed (`dd4082e2a`). The two `.plugin(...)` lines are written in the working tree and compile, but **uncommitted**. | `apps/mobile-tauri/src/lib.rs` also carries another lane's uncommitted `commands::auth::has_users`, whose definition is not in HEAD's `auth.rs`. Committing that file at this HEAD breaks the build. Owner ruling 2026-09-20: *hold lib.rs*. |
-| 2 — the two image pickers | **Done** (`68a43eab7`). Runtime effect pending Phase 1's lib.rs. | — |
-| 3 — export / import | **UI half done** (`a50f1941a` shared bridge, `357dbdb7a` the two pickers). Import bridges inbound to `$APPCACHE/import-*`; export bridges outbound through `$APPCACHE/export-*`. Backup **not** started — see §3.3's open item. | Rust half (a `commands/data.rs` of bridge shims) needs the same lib.rs. |
-| 4 — reconcile the six gates | Not started. | Phases 1 and 3. |
+| 1 — declare + register the plugins | **Done.** `dd4082e2a` (declarations + capability), `5ffe3b170` (registration). | — |
+| 2 — the two image pickers | **Done** (`68a43eab7`). | — |
+| 3 — export / import | **Done.** `a50f1941a` shared bridge, `357dbdb7a` the two pickers, `ab2f23715` the Rust shims, `5ffe3b170` their registration. Backup **out by owner ruling** — see §3.3. | — |
+| 4 — reconcile the six gates | **Done** (`1ac42758e`): 8 allowlist entries removed, ledger regenerated, three hand-kept pins moved, JOURNAL entry filed. | — |
 
-> **Consequence to keep saying out loud:** until the two `.plugin(...)` lines land in lib.rs, *nothing* in Phases 2 or 3 works on a device. The UI is correct and the plugins are not registered.
+Two things this table does **not** say, and both are load-bearing:
+
+1. **`apps/mobile-tauri/src/lib.rs` carries another lane's `commands::auth::has_users`, whose definition is still not in HEAD's `auth.rs`.** The owner ruled (2026-09-20) to commit lib.rs anyway, so the checkout compiles and every gate is green *locally*, but a CI checkout of `5ffe3b170` cannot: `auth::has_users` is undefined at that commit. That lane must land its `auth.rs` before CI means anything. The debt row, the ceiling rise and the JOURNAL entry were all filed as an **absorb, not an authorship** — the same standing as the QRIS-auto absorb in `docs/records/JOURNAL.md`.
+2. **Nothing here has been run on a device.** No APK was built and no tablet was attached in this pass; every claim about Android runtime behaviour is still `[unrun]`, which is why this file keeps its `todo-` token even though all four phases' non-device acceptance commands pass.
+
+Verified this pass: `cargo test -p kasirmu-mobile` → 677 passed / 0 failed; `python3 scripts/verify-ipc-parity.py` → exit 0; `python3 scripts/allowlist-schema.py --self-test` → OK; `cd ui && npm run test` → 596 files / 10165 tests passed.
 
 ---
 
