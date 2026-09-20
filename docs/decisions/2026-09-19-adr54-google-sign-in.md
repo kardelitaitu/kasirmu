@@ -504,7 +504,14 @@ proof of inbox control stays where the email flow already keeps it, `tenants.ema
 > real UX consequence, and it is why the test that pins refusal-without-consumption lives at the store level
 > rather than in an HTTP sequence.
 
-**Still owed:** the client half — the tablet's own wizard form (email, then code) and the bridge/core calls
+**Shipped 2026-09-27 (client half):** both shells expose the two calls, and the tablet's Account step
+is now a real form — the address, *Email me a code*, then the code — decided by the same shell flag that
+excludes the Google control, so a caller cannot re-enable either half. Five strings in both dictionaries;
+the dev-mock cannot answer these commands, so `ipc-parity-allowlist.json` carries them with reasons, as it
+does for the Google control.
+
+**Still owed:** the terminal credential both paths promise (step 6), which stays deferred until deployment
+makes it exercisable — and the wizard's copy on the tablet now describes only what exists.
 behind it — and the terminal credential both paths still owe (step 6).
 
 ### 2.7 Tablet: the email path, never the Google one
