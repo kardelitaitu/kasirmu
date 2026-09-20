@@ -302,7 +302,7 @@ export function CartPanel({
         setCartExiting(false);
         setIsFullyHidden(true);
         exitTimerRef.current = null;
-      }, animDuration(250));
+      }, animDuration(300));
     } else {
       if (exitTimerRef.current !== null) {
         clearTimeout(exitTimerRef.current);
@@ -318,7 +318,7 @@ export function CartPanel({
         enterTimerRef.current = setTimeout(() => {
           setCartEntering(false);
           enterTimerRef.current = null;
-        }, animDuration(380));
+        }, animDuration(300));
       }
     }
   }, [hidden]);
@@ -333,7 +333,7 @@ export function CartPanel({
   return (
     <>
       <div
-        className={`pos-resize-handle${cartExiting ? ' pos-resize-handle--exiting' : ''}`}
+        className={`pos-resize-handle${cartExiting ? ' pos-resize-handle--exiting' : ''}${cartEntering ? ' pos-resize-handle--entering' : ''}`}
         onMouseDown={startResize}
         aria-hidden="true"
         style={isFullyHidden ? { display: 'none' } : undefined}
@@ -345,7 +345,7 @@ export function CartPanel({
         ref={cartPanelRef}
         aria-label={l10n.getString('pos-cart-panel-aria')}
         role="region"
-        style={{ width: cartWidth, ...(isFullyHidden ? { display: 'none' } : {}) }}
+        style={{ width: cartWidth, '--cart-width': `${cartWidth}px`, ...(isFullyHidden ? { display: 'none' } : {}) } as React.CSSProperties}
         tabIndex={-1}
         onKeyDown={handleCartPanelKeyDown}
         {...cartSwipe}
@@ -681,23 +681,23 @@ export function CartPanel({
           </CartFooterTotals>
         )}
 
-        {/* ── Open Bills badge (always visible) ── */}
-        <button
-          type="button"
-          className="pos-cart-held-badge"
-          onClick={() => { setShowOpenBills(true); }}
-          aria-label={l10n.getString('pos-cart-open-bills-aria')}
-          title={l10n.getString('pos-cart-open-bills-aria')}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-            <rect x="3" y="6" width="18" height="12" rx="2" />
-            <line x1="3" y1="10" x2="21" y2="10" />
-          </svg>
-          <span>{l10n.getString('pos-cart-open-bills')}</span>
-          {openBills.length > 0 && (
+        {/* ── Open Bills badge (only visible when open bills exist) ── */}
+        {openBills.length > 0 && (
+          <button
+            type="button"
+            className="pos-cart-held-badge"
+            onClick={() => { setShowOpenBills(true); }}
+            aria-label={l10n.getString('pos-cart-open-bills-aria')}
+            title={l10n.getString('pos-cart-open-bills-aria')}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
+              <rect x="3" y="6" width="18" height="12" rx="2" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            <span>{l10n.getString('pos-cart-open-bills')}</span>
             <span className="pos-cart-held-count">{openBills.length}</span>
-          )}
-        </button>
+          </button>
+        )}
       </aside>
     </>
   );

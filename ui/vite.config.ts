@@ -47,7 +47,7 @@ export default defineConfig(({ command }) => ({
       // toolkit can consume (Fluent ships Rust bindings too), so it sits at
       // shared-ui/locales/ beside the repo root. This entry MUST precede the generic
       // `@/` rule below — Vite/rollup take the first matching alias, so `@/locales/…`
-      // would otherwise resolve to ./src/locales/ and every one of the 165 `?raw`
+      // would otherwise resolve to ./src/locales/ and every one of the `?raw`
       // imports would fail to resolve.
       {
         find: /^@\/locales\//,

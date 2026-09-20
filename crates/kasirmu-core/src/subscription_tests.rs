@@ -154,6 +154,78 @@ fn verify_non_bootstrap_signature_rejected() {
     assert!(sub.verify_signature().is_err());
 }
 
+/// The exact row `migrations/20260813_init.sql:1514` inserts on a fresh
+/// install — the row a release build used to refuse, which blocked login.
+fn seeded_bootstrap_free_row() -> TenantSubscription {
+    TenantSubscription {
+        tenant_id: "default".into(),
+        tier: SubscriptionTier::Free,
+        status: "active".into(),
+        expires_at: None,
+        max_locations: 1,
+        max_pos_instances: 1,
+        allowed_types_json: r#"["store-pos", "restaurant-pos", "admin"]"#.into(),
+        signature: BOOTSTRAP_FREE_SIGNATURE.into(),
+        signed_payload: String::new(),
+        api_key: String::new(),
+        updated_at: String::new(),
+    }
+}
+
+/// Regression test for the release-profile login blocker: the schema-seeded
+/// row must verify in EVERY profile. Deliberately ungated — a
+/// `#[cfg(debug_assertions)]` here would restore exactly the blind spot that
+/// let a release build ship unable to reach a session. Before the sentinel was
+/// honoured in release this assertion failed there, because execution fell
+/// through to `base64::STANDARD.decode("BOOTSTRAP_FREE")`.
+#[test]
+fn seeded_bootstrap_free_row_verifies_in_every_profile() {
+    assert!(
+        seeded_bootstrap_free_row().verify_signature().is_ok(),
+        "the schema-seeded Free row must verify without a licence server"
+    );
+}
+
+/// The sentinel is a marker, not a signature: it must not carry a paid row.
+///
+/// Observable only in release, because the short-circuit in
+/// `verify_license_signature` still accepts the sentinel for any payload under
+/// `debug_assertions`. The debug arm asserts that legacy behaviour rather than
+/// being left empty, so a future change to it shows up here instead of
+/// silently widening what the sentinel unlocks.
+#[test]
+fn sentinel_does_not_carry_a_paid_tier() {
+    let mut sub = seeded_bootstrap_free_row();
+    sub.tier = SubscriptionTier::Enterprise;
+
+    #[cfg(not(debug_assertions))]
+    assert!(
+        sub.verify_signature().is_err(),
+        "a sentinel-signed Enterprise row must be rejected in release"
+    );
+    #[cfg(debug_assertions)]
+    assert!(
+        sub.verify_signature().is_ok(),
+        "debug keeps the legacy any-payload short-circuit"
+    );
+}
+
+/// `OneTime` reports as `free` (see `SubscriptionTier::tier_key`), so a
+/// sentinel-signed `one_time` row must load like the seeded Free row instead
+/// of falling through to RSA verification. Pinned because the guard asks
+/// `tier_key`, and because the unloadable alternative is not the fail-safe
+/// direction here: `db::audit_security::record_security_event` records when
+/// `ent.loaded` is false, so refusing the row makes it record more, not less.
+#[test]
+fn sentinel_covers_the_deprecated_one_time_tier() {
+    let mut sub = seeded_bootstrap_free_row();
+    sub.tier = SubscriptionTier::OneTime;
+    assert!(
+        sub.verify_signature().is_ok(),
+        "one_time reports as free, so the sentinel must cover it"
+    );
+}
+
 // ── QuotaError Display ────────────────────────────────
 
 #[test]

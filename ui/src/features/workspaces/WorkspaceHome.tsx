@@ -10,7 +10,7 @@ import OrgSelector from '@/components/OrgSelector';
 import type { LoginSessionDto } from '@/api/staff';
 import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
 import { tierSatisfies } from '@/utils/tierLevel';
-import { ROLE_HIERARCHY, roleAtLeast } from '@/utils/role';
+import { roleAtLeast } from '@/utils/role';
 import { TOOLS, TOOL_GROUP_ORDER, type ToolItem, type ToolGroupId } from './tools';
 import { ToolsCategoryGrid } from './components/ToolsCategoryGrid';
 import type { ToolLockReason } from './components/ToolCard';
@@ -90,7 +90,7 @@ const WS_ORDER: Record<string, number> = {
   admin: 5,
 };
 
-// ── Tools section — declarative access policy (todo-tools.md) ──
+// ── Tools section — declarative access policy (.agents/archived/done-todo/done-todo-tools.md) ──
 //
 // The catalogue lives in `./tools` (grouped Operations / Insights /
 // Configuration, each entry declaring minimumRole + minimumTier).
@@ -361,18 +361,27 @@ export default function WorkspaceHome() {
 
   // ── Role-based access ────────────────────────────────────────
 
-  const roleLevel = ROLE_HIERARCHY[roleName] ?? 0;
-
   /** Staff badge/shortcut role — checkout-only, never manages workspaces. */
   const isStaffRole =
     roleName === 'staff' || roleName === 'role-staff';
 
   /** Management roles (owner/admin/manager) may add workspaces — but only
    *  when no workspace is available yet (per the home-screen rules). Staff
-   *  never sees the Add card, even on an empty list. */
-  const canAddWorkspace = roleLevel >= (ROLE_HIERARCHY['manager'] ?? 0) && sortedWorkspaces.length === 0;
+   *  never sees the Add card, even on an empty list.
+   *
+   *  Routed through `roleAtLeast` so this gate and the tools gates below read
+   *  ONE vocabulary; the inline form was equivalent only because `'manager'`
+   *  is a known floor, and would have failed OPEN for an unrecognised one.
+   *  Home-stricter is the documented policy
+   *  (`features/workspaces/tools.tsx:20-31`,
+   *  `.agents/archived/done-todo/done-todo-tools.md:733`): this card is
+   *  a front door deliberately stricter than the route, so hiding it here does
+   *  NOT mean the route would refuse. Owner ruling 2026-09-20
+   *  (`todo-owner-rulings.md` R20): the rank stays authoritative for the home
+   *  grid, and the policy is cited at the site. */
+  const canAddWorkspace = roleAtLeast(roleName, 'manager') && sortedWorkspaces.length === 0;
 
-  // ── Tools gates (todo-tools.md role/tier matrix) ─────────────
+  // ── Tools gates (.agents/archived/done-todo/done-todo-tools.md role/tier matrix) ─────────────
 
   // Routed through `roleAtLeast` rather than compared inline, so this gate and
   // the settings-page gate read ONE vocabulary instead of two with opposite
@@ -420,7 +429,9 @@ export default function WorkspaceHome() {
 
   // Only owner/admin/manager roles see the Tools section at all — staff and
   // auditor operate the assigned workspaces below, never the admin tools.
-  const canSeeTools = roleLevel >= (ROLE_HIERARCHY['manager'] ?? 0);
+  // Same one-vocabulary rule and the same home-stricter policy citation as
+  // `canAddWorkspace` above — see `features/workspaces/tools.tsx:20-31`.
+  const canSeeTools = roleAtLeast(roleName, 'manager');
 
   const toolGroups = useMemo(() => {
     if (!canSeeTools) return [];

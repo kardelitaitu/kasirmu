@@ -1,6 +1,20 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { t } from '../i18n';
+import { t, type Labels } from '../i18n/labels';
+
+/**
+ * Strings this modal reads — the docs header's island root hands it the map.
+ * `Header.astro` builds it with `labelMap`, so the browser gets six strings in
+ * the document rather than both locale dictionaries in the JS bundle.
+ */
+export const SEARCH_LABELS = [
+  'search.docsTitle',
+  'search.noResults',
+  'search.pagesTitle',
+  'search.placeholder',
+  'search.quickSearch',
+  'search.shortcutHint',
+] as const;
 
 export interface SearchItem {
   id: string;
@@ -14,9 +28,11 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   locale: string;
+  /** Strings this modal reads; see `SEARCH_LABELS`. */
+  labels: Labels;
 }
 
-export default function SearchModal({ isOpen, onClose, locale }: Props) {
+export default function SearchModal({ isOpen, onClose, locale, labels }: Props) {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -143,7 +159,7 @@ export default function SearchModal({ isOpen, onClose, locale }: Props) {
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={t(locale, 'search.placeholder')}
+        aria-label={t(labels, 'search.placeholder')}
         className="relative z-10 w-full max-w-lg rounded-2xl border border-ink/15 bg-surface p-4 shadow-2xl transition-all"
         onClick={(e) => e.stopPropagation()}
       >
@@ -161,7 +177,7 @@ export default function SearchModal({ isOpen, onClose, locale }: Props) {
               setQuery(e.target.value);
               setSelectedIndex(0);
             }}
-            placeholder={t(locale, 'search.placeholder')}
+            placeholder={t(labels, 'search.placeholder')}
             className="flex-1 min-w-0 bg-transparent text-sm text-ink outline-none placeholder:text-muted pr-2"
             autoComplete="off"
             spellCheck="false"
@@ -172,22 +188,22 @@ export default function SearchModal({ isOpen, onClose, locale }: Props) {
         </div>
 
         {/* Search Results List */}
-        <div className="mt-3 max-h-80 overflow-y-auto space-y-1" role="listbox" aria-label={t(locale, 'search.quickSearch')}>
+        <div className="mt-3 max-h-80 overflow-y-auto space-y-1" role="listbox" aria-label={t(labels, 'search.quickSearch')}>
           {filteredItems.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted">
-              {t(locale, 'search.noResults')} <span className="font-semibold text-ink">"{query}"</span>
+              {t(labels, 'search.noResults')} <span className="font-semibold text-ink">"{query}"</span>
             </div>
           ) : (
             <>
-              <p className="sr-only">{t(locale, 'search.quickSearch')}</p>
+              <p className="sr-only">{t(labels, 'search.quickSearch')}</p>
               {filteredItems.map((item, idx) => (
                 <React.Fragment key={item.id}>
                   {idx === 0 && (
-                    <p className="px-2 pt-1 text-xs font-semibold uppercase tracking-wider text-muted">{t(locale, item.category === 'docs' ? 'search.docsTitle' : 'search.pagesTitle')}</p>
+                    <p className="px-2 pt-1 text-xs font-semibold uppercase tracking-wider text-muted">{t(labels, item.category === 'docs' ? 'search.docsTitle' : 'search.pagesTitle')}</p>
                   )}
                   {idx > 0 && filteredItems[idx - 1].category !== item.category && (
                     <p className="px-2 pt-1 text-xs font-semibold uppercase tracking-wider text-muted">
-                      {t(locale, item.category === 'docs' ? 'search.docsTitle' : 'search.pagesTitle')}
+                      {t(labels, item.category === 'docs' ? 'search.docsTitle' : 'search.pagesTitle')}
                     </p>
                   )}
                   <a
@@ -230,7 +246,7 @@ export default function SearchModal({ isOpen, onClose, locale }: Props) {
 
         {/* Footer Shortcut Helper */}
         <div className="mt-3 border-t border-ink/10 pt-2 text-center text-xs text-muted">
-          {t(locale, 'search.shortcutHint')}
+          {t(labels, 'search.shortcutHint')}
         </div>
       </div>
     </div>,

@@ -573,7 +573,9 @@ fn init_sql_creates_complete_schema_surface() {
     // 20261005_kds_routing_rules.sql — the multi-station KDS routing table,
     // one per terminal, the pin the routing lane shipped without
     // re-measuring — is the 123rd; this assert is where that omission
-    // surfaced. Count measured, not
+    // surfaced. 20261006_receipt_hierarchy_code.sql adds the 124th–126th:
+    // entity_index_cursors, entity_index_tombstones and
+    // receipt_number_counters. Count measured, not
     // guessed: the whole
     // registry was replayed through sqlite3 and sqlite_master counted.
     assert_eq!(
@@ -581,7 +583,7 @@ fn init_sql_creates_complete_schema_surface() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        123,
+        126,
         "table surface drifted"
     );
     assert_eq!(
@@ -635,7 +637,12 @@ fn init_sql_creates_complete_schema_surface() {
         // index, and its TEXT PRIMARY KEY lands as a `sqlite_autoindex_*`
         // this query excludes. Count
         // measured by replaying the registry, as ever.
-        181,
+        // 20261006_receipt_hierarchy_code.sql adds four: the per-tenant
+        // index_id uniques on locations/terminals/users and the
+        // (tenant_id, display_code) backstop on sales. Its three composite
+        // PRIMARY KEYs land as sqlite_autoindex_*, which this query
+        // excludes.
+        185,
         "index surface drifted"
     );
     assert_eq!(
@@ -796,6 +803,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20261003_sync_entity_vectors.sql".to_string(),
             "20261004_midtrans_transactions.sql".to_string(),
             "20261005_kds_routing_rules.sql".to_string(),
+            "20261006_receipt_hierarchy_code.sql".to_string(),
         ]
     );
 
@@ -826,14 +834,15 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
     // 20260925, plus sale_idempotency from
     // 20261001, plus sync_conflicts from 20261002, plus sync_entity_vectors
     // from 20261003, plus midtrans_transactions from 20261004, plus
-    // kds_routing_rules from 20261005 — each
-    // recorded once, idempotently).
+    // kds_routing_rules from 20261005, plus entity_index_cursors,
+    // entity_index_tombstones and receipt_number_counters from
+    // 20261006 — each recorded once, idempotently).
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        123,
+        126,
         "table surface must be unchanged after upgrade"
     );
 }
@@ -1813,8 +1822,75 @@ fn pg_init_declares_same_table_surface_as_sqlite() {
     // produces (the init plus every incremental migration — e.g.
     // `sent_reports` lives in 20260814_sent_reports.sql) and must not
     // leak SQLite-only dialect through the generator.
+
+    /// Strip `--` line and `/* */` block comments, quote-aware.
+    ///
+    /// Needed because the counter below is a **substring** count and
+    /// `20260813_init.pg.sql` discusses the phrase in its own header prose.
+    /// Without this, the counter reads comments as declarations.
+    fn strip_sql_comments(sql: &str) -> String {
+        let mut out = String::with_capacity(sql.len());
+        let mut chars = sql.chars().peekable();
+        let (mut in_quote, mut in_line, mut in_block) = (false, false, false);
+        while let Some(c) = chars.next() {
+            if in_line {
+                if c == '\n' {
+                    in_line = false;
+                    out.push('\n');
+                }
+                continue;
+            }
+            if in_block {
+                if c == '*' && chars.peek() == Some(&'/') {
+                    chars.next();
+                    in_block = false;
+                }
+                continue;
+            }
+            if in_quote {
+                out.push(c);
+                if c == '\'' {
+                    in_quote = false;
+                }
+                continue;
+            }
+            match c {
+                '\'' => {
+                    in_quote = true;
+                    out.push(c);
+                }
+                '-' if chars.peek() == Some(&'-') => {
+                    chars.next();
+                    in_line = true;
+                }
+                '/' if chars.peek() == Some(&'*') => {
+                    chars.next();
+                    in_block = true;
+                }
+                _ => out.push(c),
+            }
+        }
+        out
+    }
+
+    /// Count `CREATE TABLE` **declarations**, not mentions.
+    ///
+    /// Measured 2026-09-18: this test failed on `main` reporting `128` against
+    /// `126`, and the whole of the "drift" was **two comment lines** in
+    /// `20260813_init.pg.sql` (`:21` *"— Postgres: CREATE TABLE IF NOT EXISTS
+    /// skips the table whole…"* and `:210` *"— CREATE TABLE IF NOT EXISTS is
+    /// idempotent for TABLES…"*). Both surfaces in fact declared **126**; the
+    /// instrument was counting prose. The count assertion itself is deliberate
+    /// and stays (see `init_sql_creates_complete_schema_surface` — a count
+    /// catches a silent drop that a name-list check misses), so the fix is to
+    /// the instrument, not to the assertion. Quote-awareness matters in the
+    /// dangerous direction: a naive `split("--")` on a line containing
+    /// `DEFAULT '--'` would truncate *before* a declaration and hide it,
+    /// turning a real drift into a pass.
     fn table_count(sql: &str) -> usize {
-        sql.matches("CREATE TABLE IF NOT EXISTS").count()
+        strip_sql_comments(sql)
+            .matches("CREATE TABLE IF NOT EXISTS")
+            .count()
     }
     let sqlite_surface: String = ALL.iter().map(|m| m.sql).collect::<Vec<_>>().join("\n");
     assert_eq!(
@@ -1822,6 +1898,14 @@ fn pg_init_declares_same_table_surface_as_sqlite() {
         table_count(&sqlite_surface),
         "Postgres DDL table count drifted from the SQLite registry — regenerate scripts/generate-pg-migration.py"
     );
+    // Same instrument discipline as `table_count`: this asserts the Postgres
+    // **DDL** carries no SQLite dialect, so it must not read comments either.
+    // Today all five tokens are absent from the file entirely (measured
+    // 2026-09-18, so this change is behaviour-preserving), but a future header
+    // comment explaining *"we deliberately emit no PRAGMA here"* would have
+    // false-failed the gate — the same class of instrument defect as the count
+    // above, one comment away from firing.
+    let pg_ddl = strip_sql_comments(PG_INIT);
     for leftover in [
         "strftime",
         "AUTOINCREMENT",
@@ -1830,7 +1914,7 @@ fn pg_init_declares_same_table_surface_as_sqlite() {
         ") STRICT",
     ] {
         assert!(
-            !PG_INIT.contains(leftover),
+            !pg_ddl.contains(leftover),
             "Postgres DDL still contains SQLite dialect: {leftover:?}"
         );
     }

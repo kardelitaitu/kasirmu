@@ -353,13 +353,25 @@ pub async fn list_scanners_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<ScannerInfo>, AppError> {
     let _session = state.resolve_session(&session_token)?;
-    let ids = state.registry.scanner_ids().await;
-    let preferred = {
+    // Family-ranked, so a bare COM port cannot outrank a real HID scanner:
+    // alphabetical order offered `scanner:serial:COM7` first, which is how
+    // the register came to open a port nobody proved was a scanner.
+    let ids = state.registry.scanner_ids_ranked().await;
+    let terminal_id = state
+        .terminal_id
+        .lock()
+        .await
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string());
+    let (preferred, mode) = {
         let conn = state.db.lock().await;
-        kasirmu_core::Settings::get_scanner_device_id(&conn).unwrap_or_default()
+        kasirmu_bridge::hardware::scanner_prefs(&conn, &terminal_id)
     }; // guard dropped: Connection is !Send
     Ok(prefer_first(
-        ids.into_iter().map(|id| ScannerInfo { id }).collect(),
+        kasirmu_bridge::hardware::ids_for_mode(ids, &mode)
+            .into_iter()
+            .map(|id| ScannerInfo { id })
+            .collect(),
         &preferred,
     ))
 }

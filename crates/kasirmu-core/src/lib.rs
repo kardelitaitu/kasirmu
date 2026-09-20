@@ -25,6 +25,10 @@ next: none — all open COR findings from the closed campaign resolved | perf: N
 #![deny(unsafe_code)]
 
 /// Immutable audit log — cash management and data-modification events.
+pub mod attestation;
+/// Desktop device-link client (ADR #54 §2.5): PKCE plus the two link calls.
+pub mod desktop_link;
+
 pub mod audit;
 /// Authentication and session management.
 pub mod auth;
@@ -122,6 +126,10 @@ pub mod sale;
 pub mod sale_deduction;
 /// Service health contracts — shared state vocabulary for license, sync,
 /// payment and device connectivity, and the license-server classifier.
+/// Server origin resolution — the one compiled definition of the unified
+/// auth+sync deployment URL (ADR #55).
+pub mod server_origin;
+
 pub mod service_health;
 /// Active user session state.
 pub mod session;

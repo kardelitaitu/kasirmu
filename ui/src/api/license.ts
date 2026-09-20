@@ -45,6 +45,54 @@ export async function getMachineId(): Promise<string> {
   return loggedInvoke('get_machine_id');
 }
 
+/** The account a device was linked to (ADR #54). */
+export interface LinkedAccountDto {
+  /** Tenant record id the identity was bound to. */
+  tenantId: string;
+  /** Provider key — `google` today. */
+  provider: string;
+  /** The address the provider verified. */
+  email: string;
+}
+
+/**
+ * Link this device to the account that signs in with Google (ADR #54 §2.5).
+ *
+ * Opens the system browser at Google's consent screen and waits for the licence server's
+ * one-time code on a loopback port, so this call resolves only once the user has finished
+ * (or the wait times out) — several minutes, not milliseconds. The device's own licence
+ * credentials are read by the shell; no secret is passed from here.
+ */
+export async function linkDeviceGoogle(): Promise<LinkedAccountDto> {
+  return loggedInvoke('link_device_google');
+}
+
+/** The account an emailed code proved (ADR #54 §2.6). */
+export interface VerifiedAccountDto {
+  /** Tenant record id the account belongs to. */
+  tenantId: string;
+  /** The address that received the code. */
+  email: string;
+  /** Whether the account now counts as verified. */
+  verified: boolean;
+}
+
+/**
+ * Ask the licence server to email a link code to this device's account address.
+ *
+ * The no-browser route: the tablet cannot use Google's browser flows. The server accepts only
+ * the tenant's own address, so a rejected address surfaces as a validation on the email field
+ * rather than as an outage.
+ */
+export async function requestDeviceLinkCode(email: string): Promise<void> {
+  return loggedInvoke('link_device_email_request', { email });
+}
+
+/** Spend the emailed code and return the account it proved. */
+export async function consumeDeviceLinkCode(code: string): Promise<VerifiedAccountDto> {
+  return loggedInvoke('link_device_email_consume', { code });
+}
+
 /**
  * Get the device-level hardware fingerprint (SPEC-2026-TRIAL-LOCK):
  * "hw_" + SHA-256 hex of the hardware anchor, stable across reinstalls.

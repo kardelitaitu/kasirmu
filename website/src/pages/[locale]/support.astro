@@ -3,13 +3,14 @@ export function getStaticPaths() {
   return [{ params: { locale: 'en' } }, { params: { locale: 'id' } }];
 }
 import Base from '../../layouts/Base.astro';
-import ContactForm from '../../components/ContactForm.tsx';
-import { t, dict } from '../../i18n';
+import ContactForm, { SUPPORT_LABELS } from '../../components/ContactForm.tsx';
+import { t, dict, labelMap } from '../../i18n';
 
 const locale = Astro.currentLocale ?? 'en';
 const pageTitle = `kasir.mu — ${t(locale, 'support.title')}`;
 const faq = (dict(locale).support as { faq: { q: string; a: string }[] }).faq;
 const email = t(locale, 'support.email');
+const formLabels = labelMap(locale, SUPPORT_LABELS);
 ---
 
 <Base title={pageTitle} description={t(locale, 'pageDesc.support')}>
@@ -20,7 +21,7 @@ const email = t(locale, 'support.email');
     </div>
 
     <div data-reveal class="mx-auto mt-10 max-w-2xl">
-      <ContactForm client:load locale={locale} />
+      <ContactForm client:load labels={formLabels} />
       <p class="mt-4 text-center text-sm text-muted">
         {t(locale, 'support.emailLabel')}:{' '}
         <a href={`mailto:${email}`} class="footer-link relative text-link transition-colors duration-200 hover:text-primary-hover">

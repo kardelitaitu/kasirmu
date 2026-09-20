@@ -220,13 +220,13 @@ export default function ItemModifierModal({
     setExiting(true);
     // Notify the parent synchronously (see deviation note above);
     // the gate below holds the surface mounted for the fade, and
-    // animDuration(200) returns 0 under prefers-reduced-motion so
+    // animDuration(300) returns 0 under prefers-reduced-motion so
     // reduced-motion users snap away instantly.
     onClose();
     exitTimerRef.current = setTimeout(() => {
       exitTimerRef.current = null;
       setExiting(false);
-    }, animDuration(200));
+    }, animDuration(300));
   }, [exiting, onClose]);
 
   // ── Focus trap (Escape + Tab cycling; suspended while exiting) ─

@@ -1,6 +1,6 @@
 /*
 last audited 25-07-26 by RSA-Agent (mobile-tauri slice A: auth verified)
-crate: mobile-tauri | status: SAFE | lint: CLEAN
+crate: kasirmu-mobile | status: SAFE | lint: CLEAN
 findings: auth surface mirrors desktop-tauri: STAFF-06 uniform pre-auth, STAFF-07 layered persistent rate limiting via record_login_attempt_scoped, picker-ticket identity binding; NO verify_pin command here (DC-3 does not exist on tablet). Coverage note: risk-ranked sampling
 next: none | perf: N/A
 */
@@ -1055,7 +1055,7 @@ pub async fn session_keepalive(
 /// duplicate entry made the exemption look like coverage. Both entries are gone with
 /// this command. What the renderer does with the rejection on a tablet that had no
 /// such command is a separate question, recorded as T5-5 in
-/// `todo-refactor-oz-pos-app-agents-3.md`.
+/// `.agents/reviews/done-todo-refactor-oz-pos-app-agents-3.md`.
 #[command]
 pub async fn refresh_picker_ticket(
     session_token: String,

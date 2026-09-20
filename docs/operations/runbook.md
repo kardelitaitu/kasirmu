@@ -406,7 +406,7 @@ docker volume prune
 | Dockerfile | `ops/docker/Dockerfile.unified` (under `ops/docker/`) |
 | Port | `80` (caddy; routes to :8080 PocketBase / :3099 Rust) |
 | Volume | single volume at `/data` (Northflank free tier = 1 volume) |
-| Build trigger | **`workflow_dispatch` only** — Actions → Dev CI → Run workflow, which runs `northflank-deploy`. There is no push-triggered build; see §8.5 for why the `push` branch of that job's `if:` is unreachable |
+| Build trigger | A push to **`main`** runs Dev CI, and `northflank-deploy` builds the linked branch automatically when `NORTHFLANK_API_TOKEN` is set (`dev-ci.yml:791`). A manual **Actions → Dev CI → Run workflow** also works — but dispatch it **from `main`**: Northflank builds the service's linked branch (`main`, see §8.6) and a dispatch from a `0.0.*` branch is deliberately refused (§8.5), so **code reaches production by landing on `main`, not by dispatching from a release branch**. |
 
 **Single-volume layout (DOCKER-11):**
 
@@ -479,6 +479,21 @@ Sessions are in-memory (`web_otp.go:13-19`), so a restart drops admin sessions: 
 
 ### Verification checklist (post-deploy)
 
+**Run one command first.** `python scripts/verify-deployment.py` probes this surface and exits
+non-zero while any ADR #54 route is missing, printing the expected status for each. Measured
+2026-09-26 on the live host: `POST /api/v1/license/activate` and the pre-existing `/api/v1/web/*`
+routes answered (400/401), `/api/sync/snapshot` answered 401, while every `/api/v1/desktop/link/*`
+and `/api/v1/web/oauth/*` route answered **404** -- the container predated ADR #54. On a tablet the
+sign-in path is the emailed code and the link response is what carries the sync credential, so
+that one gap presents as "the app cannot reach auth or sync", and the client gets blamed.
+
+> Two traps in this area, both measured. **Probe with the right method**: PocketBase answers 404,
+> not 405, for a wrong method on an existing route, so `GET /api/v1/web/request-otp` looks dead
+> while `POST` returns 400. And **pace the probes**: `license.ozpos.my.id` is fronted by
+> Cloudflare and a burst from one IP gets 403 for every `/api/v1/*` path, which reads as a broken
+> deployment until a single paced request returns the real status. The verifier stops at the first
+> throttle for this reason.
+
 ```bash
 BASE="https://license.ozpos.my.id"
 curl -s "$BASE/health"                                  # sync pill → 200 ok
@@ -488,12 +503,87 @@ curl -s -X POST "$BASE/api/v1/license/activate" \
 curl -s -o /dev/null -w '%{http_code}' "$BASE/_/"       # admin UI → 200
 curl -s -o /dev/null -w '%{http_code}' -X POST \
   "$BASE/api/v1/paddle/webhook"                          # 503 not-configured (not 404)
+
+# Origin attestation (ADR #55). 200 proves the route exists; the openssl verify
+# proves the deployed server signs with the key the POS binaries embed
+# (crates/kasirmu-core/oz-license.key.pub). A 404 means the licence server
+# predates the endpoint -- clients then stay on the compiled MAIN and the
+# cascade is inert, which is safe but silent.
+NONCE=$(openssl rand -hex 16); printf %s "$NONCE" > /tmp/attest.nonce
+curl -s -X POST "$BASE/api/v1/license/attest" -H 'Content-Type: application/json' \
+  -d "{\"nonce\":\"$NONCE\"}" -o /tmp/attest.json
+python3 -c "import json,base64;d=json.load(open('/tmp/attest.json'));open('/tmp/attest.sig','wb').write(base64.b64decode(d['signature']));open('/tmp/attest.payload','wb').write(('ozpos-origin-attest-v1:'+open('/tmp/attest.nonce').read().strip()).encode())"
+openssl dgst -sha256 -verify crates/kasirmu-core/oz-license.key.pub \
+  -signature /tmp/attest.sig /tmp/attest.payload    # -> Verified OK
+
+# Google sign-in (ADR #54). The two states are deliberately distinguishable:
+curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/v1/web/oauth/google/start"
+#   503 -> OZ_GOOGLE_CLIENT_ID is unset (nothing else to diagnose)
+#   302 -> configured; the headers below prove BOTH endpoints are live without
+#          touching Google, and that the browser-binding cookie is being set:
+curl -s -D - -o /dev/null "$BASE/api/v1/web/oauth/google/start?next=/en/account" \
+  | grep -Ei '^(HTTP|location|set-cookie)'
+#   Location must be https://accounts.google.com/... and Set-Cookie must carry
+#   oz_oauth_state (HttpOnly, Secure, Lax).
+
+# The device link's server side. The wizard's own flow needs a real device, and a device's
+# api_key never leaves it: it is issued once at activation and stored hashed here. So these
+# check the WIRING — which is what breaks on a new deployment:
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/v1/desktop/link/email/request" \
+  -H 'Content-Type: application/json' -d '{}'
+#   400 -> the route exists and rejects a body with no machine_id   404 -> the deploy predates it
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/v1/desktop/link/email/consume" \
+  -H 'Content-Type: application/json' -d '{}'
+#   400 as well.
+
+# The sync service the link will call (OZ_SYNC_API_URL). Production sets OZ_ADMIN_KEY, and the
+# endpoint must say so:
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/v1/terminals" \
+  -H 'Content-Type: application/json' -d '{}'
+#   401 -> reachable and demanding the admin key   404 -> caddy is not routing /api/v1/* to it
+#   200 -> NO admin key is configured and the endpoint is OPEN: fix that before onboarding.
+# Inside the unified container, confirm the address OZ_SYNC_API_URL names is the one answering:
+#   docker exec <container> curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+#     http://127.0.0.1:3099/api/v1/terminals -H 'Content-Type: application/json' -d '{}'
+
+# For the end-to-end check, take a throwaway tenant: activate (or recover) it and use the
+# api_key the response returns — the only time a key is ever visible — with the machine_id that
+# activation registered. Then request, read the code from the mailbox, and consume:
+KEY="<the api_key activation returned>"; MACHINE="<that machine_id>"; ACCOUNT="<its email>"
+curl -s -X POST "$BASE/api/v1/desktop/link/email/request" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $KEY" \
+  -d "{\"machine_id\":\"$MACHINE\",\"email\":\"$ACCOUNT\"}"
+#   503 -> OZ_SMTP_HOST is unset        403 -> not this store's account address
+curl -s -X POST "$BASE/api/v1/desktop/link/email/consume" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $KEY" -d "{\"machine_id\":\"$MACHINE\",\"code\":\"<code>\"}"
+#   expect {"tenantId":...,"verified":true,"terminal":{"issued":true,...}}
+#   terminal.issued=false means OZ_SYNC_API_URL is unset or the sync service refused the
+#   admin key: the account is linked, the device simply holds no sync credential.
 ```
+
+Then finish **one real sign-in in a browser** and confirm the account portal lists it under *Sign-in methods* — that is the only check that exercises Google itself. Two
+failures to expect, and what each means:
+
+
+- `redirect_uri_mismatch` from Google: the callback for **this** host **and this flow** is not
+  registered. Four URIs are needed — both hosts crossed with both paths, `/api/v1/web/oauth/`
+  for the web form and `/api/v1/desktop/link/` for the device link (step 7b of the
+  licence-server deploy). A web sign-in that works while the wizard's Google button does not
+  is exactly this: the desktop path missing from the console.
+- `400 invalid oauth state` after the consent screen: the browser did not send the
+  `oz_oauth_state` cookie back — something in front of the licence host is stripping
+  cookies, or the flow was started on one host and returned to the other.
+
+**Known dead end, deliberate (ADR #54 §9 O2).** Account linking lives only in the setup wizard, so
+a device that skipped the Account step — or whose credential was revoked — cannot be linked from
+inside the running app; there is no Settings repair path. Recovery means re-running the wizard on a
+fresh install. The wizard's failure copy says "continue without linking" rather than promising a
+later path, because there is none.
 
 Also: create the PocketBase superuser via the `/_/` first-boot installer
 link (or shell: `pocketbase superuser upsert EMAIL PASS`).
 
-### App-side URL references (the 5 hardcoded spots)
+### App-side URL references (ADR #55 — one compiled list, not five hardcoded spots)
 
 All point at the unified host; each also has an env-var override:
 
@@ -502,12 +592,18 @@ All point at the unified host; each also has an env-var override:
 | `crates/kasirmu-core/src/license_verification.rs` | `LICENSE_SERVER_URL` const | `OZ_LICENSE_SERVER_URL` |
 | `apps/desktop-tauri/tauri.conf.json` | CSP `connect-src` | — |
 | `apps/mobile-tauri/tauri.conf.json` | CSP `connect-src` | — |
-| `ui/src/features/auth/LicenseActivationScreen.tsx` | `AUTH_SERVICE_URL` fallback | `VITE_AUTH_SERVICE_URL` |
+| `crates/kasirmu-core/src/server_origin.rs` | `MAIN_SERVER_ORIGIN` / `FALLBACK_SERVER_ORIGIN` — the only compiled origins | `OZ_LICENSE_SERVER_URL` |
 | `ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx` | pinned URL | — |
 
 The **sync server URL** is per-install user config: Settings → Cloud Sync
-→ enter `https://license.ozpos.my.id`. Unlike auth, it is
-stored in the local DB (never compiled in).
+→ enter `https://license.ozpos.my.id`. It is per-install user config, stored in the local DB —
+and since ADR #55 it also has compiled fallbacks (`server_origin::MAIN_SERVER_ORIGIN` in the
+bridge probe, `FALLBACK_SERVER_ORIGIN` in the desktop debug bootstrap, and the `SettingsContext`
+draft), so the earlier claim that it is "never compiled in" no longer holds.
+
+The row this table used to carry for `AUTH_SERVICE_URL` / `VITE_AUTH_SERVICE_URL` was stale:
+grep `ui/src` for either name and neither exists. `node scripts/check-server-origins.mjs` is the
+guard that keeps this table honest.
 
 ### 8.5 Automated deploys — **not automated today**
 
@@ -604,9 +700,15 @@ curl -sS -X POST "https://api.northflank.com/v1/projects/$PROJECT/services/$SERV
 auto-builds + auto-deploys on every push itself. Same outcome, but invisible in
 GitHub Actions. Until 2026-09-02 this sentence recommended `deploy.yml` as "the
 preferred, auditable path"; that workflow is retired (`deploy.yml.bak`, `23c963303`)
-and its `northflank-deploy` successor in `dev-ci.yml` cannot fire on push — see §8.5.
-So today the native git trigger is the **only** automatic option — which is the
-outcome this paragraph used to call the less auditable one.
+and its `northflank-deploy` successor **is live** in `dev-ci.yml` and **does** fire on push
+(`on.push` at `:6-7`), gated for *both* entry points on `github.ref == 'refs/heads/main'`
+(`:753-763`): a merge to `main` deploys, a dispatch **from `main`** deploys, and a dispatch
+from a `0.0.*` branch is refused on purpose. The sentence that stood here claimed the deploy
+"cannot fire on push"; the workflow's own comment at `:749-751` names that claim as false.
+So the native git trigger is an **alternative** automatic path, not the only one —
+`dev-ci.yml` deploys on a push to `main` as well. The difference is *visibility*, not
+capability: the GitHub job is auditable in the Actions UI and reports its own failures, while
+the Northflank git trigger is invisible from this repository.
 
 ### 8.6 Logging & Debugging
 

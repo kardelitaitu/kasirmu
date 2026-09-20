@@ -16,10 +16,14 @@ from collections import defaultdict
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-# THM-01: the design tokens live in ui/src/frontend/themes/tokens.css.
+# THM-01: the design tokens live in ui/src/theme/tokens.css.
 # (The old ui/src/styles/tokens.css path never existed — the fixer
-# silently no-opped against the wrong file.)
-TOKENS_FILE = PROJECT_ROOT / "ui" / "src" / "frontend" / "themes" / "tokens.css"
+# silently no-opped against the wrong file. The path then went stale a SECOND
+# time: 7866197c7 renamed frontend/themes to theme/ and fixed every reference
+# except the ones under scripts/, so the fixer no-opped again — this time by
+# raising FileNotFoundError on parse_tokens. Both stale names are kept here so
+# the next rename has something to grep for.)
+TOKENS_FILE = PROJECT_ROOT / "ui" / "src" / "theme" / "tokens.css"
 UI_SRC_DIR = PROJECT_ROOT / "ui" / "src"
 EXCLUDE_DIRS = {"node_modules"}
 

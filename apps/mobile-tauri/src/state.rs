@@ -1,6 +1,6 @@
 /*
 last audited 25-07-26 by RSA-Agent (mobile-tauri slice A: verified)
-crate: mobile-tauri | status: SAFE | lint: CLEAN
+crate: kasirmu-mobile | status: SAFE | lint: CLEAN
 findings: clean — matches desktop-tauri guarded patterns. Coverage note: verified under the risk-ranked sampling protocol (global sweep clean), not line-by-line deep read
 next: none | perf: N/A
 */

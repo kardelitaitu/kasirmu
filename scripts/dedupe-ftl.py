@@ -6,8 +6,10 @@ scripts/dedupe-ftl.py — Deduplicates Fluent (.ftl) key definitions in
 WHY
 ====
 
-The consolidated i18n quality gate (in `.github/workflows/ci.yml` and
-`.github/workflows/release.yml`, invoked via `scripts/lint-i18n.sh`)
+The consolidated i18n quality gate (invoked via `scripts/lint-i18n.sh` by
+`.github/workflows/dev-ci.yml`; the `ci.yml` named here until 2026-09-20 is
+retired to `.github/workflows/attic/ci.yml.bak`, and `release.yml` never ran
+this gate)
 flags any key that is defined twice within the same locale's joined
 bundle. FluentBundle.addResource() emits `Attempt to override an
 existing message` when the second definition arrives, and the FIRST
@@ -76,8 +78,8 @@ LOCALE_DIR = Path(__file__).resolve().parent.parent / "shared-ui" / "locales"
 
 DESCRIPTION = (
     "Deduplicate Fluent key definitions in shared-ui/locales/ so that the "
-    "consolidated i18n quality gate (scripts/lint-i18n.sh, "
-    ".github/workflows/ci.yml, .github/workflows/release.yml) finds zero "
+    "consolidated i18n quality gate (scripts/lint-i18n.sh, run by "
+    ".github/workflows/dev-ci.yml) finds zero "
     "'Attempt to override an existing message' warnings. See the module "
     "docstring for the algorithm and rationale."
 )

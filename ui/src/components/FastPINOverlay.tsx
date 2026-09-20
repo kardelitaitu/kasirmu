@@ -6,6 +6,7 @@ import { Localized } from "@/components/Localized";
 import { useLocalization } from "@fluent/react";
 import "./FastPINOverlay.css";
 import { plainErrorMessage } from "@/utils/app-error";
+import { animDuration } from "@/utils/animation";
 
 // ── SVG icons ───────────────────────────────────────────────────────
 
@@ -225,7 +226,7 @@ export default function FastPINOverlay({ open, onClose, onVerified }: FastPINOve
       setExiting(false);
       exitTimerRef.current = null;
       onClose();
-    }, 200);
+    }, animDuration(300));
   }, [onClose, loading]);
 
   // ── Escape key closes ───────────────────────────────────────

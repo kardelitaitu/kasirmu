@@ -20,8 +20,8 @@ export const syncHandlers: Record<string, MockHandler> = {
   'print_receipt': () => ({ printedLines: 3 }),
   'retry_offline_sync': () => ({ syncedCount: 0, failedCount: 0, totalCount: 0 }),
 
-  'get_sync_settings': () => ({ serverUrl: null, hasApiKey: false, enabled: false }),
-  'get_sync_settings_scoped': () => ({ serverUrl: null, hasApiKey: false, enabled: false }),
+  'get_sync_settings': () => ({ serverUrl: null, hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' }),
+  'get_sync_settings_scoped': () => ({ serverUrl: null, hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' }),
   'update_sync_settings': () => null,
   'sync_run': () => ({ synced: 0, failed: 0, error: null }),
 

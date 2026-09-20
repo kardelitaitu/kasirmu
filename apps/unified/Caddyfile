@@ -10,7 +10,7 @@
 #
 #   PocketBase :8080
 #     /_/*                                  admin SPA
-#     /api/v1/{license,web,paddle}/*        license-server custom hooks
+	#     /api/v1/{license,web,admin,paddle,desktop}/*
 #     /api/* (default)                      admin UI API: /api/collections,
 #                                           /api/settings, /api/superusers,
 #                                           /api/logs, /api/backups,
@@ -53,6 +53,11 @@
 		import security_headers
 		reverse_proxy localhost:8080
 	}
+		handle /api/v1/desktop/* {
+		import security_headers
+		reverse_proxy localhost:8080
+	}
+
 	handle /api/v1/paddle/* {
 		import security_headers
 		reverse_proxy localhost:8080

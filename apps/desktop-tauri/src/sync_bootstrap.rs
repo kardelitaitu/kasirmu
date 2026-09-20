@@ -34,8 +34,17 @@ use kasirmu_core::sync_client;
 use rusqlite::Connection;
 use tokio::sync::Mutex;
 
-/// Default cloud sync server — the unified auth+sync service at the custom domain.
-const LOCAL_SYNC_URL: &str = "https://license.ozpos.my.id";
+/// Default cloud sync server for a debug build: the local Docker stack.
+///
+/// Sourced from the single compiled origin list (ADR #55). It is deliberately the
+/// loopback dev origin and NOT the production fallback name it used to carry: a
+/// debug build that silently auto-provisions against a real tenant can pull
+/// production data over a developer's database, and can push test sales into it.
+/// The probe below still gates every write, so this only connects when the local
+/// stack (scripts/dev-up.ps1) is actually answering — and `should_auto_provision`
+/// returns false the moment a URL is configured, so a developer who has pointed
+/// this machine at production keeps that setting.
+const LOCAL_SYNC_URL: &str = kasirmu_core::server_origin::DEBUG_SYNC_ORIGIN;
 
 /// How many probe + token attempts before giving up. The docker backend
 /// can take a few seconds to answer on a cold start, so a bounded retry
@@ -195,6 +204,27 @@ async fn auto_provision_local_sync_with_url(db: Arc<Mutex<Connection>>, server_u
 /// Resolve this terminal's client credentials, pairing it with the server
 /// on first run (ADR sync-auth-hardening P3).
 ///
+/// The pairing's `client_id` is the terminal identity the server binds into
+/// every minted token's `terminal_id` claim (`verify_terminal_credentials` →
+/// `create_token_full(.., Some(&terminal.terminal_id), ..)`), and every
+/// recipient row the cloud serves — memo fan-out, per-terminal reads, acks —
+/// keys on a `terminals.id` ROW id. A pairing made under a random UUID
+/// therefore minted claims no row in any `terminals` table can name: the
+/// token worked for tenant-scoped reads and silently identified a terminal
+/// that does not exist. So the pairing identity is now the device's RESOLVED
+/// row id — the same translation every memo leg performs — looked up from the
+/// hostname (`get_device_id`) the way `create_session` persists it.
+///
+/// Two homes and one rule: the device may already be registered in the global
+/// identity DB (`set_features` auto-register) or only in the store's own DB —
+/// or in neither. In neither, this bootstrap mirrors the hostname into the
+/// global table ([`Store::ensure_terminal_addressable`], the same mirror the
+/// memo publish path uses), so the pairing names a row that exists and can be
+/// resolved again on every later launch. A device with no resolvable row and
+/// no mirrorable identity falls back to the legacy random UUID, which keeps
+/// the token minting working — the claim it carries simply identifies no
+/// recipient row, exactly as before.
+///
 /// Returns `Some((terminal_id, device_secret))` when the terminal is paired
 /// (either already stored or freshly registered). Returns `None` when the
 /// server rejected registration — the caller falls back to admin-key/open
@@ -203,27 +233,91 @@ async fn resolve_terminal_credentials(
     db: &Arc<Mutex<Connection>>,
     server_url: &str,
 ) -> Option<(String, String)> {
-    // Already paired — reuse the stored credentials.
+    // Resolve the row id this DEVICE delivers as before anything else, in its
+    // own scope: the identity the pairing should carry, if one can be found.
+    let device_id = kasirmu_bridge::health::get_device_id().await.ok()?;
+    let resolved_row = {
+        let conn = db.lock().await;
+        let store = kasirmu_core::Store::new(&conn);
+        store
+            .resolve_terminal_row_id(kasirmu_bridge::memo::DEFAULT_TENANT_ID, &device_id)
+            .ok()
+            .flatten()
+    };
+
+    // Already paired — reuse the stored credentials, but only while the stored
+    // pairing identity still resolves for THIS device. A pairing under a row
+    // that no longer answers (re-registration, deleted row, restored DB)
+    // minted a claim for a terminal that no longer exists, so it is dropped
+    // and re-paired under the current row id.
     {
         let conn = db.lock().await;
         if let (Ok(Some(id)), Ok(Some(secret))) = (
             Settings::get_sync_terminal_id(&conn),
             Settings::get_sync_terminal_secret(&conn),
         ) {
-            return Some((id, secret));
+            let still_resolves = {
+                let store = kasirmu_core::Store::new(&conn);
+                store
+                    .resolve_terminal_row_id(kasirmu_bridge::memo::DEFAULT_TENANT_ID, &id)
+                    .ok()
+                    .flatten()
+                    .is_some()
+            };
+            if still_resolves {
+                return Some((id, secret));
+            }
+            tracing::info!(
+                paired = %id,
+                device = %device_id,
+                "sync bootstrap: stored pairing no longer resolves — re-pairing under the current terminal row"
+            );
         }
     }
 
-    // Fresh pair: generate a stable terminal id (kept even if the server is
-    // unreachable, so a later launch retries registration with the same id).
-    let terminal_id = {
-        let conn = db.lock().await;
-        match Settings::get_sync_terminal_id(&conn) {
-            Ok(Some(id)) => id,
-            _ => {
-                let id = uuid::Uuid::new_v4().simple().to_string();
-                let _ = Settings::set_sync_terminal_id(&conn, &id);
-                id
+    // Fresh pair: the pairing identity IS the resolved row id when the device
+    // has one, and a mirrored row is created when it does not — the same
+    // mirror `publish_memo` performs so a store-registered device becomes
+    // addressable in the global table the memo/cloud tables read. Only a
+    // device with neither a row nor a usable hostname falls back to the
+    // legacy random UUID.
+    let terminal_id = match resolved_row {
+        Some(id) => id,
+        None => {
+            // No row yet: mirror one into the global table so the pairing
+            // names a row that can be resolved on every later launch. The
+            // mirror key is the hostname, the same identity a session will
+            // carry, so the NEXT resolve finds it. The Store borrow (not
+            // `Send`) dies inside this block, BEFORE the legacy fallback's
+            // await below.
+            let mirror_result = {
+                let conn = db.lock().await;
+                let store = kasirmu_core::Store::new(&conn);
+                let mirror = kasirmu_core::Terminal::new(&device_id, &device_id);
+                store
+                    .ensure_terminal_addressable(
+                        &mirror,
+                        kasirmu_bridge::memo::DEFAULT_TENANT_ID,
+                        None,
+                    )
+                    .map(|_| mirror.id)
+            };
+            match mirror_result {
+                Ok(id) => {
+                    tracing::info!(
+                        id = %id,
+                        device = %device_id,
+                        "sync bootstrap: mirrored the device into the global terminals table for its pairing"
+                    );
+                    id
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        "sync bootstrap: could not mirror the device — falling back to a legacy random pairing id"
+                    );
+                    legacy_pairing_id(db).await
+                }
             }
         }
     };
@@ -243,14 +337,40 @@ async fn resolve_terminal_credentials(
         return None;
     }
 
+    // The server's canonical id for this pairing wins: it echoes the id back
+    // and that is what future claims will carry.
+    let paired_id = registration
+        .terminal_id
+        .unwrap_or_else(|| terminal_id.clone());
     let device_secret = registration.device_secret?;
     let conn = db.lock().await;
+    if let Err(e) = Settings::set_sync_terminal_id(&conn, &paired_id) {
+        tracing::warn!(error = %e, "persisting terminal pairing id failed");
+        return None;
+    }
     if let Err(e) = Settings::set_sync_terminal_secret(&conn, &device_secret) {
         tracing::warn!(error = %e, "persisting terminal device secret failed");
         return None;
     }
-    tracing::info!(terminal_id, "paired sync terminal with server");
-    Some((terminal_id, device_secret))
+    tracing::info!(terminal_id = %paired_id, "paired sync terminal with server");
+    Some((paired_id, device_secret))
+}
+
+/// The legacy pairing id: a random UUID, kept stable across launches by
+/// persisting it on first use. A device whose pairing cannot name a terminal
+/// row still needs a stable client_id for the client-credentials mint path —
+/// the claim it produces simply identifies no recipient row, which is the
+/// pre-row-id behaviour this module is migrating away from.
+async fn legacy_pairing_id(db: &Arc<Mutex<Connection>>) -> String {
+    let conn = db.lock().await;
+    match Settings::get_sync_terminal_id(&conn) {
+        Ok(Some(id)) => id,
+        _ => {
+            let id = uuid::Uuid::new_v4().simple().to_string();
+            let _ = Settings::set_sync_terminal_id(&conn, &id);
+            id
+        }
+    }
 }
 
 #[cfg(test)]

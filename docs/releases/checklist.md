@@ -46,8 +46,10 @@
       `website`, `cargo-check` (fmt → check → clippy), `cargo-nextest`,
       `ui-test` (typecheck → lint → vitest → tz-invariance), `i18n`,
       `release-bridge-test` (push-only; runs `cargo nextest run -p
-      oz-bridge --release`. The release profile is where `BOOTSTRAP_FREE`
-      stops verifying, so a debug-green run says nothing about it),
+      kasirmu-bridge --release`. Since the 19-09-26 ruling the release profile
+      is where a `BOOTSTRAP_FREE`-signed row on a paid tier stops verifying — a
+      free-tier one loads in both profiles — so a debug-green run says nothing
+      about the paid fixtures),
       `ci-docs-drift`, `static-gates` (architecture boundaries, money format,
       windows config, skill drift, healthcheck, panic inventory, release
       workflow validation, Go fmt/vet/test), `release-readiness` (updater

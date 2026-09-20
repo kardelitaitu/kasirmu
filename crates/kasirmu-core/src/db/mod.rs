@@ -128,6 +128,7 @@ pub mod quota_gate;
 /// Receipt formats — statutory content on the entity, presentational layout
 /// on workspace/terminal, with the pinned legacy-settings fallback (the last
 /// missing L167 axis).
+pub mod receipt_code;
 pub mod receipt_formats;
 /// Recipe / modifier CRUD.
 pub mod recipes;

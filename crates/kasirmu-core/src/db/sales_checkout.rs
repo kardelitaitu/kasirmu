@@ -496,6 +496,22 @@ impl Store<'_> {
             .map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
             .unwrap_or_else(|| now.clone());
 
+        // ── Receipt hierarchy code (phase 3) ─────────────────────
+        // Mint the frozen 22-char nomor faktur and capture the terminal id.
+        // Indices are resolved (and allocated lazily when missing) and the
+        // sequence is claimed inside this same tx, so a voided sale consumes
+        // neither an index nor a number. When no terminal is known the code
+        // cannot be formed; `display_code` stays NULL and the sale still
+        // completes with today's behaviour.
+        let (display_code, terminal_id_val) = self.mint_receipt_code(
+            &tx,
+            "default",
+            primary_location.as_str(),
+            _terminal_id,
+            _staff_user_id,
+            &now,
+        )?;
+
         tx.execute(
             "INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method,
                                  tendered_minor, discount_percent, discount_label, user_id,
@@ -503,9 +519,10 @@ impl Store<'_> {
                                  customer_id, deduction_locations, version,
                                  pending_expires_at, tenant_id,
                                  base_currency, base_total_minor, tender_rate_millionths,
-                                 tip_minor, service_charge_minor, tax_estimate_note)
+                                 tip_minor, service_charge_minor, tax_estimate_note,
+                                 terminal_id, display_code)
              VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 1, ?16, 'default',
-                     ?17, ?18, ?19, ?20, ?21, ?22)",
+                     ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
             rusqlite::params![
                 sale.id, sale.total.minor_units, cur_str, sale.line_count,
                 sale.payment_method, sale.tendered_minor,
@@ -515,6 +532,7 @@ impl Store<'_> {
                 sale.customer_id, deduction_json, pending_expires_at,
                 sale.base_currency, sale.base_total_minor, sale.tender_rate_millionths,
                 sale.tip_minor, sale.service_charge_minor, tax_estimate_note,
+                terminal_id_val, display_code,
             ],
         )?;
 
@@ -629,7 +647,9 @@ impl Store<'_> {
         Ok(crate::sale_deduction::CompleteSaleResult {
             sale_id: sale.id.clone(),
             status: SaleStatus::Pending,
-            receipt_number: sale.id.clone(),
+            // Prefer the frozen hierarchy code; fall back to the sale id only
+            // when no terminal was known (display_code stays NULL — see mint).
+            receipt_number: display_code.clone().unwrap_or_else(|| sale.id.clone()),
             deduct_tx_id,
             statutory_number,
         })

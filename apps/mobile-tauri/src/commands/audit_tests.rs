@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::commands::testing::{assert_refused_by_the_tier_gate, seeded_row_reaches_a_paid_tier};
+
 #[test]
 fn audit_entry_dto_debug() {
     let dto = AuditEntryDto {
@@ -219,6 +221,10 @@ async fn list_command_passes_the_tier_gate_without_panicking() {
     // stopped having one.
     let app = app_for("premium");
     let page = list_audit_log_scoped("tok".into(), page_args(), app.state()).await;
+    if !seeded_row_reaches_a_paid_tier() {
+        assert_refused_by_the_tier_gate(&page, "premium");
+        return;
+    }
     assert!(page.is_ok(), "{:?}", page.err());
     assert_eq!(page.unwrap().total, 0);
 }
@@ -227,6 +233,10 @@ async fn list_command_passes_the_tier_gate_without_panicking() {
 async fn review_status_command_passes_the_tier_gate_without_panicking() {
     let app = app_for("premium");
     let status = get_audit_review_status_scoped("tok".into(), app.state()).await;
+    if !seeded_row_reaches_a_paid_tier() {
+        assert_refused_by_the_tier_gate(&status, "premium");
+        return;
+    }
     assert!(status.is_ok(), "{:?}", status.err());
 }
 
@@ -242,6 +252,10 @@ async fn export_command_passes_the_tier_gate_without_panicking() {
         app.state(),
     )
     .await;
+    if !seeded_row_reaches_a_paid_tier() {
+        assert_refused_by_the_tier_gate(&exported, "premium");
+        return;
+    }
     assert!(exported.is_ok(), "{:?}", exported.err());
 }
 
@@ -254,6 +268,10 @@ async fn security_events_list_command_passes_the_tier_gate_without_panicking() {
     // the shim's own fourth move, which the bridge cannot test.
     let app = app_for("premium");
     let page = list_security_events_scoped("tok".into(), security_page_args(), app.state()).await;
+    if !seeded_row_reaches_a_paid_tier() {
+        assert_refused_by_the_tier_gate(&page, "premium");
+        return;
+    }
     assert!(page.is_ok(), "{:?}", page.err());
     assert_eq!(page.unwrap().total, 0);
 }
@@ -271,6 +289,10 @@ async fn security_events_export_command_passes_the_tier_gate_without_panicking()
         app.state(),
     )
     .await;
+    if !seeded_row_reaches_a_paid_tier() {
+        assert_refused_by_the_tier_gate(&exported, "premium");
+        return;
+    }
     assert!(exported.is_ok(), "{:?}", exported.err());
 }
 

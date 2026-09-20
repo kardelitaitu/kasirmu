@@ -133,7 +133,7 @@ const { invokeMock, defaultImpl, failCommands, lastCallArgs } = vi.hoisted(() =>
       return Promise.resolve('USD');
     }
     if (cmd === 'get_sync_settings_scoped') {
-      return Promise.resolve({ serverUrl: null, hasApiKey: false, enabled: false });
+      return Promise.resolve({ serverUrl: null, hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' });
     }
     if (cmd === 'get_user_preferences_scoped') {
       return Promise.resolve({ cardsize: '2', fontsize: '1', 'font-smoothing': 'antialiased' });
@@ -159,7 +159,7 @@ const { invokeMock, defaultImpl, failCommands, lastCallArgs } = vi.hoisted(() =>
       return Promise.resolve([{ code: 'USD', name: 'US Dollar', minor_exponent: 2, symbol: '$' }]);
     }
     if (cmd === 'get_sync_settings_scoped') {
-      return Promise.resolve({ serverUrl: null, hasApiKey: false, enabled: false });
+      return Promise.resolve({ serverUrl: null, hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' });
     }
     if (cmd === 'get_user_preferences') {
       return Promise.resolve({ cardsize: '2', fontsize: '1', 'font-smoothing': 'antialiased' });
@@ -335,6 +335,8 @@ function SyncTestHost() {
     serverUrl: null,
     hasApiKey: false,
     enabled: false,
+    resolvedOrigin: 'https://license.kasir.mu',
+    resolvedOriginSource: 'main',
   });
   const [syncServerUrl, setSyncServerUrl] = useState('');
   const [syncApiKey, setSyncApiKey] = useState('');
@@ -635,7 +637,7 @@ describe('CloudSyncSettings', () => {
     expect(urlInput).toBeInTheDocument();
     expect(urlInput.type).toBe('url');
     // An unconfigured sync now gets the cloud-server draft URL.
-    expect(urlInput).toHaveValue('https://license.ozpos.my.id');
+    expect(urlInput).toHaveValue('https://license.kasir.mu');
   });
 
   it('updates server URL input value when typing', async () => {
@@ -693,7 +695,7 @@ describe('CloudSyncSettings', () => {
     // Override get_sync_settings to return hasApiKey: true
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
-        return Promise.resolve({ serverUrl: null, hasApiKey: true, enabled: false });
+        return Promise.resolve({ serverUrl: null, hasApiKey: true, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' });
       }
       return defaultImpl(cmd);
     });
@@ -873,7 +875,7 @@ describe('CloudSyncSettings', () => {
     // Override load to return a configured serverUrl
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
-        return Promise.resolve({ serverUrl: 'https://sync.example.com', hasApiKey: false, enabled: false });
+        return Promise.resolve({ serverUrl: 'https://sync.example.com', hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' });
       }
       return defaultImpl(cmd);
     });
@@ -887,7 +889,7 @@ describe('CloudSyncSettings', () => {
   it.skip('calls sync_run when Sync Now is clicked and displays result', async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
-        return Promise.resolve({ serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true });
+        return Promise.resolve({ serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' });
       }
       return defaultImpl(cmd);
     });
@@ -916,7 +918,7 @@ describe('CloudSyncSettings', () => {
     // dedicated "requires a paid plan" block, not a generic sync error.
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
-        return Promise.resolve({ serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true });
+        return Promise.resolve({ serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' });
       }
       if (cmd === 'sync_run_scoped') {
         return Promise.resolve({
@@ -947,7 +949,7 @@ describe('CloudSyncSettings', () => {
   it.skip('does not show the upgrade prompt for a generic sync error', async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
-        return Promise.resolve({ serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true });
+        return Promise.resolve({ serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' });
       }
       if (cmd === 'sync_run_scoped') {
         return Promise.resolve({
@@ -1086,7 +1088,7 @@ describe('CloudSyncSettings', () => {
   it.skip('renders Request Token button when server URL is set', async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
-        return Promise.resolve({ serverUrl: 'https://sync.example.com', hasApiKey: false, enabled: false });
+        return Promise.resolve({ serverUrl: 'https://sync.example.com', hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' });
       }
       return defaultImpl(cmd);
     });
@@ -1101,7 +1103,7 @@ describe('CloudSyncSettings', () => {
     const user = userEvent.setup();
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'get_sync_settings_scoped') {
-        return Promise.resolve({ serverUrl: 'https://sync.example.com', hasApiKey: false, enabled: false });
+        return Promise.resolve({ serverUrl: 'https://sync.example.com', hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' });
       }
       return defaultImpl(cmd);
     });
@@ -1340,7 +1342,7 @@ describe('CloudSyncSettings', () => {
     try {
       invokeMock.mockImplementation((cmd: string) => {
         if (cmd === 'get_sync_settings_scoped') {
-          return Promise.resolve({ serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true });
+          return Promise.resolve({ serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' });
         }
         return defaultImpl(cmd);
       });

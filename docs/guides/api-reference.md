@@ -123,7 +123,7 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`destroy_session`** [D+T] — Destroy an active session, invalidating the token.
 - **`has_users`** [D] — Check whether any staff accounts exist in the database.
 - **`impersonate_user_scoped`** [D+T] — Begin an operator impersonation session for support. The caller must present a valid operator session that holds the.
-- **`refresh_picker_ticket`** [D] — Mint a fresh picker ticket for a caller who already holds a valid session token.
+- **`refresh_picker_ticket`** [D+T] — Mint a fresh picker ticket for a caller who already holds a valid session token.
 - **`session_keepalive`** [D+T] — Refresh the current session's TTL so long-lived screens (analytics,
 - **`staff_check_username`** [D+T] — Check a username before the PIN step (STAFF-06).
 - **`staff_login`** [D+T] — Authenticate a staff member by username and PIN.
@@ -328,6 +328,16 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`remove_count_line_scoped`** [D+T] — Remove a line belonging to an editable count in the session's store.
 - **`update_count_line_scoped`** [D+T] — Update a line belonging to an editable count in the session's store.
 - **`update_stock_count_status_scoped`** [D+T] — Move an editable count to `in_progress` or `cancelled`.
+
+### `commands::desktop_link` (3)
+
+> Added 2026-09-26: these three shipped with ADR #54 §2.5 and were never listed here. The
+> `check-api-surface.py` checker had been unable to run since `apps/desktop-client` was renamed,
+> which is why nothing noticed; reviving it is what surfaced them.
+
+- **`link_device_google`** [D+T] — Link this device to the account that signs in with Google.
+- **`link_device_email_request`** [D+T] — Email a 6-digit code to the account address (the tablet's route).
+- **`link_device_email_consume`** [D+T] — Spend that code and link the device.
 
 ### `commands::kds` (14)
 
@@ -654,7 +664,7 @@ Product image slot assignment (slots 1..=5). The bytes live on disk; these comma
 - **`set_receipt_settings_scoped`** [D+T] — Set receipt settings resolved from a session token. ADR #7.
 - **`set_setting`** [D+T] — **Deprecated — use `set_setting_scoped` (ADR #7).**
 - **`set_setting_scoped`** [D+T] — Write (or overwrite) a single setting value resolved from a session token. ADR #7.
-- **`set_settings_scoped`** [D] — Write (or overwrite) multiple settings in a single transaction, resolved from a session token. ADR #7.
+- **`set_settings_scoped`** [D+T] — Write (or overwrite) multiple settings in a single transaction, resolved from a session token. ADR #7.
 - **`set_store_settings`** [T] — Set store settings.
 - **`set_store_settings_scoped`** [D+T] — Set store settings resolved from a session token. ADR #7.
 - **`set_user_preferences_scoped`** [D+T] — Set user preferences resolved from a session token. ADR #7.

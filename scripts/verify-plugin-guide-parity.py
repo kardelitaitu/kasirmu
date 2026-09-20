@@ -90,7 +90,7 @@ PHANTOM_CLI = {"run-script", "validate-plugins"}
 
 DESCRIPTION = (
     "Verify every oz.* binding and kasirmu-cli subcommand documented in "
-    "docs/plugin-guide.md is actually implemented in the Rust source. "
+    "docs/guides/plugin-guide.md is actually implemented in the Rust source. "
     "See the module docstring for rationale."
 )
 

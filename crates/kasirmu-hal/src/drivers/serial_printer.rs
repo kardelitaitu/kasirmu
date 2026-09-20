@@ -91,9 +91,20 @@ impl SerialReceiptPrinter {
             return Ok(());
         }
 
-        let mut port = open_port(&self.port_name, self.baud_rate)?;
-        port.set_timeout(std::time::Duration::from_secs(5))
-            .map_err(|e| HalError::Protocol(format!("serial set_timeout: {e}")))?;
+        // Same blocking-open hazard as the serial scanner: a Windows
+        // Bluetooth SPP or phantom port can hold `CreateFileW` for tens of
+        // seconds, so the open runs on a blocking thread rather than
+        // stalling a runtime worker inside this `async fn`.
+        let port_name = self.port_name.clone();
+        let baud_rate = self.baud_rate;
+        let port = spawn_blocking(move || {
+            let mut port = open_port(&port_name, baud_rate)?;
+            port.set_timeout(std::time::Duration::from_secs(5))
+                .map_err(|e| HalError::Protocol(format!("serial set_timeout: {e}")))?;
+            Ok::<Box<dyn serialport::SerialPort>, HalError>(port)
+        })
+        .await
+        .map_err(|e| HalError::Usb(format!("serial open join error: {e}")))??;
 
         *guard = Some(port);
         Ok(())

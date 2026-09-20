@@ -313,7 +313,17 @@ function scanCSS(filePath: string): Violation[] {
       if (colonIdx < 0) continue;
 
       const property = trimmed.slice(0, colonIdx).trim();
-      const value = trimmed.slice(colonIdx + 1).trim();
+      // `!important` is a cascade flag, not part of the value, so it is stripped
+      // ONCE here and every comparison below (isDesignToken / isExemptValue / the
+      // `value !== 'none'` and `/^\d/` tests) sees the bare value. Without this the
+      // scanner is blind to the flag: `box-shadow: none !important` read as a
+      // hardcoded shadow while `transition: none !important` and
+      // `transform: none !important` only escaped because those properties sit in
+      // NON_TOKEN_PROPS — the escape was a property accident, not a value reading.
+      // The strip is strictly PERMISSIVE: every exemption below is an exact-match
+      // or prefix test, so removing the suffix can only turn a violation into a
+      // pass, never the reverse.
+      const value = trimmed.slice(colonIdx + 1).replace(/!\s*important\s*$/i, '').trim();
 
       // Skip non-token-able properties
       if (NON_TOKEN_PROPS.has(property)) continue;
@@ -2573,7 +2583,7 @@ const UNRESOLVED_VAR_TOKENS_BASELINE: string[] = [
   "--bg-secondary", // 1
   "--border-color", // 8
   "--border-subtle", // 2 - settings/sections/DiagnosticsSection.css
-  "--color-surface-alt", // 1 - staff/RoleAuthoringScreen.css
+  "--color-surface-alt", // 1 - staff/components/RoleAuthoringPanel.css
   "--color-warning-pos-darker", // 1 - retail/RetailPosScreen.css
   "--danger-500", // 4 NO FALLBACK - a colour that renders nothing
   "--danger-700", // 1 NO FALLBACK
@@ -2741,7 +2751,7 @@ const FOREIGN_SCHEME_BASELINE: Array<[string, string, number]> = [
   ["--border-subtle", "ui/src/components/OrgSelector.css", 2],
   ["--border-subtle", "ui/src/components/OrgSwitcher.css", 5],
   ["--border-subtle", "ui/src/features/settings/sections/DiagnosticsSection.css", 2],
-  ["--color-surface-alt", "ui/src/features/staff/RoleAuthoringScreen.css", 1],
+  ["--color-surface-alt", "ui/src/features/staff/components/RoleAuthoringPanel.css", 1],
   ["--color-text-on-danger", "ui/src/components/StockAlertBell.css", 1],
   ["--color-warning-pos-darker", "ui/src/features/retail/RetailPosScreen.css", 1],
   ["--danger", "ui/src/components/OrgSwitcher.css", 1],
@@ -2934,6 +2944,11 @@ const TAILED_TOKEN_REFS = ALL_VAR_REFS.filter((r) => r.hasFallback && tailRelati
  * at 42e6c8201 -- 98 pairs / 156 sites, paid down to 83 pairs / 133 sites by
  * refactor(css): pay down the frozen literal tails the block gate can still certify. Shrink-only in BOTH directions, like the
  * two baselines above it.
+ *
+ * 83 pairs / 145 sites since the popup-modal exit animations landed (see the
+ * --modal-backdrop-blur note inside the array): 12 sites were ADDED, which is the one
+ * direction this list is not supposed to move, so it is recorded as a decision rather
+ * than absorbed. Pair count is unchanged -- no new sheet joined the family.
  */
 const DISAGREEING_TAIL_BASELINE: Array<[string, string, number]> = [
   ["--color-accent", "ui/src/features/sales/CartPanelCourseBar.css", 5],
@@ -2945,7 +2960,6 @@ const DISAGREEING_TAIL_BASELINE: Array<[string, string, number]> = [
   ["--color-accent-subtle", "ui/src/features/design/DevToolbar.css", 4],
   ["--color-accent-subtle-fg", "ui/src/features/locations/MultiStoreDashboardScreen.css", 1],
   ["--color-bg", "ui/src/theme/reset.css", 1],
-  ["--color-bg-elevated", "ui/src/features/sales/PromotionsModal.css", 1],
   ["--color-bg-hover", "ui/src/components/ConnectionStatus.css", 1],
   ["--color-bg-hover", "ui/src/features/auth/SessionLockScreen.css", 1],
   ["--color-bg-hover", "ui/src/features/auth/StaffLoginScreen.css", 2],
@@ -3012,11 +3026,20 @@ const DISAGREEING_TAIL_BASELINE: Array<[string, string, number]> = [
   ["--color-warning-dim", "ui/src/features/settings/SettingsPage.css", 1],
   ["--color-warning-fg", "ui/src/features/inventory/LocationPicker.css", 1],
   ["--color-warning-subtle", "ui/src/app/UpdateBanner.css", 1],
-  ["--modal-backdrop-blur", "ui/src/components/FastPINOverlay.css", 2],
-  ["--modal-backdrop-blur", "ui/src/components/QrisQrDisplay.css", 2],
+  // 2 -> 6 in the three sheets below: feat(ui): smooth 300ms backdrop blur and exit
+  // animations on popup modals gave `backdrop-filter` a value at BOTH keyframe stops
+  // of each fade-in/fade-out pair (the `to` of fade-in, the `from` of fade-out), and
+  // an animated backdrop-filter needs a value at every stop -- so this is not a
+  // spread that can simply be deleted. The fallback itself IS dead text (tokens.css
+  // declares --modal-backdrop-blur in both [data-theme] blocks), so the whole family
+  // can still be paid down by hoisting the token into :root and sweeping all 22
+  // sites; that sweep is blocked today by the 150-site floor on TAILED_TOKEN_REFS.
+  // KdsScreen.css and MemoBanner.css keep 2: their rules are not animated.
+  ["--modal-backdrop-blur", "ui/src/components/FastPINOverlay.css", 6],
+  ["--modal-backdrop-blur", "ui/src/components/QrisQrDisplay.css", 6],
   ["--modal-backdrop-blur", "ui/src/features/kds/KdsScreen.css", 2],
   ["--modal-backdrop-blur", "ui/src/features/memo/MemoBanner.css", 2],
-  ["--modal-backdrop-blur", "ui/src/theme/components.css", 2],
+  ["--modal-backdrop-blur", "ui/src/theme/components.css", 6],
   ["--neutral-300", "ui/src/theme/reset.css", 1],
   ["--neutral-400", "ui/src/theme/reset.css", 1],
 ];
@@ -3175,6 +3198,12 @@ function lhWhere(key: string): string {
  * (value @ sheet) key is spread, and a frozen key whose site count moved is
  * drift either way -- an added site and a silently deleted one read identically
  * to a one-directional check, which is the failure this repo keeps re-proving.
+ *
+ * Restated 2026-09-19: `1 @ ui/src/features/restaurant/RestaurantMenu.css` 2 -> 1.
+ * 748866eb6 rebuilt `.restaurant-size-btn` as a borderless capsule segment and dropped
+ * its `line-height: 1`; the segment centres its glyph with flex now, so the literal
+ * became NO step rather than a --leading-* one. A deletion is still a move, and this
+ * one is named here rather than left to read as a quiet green.
  */
 const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/components/QrisQrDisplay.css", 1],
@@ -3220,7 +3249,7 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/features/reports/CustomReportScreen.css", 1],
   ["1", "ui/src/features/reports/DashboardScreen.css", 1],
   ["1", "ui/src/features/reports/MenuEngineeringScreen.css", 1],
-  ["1", "ui/src/features/restaurant/RestaurantMenu.css", 2],
+  ["1", "ui/src/features/restaurant/RestaurantMenu.css", 1],
   ["1", "ui/src/features/retail/RetailPosScreen.css", 10],
   ["1.2", "ui/src/features/retail/RetailPosScreen.css", 3],
   ["1.3", "ui/src/features/retail/RetailPosScreen.css", 1],

@@ -58,6 +58,14 @@
 //! entry were shed after this header was written. The ceilings in the generated files
 //! carry the live numbers; this sentence is context, not a measurement the ratchet
 //! enforces.)
+//!
+//! Since 18-09-26 that predicate can write the file, not merely disagree with it:
+//! `drift_pin_generated_ledger_is_the_sweeps_own_output` checks the ledger against the
+//! measurement by default and is the generator under
+//! `KASIRMU_REGENERATE_GATE_LEDGER=1`, so "regenerated rather than typed" is a code path
+//! rather than an instruction. That leg's own doc comment carries the command, the scope
+//! of what it rewrites (the rows and two derived counts; never a pin or its history), and
+//! what it deliberately does not check.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -66,9 +74,24 @@ use std::path::{Path, PathBuf};
 #[path = "registration_gate_debt.generated.rs"]
 mod debt;
 
-/// The registered surface of this shell, measured 12-09-26. A moved include_str path
-/// must not be able to pass by finding nothing.
-const REGISTERED_FLOOR: usize = 319;
+/// The registered surface of this shell, measured from `../lib.rs` as 324 names on
+/// 20-09-26 (320 on 18-09-26, one more than the 319 the floor and the ledger's
+/// `REGISTERED_TOTAL` had carried together since the 09-16 passes). A moved include_str
+/// path must not be able to pass by finding nothing, and the ledger's total is asserted
+/// EQUAL to this, so the generator bringing that total current forces this number to move
+/// in the same pass.
+///
+/// The 20-09-26 step is named rather than counted, which is this file's convention:
+/// `3f0e8c4c3` registered `desktop_link::link_device_google` and `da6a4a8d4` registered
+/// `desktop_link::link_device_email_request` / `desktop_link::link_device_email_consume`,
+/// three names that arrived already ungated — so they moved a ceiling and three ledger
+/// rows too, and all four numbers moved together in the pass that raised this one.
+/// Raising this records what landed; it does not approve it. The earlier step is kept
+/// because it is the same story one order smaller: `b07e8c3ac` registered
+/// `pos::set_line_course_scoped` and `pos::publish_course_fired_scoped`, and `d29a7c0f4`
+/// retired `settings::set_hardware_settings`, netting one more name than the ledger's
+/// total recorded.
+const REGISTERED_FLOOR: usize = 324;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.
@@ -431,6 +454,208 @@ fn run_sweep() -> Sweep {
     Sweep { states, ungated }
 }
 
+// ── The ledger's generator, and the check that replaces hand-editing ──
+
+/// Opt-in switch for the generator leg: set it to `1` and that leg REWRITES the ledger
+/// from the measurement instead of checking it. Unset — the default, and what a normal
+/// `cargo test` run does — is the check.
+const REGENERATE_ENV: &str = "KASIRMU_REGENERATE_GATE_LEDGER";
+
+/// The generated ledger this ratchet compiles in.
+fn ledger_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands/registration_gate_debt.generated.rs")
+}
+
+/// The rows this sweep measures — name and class, in registration order.
+///
+/// `ungated` is filled in the same loop as `states`, so this is the ledger's content in
+/// the one order the measurement has. Nothing here sorts: a sort would be a second
+/// opinion about a set that already has an owner, and it would hide a row that moved
+/// position in `lib.rs` rather than merely one whose class changed.
+fn measured_ledger() -> Vec<(String, String)> {
+    run_sweep()
+        .ungated
+        .iter()
+        .map(|(name, state)| (name.clone(), state.key().to_string()))
+        .collect()
+}
+
+/// The (name, class) rows the ledger file declares, in file order.
+///
+/// Read by scanning the `DEBT_LEDGER` region for quoted literals in pairs rather than by
+/// parsing Rust: the file is generated data, so a reader that understands the shape the
+/// generator writes is exactly as strong as the generator — and this one panics when the
+/// shape is not there instead of returning an empty list, which is the failure mode every
+/// panel in this file refuses (an empty measurement asserts nothing).
+fn parse_ledger_rows(src: &str) -> Vec<(String, String)> {
+    let at = src.find("pub const DEBT_LEDGER").unwrap_or_else(|| {
+        panic!(
+            "the ledger declares no `DEBT_LEDGER`: this leg would be comparing against an \
+             empty list and passing"
+        )
+    });
+    let tail = &src[at..];
+    let end = tail.find("];").unwrap_or_else(|| {
+        panic!("`DEBT_LEDGER` is not terminated by `];`: the generator's own output shape changed")
+    });
+    let mut literals = Vec::new();
+    let mut rest = &tail[..end];
+    while let Some(open) = rest.find('"') {
+        let after = &rest[open + 1..];
+        let Some(close) = after.find('"') else {
+            break;
+        };
+        literals.push(after[..close].to_string());
+        rest = &after[close + 1..];
+    }
+    assert!(
+        literals.len() % 2 == 0,
+        "the ledger declares {} quoted literals, an odd number: every row is a (name, class) \
+         pair, so one of them lost a half",
+        literals.len()
+    );
+    literals
+        .chunks(2)
+        .map(|pair| (pair[0].clone(), pair[1].clone()))
+        .collect()
+}
+
+/// How the ledger and the measurement disagree, as four named lists — or `None` when they
+/// agree.
+///
+/// Named lists rather than a `Vec` equality assert: the ledger is ~100 rows, and
+/// `left: [...], right: [...]` in a panic message is a wall nobody reads. The sentence
+/// worth printing is which rows are new, which are paid, which changed class, and where
+/// the order first diverges — each of those is a different repair.
+fn ledger_diff(measured: &[(String, String)], declared: &[(String, String)]) -> Option<String> {
+    let measured_names: BTreeSet<&str> = measured.iter().map(|(n, _)| n.as_str()).collect();
+    let declared_names: BTreeSet<&str> = declared.iter().map(|(n, _)| n.as_str()).collect();
+    let new_debt: Vec<&str> = measured_names
+        .difference(&declared_names)
+        .copied()
+        .collect();
+    let paid: Vec<&str> = declared_names
+        .difference(&measured_names)
+        .copied()
+        .collect();
+    let mut mislabelled = Vec::new();
+    for (name, class) in measured {
+        if let Some((_, old)) = declared.iter().find(|(n, _)| n == name)
+            && old != class
+        {
+            mislabelled.push(format!("{name}: ledger says {old}, sweep measures {class}"));
+        }
+    }
+    let out_of_order: Option<String> = measured
+        .iter()
+        .zip(declared.iter())
+        .enumerate()
+        .find(|(_, (m, d))| m.0 != d.0)
+        .map(|(i, (m, d))| format!("row {i}: measured {} , ledger {}", m.0, d.0));
+    if new_debt.is_empty() && paid.is_empty() && mislabelled.is_empty() && out_of_order.is_none() {
+        return None;
+    }
+    Some(format!(
+        "new debt (measured, absent from the ledger): {new_debt:?}\n\
+         paid debt (on the ledger, no longer measured): {paid:?}\n\
+         class moved under a stale row: {mislabelled:?}\n\
+         first row out of order: {out_of_order:?}"
+    ))
+}
+
+/// rustfmt's own budget for one row of this array, measured rather than guessed: in both
+/// generated ledgers every row of 67 characters or fewer is written on one line and every
+/// row of 68 or more is broken over four. (`license::get_hardware_fingerprint`'s row is
+/// the longest inline one at 67; `health::ping_scoped`'s is the shortest wrapped one at
+/// 68.) The generator cannot ask rustfmt what it thinks — a leg that shelled out to it
+/// would fail wherever rustfmt is absent — so it carries the number, and a disagreement
+/// costs nothing that matters: `cargo fmt` re-wraps the row, and this leg compares ROWS
+/// rather than bytes, so it keeps passing.
+const RUSTFMT_ROW_BUDGET: usize = 67;
+
+/// `DEBT_LEDGER` rendered from measured rows — the declaration, one row per entry, and the
+/// terminator. A row is written on one line while that fits [`RUSTFMT_ROW_BUDGET`] and
+/// wrapped when it does not, so a regenerated ledger is a formatted file rather than one
+/// the next `cargo fmt` would rewrite. The terminator carries no trailing newline: the
+/// splicer leaves whatever followed `];` in the file alone, so adding one here would grow a
+/// blank line at every regeneration.
+fn render_ledger(rows: &[(String, String)]) -> String {
+    let mut out = String::from("pub const DEBT_LEDGER: &[(&str, &str)] = &[\n");
+    for (name, class) in rows {
+        let inline = format!("    (\"{name}\", \"{class}\"),");
+        if inline.chars().count() <= RUSTFMT_ROW_BUDGET {
+            out.push_str(&inline);
+            out.push('\n');
+        } else {
+            out.push_str(&format!(
+                "    (\n        \"{name}\",\n        \"{class}\",\n    ),\n"
+            ));
+        }
+    }
+    out.push_str("];");
+    out
+}
+
+/// The file with its DERIVED regions replaced: the ledger rows, the measured total, and
+/// `UNSOURCED`.
+///
+/// Deliberately surgical. The rest of that file is authored and stays authored: the
+/// header, and the pins with the decision history written above them (`DEBT_CEILING`, the
+/// two class counts). A pin is a decision — "debt may only shrink" is not something a
+/// sweep can measure — so a generator that recomputed one would be inventing policy, and a
+/// generator that reformatted the history above it would be destroying the record of why
+/// the number moved. Only what the tree can be asked about replaces what the file says.
+fn rendered_ledger_file(current: &str, rows: &[(String, String)], total: usize) -> String {
+    let at = current.find("pub const DEBT_LEDGER").unwrap_or_else(|| {
+        panic!(
+            "the ledger declares no `DEBT_LEDGER`: there is nothing for the generator to replace"
+        )
+    });
+    let tail = &current[at..];
+    let end = tail.find("];").unwrap_or_else(|| {
+        panic!("`DEBT_LEDGER` is not terminated by `];`: refusing to guess where it ends")
+    }) + "];".len();
+    let mut out = String::with_capacity(current.len());
+    out.push_str(&current[..at]);
+    out.push_str(&render_ledger(rows));
+    out.push_str(&current[at + end..]);
+    // `UNSOURCED` is 0 by construction: `run_sweep` panics on a registered name whose
+    // body it cannot find, so the sweep and the generator cannot disagree about it. It is
+    // still written rather than assumed, because a hand-edit to that line would otherwise
+    // be the one number in this file no leg reads.
+    replace_usize(
+        &replace_usize(&out, "REGISTERED_TOTAL", total),
+        "UNSOURCED",
+        0,
+    )
+}
+
+/// `pub const NAME: usize = N;` with N replaced, or a panic naming the declaration.
+///
+/// A pin the generator cannot find is a pin the generator would silently leave stale, so
+/// this refuses rather than skips.
+fn replace_usize(src: &str, name: &str, value: usize) -> String {
+    let needle = format!("pub const {name}: usize = ");
+    let Some(at) = src.find(&needle) else {
+        panic!("the ledger declares no `{name}`: the generator's own output shape changed")
+    };
+    let digits_at = at + needle.len();
+    let tail = &src[digits_at..];
+    let digits = tail
+        .find(';')
+        .unwrap_or_else(|| panic!("`{name}` is not terminated by `;`"));
+    assert!(
+        tail[..digits].chars().all(|c| c.is_ascii_digit()),
+        "`{name}` is not a decimal literal, so the generator will not rewrite it"
+    );
+    format!(
+        "{}{}{}",
+        &src[..digits_at],
+        value,
+        &src[digits_at + digits..]
+    )
+}
+
 /// A by-design exemption: four measured fields, and prose may be appended to an entry
 /// but may never be its only content.
 ///
@@ -715,6 +940,81 @@ fn drift_pin_debt_ceilings_only_shrink() {
             homeless.join(", ")
         },
     );
+}
+
+/// The generator, and the reason the ledger can no longer be hand-maintained.
+///
+/// The rows in `registration_gate_debt.generated.rs` are a pure function of the tree:
+/// `run_sweep()` — the same predicate every other leg in this file runs — measures them,
+/// and this leg either CHECKS the file against that measurement (the default) or REWRITES
+/// it (when `KASIRMU_REGENERATE_GATE_LEDGER=1`). One predicate, one code path, so "the
+/// ledger is what the sweep measures" is structural rather than a promise two separate
+/// implementations keep to each other. A second implementation is the fork this file has
+/// kept a single copy of `resolves_session` to avoid.
+///
+/// Regenerate with:
+///
+/// ```text
+/// KASIRMU_REGENERATE_GATE_LEDGER=1 cargo test -p kasirmu-mobile --lib \
+///     drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture
+/// ```
+///
+/// The check compares the ROWS — order, names, classes — and not the bytes: rustfmt may
+/// wrap a row this generator wrote inline, and re-wrapping is not the fact this leg is
+/// about. What it does catch is the drift the file exists to prevent: a gate that landed
+/// under a row nobody deleted, a row whose class stopped being true while its counts
+/// stayed inside their ceilings (the one thing the ceilings leg cannot see, because it
+/// compares class COUNTS and only names migrants when a ceiling is crossed), and a name
+/// typed from memory.
+///
+/// The measured TOTAL is written by the generator but deliberately NOT checked here:
+/// `REGISTERED_SLACK` allows the ledger to lag the tree between regenerations, and
+/// `drift_pin_registration_floor_is_met` is what pins this number to a value somebody had
+/// to choose.
+#[test]
+fn drift_pin_generated_ledger_is_the_sweeps_own_output() {
+    let rows = measured_ledger();
+    let path = ledger_path();
+    let current = read(&path);
+    let total = registered_names(LIB_RS).len();
+
+    if std::env::var(REGENERATE_ENV).as_deref() == Ok("1") {
+        let rendered = rendered_ledger_file(&current, &rows, total);
+        if rendered != current {
+            fs::write(&path, &rendered)
+                .unwrap_or_else(|e| panic!("cannot write {}: {e}", path.display()));
+        }
+        // A generator that cannot pass its own check is a generator that would let the
+        // next default run red on its own output, so the write is read back and checked
+        // here rather than trusted.
+        let written = read(&path);
+        assert_eq!(
+            ledger_diff(&rows, &parse_ledger_rows(&written)),
+            None,
+            "the regenerated ledger does not read back as the measurement it was written from"
+        );
+        assert!(
+            written.contains(&format!("pub const REGISTERED_TOTAL: usize = {total};")),
+            "the regenerated ledger did not take the measured registered total of {total}"
+        );
+        println!(
+            "regenerated {}: {} debt row(s), registered total {total}",
+            path.display(),
+            rows.len()
+        );
+        return;
+    }
+
+    if let Some(diff) = ledger_diff(&rows, &parse_ledger_rows(&current)) {
+        panic!(
+            "registration_gate_debt.generated.rs disagrees with this sweep. Regenerate it \
+             rather than editing it:\n  {REGENERATE_ENV}=1 cargo test -p kasirmu-mobile --lib \
+             drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture\n\
+             New debt needs its reason in docs/records/JOURNAL.md and a ceiling that still \
+             covers it; paid debt needs its row deleted in the same pass that lowers the \
+             ceiling. The disagreement:\n{diff}"
+        );
+    }
 }
 
 /// The four-field gate on the by-design side. Vacuous while the list is empty, and it

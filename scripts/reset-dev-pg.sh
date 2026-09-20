@@ -19,7 +19,7 @@
 #   docker run -d --name oz-pg-test-15432 \
 #     -e POSTGRES_PASSWORD=postgres \
 #     -p 127.0.0.1:15432:5432 \
-#     postgres:16-alpine
+#     postgres:17-alpine
 
 set -euo pipefail
 
@@ -40,7 +40,7 @@ if ! docker exec oz-pg-test-15432 psql -U postgres -d postgres -c "SELECT 1" &>/
     echo "     docker run -d --name oz-pg-test-15432 \\"
     echo "       -e POSTGRES_PASSWORD=postgres \\"
     echo "       -p 127.0.0.1:15432:5432 \\"
-    echo "       postgres:16-alpine"
+    echo "       postgres:17-alpine"
     exit 1
 fi
 

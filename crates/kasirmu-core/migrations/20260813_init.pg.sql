@@ -614,6 +614,21 @@ BEGIN
             ('midtrans_transactions', 'status', 'TEXT', '''issued''', true),
             ('midtrans_transactions', 'created_at', 'TEXT', NULL::text, true),
             ('midtrans_transactions', 'updated_at', 'TEXT', NULL::text, true),
+            ('entity_index_cursors', 'tenant_id', 'TEXT', '''default''', true),
+            ('entity_index_cursors', 'entity_kind', 'TEXT', NULL::text, true),
+            ('entity_index_cursors', 'next_value', 'BIGINT', '1', true),
+            ('entity_index_cursors', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('entity_index_tombstones', 'tenant_id', 'TEXT', '''default''', true),
+            ('entity_index_tombstones', 'entity_kind', 'TEXT', NULL::text, true),
+            ('entity_index_tombstones', 'index_id', 'BIGINT', NULL::text, true),
+            ('entity_index_tombstones', 'entity_id', 'TEXT', NULL::text, true),
+            ('entity_index_tombstones', 'label', 'TEXT', '''''', true),
+            ('entity_index_tombstones', 'retired_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('receipt_number_counters', 'tenant_id', 'TEXT', '''default''', true),
+            ('receipt_number_counters', 'terminal_idx', 'TEXT', NULL::text, true),
+            ('receipt_number_counters', 'fiscal_year', 'TEXT', NULL::text, true),
+            ('receipt_number_counters', 'counter', 'BIGINT', '0', true),
+            ('receipt_number_counters', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('exchange_rates', 'id', 'TEXT', NULL::text, true),
             ('exchange_rates', 'from_currency', 'TEXT', NULL::text, true),
             ('exchange_rates', 'to_currency', 'TEXT', NULL::text, true),
@@ -672,6 +687,7 @@ BEGIN
             ('users', 'emergency_contact_relationship', 'TEXT', NULL::text, false),
             ('users', 'hire_date', 'TEXT', NULL::text, false),
             ('users', 'national_id_hash', 'TEXT', NULL::text, false),
+            ('users', 'index_id', 'BIGINT', NULL::text, false),
             ('stock_adjustments', 'id', 'TEXT', NULL::text, true),
             ('stock_adjustments', 'count_id', 'TEXT', NULL::text, false),
             ('stock_adjustments', 'sku', 'TEXT', NULL::text, true),
@@ -726,6 +742,7 @@ BEGIN
             ('locations', 'legal_entity_id', 'TEXT', NULL::text, false),
             ('locations', 'locale', 'TEXT', '''''', true),
             ('locations', 'ticket_prefix', 'TEXT', '''''', true),
+            ('locations', 'index_id', 'BIGINT', NULL::text, false),
             ('fiscal_schemes', 'id', 'TEXT', NULL::text, true),
             ('fiscal_schemes', 'tenant_id', 'TEXT', '''default''', true),
             ('fiscal_schemes', 'legal_entity_id', 'TEXT', NULL::text, true),
@@ -819,6 +836,7 @@ BEGIN
             ('terminals', 'bound_instance_id', 'TEXT', NULL::text, false),
             ('terminals', 'binding_signature', 'TEXT', NULL::text, false),
             ('terminals', 'tenant_id', 'TEXT', '''default''', true),
+            ('terminals', 'index_id', 'BIGINT', NULL::text, false),
             ('user_location_access', 'user_id', 'TEXT', NULL::text, true),
             ('user_location_access', 'location_id', 'TEXT', NULL::text, true),
             ('user_location_access', 'access_level', 'TEXT', '''operator''', true),
@@ -943,6 +961,11 @@ BEGIN
             ('sales', 'service_charge_minor', 'BIGINT', '0', true),
             ('sales', 'statutory_number', 'TEXT', NULL::text, false),
             ('sales', 'tax_estimate_note', 'TEXT', NULL::text, false),
+            ('sales', 'terminal_id', 'TEXT', NULL::text, false),
+            ('sales', 'display_code', 'TEXT', NULL::text, false),
+            ('sales', 'faktur_pajak_nsfp', 'TEXT', NULL::text, false),
+            ('sales', 'faktur_pajak_kode_transaksi', 'TEXT', '''01''', true),
+            ('sales', 'faktur_pajak_status', 'TEXT', '''00''', true),
             ('inventory_shifts', 'id', 'TEXT', NULL::text, true),
             ('inventory_shifts', 'user_id', 'TEXT', NULL::text, true),
             ('inventory_shifts', 'location_id', 'TEXT', NULL::text, true),
@@ -1925,6 +1948,39 @@ CREATE TABLE IF NOT EXISTS midtrans_transactions (
     updated_at   TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS entity_index_cursors (
+    tenant_id    TEXT NOT NULL DEFAULT 'default',
+    entity_kind  TEXT NOT NULL
+                 CHECK (entity_kind IN ('location', 'terminal', 'user')),
+    next_value   BIGINT NOT NULL DEFAULT 1,   -- monotonic; never decremented, never reset
+    updated_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    PRIMARY KEY (tenant_id, entity_kind)
+);
+
+CREATE TABLE IF NOT EXISTS entity_index_tombstones (
+    tenant_id    TEXT NOT NULL DEFAULT 'default',
+    entity_kind  TEXT NOT NULL
+                 CHECK (entity_kind IN ('location', 'terminal', 'user')),
+    index_id     BIGINT NOT NULL,
+    entity_id    TEXT NOT NULL,
+    label        TEXT NOT NULL DEFAULT '',      -- name at retirement, display only
+    retired_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    PRIMARY KEY (tenant_id, entity_kind, index_id)
+);
+
+CREATE TABLE IF NOT EXISTS receipt_number_counters (
+    -- tenant_id is part of the key, not decoration: a terminal index is
+    -- unique PER TENANT, so in the shared cloud database tenant A's
+    -- terminal 01 and tenant B's terminal 01 would otherwise share one
+    -- counter row and interleave their sequences.
+    tenant_id     TEXT NOT NULL DEFAULT 'default',
+    terminal_idx  TEXT NOT NULL,   -- 2 hex digits, the terminal's index id
+    fiscal_year   TEXT NOT NULL,   -- 'YYYY', store-local; assumed calendar year
+    counter       BIGINT NOT NULL DEFAULT 0,
+    updated_at    TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    PRIMARY KEY (tenant_id, terminal_idx, fiscal_year)
+);
+
 CREATE TABLE IF NOT EXISTS exchange_rates (
     id              TEXT PRIMARY KEY,
     from_currency   TEXT NOT NULL REFERENCES currencies(code),
@@ -1993,13 +2049,16 @@ CREATE TABLE IF NOT EXISTS "users" (
     emergency_contact_relationship TEXT,
     hire_date TEXT,
     national_id_hash TEXT
-);
+, index_id BIGINT);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_national_id ON users(national_id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_national_id_hash ON users(national_id_hash);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_tenant_index_id
+    ON users (tenant_id, index_id) WHERE index_id IS NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_tenant_username ON users(tenant_id, username);
 
@@ -2081,10 +2140,13 @@ CREATE TABLE IF NOT EXISTS "locations" (
     created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 , tenant_id TEXT NOT NULL DEFAULT 'default', legal_entity_id TEXT
-    REFERENCES legal_entities(id) ON DELETE RESTRICT, locale TEXT NOT NULL DEFAULT '', ticket_prefix TEXT NOT NULL DEFAULT '');
+    REFERENCES legal_entities(id) ON DELETE RESTRICT, locale TEXT NOT NULL DEFAULT '', ticket_prefix TEXT NOT NULL DEFAULT '', index_id BIGINT);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_locations_primary
     ON locations(is_primary) WHERE is_primary = 1;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_locations_tenant_index_id
+    ON locations (tenant_id, index_id) WHERE index_id IS NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_locations_tenant_ticket_prefix
     ON locations (tenant_id, ticket_prefix)
@@ -2209,7 +2271,10 @@ CREATE TABLE IF NOT EXISTS terminals (
     metadata        TEXT,                   -- JSON blob for extra info
     created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-, bound_location_id TEXT REFERENCES "locations"(id), bound_instance_id TEXT, binding_signature TEXT, tenant_id TEXT NOT NULL DEFAULT 'default');
+, bound_location_id TEXT REFERENCES "locations"(id), bound_instance_id TEXT, binding_signature TEXT, tenant_id TEXT NOT NULL DEFAULT 'default', index_id BIGINT);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_terminals_tenant_index_id
+    ON terminals (tenant_id, index_id) WHERE index_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS "user_location_access" (
     user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -2396,7 +2461,10 @@ CREATE TABLE IF NOT EXISTS "sales" (
     pending_expires_at  TEXT,
     payment_reference   TEXT,
     captured_at         TEXT
-, tenant_id TEXT NOT NULL DEFAULT 'default', base_currency TEXT, base_total_minor BIGINT, tender_rate_millionths BIGINT, tip_minor BIGINT NOT NULL DEFAULT 0, service_charge_minor BIGINT NOT NULL DEFAULT 0, statutory_number TEXT, tax_estimate_note TEXT);
+, tenant_id TEXT NOT NULL DEFAULT 'default', base_currency TEXT, base_total_minor BIGINT, tender_rate_millionths BIGINT, tip_minor BIGINT NOT NULL DEFAULT 0, service_charge_minor BIGINT NOT NULL DEFAULT 0, statutory_number TEXT, tax_estimate_note TEXT, terminal_id TEXT, display_code TEXT, faktur_pajak_nsfp TEXT, faktur_pajak_kode_transaksi TEXT NOT NULL DEFAULT '01', faktur_pajak_status TEXT NOT NULL DEFAULT '00');
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_display_code
+    ON sales (tenant_id, display_code) WHERE display_code IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS inventory_shifts (
     id          TEXT PRIMARY KEY,                              -- UUID v7
@@ -3520,8 +3588,8 @@ INSERT INTO workspace_screens (id, workspace_key, screen_key, label, sort_order)
     (30, 'admin', 'design', '', 15)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at, tenant_id, legal_entity_id, locale, ticket_prefix) VALUES
-    ('default', 'Default Store', '', '', 'USD', 'UTC', 0, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'default', 'default:default-legal-entity', '', '')
+INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at, tenant_id, legal_entity_id, locale, ticket_prefix, index_id) VALUES
+    ('default', 'Default Store', '', '', 'USD', 'UTC', 0, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'default', 'default:default-legal-entity', '', '', NULL)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO workspace_instances (id, type_key, location_id, name, description, colour, status, last_accessed_at, created_at, updated_at, bound_location_id, purpose_key) VALUES
@@ -3558,12 +3626,12 @@ DO $$
 DECLARE
     t text;
 BEGIN
-    FOREACH t IN ARRAY ARRAY['bundle_items', 'edc_terminals', 'locations', 'media_assets', 'media_thumbnails', 'memo_locations',
-                            'memo_recipients', 'memos', 'midtrans_transactions', 'offline_queue', 'payment_gateways', 'payment_settlements',
-                            'product_activity', 'product_bundles', 'product_taxes', 'product_variants', 'products', 'refunds',
-                            'sale_idempotency', 'sale_lines', 'sales', 'sent_reports', 'stripe_customers', 'sync_conflicts',
-                            'sync_entity_vectors', 'sync_terminals', 'tax_rates', 'tenant_plans', 'tenant_subscription', 'user_location_access',
-                            'users']
+    FOREACH t IN ARRAY ARRAY['bundle_items', 'edc_terminals', 'entity_index_cursors', 'entity_index_tombstones', 'locations', 'media_assets',
+                            'media_thumbnails', 'memo_locations', 'memo_recipients', 'memos', 'midtrans_transactions', 'offline_queue',
+                            'payment_gateways', 'payment_settlements', 'product_activity', 'product_bundles', 'product_taxes', 'product_variants',
+                            'products', 'receipt_number_counters', 'refunds', 'sale_idempotency', 'sale_lines', 'sales',
+                            'sent_reports', 'stripe_customers', 'sync_conflicts', 'sync_entity_vectors', 'sync_terminals', 'tax_rates',
+                            'tenant_plans', 'tenant_subscription', 'user_location_access', 'users']
     LOOP
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
         IF NOT EXISTS (

@@ -109,6 +109,12 @@ const r = await tools.mcp__cbm__search_graph({
 | Coverage flags | 44 `parse_partial` files, 0 `skipped`, 174 files + 20 dirs excluded by design |
 | Exclusions | `.cbmignore` (build artifacts, node_modules, images, logs) — it deliberately un-excludes `scripts/`, `docs/`, `audit/` so prose and shell are searchable |
 
+**`oz-pos` is the graph's project key, not the brand — leave it.** The brand is `kasir.mu`, but
+this string is what the index was built under, so every `project: 'oz-pos'` argument below is a
+live locator: renaming it in this doc makes the calls read a graph that does not exist. It is
+explicitly allow-listed by `.agents/skills/skill-drift-guard/scripts/detect.sh` for that reason.
+Re-indexing under a new name is an infrastructure change, not a doc edit.
+
 **The index lags by however long it has been since the last commit — which can be
 weeks.** This graph sat 610 commits behind HEAD (generation 04-09-26) until 08-09-26,
 because `.githooks/post-commit` had been dead for 535 commits and every failure path

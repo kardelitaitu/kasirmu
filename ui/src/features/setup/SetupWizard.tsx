@@ -10,6 +10,7 @@ import { LocaleContext } from '@/i18n/LocaleContext';
 import { openUpgradePricing } from '@/utils/upgrade';
 import { detectDefaultCurrency } from '@/utils/currency';
 import LiveSetupPreview from './components/LiveSetupPreview';
+import StepAccount from './components/StepAccount';
 import './SetupWizard.css';
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -41,6 +42,7 @@ const STEPS = [
   'Hardware',
   'Business Rules',
   'Data & Cloud',
+  'Account',
   'Review',
 ] as const;
 
@@ -57,6 +59,7 @@ const STEP_IDS = [
   'hardware',
   'business-rules',
   'data-cloud',
+  'account',
   'review',
 ] as const;
 
@@ -495,7 +498,9 @@ export default function SetupWizard({ onComplete, onSkip, onLaunch }: SetupWizar
                 is not one of them — the gate is purely tier-driven). */}
             {step === 1 && <QrisSetupRow />}
 
-            {step === 7 && (
+            {step === 7 && <StepAccount />}
+
+            {step === 8 && (
               <StepReview
                 preset={preset}
                 features={features}
@@ -506,7 +511,7 @@ export default function SetupWizard({ onComplete, onSkip, onLaunch }: SetupWizar
             )}
 
             {/* Side preview panel on preset & review steps */}
-            {(step === 0 || step === 7) && (
+            {(step === 0 || step === 8) && (
               <LiveSetupPreview
                 selectedFeatures={new Set(Object.keys(features).filter((k) => features[k]))}
               />

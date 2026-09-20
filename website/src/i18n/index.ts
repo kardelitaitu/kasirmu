@@ -12,6 +12,22 @@ export function t(locale: string, key: string): string {
   return typeof value === 'string' ? value : key;
 }
 
+/**
+ * Build the key→string map a hydrated island receives as a prop.
+ *
+ * Server-side only: this is the one place the dictionaries are read for an
+ * island, so the island itself can import `./labels` (no dictionary) instead of
+ * this module. `keys` is the island's own exported list — one owner per island.
+ *
+ * Strictly a subset of the locale's strings; a missing key resolves to the key
+ * text, which `island-label-coverage.test.ts` prevents from shipping.
+ */
+export function labelMap(locale: string, keys: readonly string[]): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const key of keys) map[key] = t(locale, key);
+  return map;
+}
+
 /** Raw dict for structured content (arrays/objects), e.g. `dict(locale).features.items`. */
 export function dict(locale: string): Record<string, unknown> {
   return dicts[(locale as Locale)] ?? en;

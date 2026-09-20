@@ -3,21 +3,33 @@ export function getStaticPaths() {
   return [{ params: { locale: 'en' } }, { params: { locale: 'id' } }];
 }
 import Base from '../../layouts/Base.astro';
-import AuthForm from '../../components/AuthForm.tsx';
-import { t } from '../../i18n';
+import AuthForm, { AUTH_FORM_LABELS } from '../../components/AuthForm.tsx';
+import { labelMap, t } from '../../i18n';
+import { isNonPublic } from '../../lib/site';
 
 const locale = Astro.currentLocale ?? 'en';
+// The island's strings travel with the document, so the browser never loads a
+// locale dictionary (see src/i18n/labels.ts).
+const formLabels = labelMap(locale, AUTH_FORM_LABELS);
 const pageTitle = `kasir.mu — ${t(locale, 'login.title')}`;
+// noindex is derived from the same NON_PUBLIC_PAGES list the sitemap filter
+// and llms.txt use (src/lib/site.ts) — the three surfaces cannot disagree.
+const noindex = isNonPublic(Astro.url.pathname);
 ---
 
-<Base title={pageTitle} description={t(locale, 'pageDesc.login')} noindex>
+<Base title={pageTitle} description={t(locale, 'pageDesc.login')} noindex={noindex}>
   <section class="mx-auto max-w-6xl px-4 py-20">
     <div data-reveal class="mb-10 text-center">
       <h1 class="text-3xl font-bold">{t(locale, 'login.title')}</h1>
       <p class="mx-auto mt-3 max-w-md text-muted">{t(locale, 'login.subtitle')}</p>
     </div>
     <div data-reveal>
-      <AuthForm client:load locale={locale} />
+      <AuthForm
+          client:load
+          locale={locale}
+          labels={formLabels}
+          oauthReason={Astro.url.searchParams.get('oauth') ?? undefined}
+        />
     </div>
   </section>
 </Base>

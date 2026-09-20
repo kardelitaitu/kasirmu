@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { useVersionStatus } from '@/hooks/useVersionStatus';
 import { createBackup } from '@/api/data';
+import { openExternalUrl } from '@/api/browser';
 import { getSetting, setSetting } from '@/api/settings';
 import { plainErrorMessage } from '@/utils/app-error';
 import './UpdateBanner.css';
@@ -177,12 +178,13 @@ async function persistUpdaterSetting(key: string, value: string): Promise<void> 
   // ── Rollback handler ──────────────────────────────────────────
   const handleRollback = useCallback(() => {
     // Open the GitHub releases page so the user can download the previous version.
+    // Routed through `openExternalUrl` rather than `window.open` — see the note
+    // there. `openUrl` hands the URL to the OS browser, which also focuses it,
+    // so the old `win.focus()` dance has nothing left to do.
     if (previousVersion) {
-      const win = window.open(
+      void openExternalUrl(
         `https://github.com/kardelitaitu/oz-pos/releases/tag/v${previousVersion}`,
-        '_blank',
       );
-      if (win) win.focus();
     }
   }, [previousVersion]);
 

@@ -1,6 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 
 /**
+ * The one media query the app treats as "we are in landscape".
+ *
+ * CSS cannot import a JS string, so this literal is duplicated in the sheets
+ * that branch on orientation (`ui/src/features/setup/SetupWizard.css`). Keep
+ * the two in step: a mismatch means the JS structure and the CSS layout
+ * disagree about which orientation is active, which shows up as a screen that
+ * is laid out for landscape but sized for portrait.
+ */
+export const LANDSCAPE_QUERY = '(orientation: landscape)';
+
+/**
  * Current screen orientation state.
  */
 export interface OrientationState {
@@ -135,16 +146,52 @@ export function useOrientation(
   }, [initialLock, supported]);
 
   // Listen for orientation changes + window resize.
+  //
+  // Three triggers, because no single one is sufficient on every host:
+  //  - `orientationchange` is the semantic event, but it fires BEFORE the
+  //    viewport has settled, so reading `innerWidth` inside it returns the OLD
+  //    dimensions — the classic stale-read bug;
+  //  - `resize` fires after the viewport settles, but several times per
+  //    rotation;
+  //  - `matchMedia('(orientation: landscape)')` fires exactly once, after the
+  //    switch, so it is the trigger that corresponds to one rotation.
+  //
+  // `setOrientation` bails out when nothing changed (it returns the previous
+  // object, and an identical reference makes React skip the re-render), so the
+  // `resize` burst during a rotation costs one render rather than N.
   useEffect(() => {
     const handleChange = () => {
-      setOrientation(getOrientationState());
+      setOrientation((prev) => {
+        const next = getOrientationState();
+        if (
+          prev.isLandscape === next.isLandscape &&
+          prev.angle === next.angle &&
+          prev.viewportWidth === next.viewportWidth &&
+          prev.viewportHeight === next.viewportHeight
+        ) {
+          return prev;
+        }
+        return next;
+      });
     };
 
     window.addEventListener('orientationchange', handleChange);
     window.addEventListener('resize', handleChange);
+
+    // The media query is an OPTIONAL extra trigger, not the source of truth:
+    // `isLandscape` stays derived from the live viewport so it cannot disagree
+    // with what CSS is actually laying out. Some embedded hosts and older
+    // jsdom builds have no `matchMedia` at all, so guard rather than require.
+    let mql: MediaQueryList | null = null;
+    if (typeof window.matchMedia === 'function') {
+      mql = window.matchMedia(LANDSCAPE_QUERY);
+      mql.addEventListener('change', handleChange);
+    }
+
     return () => {
       window.removeEventListener('orientationchange', handleChange);
       window.removeEventListener('resize', handleChange);
+      mql?.removeEventListener('change', handleChange);
     };
   }, [getOrientationState]);
 

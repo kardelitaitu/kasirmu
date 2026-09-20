@@ -3,7 +3,7 @@ name: tauri-ipc
 description: Tauri v2 command and front-end API conventions for kasir.mu — where Rust commands live, how they are registered, and how the React/TypeScript front-end calls them. Use when adding a new IPC surface or wiring a new feature end-to-end.
 ---
 
-<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — command example rewritten to the real add_line_scoped(session_token, args, state) pattern with resolve_session + permission check; registration example now uses the module-qualified commands::<mod>:: names and real reports commands (get_daily_revenue_scoped etc. — daily_summary/export_csv do not exist); api wrapper example corrected to the real sales.ts pattern: loggedInvoke from utils/logged-invoke (bare @tauri-apps imports inside api/ are allowed but unused there); TS error guidance corrected — AppError is serde-tagged with a camelCase kind discriminator, there is no AppError class to instanceof on the TS side; hook example shadowing bug fixed; test checklist item aligned with the sibling *_tests.rs convention (51 such files under commands/)) · prior: 2026-08-31 docs-auditor rev (F1 fictional payments.rs removed, ~47 modules, *_scoped ADR #7 documented, per-domain api files) · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-08-31] · docs-auditor · status: ACCURATE (F1 repaired + scoped-IPC documented) · F1 FIXED: Layout/registration examples no longer reference the fictional payments.rs (payment commands are split, e.g. void.rs/gift_cards.rs); noted ~47 command modules, not 5 · NEW: golden rule 6 documents the *_scoped convention (ADR #7 Data Scope Guard) — the dominant pattern at HEAD (101 files) previously undocumented; registration example now shows pos::start_sale_scoped/complete_sale_scoped (verified at HEAD) · FIXED: 'pos.ts is the only entry point' corrected to per-domain ui/src/api/<feature>.ts (matches rule 3; real files currency.ts/edc.ts/hardware.ts/…); sales::→pos:: · verified accurate: commands/ dir, pos.rs/inventory.rs/hardware.rs/reports.rs present, AppError in error.rs, invoke_handler(generate_handler![…]) in lib.rs, State<AppState> + async Result<T,AppError> convention -->
+<!-- Audit stamp: 2026-09-19 · Budak-Korporat · status: ACCURATE (rev 3 — golden rules 1 and 2 rewritten to name BOTH shells and new rule 7 added: a command only one shell registers is a parity gap that only scripts/verify-ipc-parity.py can see; the checklist's registration item and pitfall 8 now say the same; Layout shows apps/mobile-tauri. Learned from f49170d3d, where the avatar feature shipped desktop-only while the shared PosScreen restaurant sidebar, which the tablet shell also mounts, invoked it) · prior: 2026-09-03 · DSH · status: ACCURATE (rev 2 — command example rewritten to the real add_line_scoped(session_token, args, state) pattern with resolve_session + permission check; registration example now uses the module-qualified commands::<mod>:: names and real reports commands (get_daily_revenue_scoped etc. — daily_summary/export_csv do not exist); api wrapper example corrected to the real sales.ts pattern: loggedInvoke from utils/logged-invoke (bare @tauri-apps imports inside api/ are allowed but unused there); TS error guidance corrected — AppError is serde-tagged with a camelCase kind discriminator, there is no AppError class to instanceof on the TS side; hook example shadowing bug fixed; test checklist item aligned with the sibling *_tests.rs convention (51 such files under commands/)) · prior: 2026-08-31 docs-auditor rev (F1 fictional payments.rs removed, ~47 modules, *_scoped ADR #7 documented, per-domain api files) · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-08-31] · docs-auditor · status: ACCURATE (F1 repaired + scoped-IPC documented) · F1 FIXED: Layout/registration examples no longer reference the fictional payments.rs (payment commands are split, e.g. void.rs/gift_cards.rs); noted ~47 command modules, not 5 · NEW: golden rule 6 documents the *_scoped convention (ADR #7 Data Scope Guard) — the dominant pattern at HEAD (101 files) previously undocumented; registration example now shows pos::start_sale_scoped/complete_sale_scoped (verified at HEAD) · FIXED: 'pos.ts is the only entry point' corrected to per-domain ui/src/api/<feature>.ts (matches rule 3; real files currency.ts/edc.ts/hardware.ts/…); sales::→pos:: · verified accurate: commands/ dir, pos.rs/inventory.rs/hardware.rs/reports.rs present, AppError in error.rs, invoke_handler(generate_handler![…]) in lib.rs, State<AppState> + async Result<T,AppError> convention -->
 # Tauri IPC & Front-end API
 
 kasir.mu uses Tauri v2 to bridge Rust and a React/TypeScript front-end. The IPC boundary is the single most important architectural seam in the app: every command is a contract, and every contract must be in the right place.
@@ -24,18 +24,22 @@ kasir.mu uses Tauri v2 to bridge Rust and a React/TypeScript front-end. The IPC 
 
 | # | Rule | Why |
 |---|------|-----|
-| 1 | **Rust commands live in `apps/desktop-tauri/src/commands/<feature>.rs`.** | One folder, one feature, easy to find. |
-| 2 | **All commands are registered in `apps/desktop-tauri/src/lib.rs`.** | Registration lives next to `Builder::default()` in the `invoke_handler!` list. |
+| 1 | **Rust commands live in `apps/<shell>-tauri/src/commands/<feature>.rs`** — `apps/desktop-tauri` and `apps/mobile-tauri` (the tablet shell). | One folder per feature per shell, easy to find. |
+| 2 | **A command is registered in BOTH shells' `lib.rs`**, or the shell that lacks it is recorded in `scripts/ipc-parity-allowlist.json`. | Registration lives next to `Builder::default()` in each `invoke_handler!` list, and the two lists are not the same list. |
 | 3 | **Front-end calls go through `ui/src/api/` (per-domain files).** Components never call `invoke()` directly. |
 | 4 | **Every command is `async fn` and returns `Result<T, AppError>`.** | Errors are typed on both sides; no stringified blobs. |
 | 5 | **Every command takes its dependencies via `tauri::State<...>`.** | No globals, no thread-locals. |
 | 6 | **Multi-store commands ship a `*_scoped` variant** that resolves the store from the session token (ADR #7 Data Scope Guard). Register and call the scoped form; the unscoped form is deprecated and largely unregistered at HEAD. | Tenant isolation is enforced at the command boundary, not in the UI. |
+| 7 | **A command only ONE shell registers is a parity gap, and only `python scripts/verify-ipc-parity.py` can see it.** | `ui/` is shared by both shells, so a screen the tablet mounts can call a command only the desktop registered. The registration ratchet sweeps just the names a shell already registers, so a command that was never registered produces no row and no red. |
 
 ---
 
 ## Layout
 
-├── apps/desktop-tauri/
+├── apps/desktop-tauri/              # the desktop shell
+├── apps/mobile-tauri/               # the tablet shell — the same commands/ layout
+│                                    #   below, but its OWN lib.rs registration list;
+│                                    #   neither list contains the other
 └── src/
     ├── main.rs                      # thin entry point — calls kasirmu_app_lib::run()
     ├── lib.rs                       # the run() function: app setup + command registration
@@ -275,7 +279,7 @@ export async function onBarcodeScan(
 
 - [ ] Rust: define `*Args` and `*Result` types in `commands/<feature>.rs`.
 - [ ] Rust: write the `#[tauri::command] async fn` taking `State<'_, AppState>`.
-- [ ] Rust: register the command in `lib.rs`'s `invoke_handler!` list.
+- [ ] Rust: register the command in `lib.rs`'s `invoke_handler!` list — in **both** `apps/desktop-tauri` and `apps/mobile-tauri`, or allowlist the shell that lacks it in `scripts/ipc-parity-allowlist.json` with its reason. Then run `python scripts/verify-ipc-parity.py`.
 - [ ] TS: define `*Args` and `*Result` interfaces in `ui/src/api/<feature>.ts`.
 - [ ] TS: write the `invoke<>('cmd_name', { args })` wrapper.
 - [ ] TS: create a hook in `ui/src/features/<feature>/` that calls the wrapper.
@@ -295,6 +299,7 @@ export async function onBarcodeScan(
 5. **Reusing a domain type from `kasirmu-core` directly in a command's `*Result`** without wrapping. Tauri serializes via JSON, and internal fields may include `i64` IDs that the JS side can't represent. Wrap with a serializable `Id(String)` or similar.
 6. **`State<'_, T>` borrowing across an `await`** — fine on the outer `async fn`, but if you call helper functions, pass `&T` from the state, not the `State` guard.
 7. **Returning raw `Money.minor_units` into the UI without a renderer.** The number is correct but `123456` cents reads as "123,456" in the UI. Render through the front-end's `formatMoney` helper (`ui/src/types/domain.ts`).
+8. **Registering a command in one shell only.** `ui/` is shared, so a screen the tablet mounts can invoke a command only the desktop registered; the invoke then rejects at runtime, and if the caller swallows the rejection (`.catch()`) it fails *silently* — which is how the avatar read shipped broken on the tablet while every other gate stayed green. The registration ratchet cannot see it, because it sweeps only the names a shell already registers. `python scripts/verify-ipc-parity.py` is the only instrument that walks the UI's invoke sites: run it after adding any command. Adding the missing shim is usually ledger-neutral — when the bridge module's own file names a permission, the sweep reads a shim that delegates to it as gated.
 
 ---
 
@@ -307,4 +312,4 @@ export async function onBarcodeScan(
 
 ---
 
-> last audited 18-09-26 by Budak-Korporat
+> last audited 19-09-26 by Budak-Korporat

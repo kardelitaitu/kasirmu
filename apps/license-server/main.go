@@ -260,6 +260,9 @@ func main() {
 		// credential out of URLs (which would otherwise leak it to webserver
 		// access logs, CDN logs, browser history, and Referer headers).
 		se.Router.POST("/api/v1/license/status", handleStatus(app))
+		// Origin attestation (ADR #55): unauthenticated by design -- the client has
+		// no credential until it has attested the host it is about to use.
+		se.Router.POST("/api/v1/license/attest", handleAttest(app))
 		// C3.3: Pause/resume subscription endpoints
 		se.Router.POST("/api/v1/license/pause", handlePause(app))
 		se.Router.POST("/api/v1/license/resume", handleResume(app))
@@ -300,9 +303,23 @@ func main() {
 		// a session to the Worker without the token ever appearing in a URL.
 		se.Router.POST("/api/v1/web/exchange-issue", handleExchangeIssue(app))
 		se.Router.POST("/api/v1/web/exchange-consume", handleExchangeConsume(app))
+		// Google sign-in (ADR #54): start redirects to the consent screen, callback
+		// completes the flow and hands the Worker a one-time code.
+		se.Router.GET("/api/v1/web/oauth/google/start", handleWebOAuthGoogleStart(app))
+		se.Router.GET("/api/v1/web/oauth/google/callback", handleWebOAuthGoogleCallback(app))
+		// Desktop device link (ADR #54 §2.5).
+		se.Router.POST("/api/v1/desktop/link/google/start", handleDesktopLinkStart(app))
+		se.Router.GET("/api/v1/desktop/link/google/callback", handleDesktopLinkCallback(app))
+		se.Router.POST("/api/v1/desktop/link/consume", handleDesktopLinkConsume(app))
+		// The emailed-code alternative (ADR #54 §2.6): no browser, so the tablet can use it.
+		se.Router.POST("/api/v1/desktop/link/email/request", handleDesktopLinkEmailRequest(app))
+		se.Router.POST("/api/v1/desktop/link/email/consume", handleDesktopLinkEmailConsume(app))
 		// User dashboard (ADR #42 Phase 2) — session-authed read endpoints.
 		se.Router.GET("/api/v1/web/usage", handleWebUsage(app))
 		se.Router.GET("/api/v1/web/devices", handleWebDevices(app))
+		// Linked sign-in methods (ADR #54).
+		se.Router.GET("/api/v1/web/identities", handleWebIdentities(app))
+		se.Router.DELETE("/api/v1/web/identities/{id}", handleWebUnlinkIdentity(app))
 		se.Router.POST("/api/v1/web/devices/{id}/revoke", handleWebRevokeDevice(app))
 		// Admin dashboard (ADR #42 Phase 3) — OZ_ADMIN_KEY gated.
 		se.Router.GET("/api/v1/admin/tenants", handleAdminListTenants(app))
@@ -346,6 +363,14 @@ func main() {
 		// warning). Idempotent: trial_email_log prevents double-sends.
 		if err := ensureTrialEmailLogCollection(app); err != nil {
 			log.Printf("warning: failed to create trial_email_log collection: %v", err)
+		}
+		// Federated identity links (ADR #54): created programmatically so a fresh
+		// volume and an existing one take the same path.
+		if err := ensureTenantIdentitiesCollection(app); err != nil {
+			return err
+		}
+		if err := ensureIdentityEventsCollection(app); err != nil {
+			return err
 		}
 		go startTrialEmailScheduler(app)
 
@@ -1093,6 +1118,19 @@ type SubscriptionPayload struct {
 	Features map[string]bool `json:"features,omitempty"`
 }
 
+// signDetached signs arbitrary bytes with the license RSA-2048 key using
+// PKCS1v15/SHA-256 and returns the base64 signature. Origin attestation
+// (ADR #55) needs the same primitive the subscription payloads use, and one
+// implementation of a signing primitive is the point.
+func signDetached(payload []byte) (string, error) {
+	hash := sha256.Sum256(payload)
+	sig, err := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, hash[:])
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(sig), nil
+}
+
 // signSubscription marshals the payload to JSON, SHA-256 hashes it,
 // and signs it with the RSA-2048 private key using PKCS1v15.
 func signSubscription(sub SubscriptionPayload) (payload string, signature string, err error) {
@@ -1105,10 +1143,9 @@ func signSubscription(sub SubscriptionPayload) (payload string, signature string
 	if err != nil {
 		return "", "", err
 	}
-	hash := sha256.Sum256(payloadBytes)
-	sig, err := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, hash[:])
+	signature, err = signDetached(payloadBytes)
 	if err != nil {
 		return "", "", err
 	}
-	return string(payloadBytes), base64.StdEncoding.EncodeToString(sig), nil
+	return string(payloadBytes), signature, nil
 }

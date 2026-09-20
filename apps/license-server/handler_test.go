@@ -324,9 +324,30 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		se.Router.POST("/api/v1/web/logout", handleLogout(app))
 		se.Router.POST("/api/v1/web/exchange-issue", handleExchangeIssue(app))
 		se.Router.POST("/api/v1/web/exchange-consume", handleExchangeConsume(app))
+		// The identity collection is created programmatically in production; the test
+		// app mirrors that boot step so a scenario can exercise the callback.
+		if err := ensureTenantIdentitiesCollection(app); err != nil {
+			return err
+		}
+		if err := ensureIdentityEventsCollection(app); err != nil {
+			return err
+		}
+		// Google sign-in (ADR #54).
+		se.Router.GET("/api/v1/web/oauth/google/start", handleWebOAuthGoogleStart(app))
+		se.Router.GET("/api/v1/web/oauth/google/callback", handleWebOAuthGoogleCallback(app))
+		// Desktop device link (ADR #54 §2.5).
+		se.Router.POST("/api/v1/desktop/link/google/start", handleDesktopLinkStart(app))
+		se.Router.GET("/api/v1/desktop/link/google/callback", handleDesktopLinkCallback(app))
+		se.Router.POST("/api/v1/desktop/link/consume", handleDesktopLinkConsume(app))
+		// The emailed-code alternative (ADR #54 §2.6): no browser, so the tablet can use it.
+		se.Router.POST("/api/v1/desktop/link/email/request", handleDesktopLinkEmailRequest(app))
+		se.Router.POST("/api/v1/desktop/link/email/consume", handleDesktopLinkEmailConsume(app))
 		// ADR #42 dashboard endpoints (user + admin).
 		se.Router.GET("/api/v1/web/usage", handleWebUsage(app))
 		se.Router.GET("/api/v1/web/devices", handleWebDevices(app))
+		// Linked sign-in methods (ADR #54).
+		se.Router.GET("/api/v1/web/identities", handleWebIdentities(app))
+		se.Router.DELETE("/api/v1/web/identities/{id}", handleWebUnlinkIdentity(app))
 		se.Router.POST("/api/v1/web/devices/{id}/revoke", handleWebRevokeDevice(app))
 		se.Router.GET("/api/v1/admin/tenants", handleAdminListTenants(app))
 		se.Router.GET("/api/v1/admin/tenants/{id}", handleAdminGetTenant(app))
@@ -1169,6 +1190,10 @@ func resetRateLimiters() {
 	exchangeConsumeLimiter.mu.Lock()
 	exchangeConsumeLimiter.entries = make(map[string]*windowEntry)
 	exchangeConsumeLimiter.mu.Unlock()
+
+	oauthStartLimiter.mu.Lock()
+	oauthStartLimiter.entries = make(map[string]*windowEntry)
+	oauthStartLimiter.mu.Unlock()
 
 	// Escalating brute-force login lockout (login_lockout.go) — clear so
 	// tests that exercise repeated failed attempts start from a clean slate.

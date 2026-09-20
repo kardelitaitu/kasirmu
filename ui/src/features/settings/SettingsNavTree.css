@@ -8,8 +8,19 @@
 /* ── Sidebar ──────────────────────────────────────────────── */
 
 .settings-sidebar {
-  width: 15.625rem;
-  min-width: 15.625rem;
+  /* Restored to the ORIGINAL design width (18.75rem, logged as 300px in
+     b9ba142e3 where the root font was 16px). That commit narrowed it to
+     15.625rem for the icons-only collapse animation and the app's rem has
+     since become 14px, so "250px" now renders as 218.75px — the expanded
+     sidebar lost ~81px from the design and every long nav label ellipsised
+     ("Licens…", "Devic…", "Busin…"). Measured in the browser at 14px rem:
+     15.625rem = 218.8px -> 11 of 14 labels clipped; 18.75rem = 262.5px -> 0.
+     The harshest row needs the width because it carries BOTH a subpage indent
+     (padding-left: space-3 + space-4) and a "Plus+" badge; 18.25rem is the
+     first clean value, so 18.75rem keeps headroom for a future longer label.
+     Do not re-narrow this without re-checking the label census. */
+  width: 18.75rem;
+  min-width: 18.75rem;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -249,10 +260,26 @@
 /* The nav item's <Tooltip> wrapper is now the flex item (the button moved
    inside it), so the wrapper must absorb the free width and the button must
    fill the wrapper. The direct-child form is kept for the search-results
-   branch, where the item button is not tooltip-wrapped. */
-.settings-nav-item-wrapper > .tooltip-wrapper {
+   branch, where the item button is not tooltip-wrapped.
+
+   The pin button's own `<Tooltip fit="inline">` ALSO emits a bare
+   `.tooltip-wrapper` as this row's SECOND child, so the unscoped rule handed
+   `flex: 1` to both children and split the row 50/50: measured at 1600px the
+   label fell from its natural 134px to 49.9px and every long name ellipsised
+   to "Licens…", "Devic…", "Busin…". Excluded by the `--inline` flag
+   (Tooltip.tsx:225 sets it for exactly this small-icon case) so only the
+   label's wrapper takes the free width and the pin wrapper stays
+   content-sized — which is what lets `.settings-nav-pin-btn`'s own
+   `width: 1.5rem` / `margin-left: auto` mean anything. Both render branches
+   are covered: the pinned list puts the button directly in the row and its
+   pin in the inline wrapper, the main list tooltip-wraps each. */
+.settings-nav-item-wrapper > .tooltip-wrapper:not(.tooltip-wrapper--inline) {
   flex: 1;
   min-width: 0;
+}
+
+.settings-nav-item-wrapper > .tooltip-wrapper--inline {
+  flex: 0 0 auto;
 }
 
 .settings-nav-item-wrapper > button.settings-nav-item,

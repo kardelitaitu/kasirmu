@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { labelMap } from '../../i18n';
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -19,9 +20,9 @@ async function renderContact(locale: string) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
-  const { default: ContactForm } = await import('../ContactForm');
+  const { default: ContactForm, SUPPORT_LABELS } = await import('../ContactForm');
   await act(async () => {
-    root.render(<ContactForm locale={locale} />);
+    root.render(<ContactForm labels={labelMap(locale, SUPPORT_LABELS)} />);
     await new Promise((r) => setTimeout(r, 10));
   });
   return { container, root };

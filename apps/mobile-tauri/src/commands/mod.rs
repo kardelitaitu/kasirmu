@@ -13,6 +13,8 @@ pub mod audit;
 pub mod auth;
 /// Authorization commands.
 pub mod authz;
+/// Own-avatar read command — ADR #49 shim over `kasirmu_bridge::avatars`.
+pub mod avatars;
 /// Store branding commands.
 pub mod branding;
 /// External-browser commands (ADR #38).
@@ -25,6 +27,8 @@ pub mod categories;
 pub mod currencies;
 /// Customer CRUD commands.
 pub mod customers;
+/// Device-link commands (ADR #54 §2.5).
+pub mod desktop_link;
 /// Exchange-rate commands.
 pub mod exchange_rates;
 /// Feature-flag commands.
@@ -98,6 +102,10 @@ pub mod tables;
 pub mod tax;
 /// Payment-terminal commands.
 pub mod terminals;
+/// Release-profile vocabulary shared by the `*_tests` modules (paid-tier fork
+/// predicate + the seeded-row refusal guard). Test-only.
+#[cfg(test)]
+pub(crate) mod testing;
 /// Void / cancel commands.
 pub mod void;
 /// Workspace listing + boot-resolution commands (audit-open-findings residual, desktop parity).

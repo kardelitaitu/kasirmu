@@ -1,13 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react';
-import { getCurrentWindow } from '@/api/tauri';
-
-function isTauri(): boolean {
-  try {
-    return '__TAURI_INTERNALS__' in window;
-  } catch {
-    return false;
-  }
-}
+import { getCurrentWindow, isTauriWebview } from '@/api/tauri';
 
 async function tauriToggleFS(): Promise<boolean> {
   const win = getCurrentWindow();
@@ -48,7 +40,7 @@ export function useFullscreen(
 
   const toggle = useCallback(async () => {
     try {
-      const newState = isTauri() ? await tauriToggleFS() : await browserToggleFS();
+      const newState = isTauriWebview() ? await tauriToggleFS() : await browserToggleFS();
       onToggleRef.current?.(newState);
     } catch (err) {
       console.warn('[useFullscreen] toggle failed:', err);

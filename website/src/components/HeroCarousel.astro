@@ -1,0 +1,84 @@
+---
+/**
+ * Hero mockup carousel — the homepage's five slides, as static markup.
+ *
+ * Was a React island (`HeroCarousel.tsx`) hydrated with `client:idle`, which
+ * shipped the React renderer (~55 KB gzip) to every homepage visitor so one CSS
+ * transform could animate. The markup here is complete without JavaScript: the
+ * first slide is positioned, the rest sit beside it on the track, and the pill
+ * bar is a row of real buttons. `../lib/hero-carousel.ts` adds the movement, and
+ * its module doc comment lists the `data-` hooks this file must keep.
+ *
+ * The slide labels/descriptions arrive as props because they are already
+ * localized server-side in `Hero.astro`.
+ */
+import { AUTO_MS, SLIDE_IDS, pillClass, type SlideId } from '../lib/hero-carousel';
+import RestaurantMockup from './mockups/RestaurantMockup.astro';
+import SlideWindow from './mockups/SlideWindow.astro';
+
+interface Props {
+  /** Localized display labels for each slide, keyed by slide id. */
+  labels: Record<SlideId, string>;
+  /** Localized short descriptions under each slide. */
+  descriptions: Record<SlideId, string>;
+  /** Localized "screenshot coming soon" caption on placeholder slides. */
+  comingSoon: string;
+}
+
+const { labels, descriptions, comingSoon } = Astro.props;
+---
+
+<div class="flex flex-wrap items-center justify-center gap-12" data-carousel>
+  <!-- Stage — overflow-hidden container hosting the horizontal track -->
+  <div
+    role="group"
+    aria-roledescription="carousel"
+    aria-label="kasir.mu app screenshots"
+    class="relative w-full max-w-[1280px] overflow-hidden rounded-2xl shadow-2xl shadow-black/30"
+    style="aspect-ratio: 1280 / 720;"
+  >
+    <!-- Continuous horizontal track: all slides sit side-by-side and glide horizontally -->
+    <div
+      data-carousel-track
+      class="flex h-full w-full"
+      style={`transform: translateX(-0%); transition: transform ${AUTO_MS}ms cubic-bezier(0.2, 0, 0, 1);`}
+    >
+      {SLIDE_IDS.map((id, i) => (
+        <div data-slide-id={id} class="h-full w-full shrink-0" aria-hidden={i === 0 ? 'false' : 'true'}>
+          <SlideWindow title={`kasir.mu — ${labels[id]}`}>
+            {id === 'restaurant' ? (
+              <RestaurantMockup />
+            ) : (
+              <div class="flex h-full flex-col items-center justify-center gap-2 text-center">
+                <p class="text-lg font-semibold text-ink/70">{labels[id]}</p>
+                <p class="max-w-sm px-6 text-sm text-muted">{descriptions[id]}</p>
+                <p class="mt-2 text-[11px] uppercase tracking-widest text-muted/60">{comingSoon}</p>
+              </div>
+            )}
+          </SlideWindow>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <!-- Pill slider — outside the mockup, styled consistently with the vertical entry pills below -->
+  <div data-carousel-pills class="flex flex-wrap items-center justify-center gap-2">
+    {SLIDE_IDS.map((id, i) => (
+      <button
+        type="button"
+        data-carousel-pill
+        aria-current={i === 0 ? 'true' : undefined}
+        aria-label={labels[id]}
+        class={pillClass(i === 0)}
+      >
+        {labels[id]}
+      </button>
+    ))}
+  </div>
+</div>
+
+<script>
+  import { initHeroCarousels } from '../lib/hero-carousel';
+
+  initHeroCarousels();
+</script>

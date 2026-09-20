@@ -52,6 +52,7 @@ fn sale_list_item_debug() {
         payment_method: Some("cash".into()),
         user_id: Some("u1".into()),
         created_at: "2025-01-01".into(),
+        display_code: None,
     };
     let d = format!("{item:?}");
     assert!(d.contains("s1"));
@@ -75,6 +76,7 @@ fn make_detail(note: Option<String>) -> SaleDetail {
         created_at: "2026-09-10T00:00:00.000Z".into(),
         lines: vec![],
         tax_estimate_note: note,
+        display_code: None,
     }
 }
 
@@ -109,6 +111,7 @@ fn sale_list_item_serialize() {
         payment_method: None,
         user_id: None,
         created_at: "2025-06-01".into(),
+        display_code: None,
     };
     let json = serde_json::to_value(&item).unwrap();
     assert_eq!(json["id"], "s2");
@@ -133,6 +136,7 @@ fn sale_detail_debug() {
         created_at: "2025-03-15".into(),
         lines: vec![make_sale_line("sd1", "SKU-A", 2, 5000)],
         tax_estimate_note: None,
+        display_code: None,
     };
     let d = format!("{detail:?}");
     assert!(d.contains("sd1"));
@@ -154,6 +158,7 @@ fn sale_detail_serialize() {
         created_at: "2025-01-01".into(),
         lines: vec![],
         tax_estimate_note: None,
+        display_code: None,
     };
     let json = serde_json::to_value(&detail).unwrap();
     assert_eq!(json["id"], "sd2");

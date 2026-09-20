@@ -2,19 +2,32 @@
 //
 // Additive to WorkspaceHomeTools.test.tsx, which pins the page-registry
 // route parity (getPage) and the agreed role/tier access matrix. This
-// file pins the OTHER axis of the information architecture: every home
-// Tool must ALSO be a real sidebar navigation entry, and the home gate
-// must not be LOOSER than the nav item's required role. Home-stricter
-// is the documented policy choice (e.g. the Settings card is admin-
-// locked on the home while the route gate stays `manager`), so the
-// assertion is homeLevel >= navLevel, never the reverse.
+// file pins the OTHER axis of the information architecture: a home Tool
+// must reach a real destination, and the home gate must not be LOOSER than
+// the destination's own role gate.
+//
+// ADDED 2026-09-19 — the "must be a sidebar entry" form was a REACHABILITY
+// proxy, not the invariant. Staff management and role authoring became
+// dedicated fullscreen settings pages (`features/staff/register.tsx`
+// registers `fullscreen`, so AppShell renders them without AppLayout and
+// they carry no `registerNavItem` entry; the user ruling was "dedicated
+// setting, drop the sidebar"). Under the old rule the `staff` card was an
+// orphan by construction and the only ways out were deleting a card that
+// works or muting the check. So the rule now names what it always meant: a
+// card is reachable through a sidebar entry OR through a registered
+// fullscreen page — either way `getPage` resolves the route the card
+// navigates to. The exemption is READ OFF the registration, never a
+// hand-kept list, and the graded population is floored so the fullscreen
+// door cannot quietly become the only door.
 //
 // `settings/topology` and `settings/sync` are deep links into the
-// Settings hub, so they are matched against the `settings` nav item.
+// Settings hub, so they are matched against the `settings` nav item (and
+// `settings` is itself registered `fullscreen`).
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { TOOLS } from '@/features/workspaces/tools';
 import { getNavItems } from '@/registries/menu-registry';
+import { getPage } from '@/registries/page-registry';
 import { registerAllFeatures } from '@/features';
 
 const ROLE_LEVEL: Record<string, number> = {
@@ -46,23 +59,36 @@ beforeAll(() => {
 });
 
 describe('Tools catalogue — nav registry IA parity', () => {
-  it('every tool route is reachable from the sidebar nav (no orphan cards)', () => {
+  it('every tool route reaches a real destination (sidebar entry, or a registered fullscreen page)', () => {
+    // Counted, not assumed: a rule every card can satisfy through the
+    // fullscreen door grades nothing, so the sidebar population is floored
+    // below rather than left to whatever the catalogue happens to contain.
+    let gradedBySidebar = 0;
     for (const tool of TOOLS) {
-      const navRoute = tool.route.startsWith('settings/')
-        ? 'settings'
-        : tool.route;
+      const navRoute = tool.route.startsWith('settings/') ? 'settings' : tool.route;
+      if (navByRoute.has(navRoute)) {
+        gradedBySidebar += 1;
+        continue;
+      }
       expect(
-        navByRoute.has(navRoute),
-        `tool "${tool.id}" (route "${tool.route}") has no nav entry for "${navRoute}"`,
+        getPage(tool.route)?.fullscreen === true,
+        `tool "${tool.id}" (route "${tool.route}") is an orphan card: no nav entry for "${navRoute}", ` +
+          'and no registered fullscreen page at the route itself',
       ).toBe(true);
     }
+    expect(
+      gradedBySidebar,
+      'no tool reached its destination through the sidebar, so the parity rule above graded nothing',
+    ).toBeGreaterThan(10);
   });
 
   it('home minimumRole is never looser than the nav item requiredRole', () => {
     for (const tool of TOOLS) {
-      const navRoute = tool.route.startsWith('settings/')
-        ? 'settings'
-        : tool.route;
+      // A fullscreen destination has no nav item to be looser than: its own
+      // `requiredRole` + `requiredPermission` at the route are the gate, and
+      // the card's role/tier access is the home front door (tools.tsx).
+      if (getPage(tool.route)?.fullscreen === true) continue;
+      const navRoute = tool.route.startsWith('settings/') ? 'settings' : tool.route;
       const nav = navByRoute.get(navRoute);
       expect(nav, `nav for "${tool.id}"`).toBeDefined();
       const navLevel = navRoleLevel(nav!.requiredRole);

@@ -114,7 +114,32 @@ if len(distinct) == 1 and not failed:
     print(f"PASS: identical result under {len(ZONES)} host zones -> {distinct.pop()}")
     sys.exit(0)
 
-print("FAIL: the anchored range depends on the host timezone.")
+# Two different findings used to print the same headline, and only one of them is
+# about the host zone. If every zone failed IDENTICALLY, the zone cannot be the
+# variable: the same cases failed under UTC+14, UTC-7, UTC+7 and UTC. That is an
+# ordinary red (or a run that did not finish), and calling it timezone dependence
+# sends the next reader after a bug that is not there.
+#
+# Measured 2026-09-20, in a checkout where several lanes commit every few minutes.
+# This tool printed "194 passed, 51 failed" in all four zones at once and the
+# headline named the host timezone. The truth was a neighbour's in-flight file:
+# `ui/src/__tests__/SalesReportScreen.test.tsx` was being edited in the same
+# working tree. The failing run finished at ~13:12:05, that file's next write
+# landed at 13:12:26, and the identical suite passed 51/51 at 13:12:48 -- so the
+# failing window is exactly the peer's broken intermediate, and the file has been
+# dirty ever since. Eleven later runs of these six files returned 245 passed /
+# 0 failed in every zone, and four back-to-back concurrent-pair experiments (two
+# zones in parallel, which is exactly what the local concurrency=2 path does)
+# reproduced nothing -- so the parallelism is not the cause either. Zone
+# dependence is the DISAGREEMENT between zones, which is what `distinct` measures;
+# that is the case this gate exists for.
+if len(distinct) > 1:
+    print("FAIL: the anchored range depends on the host timezone.")
+else:
+    print("FAIL: every zone failed IDENTICALLY, so the host timezone is not the variable.")
+    print("      This is a red run, but not the regression this gate exists to catch: read the")
+    print("      failures below as an ordinary test failure, or as a run that did not complete.")
+    print("      Only DIFFERING results across zones indicate timezone dependence.")
 for tz, s in results.items():
     print(f"  {tz:22s} {s}")
 sys.exit(1)

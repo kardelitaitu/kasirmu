@@ -42,7 +42,9 @@ RUN CGO_ENABLED=0 go build -o /out/pocketbase -ldflags="-s -w" .
 # DOCKER-02: base images pinned to immutable digests (refreshed 2026-08-03).
 FROM rust:1.88-slim@sha256:38bc5a86d998772d4aec2348656ed21438d20fcdce2795b56ca434cf21430d89 AS builder
 
-RUN apt-get update && \
+RUN sed -i 's|deb.debian.org|kartolo.sby.datautama.net.id|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null \
+    || sed -i 's|deb.debian.org|kartolo.sby.datautama.net.id|g' /etc/apt/sources.list \
+    && apt-get update && \
     apt-get install -y --no-install-recommends \
         pkg-config \
         libc-dev \
@@ -196,7 +198,9 @@ FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe6
 # explicitly; that is belt-and-braces rather than a requirement. Do not
 # "restore parity" by adding it here -- the real asymmetry that mattered was
 # the BUILDER-stage libudev-dev (DOCKER-13), not this.
-RUN apt-get update && \
+RUN sed -i 's|deb.debian.org|kartolo.sby.datautama.net.id|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null \
+    || sed -i 's|deb.debian.org|kartolo.sby.datautama.net.id|g' /etc/apt/sources.list \
+    && apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         libc6 \

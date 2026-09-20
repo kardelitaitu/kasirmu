@@ -35,10 +35,23 @@
 # Honest limits: a text walk, not a call graph. Names match by name; a trait
 # method or function-pointer hop is not followed, so a gate reachable only
 # through indirection reads UNCOVERED and must be whitelisted with a reason.
-# One hop each way covers every shape in the tree today. fn bodies end at
+# One hop each way covers every shape in the tree today. Hop 2 is the weaker
+# half: it keys on the holder's bare NAME, so a holder called `new`, `default`
+# or `from` sends it through every `.new(` / `::default(` in the scan roots and
+# it will find SOME gating function, which reads as GATED-IN-CALLER and is a
+# false pass. `seed_primary_store` is the live instance (its holder is
+# `AppState::new`) and is why that entry is labelled KNOWN-GAP instead of being
+# left to the verdict. fn bodies end at
 # the next fn signature, so a body can include a following sibling - that
 # errs toward PASSING a site, which is why exemptions must be reasoned. Test
-# files (*_tests.rs) are excluded: seeding rows is what tests do.
+# files (*_tests.rs) and the cfg(test)-only harness `src/testing.rs` are
+# excluded: seeding rows is what tests do.
+#
+# Scan roots are the three layers a create can be reached through: both Tauri
+# shells, `kasirmu-core` (the create fns) and `kasirmu-bridge` (the command
+# layer that gates them). Leaving the bridge out is not a smaller scan but a
+# blind one -- the gates live there, so every core create fn whose only gate is
+# its caller read UNCOVERED.
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -52,14 +65,32 @@ TABLES="products|users|terminals|locations|workspace_instances"
 INSERT_RE="INSERT( OR (IGNORE|REPLACE))? INTO (${TABLES})[ (]"
 GATE_RE="enforce_[a-z_]*quota|ensure_quota_allows|enforce_creation_quota|quota_gate::"
 FN_RE="^[[:space:]]*(pub([[:space:]]+(crate|in|super))?[[:space:]]+)?(async[[:space:]]+)?(unsafe[[:space:]]+)?fn[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*"
-SCAN=(apps/desktop-tauri/src apps/mobile-tauri/src crates/kasirmu-core/src)
+# The command layer lives in `crates/kasirmu-bridge` since the extraction and
+# the two Tauri apps are thin shims, so a scan that stops at them cannot see
+# the gate a core create fn's CALLER runs. Omitting the bridge made
+# `create_location_profile` and `create_workspace_instance_with_purpose` read
+# UNCOVERED while both of their real callers gate -- `kasirmu-bridge/src/
+# locations.rs` calls `enforce_location_quota`, `workspaces.rs` calls
+# `enforce_instance_quota` -- and made the `apply_topology_diff` exemption read
+# STALE because the INSERT it names had moved into this crate.
+SCAN=(apps/desktop-tauri/src apps/mobile-tauri/src crates/kasirmu-core/src crates/kasirmu-bridge/src)
+# Files that hold no shipped INSERT, alongside the `_tests.rs` exclusion: the
+# bridge's `src/testing.rs` is `#[cfg(test)] mod testing;` (declared under
+# `#[cfg(test)]` at `lib.rs:159-160`), so seeding rows there is what tests do.
+# Excluding it is not cosmetic. It defines a `fn new` and a `fn default` whose
+# `fn_body` (signature through the NEXT fn signature) swallows a neighbouring
+# gating body, and a gated name as generic as `new` makes
+# `body_gates_indirectly` match nearly every function in the tree -- which
+# turned `seed_primary_store` into a false GATED-IN-CALLER and then reported
+# its load-bearing bootstrap exemption as STALE.
+NOT_PROD='(_tests\.rs|/testing\.rs)'
 
 # Whitelist: "file::fn | reason". A KNOWN-GAP reason stays visible.
 WHITELIST=(
 "crates/kasirmu-core/src/sync_pull.rs::upsert_products | Cloud PULL mirror of hub-authored rows: the hub enforced the quota when the row was created, and re-gating a pull would make a tenant that legitimately grew past its limit fail to SYNC rather than fail to CREATE - that loses data instead of protecting it."
 "crates/kasirmu-core/src/sync_pull.rs::upsert_users | Same pull-mirror class as upsert_products: the rows arrive from the hub, where the gated authoring door already ran."
-"apps/desktop-tauri/src/state.rs::seed_primary_store | First-run bootstrap of the ONE primary location an empty install needs, before any subscription row exists, so there is no tier to ask. Gating it makes a fresh install unbootable."
-"apps/desktop-tauri/src/commands/topology/commands.rs::apply_topology_diff | KNOWN-GAP (journal D54, RESOLVED by adoption - journal D65): topology nodes ARE constrained here - type allowlist, per-location caps, suspend_surplus - and the TopologyNodes marker dimension is now LANDED read-computed (8bae644e0: severity over iff quota_suspended or over limit, limit = sum of finite per-location caps, quota_count refuses TopologyNodes loudly). This entry stays as the record of the one create door that REJECTS rather than over-creates, so no marker overflow hook exists for a gate to check; it turns STALE the day apply_topology_diff grows an INSERT instead of being satisfied."
+"apps/desktop-tauri/src/state.rs::seed_primary_store | KNOWN-GAP: first-run bootstrap of the ONE primary location an empty install needs, before any subscription row exists, so there is no tier to ask. Gating it makes a fresh install unbootable, so this door is deliberately ungated for good rather than pending a gate. Relabelled KNOWN-GAP on 2026-09-20 rather than WHITELISTED because the GATED-IN-CALLER verdict the checker reaches for it is an artefact of name matching, not a gate: the site's only caller is AppState::new, so hop 1 hands hop 2 the holder's bare NAME 'new', and callers_of_fn('new') then matches all 1164 .new( sites in the scan roots -- one of which sits inside a gating fn, which is all hop 2 needs to return 0. Measured, not inferred: fn_body(state.rs, new) spans :216-399 and matches neither GATE_RE nor any of the 33 names in GATE_NAMES. The KNOWN-GAP branch is tested before the gate verdicts, so this entry prints the true sentence (ungated debt) instead of the false one, in yellow, on every run."
+"crates/kasirmu-bridge/src/topology/commands.rs::apply_topology_diff | KNOWN-GAP (journal D54, RESOLVED by adoption - journal D65): topology nodes ARE constrained here - type allowlist, per-location caps, suspend_surplus - and the TopologyNodes marker dimension is now LANDED read-computed (8bae644e0: severity over iff quota_suspended or over limit, limit = sum of finite per-location caps, quota_count refuses TopologyNodes loudly). This entry stays as the record of the one create door that REJECTS rather than over-creates, so no marker overflow hook exists for a gate to check; it turns STALE the day apply_topology_diff grows an INSERT instead of being satisfied. KEY REPOINTED (2026-09-20) from the desktop shim key 'apps/desktop-tauri/src/commands/topology/commands.rs::apply_topology_diff' to this bridge path: the extraction moved the INSERT INTO workspace_instances (now :930-945) into the bridge and left the app file a shim with no INSERT, so the old key matched no site. The rejection this entry describes is at :889-897 in the same file - it projects (current - archived_active + workspace_creations.len()) against the tier limit and returns PermissionDenied before the loop that inserts, which is why the door cannot over-create. (Quoted with ' not backticks on purpose: this string is double-quoted bash, so a backtick would be a command substitution.)"
 "crates/kasirmu-core/src/db/products_stock_query.rs::create_product_if_absent_in_tx | KNOWN-GAP: a PUBLIC Store create door with ZERO in-tree callers (git grep on the name matches only its own definition). Nothing ungated runs today, so this is not a live hole - but whoever wires it up must gate first, and this line is the tripwire that makes that visible the day it gains a caller."
 )
 
@@ -102,7 +133,7 @@ body_gates_indirectly() { # body -> 0 when it calls a function that gates
 
 callers_of_fn() { # FN -> "file:line" hits, minus tests and the definition itself
   grep -rnE "[^a-zA-Z0-9_]$1([[:space:]]*\(|::)" "${SCAN[@]}" --include="*.rs" 2>/dev/null \
-    | grep -v "_tests\.rs:" \
+    | grep -vE "$NOT_PROD" \
     | grep -vE "(async )?fn[[:space:]]+$1([[:space:]]*[(<])" \
     | cut -d: -f1,2 | head -8
 }
@@ -208,22 +239,35 @@ if [ "${1:-}" = "--self-test" ]; then
   mkdir -p "$FIX/src"
   printf "pub fn create_gated() {\n    enforce_product_quota();\n    INSERT INTO products (id) VALUES (1);\n}\n\npub fn gate_the_dumb_one() {\n    ensure_quota_allows();\n}\n\npub fn dumb_create() {\n    gate_the_dumb_one();\n    INSERT INTO users (id) VALUES (2);\n}\n" >"$FIX/src/covered.rs"
   printf "pub fn create_ungated() {\n    INSERT INTO terminals (id) VALUES (3);\n}\n" >"$FIX/src/hole.rs"
+  # Positive control for NOT_PROD. `testing.rs` and `*_tests.rs` must be
+  # dropped, `prod.rs` must survive -- and the surviving file must be the only
+  # reason this leg can fail, so a filter that silently dropped EVERYTHING
+  # would be caught rather than read as a clean sweep.
+  printf "pub fn harness_seed() {\n    INSERT INTO users (id) VALUES (9);\n}\n" >"$FIX/src/testing.rs"
+  printf "pub fn test_seed() {\n    INSERT INTO users (id) VALUES (10);\n}\n" >"$FIX/src/hole_tests.rs"
+  printf "pub fn prod_ungated() {\n    INSERT INTO terminals (id) VALUES (11);\n}\n" >"$FIX/src/prod.rs"
+  FIX_FILES=$(grep -rlE "$INSERT_RE" "$FIX/src" --include="*.rs" 2>/dev/null | grep -vE "$NOT_PROD" | sort -u)
+  printf "self-test: production files after NOT_PROD: %s\n" "$(printf "%s" "$FIX_FILES" | tr "\n" " ")"
+  FIX_BAD=0
+  case "$FIX_FILES" in *"/testing.rs"*) FIX_BAD=1; printf "%sself-test: NOT_PROD kept testing.rs%s\n" "$RED" "$NC" ;; esac
+  case "$FIX_FILES" in *"_tests.rs"*) FIX_BAD=1; printf "%sself-test: NOT_PROD kept a *_tests.rs%s\n" "$RED" "$NC" ;; esac
+  case "$FIX_FILES" in *"/prod.rs"*) ;; *) FIX_BAD=1; printf "%sself-test: NOT_PROD dropped prod.rs%s\n" "$RED" "$NC" ;; esac
   WHITELIST=()
   GATE_NAMES="$(gated_names_in "$FIX/src/covered.rs" "$FIX/src/hole.rs")"
   printf "self-test: gated helper names seen: %s\n" "$(printf "%s" "$GATE_NAMES" | tr "\n" " ")"
   check_sites "$FIX/src/covered.rs" "$FIX/src/hole.rs"
   rm -rf "$FIX"
-  if [ "${SITE_BAD:-0}" = "1" ]; then
-    printf "%sself-test ok%s - the checker marked the two covered sites and reported exactly one hole\n" "$GRN" "$NC"
+  if [ "${SITE_BAD:-0}" = "1" ] && [ "$FIX_BAD" = "0" ]; then
+    printf "%sself-test ok%s - the checker marked the two covered sites, reported exactly one hole, and the production filter kept prod.rs while dropping testing.rs and *_tests.rs\n" "$GRN" "$NC"
     exit 0
   fi
-  printf "%sself-test FAILED%s - expected exactly 1 violation from the fixture, got %s\n" "$RED" "$NC" "${SITE_BAD:-?}"
+  printf "%sself-test FAILED%s - expected exactly 1 violation from the fixture and a clean production filter, got violations=%s filter_bad=%s\n" "$RED" "$NC" "${SITE_BAD:-?}" "$FIX_BAD"
   exit 1
 fi
 
-FILES=$(grep -rlE "$INSERT_RE" "${SCAN[@]}" --include="*.rs" 2>/dev/null | grep -v "_tests\.rs$" | sort -u)
+FILES=$(grep -rlE "$INSERT_RE" "${SCAN[@]}" --include="*.rs" 2>/dev/null | grep -vE "$NOT_PROD" | sort -u)
 [ -n "$FILES" ] || { printf "no candidate files\n"; exit 1; }
-GATE_NAMES="$(gated_names_in $FILES $(grep -rlE "$GATE_RE" "${SCAN[@]}" --include="*.rs" 2>/dev/null | grep -v "_tests\.rs$" | sort -u))"
+GATE_NAMES="$(gated_names_in $FILES $(grep -rlE "$GATE_RE" "${SCAN[@]}" --include="*.rs" 2>/dev/null | grep -vE "$NOT_PROD" | sort -u))"
 printf "quota coverage: INSERT sites for (%s)\n" "$TABLES"
 check_sites $FILES
 if [ "${SITE_BAD:-0}" -gt 0 ]; then

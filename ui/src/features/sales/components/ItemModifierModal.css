@@ -16,12 +16,20 @@
   justify-content: center;
   padding: var(--space-4);
   z-index: 110;
-  animation: modifier-overlay-in var(--duration-200) var(--ease-out);
+  animation: modifier-overlay-in var(--duration-300) var(--ease-out);
 }
 
 @keyframes modifier-overlay-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
 }
 
 /* ── Modal panel ───────────────────────────────────── */
@@ -34,8 +42,8 @@
   box-shadow: var(--color-pos-modal-shadow);
   display: flex;
   flex-direction: column;
-  animation: modifier-overlay-in var(--duration-200) var(--ease-out),
-    modifier-slide-up var(--duration-200) var(--ease-out);
+  animation: modifier-overlay-in var(--duration-300) var(--ease-out),
+    modifier-slide-up var(--duration-300) var(--ease-out);
 }
 
 @keyframes modifier-slide-up {
@@ -46,7 +54,7 @@
 /* ── Exit mirror keyframes (dismiss fade) ────────────
  * modifier-overlay-out is the exact reverse of
  * modifier-overlay-in; modifier-slide-down is the exact
- * reverse of modifier-slide-up. The JS animDuration(200)
+ * reverse of modifier-slide-up. The JS animDuration(300)
  * timer in ItemModifierModal.tsx stays aligned with these.
  * Rules are source-ordered after the entry rules so the
  * same-specificity --exiting rules win when both classes
@@ -56,8 +64,16 @@
  * pointer-events: none on the overlay (inherited by the
  * panel) blocks stale clicks during the fade. */
 @keyframes modifier-overlay-out {
-  from { opacity: 1; }
-  to   { opacity: 0; }
+  from {
+    opacity: 1;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  to {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+  }
 }
 
 @keyframes modifier-slide-down {
@@ -66,12 +82,12 @@
 }
 
 .modifier-overlay--exiting {
-  animation: modifier-overlay-out var(--duration-200) var(--ease-out) both;
+  animation: modifier-overlay-out var(--duration-300) var(--ease-out) both;
   pointer-events: none;
 }
 
 .modifier-modal--exiting {
-  animation: modifier-slide-down var(--duration-200) var(--ease-out) both;
+  animation: modifier-slide-down var(--duration-300) var(--ease-out) both;
 }
 
 /* ── Header ────────────────────────────────────────── */

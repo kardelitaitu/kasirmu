@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef, lazy } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { useOrientation } from '@/hooks/useOrientation';
 import TabletAppLayout from './TabletAppLayout';
 import { completeSetup, dismissSetupWizard, getSetupStatus } from '@/api/settings';
 import { useFeatures } from '@/hooks/useFeatures';
@@ -32,11 +31,28 @@ const WorkspaceSettingsModal = lazy(() => import('@/features/settings/WorkspaceS
  * workspace picker when no instance is selected.
  */
 export default function TabletAppShell() {
-  // P14-3: Lock to landscape-primary on tablet devices. Only need the
-  // side effect (locking the screen + listening for orientation changes).
-  // Consume `orientation.isLandscape` from the hook return if a screen
-  // needs to reflow its layout on rotation.
-  useOrientation('landscape-primary');
+  // Orientation is handled in CSS, not here.
+  //
+  // This shell used to call `useOrientation('landscape-primary')` to "lock to
+  // landscape on tablet devices". That request cannot be enforced in the
+  // Android WebView — `screen.orientation.lock` is absent, so the hook reports
+  // `supported: false` and the call is a silent no-op. Measured 2026-09-20: the
+  // same installed build rendered at 1200x1920 (portrait) and then 1920x1200
+  // (landscape), so the app rotates freely. The request was never a guarantee,
+  // and believing it is exactly why neither `tablet.css` nor `SetupWizard.css`
+  // contained a single orientation rule.
+  //
+  // Layout now branches on `@media (orientation: landscape)` in those sheets,
+  // so a rotation re-lays-out without a React re-render. `useOrientation`
+  // remains the mechanism for a STRUCTURAL orientation need — choosing a
+  // different component tree, or a column count CSS cannot express — and this
+  // shell has none, so it does not call the hook. If a descendant ever needs
+  // one, call it there and consume `orientation.isLandscape`; do not re-add a
+  // lock.
+  //
+  // If the product decision is landscape-ONLY, the enforceable mechanism is the
+  // Android manifest (`android:screenOrientation="sensorLandscape"` on
+  // `.MainActivity`), not the Web API.
 
   const [loading, setLoading] = useState(true);
   const [hasCompletedSetup, setHasCompletedSetup] = useState(false);
@@ -192,18 +208,52 @@ export default function TabletAppShell() {
     return <AppBootSplash />;
   }
 
-  if (!session) {
-    return (
-      <LazyBoundary>
-        <StaffLoginScreen />
-      </LazyBoundary>
-    );
-  }
-
+  // ── First-run setup runs BEFORE the login gate (ADR #41 §2.1) ─────
+  // The ADR is explicit. "State A: New / Uninitialized Device" — no local
+  // config yet — says "the application boots directly into the Setup Wizard
+  // (/setup)", and authentication happens *inside* onboarding (create a
+  // tenant, or connect an existing one). Only "State B: Registered /
+  // Enrolled Device" "boots directly to the Staff Login / Lock Screen".
+  // Testing `!session` first inverted that: every fresh device landed on
+  // StaffLoginScreen with the terminal unconfigured.
+  //
+  // Safe pre-login: the wizard's three commands are UNAUTHENTICATED by design
+  // (`kasirmu-bridge/src/setup.rs` — `get_setup_status`, `complete_setup` and
+  // `dismiss_setup_wizard` each take only `&BridgeCtx` and write the GLOBAL db
+  // via `lock_global()`; contrast `seed_default_roles_scoped` in the same file,
+  // which takes a session token and checks a permission). The wizard reads no
+  // auth/workspace context, and `onSkip` reaches login even if
+  // `dismissSetupWizard` fails, so this cannot trap the terminal.
+  //
+  // The desktop AppShell keeps the wizard after `!session`, and must: it runs two
+  // earlier pre-login gates the tablet cannot — `!bootAllowed` (licence
+  // activation) and `hasUsers === false` (owner bootstrap). The tablet registers
+  // neither `get_license_status` nor `has_users`, so without this branch its
+  // first-run funnel is empty.
+  //
+  // Known consequence of moving this branch, recorded so it is not rediscovered as
+  // a bug: the mount read's catch sets `hasCompletedSetup = false`, so a FAILED
+  // `get_setup_status` now reaches the wizard BEFORE login rather than after it.
+  // Both failure directions are recoverable and this one is the safer of the two —
+  // `onSkip` sets the flag regardless of whether `dismissSetupWizard` resolves, and
+  // on a genuinely fresh device the wizard is the only route forward, whereas login
+  // would be a dead end. The desktop instead treats an unknown read as "not
+  // first-run" (see the `has_users: unknown is not "no users"` note in AppShell.tsx)
+  // and falls through to login. The tablet's catch is pinned by two tests in
+  // TabletAppShell.test.tsx — a rejecting read with a session and a rejecting
+  // read without one — so changing it is a decision, not a cleanup.
   if (!hasCompletedSetup) {
     return (
       <LazyBoundary>
         <SetupWizard onComplete={handleComplete} onSkip={handleSkip} onLaunch={() => setHasCompletedSetup(true)} />
+      </LazyBoundary>
+    );
+  }
+
+  if (!session) {
+    return (
+      <LazyBoundary>
+        <StaffLoginScreen />
       </LazyBoundary>
     );
   }

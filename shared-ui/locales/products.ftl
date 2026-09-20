@@ -3,9 +3,9 @@
 # ── Restaurant Menu ──────────────────────────────────────────────────
 restaurant-menu-search-placeholder = Search Menu
 restaurant-menu-hamburger-aria = Menu
-restaurant-menu-back-aria = Back to workspaces
-restaurant-menu-close = Close
-restaurant-menu-close-aria = Close menu
+restaurant-sidebar-toggle-aria = Sidebar
+restaurant-avatar-edit-aria = Change profile photo for { $name }
+restaurant-sidebar-copyright = © 2026 kasir.mu. All rights reserved.
 restaurant-size-decrease-aria = Decrease size
 restaurant-size-increase-aria = Increase size
 restaurant-font-size-decrease-aria = Decrease font size
@@ -14,6 +14,10 @@ restaurant-font-size-label = Font Size
 restaurant-theme-light = Light Mode
 restaurant-theme-dark = Dark Mode
 restaurant-lock-terminal = Lock Terminal
+restaurant-exit-terminal = Exit Terminal
+restaurant-exit-confirm-title = Exit Workspace
+restaurant-exit-confirm-desc = Are you sure you want to exit to the homescreen?
+restaurant-exit-confirm-btn = Exit
 restaurant-toggle-fullscreen = Toggle Fullscreen
 restaurant-clear-color-aria = Clear color
 restaurant-categories-aria = Menu categories

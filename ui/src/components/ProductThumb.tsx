@@ -9,8 +9,16 @@
 //!
 //! In the dev-mock (non-Tauri context) the hash is ignored and the fallback
 //! tile is shown — the dev server has no real images to serve.
+//!
+//! Do NOT reintroduce an `isMounted` ref here. `ui/src/main.tsx` enables
+//! `React.StrictMode`, whose dev double-invoke runs a mount effect's cleanup
+//! once immediately; a ref set to `false` by that cleanup and never restored
+//! leaves every later `.then()` early-returning, so `imgSrc` is never assigned
+//! and the tile silently renders the initials fallback for good. The
+//! per-effect `cancelled` flag below is sufficient — it covers unmount and
+//! dependency change without any cross-effect state.
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { convertFileSrc } from '@/api/tauri';
 import { getAppCacheDir } from '@/api/cache';
 
@@ -46,6 +54,12 @@ export interface ProductThumbProps {
   lazy?: boolean;
   /** Hue for the fallback colour (0-360), derived from category or product. */
   hue?: number;
+  /**
+   * Corner treatment. `square` (default) is the product-grid tile; `circle` is
+   * the avatar treatment. The radius is set inline below, so a caller cannot
+   * override it from a stylesheet — it has to be a prop.
+   */
+  shape?: 'square' | 'circle';
 }
 
 export function ProductThumb({
@@ -55,26 +69,29 @@ export function ProductThumb({
   size = 64,
   lazy = true,
   hue = 0,
+  shape = 'square',
 }: ProductThumbProps) {
+  const radius = shape === 'circle' ? 'var(--radius-full, 9999px)' : 'var(--radius-sm, 4px)';
   const [imgSrc, setImgSrc] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const mountedRef = useRef(true);
 
   useEffect(() => {
-    return () => { mountedRef.current = false; };
-  }, []);
+    // A new hash is a new file, so the previous attempt's failure must be
+    // cleared. Resetting it only on the `!hash` branch (as this once did) means
+    // one failed load keeps `loadError` true forever: with it set, no <img> is
+    // mounted at all, so no later hash can ever attempt a load and the tile is
+    // pinned to the initials fallback for the component's whole life.
+    setLoadError(false);
 
-  useEffect(() => {
     if (!hash) {
       setImgSrc(null);
-      setLoadError(false);
       return;
     }
 
     let cancelled = false;
 
     resolveCacheDir().then((cacheDir) => {
-      if (cancelled || !mountedRef.current) return;
+      if (cancelled) return;
       if (!cacheDir) {
         // Can't resolve cache dir (dev-mock, test) — show fallback.
         setImgSrc(null);
@@ -98,7 +115,7 @@ export function ProductThumb({
         loading={lazy ? 'lazy' : undefined}
         decoding="async"
         onError={() => setLoadError(true)}
-        style={{ objectFit: 'cover', borderRadius: 'var(--radius-sm, 4px)' }}
+        style={{ objectFit: 'cover', borderRadius: radius }}
       />
     );
   }
@@ -116,7 +133,7 @@ export function ProductThumb({
         width: size,
         height: size,
         backgroundColor: bgColor,
-        borderRadius: 'var(--radius-sm, 4px)',
+        borderRadius: radius,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

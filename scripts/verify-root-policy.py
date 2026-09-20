@@ -33,6 +33,7 @@ Run:  python3 scripts/verify-root-policy.py [--self-test]
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path, PurePath
@@ -54,7 +55,9 @@ ROOT_FILE_ALLOWLIST = frozenset({
     # Owner working files (P5 withdrawal) + the agent-harness contract.
     "ARCHITECTURE.md", "DSH.md", "done-todo-rebrand.md", "todo-rebrand-2.md",
     "todo-open-debt-program.md", "todo-review-type.md",
+    "todo-owner-rulings.md",
     "todo-project-folder-restructure.md",
+    "todo-logo-mark-optical-centring.md",
     # Measured exception (§5): not a duplicate of scripts/stats.json —
     # scripts/stats.ps1 and scripts/check.ps1 read this name.
     "stats.json",
@@ -62,6 +65,10 @@ ROOT_FILE_ALLOWLIST = frozenset({
     "kasirmu-updater.key.pub",
     # Gitignored local secrets — sanctioned, not scratch.
     ".env",
+    # Gitignored output of `.agents/skills/skill-drift-guard/scripts/detect.sh`,
+    # which writes it at the repo root by design (its own `REPORT` constant).
+    # Nothing here is committed; like `.env`, it is sanctioned tool state.
+    "skill-drift-report.md",
 })
 
 # Directories the empty-dir sweep must not descend into. `.git` is git's own;
@@ -72,9 +79,34 @@ SWEEP_SKIP_DIRS = {".git", "node_modules", "target", "target-release", ".vscode"
                    ".wrangler"}
 
 
+def gitignored_dirs(root: Path) -> set[str]:
+    """Directories git ignores outright, as posix relpaths under `root`.
+
+    The empty-dir rule exists because git cannot track an empty directory, so
+    one inside a *tracked* tree silently vanishes from the repo. A tree git
+    already ignores wholesale is the opposite case: git sees nothing there
+    whether it is empty or not, so flagging it is noise. Measured 2026-09-19 —
+    112 of that day's 116 findings were empty Gradle output under
+    `apps/mobile-tauri/gen/android/**/build/`, ignored by
+    `apps/mobile-tauri/gen/android/.gitignore:11`.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "ls-files", "--others", "--ignored",
+             "--exclude-standard", "--directory"],
+            cwd=str(root), capture_output=True, text=True, check=False,
+        )
+    except OSError:
+        return set()
+    if proc.returncode != 0:
+        return set()
+    return {line.rstrip("/") for line in proc.stdout.splitlines() if line.strip()}
+
+
 def check(root: Path) -> list[str]:
     """Pure over a root path. -> findings, one per violated policy."""
     findings: list[str] = []
+    ignored = gitignored_dirs(root)
 
     for entry in sorted(root.iterdir(), key=lambda p: p.name):
         if entry.name in (".git",) or not entry.is_file() or entry.is_symlink():
@@ -90,7 +122,11 @@ def check(root: Path) -> list[str]:
     for dirpath, dirnames, filenames in os.walk(root, topdown=True):
         rel = PurePath(dirpath).relative_to(root)
         parts = rel.parts
-        dirnames[:] = [d for d in dirnames if d not in SWEEP_SKIP_DIRS]
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in SWEEP_SKIP_DIRS
+            and (rel / d).as_posix() not in ignored
+        ]
         # A directory is empty when it holds no files and no surviving
         # subdirectories; checking bottom-up would be equivalent, but with
         # topdown pruning every empty leaf reports exactly once, here.

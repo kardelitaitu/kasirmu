@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor, within, fireEvent } from '@testing-library/react';
+import { screen, waitFor, within, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import {
@@ -96,9 +96,13 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
 beforeEach(() => {
   invokeMock.mockClear();
   resetUnmatchedInvokes();
+  // The tab is reflected in the route hash, so a case that switched tabs
+  // would otherwise leave the next render mounting on the Roles tab.
+  window.location.hash = '';
   invokeMock.mockImplementation((cmd: string) => {
     if (cmd === 'list_staff_scoped') return Promise.resolve(SAMPLE_STAFF);
     if (cmd === 'list_roles_scoped') return Promise.resolve(SAMPLE_ROLES);
+    if (cmd === 'list_permission_keys_scoped') return Promise.resolve([]);
     if (cmd === 'create_staff_scoped') return Promise.resolve({ ...SAMPLE_STAFF[0], username: 'newuser' });
     if (cmd === 'update_staff_scoped') return Promise.resolve(SAMPLE_STAFF[0]);
     if (cmd === 'get_staff_profile_scoped') return Promise.resolve(SAMPLE_PROFILE);
@@ -152,10 +156,56 @@ async function fillRequiredProfile(dialog: HTMLElement) {
 }
 
 describe('StaffManagementScreen', () => {
-  it('renders title and add button', async () => {
+  it('renders the Staff and Roles tabs with the add button', async () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
-    expect(screen.getByRole('heading', { name: /staff/i })).toBeInTheDocument();
+    // The tab names the view; there is no page heading to duplicate it.
+    expect(screen.getByRole('tab', { name: 'Staff' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Roles' })).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByRole('button', { name: /add staff/i })).toBeInTheDocument();
+  });
+
+  it('swaps the header action to Add New Role on the Roles tab, and opens it as a popup', async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Roles' }));
+
+    // One action slot: the create affordance belongs to the tab on screen.
+    expect(screen.getByRole('tab', { name: 'Roles' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('button', { name: /add staff/i })).not.toBeInTheDocument();
+    const addRole = screen.getByRole('button', { name: 'Add New Role' });
+    // The panel mounts on first visit; the handle the button reaches through
+    // only exists once it has.
+    await waitFor(() => expect(document.querySelector('.role-authoring')).not.toBeNull());
+
+    fireEvent.click(addRole);
+    expect(screen.getByRole('dialog')).toHaveTextContent('Add New Role');
+  });
+
+  it('dismisses the role editor when the route leaves the Roles tab', async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Roles' }));
+    await waitFor(() => expect(document.querySelector('.role-authoring')).not.toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Add New Role' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // Reached the way it really happens: the popup is a portal, so its overlay
+    // covers the tab strip and no CLICK can switch tabs underneath it. A
+    // hashchange can — a deep link, or the browser's Back button — and without
+    // the panel dismissing its own modals the dialog would outlive the view it
+    // edits, still mounted in document.body and still in the a11y tree.
+    act(() => {
+      window.location.hash = '#/staff';
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+
+    expect(screen.getByRole('tab', { name: 'Staff' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // The action follows the tab back, so the dismissed editor leaves no
+    // create affordance behind.
     expect(screen.getByRole('button', { name: /add staff/i })).toBeInTheDocument();
   });
 

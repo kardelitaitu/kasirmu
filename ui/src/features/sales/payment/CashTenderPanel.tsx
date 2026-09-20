@@ -72,6 +72,31 @@ export default function CashTenderPanel({
 }: CashTenderPanelProps) {
   const { l10n } = useLocalization();
 
+  // Round each denomination UP to the next multiple of itself, in exact integer
+  // (BigInt) arithmetic, then drop the results that say nothing new: a preset
+  // that rounds to the payable itself is the Exact button over again, and two
+  // denominations that round to the same note are one shortcut, not two. A
+  // Rp 6.250.000 payable against the built-in Rp notes would otherwise offer
+  // "Rp 6.250.000" three times.
+  const exp = minorUnitExponent(total.currency);
+  const payableMinor = Number(total.minor_units);
+  const payableMinorBig = BigInt(payableMinor);
+  const quickTenderAmounts = (tenderPresets ?? [5000, 10000, 20000, 50000, 100000]).reduce<
+    { minorUnits: number; input: string }[]
+  >((acc, amount) => {
+    const denomMinor = BigInt(amount) * 10n ** BigInt(exp);
+    if (denomMinor <= 0n) return acc;
+    const ceilStep = payableMinorBig % denomMinor > 0n ? 1n : 0n;
+    const quickMinor = Number((payableMinorBig / denomMinor + ceilStep) * denomMinor);
+    // Only amounts strictly above the payable are a shortcut; Exact covers the rest.
+    if (quickMinor <= payableMinor) return acc;
+    if (acc.some((q) => q.minorUnits === quickMinor)) return acc;
+    // What the tender input holds must be a decimal literal; what the button
+    // shows is display money, so it goes through the formatter.
+    acc.push({ minorUnits: quickMinor, input: minorUnitsToInputString(quickMinor, exp) });
+    return acc;
+  }, []);
+
   return (
     <div className="payment-cash-section">
       <div className="payment-tendered-label">
@@ -90,37 +115,22 @@ export default function CashTenderPanel({
       </div>
 
       <div className="payment-quick-cash">
-        {(tenderPresets ?? [5000, 10000, 20000, 50000, 100000]).map((amount) => {
-          // Presets are major-unit denominations (Rp 5.000 / $5). Scale the
-          // face value to minor units and round the tender UP there, in exact
-          // integer (BigInt) arithmetic — the amount never passes through a
-          // binary float, and stays consistent with tenderedMinor's parse.
-          const exp = minorUnitExponent(total.currency);
-          const denomMinor = BigInt(amount) * 10n ** BigInt(exp);
-          const targetMinorUnits = BigInt(Number(total.minor_units));
-          const ceilStep = targetMinorUnits % denomMinor > 0n ? 1n : 0n;
-          const quickMinor = Number((targetMinorUnits / denomMinor + ceilStep) * denomMinor);
-          // What the tender input holds must be a decimal literal; what the
-          // button shows is display money, so it goes through the formatter.
-          const quickInput = minorUnitsToInputString(quickMinor, exp);
-          return (
-            <button
-              key={amount}
-              type="button"
-              className="payment-quick-btn"
-              aria-label={l10n.getString('payment-quick-tender-aria', { amount: quickInput }, 'Tender')}
-              onClick={() => onTenderedChange(quickInput)}
-            >
-              {formatMoney({ minor_units: quickMinor, currency: total.currency }, locale)}
-            </button>
-          );
-        })}
+        {quickTenderAmounts.map(({ minorUnits, input }) => (
+          <button
+            key={minorUnits}
+            type="button"
+            className="payment-quick-btn"
+            aria-label={l10n.getString('payment-quick-tender-aria', { amount: input }, 'Tender')}
+            onClick={() => onTenderedChange(input)}
+          >
+            {formatMoney({ minor_units: minorUnits, currency: total.currency }, locale)}
+          </button>
+        ))}
         <Localized id="payment-tender-exact-aria" attrs={{ 'aria-label': true }}>
         <button
           type="button"
           className="payment-quick-btn"
           onClick={() => {
-            const exp = minorUnitExponent(total.currency);
             // Exact tender: the total itself, rendered as the input's
             // decimal literal by integer digit placement, not float division.
             onTenderedChange(minorUnitsToInputString(Number(total.minor_units), exp));

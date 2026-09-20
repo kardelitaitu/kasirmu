@@ -34,7 +34,8 @@ use kasirmu_core::permissions;
 use kasirmu_core::{Currency, Money, Settings};
 use kasirmu_hal::drivers::receipt;
 use kasirmu_hal::transport::usb::{UsbDeviceInfo, probe_all};
-use kasirmu_hal::{BarcodeScanner, DisplayContent};
+use kasirmu_hal::{BarcodeScanner, DisplayContent, HalErrorKind};
+use platform_core::terminal_profile::TerminalProfile;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -471,8 +472,9 @@ pub async fn print_receipt_scoped(
 
 /// Move the preferred scanner to the front, leaving the rest in order.
 ///
-/// A no-op when `preferred` is empty or matches nothing, which is the
-/// common case: nothing in the UI writes `scanner_device_id` today.
+/// A no-op when `preferred` is empty or matches nothing. `preferred` comes
+/// from the terminal profile the workspace settings card writes — see
+/// [`scanner_prefs`], which is what makes this reachable at all.
 pub fn prefer_first(mut scanners: Vec<ScannerInfo>, preferred: &str) -> Vec<ScannerInfo> {
     if preferred.is_empty() {
         return scanners;
@@ -484,12 +486,88 @@ pub fn prefer_first(mut scanners: Vec<ScannerInfo>, preferred: &str) -> Vec<Scan
     scanners
 }
 
+/// The scanner device id and input mode the operator saved.
+///
+/// `set_hardware_settings_scoped` persists the terminal profile to the
+/// `hardware_profiles` table and never writes the `settings` keys this
+/// module used to read, so reading the keys alone meant the Device ID in
+/// the workspace settings card was saved and then never consulted again —
+/// [`prefer_first`] could never move anything. The profile is canonical;
+/// the legacy keys cover terminals whose profile was written before it.
+async fn saved_scanner_prefs(ctx: &BridgeCtx<'_>) -> (String, String) {
+    let terminal_id = ctx
+        .terminal_id
+        .lock()
+        .await
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let conn = ctx.db.lock().await; // guard dropped: Connection is !Send
+    scanner_prefs(&conn, &terminal_id)
+}
+
+/// The saved scanner device id and input mode for `terminal_id`.
+///
+/// `set_hardware_settings_scoped` persists the terminal profile to the
+/// `hardware_profiles` table and never writes the `settings` keys this
+/// module used to read, so reading the keys alone meant the Device ID in
+/// the workspace settings card was saved and then never consulted again —
+/// [`prefer_first`] could never move anything. The profile is canonical;
+/// the legacy keys cover terminals whose profile predates it.
+///
+/// Exposed as a plain DB read so the shell that has not delegated
+/// `list_scanners_scoped` yet can share it instead of growing a second
+/// copy of the query.
+pub fn scanner_prefs(conn: &rusqlite::Connection, terminal_id: &str) -> (String, String) {
+    let from_profile = conn
+        .query_row(
+            "SELECT profile_json FROM hardware_profiles WHERE terminal_id = ?1",
+            rusqlite::params![&terminal_id],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+        .and_then(|json| serde_json::from_str::<TerminalProfile>(&json).ok());
+
+    if let Some(profile) = from_profile {
+        return (profile.scanner_device_id, profile.scanner_input_mode);
+    }
+
+    (
+        Settings::get_scanner_device_id(conn).unwrap_or_default(),
+        Settings::get_scanner_input_mode(conn).unwrap_or_default(),
+    )
+}
+
+/// Which registered scanners the saved input mode allows.
+///
+/// The workspace settings card offers `keyboard` (wedge), `serial` and
+/// `auto`, and nothing read it, so a keyboard-wedge terminal opened COM
+/// ports anyway. In `keyboard` mode the scanner types into the focused
+/// field and sends Enter, so HAL must start nothing at all; a serial-only
+/// terminal should not be handed a HID device either.
+///
+/// Takes and returns plain ids so a shell that declares its own
+/// `ScannerInfo` — both shells do, and the tablet has not delegated this
+/// command yet — can share the rule without a conversion.
+pub fn ids_for_mode(ids: Vec<String>, mode: &str) -> Vec<String> {
+    match mode.trim().to_ascii_lowercase().as_str() {
+        "keyboard" | "none" | "disabled" => Vec::new(),
+        "serial" => ids
+            .into_iter()
+            .filter(|id| id.starts_with("scanner:serial:") || id.starts_with("scanner:bt:"))
+            .collect(),
+        _ => ids,
+    }
+}
+
 /// List all registered barcode scanners (scoped), preference-ordered.
 ///
 /// `useBarcodeScanner.ts` auto-detects by taking element 0 and never asks
-/// the operator, so fronting the saved `scanner_device_id` is the only way
-/// that setting has any effect. Unset reads as an empty string and leaves
-/// discovery's order alone.
+/// the operator, so two things decide what the register actually uses: the
+/// saved `scanner_device_id` is fronted, and the rest are ordered by
+/// device family (`scanner_ids_ranked`) so a bare COM port cannot outrank a
+/// real HID scanner. The saved input mode can veto the list entirely — see
+/// [`ids_for_mode`].
 ///
 /// # Errors
 ///
@@ -500,13 +578,13 @@ pub async fn list_scanners_scoped(
     session_token: &str,
 ) -> Result<Vec<ScannerInfo>, BridgeError> {
     ctx.resolve_scope(session_token)?;
-    let ids = ctx.registry.scanner_ids().await;
-    let preferred = {
-        let conn = ctx.db.lock().await;
-        Settings::get_scanner_device_id(&conn).unwrap_or_default()
-    }; // guard dropped: Connection is !Send
+    let ids = ctx.registry.scanner_ids_ranked().await;
+    let (preferred, mode) = saved_scanner_prefs(ctx).await;
     Ok(prefer_first(
-        ids.into_iter().map(|id| ScannerInfo { id }).collect(),
+        ids_for_mode(ids, &mode)
+            .into_iter()
+            .map(|id| ScannerInfo { id })
+            .collect(),
         &preferred,
     ))
 }
@@ -518,6 +596,11 @@ pub async fn list_scanners_scoped(
 /// that broadcasts `barcode:scanned` / `barcode:error` through the injected
 /// [`EventSink`]. The cancel handle is stored in
 /// [`BridgeCtx::scanner_cancel`] for [`stop_scanner_scoped`].
+///
+/// A connect failure is retried with backoff rather than ending the task,
+/// and a `NotFound` failure — no scanner reachable — is logged, not
+/// emitted: the register works without a scanner and there is nothing the
+/// operator can do about a port that refuses to open.
 ///
 /// # Errors
 ///
@@ -549,15 +632,53 @@ pub async fn start_scanner_scoped(
     let scanner_id = scanner_id.to_string();
     let (tx, mut rx) = oneshot::channel::<()>();
     tokio::spawn(async move {
-        let mut scanner = match driver.connect().await {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::error!(scanner = %scanner_id, error = %e, "scanner connect failed");
-                sink.emit(
-                    "barcode:error",
-                    serde_json::json!({ "error": e.to_string() }),
-                );
-                return;
+        // Connect with bounded retries. A scanner plugged in after this
+        // screen mounted — or one whose Bluetooth link is not up yet — used
+        // to fail once and stay dead until the operator navigated away and
+        // back. Every wait is cancellable, so stopping the scanner does not
+        // have to outlast the backoff.
+        const FIRST_BACKOFF_MS: u64 = 1_000;
+        const MAX_BACKOFF_MS: u64 = 30_000;
+        let mut backoff_ms = FIRST_BACKOFF_MS;
+
+        let mut scanner = loop {
+            tokio::select! {
+                _ = &mut rx => {
+                    tracing::info!(scanner = %scanner_id, "barcode scanner stopped before connecting");
+                    return;
+                }
+                result = driver.connect() => {
+                    match result {
+                        Ok(s) => break s,
+                        Err(e) => {
+                            // "No scanner reachable" is a state, not a
+                            // fault: the register sells without one, and a
+                            // cashier cannot act on a COM port that would
+                            // not open. This is the same rule the weight
+                            // scale already follows — an absent scale
+                            // resolves to Ok(None) rather than an error.
+                            // Anything else still reaches the UI.
+                            if e.kind() == HalErrorKind::NotFound {
+                                tracing::warn!(
+                                    scanner = %scanner_id, error = %e,
+                                    "scanner not reachable, retrying"
+                                );
+                            } else {
+                                tracing::error!(scanner = %scanner_id, error = %e, "scanner connect failed");
+                                sink.emit(
+                                    "barcode:error",
+                                    serde_json::json!({ "error": e.to_string() }),
+                                );
+                            }
+
+                            tokio::select! {
+                                _ = &mut rx => return,
+                                _ = tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)) => {}
+                            }
+                            backoff_ms = (backoff_ms * 2).min(MAX_BACKOFF_MS);
+                        }
+                    }
+                }
             }
         };
         tracing::info!(scanner = %scanner_id, "barcode scanner started");

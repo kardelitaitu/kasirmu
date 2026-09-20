@@ -27,6 +27,22 @@ export interface TabletAppLayoutProps {
   workspaceScreens?: string[];
 }
 
+// ── Tab set ────────────────────────────────────────────────────────
+
+/**
+ * Cap on the FALLBACK tab set — the whole menu registry, used only when the
+ * active workspace declares no screens of its own.
+ *
+ * The bar scrolls horizontally (see `tablet.css`), so this is not a layout
+ * limit any more; it is a limit on what belongs in a thumb-reachable
+ * quick-access surface. The fallback list is the entire application nav —
+ * 41 items for an owner, i.e. the desktop sidebar — and is also what renders
+ * when no workspace is active yet. Neither case should produce a 41-item bar.
+ *
+ * The workspace-declared list is NOT capped: see `navItems` below.
+ */
+export const FALLBACK_TAB_LIMIT = 7;
+
 // ── Component ──────────────────────────────────────────────────────
 
 /**
@@ -53,9 +69,22 @@ export default function TabletAppLayout({
   // to only those matching the workspace type screens. This creates a
   // dynamic, per-instance tab bar instead of a static one.
   const allNavItems = getNavItems(enabledFeatures, userRole, permissions);
-  const navItems = workspaceScreens && workspaceScreens.length > 0
-    ? allNavItems.filter((item) => workspaceScreens.includes(item.route)).slice(0, 7)
-    : allNavItems.slice(0, 7); // max 7 tabs for bottom nav
+  //
+  // The declared list is rendered IN FULL. It is ordered, owner-configured
+  // data (`workspace_type_screens`), so truncating it silently discards
+  // configuration: the seeded `admin` workspace declares 15 screens, 13 of
+  // which are nav items, and a cap of 7 dropped 6 of them with no signal.
+  // A screen the registry does not register as a nav item is filtered out by
+  // the `includes` intersection below — that is the registry's business, not
+  // a truncation this component should perform silently.
+  //
+  // The fallback is the whole registry and stays capped — see
+  // `FALLBACK_TAB_LIMIT`.
+  const declaredScreens =
+    workspaceScreens && workspaceScreens.length > 0 ? workspaceScreens : null;
+  const navItems = declaredScreens
+    ? allNavItems.filter((item) => declaredScreens.includes(item.route))
+    : allNavItems.slice(0, FALLBACK_TAB_LIMIT);
 
   // ── A11Y-03/05: WAI-ARIA tabs keyboard pattern ────────────────
   // The bottom tab bar is a roving-tabindex tablist: only the selected tab is

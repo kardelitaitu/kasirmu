@@ -4,7 +4,6 @@
   "description": "Default permissions for the OZ-POS tablet app.",
   "permissions": [
     "core:default",
-    "window-state:default",
     "clipboard-manager:allow-write-text",
     "opener:allow-open-url"
   ]

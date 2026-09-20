@@ -49,7 +49,8 @@ pub async fn open_product_images(sku: String, state: State<'_, AppState>) -> Res
 }
 
 /// Open a URL in the OS default browser via `tauri-plugin-opener`.
-async fn open_in_browser(url: &str) -> Result<(), AppError> {
+/// Shared with the device-link command (ADR #54 §2.5), which hands it the consent URL.
+pub(crate) async fn open_in_browser(url: &str) -> Result<(), AppError> {
     tauri_plugin_opener::open_url(url, None::<&str>)
         .map_err(|e| AppError::Internal(format!("opening browser: {e}")))
 }

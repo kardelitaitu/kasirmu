@@ -1,6 +1,10 @@
 ---
 // Root — locale auto-detect (website-plan.md §4). Static page, so detection
-// is client-side: browser language wins; noscript falls back to /en/.
+// is client-side: stored preference wins, then browser language, then the
+// site default (`id`). noscript falls back to /id/ as well, and this page's
+// canonical, x-default and <html lang> all point at /id/ — the same default
+// astro.config.mjs declares. It is deliberately NOT in the sitemap: it
+// canonicalises to /id/, so listing it would contradict itself.
 // (CF-IPCountry sniffing would require a Cloudflare Function — out of v1.)
 ---
 
@@ -15,6 +19,9 @@
     <link rel="alternate" hreflang="id" href="https://kasir.mu/id/" />
     <link rel="alternate" hreflang="en" href="https://kasir.mu/en/" />
     <link rel="alternate" hreflang="x-default" href="https://kasir.mu/id/" />
+    <!-- This stub is the literal / homepage, so it carries the same
+         llms.txt discovery link the locale homes get from Base.astro. -->
+    <link rel="describedby" href="/llms.txt" type="text/plain" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="kasir.mu" />
     <meta property="og:title" content="kasir.mu — POS Kasir Offline-First untuk Indonesia" />
@@ -23,8 +30,11 @@
     <meta property="og:image" content="https://kasir.mu/og-image.png" />
     <script is:inline>
       // Privacy-friendly: stored user preference first, browser language fallback.
+      // The last resort is 'id', not 'en': it only triggers when navigator.language
+      // is empty (essentially never), and 'id' is what the noscript fallback,
+      // canonical, x-default and astro.config defaultLocale all agree on.
       const saved = localStorage.getItem('oz_language');
-      const lang = (saved || navigator.language || 'en').toLowerCase();
+      const lang = (saved || navigator.language || 'id').toLowerCase();
       const target = lang.startsWith('id') ? '/id/' : '/en/';
       window.location.replace(target);
     </script>

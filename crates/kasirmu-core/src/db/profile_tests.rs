@@ -926,3 +926,113 @@ fn sha256_hex_returns_64_char_hex() {
     assert_eq!(hash.len(), 64);
     assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
 }
+
+// ── The avatar column: a narrow write/read pair, not a profile round-trip ──
+//
+// `users.avatar` holds the 16-hex content hash of an image in the
+// content-addressed store (spec 0046b), or NULL for "no photo". These go
+// through `set_user_avatar`/`get_user_avatar` rather than
+// `write_user_profile`/`get_user_profile` because the wide pair re-encrypts
+// every sensitive column on write and fails closed on an undecryptable one on
+// read — neither of which a profile photo should depend on. The third case
+// below is the guard for exactly that claim.
+
+/// A migrated in-memory DB with one staff role and one user, for the avatar
+/// cases below.
+fn avatar_fixture() -> (rusqlite::Connection, crate::User) {
+    let conn = migrations::fresh_db();
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, permissions) VALUES
+             ('role-staff', 'staff', '[\"sales:view\"]');",
+    )
+    .unwrap();
+    let user = {
+        let store = Store::new(&conn);
+        store
+            .create_user_with_profile(
+                "alice",
+                "hash",
+                "Alice",
+                "role-staff",
+                &complete_profile(),
+                None,
+            )
+            .unwrap()
+    };
+    (conn, user)
+}
+
+#[test]
+fn avatar_roundtrips_and_clears_back_to_null() {
+    let (conn, user) = avatar_fixture();
+    let store = Store::new(&conn);
+
+    assert_eq!(
+        store.get_user_avatar(&user.id).unwrap(),
+        None,
+        "a fresh row has no photo — NULL, not an empty string"
+    );
+
+    store
+        .set_user_avatar(&user.id, Some("0123456789abcdef"))
+        .unwrap();
+    assert_eq!(
+        store.get_user_avatar(&user.id).unwrap().as_deref(),
+        Some("0123456789abcdef")
+    );
+
+    store.set_user_avatar(&user.id, None).unwrap();
+    assert_eq!(
+        store.get_user_avatar(&user.id).unwrap(),
+        None,
+        "clearing is a real state, not a broken image"
+    );
+}
+
+#[test]
+fn avatar_write_leaves_the_rest_of_the_profile_alone() {
+    // The regression guard for the whole reason this pair exists: an avatar
+    // write must not be a read-modify-write of the encrypted profile. If
+    // `set_user_avatar` is ever "simplified" into `write_user_profile`, this
+    // case is what says the sensitive columns moved.
+    let (conn, user) = avatar_fixture();
+    let store = Store::new(&conn);
+    let profile = complete_profile();
+
+    store
+        .set_user_avatar(&user.id, Some("deadbeefdeadbeef"))
+        .unwrap();
+
+    let loaded = store
+        .get_user_profile(&user.id)
+        .unwrap()
+        .expect("the profile must still round-trip after an avatar write");
+
+    // `UserProfile` carries `avatar`, so the wide read DOES surface the hash —
+    // that is the one field allowed to move. Every other field, encrypted ones
+    // included, must come back byte-identical.
+    let mut expected = profile.clone();
+    expected.avatar = Some("deadbeefdeadbeef".into());
+    assert_eq!(loaded, expected, "only the avatar column may move");
+}
+
+#[test]
+fn avatar_write_to_an_unknown_user_is_not_found() {
+    // The write is conditional on the row existing; a silent Ok here would let
+    // the renderer believe a photo was stored that never was.
+    let (conn, _user) = avatar_fixture();
+    let store = Store::new(&conn);
+
+    assert!(
+        matches!(
+            store.set_user_avatar("no-such-user", Some("0123456789abcdef")),
+            Err(CoreError::NotFound { .. })
+        ),
+        "an UPDATE that matches no row must be NotFound"
+    );
+    assert_eq!(
+        store.get_user_avatar("no-such-user").unwrap(),
+        None,
+        "an unknown user reads as 'no photo', which is what the caller renders"
+    );
+}

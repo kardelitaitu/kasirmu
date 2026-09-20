@@ -1,0 +1,200 @@
+/* Roles panel — custom role editing (ADR #47 ruling 4).
+   Embedded in StaffManagementScreen's Roles tab, so it paints NO page chrome:
+   the shell owns the height, the scroll region and the page padding, and this
+   file styles only what sits inside the panel. */
+.role-authoring {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.role-authoring-subtitle {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+}
+
+.role-authoring-error {
+  margin: var(--space-3) 0 0;
+  color: var(--color-danger);
+  font-size: var(--text-base);
+}
+
+.role-list {
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.role-list-item {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.role-list-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.role-list-name {
+  font-weight: 600;
+}
+
+.role-list-desc,
+.role-list-grants {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.role-list-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.role-in-use {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.role-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+}
+
+.role-field-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.role-input {
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  color: inherit;
+}
+
+.role-perm-picker {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  max-height: 24rem;
+  overflow-y: auto;
+}
+
+.role-perm-family {
+  margin-top: var(--space-3);
+}
+
+.role-perm-family-name {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.role-perm-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+.role-perm-key {
+  font-size: var(--text-sm);
+}
+
+.role-perm-desc {
+  flex: 1;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Holders: a disclosure inside each role row. Deliberately quieter than the
+   row itself — this is supporting detail, and the grant count above it stays
+   the headline. */
+.role-holders {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.role-holders-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-primary);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.role-holders-toggle:hover {
+  text-decoration: none;
+}
+
+.role-holders-count,
+.role-holders-loading,
+.role-holders-none,
+.role-holders-more {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.role-holders-panel {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--color-border);
+  background: var(--color-surface-alt, #f9fafb);
+}
+
+.role-holders-error {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-danger);
+}
+
+.role-holders-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.role-holder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+.role-holder-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.role-holder-user,
+.role-holder-scope {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+

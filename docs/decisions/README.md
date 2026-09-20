@@ -77,6 +77,7 @@ implementation-status walkthrough.
 | 50 | [Sync Authentication Hardening (token refresh, gating, terminal credentials)](./2026-09-11-adr50-sync-auth-hardening.md) | Accepted (2026-09-11) - partially implemented |
 | 51 | [Sealed Settings Ingest Policy — One Funnel for Every Untrusted Settings Lane](./2026-09-11-adr51-sealed-settings-ingest-policy.md) | Accepted (2026-09-11) |
 | 52 | [Tracked Settings Funnel Refuses Cleartext Credentials](./2026-09-12-adr52-tracked-settings-funnel-refuses-cleartext-credentials.md) | Accepted (2026-09-12) |
+| 54 | [Google Sign-In — web sign-in/sign-up and desktop setup-wizard account linking](./2026-09-19-adr54-google-sign-in.md) | Proposed (2026-09-19) — nothing implemented |
 
 ## Research notes
 

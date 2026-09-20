@@ -6,6 +6,8 @@ fn sync_settings_serialize() {
         server_url: Some("https://sync.example.com".into()),
         has_api_key: true,
         enabled: true,
+        resolved_origin: "https://license.kasir.mu".into(),
+        resolved_origin_source: "main".into(),
     };
     let json = serde_json::to_value(&dto).unwrap();
     // The shared settings page reads camelCase (ui/src/api/offline.ts
@@ -30,6 +32,8 @@ fn sync_settings_no_url_disabled() {
         server_url: None,
         has_api_key: false,
         enabled: false,
+        resolved_origin: "https://license.kasir.mu".into(),
+        resolved_origin_source: "main".into(),
     };
     let json = serde_json::to_value(&dto).unwrap();
     assert!(json["serverUrl"].is_null());
@@ -120,12 +124,16 @@ fn sync_settings_dto_wire_keys_match_bridge_twin() {
         server_url: Some("https://sync.example.com".into()),
         has_api_key: true,
         enabled: true,
+        resolved_origin: "https://license.kasir.mu".into(),
+        resolved_origin_source: "main".into(),
     };
     let tablet = serde_json::to_value(&tablet_dto).unwrap();
     let bridge = serde_json::to_value(kasirmu_bridge::sync::SyncSettingsDto {
         server_url: tablet_dto.server_url.clone(),
         has_api_key: tablet_dto.has_api_key,
         enabled: tablet_dto.enabled,
+        resolved_origin: tablet_dto.resolved_origin.clone(),
+        resolved_origin_source: tablet_dto.resolved_origin_source.clone(),
     })
     .unwrap();
     assert_eq!(
@@ -152,6 +160,14 @@ fn sync_settings_dto_wire_keys_match_bridge_twin() {
             "{side} must serialise hasApiKey from a real key"
         );
         assert_eq!(obj["enabled"], true, "{side} must serialise enabled");
+        assert_eq!(
+            obj["resolvedOrigin"], "https://license.kasir.mu",
+            "{side} must serialise the resolved origin, not a key holding null"
+        );
+        assert_eq!(
+            obj["resolvedOriginSource"], "main",
+            "{side} must serialise the tier that won"
+        );
         // ...and must not ALSO carry the snake_case spellings: a camelCase key
         // present plus a snake_case key present is a casing leak, which is how
         // one side drifting reads as clean to a value pin alone.

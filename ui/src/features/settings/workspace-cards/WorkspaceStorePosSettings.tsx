@@ -334,11 +334,12 @@ export function WorkspaceStorePosSettings({
           <SettingsSelect
             id="pos-scanner-mode"
             value={hw.profile?.hardware.scanner.mode ?? 'auto'}
-            onChange={(v) => hw.updateScanner({ mode: v as 'keyboard' | 'serial' | 'auto' })}
+            onChange={(v) => hw.updateScanner({ mode: v as 'keyboard' | 'serial' | 'auto' | 'none' })}
             options={[
               { value: 'auto', label: 'Auto' },
               { value: 'keyboard', label: 'Keyboard Wedge' },
               { value: 'serial', label: 'Serial' },
+              { value: 'none', label: 'Disabled (no scanner)' },
             ]}
           />
         </div>

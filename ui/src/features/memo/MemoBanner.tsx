@@ -10,7 +10,7 @@ import './MemoBanner.css';
 /** Bubbles shown at once (owner direction, round 3); the rest queue. */
 const MAX_STACK = 3;
 
-/** Per-index spawn delay when several bubbles mount in the same render. */
+/** Spawn delay between bubbles that mount in the SAME render. */
 const SPAWN_STAGGER_MS = 60;
 
 /**
@@ -43,10 +43,16 @@ function rectOf(el: HTMLElement): MemoOrigin {
  *  - The stack shows at most {@link MAX_STACK} bubbles in backend list
  *    order; further memos queue silently and surface — with the spawn
  *    animation — when a slot frees.
- *  - Each bubble is adaptive-width (400px cap), previews at most 10 lines,
- *    carries its own (x) floating outside the top-right corner, and opens
- *    the enlarged reading card on click. Titles are optional (blank =
- *    text-only bubble) and no timestamp is ever rendered.
+ *  - Each bubble is adaptive-width (560px cap) and previews THREE rows
+ *    in total (owner ruling 2026-09-19): a 1-row title leaves the body
+ *    2, an untitled bubble gives the body all 3. It carries its own
+ *    (x) floating outside the top-right corner, and opens the enlarged
+ *    reading card on click. Titles are optional (blank = text-only
+ *    bubble) and no timestamp is ever rendered. The row caps live in
+ *    MemoBanner.css as `-webkit-line-clamp`, not here: the preview is
+ *    a row budget, so the engine has to do the cutting — and a title
+ *    costs one of the three, which is why the clamp is conditional
+ *    rather than a constant.
  *  - The enlarged card is a dedicated portal overlay (not the shared
  *    Modal): large reading typography and a single big (x) outside the
  *    card. The big (x) acknowledges durably (chat-bubble semantics: read
@@ -70,6 +76,23 @@ export default function MemoBanner({ kds = false }: { kds?: boolean }) {
   const [expanded, setExpanded] = useState<{ id: string; origin: MemoOrigin } | null>(null);
 
   const visible = memos.slice(0, MAX_STACK);
+
+  // Spawn stagger, scoped to the rows that appear in THIS render. The delay
+  // used to be the row's absolute index, so a lone memo arriving while two
+  // others were already on screen mounted its row and then sat motionless for
+  // 2 × 60ms — the stall in an otherwise single-bubble spawn. Measured against
+  // the previous render's ids instead, a batch of n new rows still deals in at
+  // 0/60/…/(n−1)×60, while a single arrival starts on the first frame.
+  const visibleIds = visible.map((active) => active.memo.id);
+  const knownIdsRef = useRef<Set<string>>(new Set());
+  const staggerIndexById = new Map<string, number>();
+  for (const id of visibleIds) {
+    if (!knownIdsRef.current.has(id)) staggerIndexById.set(id, staggerIndexById.size);
+  }
+  useEffect(() => {
+    knownIdsRef.current = new Set(visibleIds);
+  });
+
   // Look the expanded memo up in the FULL list: while the card is open the
   // memo could drift past the stack slice on a poll reorder. If it leaves
   // the list entirely (expired, or acknowledged elsewhere) the overlay
@@ -82,11 +105,11 @@ export default function MemoBanner({ kds = false }: { kds?: boolean }) {
     <>
       {visible.length > 0 && (
         <div className="memo-stack" data-testid="memo-stack">
-          {visible.map((active, index) => (
+          {visible.map((active) => (
             <MemoStackItem
               key={active.memo.id}
               active={active}
-              index={index}
+              staggerIndex={staggerIndexById.get(active.memo.id) ?? 0}
               isExpanded={expanded?.id === active.memo.id}
               onAck={acknowledge}
               onExpand={(memoId, origin) => setExpanded({ id: memoId, origin })}
@@ -114,23 +137,30 @@ export default function MemoBanner({ kds = false }: { kds?: boolean }) {
  * immediately (optimistic), so firing it early would yank the bubble out
  * mid-animation. All visible motion (dealt-in from the corner, spring
  * reflow) lives in CSS; this component only stages the state classes and
- * the per-index spawn delay.
+ * its own spawn delay.
  */
 function MemoStackItem({
   active,
-  index,
+  staggerIndex,
   isExpanded,
   onAck,
   onExpand,
 }: {
   active: ActiveMemo;
-  index: number;
+  /** Position within this render's batch of newly-mounted rows (0 = first). */
+  staggerIndex: number;
   isExpanded: boolean;
   onAck: (memoId: string) => void;
   onExpand: (memoId: string, origin: MemoOrigin) => void;
 }) {
   const { l10n } = useLocalization();
   const memoId = active.memo.id;
+
+  // Freeze the spawn delay on the mounting render. The parent's batch index is
+  // only meaningful for the render that introduces the row; a later re-render
+  // (a poll, an unrelated state change) would otherwise recompute it to 0 and
+  // cancel the stagger of a row that has not started animating yet.
+  const [delayMs] = useState(() => staggerIndex * SPAWN_STAGGER_MS);
 
   // Spawn: the row mounts collapsed (0fr) and flips to expanded two frames
   // later so the grid-rows transition actually plays (a same-frame flip
@@ -172,7 +202,7 @@ function MemoStackItem({
   return (
     <div
       className={itemClass}
-      style={{ '--memo-delay': `${index * SPAWN_STAGGER_MS}ms` } as CSSProperties}
+      style={{ '--memo-delay': `${delayMs}ms` } as CSSProperties}
     >
       <div className="memo-banner" role="alert" aria-live="polite">
         <button

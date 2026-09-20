@@ -409,6 +409,64 @@ fn config_len_counts_every_category() {
     );
 }
 
+#[test]
+fn claimed_ports_collects_every_configured_device_port() {
+    // The exclusion is only as good as this list: a port missed here is a
+    // port the scanner auto-detect will still try to open, which is exactly
+    // the COM7 failure this wiring exists to prevent.
+    let cfg = HardwareConfig {
+        printers: vec![printer(
+            "default",
+            Connection::Serial {
+                port: "COM7".into(),
+                baud: 9600,
+            },
+        )],
+        displays: vec![DisplayConfig {
+            id: "pole".into(),
+            port: "COM4".into(),
+            baud: 9600,
+            info: info("pole"),
+        }],
+        drawers: vec![DrawerConfig {
+            id: "drawer".into(),
+            port: "COM5".into(),
+            baud: 9600,
+            info: info("drawer"),
+        }],
+        terminals: vec![TerminalConfig {
+            id: "edc".into(),
+            connection: TerminalConnection::Wired {
+                port: "COM6".into(),
+                baud: 115200,
+            },
+            info: info("edc"),
+        }],
+        autodetect_scanners: true,
+    };
+
+    let claimed = claimed_ports(&cfg);
+    for port in ["COM7", "COM4", "COM5", "COM6"] {
+        assert!(
+            claimed.iter().any(|p| p == port),
+            "{port} must be claimed: {claimed:?}"
+        );
+    }
+}
+
+#[test]
+fn an_unconfigured_device_claims_no_port() {
+    // A disabled device records an empty port. Claiming "" would match
+    // nothing today but silently break the moment a port were named that.
+    let cfg = HardwareConfig {
+        printers: vec![printer("default", Connection::Usb)],
+        autodetect_scanners: true,
+        ..HardwareConfig::empty()
+    };
+    assert!(claimed_ports(&cfg).is_empty());
+    assert!(claimed_ports(&HardwareConfig::empty()).is_empty());
+}
+
 #[tokio::test]
 async fn autodetect_off_registers_no_scanner() {
     // The opt-out has to be real, or "I configured no scanners" would still

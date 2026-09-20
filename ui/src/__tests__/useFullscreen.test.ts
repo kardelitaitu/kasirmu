@@ -22,8 +22,12 @@ function setBrowserMode() {
 }
 
 function setTauriMode() {
+  // `isTauriWebview()` keys on `invoke` being callable, not on the key merely
+  // existing — the dev preview's `index.html` stub has no `invoke`. A bare
+  // `{}` here reads as "browser" and every Tauri case below would silently
+  // exercise the browser branch.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (window as any).__TAURI_INTERNALS__ = {};
+  (window as any).__TAURI_INTERNALS__ = { invoke: () => Promise.resolve() };
 }
 
 // ── Tests ────────────────────────────────────────────────────────

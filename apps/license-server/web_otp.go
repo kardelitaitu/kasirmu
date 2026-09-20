@@ -61,9 +61,25 @@ const (
 
 // ── In-memory stores ─────────────────────────────────────────────────
 
+// otpPurpose keeps codes from being interchangeable across flows (ADR #54 §2.6):
+// a code minted to prove an account for a device link must not be spendable as a
+// login, and a login code must not be spendable as a link. The store keys by
+// purpose as well as by email, and a code presented to the wrong flow is refused
+// without being consumed.
+type otpPurpose string
+
+const (
+	// purposeLogin covers every existing code: web sign-in, password reset, recovery.
+	purposeLogin otpPurpose = "login"
+	// purposeLink proves the account for a device link (the tablet's path, and the
+	// desktop fallback when the account is not a Google one).
+	purposeLink otpPurpose = "link"
+)
+
 // otpCode is a pending verification code for one email.
 type otpCode struct {
 	hash      string // sha256 of the 6-digit code (never store plaintext)
+	purpose   otpPurpose
 	expiresAt time.Time
 }
 
@@ -86,21 +102,37 @@ var webOtpStore = &otpStore{
 	sessions: make(map[string]*webSession),
 }
 
-// storeCode records a pending code for the email.
+// storeCode records a pending LOGIN code for the email.
 func (s *otpStore) storeCode(email, codeHash string) {
+	s.storeCodeFor(purposeLogin, email, codeHash)
+}
+
+// storeCodeFor records a pending code for one purpose.
+func (s *otpStore) storeCodeFor(purpose otpPurpose, email, codeHash string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.codes[email] = &otpCode{hash: codeHash, expiresAt: time.Now().Add(webOtpTTL)}
+	s.codes[email] = &otpCode{hash: codeHash, purpose: purpose, expiresAt: time.Now().Add(webOtpTTL)}
 }
 
 // takeCode atomically reads and deletes the code for the email.
 // Returns ("", false) when missing or expired — callers treat both the
 // same (generic 401) so verify-otp never reveals which case occurred.
 func (s *otpStore) takeCode(email string) (hash string, ok bool) {
+	return s.takeCodeFor(purposeLogin, email)
+}
+
+// takeCodeFor atomically reads and deletes the code for one purpose.
+//
+// A code issued for a DIFFERENT purpose is refused and left in place: consuming it
+// would let one flow spend the other's proof, which is the substitution §2.6 forbids.
+func (s *otpStore) takeCodeFor(purpose otpPurpose, email string) (hash string, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	c, exists := s.codes[email]
-	if !exists || time.Now().After(c.expiresAt) {
+	if !exists || c.purpose != purpose {
+		return "", false
+	}
+	if time.Now().After(c.expiresAt) {
 		delete(s.codes, email)
 		return "", false
 	}
@@ -281,6 +313,7 @@ func windowSweepLoop() {
 		webResetRequestLimiter.sweep()
 		webResetVerifyLimiter.sweep()
 		exchangeConsumeLimiter.sweep()
+		oauthStartLimiter.sweep()
 	}
 }
 
@@ -381,12 +414,17 @@ func constantTimeHashEq(a, b string) bool {
 // ── CORS allowlist ───────────────────────────────────────────────────
 
 // webAllowedOrigins returns the comma-separated OZ_WEB_ALLOWED_ORIGINS
-// allowlist, defaulting to the current kasir.mu domain and the local
-// dev origin. Additionally, OZ_CORS_ORIGINS (extra comma-separated
-// origins, used by the Rust cloud server) is merged in so operators only
-// need to set one env var for both services. Requests without an Origin
-// header (curl, POS clients, server-to-server) are always allowed —
-// CORS only governs browsers.
+// allowlist, defaulting to BOTH marketing names and the local dev origin.
+// Additionally, OZ_CORS_ORIGINS (extra comma-separated origins, used by the
+// Rust cloud server) is merged in so operators only need to set one env var
+// for both services. Requests without an Origin header (curl, POS clients,
+// server-to-server) are always allowed — CORS only governs browsers.
+//
+// Both names, not just the canonical one: ADR #55 measured that kasir.mu and
+// ozpos.my.id are one Worker on two domains, and /en/account/ answers 200 on
+// each — so a merchant signing in on the second name sends
+// `Origin: https://ozpos.my.id` and would otherwise be refused by the very
+// endpoints ADR #54 added. One entry per name is the whole fix.
 func webAllowedOrigins() []string {
 	// Primary allowlist from OZ_WEB_ALLOWED_ORIGINS.
 	v := strings.TrimSpace(os.Getenv("OZ_WEB_ALLOWED_ORIGINS"))
@@ -394,6 +432,7 @@ func webAllowedOrigins() []string {
 	if v == "" {
 		out = []string{
 			"https://kasir.mu",
+			"https://ozpos.my.id",
 			"https://dashboard.kasir.mu",
 			"https://admin.kasir.mu",
 			"http://localhost:4321",

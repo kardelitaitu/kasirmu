@@ -21,7 +21,8 @@
 use super::*;
 
 use crate::testing::TestBridge;
-use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
+use crate::testing::assert_refused_by_the_seeded_row;
+use crate::testing::seeded_row_reaches_a_paid_tier;
 
 // ── Desktop-shaped adapters (relocation scaffolding) ─────────────────
 #[allow(dead_code)]
@@ -198,7 +199,7 @@ async fn create_staff_scoped_records_a_security_event() {
     // recorder is ever reached, so there is NO event to read - asserting a row count
     // here would be false evidence. Actor-vs-subject, the action name and the PIN
     // redaction below are all debug-profile claims about the WRITE side.
-    if !seeded_row_loads() {
+    if !seeded_row_reaches_a_paid_tier() {
         assert_refused_by_the_seeded_row(&bridge, settled, "premium").await;
         return;
     }
@@ -243,7 +244,7 @@ async fn a_rejected_create_records_no_security_event() {
     // `sub.verify_signature()` at :1080 — a duplicate-username setup needs the
     // FIRST create to succeed, and in release that create dies at :1080 on the
     // BOOTSTRAP_FREE sentinel. No fixture in this crate can mint a verifying
-    // signature (testing.rs:103-148 — the licence private key is not in this
+    // signature (testing.rs:105-162 — the licence private key is not in this
     // checkout), so no seeded row lets it through: `before` was 0, the
     // duplicate was then refused at :1080 too, and `0 == 0` held for a reason
     // with nothing to do with the recorder. A permission refusal is UPSTREAM
@@ -289,7 +290,7 @@ async fn a_duplicate_username_create_records_no_security_event() {
     // instead of hiding it. The setup create must SUCCEED for a duplicate to
     // exist, and `create_staff_scoped` only reaches the duplicate check past
     // `sub.verify_signature()` (staff.rs:1080), which the release profile
-    // refuses — see testing.rs:103-148 on why no fixture can satisfy it. So in
+    // refuses — see testing.rs:105-162 on why no fixture can satisfy it. So in
     // release there is no `jdoe` and no reachable duplicate check: the release
     // leg asserts the REFUSAL (with the row's existence pinned by
     // `assert_refused_by_the_seeded_row`) and stops. The recorder-silence
@@ -299,7 +300,7 @@ async fn a_duplicate_username_create_records_no_security_event() {
     let bridge = owner_app("premium");
     let ctx = bridge.ctx();
     let first = create_staff_scoped("owner-token".into(), create_args("jdoe"), &ctx).await;
-    if !seeded_row_loads() {
+    if !seeded_row_reaches_a_paid_tier() {
         assert_refused_by_the_seeded_row(&bridge, first, "premium").await;
         return;
     }

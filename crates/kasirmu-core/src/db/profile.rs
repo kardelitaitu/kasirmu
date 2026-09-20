@@ -551,6 +551,60 @@ impl Store<'_> {
         self.write_user_profile(user_id, profile)
     }
 
+    /// Point `user_id` at a content-addressed avatar image, or clear it.
+    ///
+    /// `hash` is the 16-hex-char content hash the image ingest pipeline
+    /// produces (`kasirmu-bridge`); `None` clears the column back to "no
+    /// photo". The value deliberately does NOT go through
+    /// [`Store::write_user_profile`]: that path re-encrypts the sensitive
+    /// columns and would need the whole profile read back first, which turns a
+    /// single avatar change into a read-modify-write over fields this call has
+    /// no business touching. `avatar` is not a sensitive column, so one UPDATE
+    /// is sufficient and atomic on its own — safe inside an existing
+    /// transaction (no nested BEGIN).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::NotFound`] when no user has that id, and
+    /// [`CoreError::Db`] on store failures.
+    pub fn set_user_avatar(&self, user_id: &str, hash: Option<&str>) -> Result<(), CoreError> {
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let changed = self.conn.execute(
+            "UPDATE users SET avatar = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![hash, now, user_id],
+        )?;
+        if changed == 0 {
+            return Err(CoreError::NotFound {
+                entity: "user",
+                id: user_id.to_owned(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Read `user_id`'s avatar hash, or `None` when no photo is set.
+    ///
+    /// Deliberately narrow rather than a projection of
+    /// [`Store::get_user_profile`]: that read fails closed on an undecryptable
+    /// sensitive column and returns `None` for the whole profile, which would
+    /// silently drop a perfectly good avatar because an unrelated national-id
+    /// ciphertext moved with the hardware key.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::Db`] on store failures. A missing user is reported
+    /// as `Ok(None)` — the caller has already established identity.
+    pub fn get_user_avatar(&self, user_id: &str) -> Result<Option<String>, CoreError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT avatar FROM users WHERE id = ?1")?;
+        let mut rows = stmt.query(rusqlite::params![user_id])?;
+        match rows.next()? {
+            Some(row) => Ok(row.get(0)?),
+            None => Ok(None),
+        }
+    }
+
     /// The shared profile-column write: validates, encrypts the sensitive
     /// fields (national id, monthly pay), records the national-id
     /// uniqueness hash, and issues one UPDATE. Duplicate email / national

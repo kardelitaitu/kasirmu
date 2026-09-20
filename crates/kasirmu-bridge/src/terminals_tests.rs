@@ -296,10 +296,12 @@ async fn owner_can_register_terminal() {
         },
     )
     .await;
-    // Release: the refusal is not a failure of the owner permission this
-    // fixture is about - it is the signature gate one step earlier - so the
-    // is_ok assert below is a debug-leg fact, asserted as such rather than
-    // widened into a claim that both arms are the same answer.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the owner permission is what answers
+    // below in both and the is_ok assert runs in both. This arm is reached only
+    // when the row exists but does not verify - then the refusal is the
+    // signature gate one step earlier, not a failure of the owner permission
+    // this fixture is about, so the is_ok assert below is not the same answer.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&tb, result, "free").await;
         return;
@@ -327,9 +329,11 @@ async fn owner_can_get_terminal_by_id() {
         },
     )
     .await;
-    // Release: no terminal was ever registered, so the fetch below has no id
-    // to look up and the get-by-id half of this case stays debug-only rather
-    // than being re-cut into a second assertion of the same refusal.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the terminal is registered below in both
+    // and the get-by-id half runs in both. This arm is reached only when the row
+    // exists but does not verify - then no terminal was ever registered and the
+    // fetch below has no id to look up.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&tb, registered, "free").await;
         return;

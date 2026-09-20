@@ -2,14 +2,14 @@ import { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef } fr
 import { type Product } from '@/types/domain';
 import { useLocalization } from '@fluent/react';
 import { useProducts } from '@/features/products/useProducts';
-import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { getUserPreferencesScoped, setUserPreferencesScoped } from '@/api/settings';
 import { MenuCategoryTabBar } from './components/MenuCategoryTabBar';
 import { MenuItemGrid } from './components/MenuItemGrid';
 import { MenuItemContextMenu, type RestaurantContextMenuState } from './components/MenuItemContextMenu';
-import { MenuPreferencesMenu, type RestaurantSidebarActions } from './components/MenuPreferencesMenu';
+import { MenuPreferencesMenu } from './components/MenuPreferencesMenu';
+import { RestaurantSidebar, type RestaurantSidebarActions, type RestaurantSidebarProfile } from './components/RestaurantSidebar';
 import { MenuSearchBar } from './components/MenuSearchBar';
 import './RestaurantMenu.css';
 
@@ -29,6 +29,15 @@ export interface RestaurantMenuProps {
    * group, which is what every test render and non-POS host gets.
    */
   cartActions?: RestaurantSidebarActions;
+  /**
+   * Cashier identity for the sidebar header. Absent = no header block, which
+   * is what every test render and non-POS host gets.
+   */
+  profile?: RestaurantSidebarProfile | undefined;
+  /** Opens the photo picker; absent = the avatar renders as a static tile. */
+  onChangePhoto?: (() => void) | undefined;
+  /** Request exit from workspace; handled by host to check shifts. */
+  onRequestExit?: () => void;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -146,11 +155,13 @@ export default function RestaurantMenu({
   sidebarOpen: controlledSidebarOpen,
   onSidebarOpenChange,
   cartActions,
+  profile,
+  onChangePhoto,
+  onRequestExit,
 }: RestaurantMenuProps) {
   const { l10n } = useLocalization();
   const { sessionToken } = useWorkspace();
   const { products, categoryMeta, loading, error, reload } = useProducts(sessionToken ?? undefined);
-  const { goToWorkspacePicker } = useWorkspaceNav();
   const { session } = useAuth();
   const userId = session?.user_id ?? 'default';
   const [internalMenuOpen, setInternalMenuOpen] = useState(false);
@@ -165,11 +176,10 @@ export default function RestaurantMenu({
     }
   }, [isControlled, menuOpen, onSidebarOpenChange]);
   const contextMenuOpenRef = useRef(false);
-  // The dropdown element ref is owned here (not in MenuPreferencesMenu)
-  // because the global app-search gate — which moved into MenuSearchBar with
-  // the input it targets — must test whether focus is inside the popover.
-  // The same ref object is passed to both children.
   const hamburgerDropdownRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const sidebarButtonRef = useRef<HTMLButtonElement>(null);
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [menuRoot, setMenuRoot] = useState<HTMLDivElement | null>(null);
 
   const [addedSku, setAddedSku] = useState<string | null>(null);
@@ -392,7 +402,7 @@ export default function RestaurantMenu({
   const handleSelectSort = useCallback((mode: SortMode) => {
     setSortMode(mode);
     persistMenuPreference('sort', mode);
-    setMenuOpen(false);
+    setPreferencesOpen(false);
   }, [persistMenuPreference]);
 
   const filtered = useMemo(() => {
@@ -424,40 +434,57 @@ export default function RestaurantMenu({
       className={`restaurant-menu ${menuOpen ? 'restaurant-menu--sidebar-open' : ''}`}
       style={{ '--card-size': cardSize, '--font-size': fontSize } as React.CSSProperties}
     >
-      {/* ── Header row: hamburger + back + search ── */}
+      {/* ── Header row: sidebar + preferences hamburger + search ── */}
       <div className="restaurant-header">
-        <MenuPreferencesMenu
-          {...(cartActions ? { cartActions } : {})}
-          open={menuOpen}
-          onOpenChange={setMenuOpen}
-          dropdownRef={hamburgerDropdownRef}
-          container={menuRoot}
-          sortMode={sortMode}
-          onSelectSort={handleSelectSort}
-          cardSize={cardSize}
-          onCardSizeStep={changeCardSize}
-          fontSize={fontSize}
-          onFontSizeStep={changeFontSize}
-        />
+        <div className="restaurant-header-left">
+          <button
+            type="button"
+            className={`restaurant-sidebar-btn${menuOpen ? ' restaurant-sidebar-btn--active' : ''}`}
+            ref={sidebarButtonRef}
+            onClick={() => setMenuOpen((prev) => !prev)}
+            aria-label={l10n.getString('restaurant-sidebar-toggle-aria')}
+            aria-expanded={menuOpen}
+            aria-controls="restaurant-sidebar-panel"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" style={{ pointerEvents: 'none' }}>
+              <rect width="18" height="18" x="3" y="3" rx="4" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+            </svg>
+          </button>
 
-        <button
-          type="button"
-          className="restaurant-back-btn"
-          onClick={goToWorkspacePicker}
-          aria-label={l10n.getString('restaurant-menu-back-aria')}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" style={{ pointerEvents: 'none' }}>
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
+          <MenuPreferencesMenu
+            open={preferencesOpen}
+            onOpenChange={setPreferencesOpen}
+            dropdownRef={hamburgerDropdownRef}
+            sortMode={sortMode}
+            onSelectSort={handleSelectSort}
+            cardSize={cardSize}
+            onCardSizeStep={changeCardSize}
+            fontSize={fontSize}
+            onFontSizeStep={changeFontSize}
+          />
+        </div>
+
         <MenuSearchBar
           value={searchQuery}
           onChange={setSearchQuery}
-          menuOpen={menuOpen}
+          menuOpen={menuOpen || preferencesOpen}
           contextMenuOpenRef={contextMenuOpenRef}
           popoverRef={hamburgerDropdownRef}
         />
       </div>
+
+      <RestaurantSidebar
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        sidebarRef={sidebarRef}
+        triggerRef={sidebarButtonRef}
+        container={menuRoot}
+        cartActions={cartActions}
+        profile={profile}
+        onChangePhoto={onChangePhoto}
+        onRequestExit={onRequestExit}
+      />
 
       {/* ── Category pills ─────────────────────────── */}
       <MenuCategoryTabBar

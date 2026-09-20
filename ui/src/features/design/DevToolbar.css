@@ -179,3 +179,23 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Outcome of the last memo spawn. Exists so a refused publish is legible:
+   the backend refuses a Location Memo whose targeted locations hold no bound
+   terminal, the memo stays a draft, and with no report here that is
+   indistinguishable from a dead button. */
+.dev-toolbar-status {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  color: var(--color-fg-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.dev-toolbar-status--ok {
+  color: var(--color-success);
+}
+
+.dev-toolbar-status--error {
+  color: var(--color-danger);
+}

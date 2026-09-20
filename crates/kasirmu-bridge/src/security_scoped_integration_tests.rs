@@ -237,9 +237,10 @@ async fn refresh_picker_ticket_end_to_end() {
         },
     )
     .await;
-    // Release: create_session propagates the seeded row's failed signature check
-    // (auth.rs:617, the gate the fourteen next door went through), so nothing
-    // downstream of this mint is reachable - the legs below stay debug-only.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the mint at auth.rs:617 succeeds in both
+    // and the legs below run in both. This arm is reached only when the row
+    // exists but does not verify. See `seeded_row_loads`.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&tb, settled, "free").await;
         return;
@@ -310,9 +311,10 @@ async fn impersonate_user_scoped_creates_target_scoped_session() {
         },
     )
     .await;
-    // Release: create_session propagates the seeded row's failed signature check
-    // (auth.rs:617, the gate the fourteen next door went through), so nothing
-    // downstream of this mint is reachable - the legs below stay debug-only.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the mint at auth.rs:617 succeeds in both
+    // and the legs below run in both. This arm is reached only when the row
+    // exists but does not verify. See `seeded_row_loads`.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&tb, settled, "free").await;
         return;
@@ -364,9 +366,10 @@ async fn impersonate_user_scoped_revoked_by_destroy_session() {
         },
     )
     .await;
-    // Release: create_session propagates the seeded row's failed signature check
-    // (auth.rs:617, the gate the fourteen next door went through), so nothing
-    // downstream of this mint is reachable - the legs below stay debug-only.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the mint at auth.rs:617 succeeds in both
+    // and the legs below run in both. This arm is reached only when the row
+    // exists but does not verify. See `seeded_row_loads`.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&tb, settled, "free").await;
         return;
@@ -414,9 +417,10 @@ async fn impersonate_user_scoped_enforces_ttl() {
         },
     )
     .await;
-    // Release: create_session propagates the seeded row's failed signature check
-    // (auth.rs:617, the gate the fourteen next door went through), so nothing
-    // downstream of this mint is reachable - the legs below stay debug-only.
+    // Broken-seed fallback, not a profile fork: since 19-09-26 the seeded Free
+    // row verifies in BOTH profiles, so the mint at auth.rs:617 succeeds in both
+    // and the legs below run in both. This arm is reached only when the row
+    // exists but does not verify. See `seeded_row_loads`.
     if !seeded_row_loads() {
         assert_refused_by_the_seeded_row(&tb, settled, "free").await;
         return;

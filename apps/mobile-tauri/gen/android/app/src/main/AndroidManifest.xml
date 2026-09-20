@@ -1,6 +1,125 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- ── Network ─────────────────────────────────────────────────────────
+         INTERNET is the only permission the current code paths genuinely need:
+         the sync client, the license check and the image-download daemon all go
+         through reqwest, and the WebView needs it as well. A WebSocket to the
+         sync server rides on INTERNET too — there is no separate WiFi permission
+         for it. ACCESS_NETWORK_STATE / ACCESS_WIFI_STATE are normal permissions
+         that let the app *read* connectivity, so a dropped socket or a failed
+         sync can back off and retry instead of hammering blind. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Keep the CPU and radio up while a sync, print or payment is in flight.
+         Normal permission; inert until the code actually acquires a wake lock,
+         which nothing does yet — see the note at the bottom. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- ── Haptics ─────────────────────────────────────────────────────────
+         ui/src/utils/interaction.ts calls navigator.vibrate(15); the WebView
+         Vibration API is a silent no-op without this. Normal, auto-granted.
+         Every entry in INTERACTIONS currently sets vibrate:false, so it is
+         dormant today and takes effect the moment one is enabled. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- ── Camera, for reading QR / barcodes ───────────────────────────────
+         CAMERA is a DANGEROUS permission: declaring it is necessary but NOT
+         sufficient — the user must also be asked at runtime, and for a WebView
+         source the app has to answer WebChromeClient.onPermissionRequest for
+         getUserMedia. BOTH already exist, but in wry, not here: the generated
+         RustWebChromeClient (wry 0.55.1, the version this workspace locks)
+         maps VIDEO_CAPTURE -> CAMERA, fires the OS permission dialog through
+         its own permissionLauncher and grants or denies the WebView request
+         from the result. Verified 2026-09-20 against the wry-v0.55.1 source,
+         so no app-side runtime request is needed; the note at the bottom was
+         corrected the same day. When tauri 2.12 ships the permission-handler
+         exposure (merged upstream, milestone 2.12), this stays true.
+         required="false" keeps the app installable on tablets with no camera,
+         which matters because scanning is an optional input sitting alongside
+         the serial / USB / BT hardware scanners. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
+    <!-- ── Notifications ───────────────────────────────────────────────────
+         DANGEROUS on API 33+ and likewise needs a runtime request, plus a
+         channel created before the first post. Nothing posts a notification
+         today; see the note at the bottom. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- ── Bluetooth: receipt printer, and the cash drawer through it ───────
+         Split by API level, because the capability moved. On API 31+
+         (Android 12+) BLUETOOTH_CONNECT and BLUETOOTH_SCAN are DANGEROUS
+         runtime permissions; on API 26-30 the same capability is the
+         install-time BLUETOOTH / BLUETOOTH_ADMIN pair, which is why those
+         carry maxSdkVersion=30 rather than being dropped — minSdk is 26.
+
+         neverForLocation: scan results are used to find a known printer,
+         never to infer where the tablet is. That exemption is what keeps
+         ACCESS_FINE_LOCATION out of this file. Drop the flag and Android
+         will demand location permission for scanning.
+
+         The drawer needs no transport of its own: HAL's PrinterKickCashDrawer
+         fires the RJ12 kick through the printer's ESC/POS port, so one
+         Bluetooth link drives both. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+
+    <!--
+      Declared above but NOT yet functional, and deliberately absent where a
+      line here would be noise. Audited and re-audited 2026-09-19 against the
+      sources; the merged manifest is checked after every build, not assumed.
+
+      Needs CODE, not just a line here:
+        POST_NOTIFICATIONS,  all dangerous on the API levels above —
+        BLUETOOTH_CONNECT,           the app must request them at runtime or
+        BLUETOOTH_SCAN               they stay ungranted.
+        Bluetooth transport          see the long note below.
+        WAKE_LOCK                    no wake lock is acquired anywhere yet.
+        notifications                no channel, no NotificationManager call.
+
+      Handled by wry itself — no app-side code (corrected 2026-09-20):
+        CAMERA                       the generated RustWebChromeClient answers
+                                     onPermissionRequest and raises the OS
+                                     dialog; see the CAMERA block above.
+
+      Not needed, and absent on purpose:
+        CHANGE_WIFI_MULTICAST_STATE  mDNS is out of scope by decision: the
+                                     lan-mdns feature is not enabled for this
+                                     crate, so mdns-sd is absent from the graph.
+        android.hardware.usb.host    USB is out of scope by decision. The
+                                     usb_printer / usb_scanner drivers exist
+                                     behind rusb, but Android needs the Java
+                                     UsbManager request-permission flow on top
+                                     of the feature declaration, and the tablet
+                                     is going Bluetooth instead.
+        RECORD_AUDIO                 the app only plays sound, and Android has
+                                     no permission for audio OUTPUT. What gates
+                                     playback in a WebView is
+                                     setMediaPlaybackRequiresUserGesture; the
+                                     interactions are user-initiated, so they
+                                     are already allowed.
+        ACCESS_FINE_LOCATION         not required, because BLUETOOTH_SCAN is
+                                     declared neverForLocation above.
+
+      ⚠ BLUETOOTH IS NOT JUST A PERMISSION. Every bt_* driver in
+      crates/kasirmu-hal is a serial-port driver: bt_printer and bt_scanner
+      re-export SerialReceiptPrinter / SerialBarcodeScanner, and they reach
+      the device through the serialport crate. That works on Windows (a
+      paired SPP printer becomes COM7) and on Linux (/dev/rfcomm0), which is
+      exactly the list the driver docs give — Android is absent from it,
+      because Android exposes no /dev/rfcomm* to apps and pairs through its
+      own Java API instead. Driving the printer and drawer over Bluetooth on
+      this tablet therefore needs a real Android transport: BluetoothAdapter
+      plus createRfcommSocketToServiceRecord over JNI, or a Tauri plugin
+      wrapping it, wired in as the Android backend behind the existing
+      ReceiptPrinter / CashDrawer traits. Declaring these permissions is the
+      prerequisite, not the work.
+    -->
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -8,7 +127,7 @@
     <application
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:theme="@style/Theme.oz_pos_tablet"
+        android:theme="@style/Theme.kasirmu_mobile"
         android:usesCleartextTraffic="${usesCleartextTraffic}"
         android:allowBackup="false"
         android:fullBackupContent="@xml/backup_rules"
@@ -16,6 +135,7 @@
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize"
             android:label="@string/main_activity_title"
             android:name=".MainActivity"
             android:exported="true">

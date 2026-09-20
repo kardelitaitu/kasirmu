@@ -7,12 +7,22 @@
 
 /* ── Page layout ─────────────────────────────────────── */
 .setup-page {
+  /* This page is FULL SCREEN: on a fresh device it renders instead of the
+     shell, so nothing else applies the display insets on its behalf. Read them
+     here (contract in `ui/src/theme/tokens.css`) and keep the visual gutter as
+     its own token, so the narrow breakpoint below only has to restate the
+     gutter rather than the whole inset sum. */
+  --setup-gutter: var(--space-6);
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
   background: var(--color-bg);
-  padding: var(--space-6);
+  padding:
+    calc(var(--setup-gutter) + var(--inset-top))
+    calc(var(--setup-gutter) + var(--inset-right))
+    calc(var(--setup-gutter) + var(--inset-bottom))
+    calc(var(--setup-gutter) + var(--inset-left));
 }
 
 .setup-container {
@@ -145,6 +155,40 @@
   color: var(--color-fg-secondary);
   margin-bottom: var(--space-6);
   line-height: var(--leading-normal);
+}
+
+/* Status lines the account step adds: what the link is waiting for, and how it ended. */
+.setup-step-note {
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+.setup-step-error {
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-danger);
+}
+
+/* The emailed-code form on the tablet's account step. */
+.setup-account-field {
+  display: block;
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+.setup-account-input {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-1);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-base);
+  color: var(--color-fg-primary);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
 }
 
 /* ── Preset selection cards ─────────────────────────── */
@@ -552,6 +596,64 @@
   }
 
   .setup-page {
-    padding: var(--space-4);
+    /* Only the gutter changes; the inset sum above is untouched. */
+    --setup-gutter: var(--space-4);
+  }
+}
+
+/* ── Landscape ──────────────────────────────────────────
+ * Landscape is the opposite constraint to portrait: width to spare, not enough
+ * height. The field tablet measures 1097x686 CSS px, and the portrait stack
+ * (header, step dots, title, six preset cards, live preview, nav) needs roughly
+ * 960px of height — so in landscape the preview was clipped and the page
+ * scrolled behind a 560px column that used 51% of the width.
+ *
+ * These rules trade the surplus width for the missing height: the container
+ * widens, the preset grid gains a third column, the feature toggles go
+ * two-up, and the live preview moves from below the presets to beside them.
+ *
+ * This is the ENTIRE landscape mechanism for the wizard — pure CSS, so a
+ * rotation re-lays-out without a React re-render. `useOrientation`
+ * (`ui/src/hooks/useOrientation.ts`) is for the cases CSS cannot express,
+ * such as choosing a different component tree; nothing here needs it. The
+ * query mirrors `LANDSCAPE_QUERY` in that hook, and the two are pinned
+ * together by `ui/src/__tests__/setupWizardLandscape.test.ts`.
+ *
+ * `min-width: 48rem` keeps phones in landscape (which are also height-starved
+ * but too narrow to split) on the stacked layout.
+ * ──────────────────────────────────────────────────────── */
+@media (orientation: landscape) and (min-width: 48rem) {
+  .setup-container {
+    /* 72rem = 1008px at the 14px root this tablet runs at, inside the 1049px
+       of content width the page's gutter leaves. */
+    max-width: 72rem;
+  }
+
+  .setup-header {
+    margin-bottom: var(--space-4);
+  }
+
+  .setup-progress {
+    margin-bottom: var(--space-4);
+  }
+
+  /* Steps that carry the live preview become two columns: the presets (or the
+     review list) on the left, the preview on the right. Steps WITHOUT a
+     preview stay single-column, so the right column is never left empty. */
+  .setup-step-panel:has(.lsp-root) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 20rem;
+    gap: var(--space-4);
+    align-items: start;
+  }
+
+  .setup-presets {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .setup-features {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
   }
 }

@@ -12,6 +12,22 @@
 #
 #   Stop:             docker compose -f apps/license-server/docker-compose.yml down
 #   Clean:            docker compose -f apps/license-server/docker-compose.yml down -v
+#
+#   Google sign-in (ADR #54), locally:
+#     Set OZ_GOOGLE_CLIENT_ID / OZ_GOOGLE_CLIENT_SECRET, and PIN the redirect — the server
+#     otherwise derives https://<Host>/..., which a browser on http://localhost cannot use:
+#       OZ_GOOGLE_REDIRECT_URI=http://localhost:8080/api/v1/web/oauth/google/callback
+#     Register BOTH localhost callbacks on that Web-application client (http on localhost is
+#     Google's documented exception to its https rule):
+#       http://localhost:8080/api/v1/web/oauth/google/callback
+#       http://localhost:8080/api/v1/desktop/link/google/callback
+#     Point the RETURN host at your local site too — the default is the live kasir.mu, which
+#     would try to spend a code your local server minted:
+#       OZ_WEB_SITE_URL=http://localhost:4321
+#     (the default CORS allowlist already admits that origin), and serve the website against
+#     this API — `PUBLIC_LICENSE_API_URL=http://localhost:8080`, see website/README.md
+#
+#     Then open http://localhost:8080/api/v1/web/oauth/google/start?next=/en/account
 
 services:
   license-server:
@@ -24,6 +40,14 @@ services:
       # REQUIRED — Compose fails fast if unset (DOCKER-04). Generate keys:
       # bash scripts/generate-license-keys.sh / .\scripts\generate-license-keys.ps1
       OZ_LICENSE_PRIVATE_KEY: "${OZ_LICENSE_PRIVATE_KEY:?OZ_LICENSE_PRIVATE_KEY is required (generate: bash scripts/generate-license-keys.sh)}"
+
+      # Google sign-in (ADR #54), for exercising the flow locally — see the header. Compose
+      # passes ONLY what this list names, so a variable set on the host is dropped otherwise.
+      OZ_GOOGLE_CLIENT_ID: "${OZ_GOOGLE_CLIENT_ID:-}"
+      OZ_GOOGLE_CLIENT_SECRET: "${OZ_GOOGLE_CLIENT_SECRET:-}"
+      OZ_GOOGLE_REDIRECT_URI: "${OZ_GOOGLE_REDIRECT_URI:-}"
+      OZ_WEB_SITE_URL: "${OZ_WEB_SITE_URL:-}"
+      OZ_SMTP_HOST: "${OZ_SMTP_HOST:-}"
     volumes:
       - pb_data:/pb/pb_data
     restart: unless-stopped

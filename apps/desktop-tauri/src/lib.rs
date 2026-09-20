@@ -228,7 +228,7 @@ pub fn run() {
             // A fresh dev DB ships with an empty `sync_server_url` and sync
             // disabled, so the background daemon silently no-ops until the
             // user manually configures Settings → Sync. If the cloud server
-            // (`https://license.ozpos.my.id`) is up, request a JWT and
+            // (`DEBUG_SYNC_ORIGIN` — the local Docker stack) is up, request a JWT and
             // persist the connection. Spawned BEFORE the sync daemon so the
             // daemon's first tick (60–120s out) sees the fresh config. Never
             // runs in release builds — an existing configuration is never
@@ -241,6 +241,26 @@ pub fn run() {
                 });
             }
 
+            // ── Attest the server origin (ADR #55) ──────────────────────
+            // The cascade is what makes `main -> fallback` real: it asks each
+            // compiled origin to prove it holds the license keypair and caches the
+            // winner for the process, which `license_server_url()` then prefers.
+            // Fire-and-forget on purpose: boot is never blocked on a probe, and an
+            // unreachable MAIN degrades to the canonical default exactly as it does
+            // today until the cascade resolves to the fallback.
+            platform_startup::spawn_daemon("server origin attestation", async move {
+                let nonce = kasirmu_core::attestation::generate_nonce();
+                match kasirmu_core::attestation::resolve_attested_origin(&nonce).await {
+                    Some(resolved) => tracing::info!(
+                        origin = %resolved.url,
+                        source = resolved.source.as_str(),
+                        "server origin attested"
+                    ),
+                    None => tracing::warn!(
+                        "no server origin could be attested; staying on the compiled default"
+                    ),
+                }
+            });
             // ── Background sync daemon ────────────────────────────────
             let db = app.state::<AppState>().db.clone();
             let app_handle = app.handle().clone();
@@ -1081,6 +1101,9 @@ pub fn run() {
             commands::products_images::products_set_image_scoped,
             commands::products_images::products_clear_image_scoped,
             commands::products_images::products_list_images_scoped,
+            commands::avatars::set_avatar_scoped,
+            commands::avatars::clear_avatar_scoped,
+            commands::avatars::get_own_avatar_scoped,
             commands::browser::open_product_images_scoped,
             commands::promotions::list_promotions_scoped,
             commands::promotions::get_promotion_scoped,
@@ -1180,7 +1203,10 @@ pub fn run() {
             commands::workspaces::resolve_boot_store,
             commands::workspaces::list_workspace_screens_scoped,
             commands::license::activate_license,
-            commands::license::get_machine_id,
+            commands::desktop_link::link_device_google,
+        commands::desktop_link::link_device_email_request,
+        commands::desktop_link::link_device_email_consume,
+        commands::license::get_machine_id,
             commands::license::get_machine_id_scoped,
             commands::license::get_hardware_fingerprint,
             commands::license::get_hardware_fingerprint_scoped,

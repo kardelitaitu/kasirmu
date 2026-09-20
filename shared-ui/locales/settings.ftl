@@ -52,8 +52,27 @@ setup-step-staff = Staff
 setup-step-hardware = Hardware
 setup-step-business-rules = Business Rules
 setup-step-data-cloud = Data & Cloud
+setup-step-account = Account
 setup-step-review = Review
 setup-step-aria = Step { $number }: { $label }
+
+setup-account-title = Your account
+setup-account-desc = Optional. Link this POS to your kasir.mu account so you can sign in on the web with Google.
+setup-account-google = Continue with Google
+setup-account-waiting = Waiting for your browser…
+setup-account-linked = Linked to { $email }.
+setup-account-failed = Could not link this device. You can try again, or continue without linking.
+setup-account-optional = You can skip this. Your licence key still runs the POS.
+setup-account-tablet = Use the code sent to your account email to link this device.
+setup-account-email = Account email
+setup-account-send = Email me a code
+setup-account-sent = Code sent. It expires in 15 minutes.
+setup-account-code = 6-digit code
+setup-account-verify = Verify
+# The tablet's in-flight states. `setup-account-waiting` above names a browser and stays with
+# the Google control, which really does open one.
+setup-account-sending = Sending the code…
+setup-account-verifying = Checking the code…
 
 setup-progress-aria = Setup progress
 
@@ -350,6 +369,7 @@ settings-btn-revert-aria =
 settings-saved = Saved!
 settings-section-sync = Cloud Sync
 settings-sync-server-url = Server URL
+settings-sync-resolved-origin = Server in use: { $origin } ({ $source })
 settings-sync-api-key = API Key
 settings-sync-enabled = Enable Cloud Sync
 settings-sync-enabled-aria = Toggle cloud sync

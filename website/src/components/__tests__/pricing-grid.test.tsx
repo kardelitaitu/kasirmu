@@ -2,8 +2,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import PricingGrid from '../PricingGrid';
+import PricingGrid, { PRICING_LABELS } from '../PricingGrid';
 import type { PricingTier } from '../../content/pricing/types';
+import { labelMap } from '../../i18n';
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -87,6 +88,7 @@ describe('PricingGrid Component', () => {
       root.render(
         <PricingGrid
           locale={locale}
+          labels={labelMap(locale, PRICING_LABELS)}
           tiers={tiers}
           downloadHref={`/${locale}/download`}
           contactHref={`/${locale}/support`}

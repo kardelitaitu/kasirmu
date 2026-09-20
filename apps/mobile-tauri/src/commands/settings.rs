@@ -1,7 +1,7 @@
 //! Settings Tauri commands: get and persist receipt display options.
 /*
 last audited 25-07-26 by RSA-Agent (mobile-tauri UI-1 investigation + fix)
-crate: mobile-tauri | status: SAFE | lint: CLEAN
+crate: kasirmu-mobile | status: SAFE | lint: CLEAN
 findings: UI-1 FIXED 25-07-26 — SECRET_KEY_DENY_LIST extended with stripe.api_key, square.api_key, midtrans.server_key (payment credentials never reach the renderer); new gateway_status command computes configured/online booleans server-side; deny-list test extended with the three keys. Verified during UI-1: deny-list check on run_get_setting. sync.auth_token: the cross-screen readability tests were inverted by b2196d701 — they now assert the read is refused while the written row persists, and that both untrusted ingest policies (RemoteSync, PortablePackage) refuse to carry it; no readability test is retained
 next: none | perf: N/A
 */
@@ -69,7 +69,7 @@ use crate::state::AppState;
 /// `hardware_profiles` through `TerminalProfile` and needs `base_dir`), so the
 /// repair is a storage-source decision plus the `AppState` → `BridgeCtx` seam
 /// T2 deferred — not a `pub use`. Measured and recorded in the 2026-09-15 T4
-/// entry of `todo-refactor-oz-pos-app-agents-3.md`.
+/// entry of `.agents/reviews/done-todo-refactor-oz-pos-app-agents-3.md`.
 pub use kasirmu_bridge::settings::{
     CreditSaleDto, CreditSettingsDto, DeploymentInfo, GatewayStatusEntry, ReceiptSettingsDto,
     StoreSettingsDto, UserPrefEntry,
@@ -83,7 +83,7 @@ pub use kasirmu_bridge::settings::{
 // `wire_pin_receipt_settings_carries_every_key_the_renderer_declares`.
 // `taxRoundingMode` is the one key of the eleven that is optional on the wire:
 // absent means "leave the stored mode alone", because the restaurant POS card
-// sends ten of the eleven (T4-2 in `todo-refactor-oz-pos-app-agents-3.md`).
+// sends ten of the eleven (T4-2 in `.agents/reviews/done-todo-refactor-oz-pos-app-agents-3.md`).
 
 // ── Get receipt settings ──────────────────────────────────
 
@@ -237,7 +237,7 @@ pub async fn get_hardware_settings(
 // answered those names, which is what made them read as live. Both also took a
 // caller-supplied `user_id`, the forgeable shape the six scoped setters above
 // dropped the same day (T4-1), so *registering* them would have re-opened it.
-// Deleted under T4-4 of `todo-refactor-oz-pos-app-agents-3.md`; the scoped twins
+// Deleted under T4-4 of `.agents/reviews/done-todo-refactor-oz-pos-app-agents-3.md`; the scoped twins
 // below derive the user from the session and are what both shells register.
 
 #[command]
@@ -764,7 +764,7 @@ pub async fn set_setting_scoped(
 /// route, `:125` renders it). Before this command existed, those three cards
 /// could not save on a tablet at all. The name was registered on desktop and
 /// absent here, which is why `scripts/ipc-parity-allowlist.json` carried it
-/// (T4-4 in `todo-refactor-oz-pos-app-agents-3.md`).
+/// (T4-4 in `.agents/reviews/done-todo-refactor-oz-pos-app-agents-3.md`).
 ///
 /// Two deliberate differences from the bridge body, both measured rather than
 /// assumed:

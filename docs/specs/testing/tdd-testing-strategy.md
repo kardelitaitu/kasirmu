@@ -35,7 +35,7 @@ The kasir.mu codebase has **32+ Rust crates** with varying test coverage. This p
 
 ```bash
 # Use the existing test-tdd.sh script with watch mode
-bash scripts/test-tdd.sh -p crates/oz-core --watch
+bash scripts/test-tdd.sh -p crates/kasirmu-core --watch
 ```
 
 **Profile Configuration:**
@@ -189,10 +189,10 @@ fn validation_errors_contain_helpful_messages() {
 
 1. **Run existing tests to establish baseline:**
    ```bash
-   cd crates/oz-core && cargo nextest run --workspace
+   cd crates/kasirmu-core && cargo nextest run --workspace
    ```
 
-2. **Pick one business logic module** (e.g., `oz-modules/sales`) and write a failing test first.
+2. **Pick one business logic module** (e.g., `modules/sales`) and write a failing test first.
 
 3. **Create the minimal implementation** to make it pass.
 

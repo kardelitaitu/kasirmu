@@ -462,6 +462,52 @@ export const getStaffProfileScoped = (
 ): Promise<ProfileViewDto> =>
   loggedInvoke<ProfileViewDto>('get_staff_profile_scoped', { sessionToken, userId });
 
+// ── Avatars ────────────────────────────────────────────────────────
+//
+// `users.avatar` holds the 16-hex-char content hash of an image in the
+// content-addressed store — the same value `ProductThumb` resolves to
+// `$APPCACHE/images/{hash}.webp`. Only the source file PATH crosses IPC; the
+// sniff / transcode / hash / write pipeline runs entirely in Rust and is
+// shared with the product images (spec 0046b).
+
+/**
+ * Set a user's avatar from the image at `sourcePath`.
+ *
+ * Self-writes need no grant; writing another user's avatar requires
+ * `staff:update`. Returns the content hash now stored in `users.avatar`.
+ */
+export const setAvatarScoped = (
+  sessionToken: string,
+  userId: string,
+  sourcePath: string,
+): Promise<string> =>
+  loggedInvoke<string>('set_avatar_scoped', { sessionToken, userId, sourcePath });
+
+/**
+ * Clear a user's avatar, falling back to the initials tile.
+ *
+ * Only the column is cleared; the file is left for the GC sweep, since
+ * content-addressed dedup means the bytes may still be referenced elsewhere.
+ */
+export const clearAvatarScoped = (
+  sessionToken: string,
+  userId: string,
+): Promise<void> =>
+  loggedInvoke<void>('clear_avatar_scoped', { sessionToken, userId });
+
+/**
+ * Read the SESSION user's own avatar hash, or null when none is set.
+ *
+ * Takes no user id: the subject is always the caller, so there is nothing to
+ * forge. The sidebar header reads this rather than the staff profile, because
+ * `get_staff_profile_scoped` requires `staff:read` and a cashier does not
+ * hold it.
+ */
+export const getOwnAvatarScoped = (
+  sessionToken: string,
+): Promise<string | null> =>
+  loggedInvoke<string | null>('get_own_avatar_scoped', { sessionToken });
+
 // ── Session Token (ADR #4 / ADR #7) ───────────────────────────────
 
 /** Arguments for creating a session token after login + workspace selection. */

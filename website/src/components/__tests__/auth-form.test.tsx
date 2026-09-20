@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { labelMap } from '../../i18n';
 
 // React 19 requires the act environment flag for async act() to work.
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -27,13 +28,13 @@ function badRequest(status: number) {
   return { ok: false, status, json: async () => ({}) };
 }
 
-async function renderAuthForm(locale: string) {
+async function renderAuthForm(locale: string, oauthReason?: string) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
-  const { default: AuthForm } = await import('../AuthForm');
+  const { default: AuthForm, AUTH_FORM_LABELS } = await import('../AuthForm');
   act(() => {
-    root.render(<AuthForm locale={locale} />);
+    root.render(<AuthForm locale={locale} labels={labelMap(locale, AUTH_FORM_LABELS)} oauthReason={oauthReason} />);
   });
   await act(async () => {
     await new Promise((r) => setTimeout(r, 10));
@@ -413,6 +414,45 @@ describe('AuthForm — forgot password flow', () => {
 
 // ── Open redirect guard ───────────────────────────────────────────────
 
+describe('AuthForm — Google failure reasons', () => {
+  it('shows the sentence that matches the reason the server sent', async () => {
+    // A Google failure is a navigation, so the login page is where the user learns what
+    // happened; an unknown token must still get the generic sentence rather than a blank.
+    const { container } = await renderAuthForm('en', 'state');
+    expect(container.textContent).toContain('expired or was already used');
+  });
+
+  it('shows the refusal sentence for a refused address and nothing when there is no reason', async () => {
+    const refused = await renderAuthForm('en', 'unverified');
+    expect(refused.container.textContent).toContain('cannot be used for this account');
+
+    const plain = await renderAuthForm('en');
+    expect(plain.container.querySelector('[role="alert"]')).toBeNull();
+
+    // An unknown token must still say something: ADR #54's note claims it renders `failed`
+    // rather than a blank, so the claim gets a test instead of a reader's trust.
+    const unknown = await renderAuthForm('en', 'something-new-from-the-server');
+    expect(unknown.container.textContent).toContain('could not be completed');
+  });
+});
+
+describe('AuthForm — Google sign-in entry', () => {
+  it('offers Continue with Google, pointing at the licence host start route', async () => {
+    // The button is the visible half of ADR #54's web flow: it must reach the
+    // SERVER route, which is what mints state and PKCE before touching Google.
+    const { container } = await renderAuthForm('en');
+    const link = container.querySelector('a[href*="/api/v1/web/oauth/google/start"]');
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe(
+      'https://license.test/api/v1/web/oauth/google/start?next=/en/account',
+    );
+    expect(link?.textContent).toContain('Continue with Google');
+    // An anchor, never a cross-origin form: the Worker CSP sets form-action 'self'.
+    expect(container.querySelector('form[action]')).toBeNull();
+  });
+
+});
+
 describe('AuthForm — open redirect guard', () => {
   it('blocks external URLs in ?next= and defaults to account page', async () => {
     mockFetch((url) => {
@@ -637,6 +677,9 @@ describe('AuthForm — not-configured state', () => {
     const { container, root } = await renderAuthForm('en');
     try {
       assertText(container, 'The auth API is not configured on this deployment.');
+      // The Google entry is hidden with it: it navigates to the licence host, so
+      // offering it without an API URL would only produce a 404 for the user.
+      expect(container.querySelector('a[href*="/api/v1/web/oauth/google/start"]')).toBeNull();
     } finally {
       act(() => root.unmount());
       container.remove();

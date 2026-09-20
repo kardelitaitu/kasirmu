@@ -1,4 +1,4 @@
-import { t } from '../../i18n';
+import { t, type Labels } from '../../i18n/labels';
 
 /**
  * Shared pure helpers for the account dashboard sections. Extracted from
@@ -7,6 +7,11 @@ import { t } from '../../i18n';
  *
  * These are deliberately free of React state: they map server values to
  * localized labels / Tailwind classes / formatted strings.
+ *
+ * The two label helpers take the island's `labels` map rather than a locale, so
+ * nothing in the account dashboard's client graph imports a dictionary
+ * (see ../../i18n/labels.ts). `fmtDate` keeps the locale — it feeds Intl, not
+ * the dictionaries.
  */
 
 /**
@@ -14,20 +19,20 @@ import { t } from '../../i18n';
  * (license_keys + subscriptions collections). Unknown values pass through
  * unchanged so a new server status never renders blank.
  */
-export function statusLabel(locale: string, status: string | undefined): string {
+export function statusLabel(labels: Labels, status: string | undefined): string {
   switch (status) {
     case 'active':
-      return t(locale, 'account.statusActive');
+      return t(labels, 'account.statusActive');
     case 'unused':
-      return t(locale, 'account.statusUnused');
+      return t(labels, 'account.statusUnused');
     case 'grace_period':
-      return t(locale, 'account.statusGracePeriod');
+      return t(labels, 'account.statusGracePeriod');
     case 'expired':
-      return t(locale, 'account.statusExpired');
+      return t(labels, 'account.statusExpired');
     case 'revoked':
-      return t(locale, 'account.statusRevoked');
+      return t(labels, 'account.statusRevoked');
     case 'paused':
-      return t(locale, 'account.statusPaused');
+      return t(labels, 'account.statusPaused');
     default:
       return status ?? '—';
   }
@@ -95,10 +100,10 @@ export function daysUntil(dateStr: string | undefined): number | null {
 
 /**
  * Localized "Renews in N days" label with correct singular/plural, or the
- * raw date fallback. `locale` picks the string; `days` drives the form.
+ * raw date fallback. `labels` supplies the string; `days` drives the form.
  */
-export function renewsLabel(locale: string, days: number): string {
+export function renewsLabel(labels: Labels, days: number): string {
   return days === 1
-    ? t(locale, 'account.renewsInDay').replace('{days}', String(days))
-    : t(locale, 'account.renewsInDays').replace('{days}', String(days));
+    ? t(labels, 'account.renewsInDay').replace('{days}', String(days))
+    : t(labels, 'account.renewsInDays').replace('{days}', String(days));
 }

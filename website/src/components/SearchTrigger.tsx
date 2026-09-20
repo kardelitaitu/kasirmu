@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import SearchModal from './SearchModal';
+import type { Labels } from '../i18n/labels';
 
 interface Props {
   locale: string;
+  /** Strings for the modal this trigger opens; see `SEARCH_LABELS`. */
+  labels: Labels;
 }
 
-export default function SearchTrigger({ locale }: Props) {
+export default function SearchTrigger({ locale, labels }: Props) {
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
@@ -33,7 +36,7 @@ export default function SearchTrigger({ locale }: Props) {
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
       </button>
-      <SearchModal isOpen={isOpen} onClose={() => setIsOpen(false)} locale={locale} />
+      <SearchModal isOpen={isOpen} onClose={() => setIsOpen(false)} locale={locale} labels={labels} />
     </>
   );
 }

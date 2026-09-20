@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { CheckoutTier } from '../../content/pricing/types';
+import { labelMap } from '../../i18n';
 
 // React 19 requires the act environment flag for async act() to work.
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -36,9 +37,9 @@ async function renderButton(locale: string, tier: CheckoutTier) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
-  const { default: CheckoutButton } = await import('../CheckoutButton');
+  const { default: CheckoutButton, CHECKOUT_LABELS } = await import('../CheckoutButton');
   await act(async () => {
-    root.render(<CheckoutButton locale={locale} tier={tier} />);
+    root.render(<CheckoutButton locale={locale} tier={tier} labels={labelMap(locale, CHECKOUT_LABELS)} />);
   });
   return { container, root };
 }

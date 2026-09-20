@@ -51,8 +51,16 @@ pub struct SerialPortInfo {
 /// Enumerate serial ports and return those connected via known POS
 /// hardware adapters, or all ports when `only_known` is false.
 ///
-/// Use [`probe_bluetooth()`] specifically to find Bluetooth SPP serial
-/// ports that are typically used by BT receipt printers.
+/// With `only_known` the result is the set of *candidate* POS ports: a USB
+/// port must sit behind a known adapter, and Bluetooth SPP ports are
+/// excluded outright. Bluetooth ports are not unidentified hardware — they
+/// are enumerated separately by [`probe_bluetooth()`] and bound by their own
+/// drivers (`BtBarcodeScanner`, `BtReceiptPrinter`). Listing them here too
+/// registered one paired COM port twice and put an unopened, unproven port
+/// ahead of a real HID scanner in the auto-detect order.
+///
+/// Pass `false` for a raw listing (setup-wizard style pickers), which keeps
+/// every port the OS reports.
 pub fn probe_ports(only_known: bool) -> Result<Vec<SerialPortInfo>, HalError> {
     let ports =
         available_ports().map_err(|e| HalError::Io(std::io::Error::other(e.to_string())))?;
@@ -68,6 +76,13 @@ pub fn probe_ports(only_known: bool) -> Result<Vec<SerialPortInfo>, HalError> {
         };
 
         if only_known {
+            // Bluetooth SPP has its own enumeration and its own drivers;
+            // binding it here as well would give one physical port two
+            // registry entries under two different drivers.
+            if matches!(port.port_type, SerialPortType::BluetoothPort) {
+                continue;
+            }
+
             let adapter_matched = vid
                 .zip(pid)
                 .is_some_and(|(v, p)| KNOWN_SERIAL_ADAPTERS.contains(&(v, p)));

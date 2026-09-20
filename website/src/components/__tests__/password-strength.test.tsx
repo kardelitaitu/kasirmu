@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { labelMap } from '../../i18n';
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -9,9 +10,9 @@ async function renderStrength(locale: string, password: string) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
-  const { default: PasswordStrength } = await import('../PasswordStrength');
+  const { default: PasswordStrength, PASSWORD_STRENGTH_LABELS } = await import('../PasswordStrength');
   await act(async () => {
-    root.render(<PasswordStrength locale={locale} password={password} />);
+    root.render(<PasswordStrength labels={labelMap(locale, PASSWORD_STRENGTH_LABELS)} password={password} />);
     await new Promise((r) => setTimeout(r, 10));
   });
   return { container, root };

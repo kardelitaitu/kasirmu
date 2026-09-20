@@ -136,7 +136,7 @@
       "id": "scoped-coverage",
       "label": "Scoped coverage (H-1)",
       "status": "required",
-      "_note": "Added 0.0.37. scripts/verify-scoped-coverage.sh enforces H-1/H-2 -- every registered Tauri command has a _scoped variant or an allowlist entry -- and is the check.sh step IMMEDIATELY AFTER no-raw-params, which has been catalogued all along. One of three adjacent verification gates that were simply never recorded; the others are ipc-parity and topology-parity. Local-only: no ci key, and not in the pre-commit hook, so scripts/check.sh is its only runner.",
+      "_note": "Added 0.0.37. scripts/verify-scoped-coverage.sh enforces H-1/H-2 -- every registered Tauri command has a _scoped variant or an allowlist entry -- and is the check.sh step IMMEDIATELY AFTER no-raw-params, which has been catalogued all along. One of three adjacent verification gates that were simply never recorded; the others are ipc-parity and topology-parity. Runs in dev-ci.yml#static-gates and locally via scripts/check.sh; not in the pre-commit hook. (Corrected 2026-09-20, closing the note half of GI-1.)",
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["scoped coverage (H-1)"] }
     },
@@ -144,7 +144,7 @@
       "id": "ipc-parity",
       "label": "IPC parity",
       "status": "required",
-      "_note": "Added 0.0.37. scripts/verify-ipc-parity.py enforces two directions. Forward: the UI invokes a command string absent from a shell's generate_handler![]. Reverse (backlog item 46): a shell registers a *_scoped command that no client invokes, so its permission check guards nothing -- the mirror of the gap the item-46 sweep kept finding, and the reason three SECURITY_MANAGE / SETTINGS_EDIT gates were mistaken for live security posture for several rounds. Both directions use dated allowlist sections (desktop/tablet, plus scoped_orphans for the reverse) and both self-clean, so neither list can accrete. Measured on the current tree: 406 UI command strings; desktop 400 registered / 28 unregistered references / 5 unregistered fns; tablet 283 registered / 142 unregistered references. The 25 allowlisted scoped orphans are a WORK QUEUE, not a clean bill -- most look like dead surface for F-006 to remove. --write-allowlist preserves sections it does not own. Runs in CI at dev-ci.yml#static-gates and in check.sh; the note claiming it local-only was itself stale and was corrected here.",
+      "_note": "Added 0.0.37. scripts/verify-ipc-parity.py enforces three directions. Forward: the UI invokes a command string absent from a shell's generate_handler![]. Reverse (backlog item 46): a shell registers a *_scoped command that no client invokes, so its permission check guards nothing -- the mirror of the gap the item-46 sweep kept finding, and the reason three SECURITY_MANAGE / SETTINGS_EDIT gates were mistaken for live security posture for several rounds. Both directions use dated allowlist sections (desktop/tablet, plus scoped_orphans for the reverse) and both self-clean, so neither list can accrete. Third direction, added 2026-09-18: an entry no direction reproduces -- production UI code names it nowhere and the shell does not register it -- now FAILS the run instead of being printed as info[<shell>-unreachable] while the run returned 0. It was the last population this file accepted and graded nothing about, and the three entries it found were deleted in the same change (desktop list_categories, list_products; tablet list_products -- the tablet's unscoped products command still exists in products.rs and stays an F-006 deletion candidate), so a shell section now carries measured gaps only and the entry counts went 11 -> 9 and 139 -> 138. Measured 2026-09-18: 441 UI command strings; desktop 455 registered / 9 unregistered UI names / 3 unregistered fns; tablet 320 registered / 138 unregistered UI names / 3 unregistered fns. The 25 allowlisted scoped orphans are a WORK QUEUE, not a clean bill -- most look like dead surface for F-006 to remove. --write-allowlist preserves sections it does not own. Runs in CI at dev-ci.yml#static-gates and in check.sh; the note claiming it local-only was itself stale and was corrected here.",
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["ipc parity"] }
     },
@@ -152,7 +152,7 @@
       "id": "topology-parity",
       "label": "Topology contract parity",
       "status": "required",
-      "_note": "Added 0.0.37. scripts/verify-topology-parity.py keeps the vendored kasirmu-core copy and the UI copy of topologySemantics.json byte-identical, since both sides of the IPC boundary read it. Local-only: check.sh is its only runner.",
+      "_note": "Added 0.0.37. scripts/verify-topology-parity.py keeps the vendored kasirmu-core copy and the UI copy of topologySemantics.json byte-identical, since both sides of the IPC boundary read it. Runs in dev-ci.yml#static-gates and locally via scripts/check.sh. (Corrected 2026-09-20, closing the note half of GI-1.)",
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["topology contract parity"] }
     },
@@ -203,7 +203,7 @@
       "id": "test-shadow-copies",
       "label": "Test shadow copies",
       "status": "required",
-      "_note": "Added 0.0.37. scripts/verify-test-shadow-copies.py fails when a test file redeclares a top-level production function it does not import AND the two bodies are similar (Jaccard >= 0.50 on non-keyword tokens). Five such suites were removed in 1c153ef7, 80216a2e, b270aba2, 314b7783, a695d3af and 314b7783's was the proof this is not cosmetic: its copied in-flight guard keyed on order.status where production keys on order.id, the author annotated the difference 'simplified', and the test named for that guard passed against a rule the app never had. Ships with --self-test (four cases, including an empty-corpus case that refuses to report clean) because a static gate with no liveness case is indistinguishable from one that passes. Local-only: pure python with no toolchain deps, so promoting it to dev-ci.yml#static-gates alongside no-hardcoded-money-format is a one-step change.",
+      "_note": "Added 0.0.37. scripts/verify-test-shadow-copies.py fails when a test file redeclares a top-level production function it does not import AND the two bodies are similar (Jaccard >= 0.50 on non-keyword tokens). Five such suites were removed in 1c153ef7, 80216a2e, b270aba2, 314b7783, a695d3af and 314b7783's was the proof this is not cosmetic: its copied in-flight guard keyed on order.status where production keys on order.id, the author annotated the difference 'simplified', and the test named for that guard passed against a rule the app never had. Ships with --self-test (four cases, including an empty-corpus case that refuses to report clean) because a static gate with no liveness case is indistinguishable from one that passes. Pure python with no toolchain deps. Runs in dev-ci.yml#static-gates and locally via scripts/check.sh. (Corrected 2026-09-20, closing the note half of GI-1.)",
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "runners": { "check.sh": ["test shadow copies"] }
     },
@@ -277,7 +277,7 @@
       "id": "ci-routing-test",
       "label": "CI path router regression test",
       "status": "required",
-      "_note": "scripts/test-ci-routing.sh extracts the Route shell body from dev-ci.yml and runs it against 15 synthetic diffs. c5ec6381 shipped the router with no committed test, while the 0.0.36 release notes claimed one existed -- this file makes that claim true and keeps it true.",
+      "_note": "scripts/test-ci-routing.sh extracts the Route shell body from dev-ci.yml and runs it against the synthetic diffs pinned in that file -- it quotes no count on purpose, matching .githooks/pre-push, because the figure that used to sit here was true when written and had rotted by the time anyone looked. The authoritative list stays in the script. c5ec6381 shipped the router with no committed test, while the 0.0.36 release notes claimed one existed -- this file makes that claim true and keeps it true.",
       "runners": { "check.sh": ["ci routing test"] },
       "ci": { "workflow": "dev-ci.yml", "job": "ci-docs-drift" }
     },
@@ -583,6 +583,34 @@
       "runners": { "check.sh": ["exhaustive-deps ratchet"] },
       "ci": { "workflow": "dev-ci.yml", "job": "ui-test" },
       "_note": "Caps react-hooks/exhaustive-deps warnings at the value in scripts/exhaustive-deps-baseline.json (7, down from 12). `npm run lint` is `eslint .` with no --max-warnings 0, so it exits 0 while reporting 58 warnings, and this rule is the only automated check for a stale closure. Item 69 found five callbacks listing `userId` -- a prop no component body ever read, kept 'used' only by its presence in the deps array -- while two of those same arrays omitted `promotionIds`, which IS sent in the complete_sale payload. Neither was gated by anything. The ratchet does not clear the debt, it freezes the improvement. Runs in ui-test rather than static-gates because it needs ui/node_modules, which only ui-test and i18n install. Like the FTL orphan gate its CI value depends on the job actually running, and dev-ci.yml has no push trigger, so on a long-lived release branch check.sh remains the only thing enforcing it."
+    },
+    {
+      "id": "server-origins",
+      "label": "Server origin consistency",
+      "status": "required",
+      "runners": { "check.sh": ["server origins"] },
+      "_note": "Added in 0.0.39. Reads the compiled origin list in crates/kasirmu-core/src/server_origin.rs (ADR #55) and fails when a Tauri CSP, the Worker CSP, the Worker LICENSE_API_URL fallback, the settings draft, or either Rust dev fallback disagrees with it. The drift it guards was live: the compiled auth URL said license.kasir.mu while both Tauri CSPs, the desktop bootstrap, the settings draft and the runbook all said license.ozpos.my.id, so a host change silently needed a release and nothing detected the mismatch. Local-only (no CI runner): needs node and nothing else."
+    },
+    {
+      "id": "env-docs",
+      "label": "Environment variables are documented",
+      "status": "required",
+      "runners": { "check.sh": ["env docs"] },
+      "_note": "Added in 0.0.39, then WIRED TO THE EXISTING CHECKER on 2026-09-26: scripts/check-env-docs.mjs was written before anyone looked in .agents/skills/docs-auditor/scripts/, where check-env-docs.py had covered this since 09-09-26 with a WIDER scope (32 variables here vs 15). That one also reads apps/unified/healthcheck.sh's shell vars, accepts PADDLE_/MIDTRANS_/LOGIN_/LICENSE_/OZPA_ prefixes, checks go-live-checklist.md and verification-*.md, and carries an `env-doc: ok:` pragma. The duplicate was deleted; the step name is unchanged so the runner mapping holds. Runner: python .agents/skills/docs-auditor/scripts/check-env-docs.py."
+    },
+    {
+      "id": "unified-routes",
+      "label": "Unified image routes the licence server",
+      "status": "required",
+      "runners": { "check.sh": ["unified routes"] },
+      "_note": "Added in 0.0.39. Every /api route the licence server registers must be claimed by the FIRST matching handle in apps/unified/Caddyfile that proxies to :8080 — caddy handle is first-match-wins, so the generic /api/* fallback does not cover anything under /api/v1/*. A route without a carve-out answers 404 in production while its tests pass, which is how the whole device-link flow (ADR #54 §2.5) sat unrouted. Runner: node scripts/check-unified-routes.mjs."
+    },
+    {
+      "id": "auditor-selftests",
+      "label": "Docs-auditor checkers still run",
+      "status": "required",
+      "runners": { "check.sh": ["auditor self-tests"] },
+      "_note": "Added in 0.0.39. A checker that cannot run is indistinguishable from a checker that found nothing: check-api-surface.py had been dead since apps/desktop-client was renamed, and check-nav-paths.py reported SELF-TEST WRONG because its self-test read the live nav. This runs every self-test the docs-auditor ships (three today). Runner: sh scripts/check-auditor-selftests.sh."
     }
   ]
 }

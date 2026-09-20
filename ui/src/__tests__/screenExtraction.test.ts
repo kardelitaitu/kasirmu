@@ -276,6 +276,12 @@ const SCREENS: ScreenEntry[] = [
       'staff/components/StaffListTable.tsx',
       'staff/components/StaffDetailDrawer.tsx',
       'staff/components/RoleAssignmentMatrix.tsx',
+      // The status footer renders staff-mgmt-footer* styled by this sheet.
+      // Same reason SettingsFooter is registered against SettingsPage: skip
+      // it and the guard goes green while those classes read as dead CSS.
+      'staff/components/StaffManagementFooter.tsx',
+      // The header tab strip renders staff-tabs / staff-tab*, also styled here.
+      'staff/components/StaffTabs.tsx',
     ],
   },
 
@@ -283,7 +289,13 @@ const SCREENS: ScreenEntry[] = [
   {
     name: 'SetupWizard',
     tsx: 'setup/SetupWizard.tsx',
+    // `StepAccount.tsx` shares this sheet, so the used-class walk has to read it.
+    // `lsp-root` lives in `components/LiveSetupPreview.css`, but the wizard sheet names it
+    // inside a `:has()` — so it belongs to a child component, which is what externalClasses
+    // is for (the dead-class walk reads this file's TSX, not the child's).
     css: ['setup/SetupWizard.css'],
+    additionalTsx: ['setup/components/StepAccount.tsx'],
+    externalClasses: ['lsp-root'],
   },
 
   // ── Customers ─────────────────────────────────────────
@@ -1255,6 +1267,16 @@ const SCREENS: ScreenEntry[] = [
       'restaurant-card',
       'tooltip-wrapper',
       'tooltip-wrapper--inline',
+      // non-JSX: applied to document.body by classList.add at
+      // sales/hooks/useCartResize.ts:56 (removed at :67), never through a
+      // className sink, so it cannot enter the used set. The rule it carries is
+      // `body.is-resizing .restaurant-card` (:542-551) -- a GLOBAL state class
+      // that the sales screen's divider sets in order to freeze this screen's
+      // card transforms mid-drag, which is why the two halves live in different
+      // features. Same shape as KdsScreen's no-anim, and it carries the same
+      // ledger member below; deleting the rule instead would un-freeze the
+      // cards under the moving cursor.
+      'is-resizing',
     ],
     // The Agent 3 extraction moved the tile/tab-strip/grid/overlay JSX into
     // components/*.tsx; they share the screen's stylesheet (global classes).
@@ -1264,6 +1286,7 @@ const SCREENS: ScreenEntry[] = [
       'restaurant/components/MenuItemGrid.tsx',
       'restaurant/components/MenuItemContextMenu.tsx',
       'restaurant/components/MenuPreferencesMenu.tsx',
+      'restaurant/components/RestaurantSidebar.tsx',
       'restaurant/components/MenuSearchBar.tsx',
     ],
     // Cited, not muted: the sr-only span the menu card's "Add" label moved into
@@ -1423,9 +1446,28 @@ const SCREENS: ScreenEntry[] = [
     css: ['settings/screens/screens-placeholder.css'],
   },
   {
+    // First scaffold filled in (2026-09-19): the screen composes the real
+    // DiagnosticsSection as its body. The walker reads this file's markup alone
+    // and does NOT follow the nested <DiagnosticsSection /> import, so the
+    // section's own settings-diagnostics-* classes (defined in
+    // sections/DiagnosticsSection.css, which the screen imports transitively via
+    // the section) are declared external here — the DiagnosticsSection entry
+    // (:763) already grades that sheet against its own markup, and these names are
+    // reached through composition, not spelled in this file. The screen's markup
+    // keeps settings-screen-placeholder + -title and now also -note (the migrating
+    // line it still renders), so no scaffold name is left dead by this entry.
     name: 'SystemDiagnosticsScreen',
     tsx: 'settings/screens/SystemDiagnosticsScreen.tsx',
     css: ['settings/screens/screens-placeholder.css'],
+    externalClasses: [
+      'settings-diagnostics-list',
+      'settings-diagnostics-row',
+      'settings-diagnostics-feature',
+      'settings-diagnostics-result',
+      'settings-diagnostics-badge',
+      'settings-diagnostics-badge--ok',
+      'settings-diagnostics-detail',
+    ],
   },
 
   // ── Memo ───────────────────────────────────────────────
@@ -2066,7 +2108,7 @@ function allSheetIndex(): Map<string, Set<string>> {
 // answers are a stylesheet question rather than an exemption this file may grant.
 // 2026-09-15 ANSWERED -- all three were proven dead and deleted, each as ONE change (rule +
 // entry value + open-question member together, because the staleness check below grades both
-// lists in both directions). The list is now empty and the 4-member ledger above is the whole
+// lists in both directions). The list is now empty and the 5-member ledger below is the whole
 // exemption surface. Dead proofs, five shapes each, all failing to exist outside the rule: JSX
 // className, imperative/classList (the shape that saved workspace-card-ripple and restaurant-card
 // here), template stem (a prefix cannot cover a shorter base, which is why the bare
@@ -2094,6 +2136,11 @@ const EXTERNAL_CLASS_LEDGER: { entry: string; value: string; reason: string }[] 
     entry: 'RestaurantMenu',
     value: 'restaurant-card',
     reason: 'non-JSX: the base is assigned to a local at features/restaurant/components/MenuItemTile.tsx:189 (let cardClass of the literal) and only the composed value reaches className, so the extractor never sees the base; its entry already carries a restaurant-card-- prefix which cannot cover the base either',
+  },
+  {
+    entry: 'RestaurantMenu',
+    value: 'is-resizing',
+    reason: 'non-JSX: applied to document.body by classList.add at features/sales/hooks/useCartResize.ts:56, outside every component JSX and every prefix shape; the rule is a global body-state selector (body.is-resizing .restaurant-card, RestaurantMenu.css:542-551) whose whole purpose is to freeze THIS screen\'s cards while the sales screen\'s divider drags, so the setter and the rule cannot be brought into one feature',
   },
   {
     entry: 'KdsScreen',
@@ -2124,7 +2171,7 @@ const BASELINE_UNCITED: string[] = [
   'settings/SettingsScopeTag.css',
   'settings/WorkspaceSettingsModal.module.css',
   'setup/components/LiveSetupPreview.css',
-  'staff/RoleAuthoringScreen.css',
+  'staff/components/RoleAuthoringPanel.css',
   'warehouse/WarehouseConsole.css',
 ];
 

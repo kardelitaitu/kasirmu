@@ -1,13 +1,32 @@
 import { useState, useEffect, useCallback } from 'react';
-import { t } from '../i18n';
+import { t, type Labels } from '../i18n/labels';
 import { licenseApiUrl } from './runtime-config';
 
+/**
+ * The auth-error strings this hook raises. Owned here because the hook decides
+ * which fallback applies; an island that calls it spreads this list into its own
+ * `labels` list (`AUTH_FORM_LABELS` in AuthForm.tsx does).
+ */
+export const AUTH_ERROR_LABELS = [
+  'login.errorCors',
+  'login.errorLogin',
+  'login.errorRateLimit',
+  'login.errorReset',
+  'login.errorResetRequest',
+  'login.errorSend',
+  'login.errorSmtp',
+  'login.errorVerify',
+  'signup.errorExists',
+  'signup.errorRegister',
+] as const;
+
 interface UseAuthOptions {
-  locale: string;
+  /** Strings the hook's error messages read; see `AUTH_ERROR_LABELS`. */
+  labels: Labels;
   onAuthSuccess?: (token: string, email: string) => void;
 }
 
-export function useAuth({ locale, onAuthSuccess }: UseAuthOptions) {
+export function useAuth({ labels, onAuthSuccess }: UseAuthOptions) {
   const API = licenseApiUrl();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -37,17 +56,17 @@ export function useAuth({ locale, onAuthSuccess }: UseAuthOptions) {
   const handleApiError = useCallback(
     (res: Response, body: { error?: string }, fallbackKey: string) => {
       if (res.status === 429) {
-        setError(t(locale, 'login.errorRateLimit'));
+        setError(t(labels, 'login.errorRateLimit'));
       } else if (res.status === 403) {
-        setError(t(locale, 'login.errorCors'));
+        setError(t(labels, 'login.errorCors'));
       } else if (res.status === 503) {
-        setError(t(locale, 'login.errorSmtp'));
+        setError(t(labels, 'login.errorSmtp'));
       } else {
         const msg = body.error;
-        setError(msg ? `${t(locale, fallbackKey)} (${msg})` : t(locale, fallbackKey));
+        setError(msg ? `${t(labels, fallbackKey)} (${msg})` : t(labels, fallbackKey));
       }
     },
-    [locale]
+    [labels]
   );
 
   const requestOtp = useCallback(
@@ -70,13 +89,13 @@ export function useAuth({ locale, onAuthSuccess }: UseAuthOptions) {
         if (isResend) triggerResendSuccess();
         return true;
       } catch {
-        setError(t(locale, 'login.errorSend'));
+        setError(t(labels, 'login.errorSend'));
         return false;
       } finally {
         setLoading(false);
       }
     },
-    [API, handleApiError, locale, triggerResendSuccess]
+    [API, handleApiError, labels, triggerResendSuccess]
   );
 
   const verifyOtp = useCallback(
@@ -101,13 +120,13 @@ export function useAuth({ locale, onAuthSuccess }: UseAuthOptions) {
         onAuthSuccess?.(data.token, sanitizedEmail);
         return { success: true, token: data.token };
       } catch {
-        setError(t(locale, 'login.errorVerify'));
+        setError(t(labels, 'login.errorVerify'));
         return { success: false };
       } finally {
         setLoading(false);
       }
     },
-    [API, locale, onAuthSuccess]
+    [API, labels, onAuthSuccess]
   );
 
   const loginPassword = useCallback(
@@ -131,13 +150,13 @@ export function useAuth({ locale, onAuthSuccess }: UseAuthOptions) {
         onAuthSuccess?.(data.token, sanitizedEmail);
         return { success: true, token: data.token };
       } catch {
-        setError(t(locale, 'login.errorLogin'));
+        setError(t(labels, 'login.errorLogin'));
         return { success: false };
       } finally {
         setLoading(false);
       }
     },
-    [API, locale, onAuthSuccess]
+    [API, labels, onAuthSuccess]
   );
 
   const register = useCallback(
@@ -152,7 +171,7 @@ export function useAuth({ locale, onAuthSuccess }: UseAuthOptions) {
           body: JSON.stringify({ email: sanitizedEmail, password, password_confirm: passwordConfirm }),
         });
         if (res.status === 409) {
-          setError(t(locale, 'signup.errorExists'));
+          setError(t(labels, 'signup.errorExists'));
           return false;
         }
         if (!res.ok) {
@@ -163,13 +182,13 @@ export function useAuth({ locale, onAuthSuccess }: UseAuthOptions) {
         setOtpSentAt(Date.now());
         return true;
       } catch {
-        setError(t(locale, 'signup.errorRegister'));
+        setError(t(labels, 'signup.errorRegister'));
         return false;
       } finally {
         setLoading(false);
       }
     },
-    [API, handleApiError, locale]
+    [API, handleApiError, labels]
   );
 
   const requestResetCode = useCallback(
@@ -190,13 +209,13 @@ export function useAuth({ locale, onAuthSuccess }: UseAuthOptions) {
         }
         return { success: true, cooldownUntil: data.cooldown_until };
       } catch {
-        setError(t(locale, 'login.errorResetRequest'));
+        setError(t(labels, 'login.errorResetRequest'));
         return { success: false };
       } finally {
         setLoading(false);
       }
     },
-    [API, handleApiError, locale]
+    [API, handleApiError, labels]
   );
 
   const resetPassword = useCallback(
@@ -230,13 +249,13 @@ export function useAuth({ locale, onAuthSuccess }: UseAuthOptions) {
         onAuthSuccess?.(data.token, sanitizedEmail);
         return { success: true, token: data.token };
       } catch {
-        setError(t(locale, 'login.errorReset'));
+        setError(t(labels, 'login.errorReset'));
         return { success: false };
       } finally {
         setLoading(false);
       }
     },
-    [API, locale, onAuthSuccess]
+    [API, labels, onAuthSuccess]
   );
 
   return {

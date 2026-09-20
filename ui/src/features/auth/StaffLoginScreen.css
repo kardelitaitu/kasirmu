@@ -78,10 +78,33 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
+  /* Centre the logo in its box instead of bottom-anchoring it. This box is 70% of
+     the card (flex 7 of the 7/2/1 split) but the mark is only ~36% of that (192px
+     of a 540px card), so `flex-end` dumped the whole surplus ABOVE the logo:
+     measured 166px of dead space above it against 36px between the logo and the
+     field at 1024x768, and 236px against 36px at 428x600 (44% of the card empty).
+     Centring moves the mark up into the middle of its box. The PIN step overrides
+     `justify-content` to the same `center` (see .staff-login-card--pin above), so
+     the two steps agree; the padding equaliser lives on the username-only rule
+     below so this base rule stays shared. */
+  justify-content: center;
   padding: clamp(var(--space-4), 3vw, var(--space-6)) clamp(var(--space-5), 5vw, var(--space-8));
   padding-bottom: var(--space-6);
   pointer-events: none;
+}
+
+/* Username step only: equalise the gap above the logo against the gap between the
+   logo and the field, WITHOUT moving the input. Centred, the gap above is
+   `half-slack + padding-top` while the gap below is `half-slack + padding-bottom +
+   main-area padding-top (space-2)` -- the main area's own 8px makes the below gap
+   wider (measured 95.7px above vs 106.7px below at 1024x768). Setting
+   padding-top: space-6 (24) against padding-bottom: space-4 (16) lands both at
+   98.5px / 101.5px at 1024x768 and 134.6px / 137.6px at 428x600, a residual -3px
+   (1.5px, imperceptible). Scoped away from the PIN step because its top bar holds
+   the pin dots, not the logo, and it keeps the base padding. */
+.staff-login-card:not(.staff-login-card--pin) .staff-login-top-bar {
+  padding-top: var(--space-6);
+  padding-bottom: var(--space-4);
 }
 
 .staff-login-top-bar > * {

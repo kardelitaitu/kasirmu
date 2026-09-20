@@ -428,6 +428,21 @@ impl Store<'_> {
         })
         .to_string();
 
+        // ── Receipt hierarchy code (phase 3) ─────────────────────
+        // Same mint as the main checkout door: resolve (and lazily allocate
+        // when missing) the location/terminal/staff index ids, claim the
+        // store-local sequence and freeze the 22-char nomor faktur inside the
+        // settlement tx. When no terminal is known the code cannot be formed,
+        // `display_code` stays NULL, and the sale still completes.
+        let (display_code, terminal_id_val) = self.mint_receipt_code(
+            &tx,
+            "default",
+            primary_location.as_str(),
+            terminal_id,
+            staff_user_id,
+            &now,
+        )?;
+
         // SF-01: the shortfall retry settles a payment that was already
         // captured before the first attempt — the sale is terminal on
         // write. Writing 'pending' here left retry sales invisible to
@@ -441,9 +456,9 @@ impl Store<'_> {
                                  customer_id, deduction_locations, version,
                                  pending_expires_at, tenant_id,
                                  base_currency, base_total_minor, tender_rate_millionths,
-                                 tip_minor, service_charge_minor)
+                                 tip_minor, service_charge_minor, terminal_id, display_code)
              VALUES (?1, ?2, ?3, ?4, 'completed', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 1, NULL, 'default',
-                     ?16, ?17, ?18, ?19, ?20)",
+                     ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
             rusqlite::params![
                 sale.id, sale.total.minor_units, cur_str, sale.line_count,
                 sale.payment_method, sale.tendered_minor,
@@ -453,6 +468,7 @@ impl Store<'_> {
                 sale.customer_id, deduction_json,
                 sale.base_currency, sale.base_total_minor, sale.tender_rate_millionths,
                 sale.tip_minor, sale.service_charge_minor,
+                terminal_id_val, display_code,
             ],
         )?;
 
@@ -577,7 +593,9 @@ impl Store<'_> {
         Ok(crate::sale_deduction::CompleteSaleResult {
             sale_id: sale.id.clone(),
             status: foundation::SaleStatus::Completed,
-            receipt_number: sale.id.clone(),
+            // Prefer the frozen hierarchy code; fall back to the sale id when
+            // no terminal was known (display_code stays NULL — see mint).
+            receipt_number: display_code.clone().unwrap_or_else(|| sale.id.clone()),
             deduct_tx_id,
             statutory_number,
         })

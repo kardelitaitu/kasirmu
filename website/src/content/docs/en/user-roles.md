@@ -3,17 +3,18 @@ title: User Roles
 description: Five permission presets decide what each staff account can do and see.
 category: gettingStarted
 order: 5
-updated: "2026-09-08"
+updated: "2026-09-19"
 ---
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE AFTER REPAIR (2 findings) · Customer-facing page, first audit evidence it ever carried. · Verified and correct: all 13 permission keys this page cites exist as declared consts in platform/core/src/rbac.rs (93 such keys; sales:void at :356, sales:refund at :358). The Staff-preset description matches the code grant-for-grant: rbac_presets.rs gives it exactly 22 keys, all checkout-side (sales_process, payments_*, discounts_apply, customers_create+view, loyalty_*, shifts_open+close, tables_*, kds_*, workspaces_switch) and none of the management keys the page says were stripped. platform/core/src/rbac.rs exists as cited. · FINDING 1, wrong guidance: the page told customers to find this in Settings -> Staff. Settings surfaces Staff nowhere - no route reference exists anywhere in ui/src/features/settings/ - while staff/register.tsx registers both screens with section: tools, whose label is nav-section-tools = “Tools”. Fixed to Tools -> Staff. · FINDING 2, a shipped feature omitted, same class as the deploy-history gap on stores.md: “Custom is a sixth preset … not shown in the standard staff dropdown yet” is literally true (StaffManagementScreen states it presents exactly the five preset roles) yet it reads as though custom roles are unavailable. They are shipped: a routed screen (route roles, label Roles, gated manager AND staff:manage_roles) backed by create/update/delete_role_scoped, list_permission_keys_scoped and list_role_holders_scoped, all registered and all actually called by that screen. New “Authoring custom roles” section, including both delete guards - preset ids refuse, and a role still referenced refuses, per delete_role_scoped’s own ///. · ROLE_PRESETS holds SIX entries, not five: my first scan said four because I sliced a fixed 6000 chars out of a 10259-char array and believed the result. A truncated read reported a wrong count in the direction that would have made me accuse an accurate page. -->
+<!-- Audit stamp: 2026-09-19 · DSH · status: ACCURATE AFTER REPAIR (3 findings) · 2026-09-19 RE-AUDIT: Staff management and role authoring became dedicated fullscreen pages — ui/src/features/staff/register.tsx:20-33 registers both routes with fullscreen: true and no longer carries a registerNavItem, so AppShell renders them without AppLayout and the sidebar holds neither. This page's two "under Tools in the sidebar" pointers were therefore wrong and are re-pointed at the workspace picker's Tools grid (Staff Management card) and at the Staff page's Roles button. Verified against the running app: the Tools sidebar section lists Terminals, Features, Data, Audit Log, Security Trail, Offline Queue, Shifts, Memos and neither Staff nor Roles. · 2026-09-08 · DSH · status: ACCURATE AFTER REPAIR (2 findings) · Customer-facing page, first audit evidence it ever carried. · Verified and correct: all 13 permission keys this page cites exist as declared consts in platform/core/src/rbac.rs (93 such keys; sales:void at :356, sales:refund at :358). The Staff-preset description matches the code grant-for-grant: rbac_presets.rs gives it exactly 22 keys, all checkout-side (sales_process, payments_*, discounts_apply, customers_create+view, loyalty_*, shifts_open+close, tables_*, kds_*, workspaces_switch) and none of the management keys the page says were stripped. platform/core/src/rbac.rs exists as cited. · FINDING 1, wrong guidance: the page told customers to find this in Settings -> Staff. Settings surfaces Staff nowhere - no route reference exists anywhere in ui/src/features/settings/ - while staff/register.tsx registers both screens with section: tools, whose label is nav-section-tools = “Tools”. Fixed to Tools -> Staff. · FINDING 2, a shipped feature omitted, same class as the deploy-history gap on stores.md: “Custom is a sixth preset … not shown in the standard staff dropdown yet” is literally true (StaffManagementScreen states it presents exactly the five preset roles) yet it reads as though custom roles are unavailable. They are shipped: a routed screen (route roles, label Roles, gated manager AND staff:manage_roles) backed by create/update/delete_role_scoped, list_permission_keys_scoped and list_role_holders_scoped, all registered and all actually called by that screen. New “Authoring custom roles” section, including both delete guards - preset ids refuse, and a role still referenced refuses, per delete_role_scoped’s own ///. · ROLE_PRESETS holds SIX entries, not five: my first scan said four because I sliced a fixed 6000 chars out of a 10259-char array and believed the result. A truncated read reported a wrong count in the direction that would have made me accuse an accurate page. -->
 
 ## What a role is
 
 Every staff account has a role — a permission preset that decides what the
 account can do and see. Roles come from a fixed taxonomy of five presets,
-shown when you edit an account in **Staff**, which is under **Tools** in the
-sidebar (not under Settings). The bundled table actually holds six presets;
+shown when you edit an account on the **Staff** screen — a dedicated
+full-screen page you open from the **Staff Management** card in the workspace
+picker's Tools grid, not a sidebar entry. The bundled table actually holds six presets;
 the staff picker offers five of them, and the sixth is described below.
 
 ## The five roles
@@ -67,7 +68,8 @@ This matrix is the target for the codebase:
 
 ## Authoring custom roles
 
-**Tools → Roles** is where custom roles are built. It is a separate screen from the staff
+The **Roles** screen — open it with the **Roles** button on the Staff page — is where
+custom roles are built. It is a separate screen from the staff
 list, and it is gated more tightly: **manager or owner** *and* the
 `staff:manage_roles` permission. Read-only staff cannot reach it even if they can view
 the staff list, because a role defines the grants every other check resolves through.
@@ -112,4 +114,4 @@ The four gaps in the plan have been closed:
   retired Cashier/Kitchen are gone everywhere, including the role badges,
   icons, and workspace picker.
 
-> last audited 08-09-26 by docs-auditor
+> last audited 19-09-26 by docs-auditor

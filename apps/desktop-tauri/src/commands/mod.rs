@@ -13,6 +13,8 @@ pub mod audit;
 pub mod auth;
 /// Authorization commands (roles, permissions).
 pub mod authz;
+/// User-avatar commands (self-service, or `staff:update` for another user).
+pub mod avatars;
 /// Store branding commands.
 pub mod branding;
 /// External-browser commands (ADR #38).
@@ -27,6 +29,8 @@ pub mod currencies;
 pub mod customers;
 /// Data export / import commands.
 pub mod data;
+/// Device-link commands (ADR #54 §2.5).
+pub mod desktop_link;
 /// EDC card-present payment terminal commands.
 pub mod edc;
 /// Email report commands.

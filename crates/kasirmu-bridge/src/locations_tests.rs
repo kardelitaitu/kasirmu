@@ -14,7 +14,7 @@
 use super::*;
 use kasirmu_core::db::Store;
 
-use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
+use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_reaches_a_paid_tier};
 
 /// The release leg for a scoped command this file drives through the
 //-- The release leg for these locations lives in crate::testing (RULE at assert_refused_by_the_seeded_row) --
@@ -131,12 +131,30 @@ async fn create_location_profile_scoped_end_to_end_owner() {
     )
     .await;
 
-    // Release: the create is refused at the signature, so there is no DTO and
-    // the `COUNT(*) FROM locations == 2` below has no written row to count -
-    // it stays debug-only rather than being re-cut into a second assertion of
-    // the same cause.
-    if !seeded_row_loads() {
-        assert_refused_by_the_seeded_row(&tb, result, "free").await;
+    // Release: since 19-09-26 the seeded row LOADS here — as Free, because
+    // `verify_signature` honours the bootstrap sentinel only on a free-tier
+    // row. So this leg no longer refuses at the signature; it refuses at the
+    // Free store quota (1 store, already consumed by the migration-seeded
+    // `default` profile), which is the typed `SubscriptionLimitExceeded` the
+    // sibling test below asserts for Plus. The signature refusal is gone from
+    // this path on purpose — it was the bug the ruling fixed — so asserting it
+    // here would pin the old, broken behaviour.
+    //
+    // There is still no DTO, so the `COUNT(*) FROM locations == 2` below stays
+    // debug-only rather than being re-cut into a second assertion of the same
+    // cause.
+    if !seeded_row_reaches_a_paid_tier() {
+        match result {
+            Err(BridgeError::Core { sub_kind, .. }) => {
+                assert_eq!(
+                    format!("{sub_kind:?}").to_lowercase(),
+                    "subscriptionlimitexceeded",
+                    "a loaded Free row must be refused by the Free store quota, not by a \
+                     signature the row now passes"
+                );
+            }
+            other => panic!("expected the typed Free quota rejection, got: {other:?}"),
+        }
         return;
     }
     let created = result.unwrap();
@@ -217,7 +235,7 @@ async fn create_location_profile_scoped_rejects_when_plus_quota_reached() {
     // gate reads - while the pin reads the GLOBAL identity row that
     // seeded_row_loads() is about, still free and still the sentinel. Passing
     // "plus" here would assert the wrong table's fact.
-    if !seeded_row_loads() {
+    if !seeded_row_reaches_a_paid_tier() {
         assert_refused_by_the_seeded_row(&tb, result, "free").await;
         return;
     }

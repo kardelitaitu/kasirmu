@@ -1,4 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
@@ -25,6 +27,8 @@ const mockProducts = [
 
 const mockActiveWorkspace = vi.hoisted(() => ({ current: 'restaurant-pos' }));
 const mockLogout = vi.hoisted(() => vi.fn());
+const mockGoToWorkspacePicker = vi.hoisted(() => vi.fn());
+const mockGetActiveShift = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
@@ -57,7 +61,7 @@ vi.mock('@/features/products/useProducts', () => ({
 }));
 
 vi.mock('@/hooks/useWorkspaceNav', () => ({
-  useWorkspaceNav: () => ({ goToWorkspacePicker: vi.fn() }),
+  useWorkspaceNav: () => ({ goToWorkspacePicker: mockGoToWorkspacePicker }),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -102,8 +106,8 @@ vi.mock('@/api/settings', async (importOriginal) => {
 });
 
 vi.mock('@/api/shifts', () => ({
-  getActiveShiftScoped: vi.fn().mockResolvedValue(null),
-  getActiveShift: vi.fn().mockResolvedValue(null),
+  getActiveShiftScoped: mockGetActiveShift,
+  getActiveShift: mockGetActiveShift,
 }));
 
 vi.mock('@/api/hardware', async () => {
@@ -123,6 +127,8 @@ describe('RestaurantPosSidebar', () => {
     // inherit whatever the previous test left behind.
     mockActiveWorkspace.current = 'restaurant-pos';
     mockLogout.mockClear();
+    mockGoToWorkspacePicker.mockClear();
+    mockGetActiveShift.mockReset().mockResolvedValue(null);
   });
 
   it('hides the CartPanel when restaurant sidebar is toggled open and restores it when closed', async () => {
@@ -136,7 +142,7 @@ describe('RestaurantPosSidebar', () => {
     expect(resizeHandle.style.display).not.toBe('none');
 
     // Toggle button in RestaurantMenu header
-    const toggleBtn = document.querySelector('.restaurant-hamburger-btn') as HTMLButtonElement;
+    const toggleBtn = document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement;
     expect(toggleBtn).toBeInTheDocument();
     expect(toggleBtn.getAttribute('aria-expanded')).toBe('false');
 
@@ -147,10 +153,11 @@ describe('RestaurantPosSidebar', () => {
     expect(toggleBtn.getAttribute('aria-expanded')).toBe('true');
     const sidebar = document.querySelector('.restaurant-sidebar');
     expect(sidebar).toBeInTheDocument();
-    expect(screen.getByText('Manual')).toBeInTheDocument();
+    expect(screen.getByText('Exit Terminal')).toBeInTheDocument();
 
-    // CartPanel plays exit animation then is hidden
+    // CartPanel & handle play exit animation then are hidden
     expect(cartPanel).toHaveClass('pos-cart-panel--exiting');
+    expect(resizeHandle).toHaveClass('pos-resize-handle--exiting');
     await waitFor(() => {
       expect(cartPanel.style.display).toBe('none');
     });
@@ -159,14 +166,19 @@ describe('RestaurantPosSidebar', () => {
     // Click toggle button again to close sidebar
     await user.click(toggleBtn);
 
-    // Sidebar is closed
+    // Sidebar is closed (plays exit animation then unmounts)
     expect(toggleBtn.getAttribute('aria-expanded')).toBe('false');
-    expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+    expect(document.querySelector('.restaurant-sidebar')).toHaveClass('restaurant-sidebar--exiting');
 
-    // CartPanel plays entering animation and is visible again
+    // CartPanel & handle play entering animation and are visible again
     expect(cartPanel).toHaveClass('pos-cart-panel--entering');
+    expect(resizeHandle).toHaveClass('pos-resize-handle--entering');
     expect(cartPanel.style.display).not.toBe('none');
     expect(resizeHandle.style.display).not.toBe('none');
+
+    await waitFor(() => {
+      expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+    });
   });
 
   // The sidebar item is labelled "Lock Terminal", so it has to lock the
@@ -178,7 +190,7 @@ describe('RestaurantPosSidebar', () => {
     const user = userEvent.setup();
     await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
 
-    await user.click(document.querySelector('.restaurant-hamburger-btn') as HTMLButtonElement);
+    await user.click(document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement);
     expect(document.querySelector('.restaurant-sidebar')).toBeInTheDocument();
 
     mockLogout.mockClear();
@@ -196,12 +208,101 @@ describe('RestaurantPosSidebar', () => {
     expect(lockEvents).toHaveLength(1);
     expect(mockLogout).not.toHaveBeenCalled();
     // The popover closes on the lock, like every other item in it.
-    expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+    });
+  });
+
+  it('Exit Terminal shows confirmation dialog when shift is closed, and exits on confirm', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
+
+    await user.click(document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement);
+    expect(document.querySelector('.restaurant-sidebar')).toBeInTheDocument();
+
+    const exitBtn = screen.getByRole('button', { name: 'Exit Terminal' });
+    expect(exitBtn).toBeInTheDocument();
+
+    // Click Exit Terminal -> opens exit confirmation dialog
+    await user.click(exitBtn);
+
+    // Sidebar closes
+    await waitFor(() => {
+      expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+    });
+
+    // Exit confirmation modal appears
+    expect(screen.getByText('Exit Workspace')).toBeInTheDocument();
+    expect(mockGoToWorkspacePicker).not.toHaveBeenCalled();
+
+    // Confirm exit
+    const confirmExitBtn = screen.getByRole('button', { name: 'Exit' });
+    await user.click(confirmExitBtn);
+
+    expect(mockGoToWorkspacePicker).toHaveBeenCalledTimes(1);
+  });
+
+  it('Exit Terminal prompts to close shift when an active shift exists', async () => {
+    mockGetActiveShift.mockResolvedValue({
+      id: 'shift-1',
+      cashier_id: 'user-1',
+      opened_at: '2026-09-18T08:00:00Z',
+      opening_balance_minor: 100000,
+      opening_balance: 100000,
+      total_sales_minor: 0,
+      total_sales: 0,
+      cash_sales_minor: 0,
+    });
+
+    const user = userEvent.setup();
+    await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
+
+    await user.click(document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement);
+    expect(document.querySelector('.restaurant-sidebar')).toBeInTheDocument();
+
+    const exitBtn = screen.getByRole('button', { name: 'Exit Terminal' });
+    await user.click(exitBtn);
+
+    // Sidebar closes
+    await waitFor(() => {
+      expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+    });
+
+    // Close Shift modal opens instead of exit dialog or direct exit
+    expect(mockGoToWorkspacePicker).not.toHaveBeenCalled();
+    expect(screen.queryByText('Exit Workspace')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Close shift' })).toBeInTheDocument();
+  });
+
+  it('removes the back button from header and exposes sidebar and hamburger buttons', async () => {
+    await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
+
+    expect(document.querySelector('.restaurant-back-btn')).toBeNull();
+    expect(document.querySelector('.restaurant-sidebar-btn')).toBeInTheDocument();
+    expect(document.querySelector('.restaurant-hamburger-btn')).toBeInTheDocument();
+  });
+
+  it('opens preferences popover from hamburger button containing sort, size, font size, theme, and fullscreen', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
+
+    const hamburgerBtn = document.querySelector('.restaurant-hamburger-btn') as HTMLButtonElement;
+    expect(hamburgerBtn).toBeInTheDocument();
+    expect(document.querySelector('.restaurant-hamburger-dropdown')).toBeNull();
+
+    await user.click(hamburgerBtn);
+    const dropdown = document.querySelector('.restaurant-hamburger-dropdown') as HTMLElement;
+    expect(dropdown).toBeInTheDocument();
+    expect(within(dropdown).getByText('Manual')).toBeInTheDocument();
+    expect(within(dropdown).getByText('Size')).toBeInTheDocument();
+    expect(within(dropdown).getByText('Font Size')).toBeInTheDocument();
+    expect(within(dropdown).getByText(/Mode/i)).toBeInTheDocument();
+    expect(within(dropdown).getByText('Toggle Fullscreen')).toBeInTheDocument();
   });
 
   // The restaurant cart header is an order list now, not a toolbar: every
   // button that used to sit in `.pos-cart-header` is either relocated into this
-  // popover (shift, deduction override, tables, history, KDS) or replaced by
+  // sidebar (shift, deduction override, tables, history, KDS) or replaced by
   // the "Lock Terminal" row. The shift STATUS stays in the panel — it is a fact
   // about the order, not a control.
   it('hosts the relocated cart-header buttons and leaves none of them in the cart panel', async () => {
@@ -221,7 +322,7 @@ describe('RestaurantPosSidebar', () => {
       expect(cartPanel.querySelector('.pos-cart-header-shift')?.textContent).toContain('No active shift');
     });
 
-    await user.click(document.querySelector('.restaurant-hamburger-btn') as HTMLButtonElement);
+    await user.click(document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement);
     const sidebar = document.querySelector('.restaurant-sidebar') as HTMLElement;
     expect(within(sidebar).getByRole('button', { name: 'Open a new shift' })).toBeInTheDocument();
     expect(within(sidebar).getByRole('button', { name: 'History' })).toBeInTheDocument();
@@ -233,7 +334,9 @@ describe('RestaurantPosSidebar', () => {
     // navigation and closes the popover like every other item in it.
     await user.click(within(sidebar).getByRole('button', { name: 'Kitchen Display' }));
     expect(onNavigate).toHaveBeenCalledWith('kds');
-    expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+    });
   });
 
   it('keeps the cart header buttons in the cart panel for the retail workspace', async () => {
@@ -248,6 +351,7 @@ describe('RestaurantPosSidebar', () => {
     expect(within(cartPanel).getByRole('button', { name: 'Kitchen Display' })).toBeInTheDocument();
     expect(within(cartPanel).getByRole('button', { name: 'Lock' })).toBeInTheDocument();
     // Retail has no sidebar to relocate them into.
+    expect(document.querySelector('.restaurant-sidebar-btn')).not.toBeInTheDocument();
     expect(document.querySelector('.restaurant-hamburger-btn')).not.toBeInTheDocument();
   });
 
@@ -262,6 +366,60 @@ describe('RestaurantPosSidebar', () => {
     expect(resizeHandle.style.display).not.toBe('none');
 
     // Restaurant hamburger/sidebar button is not present in Retail POS
+    expect(document.querySelector('.restaurant-sidebar-btn')).not.toBeInTheDocument();
     expect(document.querySelector('.restaurant-hamburger-btn')).not.toBeInTheDocument();
+  });
+  it('names the product at the foot of the panel: version and copyright', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
+
+    await user.click(document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement);
+
+    // The same two lines the login screen carries bottom-left.
+    const footer = document.querySelector('.restaurant-sidebar-footer') as HTMLElement;
+    expect(footer).toBeInTheDocument();
+    // `getVersion()` throws outside Tauri, so the shared probe settles on its
+    // '0.0.0' placeholder here — this asserts the line renders, not its value.
+    expect(within(footer).getByText(/^v\d/)).toBeInTheDocument();
+    expect(within(footer).getByText(/All rights reserved/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Row alignment — a layout bug that no other guard could see.
+ *
+ * The global `button` reset centres its content (`ui/src/theme/reset.css:82`),
+ * and `.restaurant-sidebar-item` never overrode it. Measured 2026-09-19 in the
+ * running app: every row centred itself, so the shortest label ("History")
+ * drifted right of the longest and the icon tiles never formed a column. All
+ * 422 UI tests passed on that broken layout, because every other guard reads
+ * class names and token values and none of them reads `justify-content`.
+ *
+ * This pins the OVERRIDE, not the pixels: it cannot prove the tiles line up,
+ * only that the declaration without which they cannot is still there.
+ */
+describe('RestaurantPosSidebar — row alignment', () => {
+  const RESTAURANT_CSS = resolve(__dirname, '../features/restaurant/RestaurantMenu.css');
+
+  it('left-aligns the rows instead of inheriting the button reset centring', () => {
+    const css = readFileSync(RESTAURANT_CSS, 'utf-8');
+
+    // Every rule whose selector names the row, so reordering the sheet or
+    // splitting the rule cannot silently drop the declaration.
+    const bodies = [...css.matchAll(/\.restaurant-sidebar-item[^{]*\{([^}]*)\}/g)].map(
+      (m) => m[1] ?? '',
+    );
+    expect(
+      bodies.length,
+      'no `.restaurant-sidebar-item` rule found in RestaurantMenu.css — the reader is broken, not the CSS',
+    ).toBeGreaterThan(0);
+
+    expect(
+      bodies.some((body) => /justify-content:\s*flex-start/.test(body)),
+      'ui/src/theme/reset.css:82 gives every <button> `justify-content: center`. Without ' +
+        '`justify-content: flex-start` on .restaurant-sidebar-item each row centres its own ' +
+        'content, so a short label drifts right of a long one and the icon tiles stop forming ' +
+        'a column.',
+    ).toBe(true);
   });
 });

@@ -93,9 +93,14 @@ jobs:
             '^crates/|^modules/|^platform/|^foundation/|^apps/(cloud-server|desktop-tauri|mobile-tauri)/|^tools/fuzz/|^scripts/updater-compat-check/|^Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain' \
             && echo "rust=true"  >> "$GITHUB_OUTPUT" || echo "rust=false" >> "$GITHUB_OUTPUT"
 
-          # UI: ui/src has zero imports reaching outside ui/, so ui/ is a sound
-          # boundary for the vitest suite and its lockfile.
-          printf '%s\n' "$files" | grep -qE '^ui/' \
+          # UI: `ui/` is the vitest suite's boundary, but it is NOT self-contained.
+          # P9a moved the Fluent corpus to shared-ui/locales/ and ui/vite.config.ts
+          # aliases `@/locales/…` back onto it, so the `?raw` imports in
+          # ui/src/i18n/createEnUsLocalization.ts and the glob in
+          # i18n/barePlaceholderScan.ts read across that boundary. A bundle edit
+          # can therefore break the suite at import time, so it must route here
+          # as well as to i18n -- which is what scripts/test-ci-routing.sh pins.
+          printf '%s\n' "$files" | grep -qE '^ui/|^shared-ui/locales/' \
             && echo "ui=true" >> "$GITHUB_OUTPUT" || echo "ui=false" >> "$GITHUB_OUTPUT"
 
           # i18n: the .ftl bundles, any TSX/TS the parity scanner reads, and the
@@ -248,11 +253,17 @@ jobs:
   # ── 3b. Release-profile bridge tests ─────────────────────────────────
   #
   # WHY THIS EXISTS: the debug run above licenses nothing about the release
-  # profile, and the two disagree on exactly one thing that used to be
-  # invisible — `BOOTSTRAP_FREE` verifies only under `#[cfg(debug_assertions)]`,
-  # so in release every command doing `sub.verify_signature()?` fails closed.
-  # That produced 76 reds no gate could see. Release is green as of `2dc500382`,
-  # which is what makes this job landable: never land a gate red.
+  # profile. Since the 19-09-26 ruling the two agree on the schema-seeded FREE
+  # row — `TenantSubscription::verify_signature` honours `BOOTSTRAP_FREE`
+  # whenever `tier_key()` is `free`, in BOTH profiles — so what still diverges
+  # is that same sentinel on a row carrying a PAID tier: debug accepts it
+  # through the `#[cfg(debug_assertions)]` short-circuit at
+  # `license_verification.rs:402`, release falls through to the base64 decode
+  # and rejects it. A fixture that restamps a tier forks on
+  # `seeded_row_reaches_a_paid_tier`, and a regression there is invisible to the
+  # debug run above. The historical 76 reds no gate could see are why the job
+  # was created; release is green as of `2dc500382` and 1346/0 as of
+  # `31aa530fe`, which is what keeps it landable: never land a gate red.
   #
   # WHY PUSH-ONLY: a release build is a much colder compile than the debug one,
   # and taxing every PR with it was ruled not worth the guarantee. Drift is
@@ -262,9 +273,16 @@ jobs:
   # this workflow costs ~75 runner-minutes per run (measured on PR #95). That
   # is far too much to spend every night to test one crate.
   #
-  # WHY NO SYSTEM DEPS: `kasirmu-bridge` is headless by contract — no tauri / gtk /
-  # webkit2gtk dependency (see its Cargo.toml) — so unlike `cargo-nextest` this
-  # job skips the apt-get layer and the frontend dist stubs.
+  # SYSTEM DEPS: the narrow subset, not the sibling jobs' full list. `kasirmu-bridge`
+  # is headless by contract — no tauri / gtk / webkit2gtk dependency (see its
+  # Cargo.toml) — so it needs neither the gtk/webkit layer nor the frontend dist
+  # stubs. It DOES need `libudev-dev`: `cargo tree -p kasirmu-bridge -i libudev-sys`
+  # resolves `libudev-sys <- libudev <- serialport <- kasirmu-hal <- kasirmu-bridge`,
+  # and without the header `libudev-sys`'s build script dies before a single test
+  # runs — which is how this job failed on 2026-09-18 (`error: failed to run custom
+  # build command for libudev-sys v0.1.4`, run 35293028418). A gate that cannot
+  # reach its own tests cannot see the failure set it was added to watch, so the
+  # apt-get layer is load-bearing here even though the crate is headless.
   #
   # FLAG TRAP: `-P release` is the NEXTEST profile, not the cargo one, and
   # would silently re-run the debug build while looking correct. `-r`/`--release`
@@ -281,6 +299,10 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      - name: Install system dependencies (Linux, libudev only)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libudev-dev pkg-config
       - name: Install cargo-nextest
         uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2
         with:

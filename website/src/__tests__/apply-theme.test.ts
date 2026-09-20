@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * Tests for Base.astro applyTheme inline script.
+ * Tests for the applyTheme inline script.
  *
  * The script reads localStorage.kasirmu_theme and applies it to
  * document.documentElement.dataset.theme before first paint.
@@ -14,10 +14,13 @@ import { join } from 'node:path';
  *
  * Migration: reads legacy `oz_theme` key, copies to `kasirmu_theme`,
  * and removes the legacy key on first run.
+ *
+ * Lives in components/SiteHead.astro (the shared head) since the
+ * single-ownership refactor; it used to be inline in Base.astro.
  */
 
 const LAYOUT_SRC = readFileSync(
-  join(__dirname, '../layouts/Base.astro'),
+  join(__dirname, '../components/SiteHead.astro'),
   'utf-8'
 );
 
@@ -25,7 +28,7 @@ function extractApplyThemeScript(): string {
   const match = LAYOUT_SRC.match(
     /<script is:inline>\s*\(\(\)\s*=>\s*\{([\s\S]*?)\}\)\(\);\s*<\/script>/
   );
-  if (!match) throw new Error('Could not extract applyTheme script from Base.astro');
+  if (!match) throw new Error('Could not extract applyTheme script from SiteHead.astro');
   return match[1].trim();
 }
 

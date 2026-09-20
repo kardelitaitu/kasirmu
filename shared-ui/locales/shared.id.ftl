@@ -18,6 +18,11 @@ error-occurred = Terjadi kesalahan
 retry = Coba lagi
 dismiss = Tutup
 no-results = Tidak ada hasil
+
+# Petunjuk kemampuan. Muncul saat suatu fitur memerlukan aplikasi sungguhan:
+# pemilih berkas memakai `@tauri-apps/plugin-dialog`, yang tidak dapat dijangkau
+# pratinjau peramban.
+image-pick-app-only = Memilih foto memerlukan aplikasi kasir.mu
 print = Cetak
 export = Ekspor
 download = Unduh

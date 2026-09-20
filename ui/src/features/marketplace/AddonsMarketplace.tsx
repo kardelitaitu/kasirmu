@@ -16,6 +16,7 @@ import {
   tenantHasAddon,
   type AddonDefinition,
 } from '@/api/addons';
+import { WEBSITE_ORIGIN, openExternalUrl } from '@/api/browser';
 import './AddonsMarketplace.css';
 
 interface AddonCardProps {
@@ -94,11 +95,11 @@ export default function AddonsMarketplace() {
       // The actual Paddle checkout will be handled by the website's
       // paddle.ts openPaddleCheckout helper. For the POS app, we
       // open the pricing page with the addon anchor.
-      window.open(
-        `/pricing/#addon-${addon.id}`,
-        '_blank',
-        'noopener,noreferrer',
-      );
+      //
+      // Absolute, and through `openExternalUrl`: a relative `/pricing/`
+      // resolves against the app's own `https://tauri.localhost` origin
+      // (a 404), and `window.open` is discarded by the Android WebView.
+      void openExternalUrl(`${WEBSITE_ORIGIN}/pricing/#addon-${addon.id}`);
     },
     [],
   );

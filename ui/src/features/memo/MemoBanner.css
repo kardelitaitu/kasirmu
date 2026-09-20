@@ -19,12 +19,13 @@
  * (the speech tail points at it), so bubbles are dealt in FROM the
  * corner and exit back TOWARD it (transform-origin 0 100%).
  *
- * Rows are grid wrappers animating grid-template-rows 0fr↔1fr:
- * a spawn expands (pushing the stack down) and a close collapses
- * (letting the stack spring up) purely through layout flow — the
- * reflow is the star, the leaver is a supporting act. Steady state
- * must NOT clip (the (x) chip and the tail overflow the bubble's
- * box); clipping is enabled only on rows that are animating.
+ * Rows are grid wrappers animating grid-template-rows minmax(0, 0fr)
+ * ↔ minmax(0, 1fr): a spawn expands (pushing the stack down) and a
+ * close collapses (letting the stack spring up) purely through layout
+ * flow — the reflow is the star, the leaver is a supporting act. The
+ * explicit 0 minimum is load-bearing; see the row-wrapper note below.
+ * Steady state must NOT clip (the (x) chip and the tail overflow the
+ * bubble's box); clipping is enabled only on rows that are animating.
  * Unmount timing is owned by useExitAnimation; everything motion
  * lives inside prefers-reduced-motion: no-preference (and
  * animDuration() snaps the JS timers to zero under the reduce
@@ -63,31 +64,59 @@
 
 /* Row wrapper: a pure height animator. Collapsed until mounted,
    collapsing when exiting; the bubble inside owns every visible
-   transform. --memo-delay staggers simultaneous spawns (set inline
-   per index) and is forced to 0ms on exit. */
+   transform. --memo-delay staggers a BATCH of simultaneous spawns (set
+   inline from the row's position among the rows new in that render) and
+   is forced to 0ms on exit.
+
+   minmax(0, 0fr), NOT 0fr: a bare `0fr` is `minmax(auto, 0fr)`, and
+   that `auto` MINIMUM is the grid item's content-based minimum — so
+   the "collapsed" row floored at the bubble's min-content height
+   (measured 23px) instead of 0. Every spawn and every close therefore
+   snapped 23px before the spring took over, which is part of the
+   stutter the owner reported as "not smooth". `min-height: 0` on the
+   bubble does not help (the floor belongs to the track, not the item)
+   and neither does `overflow: hidden` on the row (a grid track's
+   automatic minimum ignores it). Pinning the minimum to 0 makes the
+   track collapse to a measured 0px, so the spring owns the whole
+   motion. */
 .memo-stack-item {
   display: grid;
-  grid-template-rows: 0fr;
+  grid-template-rows: minmax(0, 0fr);
+  /* Cancel the stack's flex gap while collapsed. The gap sits BETWEEN
+     flex items, so it is not part of the track and cannot be animated by
+     grid-template-rows: a mounting row therefore added its full gap in
+     one frame — measured as a 7px lurch of the entire stack (top edge and
+     height both) with the spring still at rest, and the mirror −7px drop
+     when the row unmounted. Animating the negative margin back to 0 in
+     step with the track makes insert and remove continuous, and because
+     gap + margin cancel exactly, the resting geometry is unchanged. */
+  margin-top: calc(-1 * var(--space-2));
 }
 
 .memo-stack-item.is-mounted {
-  grid-template-rows: 1fr;
+  grid-template-rows: minmax(0, 1fr);
+  margin-top: 0;
 }
 
 .memo-stack-item.is-exiting {
-  grid-template-rows: 0fr;
+  grid-template-rows: minmax(0, 0fr);
+  margin-top: calc(-1 * var(--space-2));
   pointer-events: none;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .memo-stack-item {
-    transition: grid-template-rows var(--duration-500) var(--memo-spring);
+    transition:
+      grid-template-rows var(--duration-500) var(--memo-spring),
+      margin-top var(--duration-500) var(--memo-spring);
     transition-delay: var(--memo-delay, 0ms);
   }
 
   .memo-stack-item.is-exiting {
     /* The collapse is quicker than the spawn and never staggered. */
-    transition: grid-template-rows 450ms var(--memo-spring);
+    transition:
+      grid-template-rows 450ms var(--memo-spring),
+      margin-top 450ms var(--memo-spring);
     transition-delay: 0ms;
   }
 
@@ -105,8 +134,11 @@
     opacity: 0;
   }
 
-  /* Exit: the leaver accelerates toward the corner and is gone by
-     60% of the row collapse — the survivors' spring-up is the star. */
+  /* Exit: the leaver accelerates toward the corner and is gone well
+     before the row collapse ends — the survivors' spring-up is the
+     star. Measured against the 450ms collapse: opacity hits 0 at
+     200ms (44%) and the transform settles at 300ms (67%), so the row
+     is already empty for the last third of its own collapse. */
   .memo-stack-item.is-exiting .memo-banner {
     transition:
       transform 300ms var(--ease-in),
@@ -125,13 +157,20 @@
   overflow: hidden;
 }
 
-/* The bubble itself: adaptive width capped at 400px (owner direction,
-   2026-09-08). min-height: 0 lets the grid row actually collapse
+/* The bubble itself: adaptive width capped at 560px (owner direction,
+   2026-09-08, raised from 400px 2026-09-19 -- "the box will be
+   bigger"), and never wider than the viewport less the stack's own
+   gutters, so the bottom-left bubble cannot run off a narrow screen.
+   The 560 was measured, not guessed: the dev memo's body has a 573px
+   single-line width, so any cap up to 560px still wraps to the
+   two-line preview the owner's sketch shows, and a cap at 573px or
+   above stops binding for this content at all (the bubble becomes
+   content-width). min-height: 0 lets the grid row actually collapse
    below the content size. */
 .memo-banner {
   position: relative;
   min-height: 0;
-  max-width: 400px;
+  max-width: min(560px, calc(100vw - var(--space-12)));
   padding: var(--space-3) var(--space-4);
   background: var(--color-bg-popover);
   border: 1px solid var(--color-border);
@@ -158,10 +197,20 @@
 /* The whole title+body block is one button that opens the enlarged
    card. Reset the button chrome so it reads as the bubble's body,
    and keep the min-width:0 chain so long text clamps instead of
-   stretching the bubble. */
+   stretching the bubble.
+
+   `align-items: stretch` is load-bearing, not decoration. reset.css
+   gives EVERY button `display: inline-flex; align-items: center`, and
+   a local rule that restates only `display` leaves that centring in
+   force on this element. The body is wider than the 400px cap, so it
+   filled the width and read left either way; the title is narrower,
+   so it was centred on the cross axis as a shrink-to-fit box — which
+   is why `text-align: left` on the title (2026-09-08) could never
+   move it. Owner-reported twice: 2026-09-08 and 2026-09-19. */
 .memo-banner-open {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: var(--space-1);
   min-width: 0;
   width: 100%;
@@ -198,39 +247,131 @@
 }
 
 /* Owner direction (round 3): the bubble text reads at body size,
-   not caption size. */
+   not caption size.
+
+   The title is held to ONE row, and that is part of the bubble's row
+   budget rather than a restyle. The title sits outside the body's
+   clamp, so an unbounded title silently outgrows it: the composer
+   allows a 120-character title (MemosScreen.tsx:330), and a
+   99-character one measures 2 rows at the 560px cap -- a 5-row bubble
+   against a 3-row body, for a notification whose whole job is to be
+   small. The full title is never lost: the reading card renders it
+   unclamped in an <h2> (`.memo-expanded-title`), which is the surface
+   people actually read, exactly as the body already works. */
 .memo-banner-title {
   font-size: var(--text-md);
   font-weight: var(--font-weight-semibold);
   color: var(--color-fg);
   line-height: var(--leading-tight);
   text-align: left;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  -webkit-box-orient: vertical;
+  max-height: calc(var(--leading-tight) * 1em);
+  overflow: hidden;
 }
 
-/* The bubble previews at most 10 lines; the full text lives in the
-   enlarged card behind the open button. */
+/* The BODY previews at most THREE lines (owner direction, 2026-09-19,
+   was 10); the full text lives in the enlarged card behind the open
+   button. The engine draws the terminator itself, as a single U+2026
+   `…` glued to the last glyph that fits.
+
+   The cap is a row clamp, NOT character surgery, and the measurement
+   says why. Swept against the running app, the number of characters
+   that fit in three rows is 241 for both 6-line dev fixtures but 63
+   for a 1-line body -- it varies with the body's own character mix, so
+   no fixed "drop the last N chars" rule can hold the row count.
+   `-webkit-line-clamp` can: measured at the 560px cap, the six-line
+   bodies are 6 rows unclamped (126px) and exactly 3 clamped (63px),
+   and 1L/2L/3L bodies measure 1/2/3 rows and are never cut early --
+   the engine cuts at the row boundary rather than at a byte offset.
+   It also costs no layout pass, no ResizeObserver and no re-measure on
+   font load, all of which a JS substring rule would need, because the
+   bubble's width is content-adaptive. And because the cut is purely
+   visual, the full body stays in the DOM: copy, find-in-page and
+   assistive tech still see the whole memo, which a substring rewrite
+   would destroy.
+
+   `max-height` is the belt-and-braces backstop for an engine without
+   webkit-box support, where the clamp would not fire: it hard-caps the
+   box at 3 rows. Same idiom as .restaurant-card-name. Both are
+   honoured in Chromium/WebKit and in Firefox 68+, so in practice the
+   clamp always wins and the backstop never binds.
+
+   `text-wrap: pretty` is load-bearing at the wider cap, not a nicety.
+   Widening the bubble from 400px to 560px moved the dev memo's break
+   from "...exercise the memo / display surfaces. Duration: 12h." to
+   "...Duration: / 12h." -- a single-word last line. Measured across
+   wrap modes at 560px: normal orphans "12h.", pretty breaks at
+   "...display surfaces. / Duration: 12h.", balance breaks at
+   "...to exercise / the memo display surfaces. Duration: 12h."
+   pretty was chosen because it only suppresses orphans and leaves
+   balanced text alone, where balance rewrites every break. It
+   degrades to normal wrapping on an engine without it.
+
+   Note where pretty stops mattering: it only ever moves a paragraph's
+   LAST lines, so while the clamp is truncating a long body its whole
+   effect lands on text nobody can see, and rows 1-3 are identical
+   under pretty and normal. It is still the right value, because it is
+   load-bearing on the bodies short enough NOT to be clamped. */
 .memo-banner-text {
   margin: 0;
   font-size: var(--text-md);
   color: var(--color-fg-secondary);
   line-height: var(--leading-normal);
+  text-wrap: pretty;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 10;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  max-height: calc(var(--leading-normal) * 3em);
   overflow: hidden;
   /* Long unbroken strings (URLs, ids) must wrap, not stretch the
      adaptive bubble past its cap. */
   overflow-wrap: anywhere;
 }
 
-/* The (x) floats OUTSIDE the bubble (owner direction, 2026-09-08):
-   a small circular chip overlapping the top-right corner. Anchored
-   to the bubble (the positioned ancestor); the row's overflow
-   clipping is disabled in steady state so the chip stays visible. */
+/* Owner ruling 2026-09-19: "maximum is 3 row" is the WHOLE preview, so a
+   titled bubble spends one of them on the title and the body gets two.
+   An untitled bubble keeps all three for the body. A title can therefore
+   no longer push a preview to four rows. (The cap is a maximum, not a
+   fixed height: a one-line body still renders one short bubble. Measured
+   across the dev fixtures — 1L 1 row/65px, 2L 2 rows/86px, 3L and 6L
+   clamped to 2 of 3 and 2 of 6 — total preview rows never exceed 3.)
+   `:has()` is the right hook because the title element is conditionally
+   rendered (blank title = text-only bubble), and it is already the
+   codebase's idiom (KDS, SetupWizard, StaffManagement). */
+.memo-banner-open:has(.memo-banner-title) .memo-banner-text {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  max-height: calc(var(--leading-normal) * 2em);
+}
+
+/* The (x) floats clear of the bubble (owner direction, 2026-09-08;
+   position settled against the owner's own sketch, 2026-09-19). The
+   24px chip is unchanged in size -- only moved: one --space-10 past
+   the bubble's right edge leaves an ~11px gap between them, so the
+   chip reads as an outside control rather than one sitting on the
+   corner. Measured off the sketch: the chip's diameter is 80px there
+   and the gap 35px, i.e. 0.44 chip-diameters -- 24px * 0.44 = 10.5px.
+   The two earlier offsets both kept the chip on the bubble (the
+   original -8px left two thirds of it over the corner).
+
+   `top: 0` is the sketch's own alignment, not a default: there the
+   chip's top edge and the bubble's top edge are the same scanline
+   (y=47 in a 1372x327 drawing), so the chip sits beside the corner
+   rather than riding above it. Measured in the running app, `top: 0`
+   puts the chip's top 1px below the bubble's outer edge -- `top`
+   resolves against the padding box and the bubble carries a 1px
+   border; the sketch's flush edge and this differ by that 1px.
+   Anchored to the bubble (the positioned ancestor); the row's
+   overflow clipping is disabled in steady state so the chip stays
+   visible. */
 .memo-banner-close {
   position: absolute;
-  top: -8px;
-  right: -8px;
+  top: 0;
+  right: calc(-1 * var(--space-10));
   display: inline-flex;
   align-items: center;
   justify-content: center;

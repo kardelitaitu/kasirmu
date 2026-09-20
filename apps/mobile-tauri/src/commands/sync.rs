@@ -39,6 +39,13 @@ pub struct SyncSettingsDto {
     pub has_api_key: bool,
     /// Enabled.
     pub enabled: bool,
+    /// The origin the app actually resolves to (ADR #55): the environment override,
+    /// an attested pin, or the canonical compiled origin. Diagnostics, not a setting.
+    pub resolved_origin: String,
+    /// Which tier supplied `resolved_origin` (`env-override`, `pinned`, `main`,
+    /// `fallback`, `debug-local`) — so a silent fallback is visible rather than
+    /// indistinguishable from misconfiguration.
+    pub resolved_origin_source: String,
 }
 
 /// Update sync settings.
@@ -158,10 +165,13 @@ pub async fn get_sync_settings_scoped(
     let api_key = Settings::get_sync_api_key(&db)?.filter(|k| !k.is_empty());
     let enabled = Settings::is_sync_enabled(&db)?;
     drop(db);
+    let resolved = kasirmu_core::attestation::resolved_origin();
     Ok(SyncSettingsDto {
         server_url,
         has_api_key: api_key.is_some(),
         enabled,
+        resolved_origin: resolved.url,
+        resolved_origin_source: resolved.source.as_str().to_string(),
     })
 }
 

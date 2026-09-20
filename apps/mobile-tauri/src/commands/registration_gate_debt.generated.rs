@@ -37,14 +37,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ),
     ("branding::set_brand_logo_path", "no_session_resolution"),
     ("branding::set_brand_store_name", "no_session_resolution"),
-    (
-        "memo::list_active_memos_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "memo::acknowledge_memo_scoped",
-        "resolves_session_names_no_permission",
-    ),
     ("staff::bootstrap_owner", "no_session_resolution"),
     (
         "subscription::get_subscription_capabilities",
@@ -107,6 +99,15 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("setup::get_enabled_features", "no_session_resolution"),
     ("setup::complete_setup", "no_session_resolution"),
     ("setup::dismiss_setup_wizard", "no_session_resolution"),
+    ("desktop_link::link_device_google", "no_session_resolution"),
+    (
+        "desktop_link::link_device_email_request",
+        "no_session_resolution",
+    ),
+    (
+        "desktop_link::link_device_email_consume",
+        "no_session_resolution",
+    ),
     ("browser::open_product_images", "no_session_resolution"),
     ("setup::get_setup_status", "no_session_resolution"),
     ("workspaces::list_workspaces", "no_session_resolution"),
@@ -139,10 +140,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ),
     (
         "categories::list_categories_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "hardware::list_scanners_scoped",
         "resolves_session_names_no_permission",
     ),
     (
@@ -254,7 +251,10 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// Registered commands the sweep found today. The floor in
 /// registration_gate_tests.rs is asserted equal to this, so a regenerated ledger
 /// that disagrees with a hand-kept floor fails the build.
-pub const REGISTERED_TOTAL: usize = 319;
+/// (Re-read 20-09-26: 324, and the floor was raised to it in the same pass as the
+/// ceilings below. The generator writing this number does not move the floor, so the
+/// two are only ever equal in a pass that touches both files.)
+pub const REGISTERED_TOTAL: usize = 324;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///
@@ -270,6 +270,29 @@ pub const REGISTERED_TOTAL: usize = 319;
 /// number. It is the only one of the seven `hardware::*` rows with a gate to
 /// copy — the other six are ungated in the bridge too, so they stay as debt
 /// until an owner rules on what permission they should carry.
+///
+/// Lowered from 88 by the memo tablet-delegation: `memo::list_active_memos_scoped`
+/// and `memo::acknowledge_memo_scoped` stopped being authenticate-then-assume when
+/// their bodies became `kasirmu_bridge::memo` shims (the bridge module names
+/// `permissions::`), and `hardware::list_scanners_scoped` was swept out as stale
+/// debt: commit `cde2c8ac2` added a quoted-`domain:action` literal to bridge
+/// `hardware.rs` after this ledger was last generated, which flipped the sweep's
+/// merge classification for that name. No permission was added to the command; the
+/// row described a state the tree no longer measures, and the ratchet printed it
+/// as the correction.
+///
+/// RAISED from 85 to 88 by the device-link half of ADR #54, the first rise in this
+/// file's history. Every row above lowers the ceiling because debt was paid; this one
+/// is the other direction, and it is deliberate rather than absorbed: `3f0e8c4c3`
+/// registered `desktop_link::link_device_google` and `da6a4a8d4` registered
+/// `desktop_link::link_device_email_request` / `link_device_email_consume`, all three
+/// in class 1 (`no_session_resolution`), so the measured count went 85 -> 88 and the
+/// ledger grew by the same three rows. Class 1 is STRUCTURAL for this module rather
+/// than an omission: the account-link step runs in the setup wizard before any staff
+/// session exists, and the device proves itself to the licence server with its own
+/// stored credentials (the api_key), exactly as `license::activate_license` does — a
+/// session permission here would guard a door no session can reach. The reason is
+/// recorded in docs/records/JOURNAL.md, which is what this pin asks of a rise.
 pub const DEBT_CEILING: usize = 88;
 
 /// Lowered from 89 by T11: `settings::set_hardware_settings` shed its row by deletion,
@@ -282,11 +305,14 @@ pub const DEBT_CEILING: usize = 88;
 /// call sites moved first.
 ///
 /// Names that never resolve a session at all.
-pub const NO_SESSION_RESOLUTION: usize = 41;
+/// 41 -> 44 with the three `desktop_link::` rows above: they join the largest class
+/// here, and `NO_SESSION_RESOLUTION` is a pin the generator does not recompute, so it
+/// moved by hand in the same pass that raised `DEBT_CEILING`.
+pub const NO_SESSION_RESOLUTION: usize = 44;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
-/// 47 + 41 = 88 = `DEBT_CEILING`, as the class counts must sum to the ledger.
-pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 47;
+/// 44 + 44 = 88 = `DEBT_CEILING`, as the class counts must sum to the ledger.
+pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 44;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).
 pub const UNSOURCED: usize = 0;

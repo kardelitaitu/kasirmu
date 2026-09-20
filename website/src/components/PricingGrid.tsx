@@ -1,8 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import type { BillingPeriod, CheckoutTier, PricingTier } from '../content/pricing/types';
-import { t } from '../i18n';
+import { t, type Labels } from '../i18n/labels';
 import { getExplicitRegion, type Region } from '../lib/region';
-import CheckoutButton from './CheckoutButton';
+import CheckoutButton, { CHECKOUT_LABELS } from './CheckoutButton';
+
+/**
+ * Strings this island reads. `pricing.astro` turns the list into the `labels`
+ * prop with `labelMap`, so the browser gets these strings in the document
+ * instead of both locale dictionaries in the JS bundle;
+ * `src/__tests__/island-label-coverage.test.ts` keeps the list honest.
+ */
+export const PRICING_LABELS = [
+  'pricingPage.billing.billedYearly',
+  'pricingPage.billing.label',
+  'pricingPage.billing.monthly',
+  'pricingPage.billing.yearly',
+  'pricingPage.billing.yearlyNote',
+  'pricingPage.mostPopular',
+  ...CHECKOUT_LABELS,
+] as const;
 
 /**
  * Pricing grid (pricing.astro). Renders the five tiers from
@@ -25,9 +41,11 @@ interface Props {
   locale: string;
   downloadHref: string;
   contactHref: string;
+  /** Strings this island reads; see `PRICING_LABELS`. */
+  labels: Labels;
 }
 
-export default function PricingGrid({ tiers, locale, downloadHref, contactHref }: Props) {
+export default function PricingGrid({ tiers, locale, labels, downloadHref, contactHref }: Props) {
   const [billing, setBilling] = useState<BillingPeriod>('yearly');
   const activeTiers = tiers;
   const trackRef = useRef<HTMLDivElement>(null);
@@ -58,8 +76,8 @@ export default function PricingGrid({ tiers, locale, downloadHref, contactHref }
   }, [billing]);
 
   const buttonDefs = [
-    { key: 'monthly' as BillingPeriod, label: t(locale, 'pricingPage.billing.monthly'), ref: monthlyBtnRef },
-    { key: 'yearly' as BillingPeriod, label: t(locale, 'pricingPage.billing.yearly'), note: t(locale, 'pricingPage.billing.yearlyNote'), ref: yearlyBtnRef },
+    { key: 'monthly' as BillingPeriod, label: t(labels, 'pricingPage.billing.monthly'), ref: monthlyBtnRef },
+    { key: 'yearly' as BillingPeriod, label: t(labels, 'pricingPage.billing.yearly'), note: t(labels, 'pricingPage.billing.yearlyNote'), ref: yearlyBtnRef },
   ];
 
   return (
@@ -67,7 +85,7 @@ export default function PricingGrid({ tiers, locale, downloadHref, contactHref }
       <div className="mt-12 flex justify-center">
         <div
           role="group"
-          aria-label={t(locale, 'pricingPage.billing.label')}
+          aria-label={t(labels, 'pricingPage.billing.label')}
           ref={trackRef}
           className="billing-toggle relative inline-flex items-center rounded-lg bg-ghost-bg p-[3px] text-sm"
         >
@@ -138,11 +156,16 @@ export default function PricingGrid({ tiers, locale, downloadHref, contactHref }
             >
               {tier.highlight && (
                 <span className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 inline-flex items-center rounded-full bg-primary px-3 py-0.5 text-[11px] font-bold text-on-primary shadow-sm uppercase tracking-wider">
-                  {t(locale, 'pricingPage.mostPopular')}
+                  {t(labels, 'pricingPage.mostPopular')}
                 </span>
               )}
-              {/* Row 1: Title */}
-              <h3 className="text-lg font-semibold">{tier.name}</h3>
+              {/* Row 1: Title.
+                  h2, not h3: the page's only other heading levels are the h1
+                  ("Pricing") and the plan names, so h3 skipped a level after
+                  the h1 (WCAG 1.3.1 / HIG heading order, and the outline a
+                  crawler reconstructs). Each plan IS a top-level section of a
+                  pricing page, which is exactly what h2 means. */}
+              <h2 className="text-lg font-semibold">{tier.name}</h2>
               {/* Row 2: Price */}
               <div className="mt-4 min-h-[58px] flex flex-col justify-start">
                 <p className="text-2xl font-bold whitespace-nowrap">
@@ -150,7 +173,7 @@ export default function PricingGrid({ tiers, locale, downloadHref, contactHref }
                   {!isEnterprise && price.period && <span className="text-xs font-normal text-muted"> {price.period}</span>}
                 </p>
                 {billing === 'yearly' && !isFree && !isEnterprise ? (
-                  <p className="mt-1 text-xs text-muted leading-tight">{t(locale, 'pricingPage.billing.billedYearly')}</p>
+                  <p className="mt-1 text-xs text-muted leading-tight">{t(labels, 'pricingPage.billing.billedYearly')}</p>
                 ) : (
                   <span className="mt-1 block h-4" aria-hidden="true" />
                 )}
@@ -187,7 +210,7 @@ export default function PricingGrid({ tiers, locale, downloadHref, contactHref }
                     {tier.cta}
                   </a>
                 ) : (
-                  <CheckoutButton tier={checkoutTier} locale={locale} />
+                  <CheckoutButton tier={checkoutTier} locale={locale} labels={labels} />
                 )}
               </div>
             </article>

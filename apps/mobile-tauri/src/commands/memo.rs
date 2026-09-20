@@ -10,146 +10,28 @@
 //! see and acknowledge memos addressed to their terminal. Authoring
 //! (`create`/`publish`) is a manager/admin surface and is not wired to the
 //! tablet shell yet; see the desktop module and the ipc-parity allowlist.
+//!
+//! What is tablet-specific here is the ROUTE, not the rules: memos are authored
+//! on a desktop and reach this shell through the cloud, so both commands try
+//! `sync_client` first and fall back to the local read when sync is
+//! unconfigured or unreachable. Everything else — the DTOs, the display cadence
+//! and both local halves, including the device→terminal-row translation that
+//! makes the recipient rows match — is the bridge's (`kasirmu_bridge::memo`), so
+//! the wire shape and the resolution rule each have exactly one home. The cloud
+//! query is sent under that same resolved identity, never the raw session value:
+//! one terminal identity for the read, the ack and the push that produced the
+//! rows.
 
-use chrono::Utc;
 use kasirmu_core::Store;
-use kasirmu_core::memo::{
-    ActiveMemo, Memo, NOTIFICATION_BASE_INTERVAL_SECS, kds_notification_interval_secs,
-};
-use kasirmu_core::sync_client::{self, ActiveMemoCloud, SyncConfig};
-use serde::Serialize;
+use kasirmu_core::sync_client::{self, SyncConfig};
 use tauri::State;
 
 use crate::error::AppError;
 use crate::state::AppState;
 
-const DEFAULT_TENANT_ID: &str = "default";
-
-/// JSON representation of a memo returned to the front-end.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MemoDto {
-    /// Stable memo identifier.
-    pub id: String,
-    /// Organization/Tenant owner.
-    pub tenant_id: String,
-    /// Locations the memo targets (wire: `locationIds`); empty ⇒ Organization
-    /// Memo (organization-wide audience), non-empty ⇒ Location Memo for
-    /// exactly those locations.
-    pub location_ids: Vec<String>,
-    /// Author's user id.
-    pub author_user_id: String,
-    /// Author's role snapshot at publish time.
-    pub author_role: String,
-    /// Memo title.
-    pub title: String,
-    /// Memo body.
-    pub body: String,
-    /// Lifecycle status (`draft`/`published`/`expired`/`stopped`/`archived`).
-    pub status: String,
-    /// Display duration (`12h`/`24h`/`3d`/`7d`/`30d`).
-    pub duration: String,
-    /// Current published revision.
-    pub revision: i64,
-    /// ISO-8601 publish instant, if published.
-    pub published_at: Option<String>,
-    /// ISO-8601 expiry instant, if published.
-    pub expires_at: Option<String>,
-    /// ISO-8601 creation timestamp.
-    pub created_at: String,
-}
-
-impl From<Memo> for MemoDto {
-    fn from(m: Memo) -> Self {
-        Self {
-            id: m.id,
-            tenant_id: m.tenant_id,
-            location_ids: m.location_ids,
-            author_user_id: m.author_user_id,
-            author_role: m.author_role,
-            title: m.title,
-            body: m.body,
-            status: m.status.as_str().to_string(),
-            duration: m.duration.as_str().to_string(),
-            revision: m.revision,
-            published_at: m.published_at,
-            expires_at: m.expires_at,
-            created_at: m.created_at,
-        }
-    }
-}
-
-/// A memo plus this terminal's delivery state.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ActiveMemoDto {
-    /// The memo.
-    pub memo: MemoDto,
-    /// This terminal's delivery/acknowledgement state.
-    pub delivery_status: String,
-}
-
-impl From<ActiveMemo> for ActiveMemoDto {
-    fn from(a: ActiveMemo) -> Self {
-        Self {
-            memo: MemoDto::from(a.memo),
-            delivery_status: a.delivery_status.as_str().to_string(),
-        }
-    }
-}
-
-/// Map a cloud-served memo into the display DTO. The cloud read is
-/// claim-scoped (it echoes no tenant) and its query only returns
-/// `published` rows, so those two DTO fields are filled from the read's
-/// own invariants — the same values the local-read path derives.
-impl From<ActiveMemoCloud> for ActiveMemoDto {
-    fn from(m: ActiveMemoCloud) -> Self {
-        Self {
-            memo: MemoDto {
-                id: m.id,
-                tenant_id: DEFAULT_TENANT_ID.to_string(),
-                location_ids: m.location_ids,
-                author_user_id: m.author_user_id,
-                author_role: m.author_role,
-                title: m.title,
-                body: m.body,
-                status: kasirmu_core::memo::MemoStatus::Published
-                    .as_str()
-                    .to_string(),
-                duration: m.duration,
-                revision: m.revision,
-                published_at: m.published_at,
-                expires_at: m.expires_at,
-                created_at: m.created_at,
-            },
-            delivery_status: m.delivery_status,
-        }
-    }
-}
-
-/// Display cadence served with the memo list. The backend is the single
-/// source of truth for the notification intervals — the UI schedules its polls
-/// from these values and never duplicates the literals (the spec's "coded as
-/// 2× the shared base interval" lives in `kasirmu_core::memo`, not in TypeScript).
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MemoCadenceDto {
-    /// Base notification interval in seconds (all non-KDS surfaces).
-    pub base_interval_secs: i64,
-    /// KDS interval in seconds — derived as 2 × base, never tuned separately.
-    pub kds_interval_secs: i64,
-}
-
-/// Response envelope for the memo display read: the memos this terminal
-/// should display plus the cadence to poll them on.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MemoDisplayDto {
-    /// Memos this terminal should display (Location stacked above Organization).
-    pub memos: Vec<ActiveMemoDto>,
-    /// The server-issued poll cadence.
-    pub cadence: MemoCadenceDto,
-}
+pub use kasirmu_bridge::memo::{
+    ActiveMemoDto, DEFAULT_TENANT_ID, MemoCadenceDto, MemoDisplayDto, MemoDto,
+};
 
 /// List the memos the caller's terminal should display, tier-stacked, plus
 /// the server-issued display cadence. Authenticated-only: the recipient set
@@ -161,6 +43,14 @@ pub struct MemoDisplayDto {
 /// configured the read goes to `GET /api/v1/memos/active`; when sync is
 /// unconfigured or unreachable it falls back to the local read (today's
 /// behaviour, with a warn log).
+///
+/// One terminal identity across that whole leg: the query is sent under the
+/// terminal ROW id the recipient rows key on
+/// ([`kasirmu_bridge::memo::resolve_recipient_terminal_id`]), not the DEVICE
+/// identity the session carries — the same translation the local fallback and
+/// the local ack perform. Sending the raw session value (the hostname) asked
+/// the cloud about a terminal it has no recipient rows for, so a memo the
+/// desktop delivered came back as an empty list.
 #[tauri::command]
 pub async fn list_active_memos_scoped(
     session_token: String,
@@ -175,9 +65,16 @@ pub async fn list_active_memos_scoped(
         let store = Store::new(&db);
         SyncConfig::from_settings(&store)?
     };
+    let ctx = state.bridge_ctx();
+    // Only a configured terminal has a cloud to ask; an unconfigured one goes
+    // straight to the local half, which resolves the identity for itself.
+    let recipient = match config.as_ref() {
+        Some(_) => kasirmu_bridge::memo::resolve_recipient_terminal_id(&ctx, &session).await?,
+        None => None,
+    };
 
-    if let Some(config) = config.as_ref() {
-        match sync_client::fetch_active_memos_from_server(config, &session.terminal_id).await {
+    if let (Some(config), Some(terminal_id)) = (config.as_ref(), recipient.as_ref()) {
+        match sync_client::fetch_active_memos_from_server(config, terminal_id).await {
             Ok(response) => {
                 return Ok(MemoDisplayDto {
                     memos: response
@@ -194,28 +91,26 @@ pub async fn list_active_memos_scoped(
             Err(e) => {
                 tracing::warn!(
                     error = %e,
-                    terminal = %session.terminal_id,
+                    terminal = %terminal_id,
+                    device = %session.terminal_id,
                     "memo cloud read failed; falling back to local read"
                 );
             }
         }
+    } else if config.is_some() {
+        // Configured, but this device resolves to no terminal row: there is no
+        // identity to ask the cloud about, and no recipient row could name it.
+        // Go straight to the local half, which serves the empty display with
+        // the cadence so the banner keeps polling.
+        tracing::debug!(
+            device = %session.terminal_id,
+            "memo cloud read skipped: this device has no terminal row"
+        );
     }
 
-    let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let memos = store
-        .list_active_for_terminal(DEFAULT_TENANT_ID, &session.terminal_id, &now)?
-        .into_iter()
-        .map(ActiveMemoDto::from)
-        .collect();
-    Ok(MemoDisplayDto {
-        memos,
-        cadence: MemoCadenceDto {
-            base_interval_secs: NOTIFICATION_BASE_INTERVAL_SECS,
-            kds_interval_secs: kds_notification_interval_secs(),
-        },
-    })
+    kasirmu_bridge::memo::list_active_memos_local(&ctx, &session)
+        .await
+        .map_err(Into::into)
 }
 
 /// Acknowledge a memo on the caller's terminal. Authenticated-only.
@@ -228,6 +123,17 @@ pub async fn list_active_memos_scoped(
 /// is unreachable the local write is the fallback. The ack carries the
 /// session's user id as informational metadata (terminal tokens have no
 /// user identity of their own).
+///
+/// The ack names no terminal: `POST /api/v1/memos/{memo_id}/ack` keys the
+/// caller's own recipient row off the token's `terminal_id` claim and refuses
+/// a token that has none. That claim is a property of the CREDENTIAL, so when
+/// the stored key is an admin-minted paste-a-JWT (the normal provisioning) the
+/// command first resolves a terminal-scoped credential — pairing the device
+/// with its RESOLVED ROW id as the `client_id`, the same identity the read and
+/// the local write use ([`kasirmu_bridge::memo::resolve_ack_client_credentials`])
+/// — and mints with those. A device with no terminal row, or a server that
+/// refuses pairing/minting, keeps the stored key and therefore today's
+/// behaviour: the cloud attempt fails its own way and the local write lands.
 #[tauri::command]
 pub async fn acknowledge_memo_scoped(
     memo_id: String,
@@ -237,7 +143,7 @@ pub async fn acknowledge_memo_scoped(
     let session = state.resolve_session(&session_token)?;
 
     // Scoped block: the connection guard must never be held across the
-    // HTTP await below (it is not `Send`).
+    // HTTP awaits below (they are not `Send`).
     let config = {
         let db = state.db.lock().await;
         let store = Store::new(&db);
@@ -245,7 +151,53 @@ pub async fn acknowledge_memo_scoped(
     };
 
     if let Some(config) = config.as_ref() {
-        match sync_client::ack_memo_on_server(config, &memo_id, Some(&session.user_id)).await {
+        // A terminal-scoped token is minted on demand so the claim matches the
+        // recipient row the ack keys on; the api_key inside `config` is only a
+        // fallback and is not mutated.
+        let config = if config.api_key.is_some() {
+            let ctx = state.bridge_ctx();
+            match kasirmu_bridge::memo::resolve_ack_client_credentials(
+                &ctx,
+                &session,
+                &config.server_url,
+            )
+            .await
+            {
+                Ok(Some((client_id, client_secret))) => {
+                    match sync_client::request_token_client_credentials(
+                        &config.server_url,
+                        &client_id,
+                        &client_secret,
+                    )
+                    .await
+                    {
+                        t if t.ok && t.token.is_some() => SyncConfig {
+                            server_url: config.server_url.clone(),
+                            api_key: t.token,
+                        },
+                        t => {
+                            tracing::info!(
+                                status = %t.status,
+                                "memo ack: scoped-token mint failed on the configured key's path — using the stored key"
+                            );
+                            config.clone()
+                        }
+                    }
+                }
+                Ok(None) => config.clone(),
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        "memo ack: credential resolution failed — using the stored key"
+                    );
+                    config.clone()
+                }
+            }
+        } else {
+            config.clone()
+        };
+
+        match sync_client::ack_memo_on_server(&config, &memo_id, Some(&session.user_id)).await {
             Ok(_) => return Ok(()),
             Err(e) => {
                 tracing::warn!(
@@ -258,15 +210,10 @@ pub async fn acknowledge_memo_scoped(
         }
     }
 
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    store.acknowledge_memo(
-        DEFAULT_TENANT_ID,
-        &memo_id,
-        &session.terminal_id,
-        &session.user_id,
-    )?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::memo::acknowledge_memo_local(&ctx, &session, &memo_id)
+        .await
+        .map_err(Into::into)
 }
 
 #[cfg(test)]

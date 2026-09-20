@@ -1,10 +1,9 @@
 ---
-import { ClientRouter } from 'astro:transitions';
-import { getAbsoluteLocaleUrl } from 'astro:i18n';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import DocSidebar, { type CategoryGroup } from '../components/DocSidebar.astro';
-import { locales, t } from '../i18n';
+import SiteHead from '../components/SiteHead.astro';
+import { t } from '../i18n';
 import '../styles/global.css';
 
 interface Heading {
@@ -24,75 +23,33 @@ interface Props {
 }
 
 const { locale, title, description, updated, entries, currentSlug, headings } = Astro.props;
-const ogLocale = locale === 'id' ? 'id_ID' : 'en_US';
-const ogAltLocale = locale === 'id' ? 'en_US' : 'id_ID';
 const toc = (headings ?? []).filter((h) => h.depth >= 2 && h.depth <= 3);
-// hreflang alternates for the same doc in the other locale. DocsLayout is
-// never rendered on the 404 page, but keep the same fallback for safety.
-const rawPath = Astro.url.pathname.replace(/^\/(?:en|id)(?:\/|$)/, '');
-const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : rawPath;
+const docDesc = description ?? t(locale, 'docs.title');
 ---
 
 <!doctype html>
 <html lang={locale}>
   <head>
-    <ClientRouter />
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- Apply the stored theme before first paint and on SPA swaps. -->
-    <script is:inline>
-      (() => {
-        const applyTheme = () => {
-          const t = localStorage.getItem('oz_theme');
-          document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light';
-        };
-        applyTheme();
-        document.addEventListener('astro:after-swap', applyTheme);
-      })();
-    </script>
-    <meta name="description" content={description ?? t(locale, 'docs.title')} />
-    <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
-    <link rel="sitemap" href="/sitemap-index.xml" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    {locales.map((code) => (
-      <link rel="alternate" hreflang={code} href={getAbsoluteLocaleUrl(code, path)} />
-    ))}
-    <link rel="alternate" hreflang="x-default" href={getAbsoluteLocaleUrl('id', path)} />
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="kasir.mu" />
-    <meta property="og:locale" content={ogLocale} />
-    <meta property="og:locale:alternate" content={ogAltLocale} />
-    <meta property="og:title" content={title} />
-    <meta property="og:description" content={description ?? t(locale, 'docs.title')} />
-    <meta property="og:url" content={new URL(Astro.url.pathname, Astro.site)} />
-    <!-- PNG (not SVG): social scrapers don't rasterize SVG; source is public/og-image.svg -->
-    <meta property="og:image" content={new URL('/og-image.png', Astro.site)} />
-    <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={title} />
-    <meta name="twitter:description" content={description ?? t(locale, 'docs.title')} />
-    <meta name="twitter:image" content={new URL('/og-image.png', Astro.site)} />
-    <script type="application/ld+json" is:inline set:html={JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "BreadcrumbList",
-      "itemListElement": [
-        { "@type": "ListItem", "position": 1, "name": "kasir.mu", "item": "https://kasir.mu/" },
-        { "@type": "ListItem", "position": 2, "name": t(locale, 'docs.title'), "item": new URL(`/${locale}/docs/`, Astro.site).toString() },
-        { "@type": "ListItem", "position": 3, "name": title }
-      ]
-    })} />
-    <script type="application/ld+json" is:inline set:html={JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "Article",
-      "headline": title,
-      "description": description ?? t(locale, 'docs.title'),
-      "inLanguage": locale,
-      ...(updated ? { "dateModified": updated } : {}),
-      "author": { "@type": "Organization", "name": "kasir.mu", "url": "https://kasir.mu" }
-    })} />
-    <title>{title} — {t(locale, 'docs.title')}</title>
+    <SiteHead title={title} titleTag={`${title} — ${t(locale, 'docs.title')}`} description={docDesc} locale={locale} runtimeConfig={false}>
+      <script type="application/ld+json" is:inline set:html={JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "kasir.mu", "item": "https://kasir.mu/" },
+          { "@type": "ListItem", "position": 2, "name": t(locale, 'docs.title'), "item": new URL(`/${locale}/docs/`, Astro.site).toString() },
+          { "@type": "ListItem", "position": 3, "name": title }
+        ]
+      })} />
+      <script type="application/ld+json" is:inline set:html={JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": title,
+        "description": docDesc,
+        "inLanguage": locale,
+        ...(updated ? { "dateModified": updated } : {}),
+        "author": { "@type": "Organization", "name": "kasir.mu", "url": "https://kasir.mu" }
+      })} />
+    </SiteHead>
   </head>
   <body class="flex min-h-screen flex-col bg text-ink antialiased">
     <Header />

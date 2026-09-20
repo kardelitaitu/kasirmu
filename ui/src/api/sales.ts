@@ -447,6 +447,9 @@ export interface SaleListItem {
   paymentMethod: string | null;
   userId: string | null;
   createdAt: string;
+  /** Phase 4: frozen 22-char receipt hierarchy code (location-terminal-YYMMDD-staff-seq),
+   *  or null for sales predating the code / sales with no known terminal. */
+  displayCode?: string | null;
 }
 
 /** A line item within a sale detail. */
@@ -480,6 +483,9 @@ export interface SaleDetail {
    *  optional-field rule the caps DTO used (runtime presence pinned by the
    *  badge test, absence renders no badge). */
   taxEstimateNote?: string | null;
+  /** Phase 4: frozen 22-char receipt hierarchy code (location-terminal-YYMMDD-staff-seq),
+   *  or null for sales predating the code / sales with no known terminal. */
+  displayCode?: string | null;
   /** CUR-02: original sale currency when multi-currency checkout was used. */
   baseCurrency?: string | null;
   /** CUR-02: original sale total in baseCurrency minor units. */

@@ -124,7 +124,7 @@ const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
       return Promise.resolve('USD');
     }
     if (cmd === 'get_sync_settings_scoped') {
-      return Promise.resolve({ serverUrl: null, hasApiKey: false, enabled: false });
+      return Promise.resolve({ serverUrl: null, hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' });
     }
     if (cmd === 'get_user_preferences_scoped') {
       return Promise.resolve({ cardsize: '2', fontsize: '1', 'font-smoothing': 'antialiased' });
@@ -152,7 +152,7 @@ const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
       return Promise.resolve(SAMPLE_CURRENCIES);
     }
     if (cmd === 'get_sync_settings') {
-      return Promise.resolve({ serverUrl: null, hasApiKey: false, enabled: false });
+      return Promise.resolve({ serverUrl: null, hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' });
     }
     if (cmd === 'get_user_preferences') {
       return Promise.resolve({ cardsize: '2', fontsize: '1', 'font-smoothing': 'antialiased' });
@@ -397,6 +397,10 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
         'fiscalnum-error',
       ],
       'sync-conflicts': ['sync-conflict-review'],
+      // Migrated 2026-09-19: the screen composes sections/DiagnosticsSection,
+      // whose feature list proves the body mounted (mocked IPC resolves each
+      // verdict, so the <ul> is present).
+      'system-diagnostics': ['settings-diagnostics-list'],
     };
 
     for (const item of NAV_ITEMS) {
@@ -495,10 +499,11 @@ describe('SettingsPage topbar save flow (kept)', () => {
 
   it('withSyncDefaults keeps configured URLs and states untouched', () => {
     // The contract the save-default test above relies on, pinned directly.
-    const configured = { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: false };
+    const configured = { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' };
     expect(withSyncDefaults(configured)).toBe(configured);
-    expect(withSyncDefaults({ serverUrl: '   ', hasApiKey: false, enabled: false })).toEqual({
-      serverUrl: 'https://license.ozpos.my.id', hasApiKey: false, enabled: true,
+    expect(withSyncDefaults({ serverUrl: '   ', hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' })).toEqual({
+      serverUrl: 'https://license.kasir.mu', hasApiKey: false, enabled: true,
+      resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main',
     });
   });
 

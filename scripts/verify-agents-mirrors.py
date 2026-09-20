@@ -5,9 +5,11 @@ scripts/verify-agents-mirrors.py — Keep the AGENTS.md mirrors telling the trut
 WHY THIS EXISTS
 ===============
 
-There are two copies of the agent rules: root `AGENTS.md` and `.agents/AGENTS.md`.
+There are two copies of the agent rules: root `AGENTS.md` and
+`.agents/management/AGENTS.md` (moved there from `.agents/AGENTS.md` by
+`edd97e5c0`, which reorganized `.agents/` into subdirectories).
 A third, `.prime/AGENTS.md`, existed until 08-09-26 and was deleted with the `.prime/`
-tree; the per-mirror mutation table it needed went with it. `.agents/AGENTS.md`
+tree; the per-mirror mutation table it needed went with it. `.agents/management/AGENTS.md`
 documents the hazard itself:
 
   "scripts/bump-version.ps1 updates the *version* lines in these mirrors but
@@ -132,7 +134,7 @@ def resolve_root(start: Path | None = None) -> tuple[Path, str]:
 
 DEFAULT_ROOT, ROOT_SOURCE = resolve_root()
 
-MIRRORS = ["AGENTS.md", ".agents/AGENTS.md"]
+MIRRORS = ["AGENTS.md", ".agents/management/AGENTS.md"]
 
 WORD_NUM = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
             "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
@@ -1175,18 +1177,23 @@ def report(root: Path) -> int:
 
 # ── Self-test: mutate a copy and prove each check fires ─────────────────────
 
-def _retarget_ci_claim(text, replacement):
-    """Rewrite the "All <N> steps now have a CI backstop" sentence, whatever N is.
+def _plant_ci_claim(text, claim):
+    """Plant a FALSE CI-coverage claim ahead of an anchor both mirrors carry.
 
-    Hardcoding "eight" here broke all three mutations below the day the hook gained a ninth
-    step: the anchor stopped matching, each replace() became a no-op, and the vacuous-mutation
-    guard correctly reported WRONG. That guard is what makes this table trustworthy, so the
-    fix is to stop anchoring on a value the mirrors are expected to change, not to re-pin it.
+    This replaced `_retarget_ci_claim`, which rewrote the true sentence "All <N> steps now
+    have a CI backstop" into a false one. That was elegant while the mirrors carried the
+    sentence, but the gate section was later rewritten to delegate per-step coverage to
+    `docs/operations/agent-gates.md`, so the true sentence no longer exists, every retarget
+    became a no-op, and the vacuous-mutation guard reported WRONG for both entries. The
+    RULES these two mutations prove are still live (a step listed as local-only / no CI
+    backstop; a subject guarded only by the local hook), so the mutation now PLANTS the
+    false claim instead of restoring it -- the guard is what makes this table trustworthy,
+    and it was the guard, not the rule, that caught the drift.
     """
-    pat = re.compile(r"All ((?:eight|nine|ten|eleven|twelve|[a-z]+)) steps now have a CI backstop")
-    if not pat.search(text):
+    anchor = "Per-step commands and CI backstops"
+    if anchor not in text:
         return text
-    return pat.sub(lambda m: replacement.replace("{N}", m.group(1)), text, count=1)
+    return text.replace(anchor, claim + anchor, 1)
 
 
 MUTATIONS = [
@@ -1198,17 +1205,16 @@ MUTATIONS = [
     # Everything below now matches on a pattern rather than a literal count word, for
     # exactly that reason.
     ("false CI-coverage claim restored (negation phrasing)",
-     lambda t: _retarget_ci_claim(
+     lambda t: _plant_ci_claim(
          t,
          "Steps 6 and 7 are local-only; there is no CI job for migration column "
-         "types or PG schema drift. All {N} steps now have a CI backstop"),
+         "types or PG schema drift. "),
      "no CI"),
     ("false local-only claim (participial phrasing)",
-     lambda t: _retarget_ci_claim(
+     lambda t: _plant_ci_claim(
          t,
-         "All {N} steps now have a CI backstop. The remaining gap is "
-         "`verify-migration-column-types.py`, still guarded only by the opt-in "
-         "local hook"),
+         "The remaining gap is `verify-migration-column-types.py`, still guarded "
+         "only by the opt-in local hook. "),
      # The harness matches this against the FINDING message
      # (`AGENTS.md: says "verify-migration-column-types.py" is guarded only by ...`), not
      # against the mutated document. It previously read "only by the local hook", which is
@@ -1233,10 +1239,13 @@ MUTATIONS = [
     # true sentence cannot test anything, and the assertion direction now lives in case (16)
     # where the fixture workflow is stripped of its push trigger. This entry keeps the
     # denial direction honest on the tree as it stands.
+    # Re-anchored 2026-09-20: the old anchor ("Two workflows are live") was removed from the
+    # mirrors, so the replace() was a no-op and the vacuous-mutation guard reported WRONG.
+    # The new anchor is a line both mirrors carry verbatim.
     ("push trigger falsely denied",
-     lambda t: t.replace("Two workflows are live",
+     lambda t: t.replace("Seven steps, each firing only on the paths it cares about",
                          "Dev CI has no push trigger in dev-ci.yml. "
-                         "Two workflows are live", 1),
+                         "Seven steps, each firing only on the paths it cares about", 1),
      "denies a push trigger"),
 ]
 
@@ -1501,7 +1510,7 @@ def _self_test_cases() -> int:
                   "3. **bundle parity** — previously a pre-commit gate\n")
     for desc, mutate8, want_problem in (
         ("live enumeration names a gate the hook does not run",
-         lambda t: t.replace("**`Go gate`**", "**i18n lint**", 1), True),
+         lambda t: t.replace("**Go gate**", "**i18n lint**", 1), True),
         ("the same names inside a historically-marked enumeration",
          lambda t: t + hist_probe, False),
     ):

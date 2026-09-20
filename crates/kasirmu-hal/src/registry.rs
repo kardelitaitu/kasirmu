@@ -85,6 +85,24 @@ impl DriverRegistry {
         sorted_keys(&*self.scanners.read().await)
     }
 
+    /// Snapshot of registered scanner ids in auto-detect order.
+    ///
+    /// [`Self::scanner_ids`] is alphabetical, which is right for a setup
+    /// wizard's list and wrong for auto-detect: `useBarcodeScanner.ts` takes
+    /// element 0, so alphabetical order hands the slot to
+    /// `scanner:serial:COM7` ahead of `scanner:usb:<serial>` — a bare COM
+    /// port outranking a device we actually recognise as a scanner. Rank by
+    /// family instead, cheapest-address-first; see [`scanner_family_rank`].
+    pub async fn scanner_ids_ranked(&self) -> Vec<String> {
+        let mut keys: Vec<String> = self.scanners.read().await.keys().cloned().collect();
+        keys.sort_by(|a, b| {
+            scanner_family_rank(a)
+                .cmp(&scanner_family_rank(b))
+                .then_with(|| a.cmp(b))
+        });
+        keys
+    }
+
     /// Snapshot of registered printer ids.
     pub async fn printer_ids(&self) -> Vec<String> {
         sorted_keys(&*self.printers.read().await)
@@ -188,6 +206,24 @@ impl DriverRegistry {
     /// connects on first use — so calling this at startup touches no
     /// hardware.
     pub async fn discover_scanners(&self) -> Vec<String> {
+        self.discover_scanners_excluding(&[]).await
+    }
+
+    /// Discover and register attached scanners, skipping every port the
+    /// operator has already bound to another device.
+    ///
+    /// `claimed` holds the port names (`COM7`, `/dev/ttyUSB0`) configured
+    /// for a printer, pole display, cash drawer or card terminal. A serial
+    /// port is only ever one physical device, and the auto-detect in
+    /// `useBarcodeScanner.ts` takes the first id it is offered without
+    /// asking, so a port that is already spoken for must not also be
+    /// offered as a scanner — otherwise the register opens the printer's
+    /// port at startup and reports a scanner failure that has nothing to
+    /// do with the scanner.
+    ///
+    /// Matching is case-insensitive because the same Windows port turns up
+    /// as `COM7` from enumeration and `com7` from a saved profile.
+    pub async fn discover_scanners_excluding(&self, claimed: &[String]) -> Vec<String> {
         let mut found = Vec::new();
 
         // --- USB HID barcode scanners ---
@@ -206,6 +242,9 @@ impl DriverRegistry {
         for scanner in crate::drivers::serial_scanner::SerialBarcodeScanner::discover_all() {
             let info = scanner.device_info();
             // Serial port name is used as the identity key.
+            if port_is_claimed(&info.serial, claimed) {
+                continue;
+            }
             let id = format!("scanner:serial:{}", info.serial);
             self.register_scanner(&id, Arc::new(scanner)).await;
             found.push(id);
@@ -214,6 +253,9 @@ impl DriverRegistry {
         // --- Bluetooth (SPP) barcode scanners ---
         for scanner in crate::drivers::bt_scanner::BtBarcodeScanner::discover_all() {
             let info = scanner.device_info();
+            if port_is_claimed(&info.serial, claimed) {
+                continue;
+            }
             let id = format!("scanner:bt:{}", info.serial);
             self.register_scanner(&id, Arc::new(scanner)).await;
             found.push(id);
@@ -378,6 +420,38 @@ fn sorted_keys<T>(map: &HashMap<String, T>) -> Vec<String> {
     let mut keys: Vec<String> = map.keys().cloned().collect();
     keys.sort();
     keys
+}
+
+/// Whether `port` is one the operator has already bound to another device.
+///
+/// Case-insensitive, because the same Windows port arrives as `COM7` from
+/// enumeration and `com7` from a saved profile. Blank entries are not
+/// claims: an unconfigured device records an empty port, which must not
+/// veto every scanner on the machine.
+fn port_is_claimed(port: &str, claimed: &[String]) -> bool {
+    claimed
+        .iter()
+        .any(|c| !c.trim().is_empty() && c.trim().eq_ignore_ascii_case(port.trim()))
+}
+
+/// Auto-detect rank of a scanner id's family — lower is offered first.
+///
+/// Ids are `scanner:<family>:<identity>`. A USB HID scanner is a device
+/// class the driver can recognise and it opens no port, so it ranks first.
+/// A Bluetooth SPP port comes next. A bare serial port ranks below both:
+/// enumeration can only tell us *something* is on that port, never that it
+/// is a scanner, and opening one is what produces the Win32
+/// `ERROR_SEM_TIMEOUT` failures on phantom and unconnected ports. Ids
+/// outside the scheme (mocks, or devices registered by an operator-chosen
+/// name) rank last so they can never shadow real hardware, and surfacing
+/// them is what the saved scanner preference is for.
+fn scanner_family_rank(id: &str) -> u8 {
+    match id.split(':').nth(1).unwrap_or("") {
+        "usb" => 0,
+        "bt" => 1,
+        "serial" => 2,
+        _ => 3,
+    }
 }
 
 #[cfg(test)]

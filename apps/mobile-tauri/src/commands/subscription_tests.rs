@@ -5,6 +5,8 @@
 //! and a known key's verdict must echo that key in feature.
 
 use super::*;
+
+use crate::commands::testing::{assert_verdict_fail_closed, seeded_row_reaches_a_paid_tier};
 use rusqlite::Connection;
 
 use kasirmu_core::migrations;
@@ -155,6 +157,10 @@ fn verdict_scope_mirrors_the_desktop_verdict_on_the_same_assignment() {
         "retail-pos",
     )
     .unwrap();
+    if !seeded_row_reaches_a_paid_tier() {
+        assert_verdict_fail_closed(&v);
+        return;
+    }
     assert!(v.available, "in-scope session must clear on premium");
     assert_eq!(v.detail.scope_granted, Some(true));
 
@@ -222,6 +228,13 @@ fn over_quota_report_seam_returns_the_effective_tier() {
     let conn = fresh_db();
     seed_tier(&conn, "premium");
     let (report, _tier) = load_over_quota_report(&conn).unwrap();
+    if !seeded_row_reaches_a_paid_tier() {
+        assert_eq!(
+            report.tier_key, "free",
+            "an unverifiable row projects the fail-closed tier, not the stamped one"
+        );
+        return;
+    }
     assert_eq!(report.tier_key, "premium");
     let locations = report
         .usage(kasirmu_core::downgrade::QuotaDimension::Locations)
@@ -265,6 +278,10 @@ fn verdict_payload_false_withholds_where_tier_allows() {
     // signed `features` block must outrank the tier and withhold it.
     seed_payload(&conn, r#"{"features":{"supports_analytics":false}}"#);
     let v = verdict_with_owner(&conn, "supports_analytics");
+    if !seeded_row_reaches_a_paid_tier() {
+        assert_verdict_fail_closed(&v);
+        return;
+    }
     assert!(
         !v.available,
         "explicit false must withhold where the tier allows"
@@ -281,6 +298,10 @@ fn verdict_payload_true_grants_beyond_tier() {
     // beyond what the tier would allow.
     seed_payload(&conn, r#"{"features":{"supports_analytics":true}}"#);
     let v = verdict_with_owner(&conn, "supports_analytics");
+    if !seeded_row_reaches_a_paid_tier() {
+        assert_verdict_fail_closed(&v);
+        return;
+    }
     assert!(v.available, "explicit true must grant beyond the tier");
     assert_eq!(v.reason_code(), None);
 }
@@ -292,6 +313,10 @@ fn verdict_absent_features_block_leaves_the_tier_answer() {
     // tier answer stands (available, no denial reason).
     seed_tier(&conn, "premium");
     let v = verdict_with_owner(&conn, "supports_analytics");
+    if !seeded_row_reaches_a_paid_tier() {
+        assert_verdict_fail_closed(&v);
+        return;
+    }
     assert!(
         v.available,
         "absent payload must not withhold a tier-granted feature"

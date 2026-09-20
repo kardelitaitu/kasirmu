@@ -1,11 +1,15 @@
 ---
 import { getRelativeLocaleUrl } from 'astro:i18n';
-import { t } from '../i18n';
+import { labelMap, t } from '../i18n';
 import LocaleSwitcher from './LocaleSwitcher.astro';
 import ThemeToggle from './ThemeToggle.astro';
 import SearchTrigger from './SearchTrigger';
+import { SEARCH_LABELS } from './SearchModal';
 
 const locale = Astro.currentLocale ?? 'en';
+// The search island's strings travel with the document, so the browser never
+// loads a locale dictionary (see src/i18n/labels.ts).
+const searchLabels = labelMap(locale, SEARCH_LABELS);
 const isDocs = Astro.url.pathname.includes('/docs');
 const nav = [
   { href: getRelativeLocaleUrl(locale, '/'), label: t(locale, 'nav.home') },
@@ -279,7 +283,7 @@ const login = getRelativeLocaleUrl(locale, 'login');
          portals to document.body and returns null while closed, so the
          trigger's only layout footprint really is that 36px square. -->
     <div class="flex items-center gap-2.5">
-      {isDocs ? <SearchTrigger client:load locale={locale} /> : <span class="h-9 w-9" aria-hidden="true"></span>}
+      {isDocs ? <SearchTrigger client:load locale={locale} labels={searchLabels} /> : <span class="h-9 w-9" aria-hidden="true"></span>}
       <ThemeToggle />
       <LocaleSwitcher />
       <a

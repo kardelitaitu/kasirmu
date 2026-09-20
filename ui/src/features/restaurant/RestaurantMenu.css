@@ -17,7 +17,6 @@
   box-sizing: border-box;
   padding: var(--space-3) var(--space-4);
   gap: var(--space-2);
-  transition: padding-left var(--duration-300) var(--ease-out);
 }
 
 .restaurant-menu--sidebar-open {
@@ -43,16 +42,23 @@
      background keeps scrolled cards from showing through. */
   position: sticky;
   top: 0;
-  z-index: var(--z-base);
+  z-index: var(--z-sticky);
   background: var(--color-bg);
   padding-block: var(--space-1);
   margin-block: calc(var(--space-1) * -1);
 }
 
 .restaurant-header-left {
-  position: static;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
+.restaurant-hamburger-wrapper {
+  position: relative;
+}
+
+.restaurant-sidebar-btn,
 .restaurant-hamburger-btn {
   display: inline-flex;
   align-items: center;
@@ -69,16 +75,20 @@
   transition: background-color var(--duration-150) var(--ease-out), color var(--duration-150) var(--ease-out), border-color var(--duration-150) var(--ease-out);
 }
 
+.restaurant-sidebar-btn:focus-visible,
 .restaurant-hamburger-btn:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }
 
+.restaurant-sidebar-btn:hover,
 .restaurant-hamburger-btn:hover {
   background: var(--color-bg-hover);
   color: var(--color-fg);
 }
 
+.restaurant-sidebar-btn--active,
+.restaurant-sidebar-btn[aria-expanded="true"],
 .restaurant-hamburger-btn--active,
 .restaurant-hamburger-btn[aria-expanded="true"] {
   background: var(--color-bg-hover);
@@ -86,8 +96,7 @@
   color: var(--color-accent);
 }
 
-.restaurant-sidebar,
-.restaurant-hamburger-dropdown {
+.restaurant-sidebar {
   /* Pinned to the panel, not the viewport: the only positioned ancestor is
      `.restaurant-menu`, and the panel must scroll WITH the menu chrome
      (header + pills are sticky within the same box) rather than float over
@@ -112,68 +121,100 @@
   padding: var(--space-3) var(--space-2);
   overflow-y: auto;
   gap: var(--space-1);
-}
-
-/* THM-08 (popoverSurfaceCompliance): the guard walks EVERY rule that names a
- * floating selector, so a later override cannot pass while the shared rule
- * above still carries a non-popover background. The background therefore left
- * the shared geometry rule entirely: the sidebar is a docked panel and keeps
- * --color-bg-surface; the hamburger dropdown floats over the menu and takes
- * the same opaque popover token as ContextMenu.css, StoreSwitcher.css and
- * LocationPicker.css. */
-.restaurant-sidebar {
   background: var(--color-bg-surface);
 }
 
 .restaurant-hamburger-dropdown {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  width: 18.5rem;
+  box-sizing: border-box;
+  opacity: 1;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  z-index: var(--z-dropdown);
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2);
+  /* Opaque panel, same as .restaurant-context-menu: --color-bg-surface is a
+     5% alpha tint in the glass theme, which lets the menu text blend with
+     the cards underneath it (THM-08). The popover token is opaque in every
+     theme. */
   background: var(--color-bg-popover);
+  backdrop-filter: blur(8px);
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .restaurant-sidebar,
-  .restaurant-hamburger-dropdown {
-    animation: restaurant-sidebar-jiggle-in var(--duration-400) var(--ease-out) both;
+  .restaurant-sidebar {
+    animation: restaurant-sidebar-slide-in var(--duration-300) cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
-  @keyframes restaurant-sidebar-jiggle-in {
-    0% {
+  .restaurant-hamburger-dropdown {
+    animation: restaurant-dropdown-in var(--duration-150) var(--ease-out) both;
+  }
+
+  @keyframes restaurant-dropdown-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes restaurant-sidebar-slide-in {
+    from {
       opacity: 0;
       transform: translateX(-100%);
     }
-    55% {
-      opacity: 1;
-      transform: translateX(12px);
-    }
-    75% {
-      transform: translateX(-5px);
-    }
-    88% {
-      transform: translateX(2px);
-    }
-    100% {
+    to {
       opacity: 1;
       transform: translateX(0);
     }
   }
 
-  .restaurant-hamburger-btn--active svg,
-  .restaurant-hamburger-btn[aria-expanded="true"] svg {
-    animation: restaurant-icon-jiggle var(--duration-400) var(--ease-out);
+  @keyframes restaurant-sidebar-slide-out {
+    from {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateX(-100%);
+    }
   }
 
-  @keyframes restaurant-icon-jiggle {
-    0% { transform: scale(1); }
-    35% { transform: scale(0.85) rotate(-10deg); }
-    65% { transform: scale(1.15) rotate(6deg); }
-    85% { transform: scale(0.95) rotate(-2deg); }
-    100% { transform: scale(1) rotate(0); }
+  .restaurant-sidebar--exiting {
+    animation: restaurant-sidebar-slide-out var(--duration-300) cubic-bezier(0.16, 1, 0.3, 1) both;
+    pointer-events: none;
+  }
+
+  .restaurant-sidebar-btn--active svg,
+  .restaurant-sidebar-btn[aria-expanded="true"] svg,
+  .restaurant-hamburger-btn--active svg,
+  .restaurant-hamburger-btn[aria-expanded="true"] svg {
+    animation: restaurant-icon-rotate var(--duration-300) cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes restaurant-icon-rotate {
+    from { transform: scale(0.9) rotate(-15deg); }
+    to { transform: scale(1) rotate(0); }
   }
 }
 
+.restaurant-sidebar-item,
 .restaurant-hamburger-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   width: 100%;
-  padding: var(--space-2) var(--space-3);
+  min-height: var(--touch-target-min);
+  padding: var(--space-2_5) var(--space-3);
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
@@ -182,85 +223,236 @@
   font-size: var(--text-sm);
   text-align: left;
   cursor: pointer;
-  transition: background-color var(--duration-100) var(--ease-out);
+  transition: background-color var(--duration-100) var(--ease-out), color var(--duration-100) var(--ease-out);
 }
 
+.restaurant-sidebar-item:hover,
 .restaurant-hamburger-item:hover {
   background: var(--color-bg-hover);
 }
 
+.restaurant-sidebar-item:focus-visible,
 .restaurant-hamburger-item:focus-visible,
 .restaurant-context-item:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: -2px;
 }
 
+.restaurant-hamburger-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.restaurant-hamburger-sort-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
 .restaurant-hamburger-item--sort {
-  padding-left: var(--space-7);
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
   position: relative;
 }
 
-/* Close row: same row treatment, no extra paint — the modifier exists so the
-   class the TSX renders always has a rule (screenExtraction). */
-.restaurant-hamburger-item--close {
-  font-weight: var(--font-weight-semibold);
+.restaurant-hamburger-item--active {
+  background: var(--color-bg-subtle);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-accent);
+}
+
+.restaurant-sort-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.restaurant-sort-text {
+  flex: 1;
+  font-size: var(--text-sm);
+}
+
+.restaurant-pref-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--color-fg-secondary);
+  transition: color var(--duration-100) var(--ease-out);
+}
+
+.restaurant-hamburger-item:hover .restaurant-pref-icon {
+  color: var(--color-fg);
 }
 
 .restaurant-hamburger-label {
   display: block;
   padding: var(--space-1_5) var(--space-3) var(--space-1);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-bold);
   color: var(--color-fg-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 }
 
+.restaurant-sidebar-divider,
 .restaurant-hamburger-divider {
   height: 1px;
-  background: var(--color-border);
-  margin: var(--space-1) 0;
+  background: var(--color-border-subtle);
+  margin: var(--space-1_5) var(--space-1);
 }
 
-.restaurant-sort-check {
-  position: absolute;
-  left: var(--space-2);
-  color: var(--color-accent);
-  font-weight: var(--font-weight-bold);
+/* ── Sidebar header: the signed-in cashier ───────── */
+/* The one element in this panel that is allowed to carry a face. The rows
+   below it are deliberately colourless: none of them is ever "current". */
+.restaurant-sidebar-profile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  /* Horizontal inset matches the rows' own padding (`--space-3`), so the
+     avatar's left edge sits on the same column as the row tiles: the panel
+     pads by `--space-2`, then both the header and each row add `--space-3`. */
+  padding: var(--space-1) var(--space-3) var(--space-2);
+  min-width: 0;
+}
+
+.restaurant-sidebar-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+}
+
+/* Interactive only when the host wired a picker; otherwise it is a plain
+   identity tile and must not advertise itself as clickable. The variant is a
+   modifier class rather than a `button.` compound: focusVisibleCompliance
+   waives a compound of an already-covered base, and that waiver list is a
+   freeze, so a new `button.` name is a decision rather than a restyle. */
+.restaurant-sidebar-avatar--button {
+  cursor: pointer;
+}
+
+.restaurant-sidebar-avatar--button:hover {
+  opacity: 0.85;
+}
+
+.restaurant-sidebar-avatar:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.restaurant-sidebar-identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.restaurant-sidebar-name {
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.restaurant-sidebar-role {
+  font-size: var(--text-sm);
+  color: var(--color-fg-tertiary);
+  text-transform: capitalize;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Row icon tiles ──────────────────────────────── */
+/* Declared after the shared `.restaurant-sidebar-item` rule so these win on
+   source order: the hamburger dropdown shares those rules and is a different
+   surface, so it must not inherit the tile or the muted label. */
+.restaurant-sidebar-item {
+  color: var(--color-fg-secondary);
+  /* Both of these are overrides the shared rule above cannot carry, because it
+     is shared with the hamburger dropdown — a different surface, scoped out of
+     this restyle.
+     `justify-content`: the global `button` reset centres its content
+     (reset.css:82) and the shared rule never overrode it, so every row centred
+     itself — a short label like "History" drifted right of a long one and the
+     tiles never formed a column.
+     `font-size`: the shared rule reads at `--text-sm` (12px), a step below body
+     size. `--text-base` (14px) is one step up and still a step below the memo
+     banner's `--text-md` (16px), which is the ceiling here. */
+  justify-content: flex-start;
+  font-size: var(--text-base);
+}
+
+.restaurant-sidebar-item:hover {
+  color: var(--color-fg);
+}
+
+.restaurant-sidebar-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--space-8);
+  height: var(--space-8);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-subtle);
+  color: var(--color-fg-secondary);
+  transition: color var(--duration-100) var(--ease-out);
+}
+
+.restaurant-sidebar-item:hover .restaurant-sidebar-tile {
+  color: var(--color-fg);
+}
+
+/* ── Footer: version + copyright ─────────────────── */
+/* Mirrors the login screen's `.staff-login-footer-left`, so the two surfaces
+   name the product the same way. `margin-top: auto` is what puts it at the
+   foot: the panel is a flex column, so the auto margin absorbs the slack when
+   the rows are short, and the footer simply follows them when it overflows.
+   Sized at `--text-xs` to match the login footer — NOT the login's
+   `clamp(11px, 1.5vw, …)`, which is a literal the token guard forbids here. */
+.restaurant-sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0_5);
+  margin-top: auto;
+  /* Horizontal inset matches the header and the rows (`--space-3` on top of
+     the panel's own `--space-2`), so the footer shares the content column. */
+  padding: var(--space-2) var(--space-3) 0;
+}
+
+.restaurant-sidebar-version {
+  font-size: var(--text-xs);
+  color: var(--color-fg-tertiary);
+  letter-spacing: var(--tracking-wide);
+}
+
+.restaurant-sidebar-copyright {
+  font-size: var(--text-xs);
+  color: var(--color-fg-tertiary);
+  opacity: 0.7;
 }
 
 /* Override marker on the relocated deduction row. Same signal as the cart
    badge's own marker (.pos-cart-deduction-override in CartPanel.css), restated
    here because a class a screen renders must be defined in that screen's sheet
    — the claim `screenExtraction.test.ts` polices. */
-.restaurant-hamburger-override {
+.restaurant-sidebar-override {
   color: var(--color-danger-fg);
   font-weight: var(--font-weight-semibold);
-}
-
-.restaurant-back-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  padding: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-surface);
-  color: var(--color-fg-secondary);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background-color var(--duration-150) var(--ease-out), color var(--duration-150) var(--ease-out);
-}
-
-.restaurant-back-btn:focus-visible {
-  box-shadow: inset 0 0 0 2px var(--color-border-focus);
-}
-
-.restaurant-back-btn:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-fg);
 }
 
 /* ── Search box ──────────────────────────────────── */
@@ -454,6 +646,7 @@
   overflow-x: visible;
   align-content: start;
   padding: var(--space-1);
+  transition: gap var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* ── Restaurant card (diagonal layout) ──────────── */
@@ -485,6 +678,7 @@
      the --space-1 term stays as a safety buffer for unpinned line-heights. */
   height: calc(var(--space-14) + var(--space-8) + var(--space-1) + var(--card-size, 0) * 14px + var(--font-size, 0) * 8px);
   transition:
+    height var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1),
     border-color var(--duration-150) var(--ease-out),
     transform var(--duration-200) var(--ease-out),
     box-shadow var(--duration-200) var(--ease-out),
@@ -531,6 +725,19 @@
       transform: scale(1);
     }
   }
+/* When dragging the cart divider, freeze card transforms and hover states
+   so resizing is 100% fluid and cards don't pop up under the moving cursor */
+body.is-resizing .restaurant-card,
+body.is-resizing .restaurant-card:hover,
+body.is-resizing .restaurant-card:active {
+  transition: none !important;
+  transform: none !important;
+  box-shadow: none !important;
+  cursor: col-resize !important;
+}
+
+body.is-resizing .restaurant-card * {
+  cursor: col-resize !important;
 }
 
 .restaurant-card:hover:not(.restaurant-card--disabled) {
@@ -641,6 +848,7 @@
   padding-top: calc(var(--space-3) + var(--card-size, 0) * 4px);
   /* Compact side padding: 12px at the smallest size (was 32px). */
   padding-left: calc(var(--space-3) + var(--card-size, 0) * 2px);
+  transition: padding var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Pinned cards keep extra left clearance so the pin badge never overlaps
@@ -665,6 +873,7 @@
   overflow: hidden;
   max-height: calc(var(--leading-normal) * 2em);
   line-height: var(--leading-normal);
+  transition: font-size var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .restaurant-card-price {
@@ -675,6 +884,7 @@
   font-size: calc(var(--text-xs) + var(--font-size, 0) * 1px);
   font-weight: var(--font-weight-medium);
   color: var(--color-fg-tertiary);
+  transition: font-size var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .restaurant-card-status {
@@ -716,7 +926,10 @@
   flex-shrink: 0;
   width: calc(28px + var(--card-size, 0) * 4px);
   height: calc(28px + var(--card-size, 0) * 4px);
-  transition: transform var(--duration-150) var(--ease-out);
+  transition:
+    width var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1),
+    height var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1),
+    transform var(--duration-150) var(--ease-out);
 }
 
 .restaurant-card-add-badge circle {
@@ -943,18 +1156,37 @@
   justify-content: space-between;
   gap: var(--space-2);
   cursor: default;
+  min-height: var(--touch-target-comfortable);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+}
+
+.restaurant-hamburger-size:hover {
+  background: transparent;
+}
+
+.restaurant-size-label-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 
 .restaurant-hamburger-size-label {
   font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
   color: var(--color-fg);
   white-space: nowrap;
 }
 
 .restaurant-hamburger-size-controls {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-subtle);
+  padding: 3px;
+  gap: 2px;
+  box-sizing: border-box;
 }
 
 .restaurant-size-btn {
@@ -963,31 +1195,38 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--color-border);
+  border: none;
   border-radius: var(--radius-md);
   background: var(--color-bg-surface);
   color: var(--color-fg);
-  font-size: var(--text-lg);
-  font-family: var(--font-sans);
   cursor: pointer;
-  line-height: 1;
   padding: 0;
-  transition: background-color var(--duration-100) var(--ease-out);
+  box-shadow: var(--shadow-xs);
+  transition: background-color var(--duration-100) var(--ease-out), color var(--duration-100) var(--ease-out), transform var(--duration-100) var(--ease-out);
 }
 
 .restaurant-size-btn:hover:not(:disabled) {
   background: var(--color-bg-hover);
+  color: var(--color-fg);
+}
+
+.restaurant-size-btn:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
 .restaurant-size-btn:disabled {
-  opacity: 0.3;
+  opacity: 0.25;
   cursor: not-allowed;
+  box-shadow: none;
+  background: transparent;
 }
 
 .restaurant-size-value {
-  min-width: 1rem;
+  min-width: 2rem;
   text-align: center;
   font-size: var(--text-sm);
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-bold);
   color: var(--color-fg);
+  user-select: none;
+  font-variant-numeric: tabular-nums;
 }

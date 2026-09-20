@@ -74,7 +74,12 @@ if [ "$ROUTE_ALL" = "1" ]; then
     FLAGS="--all"
 else
     want '^crates/|^modules/|^platform/|^foundation/|^apps/(cloud-server|desktop-tauri|mobile-tauri)/|^tools/fuzz/|^scripts/updater-compat-check/|^Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain' && FLAGS="$FLAGS --rust"
-    want '^ui/' && FLAGS="$FLAGS --ui"
+    # `--ui` also covers the shared Fluent corpus: P9a moved it out of ui/ into
+    # shared-ui/locales/, and ui/vite.config.ts aliases `@/locales/…` back onto
+    # it, so a bundle edit can break the vitest suite at import time. Keeping
+    # this in step with dev-ci.yml's `ui` rule is what scripts/test-ci-routing.sh
+    # pins for the workflow; this hook mirrors it.
+    want '^ui/|^shared-ui/locales/' && FLAGS="$FLAGS --ui"
     want '^website/' && FLAGS="$FLAGS --website"
     want '^shared-ui/locales/|^ui/src/.*\.(ts|tsx)$|^scripts/lint-i18n\.sh$|^scripts/verify-bundle-parity\.py$|^scripts/dedupe-ftl\.py$' && FLAGS="$FLAGS --i18n"
 fi

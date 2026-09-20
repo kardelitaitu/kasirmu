@@ -22,6 +22,10 @@
   display: flex;
   height: 100%;
   overflow: hidden;
+  /* Containing block for the cart panel's exiting state, which leaves the flex
+     row so the products pane reaches its final width in a single layout pass
+     (CartPanel.css), and the clip for that panel's slide-out transform. */
+  position: relative;
 }
 
 /* ── Left: Product lookup area ────────────────────────── */
@@ -177,7 +181,7 @@
   justify-content: center;
   padding: var(--space-4);
   z-index: 100;
-  animation: pos-overlay-in var(--duration-200) var(--ease-out);
+  animation: pos-overlay-in var(--duration-300) var(--ease-out);
 }
 
 @keyframes pos-overlay-in {
@@ -197,8 +201,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  animation: pos-overlay-in var(--duration-200) var(--ease-out),
-    pos-modal-slide-up var(--duration-200) var(--ease-out);
+  animation: pos-overlay-in var(--duration-300) var(--ease-out),
+    pos-modal-slide-up var(--duration-300) var(--ease-out);
 }
 
 /* ── Modal panel slide-up (the overlay backdrop uses the
@@ -212,12 +216,12 @@
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* ── Exit mirror keyframes (the JS animDuration(200) timer stays
+/* ── Exit mirror keyframes (the JS animDuration(300) timer stays
  * aligned with these). pos-modal-slide-down is the exact reverse
  * of pos-modal-slide-up so the modal pops out at the same scale
  * factor it popped in at — no perceptible jolt on reopen.
  * pos-overlay-out is the exact reverse of pos-overlay-in.
- * Both run for the same 200 ms as the entry so the overlay + panel
+ * Both run for the same 300 ms as the entry so the overlay + panel
  * + parent timer all stay in lockstep. ── */
 @keyframes pos-overlay-out {
   from { opacity: 1; }
@@ -238,14 +242,14 @@
  * the rule's own opacity (1) the instant the keyframe completes. */
 .pos-hold-overlay--exiting,
 .pos-close-shift-overlay--exiting {
-  animation: pos-overlay-out var(--duration-200) var(--ease-out) both;
+  animation: pos-overlay-out var(--duration-300) var(--ease-out) both;
   pointer-events: none;
 }
 
 .pos-hold-modal--exiting,
 .pos-held-list-modal--exiting,
 .pos-close-shift-modal--exiting {
-  animation: pos-modal-slide-down var(--duration-200) var(--ease-out) both;
+  animation: pos-modal-slide-down var(--duration-300) var(--ease-out) both;
 }
 
 .pos-hold-title {

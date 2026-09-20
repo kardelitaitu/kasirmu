@@ -1,6 +1,6 @@
 /*
 last audited 25-07-26 by RSA-Agent (mobile-tauri slice A: verified)
-crate: mobile-tauri | status: SAFE | lint: CLEAN
+crate: kasirmu-mobile | status: SAFE | lint: CLEAN
 findings: clean — matches desktop-tauri guarded patterns. Coverage note: verified under the risk-ranked sampling protocol (global sweep clean), not line-by-line deep read
 next: none | perf: N/A
 */
@@ -96,7 +96,27 @@ pub fn run() {
                 // hardware-derived ids and opens ports nobody named.
                 {
                     let hardware_app_handle = app.handle().clone();
-                    platform_startup::spawn_daemon("hardware bootstrap", async move {
+        // ── Attest the server origin (ADR #55) ──────────────────────
+        // The cascade is what makes `main -> fallback` real: it asks each
+        // compiled origin to prove it holds the license keypair and caches the
+        // winner for the process, which `license_server_url()` then prefers.
+        // Fire-and-forget on purpose: boot is never blocked on a probe, and an
+        // unreachable MAIN degrades to the canonical default exactly as it does
+        // today until the cascade resolves to the fallback.
+        platform_startup::spawn_once("server origin attestation", async move {
+            let nonce = kasirmu_core::attestation::generate_nonce();
+            match kasirmu_core::attestation::resolve_attested_origin(&nonce).await {
+                Some(resolved) => tracing::info!(
+                    origin = %resolved.url,
+                    source = resolved.source.as_str(),
+                    "server origin attested"
+                ),
+                None => tracing::warn!(
+                    "no server origin could be attested; staying on the compiled default"
+                ),
+            }
+        });
+                    platform_startup::spawn_once("hardware bootstrap", async move {
                         let state = hardware_app_handle.state::<AppState>();
                         let registry = state.registry.clone();
                         let base_dir = state
@@ -491,6 +511,11 @@ pub fn run() {
                 // SaaS-3 L194: multi-organization user switching.
                 commands::auth::list_organizations,
                 commands::auth::switch_organization,
+                // Own-avatar read (parity gap closed 2026-09-19): the shared
+                // PosScreen restaurant sidebar reads this on mount and this shell
+                // renders that screen. The write half stays desktop-only by owner
+                // ruling — see commands/avatars.rs and the parity allowlist.
+                commands::avatars::get_own_avatar_scoped,
                 commands::branding::get_brand_settings,
                 commands::branding::set_brand_primary_colour,
                 commands::branding::set_brand_logo_path,
@@ -613,6 +638,9 @@ pub fn run() {
                 commands::setup::get_enabled_features,
                 commands::setup::complete_setup,
                 commands::setup::dismiss_setup_wizard,
+                commands::desktop_link::link_device_google,
+        commands::desktop_link::link_device_email_request,
+        commands::desktop_link::link_device_email_consume,
                 commands::browser::open_product_images,
                 commands::setup::get_setup_status,
                 commands::tax::list_tax_rates_scoped,

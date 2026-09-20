@@ -92,7 +92,17 @@ const featureIcons = [
     <!-- Comparison Against Competitors Section -->
     <div data-reveal class="mt-24">
       <div class="text-center">
-        <p class="text-base font-medium text-muted max-w-4xl mx-auto whitespace-nowrap">{t(locale, 'features.comparisonSubtitle')}</p>
+        <!-- The comparison section had NO heading — its only text was the
+             subtitle paragraph below, so the page's h1 was followed by nine
+             feature-card h2s and then an unlabelled table. `comparisonTitle`
+             already existed in both dicts and was rendered nowhere. Using it
+             here gives the table the section heading it needs (and the
+             offline-vs-cloud-POS keyword the page targets). -->
+        <h2 class="text-2xl font-bold">{t(locale, 'features.comparisonTitle')}</h2>
+        <!-- This 98-character sentence used to carry a no-wrap utility, which
+             forced a horizontal scrollbar on every phone viewport (≈750px of
+             unbreakable text at 16px). Letting it wrap is the fix. -->
+        <p class="mx-auto mt-3 max-w-4xl text-base font-medium text-muted">{t(locale, 'features.comparisonSubtitle')}</p>
       </div>
 
       <div class="mt-8 overflow-hidden rounded-2xl border border-ink/10 bg-surface shadow-sm" data-i18n-key={t(locale, 'features.comparisonRows')}>

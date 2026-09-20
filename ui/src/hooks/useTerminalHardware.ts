@@ -13,7 +13,7 @@ import { plainErrorMessage } from '@/utils/app-error';
 export type PrinterConnection = 'network' | 'usb' | 'serial' | 'auto' | 'disabled';
 export type PaperSize = '58' | '80' | 'a4' | 'letter';
 export type ScaleConnection = 'serial' | 'usb' | 'none';
-export type ScannerMode = 'keyboard' | 'serial' | 'auto';
+export type ScannerMode = 'keyboard' | 'serial' | 'auto' | 'none';
 
 export interface PrinterConfig {
   connection: PrinterConnection;

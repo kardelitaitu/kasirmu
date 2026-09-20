@@ -46,6 +46,24 @@ export interface UseExitAnimationResult {
   requestClose: () => void;
 }
 
+/**
+ * Gate a dismiss through its CSS exit animation.
+ *
+ * `durationMs` MUST equal the `var(--duration-NNN)` on the surface's own
+ * `--exiting` rule — this timer is what removes the element from the DOM, so a
+ * timer shorter than the animation snaps the fade and a timer longer than it
+ * leaves an invisible element (the exit rule's `animation-fill-mode: both` holds
+ * the TO frame) pinned in the tree with `pointer-events: none` still applied.
+ *
+ * The default is 200 because that is the convention's canonical duration
+ * (`exit-animation-pattern` rule 9 / its token table) and because the surfaces
+ * that keep `var(--duration-200)` — UpdateBanner, SalesHistoryScreen,
+ * StockTransfersScreen, RetailPosScreen, ProductManagementScreen,
+ * PromotionManagementScreen — call this hook WITHOUT a duration. Retiming the
+ * default silently retimes all of them while leaving their CSS at 200 ms; pass
+ * an explicit duration instead, as Modal / RefundModal /
+ * WorkspaceSettingsModal / QrisQrDisplay do.
+ */
 export function useExitAnimation(
   open: boolean,
   onClose: () => void,

@@ -238,9 +238,62 @@ The license server requires the RSA private key as an environment variable. **Ne
 
    > **Deliverability honesty:** without your own domain + SPF/DKIM/DMARC, inbox placement is best-effort — codes may land in spam. Once you own a domain: set `OZ_SMTP_FROM=noreply@<domain>`, add the provider's SPF include + DKIM records (and a DMARC policy), then the verified-sender fallback is no longer needed. This is the actual fix for "signup codes never land in spam".
 6. (Optional) Web API CORS allowlist override:
-   - **Key:** `OZ_WEB_ALLOWED_ORIGINS` — comma-separated origins allowed to call the web endpoints. **Defaults are already correct** for the current setup (`https://ozpos.my.id`, `http://localhost:4321`); only set this if you deploy the website to a different origin.
+   - **The defaults already cover both names** — `https://kasir.mu` and `https://ozpos.my.id`
+     (ADR #55: one Worker on two domains, and `/en/account/` answers on each), plus the
+     dashboard/admin hosts and the local dev origin. Set the key below only to add an origin;
+     setting it **replaces** the whole list.
+   - **Key:** `OZ_WEB_ALLOWED_ORIGINS` — comma-separated origins allowed to call the web endpoints. **Defaults are already correct** for the current setup (`https://kasir.mu`, `https://ozpos.my.id`, `https://dashboard.kasir.mu`, `https://admin.kasir.mu`, `http://localhost:4321`); only set this if you deploy the website to a different origin. **If you do set it, read §7.2 first** — a stale value silently breaks the whole login surface.
 7. (Optional) Session lifetime override:
    - **Key:** `OZ_WEB_SESSION_TTL` — Go duration, default `24h` (e.g. `72h` to extend dashboard sessions).
+7b. **Google sign-in (ADR #54).** Both keys enable it. With `OZ_GOOGLE_CLIENT_ID` unset
+    both endpoints answer `503`, so the deployment is safe — but the sign-in button on the
+    login page is gated on the **API URL**, not on this key, so it still renders and the
+    click lands on that JSON `503`. Set the keys before announcing the feature; do not add a
+    second switch to hide the button, because two switches that must agree is how they drift.
+    - **Register all four callback URIs first**, in Google Cloud → APIs & Services →
+      Credentials → the Web-application OAuth client. Redirect URIs match exactly, so a
+      host (or a path) that is live but unregistered fails that flow with `redirect_uri_mismatch`:
+      - `https://license.kasir.mu/api/v1/web/oauth/google/callback`
+      - `https://license.ozpos.my.id/api/v1/web/oauth/google/callback`
+      - `https://license.kasir.mu/api/v1/desktop/link/google/callback`
+      - `https://license.ozpos.my.id/api/v1/desktop/link/google/callback`
+      
+      **Four, not two.** The web flow and the desktop/tablet device link are different paths on the
+      SAME Web-application client, so both callback paths need registering on both hosts. The device
+      link does not redirect to the app: Google returns to the licence server, which exchanges the
+      code and hands the app a one-time code on its loopback listener, so no app-chosen port is ever
+      registered here.
+    - **Key:** `OZ_GOOGLE_CLIENT_ID` — the Web-application client id.
+    - **Key:** `OZ_GOOGLE_CLIENT_SECRET` — its secret. Server-side only: the app never carries it,
+      and the device link is PKCE on top, so the app's own copy is useless even if extracted.
+    - **Key:** `OZ_GOOGLE_REDIRECT_URI` (optional) — pin the callback instead of deriving it from
+      the request Host (set it when a proxy rewrites Host). One override covers both paths: the
+      server takes its origin and adds whichever callback the flow needs, so you still register all
+      four URIs above.
+    - **Key:** `OZ_WEB_SITE_URL` (optional, default `https://kasir.mu`) — the host the flow
+      returns to. It is the only place the return host is decided, which is why the
+      post-login *path* is the only attacker-influenced part of the redirect.
+    - **Scopes:** `openid email profile` only. No Google API is called and no offline access
+      is requested, so no refresh token exists and no sensitive-scope review is needed; the
+      consent screen shows the bare project id until brand verification passes.
+    - **The admin login page deliberately has no Google button:** the deployment admin
+      address is refused by the resolver (ADR #54 §2.3), so offering it would only yield a 403.
+7c. **Sync credentials at link time (ADR #54 §2.5 step 6) — set this before onboarding devices.**
+    Linking a device also registers it as a sync terminal, so the app leaves the wizard ready
+    to sync.
+    - **Key:** `OZ_SYNC_API_URL` — the sync service's base URL. **No default**: addresses are
+      declared, never guessed. For this deployment the value is **`http://127.0.0.1:3099`**: the
+      unified image runs both services in one container and the Rust service listens there
+      (`Dockerfile.unified:240` sets `OZ_API_PORT=3099`; `apps/unified/Caddyfile:18-23` path-routes
+      the sync API to it internally), so loopback needs no TLS hop and no public round trip. A
+      split deployment uses the sync service's own URL instead — the public host also works,
+      because caddy sends `/api/v1/*` to the Rust service, at the cost of that round trip.
+    - **Key:** `OZ_ADMIN_KEY` — already required above. The sync service reads the *same*
+      variable, so one deployment needs one value; two different keys simply yield
+      `terminal.issued: false`.
+    - **Without it:** the link still succeeds and answers `terminal.issued: false` with a
+      reason, which the server also logs. The account is linked — the device just holds no sync
+      credential, so its sync will not work until this is set and the device links again.
 8. Add the **billing webhook** secrets (required for the checkout → provisioning flow — Paddle for global, Midtrans for Indonesia, ADR #39):
    - **Key:** `PADDLE_WEBHOOK_SECRET` — the endpoint secret key from Paddle → Developer tools → Notifications → Edit destination. Without it the webhook answers `503 not configured`. **Boot gate:** the server fails fast at startup if this (or `PADDLE_PRICE_TIERS`) is missing or malformed, so a misconfigured deploy can never silently answer 503/500 on every event.
    - **Key:** `PADDLE_PRICE_TIERS` — comma-separated `price_id:tier_key:period[:bundle_id]` pairs mapping every Paddle price to a tier, e.g. `pri_01h7abc123:pro,pri_01h7def456:premium` (the `:period` segment is "month" or "year" — the webhook cross-checks it against billing_cycle.interval; the optional `:bundle_id` segment marks a vertical-bundle price, C3.2 — see below). **The six sandbox prices are catalogued (2026-08-31)** — the website carries the real ids for Plus/Pro/Premium × monthly/yearly; only the bundle and the Pro A/B variant still use `pri_placeholder_*` ids (degrading those checkouts to the mailto fallback). Current sandbox map (see also `docs/operations/go-live-checklist.md`):
@@ -271,10 +324,13 @@ The license server requires the RSA private key as an environment variable. **Ne
 
 ### 7.2 CORS for the website
 
-The website is served from `https://ozpos.my.id` and calls the web endpoints (`/api/v1/web/contact`, `request-otp`, `verify-otp`, `/me`, `logout`) cross-origin.
+The website is served from `https://kasir.mu` — with the account portal at `https://kasir.mu/en/account/` and the admin panel at `https://admin.kasir.mu` — and calls the web endpoints (`/api/v1/web/contact`, `request-otp`, `verify-otp`, `/me`, `logout`) cross-origin.
 
-- **Web OTP endpoints** enforce an **in-handler CORS allowlist** read from `OZ_WEB_ALLOWED_ORIGINS` (Step 6 above). Its default already includes `ozpos.my.id` and `http://localhost:4321`, so **no configuration is needed** — just don't set the variable to an empty string, or the allowlist falls back to the default.
-- **`/api/v1/web/contact`** relies on PocketBase's global CORS middleware, which allows all origins by default (stateless, no cookies). No configuration needed for the contact form to work. For hardening, restrict origins by adding the `--origins` flag to the `serve` command in the Dockerfile `CMD` (e.g. `--origins=https://ozpos.my.id,http://localhost:4321`).
+- **Web OTP endpoints** enforce an **in-handler CORS allowlist** read from `OZ_WEB_ALLOWED_ORIGINS` (Step 6 above); `OZ_CORS_ORIGINS` is merged in, so one value covers the Go and Rust services. Its default already includes `kasir.mu`, `dashboard.kasir.mu`, `admin.kasir.mu` and `http://localhost:4321`, so **no configuration is needed** — just don't set the variable to an empty string, or the allowlist falls back to the default.
+- **A stale override is worse than no override.** Every origin the allowlist omits gets `403 {"error":"origin not allowed"}` on login, signup, OTP, password reset and the exchange handoff. A rebrand that leaves these vars naming the **old** domain breaks the entire web login surface while every page still renders — the outage is silent, because the pages themselves are static. Never leave a *blank* value either: on the Rust side a blank `OZ_CORS_ORIGINS` means *deny every cross-origin request* (fail closed), not "use the defaults".
+- **`OZ_CORS_ORIGINS` overrides rather than extends.** If you set it, include the Tauri webview origins `tauri://localhost` and `http://tauri.localhost` (see `DEFAULT_CORS_ORIGINS` in `crates/kasirmu-api/src/lib.rs`), or the desktop/mobile apps lose their allowance.
+- **Diagnosing it:** probe one endpoint while varying only the `Origin` header — a non-browser caller (no `Origin`) is always allowed, so a bare `curl` proves nothing. Method: `ozpos-web-origin-allowlist-diagnosis`.
+- **`/api/v1/web/contact`** relies on PocketBase's global CORS middleware, which allows all origins by default (stateless, no cookies). No configuration needed for the contact form to work. For hardening, restrict origins by adding the `--origins` flag to the `serve` command in the Dockerfile `CMD` (e.g. `--origins=https://kasir.mu,http://localhost:4321`).
 
 ### 7.3 Attach to the service
 
@@ -369,7 +425,7 @@ Read from the admin surface:
 > existing gate, and the drift checker only compares docs to *gates*):
 >
 > ```bash
-> python3 .agents/skills/docs-auditor/scripts/check-env-docs.py          # 27 names, 0 undocumented
+> python3 .agents/skills/docs-auditor/scripts/check-env-docs.py          # prints the live count; 0 undocumented is clean
 > python3 .agents/skills/docs-auditor/scripts/check-env-docs.py --self-test   # 9 cases, touches no files
 > ```
 >
@@ -421,7 +477,15 @@ sqlite3 /data/pb_data/data.db "SELECT id,email,status,email_verified FROM tenant
 curl -s -X POST "$B/api/v1/web/request-otp" -H 'Content-Type: application/json' -d "{\"email\":\"$E\"}"
 curl -s -X POST "$B/api/v1/web/verify-otp"  -H 'Content-Type: application/json' -d "{\"email\":\"$E\",\"code\":\"<code>\"}"
 # 3. that session must be admin (200, not 401/403) — also the proof the env value matches the row.
-# 4. OZ_ADMIN_KEY must be present (with OZ_PRODUCTION=1 the fail-fast boot proves it), and OZ_ADMIN_EMAIL is write-once: it must never change after first boot.
+ # 4. OZ_ADMIN_KEY must be present, and OZ_ADMIN_EMAIL is write-once: it must never change after first boot.
+ #    `OZ_PRODUCTION=1` makes the SYNC service refuse to start without the key
+ #    (`kasirmu-api`: "requires OZ_ADMIN_KEY to be set (no open token mint)"). Read that as a
+ #    check, not as a boot guarantee: in the UNIFIED image supervisord restarts that program
+ #    three times and then leaves it FATAL, and the container stays up serving the licence
+ #    server — so `$BASE/api/health` failing while the container looks healthy is what a missing
+ #    key actually looks like there. The split shape (one process per container) does fail the
+ #    boot. The licence server itself never reads OZ_PRODUCTION: with no key its admin surface
+ #    answers 401 rather than opening, which is closed but silent.
 curl -s -o /dev/null -w '%{http_code}\n' "$B/api/v1/admin/enterprise-codes" -H "Authorization: Bearer <token>"
 ```
 

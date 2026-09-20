@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { t } from '../i18n';
+import { t, type Labels } from '../i18n/labels';
 
 /**
  * Password input shared by every auth form (signup, login, forgot-password
@@ -21,8 +21,22 @@ import { t } from '../i18n';
 const inputClass =
   'w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-ink outline-none transition focus:border-accent';
 
+/**
+ * Keys this field reads. Owned here because this is the component that reads
+ * them; every island that renders a password field spreads this list into its
+ * own (`AUTH_FORM_LABELS`, `SIGNUP_FORM_LABELS`, `ACCOUNT_LABELS`).
+ */
+export const PASSWORD_FIELD_LABELS = [
+  'password.confirmLabel',
+  'password.confirmPlaceholder',
+  'password.hide',
+  'password.mismatch',
+  'password.show',
+] as const;
+
 interface Props {
-  locale: string;
+  /** Strings this field reads; the owning island passes its own map. */
+  labels: Labels;
   id: string;
   label: string;
   value: string;
@@ -38,7 +52,7 @@ interface Props {
 }
 
 export default function PasswordField({
-  locale,
+  labels,
   id,
   label,
   value,
@@ -75,7 +89,7 @@ export default function PasswordField({
           <button
             type="button"
             tabIndex={-1}
-            aria-label={visible ? t(locale, 'password.hide') : t(locale, 'password.show')}
+            aria-label={visible ? t(labels, 'password.hide') : t(labels, 'password.show')}
             onClick={() => setVisible((v) => !v)}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 text-sm text-muted transition hover:text-ink"
           >
@@ -86,7 +100,7 @@ export default function PasswordField({
       {showConfirm && (
         <label className="block">
           <span className="mb-1 block text-sm text-muted">
-            {confirmLabel ?? t(locale, 'password.confirmLabel')}
+            {confirmLabel ?? t(labels, 'password.confirmLabel')}
           </span>
           <span className="relative block">
             <input
@@ -98,7 +112,7 @@ export default function PasswordField({
               maxLength={72}
               value={confirmValue}
               onChange={(e) => onConfirmChange?.(e.target.value)}
-              placeholder={confirmPlaceholder ?? t(locale, 'password.confirmPlaceholder')}
+              placeholder={confirmPlaceholder ?? t(labels, 'password.confirmPlaceholder')}
               className={`${inputClass} pr-10`}
             />
             {match && (
@@ -113,7 +127,7 @@ export default function PasswordField({
       )}
       {mismatch && (
         <p className="text-sm text-link" role="alert">
-          {t(locale, 'password.mismatch')}
+          {t(labels, 'password.mismatch')}
         </p>
       )}
     </>

@@ -11413,3 +11413,211 @@ Hooks (Q1b/Q2/Q3): the unnamed act that set `core.hooksPath` is now RATIFIED and
 Six commits: `307dcdfe4` mirrors · `1960901cb` integrity (12 rows dispositioned: 6 ticked-as-ruled, 4 converted, 2 answered-in-place) · `50feeeb72` tools · `00b369785` settings-3 · `2e84122b6` settings-2 bound · `34ddcfa75` rename. Final counts: operational-integrity open 3 (NOT-WORK/records, zero rulings owed), tools 0, settings-2 2 (deliberate), settings-3 0 (kept `todo-` by its own acceptance rule). The board now has NO open owner-questions left from my programs.
 
 **Commit:** six above; this entry rides its own docs(journal) commit -- never push without a direct user order.
+
+## 2026-09-19 — The BOOTSTRAP_FREE ruling lands: the seeded Free row loads in every profile, and the migration was not finished until the comments were
+
+**Context:**
+The decision queue's Phase 1 had been parked on one owner ruling for three days: `todo-open-debt-program.md`
+`:558` — "Until that ruling lands, `--release` cannot reach 0 failed". The question was the release profile's
+treatment of `BOOTSTRAP_FREE`, the sentinel the init schema seeds into every fresh install. The owner ruled:
+**the schema-seeded Free row must load in EVERY profile, and the sentinel is honoured only for a Free tier.**
+
+**The ruling, and the security property it keeps.** `TenantSubscription::verify_signature`
+(`crates/kasirmu-core/src/subscription.rs`) now accepts the sentinel whenever `tier_key()` is `free`, in debug
+and in release alike. A sentinel-signed row claiming a PAID tier still falls through to the base64 decode and is
+rejected there — the property the old `#[cfg(debug_assertions)]`-only arm was protecting, now expressed as a
+tier condition rather than a build-profile one. Debug is a strict no-op: the sentinel branch was already
+reachable there through `verify_license_signature`'s own any-payload short-circuit, so CI's debug
+`--workspace --all-features` leg is unaffected. Only release changes, which is the point.
+
+**What the ruling cost, and where it hid.** Honouring the sentinel in release made the seeded row LOAD, which
+split one fork predicate into two questions. `crates/kasirmu-bridge/src/testing.rs`'s `seeded_row_loads()` had
+been answering both, so 44 bridge fixtures that restamped a paid tier began taking the load arm in release and
+asserting Plus/Pro/Premium capabilities a sentinel row cannot have; 40 more came from four guard copies
+comparing a restamped row's verdict against the unstamped answer. The tablet crate had **thirteen** paid
+fixtures with no fork at all — its `*_tests.rs` are private `#[path]` modules with no shared test module — and
+had been red in release for months without anyone seeing it.
+
+**Problem — the migration was not finished when the tests went green.** Splitting the predicate broke no call
+site; it broke **37 comment blocks across 14 files** that re-derived the fork's rationale ("Release:
+create_session propagates the seeded row's failed signature check"), a claim that had been true for years and
+became false the moment release honoured the sentinel. The root claim sat in the authority module itself, which
+carried a paragraph *arguing against the change that shipped* — "Making release accept the sentinel … would move
+a licence bypass into the SHIPPED binary — a strictly worse trade" — plus a two-kind taxonomy the ruling had
+just made three kinds. Nothing was red; only a reader was misled, and the next lane would have re-derived the
+wrong model from it.
+
+**Solution.** Corrected forward, authority first: the predicate's taxonomy, that paragraph, the guard's doc and
+the tripwire test's doc in `testing.rs`, then the 37 call-site blocks — re-labelled *broken-seed fallback*
+rather than deleted, because they still fire when the row EXISTS but does not verify. Two traps inside the pass:
+my own edits moved the ~15 line anchors `testing.rs` cites, so the first correction pass was itself stale and
+needed a second; and several anchors were already drifted ~50 lines beforehand
+(`license_verification.rs:396` → `:435`, `subscription.rs:476` → `:521`). Proof the sweep changed no code:
+stripping comment lines from both sides and diffing printed exactly one panic-message string in three files and
+nothing else. The live gate rationales in `dev-ci.yml`, `docs/operations/ci-pipeline.md` and
+`docs/releases/checklist.md` said "the release profile is where `BOOTSTRAP_FREE` stops verifying" and are
+corrected to "…a sentinel-signed row on a PAID tier".
+
+**Verification:**
+`kasirmu-bridge` **1346/0** debug and release · `kasirmu-mobile` **677/0** debug and release ·
+`cargo fmt --all --check` clean. Two outlier legs, both environmental and both re-measured green:
+`kasirmu-mobile --release` first read 676/1 (the known mock-server flake), and a `kasirmu-bridge` debug leg read
+**1345/1 in 14,789.81s (4h07m** for a 213s suite) — the failure was the documented `127.0.0.1` flake but it
+failed in 5s, and `cargo nextest run -p kasirmu-bridge --lib --retries 0 --no-fail-fast` then ran **1346/0 in
+232s with zero TIMEOUTs**, so nothing hangs and the duration is an artefact of `cargo test` running all 1346
+tests as threads in one process. The test the debt program had recorded as *deliberately left red* is no longer
+red and no longer needs to be: `grep -rn "DELIBERATELY LEFT RED" crates/ apps/ --include=*.rs` returns nothing.
+
+**Commit:** four — `fd925d5c7` (fix + bridge migration) · `b1d7118` (tablet twin) · `4761f1bd9`
+(cross-reference) · `31aa530fe` (comment repair); the live gate rationales and this entry ride the docs commit
+that follows. Never push without a direct user order.
+
+## 2026-09-20 — Absorb: the avatar write path lands on the desktop registration floor, and the ledger is regenerated rather than widened (desktop-tauri/records)
+
+**Context:**
+`f49170d3d` (feat(restaurant): add sidebar profile header, avatar write path, footer and row alignment)
+registered three names in `apps/desktop-tauri/src/lib.rs` — `commands::avatars::{set_avatar_scoped,
+get_own_avatar_scoped, clear_avatar_scoped}` — and touched neither the floor, the JOURNAL, nor the generated
+ledger. The floor is an EQUALITY against the tree (`registration_gate_tests.rs:746`), so it has been red on a
+clean checkout since that commit landed: `lib.rs registers 458 commands and this floor says 455`.
+
+The three arrived GATED: each shell body is a shim over `kasirmu_bridge::avatars`, and
+`crates/kasirmu-bridge/src/avatars.rs:61` calls `ctx.require_session_permission(session,
+permissions::STAFF_UPDATE)`. `gated_bridge_stems()` reads the bridge directory and `names_permission` sees that
+call, so no command entered the debt ledger and no ceiling moved — the same shape as `b07e8c3ac`'s coursing
+pair two days earlier, and the same reason only this one leg can see it.
+
+Found by closing a measurement gap, not by looking for it: every workspace run in the `BOOTSTRAP_FREE`
+campaign used `--exclude kasirmu-app`, so `apps/desktop-tauri` had never been run in either profile.
+`cargo test -p kasirmu-app --lib` read **156 passed / 2 failed** debug and **145 passed / 2 failed** release —
+the same two names in both, so neither is a consequence of that ruling, which is a strict no-op in debug.
+
+**Changes:**
+1. `apps/desktop-tauri/src/commands/registration_gate_tests.rs:92` — `REGISTERED_FLOOR` 455 → 458, the number
+   the harness prints rather than a chosen one. The doc comment carries the new measurement and keeps the
+   chain: 458 on 20-09-26 (455 on 16-09-26, 453 on 13-09-26).
+2. `registration_gate_debt.generated.rs:179` — regenerated with `KASIRMU_REGENERATE_GATE_LEDGER=1 cargo test -p
+   kasirmu-app --lib drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture`, which reported *69
+   debt row(s), registered total 458*. The diff is that const and its comment and nothing else: the
+   `DEBT_LEDGER` array has no hunk, so no row was added, deleted or moved.
+3. Deliberately untouched: both ceilings, `DEBT_CEILING` (69, `:185`), `REGISTERED_SLACK` (24, `:97`), and the
+   partition legs. A gated trio adds no debt.
+
+**What it means:**
+The regeneration is not the "wrong kind of green" that `f24a14b44` refused. That pass left the ledger 8 behind
+the tree because regenerating it then would have pulled a new name into `resolves_session_names_no_permission`
+and forced a ceiling decision in the same breath as a pin raise. Here the ledger's rows already agreed with the
+sweep — `drift_pin_generated_ledger_is_the_sweeps_own_output` was green *before* this pass — so the only thing
+regeneration could write was the measured total. The evidence is the diff itself: one const, no array hunk,
+both ceilings unmoved.
+
+The precedent's convention held in the other direction too. It recorded the superseded number as the dated
+predecessor rather than deleting it, and both the floor's doc comment and the ledger's prose now do the same —
+which is also why the ledger's comment is hand-maintained while its two counts are not: the generator replaces
+only the `DEBT_LEDGER` array and the `REGISTERED_TOTAL`/`UNSOURCED` digits, so prose left alone would have kept
+claiming 455 beside a const reading 458.
+
+**Verification:**
+- Before: `cargo test -p kasirmu-app --lib` → `156 passed; 2 failed` (debug) / `145 passed; 2 failed` (release),
+  the two names identical in both profiles.
+- After: `cargo test -p kasirmu-app --lib drift_pin` → **8 passed; 0 failed**, exit 0. `cargo test -p
+  kasirmu-app --lib` with the proxy variables unset → **158 passed; 0 failed**, exit 0.
+- The second failure was never ours: `commands::local_api::tests::set_port_restarts_running_server_on_new_port`
+  asserts `reqwest::get("http://127.0.0.1:{old_port}/…").await.is_err()`, and the sandbox's
+  `http_proxy=http://127.0.0.1:25011` answers it. It fails with the proxies set and passes without them — the
+  same class as the documented `request_token_sends_admin_key_header_when_provided` flake.
+- `dev-ci.yml:251` runs `cargo nextest run --workspace --all-features` with no `--exclude`, so this red was
+  going to fire on the next push whatever else was in the batch.
+
+**Commit:** single pathspec commit touching the gate file, the regenerated ledger and this file together — the
+assertion asks for one deliberate pass, so splitting the const from its record would reproduce the exact
+failure mode the message describes. Never push without a direct user order.
+## 2026-09-20 — Absorb: the emailed-code device link lands on BOTH registration floors, and the first ceiling RISE either ledger has taken (mobile-tauri/desktop-tauri/records)
+
+**Context:**
+The tablet shell's own ratchet was red at HEAD, on two legs. Found by running the shell, not by reading a
+diff: `cargo test -p kasirmu-mobile` read **675 passed / 2 failed**,
+and the two names were the pins, not the feature —
+`drift_pin_registration_floor_is_met` (*"hand-written floor of 320 disagrees with the ledger's measured
+total of 324"*, `registration_gate_tests.rs:731`) and `drift_pin_debt_ceilings_only_shrink` (*"88 ungated
+registered commands against a ceiling of 85"*, `:870`).
+
+Provenance is two commits, neither of which touched a pin: `3f0e8c4c3` (feat(ui): add the google account
+link step) registered `desktop_link::link_device_google`, and `da6a4a8d4` (feat(core): expose the
+emailed-code device link to both shells) registered `desktop_link::link_device_email_request` and
+`desktop_link::link_device_email_consume`. Each regenerated the generated ledger — rows and
+`REGISTERED_TOTAL` — which is all the generator is allowed to write. The four numbers a sweep cannot
+measure stayed where they were:
+
+| shell | floor written | measured / ledger total | ceiling written | measured ungated | class-1 count written | measured |
+|---|---|---|---|---|---|---|
+| tablet | 320 | 324 | 85 | 88 | 41 | 44 |
+| desktop | 458 | 461 | 69 | 72 | 42 | 45 |
+
+The distinction is structural, not an oversight, and `rendered_ledger_file` says so in its own doc:
+`DEBT_CEILING` and the two class counts are *pins* — "a pin is a decision … a generator that recomputed
+one would be inventing policy" — and the floor is an EQUALITY against the tree on desktop and against the
+ledger's total on tablet. So a registration pass that does not also touch the pins leaves them stale by
+construction, which is what both commits did.
+
+**Changes:**
+1. `apps/mobile-tauri/src/commands/registration_gate_tests.rs:87` — `REGISTERED_FLOOR` 320 → 324, the
+   number the harness prints rather than a chosen one, with the 20-09-26 step named (`link_device_google`
+   plus the emailed-code pair) and the 18-09-26 step kept as the dated predecessor.
+2. `apps/mobile-tauri/src/commands/registration_gate_debt.generated.rs:280` — `DEBT_CEILING` 85 → 88,
+   `NO_SESSION_RESOLUTION` 41 → 44, and the partition comment 44 + 41 = 85 → 44 + 44 = 88.
+3. `apps/desktop-tauri/src/commands/registration_gate_tests.rs:92` — `REGISTERED_FLOOR` 458 → 461.
+4. `apps/desktop-tauri/src/commands/registration_gate_debt.generated.rs:188` — `DEBT_CEILING` 69 → 72,
+   `NO_SESSION_RESOLUTION` 42 → 45, partition comment 42 + 27 = 69 → 45 + 27 = 72.
+5. Both ledger prose blocks carry the movement as a dated entry above the const, the way the descent
+   history above them already does, and neither `REGISTERED_TOTAL` nor the `DEBT_LEDGER` array is touched
+   — the generator's own output is left exactly as it was written.
+6. Deliberately untouched: `REGISTERED_SLACK` (24) in both shells, every partition leg, and both
+   `UNSOURCED` consts.
+
+**What it means:**
+**This is the first rise either ceiling has ever taken**, and it is the direction the pin's own message
+forbids without a reason: *"a rise means a newly registered command shipped ungated: record the reason in
+docs/records/JOURNAL.md before the number moves."* The reason is that class 1 is STRUCTURAL for
+`desktop_link`, not an omission being absorbed. The account-link step lives in the setup wizard, which runs
+**before any staff session exists** — there is no session to resolve and no permission to name, which is why
+`license::activate_license` and `license::get_machine_id` have sat in that same class since the gate was
+written. The device proves *which tenant* it holds to the licence server with its own stored credentials
+(`api_key`), read shell-side by `stored_credentials`; the door is authenticated, just not by a session. A
+`session_token` parameter here would be a permission check no caller could ever satisfy, which is worse than
+a recorded row.
+
+The three rows are also *not* new surface for the gate's own census: `link_device_google` was the tablet's
+and desktop's only `desktop_link` row before this, and the pair that joins it is the same feature's second
+door (ADR #54 §2.6 — the no-browser route, which is the one Android can actually take, §1.7). The ceiling
+rise prices three names, and it prices them where the previous pass priced the first one.
+
+A narrower pass was not available. The floor leg compares the floor to the ledger's total on tablet and to
+the tree on desktop, so the two files can only be made equal together; the ceiling leg counts what the
+partition leg measures, so a ceiling moved without the class count re-partitions into a lie. Splitting them
+would reproduce the failure this pass exists to end — which is why all four numbers per shell move in one
+commit with this record.
+
+Not in this pass: the client half of the emailed-code flow (the tablet's own wizard form). It was in flight
+in another lane's working tree while this pass was made — `ui/src/api/license.ts`, `StepAccount.tsx`, both
+locale files and the bridge module were dirty — so it is neither audited nor committed here. One ordering
+constraint is worth recording for whoever lands it: `scripts/verify-ipc-parity.py` fails a UI command string
+that no shell's `generate_handler!` registers, so the form cannot land before the two registrations it calls,
+and it must not land alone.
+
+**Verification:**
+- Before: `cargo test -p kasirmu-mobile` → **675 passed; 2 failed**, the two pins above.
+- After: `cargo test -p kasirmu-mobile drift_pin` → **8 passed; 0 failed**, exit 0.
+- After: `cargo test -p kasirmu-app --lib drift_pin` → **8 passed; 0 failed**, exit 0. The desktop legs
+  were NOT run before this pass — its before-state above is derived from two consts (floor 458 against the
+  tree's 461) and the generator's own row count (72 against a ceiling of 69), and this run is the
+  after-state. The tablet's before-state is the measured 675/2 above, not a derivation.
+- The counts are read, not chosen: 88 = 44 + 44 and 72 = 45 + 27 are the row counts of the two
+  `DEBT_LEDGER` arrays as the generator wrote them, and 324 / 461 are the two `REGISTERED_TOTAL`
+  consts the same runs wrote.
+- `dev-ci.yml:251` runs `cargo nextest run --workspace --all-features` with no `--exclude`, so both reds
+  were going to fire on the next push regardless of what else was in the batch.
+
+**Commit:** one pathspec commit touching the two gate files, the two ledgers and this file together — the
+assertions ask for one deliberate pass, so splitting a const from its record would reproduce the exact
+failure mode the message describes. Never push without a direct user order.

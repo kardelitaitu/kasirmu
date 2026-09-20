@@ -57,12 +57,19 @@ platform-core = { workspace = true }
 platform-kernel = { workspace = true }
 platform-startup = { workspace = true }
 tauri = { workspace = true, features = ["protocol-asset"] }
-# NOTE: tauri-plugin-window-state is KEPT — apps/mobile-tauri/capabilities/default.json
-# references the `window-state:default` permission, which requires the plugin crate at
-# build time even though no Rust code calls `.plugin(...)` (udeps cannot see capability refs).
 tauri-plugin-clipboard-manager = { workspace = true }
-tauri-plugin-window-state = { workspace = true }
 tauri-plugin-opener = { workspace = true }
+# Tablet file pickers (todo-tablet-dialog-content-uri.md Phase 1). The desktop
+# shell has carried `tauri-plugin-dialog` since apps/desktop-tauri/Cargo.toml:63;
+# the tablet registered no picker at all, which is why every image/backup/export
+# affordance on this shell was dead (audit record §D3).
+tauri-plugin-dialog = { workspace = true }
+# Required by the content-URI bridge, not by any Rust call site: on Android the
+# dialog plugin hands back a `content://` URI and every Rust consumer of a picked
+# path calls `tokio::fs::read`. `@tauri-apps/plugin-fs` resolves the URI through
+# the content resolver (FsPlugin.kt:62-68), so the bytes can be moved to a real
+# cache path before they reach kasirmu-bridge.
+tauri-plugin-fs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

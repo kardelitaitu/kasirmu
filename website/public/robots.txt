@@ -1,6 +1,27 @@
+# kasir.mu — crawler policy
+#
+# Policy (owner, 2026-09-19): we accept every crawler — search engines and AI
+# training/retrieval bots alike. No User-agent group below blocks any bot; the
+# wildcard covers named and unnamed crawlers. This is a DECISION, not an
+# omission. Do not add training-bot blocks (GPTBot, ClaudeBot, CCBot,
+# Google-Extended, ...) without an owner ruling.
+#
+# DO NOT add Disallow rules for /account/ or /login/. Those pages carry a
+# `noindex` meta tag, and a robots.txt block would hide that tag from crawlers
+# — making the pages MORE likely to be indexed, not less. De-index via
+# X-Robots-Tag in public/_headers instead.
+# Rationale: docs/records/seo-robots-llms-review-19-09-26.md §1.2
+
 User-agent: *
 Allow: /
 
+# Worker-internal endpoints: runtime config, session/logout, and the log and
+# deployment proxies behind secrets. Machinery, not content — all
+# Cache-Control: no-store. Not a bot restriction.
+Disallow: /__oz/
+
 Sitemap: https://kasir.mu/sitemap-index.xml
 
-# LLM content: https://kasir.mu/llms.txt
+# Advisory pointer for humans only. Comments are not a discovery mechanism:
+# no crawler parses this line, and Google does not use llms.txt.
+# LLM/agent content: https://kasir.mu/llms.txt

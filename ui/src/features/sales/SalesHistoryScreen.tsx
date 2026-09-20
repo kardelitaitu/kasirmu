@@ -93,6 +93,9 @@ function SwipeableOrderRow({ sale, isManager, onView, onVoid, cashierName }: Swi
       {...swipe}
     >
       <td className="sales-history-cell-id">{sale.id.slice(0, 8)}&hellip;</td>
+      {/* Phase 4: the frozen receipt hierarchy code; dash when the sale
+          predates the code / had no known terminal. */}
+      <td className="sales-history-cell-receipt">{sale.displayCode ?? '\u2014'}</td>
       <td>{new Date(sale.createdAt).toLocaleString()}</td>
       <td className="sales-history-cell-total">{formatMoney(sale.total)}</td>
       <td>{sale.lineCount}</td>
@@ -432,7 +435,9 @@ export default function SalesHistoryScreen() {
     try {
       await printSalesReceipt(sessionToken!, {
         date: detail.createdAt,
-        receiptNumber: detail.id,
+        // Phase 4: print the frozen hierarchy code, never the sale UUID.
+        // `display_code` is NULL for legacy sales, so fall back to the id.
+        receiptNumber: detail.displayCode ?? detail.id,
         items: detail.lines.map((l): LineItemDto => {
           const item: LineItemDto = {
             name: l.name,
@@ -797,7 +802,7 @@ export default function SalesHistoryScreen() {
             <table className="sales-history-table" aria-hidden="true">
               <thead>
                 <tr>
-                  {['Sale ID', 'Date', 'Total', 'Items', 'Status', 'Payment', 'Cashier', ''].map((_, i) => (
+                  {['Sale ID', 'Receipt', 'Date', 'Total', 'Items', 'Status', 'Payment', 'Cashier', ''].map((_, i) => (
                     <th key={i}><Skeleton width="4rem" height="0.75rem" /></th>
                   ))}
                 </tr>
@@ -805,6 +810,7 @@ export default function SalesHistoryScreen() {
               <tbody>{Array.from({ length: 5 }, (_, r) => (
                   <tr key={r}>
                     <td><Skeleton width="5rem" height="0.875rem" /></td>
+                    <td><Skeleton width="6rem" height="0.875rem" /></td>
                     <td><Skeleton width="7rem" height="0.875rem" /></td>
                     <td><Skeleton width="4rem" height="0.875rem" /></td>
                     <td><Skeleton width="2rem" height="0.875rem" /></td>
@@ -874,6 +880,9 @@ export default function SalesHistoryScreen() {
                     </button>
                   </th>
                 </Localized>
+                {/* Phase 4: frozen receipt hierarchy code column (no sort —
+                    the code is not a useful sort key). */}
+                <th><span>Receipt</span></th>
                 <Localized id="sales-history-col-date">
                   <th className="sales-history-th" aria-sort={sortKey === 'createdAt' ? (sortAsc ? 'ascending' : 'descending') : 'none'}>
                     <button type="button" className="sales-history-sort-btn" onClick={() => toggleSort('createdAt')}>
@@ -1147,6 +1156,12 @@ export default function SalesHistoryScreen() {
                       <strong><span>ID:</span></strong>
                     </Localized>
                     {' '}{detail.id}
+                  </div>
+                  {/* Phase 4: show the frozen receipt hierarchy code (the
+                      statutory nomor faktur), never the raw sale UUID. */}
+                  <div>
+                    <strong><span>Receipt:</span></strong>
+                    {' '}{detail.displayCode ?? detail.id}
                   </div>
                   <div>
                     <Localized id="sales-history-detail-date">

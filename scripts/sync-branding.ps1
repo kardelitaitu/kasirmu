@@ -403,6 +403,15 @@ Write-Host ""
 Write-Host "-- Hardware assets --" -ForegroundColor White
 $hardwareReadmePath = "assets/branding/$brandId/hardware/README.md"
 if (-not (Test-Path $hardwareReadmePath) -and -not $DryRun) {
+    # The closing fence of the fenced block below is written with SIX backticks on
+    # purpose. Inside a double-quoted here-string a backtick is the escape
+    # character, so a fence of three backticks immediately followed by a newline
+    # escapes that newline as a line continuation. The `"@` terminator then no
+    # longer sits at the start of a line and the ENTIRE SCRIPT fails to parse with
+    # TerminatorExpectedAtEndOfString -- which is what happened between this block
+    # landing and 2026-09-19, while `.gitattributes` pins the working tree to LF.
+    # Six backticks emit three literal backticks and leave the newline intact, so
+    # the generated README is byte-identical. Do not "tidy" this back to three.
     $readmeContent = @"
 # Hardware Assets - $appName ($brandId)
 
@@ -424,9 +433,9 @@ To generate receipt bitmaps from the master source icon:
 
 ```powershell
 # Requires ImageMagick
-magick convert assets/source-icon.png -resize 384x100 -threshold 50% assets/branding/%brandId%/hardware/receipt-logo-58mm.png
-magick convert assets/source-icon.png -resize 576x150 -threshold 50% assets/branding/%brandId%/hardware/receipt-logo-80mm.png
-```
+magick convert assets/source-icon.png -resize 384x100! -threshold 50% assets/branding/%brandId%/hardware/receipt-logo-58mm.png
+magick convert assets/source-icon.png -resize 576x150! -threshold 50% assets/branding/%brandId%/hardware/receipt-logo-80mm.png
+``````
 "@
     New-Item -ItemType Directory -Force -Path (Split-Path $hardwareReadmePath -Parent) | Out-Null
     Set-Content -Path $hardwareReadmePath -Value $readmeContent -Encoding UTF8

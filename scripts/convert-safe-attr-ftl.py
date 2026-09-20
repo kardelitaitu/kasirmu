@@ -26,10 +26,16 @@ SAFE_KEYS = {
     "pos-open-bills-overlay-aria", "pos-open-shift-balance-aria",
     "pos-open-shift-overlay-aria", "pos-shift-close-aria", "pos-shift-open-aria",
     "product-mgmt-modal-aria", "refund-dialog-aria", "refund-note-aria",
-    "refund-reason-aria", "refund-qty-decrease-aria", "refund-qty-increase-aria",
+    "refund-reason-aria",
+    # NOT "refund-qty-decrease-aria" / "refund-qty-increase-aria": both are
+    # consumed via `<Localized id=... attrs={{ 'aria-label': true }}>` at
+    # RefundModal.tsx:219/229, so they fail this script's own "NOT via
+    # <Localized>" test. Flattening them drops the .aria-label line and the
+    # attribute is silently unset for every user — caught by
+    # barePlaceholderScan.test.ts / i18nBundle.test.tsx (rounds 166-167).
     "restaurant-categories-aria", "restaurant-clear-color-aria",
     "restaurant-font-size-decrease-aria", "restaurant-font-size-increase-aria",
-    "restaurant-menu-back-aria", "restaurant-menu-hamburger-aria",
+    "restaurant-sidebar-toggle-aria", "restaurant-menu-hamburger-aria",
     "restaurant-menu-search-placeholder", "restaurant-size-decrease-aria",
     "restaurant-size-increase-aria", "settings-sidebar-search-clear-aria",
     "shortfall-dialog-aria",

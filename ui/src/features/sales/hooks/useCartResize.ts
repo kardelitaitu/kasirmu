@@ -53,23 +53,37 @@ export function useCartResize() {
     isResizing.current = true;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
+    document.body.classList.add('is-resizing');
   }, []);
 
   useEffect(() => {
+    let rafId: number | null = null;
+
     const stopResize = () => {
       if (!isResizing.current) return;
       isResizing.current = false;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
+      document.body.classList.remove('is-resizing');
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
     };
     const onMouseMove = (e: MouseEvent) => {
       if (!isResizing.current || !posScreenRef.current) return;
       const rect = posScreenRef.current.getBoundingClientRect();
       const clamped = clampCartWidth(rect.right - e.clientX, window.innerWidth);
-      setCartWidth(clamped);
-      // Persist the clamped value so the next launch on this
-      // display picks up the most recent *applied* width.
-      localStorage.setItem('pos-cart-width', String(clamped));
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      rafId = requestAnimationFrame(() => {
+        setCartWidth(clamped);
+        // Persist the clamped value so the next launch on this
+        // display picks up the most recent *applied* width.
+        localStorage.setItem('pos-cart-width', String(clamped));
+        rafId = null;
+      });
     };
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', stopResize);

@@ -105,7 +105,7 @@ export default function RefundModal({ open, sale, onClose, onRefunded }: RefundM
   // each get their own `--exiting` class so two mirrored keyframes
   // play in parallel. Declared BEFORE handleDone so the callback can
   // reference it.
-  const exit = useExitAnimation(open, onClose);
+  const exit = useExitAnimation(open, onClose, 300);
 
   const handleDone = useCallback(() => {
     // Notify the parent FIRST (so any post-refund side effects —

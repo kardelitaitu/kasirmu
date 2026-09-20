@@ -3,7 +3,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { requiredLocalized } from '@/components';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
-import { open } from '@tauri-apps/plugin-dialog';
+import { isTauriWebview } from '@/api/tauri';
+import { pickImageFile } from '@/api/image-pick';
 import { ProductThumb } from '@/components/ProductThumb';
 import type { ProductDto, ProductImageDto } from '@/api/products';
 import {
@@ -84,19 +85,29 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
 
   const handleSetImage = useCallback(async (slot: number) => {
     if (!sessionToken || !product?.id) return;
+    // This guard is new with the content-URI bridge, and it closes a wart that
+    // predates it: without it the browser dev preview reached `open()` and threw
+    // `__TAURI_INTERNALS__.invoke is not a function` out of the partial stub
+    // `ui/index.html:146` installs, so every click on an empty slot reported a
+    // hard failure. `pickImageFile` returns null outside a real webview, which
+    // is indistinguishable from a cancel — hence the explicit message.
+    if (!isTauriWebview()) {
+      setImageError(requiredLocalized(l10n, 'image-pick-app-only'));
+      return;
+    }
     try {
-      const picked = await open({
-        multiple: false,
-        filters: [{ name: 'Images', extensions: ['webp', 'png', 'jpg', 'jpeg'] }],
-      });
-      // `open` returns string | string[] | null; single selection → string.
-      if (!picked) return;
-      const path = Array.isArray(picked) ? picked[0] : picked;
-      if (!path) return;
+      const picked = await pickImageFile();
+      if (!picked) return; // the user cancelled — not an error
       setImageBusy(true);
       setImageError(null);
-      await productsSetImageScoped(sessionToken, product.id, slot, path);
-      await loadImages();
+      try {
+        await productsSetImageScoped(sessionToken, product.id, slot, picked.path);
+        await loadImages();
+      } finally {
+        // Drops the bridged temp copy; a no-op on desktop, where `path` is the
+        // user's own file.
+        picked.release();
+      }
     } catch {
       setImageError(requiredLocalized(l10n, 'retail-edit-image-error'));
     } finally {

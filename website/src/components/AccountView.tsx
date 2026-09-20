@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { t } from '../i18n';
+import { t, type Labels } from '../i18n/labels';
 import { pricingFor } from '../content/pricing';
 import { clearSession, getSessionEmail, isPaddleConfigured, isPlaceholderPriceId, openPaddleCheckout } from './paddle';
 import { openMidtransCheckout } from './midtrans';
 import { type Region, getRegion, getExplicitRegion, setRegion } from '../lib/region';
 import { licenseApiUrl } from '../lib/runtime-config';
 import { getSessionToken } from '../lib/session';
-import { statusLabel, statusPillClass, fmtDate, daysUntil, renewsLabel } from './account/accountShared';
 import AccountProfile from './account/AccountProfile';
 import AccountLicense from './account/AccountLicense';
 import AccountQuickActions from './account/AccountQuickActions';
 import AccountDevices, { type Device } from './account/AccountDevices';
 import AccountBilling from './account/AccountBilling';
 import AccountPassword, { type PasswordMsg } from './account/AccountPassword';
+import AccountSignInMethods, { type SignInMethod } from './account/AccountSignInMethods';
+import { PASSWORD_FIELD_LABELS } from './PasswordField';
+import { PASSWORD_STRENGTH_LABELS } from './PasswordStrength';
 import AccountRegion from './account/AccountRegion';
 import AccountSubscription from './account/AccountSubscription';
 
@@ -51,6 +53,7 @@ import AccountSubscription from './account/AccountSubscription';
 
 // Re-export the pure helpers so the property tests (and any consumer that
 // imports them from AccountView) keep working after the split.
+import { statusLabel, statusPillClass, fmtDate, daysUntil, renewsLabel } from './account/accountShared';
 export { statusLabel, statusPillClass, fmtDate, daysUntil, renewsLabel };
 
 interface MeResponse {
@@ -76,11 +79,99 @@ interface MeResponse {
   };
 }
 
+/**
+ * Strings this island reads — itself and every section in `./account/*`.
+ * `account.astro` turns the list into the `labels` prop with `labelMap`, so the
+ * browser gets these strings in the document instead of both locale dictionaries
+ * in the JS bundle; `src/__tests__/island-label-coverage.test.ts` keeps the list
+ * honest.
+ */
+export const ACCOUNT_LABELS = [
+  'account.activationGuide',
+  'account.billingInvoices',
+  'account.billingInvoicesHint',
+  'account.bundleUpgrade',
+  'account.bundleUpgradeHint',
+  'account.checkingSubscription',
+  'account.checkoutUnavailable',
+  'account.contactSupport',
+  'account.copied',
+  'account.copyKey',
+  'account.devices',
+  'account.devicesHint',
+  'account.downloadApp',
+  'account.emailVerified',
+  'account.error',
+  'account.expires',
+  'account.grace',
+  'account.invoiceNote',
+  'account.invoiceSubject',
+  'account.license',
+  'account.licenseKey',
+  'account.loading',
+  'account.logout',
+  'account.noSubscription',
+  'account.notConfigured',
+  'account.notSignedIn',
+  'account.notVerified',
+  'account.password',
+  'account.passwordError',
+  'account.passwordHelp',
+  'account.passwordPlaceholder',
+  'account.passwordSave',
+  'account.passwordSaved',
+  'account.providerGoogle',
+  'account.quickActions',
+  'account.region',
+  'account.regionHint',
+  'account.regionSaved',
+  'account.renewHint',
+  'account.renewLink',
+  'account.renewsInDay',
+  'account.renewsInDays',
+  'account.revokeDevice',
+  'account.signIn',
+  'account.signInMethods',
+  'account.signInMethodsAlwaysEmail',
+  'account.signInMethodsEmpty',
+  'account.signInMethodsHint',
+  'account.starts',
+  'account.status',
+  'account.statusActive',
+  'account.statusExpired',
+  'account.statusGracePeriod',
+  'account.statusPaused',
+  'account.statusRevoked',
+  'account.statusUnused',
+  'account.subscribe',
+  'account.subscription',
+  'account.subscriptionPending',
+  'account.terminalCount',
+  'account.terminalCountLive',
+  'account.terminalSlots',
+  'account.terminalUnlimited',
+  'account.tier',
+  'account.unbindHint',
+  'account.unlink',
+  'account.unlinkError',
+  'account.unlinking',
+  'account.verified',
+  'account.viewReceipts',
+  'checkout.error',
+  'signup.regionGlobal',
+  'signup.regionIndonesia',
+  // The dashboard's password section renders these two directly.
+  ...PASSWORD_FIELD_LABELS,
+  ...PASSWORD_STRENGTH_LABELS,
+] as const;
+
 interface Props {
   locale: string;
+  /** Strings this island reads; see `ACCOUNT_LABELS`. */
+  labels: Labels;
 }
 
-export default function AccountView({ locale }: Props) {
+export default function AccountView({ locale, labels }: Props) {
   // Read API at component level so window.__OZ_CONFIG__ is available after hydration
   const API = licenseApiUrl();
   const [state, setState] = useState<'loading' | 'anon' | 'error' | 'ready'>('loading');
@@ -132,6 +223,22 @@ export default function AccountView({ locale }: Props) {
     }
   }, []);
 
+  /** Fetch the tenant's linked sign-in methods (best-effort; null on any error). */
+  const fetchIdentities = useCallback(async (): Promise<SignInMethod[] | null> => {
+    const token = await getSessionToken();
+    if (!token || !API) return null;
+    try {
+      const res = await fetch(`${API}/api/v1/web/identities`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return null;
+      const body = (await res.json()) as { identities?: SignInMethod[] };
+      return body.identities ?? [];
+    } catch {
+      return null;
+    }
+  }, []);
+
   // Password state: the optional login credential managed via set-password.
   const [pw, setPw] = useState('');
   const [pwConfirm, setPwConfirm] = useState('');
@@ -154,6 +261,12 @@ export default function AccountView({ locale }: Props) {
   // failure message (shown inline on the device row).
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
+
+  // Linked sign-in methods (ADR #54). null means "not loaded yet", which is why the
+  // section renders nothing rather than an empty state while the fetch is in flight.
+  const [identities, setIdentities] = useState<SignInMethod[] | null>(null);
+  const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
+  const [unlinkError, setUnlinkError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!API) {
@@ -187,7 +300,15 @@ export default function AccountView({ locale }: Props) {
       .catch(() => {
         if (mountedRef.current) setDevices(null);
       });
-  }, [fetchMe, fetchDevices]);
+    // Same contract for the linked sign-in methods.
+    void fetchIdentities()
+      .then((list) => {
+        if (mountedRef.current) setIdentities(list);
+      })
+      .catch(() => {
+        if (mountedRef.current) setIdentities(null);
+      });
+  }, [fetchMe, fetchDevices, fetchIdentities]);
 
   const savePassword = async (password: string) => {
     setPwMsg('idle');
@@ -313,6 +434,32 @@ export default function AccountView({ locale }: Props) {
     }
   };
 
+  /** Unlink a sign-in method via DELETE /web/identities/{id}, then refresh. */
+  const unlinkIdentity = async (method: SignInMethod) => {
+    if (!method.id || !API) return;
+    const token = await getSessionToken();
+    if (!token) return;
+    setUnlinkingId(method.id);
+    setUnlinkError(null);
+    try {
+      const res = await fetch(`${API}/api/v1/web/identities/${encodeURIComponent(method.id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      // Drop the row locally, then reconcile with the server list. If the
+      // refresh fails (null) the removal still stands — the DELETE succeeded.
+      const fresh = await fetchIdentities();
+      if (mountedRef.current) {
+        setIdentities((prev) => (fresh ?? (prev ?? []).filter((m) => m.id !== method.id)));
+      }
+    } catch {
+      if (mountedRef.current) setUnlinkError(t(labels, 'account.unlinkError'));
+    } finally {
+      if (mountedRef.current) setUnlinkingId(null);
+    }
+  };
+
   /** Sign out: best-effort server logout, clear cookie + local session, redirect. */
   const handleLogout = async () => {
     const token = await getSessionToken();
@@ -340,8 +487,8 @@ export default function AccountView({ locale }: Props) {
 
   if (state === 'loading') {
     return (
-      <div className="space-y-4 animate-pulse" role="status" aria-label={t(locale, 'account.loading')}>
-        <p className="sr-only">{t(locale, 'account.loading')}</p>
+      <div className="space-y-4 animate-pulse" role="status" aria-label={t(labels, 'account.loading')}>
+        <p className="sr-only">{t(labels, 'account.loading')}</p>
         <div className="rounded-xl border border-ink/10 bg-surface/40 p-6">
           <div className="flex items-center gap-3.5">
             <div className="w-11 h-11 rounded-full bg-ink/10" />
@@ -375,12 +522,12 @@ export default function AccountView({ locale }: Props) {
   if (state === 'anon') {
     return (
       <div className="rounded-xl border border-ink/10 bg-surface/40 p-6 text-center">
-        <p className="text-muted">{t(locale, 'account.notSignedIn')}</p>
+        <p className="text-muted">{t(labels, 'account.notSignedIn')}</p>
         <a
           href={`/${locale}/login`}
           className="mt-4 inline-block rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-on-primary transition hover:opacity-90"
         >
-          {t(locale, 'account.signIn')}
+          {t(labels, 'account.signIn')}
         </a>
       </div>
     );
@@ -389,7 +536,7 @@ export default function AccountView({ locale }: Props) {
   if (state === 'error') {
     return (
       <p className="rounded-md border border-ink/10 p-4 text-sm text-muted">
-        {API ? t(locale, 'account.error') : t(locale, 'account.notConfigured')}
+        {API ? t(labels, 'account.error') : t(labels, 'account.notConfigured')}
       </p>
     );
   }
@@ -442,20 +589,21 @@ export default function AccountView({ locale }: Props) {
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       {tenant && (
-        <AccountProfile locale={locale} tenant={tenant} onLogout={() => void handleLogout()} />
+        <AccountProfile labels={labels} tenant={tenant} onLogout={() => void handleLogout()} />
       )}
 
       {tenant && (
-        <AccountLicense locale={locale} tenantStatus={tenant.status} license={license} />
+        <AccountLicense locale={locale} labels={labels} tenantStatus={tenant.status} license={license} />
       )}
 
       {/* Quick Action Navigation Grid */}
-      {tenant && <AccountQuickActions locale={locale} />}
+      {tenant && <AccountQuickActions locale={locale} labels={labels} />}
 
       {/* Device / Terminal Management */}
       {tenant && (
         <AccountDevices
           locale={locale}
+          labels={labels}
           devices={devices}
           licenseTierKey={license?.tierKey}
           revokingId={revokingId}
@@ -464,12 +612,23 @@ export default function AccountView({ locale }: Props) {
         />
       )}
 
+      {/* Linked sign-in methods (ADR #54) */}
+      {tenant && (
+        <AccountSignInMethods
+          labels={labels}
+          identities={identities}
+          unlinkingId={unlinkingId}
+          unlinkError={unlinkError}
+          onUnlink={(m) => void unlinkIdentity(m)}
+        />
+      )}
+
       {/* Billing & Tax Invoices */}
-      {tenant && <AccountBilling locale={locale} tenantEmail={tenant.email} />}
+      {tenant && <AccountBilling labels={labels} tenantEmail={tenant.email} />}
 
       {tenant && (
         <AccountPassword
-          locale={locale}
+          labels={labels}
           email={tenant.email}
           pw={pw}
           pwConfirm={pwConfirm}
@@ -490,7 +649,7 @@ export default function AccountView({ locale }: Props) {
       {/* Region selector */}
       {tenant && (
         <AccountRegion
-          locale={locale}
+          labels={labels}
           region={region}
           onRegionChange={(next) => {
             setRegionState(next);
@@ -501,6 +660,7 @@ export default function AccountView({ locale }: Props) {
 
       <AccountSubscription
         locale={locale}
+        labels={labels}
         subscription={subscription ?? null}
         subscribable={subscribable}
         plusBundle={plusBundle}

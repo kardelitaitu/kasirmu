@@ -203,7 +203,7 @@ export default function PaymentModal({
     attemptIdRef.current = crypto.randomUUID();
   }
 
-  const MS_200 = animDuration(200);
+  const MS_300 = animDuration(300);
 
   // ── Error classification ───────────────────────────────────────
 
@@ -1122,9 +1122,9 @@ export default function PaymentModal({
   // Auto-dismiss after leave animation completes
   useEffect(() => {
     if (!leaving) return;
-    const timer = setTimeout(handleLeaveEnd, MS_200);
+    const timer = setTimeout(handleLeaveEnd, MS_300);
     return () => clearTimeout(timer);
-  }, [leaving, handleLeaveEnd, MS_200]);
+  }, [leaving, handleLeaveEnd, MS_300]);
 
   // ── Focus trap (Escape + Tab cycling) ─────────────────────
   useFocusTrap(panelRef, open && !leaving && !processing && !done, () => {
@@ -1324,7 +1324,10 @@ export default function PaymentModal({
                 date: new Date().toLocaleDateString('en-US', {
                   year: 'numeric', month: 'short', day: 'numeric',
                 }),
-                receiptNumber: `SALE-${result.saleId}`,
+                // Phase 4: print the frozen hierarchy code from the just-fetched
+                // sale detail (SaleDetail.displayCode), not a synthetic
+                // `SALE-<uuid>`. Legacy sales keep the fallback below.
+                receiptNumber: completedSale?.displayCode ?? `SALE-${result.saleId}`,
                 items: (completedSale?.lines ?? []).map((line) => ({
                   name: line.name || line.sku,
                   quantity: line.qty,
@@ -1577,6 +1580,12 @@ export default function PaymentModal({
                       </label>
                     ))}
                     <div className="payment-method-label">
+                      {/* This row is a div, not a label, because it holds two controls —
+                          the radio and the name field. Nothing in the row therefore names the
+                          radio, and an unselected "Other" shows an empty DISABLED input, so the
+                          accessible name has to come from here or the radio announces as bare
+                          "radio button". */}
+                      <Localized id="payment-method-other" attrs={{ 'aria-label': true }}>
                       <input
                         type="radio"
                         name="payment-method"
@@ -1584,6 +1593,7 @@ export default function PaymentModal({
                         checked={method === 'other'}
                         onChange={() => setMethod('other')}
                       />
+                      </Localized>
                       {/* .payment-method-name on the text input below is not decoration:
                           the checked-tender rule (PaymentModal.css:184) is an ADJACENT-SIBLING
                           selector, so that input - the radio's next sibling, and the element

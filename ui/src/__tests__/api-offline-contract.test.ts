@@ -108,7 +108,7 @@ describe('offline.ts IPC contract', () => {
   });
 
   it('getSyncSettingsScoped invokes "get_sync_settings_scoped"', async () => {
-    const settings: SyncSettingsDto = { serverUrl: null, hasApiKey: false, enabled: false };
+    const settings: SyncSettingsDto = { serverUrl: null, hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' };
     mockInvoke.mockResolvedValue(settings);
     await getSyncSettingsScoped('tok');
     expect(mockInvoke).toHaveBeenCalledWith('get_sync_settings_scoped', { sessionToken: 'tok' });

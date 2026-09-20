@@ -246,7 +246,7 @@ describe('SettingsContext', () => {
 
     // An unconfigured sync gets the cloud-server draft (no localhost
     // pre-fill) so the settings surface has a target to connect to.
-    expect(result.current.settings.sync.serverUrl).toBe('https://license.ozpos.my.id');
+    expect(result.current.settings.sync.serverUrl).toBe('https://license.kasir.mu');
     expect(result.current.settings.sync.enabled).toBe(true);
     expect(result.current.settings.sync.hasApiKey).toBe(true);
   });

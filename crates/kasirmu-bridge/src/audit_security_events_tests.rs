@@ -11,7 +11,8 @@
 
 use super::*;
 
-use crate::testing::seeded_row_loads;
+use crate::testing::seeded_row_reaches_a_paid_tier;
+use crate::testing::seeded_row_verdict_for_tier;
 use crate::testing::{FAIL_CLOSED_GATES_LOCKED, FAIL_CLOSED_STATE, FAIL_CLOSED_TIER, TestBridge};
 use kasirmu_core::db::audit_security::{SECURITY_ACTIONS, SYSTEM_ACTOR};
 use kasirmu_core::subscription::TenantSubscription;
@@ -67,7 +68,7 @@ fn assert_gate_projection(conn: &rusqlite::Connection, stamped_tier: &str) {
     );
     assert_eq!(
         row.verify_signature().is_ok(),
-        seeded_row_loads(),
+        seeded_row_verdict_for_tier(stamped_tier),
         "the row this fixture reads must be the row the fork's predicate is about"
     );
 
@@ -75,10 +76,10 @@ fn assert_gate_projection(conn: &rusqlite::Connection, stamped_tier: &str) {
     let ent = build_entitlements(&store, UsageCounts::default(), true);
     assert_eq!(
         ent.loaded,
-        seeded_row_loads(),
+        seeded_row_verdict_for_tier(stamped_tier),
         "the read model's loaded flag must agree with the load path"
     );
-    if seeded_row_loads() {
+    if seeded_row_verdict_for_tier(stamped_tier) {
         // Debug: the sentinel verifies, so the stamped tier reaches the gate.
         assert_eq!(
             ent.tier.tier_key(),
@@ -163,7 +164,7 @@ async fn security_events_page_shows_only_the_security_class() {
     let page = list_security_events_scoped(&ctx, "tok", args(50)).await;
     let db = ctx.lock_global().await;
     assert_gate_projection(&db, "premium");
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         let page = page.expect("a verifying premium row must open the tier gate");
         assert_eq!(page.total, 1, "the business row must not count");
         assert_eq!(page.items.len(), 1);
@@ -210,7 +211,7 @@ async fn security_events_page_clamps_the_limit_and_reports_more() {
     let page = list_security_events_scoped(&ctx, "tok", args(2)).await;
     let db = ctx.lock_global().await;
     assert_gate_projection(&db, "premium");
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         let page = page.expect("a verifying premium row must open the tier gate");
         assert_eq!(page.items.len(), 2);
         assert_eq!(
@@ -264,7 +265,7 @@ async fn security_events_page_denies_a_session_without_audit_view() {
          not by a tier gate standing in front of it: {direct:?}"
     );
     let tier = require_audit_tier(&ctx).await;
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         // Debug: the tier gate is OPEN for this session, so the end-to-end
         // refusal above really was the permission check — the only difference
         // between this session and the owner session is `audit:view`.
@@ -365,7 +366,7 @@ async fn export_contains_only_security_rows() {
     let out = export_security_events_scoped(&ctx, "tok", export_args(None, None, None)).await;
     let db = ctx.lock_global().await;
     assert_gate_projection(&db, "premium");
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         let out = out.expect("a verifying premium row must open the tier gate");
         assert_eq!(out.row_count, 1, "the business row must not export");
         assert!(out.csv.starts_with('\u{FEFF}'), "BOM required");
@@ -421,7 +422,7 @@ async fn actor_filter_is_exact_and_system_resolves() {
         export_security_events_scoped(&ctx, "tok", export_args(Some("system"), None, None)).await;
     let db = ctx.lock_global().await;
     assert_gate_projection(&db, "premium");
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         // Exact user_id: only that actor's rows.
         let owner = owner.expect("a verifying premium row must open the tier gate");
         assert_eq!(owner.row_count, 2, "seeded login + logout for user-owner");
@@ -484,7 +485,7 @@ async fn date_range_normalizes_day_bounds() {
     .await;
     let db = ctx.lock_global().await;
     assert_gate_projection(&db, "premium");
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         let out = out.expect("a verifying premium row must open the tier gate");
         assert_eq!(out.row_count, 2, "both Aug-5 events, none of Aug-6");
         assert!(out.csv.contains("aud-d1"));
@@ -534,7 +535,7 @@ async fn a_malformed_day_is_rejected_not_silently_ignored() {
     let db = ctx.lock_global().await;
     assert_gate_projection(&db, "premium");
     drop(db);
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert!(matches!(err, BridgeError::Invalid(_)), "got {err:?}");
     } else {
         // VACUOUS LEG CLOSED: the tier gate runs BEFORE the date filters are
@@ -589,7 +590,7 @@ async fn export_refuses_below_the_premium_tier() {
         matches!(direct, Err(BridgeError::PermissionDenied(_))),
         "the tier gate itself must refuse: {direct:?}"
     );
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert!(
             msg.contains("current tier: Plus"),
             "on a verifying row the gate must refuse because Plus is below \
@@ -639,7 +640,7 @@ async fn export_refuses_a_caller_without_audit_export() {
          itself, not by a tier gate standing in front of it: {direct:?}"
     );
     let tier = require_audit_tier(&ctx).await;
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         assert!(
             tier.is_ok(),
             "the tier gate must be open here, or the refusal above proves \
@@ -674,7 +675,7 @@ async fn the_handoff_writes_a_self_audit_row_to_the_store_log() {
     let db = ctx.lock_global().await;
     assert_gate_projection(&db, "premium");
     drop(db);
-    if seeded_row_loads() {
+    if seeded_row_reaches_a_paid_tier() {
         out.expect("a verifying premium row must open the tier gate");
         let full = full.expect("a verifying premium row must open the AUD-09 gate");
         assert!(

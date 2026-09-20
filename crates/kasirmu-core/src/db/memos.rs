@@ -157,7 +157,10 @@ impl Store<'_> {
 
     /// Publish a draft: `draft → published`, stamp expiry, snapshot revision 1,
     /// and fan out pending recipients. Idempotent-safe: publishing an already
-    /// published memo is rejected (only a draft may be published).
+    /// published memo is rejected (only a draft may be published), and a memo
+    /// whose targeting resolves **no** recipient terminal is refused with a
+    /// `Validation` error and left a draft — a publish that reaches nobody must
+    /// not report the same success as one that reached the staff.
     pub fn publish_memo(&self, tenant_id: &str, memo_id: &str) -> Result<Memo, CoreError> {
         let memo = self
             .get_memo(tenant_id, memo_id)?
@@ -226,6 +229,19 @@ impl Store<'_> {
             s.query_map(params![tenant_id, memo_id], |r| r.get::<_, String>(0))?
                 .collect::<Result<Vec<_>, _>>()?
         };
+        // A published memo with no recipients is unreachable: nothing will ever
+        // render it, and no reader can tell that apart from "nobody has a memo".
+        // Publishing one used to succeed silently (a terminal-less installation,
+        // or a Location Memo whose locations hold no terminals), which is
+        // exactly how a memo could be "sent" and never appear. Refusing here
+        // rolls the whole transaction back, so the memo stays a draft the
+        // author can see and fix rather than a live row delivered to nobody.
+        if terminal_ids.is_empty() {
+            return Err(CoreError::Validation {
+                field: "recipients",
+                message: "no terminal is registered to receive this memo".into(),
+            });
+        }
         for terminal_id in &terminal_ids {
             tx.execute(
                 "INSERT INTO memo_recipients (id, memo_id, tenant_id, terminal_id, delivery_status)

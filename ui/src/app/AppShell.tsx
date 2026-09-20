@@ -56,7 +56,7 @@ function useWorkspaceNavShortcuts(active: string | null, onBack: () => void) {
         if (isCommandModifier(e) && e.shiftKey) {
           consumeShortcut(e);
           onBack();
-        } else if (!isAnyAriaModalOpen()) {
+        } else if (!e.defaultPrevented && !isAnyAriaModalOpen() && active !== 'restaurant-pos') {
           consumeShortcut(e);
           onBack();
         }

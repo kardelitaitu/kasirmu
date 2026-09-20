@@ -6,13 +6,16 @@
 // singleton to avoid re-creating Fluent resources per render.
 // 21 tests (3 sync render tests moved to SetupWizardRender.test.tsx).
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { LocalizationProvider, ReactLocalization } from '@fluent/react';
 import type { ReactNode } from 'react';
 import SetupWizard, { type WizardState } from '@/features/setup/SetupWizard';
+import StepAccount from '@/features/setup/components/StepAccount';
+import { setShellKind } from '@/utils/shellKind';
+import * as licenseApi from '@/api/license';
 import settingsFtl from '@/locales/settings.ftl?raw';
 import salesFtl from '@/locales/sales.ftl?raw';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -58,7 +61,7 @@ function selectPreset(index: number) {
 
 /** Navigate through remaining steps from current step to review. */
 function navigateToReview() {
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 7; i++) {
     clickNext();
   }
 }
@@ -86,7 +89,61 @@ async function toggleFeature(label: string) {
 
 // ── Tests ───────────────────────────────────────────────────────────
 
-describe('SetupWizard — interactions', () => {
+// ── Account step: the ADR #54 §2.7 shell split ──────────────────────
+//
+// The desktop and tablet builds share this component and differ only in their
+// entry point, which is why the split is a shell flag rather than a prop: the
+// decision is "the Google control is excluded from the tablet build", and a
+// prop would let a caller re-enable it.
+
+describe('StepAccount — shell split (ADR #54 §2.7)', () => {
+  afterEach(() => setShellKind('desktop'));
+
+  it('offers the Google control on the desktop shell', () => {
+    setShellKind('desktop');
+    render(<StepAccount />, { wrapper: FluentWrapper });
+
+    expect(screen.getByText('Continue with Google')).toBeInTheDocument();
+  });
+
+  it('excludes the Google control from the tablet build and offers the emailed code', () => {
+    setShellKind('tablet');
+    render(<StepAccount />, { wrapper: FluentWrapper });
+
+    expect(screen.queryByText('Continue with Google')).toBeNull();
+    // The tablet's own route: the address, a code mailed to it, and a way to spend it.
+    expect(screen.getByLabelText('Account email')).toBeInTheDocument();
+    expect(screen.getByText('Email me a code')).toBeInTheDocument();
+    // The code field appears only after a code has been sent, so it must not be here yet.
+    expect(screen.queryByLabelText('6-digit code')).toBeNull();
+  });
+
+  it('keeps the code field after a failed verification, so retrying costs no second email', async () => {
+    // The failure message says "try again". Before this test the code field was rendered only
+    // while the state was 'sent', so a wrong code collapsed it — the only way back was to
+    // request another code, spending a second email and a second rate-limit slot.
+    setShellKind('tablet');
+    const request = vi.spyOn(licenseApi, 'requestDeviceLinkCode').mockResolvedValue(undefined);
+    const consume = vi.spyOn(licenseApi, 'consumeDeviceLinkCode').mockRejectedValue(new Error('bad_code'));
+    try {
+      render(<StepAccount />, { wrapper: FluentWrapper });
+
+      await userEvent.type(screen.getByLabelText('Account email'), 'owner@example.com');
+      fireEvent.click(screen.getByText('Email me a code'));
+      const codeField = await screen.findByLabelText('6-digit code');
+      await userEvent.type(codeField, '123456');
+      fireEvent.click(screen.getByText('Verify'));
+
+      expect(await screen.findByText(/Could not link this device/)).toBeInTheDocument();
+      expect(screen.getByLabelText('6-digit code')).toBeInTheDocument();
+    } finally {
+      request.mockRestore();
+      consume.mockRestore();
+    }
+  });
+});
+
+describe('SetupWizard — OTP login flow', () => {
   // ── Preset selection ────────────────────────────────────────────
 
   it('selecting a preset advances to step 2', () => {
@@ -230,7 +287,7 @@ describe('SetupWizard — interactions', () => {
     expect(screen.getByText('Payment Methods')).toBeInTheDocument();
   });
 
-  it('navigates through all 8 steps', () => {
+  it('navigates through all 9 steps', () => {
     render(<SetupWizard />, { wrapper: FluentWrapper });
 
     selectPreset(0);
@@ -242,6 +299,7 @@ describe('SetupWizard — interactions', () => {
       'Hardware & Peripherals',
       'Business Rules',
       'Data, Reporting & Cloud',
+      'Your account',
       'Review Your Setup',
     ];
 
@@ -270,7 +328,7 @@ describe('SetupWizard — interactions', () => {
     expect(dots[2]).toHaveClass('setup-step-dot--pending');
   });
 
-  // ── Review screen (Step 8) ─────────────────────────────────────
+  // ── Review screen (Step 9) ─────────────────────────────────────
 
   it('review screen shows enabled and disabled feature tag clouds', () => {
     render(<SetupWizard />, { wrapper: FluentWrapper });
@@ -369,7 +427,7 @@ describe('SetupWizard — interactions', () => {
     clickNext();
     await toggleFeature('Inventory Tracking');
 
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       clickNext();
     }
 

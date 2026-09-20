@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/api/tauri';
 import { recordIpcTiming } from './perf-metrics';
 import { emitIpcError, redactedDiagnostic } from './app-error';
 

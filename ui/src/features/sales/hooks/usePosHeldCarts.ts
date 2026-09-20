@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useToast } from '@/components/Toast';
+import type { useToast } from '@/components/Toast';
+import { useWorkspaceScope } from '@/contexts/WorkspaceContext';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
 import {
   holdCartScoped,
@@ -54,6 +55,23 @@ export function usePosHeldCarts({
   setDiscount,
   setTableNumber,
 }: UsePosHeldCartsParams) {
+  // An open bill is a Restaurant POS concept: `list_open_bills_scoped` — its
+  // only reader — refuses every other vertical in the bridge
+  // (`is_restaurant_pos_workspace`), so a call from anywhere else spends a
+  // round-trip to collect a `permissionDenied` that the catch below surfaces
+  // as a "Failed to load open bills" toast. `PaymentModal` gates the same
+  // concept the same way, for the same reason.
+  //
+  // Read through `useWorkspaceScope` (nullable, not `useWorkspace`) so a hook
+  // rendered outside a provider fails closed. It is also the *right* value to
+  // test rather than a heuristic: the scope's `typeKey` is
+  // `activeInstance?.type_key`, while the session token is minted from
+  // `activeInstance ?? <admin instance>` — so this predicate is true exactly
+  // when the token in hand is a restaurant-pos session, and false in the
+  // admin-fallback case that produced the `permissionDenied` in the field.
+  const workspaceScope = useWorkspaceScope();
+  const isRestaurantPos = workspaceScope?.typeKey === 'restaurant-pos';
+
   // ── Open Bill state ──────────────────────────────────────────────
   const [activeOpenBillId, setActiveOpenBillId] = useState<string | null>(null);
   const [openBills, setOpenBills] = useState<HeldCartRow[]>([]);
@@ -65,10 +83,18 @@ export function usePosHeldCarts({
     () => setShowOpenBills(false),
   );
   const loadOpenBills = useCallback(() => {
-    listOpenBillsScoped(sessionToken).then(setOpenBills).catch(() => {
-      addToast({ message: 'Failed to load open bills', type: 'error' });
-    });
-  }, [addToast, sessionToken]);
+    if (!sessionToken) return;
+    // Single choke point: this guards the mount effect, the post-hold refresh
+    // and every caller of the returned `loadOpenBills`.
+    if (!isRestaurantPos) return;
+    listOpenBillsScoped(sessionToken)
+      .then(setOpenBills)
+      .catch((err: unknown) => {
+        const kind = (err as { kind?: string } | null)?.kind;
+        if (kind === 'invalidSession') return;
+        addToast({ message: 'Failed to load open bills', type: 'error' });
+      });
+  }, [addToast, sessionToken, isRestaurantPos]);
 
   // ── Open Bill inline state ────────────────────────────────────
   const [showOpenBillInput, setShowOpenBillInput] = useState(false);
@@ -83,10 +109,10 @@ export function usePosHeldCarts({
   const [openingBill, setOpeningBill] = useState(false);
 
   useEffect(() => {
-    if (showOpenBills) {
+    if (sessionToken || showOpenBills) {
       loadOpenBills();
     }
-  }, [showOpenBills, loadOpenBills]);
+  }, [sessionToken, showOpenBills, loadOpenBills]);
 
   const handleOpenBill = useCallback(async () => {
     if (!activeShift) {

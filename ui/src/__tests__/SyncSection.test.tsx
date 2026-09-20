@@ -135,6 +135,8 @@ const DEFAULT_SYNC: SyncSettingsDto = {
   serverUrl: null,
   hasApiKey: false,
   enabled: false,
+  resolvedOrigin: 'https://license.kasir.mu',
+  resolvedOriginSource: 'main',
 };
 
 function renderSection(overrides: Record<string, unknown> = {}) {
@@ -191,6 +193,31 @@ describe('SyncSection', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
+
+  // ── ADR #55: which origin this install resolved, and which tier won ──
+
+  it('shows the resolved server origin and the tier that won', () => {
+    renderSection({
+      sync: {
+        serverUrl: null,
+        hasApiKey: false,
+        enabled: false,
+        resolvedOrigin: 'https://license.ozpos.my.id',
+        resolvedOriginSource: 'fallback',
+      },
+    });
+    const line = screen.getByTestId('sync-resolved-origin');
+    expect(line).toHaveTextContent('https://license.ozpos.my.id');
+    expect(line).toHaveTextContent('fallback');
+  });
+
+  it('omits the resolved-origin line when the IPC payload lacks the field', () => {
+    // The payload crosses IPC, so the type is a promise rather than a guarantee:
+    // a fixture without the field must not render the string 'undefined'.
+    const legacy = { serverUrl: null, hasApiKey: false, enabled: false } as unknown as SyncSettingsDto;
+    renderSection({ sync: legacy });
+    expect(screen.queryByTestId('sync-resolved-origin')).toBeNull();
+  });
   it('shows not-configured hint when sync is not set up', () => {
     renderSection();
     // Text is rendered via <Localized> which wraps in a <span>
@@ -229,7 +256,7 @@ describe('SyncSection', () => {
   });
 
   it('renders enable sync toggle', () => {
-    renderSection({ sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: false } });
+    renderSection({ sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' } });
     const toggle = screen.getByRole('switch', { name: /toggle/i });
     expect(toggle).toBeInTheDocument();
     expect(toggle).not.toBeChecked();
@@ -239,7 +266,7 @@ describe('SyncSection', () => {
     const markDirty = vi.fn();
     const setSync = vi.fn();
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: false },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       markDirty,
       setSync,
     });
@@ -250,7 +277,7 @@ describe('SyncSection', () => {
 
   it('shows action buttons when sync is configured', () => {
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
     });
     expect(screen.getByText('Test Connection')).toBeInTheDocument();
     expect(screen.getByText('Sync Now')).toBeInTheDocument();
@@ -259,14 +286,14 @@ describe('SyncSection', () => {
 
   it('shows idle status when no sync has run', () => {
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
     });
     expect(screen.getByText('Idle')).toBeInTheDocument();
   });
 
   it('shows sync result block after a sync run', () => {
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       syncResult: { synced: 5, failed: 0, error: undefined },
     });
     // The result block has class "settings-sync-result-block"
@@ -275,7 +302,7 @@ describe('SyncSection', () => {
 
   it('shows sync error when sync fails', () => {
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       syncResult: { synced: 0, failed: 3, error: 'Connection timeout' },
     });
     // Error text is rendered via settings-hint--error class
@@ -284,7 +311,7 @@ describe('SyncSection', () => {
 
   it('shows pull result block after a pull', () => {
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       pullResult: { productsPulled: 10, taxRatesPulled: 2, usersPulled: 1, error: undefined },
     });
     expect(document.querySelector('.settings-sync-result-block')).toBeInTheDocument();
@@ -292,7 +319,7 @@ describe('SyncSection', () => {
 
   it('shows pending badge when queue summary has pending items', () => {
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       queueSummary: {
         pendingCount: 7,
         syncedCount: 12,
@@ -307,7 +334,7 @@ describe('SyncSection', () => {
 
   it('renders the detailed queue status panel with counts and timestamps', () => {
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       queueSummary: {
         pendingCount: 3,
         syncedCount: 41,
@@ -330,7 +357,7 @@ describe('SyncSection', () => {
 
   it('shows "never synced" / "queue empty" when timestamps are missing', () => {
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       queueSummary: {
         pendingCount: 0,
         syncedCount: 0,
@@ -346,7 +373,7 @@ describe('SyncSection', () => {
 
   it('renders the pro plan row from the server', () => {
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       syncPlan: { ok: true, plan: 'pro', status: 'ok' },
     });
     expect(screen.getByTestId('sync-plan-row')).toBeInTheDocument();
@@ -356,7 +383,7 @@ describe('SyncSection', () => {
 
   it('renders the free plan row with the upgrade hint', () => {
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       syncPlan: { ok: true, plan: 'free', status: 'ok' },
     });
     expect(screen.getByTestId('sync-plan-row')).toBeInTheDocument();
@@ -368,7 +395,7 @@ describe('SyncSection', () => {
     // A failed read (old server 404, network error) carries ok:false,
     // plan:null — it must not paint as a known "Free" plan.
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       syncPlan: { ok: false, plan: null, status: 'Server returned 404 Not Found' },
     });
     expect(screen.queryByTestId('sync-plan-row')).toBeNull();
@@ -401,7 +428,7 @@ describe('SyncSection', () => {
     // a few ms after the test's, which would floor 3d - ε down to 2d.
     const futureDate = new Date(Date.now() + 3 * 86_400_000 + 3_600_000).toISOString();
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       tokenExpiresAt: futureDate,
     });
     expect(screen.getByText(/3d remaining/)).toBeInTheDocument();
@@ -410,7 +437,7 @@ describe('SyncSection', () => {
   it('shows expired badge when token is expired', () => {
     const pastDate = new Date(Date.now() - 60_000).toISOString();
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       tokenExpiresAt: pastDate,
     });
     expect(screen.getByText('Expired')).toBeInTheDocument();
@@ -419,7 +446,7 @@ describe('SyncSection', () => {
   it('shows critical expiry <1m when token expires within seconds', () => {
     const nearFuture = new Date(Date.now() + 30_000).toISOString();
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       tokenExpiresAt: nearFuture,
     });
     expect(screen.getByText(/1m remaining/)).toBeInTheDocument();
@@ -431,7 +458,7 @@ describe('SyncSection', () => {
     const testSyncConnection = vi.fn().mockResolvedValue({ ok: true, status: 'Connected', latencyMs: 42 });
     const addToast = vi.fn();
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       testSyncConnection,
       addToast,
     });
@@ -446,7 +473,7 @@ describe('SyncSection', () => {
     const testSyncConnection = vi.fn().mockResolvedValue({ ok: true, status: 'Connected', latencyMs: 42 });
     const addToast = vi.fn();
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       testSyncConnection,
       addToast,
     });
@@ -461,7 +488,7 @@ describe('SyncSection', () => {
     const testSyncConnection = vi.fn().mockRejectedValue(new Error('Network error'));
     const addToast = vi.fn();
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       testSyncConnection,
       addToast,
     });
@@ -477,7 +504,7 @@ describe('SyncSection', () => {
   it('calls syncRun when Sync Now is clicked', async () => {
     const syncRun = vi.fn().mockResolvedValue({ synced: 3, failed: 0, error: undefined });
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       syncRun,
     });
 
@@ -491,7 +518,7 @@ describe('SyncSection', () => {
     const syncRun = vi.fn().mockResolvedValue({ synced: 3, failed: 1, error: undefined });
     const addToast = vi.fn();
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       syncRun,
       addToast,
     });
@@ -506,7 +533,7 @@ describe('SyncSection', () => {
     const syncRun = vi.fn().mockResolvedValue({ synced: 0, failed: 0, error: undefined });
     const addToast = vi.fn();
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       syncRun,
       addToast,
     });
@@ -529,7 +556,7 @@ describe('SyncSection', () => {
     });
     const addToast = vi.fn();
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       syncRun,
       addToast,
     });
@@ -550,7 +577,7 @@ describe('SyncSection', () => {
     const syncRun = vi.fn().mockRejectedValue(new Error('Server unreachable'));
     const addToast = vi.fn();
     renderSection({
-      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true },
+      sync: { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
       syncRun,
       addToast,
     });
@@ -567,7 +594,7 @@ describe('SyncSection', () => {
   // is the app's designed ConfirmDialog — NOT window.confirm(), which renders
   // an off-design, unlocalized OS dialog and blocks the event loop.
 
-  const SYNCED = { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true };
+  const SYNCED = { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' };
   const PULL_OK = { productsPulled: 5, taxRatesPulled: 0, usersPulled: 0, error: undefined };
 
   it('asks for consent in the designed dialog, never via window.confirm', async () => {

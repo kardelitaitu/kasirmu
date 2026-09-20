@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::commands::testing::{assert_refused_by_the_seeded_row, seeded_row_reaches_a_paid_tier};
+
 #[test]
 fn staff_login_args_deserialize() {
     let json = r#"{"username":"cashier1","pin":"1234"}"#;
@@ -851,8 +853,12 @@ async fn l194_switch_organization_records_an_org_switch_event() {
         },
         app.state(),
     )
-    .await
-    .unwrap();
+    .await;
+    if !seeded_row_reaches_a_paid_tier() {
+        assert_refused_by_the_seeded_row(&login, "premium");
+        return;
+    }
+    let login = login.unwrap();
 
     switch_organization(
         login.session_token.clone(),
@@ -1254,7 +1260,7 @@ fn the_debug_upgrade_policy_is_per_client_by_design() {
         tablet.contains("record_security_event(event, false)"),
         "the tablet's recorder no longer passes debug_upgrade: false. If the policies are \
          genuinely being merged, change crates/kasirmu-core/src/db/audit_security.rs's per-client \
-         paragraph and T5-3 in todo-refactor-oz-pos-app-agents-3.md in the same pass -- \
+         paragraph and T5-3 in .agents/reviews/done-todo-refactor-oz-pos-app-agents-3.md in the same pass -- \
          flipping one call site is not a decision about the other"
     );
     assert!(

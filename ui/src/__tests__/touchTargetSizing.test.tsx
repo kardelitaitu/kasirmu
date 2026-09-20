@@ -57,7 +57,7 @@ const INTERACTIVE_SELECTOR_RE =
 // it as 22px); the colour swatches are decorative fill (no text) and are
 // graded by their focus treatment, not their size.
 const RESTAURANT_INTERACTIVE_RE =
-  /^\s*\.(?:restaurant-hamburger-btn|restaurant-back-btn|restaurant-category-pill|restaurant-search-clear|restaurant-context-item|restaurant-size-btn|restaurant-hamburger-item)\s*$/i;
+  /^\s*\.(?:restaurant-sidebar-btn|restaurant-hamburger-btn|restaurant-sidebar-item|restaurant-hamburger-item|restaurant-category-pill|restaurant-search-clear|restaurant-context-item|restaurant-size-btn)\s*$/i;
 
 /** Selectors to skip — known false positives (decorative parts of custom controls). */
 const SKIP_SELECTOR_RE = [

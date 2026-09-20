@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useRef } from 'react';
+import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { useToast } from '@/components/Toast';
 import { requiredLocalized } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
@@ -6,11 +6,16 @@ import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
 import ProductLookupScreen from '@/features/products/ProductLookupScreen';
 import RestaurantMenu from '@/features/restaurant/RestaurantMenu';
-import type { RestaurantSidebarActions } from '@/features/restaurant/components/MenuPreferencesMenu';
+import type { RestaurantSidebarActions, RestaurantSidebarProfile } from '@/features/restaurant/components/RestaurantSidebar';
+import { isTauriWebview } from '@/api/tauri';
+import { pickImageFile } from '@/api/image-pick';
+import { getOwnAvatarScoped, setAvatarScoped } from '@/api/staff';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { FEATURES, useFeatures } from '@/hooks/useFeatures';
 import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 
 import { formatMoney, type LineId, type Product, type Sku } from '@/types/domain';
 import { useSwipe } from '@/hooks/useSwipe';
@@ -183,6 +188,69 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // workspace implies; an explicit "false" hides it.
   const [courseFiringEnabled, setCourseFiringEnabled] = useState<boolean | null>(null);
   const [restaurantSidebarOpen, setRestaurantSidebarOpen] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const { goToWorkspacePicker } = useWorkspaceNav();
+
+  // ── Sidebar header identity ────────────────────────────
+  // The avatar hash is read through `get_own_avatar_scoped`, not the staff
+  // profile: the profile read requires `staff:read`, which a cashier does not
+  // hold, and it fails closed on an undecryptable sensitive column that has
+  // nothing to do with a photo. Refetched after an upload so the header
+  // updates without a re-login.
+  const [avatarHash, setAvatarHash] = useState<string | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  useEffect(() => {
+    if (!sessionToken) {
+      setAvatarHash(null);
+      return;
+    }
+    let cancelled = false;
+    void getOwnAvatarScoped(sessionToken)
+      .then((hash) => { if (!cancelled) setAvatarHash(hash); })
+      .catch(() => { /* offline or unsupported — keep the initials fallback */ });
+    return () => { cancelled = true; };
+  }, [sessionToken]);
+
+  const handleChangePhoto = useCallback(async () => {
+    if (!sessionToken || !session?.user_id || avatarBusy) return;
+    if (!isTauriWebview()) {
+      // The browser dev preview has no dialog plugin, so `pickImageFile`
+      // returns null there — indistinguishable from a cancel. Say so rather
+      // than failing mute. A key-presence test would answer "Tauri" here:
+      // `index.html` installs a partial `__TAURI_INTERNALS__` stub without
+      // `invoke`, and the dialog plugin would then reject on a path with no
+      // toast. Note this is NOT a desktop-only restriction any more: both
+      // shells can change a photo, this guard is about the browser.
+      addToast({ message: requiredLocalized(l10n, 'image-pick-app-only'), type: 'info' });
+      return;
+    }
+    try {
+      const picked = await pickImageFile();
+      if (!picked) return; // the user cancelled — not an error
+      setAvatarBusy(true);
+      try {
+        const hash = await setAvatarScoped(sessionToken, session.user_id, picked.path);
+        setAvatarHash(hash);
+      } finally {
+        // Drops the bridged temp copy; a no-op on desktop, where `path` is the
+        // user's own file.
+        picked.release();
+      }
+    } catch {
+      addToast({ message: requiredLocalized(l10n, 'retail-edit-image-error'), type: 'error' });
+    } finally {
+      setAvatarBusy(false);
+    }
+  }, [sessionToken, session?.user_id, avatarBusy, addToast, l10n]);
+
+  const restaurantProfile = useMemo<RestaurantSidebarProfile | undefined>(() => {
+    if (!session) return undefined;
+    return {
+      displayName: session.display_name,
+      roleName: session.role_name,
+      avatarHash,
+    };
+  }, [session, avatarHash]);
 
   // ── Cart panel resize ──────────────────────────────────
   // Width state, the isResizing latch, both window listeners and the drag
@@ -277,7 +345,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setAppliedPromotions,
   });
   // ── Barcode scanner integration ─────────────────────────────
+  // Disabled on restaurant POS workspace (scanners are for retail checkout).
   useBarcodeScanner({
+    enabled: activeWorkspace !== 'restaurant-pos',
     sessionToken,
     onProductFound: useCallback(async (payload: BarcodeScannedPayload) => {
       if (!activeShiftRef.current) {
@@ -485,9 +555,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
 
   // ── Load receipt settings on mount ────────────────────────────
   useEffect(() => {
+    if (!sessionToken) return;
     getReceiptSettingsScoped(sessionToken)
       .then((s) => setShowTableNumberSetting(s.showTableNumber))
-      .catch(() => addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-receipt-settings-failed'), type: 'error' }));
+      .catch((err: unknown) => {
+        const kind = (err as { kind?: string } | null)?.kind;
+        if (kind === 'invalidSession') return;
+        addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-receipt-settings-failed'), type: 'error' });
+      });
   }, [addToast, sessionToken]); // l10n via ref — stable dep chain
 
   // ── Load restaurant course-firing flag on mount ─────────────────
@@ -499,6 +574,14 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       .then((raw) => setCourseFiringEnabled(raw === 'true'))
       .catch(() => setCourseFiringEnabled(null));
   }, [sessionToken]);
+
+  const handleRequestExit = useCallback(() => {
+    if (activeShift !== null) {
+      handleCloseShiftClick();
+    } else {
+      setShowExitConfirm(true);
+    }
+  }, [activeShift, handleCloseShiftClick]);
 
   // ── Sub-screen: Table Management ─────────────────────────────
   if (showTables) {
@@ -654,6 +737,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     onOpenTables: () => setShowTables(true),
     onOpenHistory: () => setShowSalesHistory(true),
     onOpenKitchenDisplay: () => onNavigate?.('kds'),
+    onRequestExit: handleRequestExit,
   };
 
   return (
@@ -667,6 +751,9 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             sidebarOpen={restaurantSidebarOpen}
             onSidebarOpenChange={setRestaurantSidebarOpen}
             cartActions={restaurantCartActions}
+            profile={restaurantProfile}
+            onChangePhoto={() => { void handleChangePhoto(); }}
+            onRequestExit={handleRequestExit}
           />
         ) : (
           <ProductLookupScreen onAddProduct={handleAddProduct} />
@@ -779,6 +866,20 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         open={showFastPINOverlay}
         onClose={() => setShowFastPINOverlay(false)}
         onVerified={handleDeductionPinVerified}
+      />
+
+      {/* ── Restaurant POS Exit Confirmation ────────────────────────── */}
+      <ConfirmDialog
+        open={showExitConfirm}
+        onCancel={() => setShowExitConfirm(false)}
+        onConfirm={() => {
+          setShowExitConfirm(false);
+          goToWorkspacePicker();
+        }}
+        title={l10n.getString('restaurant-exit-confirm-title')}
+        message={l10n.getString('restaurant-exit-confirm-desc')}
+        variant="warning"
+        confirmLabel={l10n.getString('restaurant-exit-confirm-btn')}
       />
     </div>
   </>

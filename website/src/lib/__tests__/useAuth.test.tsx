@@ -3,9 +3,13 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
-import { useAuth } from '../useAuth';
+import { useAuth, AUTH_ERROR_LABELS } from '../useAuth';
+import { labelMap } from '../../i18n';
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+
+// The hook takes the strings it raises, not a locale (src/i18n/labels.ts).
+const enLabels = labelMap('en', AUTH_ERROR_LABELS);
 
 describe('useAuth hook', () => {
   beforeEach(() => {
@@ -43,7 +47,7 @@ describe('useAuth hook', () => {
   }
 
   it('initializes with default states', async () => {
-    const harness = await renderHookHarness(() => useAuth({ locale: 'en' }));
+    const harness = await renderHookHarness(() => useAuth({ labels: enLabels }));
     expect(harness.current.loading).toBe(false);
     expect(harness.current.error).toBe('');
     expect(harness.current.resendCooldown).toBe(0);
@@ -57,7 +61,7 @@ describe('useAuth hook', () => {
       json: async () => ({}),
     });
 
-    const harness = await renderHookHarness(() => useAuth({ locale: 'en' }));
+    const harness = await renderHookHarness(() => useAuth({ labels: enLabels }));
 
     let success = false;
     await act(async () => {
@@ -77,7 +81,7 @@ describe('useAuth hook', () => {
     });
 
     const onAuthSuccess = vi.fn();
-    const harness = await renderHookHarness(() => useAuth({ locale: 'en', onAuthSuccess }));
+    const harness = await renderHookHarness(() => useAuth({ labels: enLabels, onAuthSuccess }));
 
     let res: { success: boolean; token?: string } = { success: false };
     await act(async () => {
@@ -100,7 +104,7 @@ describe('useAuth hook', () => {
       json: async () => ({ error: 'Invalid password' }),
     });
 
-    const harness = await renderHookHarness(() => useAuth({ locale: 'en' }));
+    const harness = await renderHookHarness(() => useAuth({ labels: enLabels }));
 
     let res: { success: boolean; token?: string } = { success: true };
     await act(async () => {
@@ -118,7 +122,7 @@ describe('useAuth hook', () => {
       json: async () => ({}),
     });
 
-    const harness = await renderHookHarness(() => useAuth({ locale: 'en' }));
+    const harness = await renderHookHarness(() => useAuth({ labels: enLabels }));
 
     let success = false;
     await act(async () => {
@@ -138,7 +142,7 @@ describe('useAuth hook', () => {
       json: async () => ({ error: 'Too many requests' }),
     });
 
-    const harness = await renderHookHarness(() => useAuth({ locale: 'en' }));
+    const harness = await renderHookHarness(() => useAuth({ labels: enLabels }));
 
     let success = true;
     await act(async () => {
@@ -157,7 +161,7 @@ describe('useAuth hook', () => {
       json: async () => ({ error: 'origin rejected' }),
     });
 
-    const harness = await renderHookHarness(() => useAuth({ locale: 'en' }));
+    const harness = await renderHookHarness(() => useAuth({ labels: enLabels }));
 
     let success = true;
     await act(async () => {
@@ -176,7 +180,7 @@ describe('useAuth hook', () => {
       json: async () => ({ error: 'mail relay down' }),
     });
 
-    const harness = await renderHookHarness(() => useAuth({ locale: 'en' }));
+    const harness = await renderHookHarness(() => useAuth({ labels: enLabels }));
 
     let success = true;
     await act(async () => {
@@ -197,7 +201,7 @@ describe('useAuth hook', () => {
       json: async () => ({ error: 'invalid email format' }),
     });
 
-    const harness = await renderHookHarness(() => useAuth({ locale: 'en' }));
+    const harness = await renderHookHarness(() => useAuth({ labels: enLabels }));
 
     let success = true;
     await act(async () => {
@@ -217,7 +221,7 @@ describe('useAuth hook', () => {
       json: async () => ({ error: '' }),
     });
 
-    const harness = await renderHookHarness(() => useAuth({ locale: 'en' }));
+    const harness = await renderHookHarness(() => useAuth({ labels: enLabels }));
 
     let success = true;
     await act(async () => {
@@ -243,7 +247,7 @@ describe('useAuth hook', () => {
       });
 
     const onAuthSuccess = vi.fn();
-    const harness = await renderHookHarness(() => useAuth({ locale: 'en', onAuthSuccess }));
+    const harness = await renderHookHarness(() => useAuth({ labels: enLabels, onAuthSuccess }));
 
     // Step 1: Request reset code
     let codeReqResult: { success: boolean; cooldownUntil?: string } = { success: false };

@@ -6,7 +6,7 @@ findings: clean CRUD + HMAC binding signature for tamper detection; terminal_sec
 next: none | perf: N/A
 */
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use crate::Terminal;
 use crate::downgrade::QuotaDimension;
@@ -58,6 +58,145 @@ impl Store<'_> {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e.into()),
         }
+    }
+
+    /// Resolve the `terminals.id` ROW id behind an identity string a session
+    /// may carry.
+    ///
+    /// Two different values are both called "terminal id" in this codebase,
+    /// and dependent tables key on one while sessions carry the other:
+    /// `terminals.id` is the row's UUID ([`Terminal::new`]) and is what
+    /// dependent foreign keys store, whereas a session's `terminal_id` is the
+    /// DEVICE identity the renderer derived from the `get_device_id` command
+    /// (the machine's hostname) — `create_session` persists that verbatim.
+    /// The two coincide only by accident, so a dependent read that queries the
+    /// raw session value matches no row at all, and does so silently.
+    ///
+    /// Either form resolves. `None` means the device has no terminal row in
+    /// `tenant_id`, and therefore no dependent rows either — there is
+    /// deliberately no "hand the input back unchanged" fallback, because a
+    /// value that cannot resolve is a value that cannot match a foreign key.
+    /// The id form is matched first (`ORDER BY (id = ?2) DESC`): an id always
+    /// beats another row's `device_id`, and ids are what dependents store.
+    ///
+    /// Tenant-scoped to agree with the writers that fan out against this table:
+    /// resolving a terminal another tenant owns would hand the caller an id
+    /// whose dependent rows cannot exist.
+    pub fn resolve_terminal_row_id(
+        &self,
+        tenant_id: &str,
+        identity: &str,
+    ) -> Result<Option<String>, CoreError> {
+        if identity.trim().is_empty() {
+            return Ok(None);
+        }
+        let mut stmt = self.conn.prepare(
+            "SELECT id FROM terminals
+             WHERE tenant_id = ?1 AND (id = ?2 OR device_id = ?2)
+             ORDER BY (id = ?2) DESC
+             LIMIT 1",
+        )?;
+        let result = stmt.query_row(params![tenant_id, identity], |r| r.get::<_, String>(0));
+        match result {
+            Ok(id) => Ok(Some(id)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// The location a terminal is bound to, if any.
+    ///
+    /// `list_terminals`/`get_terminal` deliberately project the terminal's
+    /// display fields only, so the binding has to be read by name when a caller
+    /// needs it (the memo fan-out targets Location Memos through it).
+    pub fn get_terminal_bound_location(&self, id: &str) -> Result<Option<String>, CoreError> {
+        let found: Option<Option<String>> = self
+            .conn
+            .query_row(
+                "SELECT bound_location_id FROM terminals WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(found.flatten())
+    }
+
+    /// Make a terminal that was registered in ANOTHER database addressable to
+    /// the tables here that key on `terminals.id` — the memo fan-out and the
+    /// memo display read.
+    ///
+    /// Terminal registration has two homes: `register_terminal_scoped` writes
+    /// the row into the per-store database (`store-<id>.sqlite`), while the
+    /// MultiTerminal auto-register path writes it into this (global) one. The
+    /// memo tables live here and `memo_recipients.terminal_id` carries an
+    /// enforced FK to `terminals(id)`, so a memo can only be delivered to a
+    /// terminal this table holds a row for — and the recipient's read resolves
+    /// through this table too, which is why the mirror is what makes both ends
+    /// agree instead of merely one.
+    ///
+    /// Idempotent, and addressability is per DEVICE: a row already present for
+    /// the id, or for the device identity, makes this a no-op — if the device is
+    /// already known here under another id, that row is the one delivery must
+    /// use, because the session carries the device identity, not the id.
+    ///
+    /// Deliberately NOT a general terminal re-home: it writes only what delivery
+    /// and the read have to agree on (id, device identity, name, activity,
+    /// metadata, own tenant, and the location binding Location Memos target). No
+    /// `terminal_secret` rides along — a credential belongs to the database that
+    /// minted it. Returns whether it inserted.
+    ///
+    /// On an existing row it refreshes the location binding and nothing else.
+    /// That refresh is what makes a Location Memo deliverable at all: the row
+    /// delivery resolves may already have been mirrored (the sync bootstrap
+    /// mirrors the device before any location is known), and a Location Memo
+    /// fans out through `bound_location_id` — so a row that was mirrored without
+    /// one could never be bound later and every publish to it refused with no
+    /// recipients. `COALESCE` keeps a caller that does not know a location yet
+    /// (passing `None`) from wiping a binding that is already there.
+    pub fn ensure_terminal_addressable(
+        &self,
+        source: &Terminal,
+        tenant_id: &str,
+        bound_location_id: Option<&str>,
+    ) -> Result<bool, CoreError> {
+        let tx = self.conn.unchecked_transaction()?;
+        let existing: Option<String> = tx
+            .query_row(
+                "SELECT id FROM terminals WHERE id = ?1 OR device_id = ?2 LIMIT 1",
+                params![source.id, source.device_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        if let Some(row_id) = existing {
+            tx.execute(
+                "UPDATE terminals SET
+                    bound_location_id = COALESCE(?1, bound_location_id),
+                    updated_at = ?2
+                 WHERE id = ?3",
+                params![bound_location_id, now, row_id],
+            )?;
+            tx.commit()?;
+            return Ok(false);
+        }
+        tx.execute(
+            "INSERT INTO terminals (id, name, device_id, terminal_secret, is_active,
+                                    last_seen_at, metadata, created_at, updated_at,
+                                    tenant_id, bound_location_id)
+             VALUES (?1, ?2, ?3, NULL, ?4, NULL, ?5, ?6, ?6, ?7, ?8)",
+            params![
+                source.id,
+                source.name,
+                source.device_id,
+                source.is_active as i64,
+                source.metadata,
+                now,
+                tenant_id,
+                bound_location_id,
+            ],
+        )?;
+        tx.commit()?;
+        Ok(true)
     }
 
     /// Enforce the subscription tier's terminal/register limit before registering

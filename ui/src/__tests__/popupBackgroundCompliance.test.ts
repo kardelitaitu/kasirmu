@@ -616,7 +616,7 @@ describe('popup surfaces have visible backgrounds', () => {
       ["features/setup/SetupWizard.css",67],
       ["features/setup/components/LiveSetupPreview.css",25],
       ["features/shifts/ShiftManagementScreen.css",101],
-      ["features/staff/RoleAuthoringScreen.css",31],
+      ["features/staff/components/RoleAuthoringPanel.css",29],
       ["features/staff/StaffManagementScreen.css",74],
       ["features/stock-transfers/StockTransfersScreen.css",73],
       ["features/tables/TableManagementScreen.css",44],

@@ -100,6 +100,15 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ),
     ("workspaces::resolve_boot_store", "no_session_resolution"),
     ("license::activate_license", "no_session_resolution"),
+    ("desktop_link::link_device_google", "no_session_resolution"),
+    (
+        "desktop_link::link_device_email_request",
+        "no_session_resolution",
+    ),
+    (
+        "desktop_link::link_device_email_consume",
+        "no_session_resolution",
+    ),
     ("license::get_machine_id", "no_session_resolution"),
     ("license::get_hardware_fingerprint", "no_session_resolution"),
     ("license::renew_license", "no_session_resolution"),
@@ -169,21 +178,39 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("sync::test_sync_connection", "no_session_resolution"),
 ];
 
-/// Registered commands the sweep found today. The floor in
-/// registration_gate_tests.rs is asserted equal to this, so a regenerated ledger
-/// that disagrees with a hand-kept floor fails the build.
-pub const REGISTERED_TOTAL: usize = 447;
+/// Registered commands the sweep found today — measured by `run_sweep` and written here by
+/// the generator, which is why it now reads 461 rather than the 447 that once lagged inside
+/// `REGISTERED_SLACK`. It is NOT the pin: the floor in registration_gate_tests.rs is
+/// measured from the tree itself, and a number here that falls behind means a regeneration
+/// is overdue rather than that a build will fail. (Corrected 18-09-26 with the generator;
+/// this comment described the earlier ledger-versus-ledger comparison the floor leg
+/// replaced. Re-read 20-09-26: regenerated with the floor's raise to 458, then to 461 with
+/// the emailed-code pair's arrival — the floor moved in the same pass both times, because
+/// the generator writing this number does not move it.)
+pub const REGISTERED_TOTAL: usize = 461;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 /// 70 -> 69: `security::rotate_encryption_key` was deregistered, and its ledger row
 /// left in the same commit that moved this number. That coupling is the only way a
 /// ceiling is allowed to go down.
-pub const DEBT_CEILING: usize = 69;
+/// 69 -> 72: RAISED by the device-link half of ADR #54, the first rise in this file.
+/// `desktop_link::link_device_google`, `link_device_email_request` and
+/// `link_device_email_consume` all arrived in class 1 (`no_session_resolution`), so the
+/// measured count went 69 -> 72 and the ledger grew by the same three rows. Class 1 is
+/// STRUCTURAL here rather than an omission: the wizard's account step runs before any
+/// staff session exists and the device authenticates to the licence server with its own
+/// stored credentials, so a session permission would guard a door no session can reach —
+/// the same class `license::activate_license` has always occupied. Recorded in
+/// docs/records/JOURNAL.md, which is what the ceiling pin asks of a rise.
+pub const DEBT_CEILING: usize = 72;
 
 /// Names that never resolve a session at all.
 /// 42: `topology::load_topology` now resolves session (moved to class 2, mirroring
-/// `load_topology_template`). `42 + 27 = 69` still partitions `DEBT_CEILING`.
-pub const NO_SESSION_RESOLUTION: usize = 42;
+/// `load_topology_template`).
+/// 42 -> 45: the three `desktop_link::` rows above. This count is a pin the generator
+/// does not recompute, so it moved by hand in the same pass as the ceiling.
+/// `45 + 27 = 72` partitions `DEBT_CEILING` again.
+pub const NO_SESSION_RESOLUTION: usize = 45;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
 pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 27;

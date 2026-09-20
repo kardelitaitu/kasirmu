@@ -29,6 +29,39 @@ use kasirmu_core::sync_client::{self, PullResult, SyncAttemptResult, SyncConfig}
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
 
+/// Stores the sync credential a completed device link earned (ADR #54 §2.5 step 7).
+///
+/// The two keys are the ones the sync daemon already reads, so turning sync on afterwards finds
+/// them. The secret goes through its typed encrypting setter rather than a raw settings write:
+/// the credential-storage-form gate treats `sync_terminal_secret` as device-protected, and a
+/// plain write would both fail that gate and leave a secret in the clear.
+///
+/// Returns whether anything was stored; a link that earned no credential is not an error.
+pub async fn store_linked_terminal(
+    ctx: &BridgeCtx<'_>,
+    terminal: Option<&kasirmu_core::desktop_link::TerminalCredential>,
+) -> Result<bool, BridgeError> {
+    let Some(terminal) = terminal else {
+        return Ok(false);
+    };
+    if !terminal.issued {
+        return Ok(false);
+    }
+    let (Some(terminal_id), Some(device_secret)) = (
+        terminal.terminal_id.as_deref(),
+        terminal.device_secret.as_deref(),
+    ) else {
+        // `issued` without both halves is a server contract violation, not a user problem.
+        return Err(BridgeError::Internal(
+            "the link reply claimed a credential without one".to_string(),
+        ));
+    };
+    let conn = ctx.lock_global().await;
+    Settings::set_sync_terminal_id(&conn, terminal_id)?;
+    Settings::set_sync_terminal_secret(&conn, device_secret)?;
+    Ok(true)
+}
+
 /// Get the current sync configuration settings.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,6 +72,14 @@ pub struct SyncSettingsDto {
     pub has_api_key: bool,
     /// Enabled.
     pub enabled: bool,
+    /// The origin the app actually resolves to (ADR #55): the environment
+    /// override, an attested pin, or the canonical compiled origin.
+    pub resolved_origin: String,
+    /// Which tier supplied `resolved_origin` — `env-override`, `pinned`, `main`,
+    /// `fallback` or `debug-local`. Carried so the settings surface can say *why*
+    /// an origin won: a silent fallback is otherwise indistinguishable from
+    /// misconfiguration.
+    pub resolved_origin_source: String,
 }
 
 /// Update sync settings.
@@ -170,7 +211,7 @@ pub fn update_pg_sync_settings_data(
 // indicator can recover while auto-provisioning is still writing the
 // persisted settings row. Points at the unified cloud server.
 #[cfg(debug_assertions)]
-const LOCAL_DEV_SYNC_URL: &str = "https://license.kasir.mu";
+const LOCAL_DEV_SYNC_URL: &str = kasirmu_core::server_origin::MAIN_SERVER_ORIGIN;
 
 /// Resolve the URL used by the status-bar health probe.
 ///
@@ -251,10 +292,13 @@ pub async fn get_sync_settings_scoped(
     let api_key = Settings::get_sync_api_key(&db)?.filter(|k| !k.is_empty());
     let enabled = Settings::is_sync_enabled(&db)?;
     drop(db);
+    let resolved = kasirmu_core::attestation::resolved_origin();
     Ok(SyncSettingsDto {
         server_url,
         has_api_key: api_key.is_some(),
         enabled,
+        resolved_origin: resolved.url,
+        resolved_origin_source: resolved.source.as_str().to_string(),
     })
 }
 

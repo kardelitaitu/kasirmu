@@ -104,7 +104,7 @@ export default function WorkspaceSettingsModal({
   }, []);
 
   // ── Exit animation ──────────────────────────────────────────
-  const exit = useExitAnimation(open, onClose, 200);
+  const exit = useExitAnimation(open, onClose, 300);
 
   // ── Focus trap (suspended when nested modal is open) ────────
   const trapActive = exit.shouldRender && !exit.exiting && nestedDepth === 0;

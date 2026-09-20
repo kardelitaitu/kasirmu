@@ -133,8 +133,27 @@ setup-step-staff = Staf
 setup-step-hardware = Perangkat Keras
 setup-step-business-rules = Aturan Bisnis
 setup-step-data-cloud = Data & Cloud
+setup-step-account = Akun
 setup-step-review = Tinjauan
 setup-step-aria = Langkah { $number }: { $label }
+
+setup-account-title = Akun Anda
+setup-account-desc = Opsional. Tautkan POS ini ke akun kasir.mu Anda agar bisa masuk di web dengan Google.
+setup-account-google = Lanjutkan dengan Google
+setup-account-waiting = Menunggu browser Anda…
+setup-account-linked = Tertaut ke { $email }.
+setup-account-failed = Tidak dapat menautkan perangkat ini. Coba lagi, atau lanjutkan tanpa menautkan.
+setup-account-optional = Anda bisa melewati ini. Kunci lisensi Anda tetap menjalankan POS.
+setup-account-tablet = Gunakan kode yang dikirim ke email akun Anda untuk menautkan perangkat ini.
+setup-account-email = Email akun
+setup-account-send = Kirim kode ke email
+setup-account-sent = Kode terkirim. Kedaluwarsa dalam 15 menit.
+setup-account-code = Kode 6 digit
+setup-account-verify = Verifikasi
+# Status saat proses (tablet). `setup-account-waiting` di atas menyebut browser dan tetap
+# dipakai kontrol Google, yang memang membuka browser.
+setup-account-sending = Mengirim kode…
+setup-account-verifying = Memeriksa kode…
 setup-progress-aria = Kemajuan setup
 setup-preset-question = Toko seperti apa yang Anda jalankan?
 setup-preset-desc = Pilih preset untuk memulai dengan cepat, atau sesuaikan setiap fitur nanti.
@@ -341,6 +360,7 @@ settings-btn-revert-aria =
 settings-saved = Tersimpan!
 settings-section-sync = Sinkronisasi Cloud
 settings-sync-server-url = URL Server
+settings-sync-resolved-origin = Server yang dipakai: { $origin } ({ $source })
 settings-sync-api-key = Kunci API
 settings-sync-enabled = Aktifkan Sinkronisasi Cloud
 settings-sync-enabled-aria = Aktifkan/nonaktifkan sinkronisasi cloud

@@ -215,6 +215,22 @@ export default function SyncSection({
           </span>
         </div>
 
+        {/* ADR #55: the origin this install actually resolved — env override, an
+            attested pin, or the compiled default — and which tier won. A silent
+            fallback to the second name is the case this line exists to make visible.
+            Guarded rather than assumed: it arrives over IPC, and a payload without the
+            field must not render "undefined". */}
+        {sync.resolvedOrigin && (
+          <p className="settings-hint" data-testid="sync-resolved-origin">
+            <Localized
+              id="settings-sync-resolved-origin"
+              vars={{ origin: sync.resolvedOrigin, source: sync.resolvedOriginSource }}
+            >
+              <span>{'Server in use: ' + sync.resolvedOrigin + ' (' + sync.resolvedOriginSource + ')'}</span>
+            </Localized>
+          </p>
+        )}
+
         <div className="settings-field settings-field--horizontal">
           <label htmlFor="settings-field-api-key" className="settings-label">
             {l10n.getString('settings-sync-api-key')}

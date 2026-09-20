@@ -1,6 +1,6 @@
 /*
 last audited 31-08-26 by RSA-Agent (user-role campaign, Section D)
-crate: oz-tablet | status: SAFE | lint: CLEAN
+crate: kasirmu-mobile | status: SAFE | lint: CLEAN
 findings: tablet twin of the desktop authz helpers — same map_gate_error to the permissionDenied wire shape, same defer to Store::require_permission[_scoped] (the centralized spec 0047 gate)
 next: none | perf: fine
 */

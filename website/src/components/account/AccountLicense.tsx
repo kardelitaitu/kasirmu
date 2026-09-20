@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { t } from '../../i18n';
+import { t, type Labels } from '../../i18n/labels';
 import { statusLabel, statusPillClass, fmtDate } from './accountShared';
 
 /**
@@ -16,39 +16,41 @@ interface License {
 
 interface Props {
   locale: string;
+  /** Strings this section reads; AccountView passes its own map. */
+  labels: Labels;
   /** Tenant status used as a fallback when the license has no status. */
   tenantStatus: string;
   license?: License;
 }
 
-export default function AccountLicense({ locale, tenantStatus, license }: Props) {
+export default function AccountLicense({ locale, labels, tenantStatus, license }: Props) {
   return (
-    <section className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm" aria-label={t(locale, 'account.license')}>
-      <h2 className="text-lg font-semibold">{t(locale, 'account.license')}</h2>
+    <section className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm" aria-label={t(labels, 'account.license')}>
+      <h2 className="text-lg font-semibold">{t(labels, 'account.license')}</h2>
       <dl className="mt-4 grid gap-3.5 text-sm sm:grid-cols-2">
         <div>
-          <dt className="text-muted">{t(locale, 'account.licenseKey')}</dt>
+          <dt className="text-muted">{t(labels, 'account.licenseKey')}</dt>
           <dd className="mt-1 flex items-center gap-2">
             <span className="font-mono bg-ink/5 px-2.5 py-1 rounded text-xs select-all border border-ink/10">
               {license?.key ?? '—'}
             </span>
-            {license?.key && <CopyKeyButton locale={locale} licenseKey={license.key} />}
+            {license?.key && <CopyKeyButton labels={labels} licenseKey={license.key} />}
           </dd>
         </div>
         <div>
-          <dt className="text-muted">{t(locale, 'account.tier')}</dt>
+          <dt className="text-muted">{t(labels, 'account.tier')}</dt>
           <dd className="mt-1 font-medium capitalize">{license?.tierKey ?? '—'}</dd>
         </div>
         <div>
-          <dt className="text-muted">{t(locale, 'account.status')}</dt>
+          <dt className="text-muted">{t(labels, 'account.status')}</dt>
           <dd className="mt-1 capitalize">
             <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPillClass(license?.status ?? tenantStatus)}`}>
-              {statusLabel(locale, license?.status ?? tenantStatus)}
+              {statusLabel(labels, license?.status ?? tenantStatus)}
             </span>
           </dd>
         </div>
         <div>
-          <dt className="text-muted">{t(locale, 'account.expires')}</dt>
+          <dt className="text-muted">{t(labels, 'account.expires')}</dt>
           <dd className="mt-1">{fmtDate(license?.expiresAt, locale)}</dd>
         </div>
       </dl>
@@ -59,7 +61,7 @@ export default function AccountLicense({ locale, tenantStatus, license }: Props)
 /** Copy-key button with a transient success label. Falls back to
  * execCommand('copy') when navigator.clipboard is unavailable (plain HTTP,
  * local dev), and only shows "Copied!" on actual success. */
-function CopyKeyButton({ locale, licenseKey }: { locale: string; licenseKey: string }) {
+function CopyKeyButton({ labels, licenseKey }: { labels: Labels; licenseKey: string }) {
   const [copiedKey, setCopiedKey] = useState(false);
   const timerRef = useRef<number | null>(null);
 
@@ -84,12 +86,12 @@ function CopyKeyButton({ locale, licenseKey }: { locale: string; licenseKey: str
       type="button"
       onClick={copy}
       className="inline-flex items-center gap-1 rounded border border-ink/15 bg-surface px-2 py-1 text-xs font-medium text-ink transition hover:bg-ink/5"
-      aria-label={t(locale, 'account.copyKey')}
+      aria-label={t(labels, 'account.copyKey')}
     >
       {copiedKey ? (
-        <span className="text-success font-semibold">{t(locale, 'account.copied')}</span>
+        <span className="text-success font-semibold">{t(labels, 'account.copied')}</span>
       ) : (
-        <span>{t(locale, 'account.copyKey')}</span>
+        <span>{t(labels, 'account.copyKey')}</span>
       )}
     </button>
   );

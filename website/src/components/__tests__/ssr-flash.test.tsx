@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { labelMap } from '../../i18n';
 
 /**
  * Regression net for the "auth API is not configured" flash (2026-08-17).
@@ -18,8 +19,10 @@ const NOT_CONFIGURED = 'The auth API is not configured on this deployment.';
 
 describe('SSR first paint — auth forms', () => {
   it('AuthForm server HTML never contains the not-configured notice', async () => {
-    const { default: AuthForm } = await import('../AuthForm');
-    const html = renderToString(createElement(AuthForm, { locale: 'en' }));
+    const { default: AuthForm, AUTH_FORM_LABELS } = await import('../AuthForm');
+    const html = renderToString(
+      createElement(AuthForm, { locale: 'en', labels: labelMap('en', AUTH_FORM_LABELS) }),
+    );
     expect(html).not.toContain(NOT_CONFIGURED);
     // The real form must render instead: the email-code / password tabs.
     expect(html).toContain('Email code');
@@ -27,8 +30,10 @@ describe('SSR first paint — auth forms', () => {
   });
 
   it('SignupForm server HTML never contains the not-configured notice', async () => {
-    const { default: SignupForm } = await import('../SignupForm');
-    const html = renderToString(createElement(SignupForm, { locale: 'en' }));
+    const { default: SignupForm, SIGNUP_FORM_LABELS } = await import('../SignupForm');
+    const html = renderToString(
+      createElement(SignupForm, { locale: 'en', labels: labelMap('en', SIGNUP_FORM_LABELS) }),
+    );
     expect(html).not.toContain(NOT_CONFIGURED);
     expect(html).toContain('type="email"');
   });

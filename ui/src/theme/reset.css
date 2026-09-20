@@ -31,6 +31,10 @@ html {
   text-rendering: optimizeLegibility;
 }
 
+/* Display insets (`--inset-*`) are declared in `ui/src/theme/tokens.css`,
+   which is where the token layer lives and what `themeTokenCompliance`
+   reads. This sheet is a reset, so it does not define tokens. */
+
 html[data-font-smoothing="subpixel"] {
   -webkit-font-smoothing: subpixel-antialiased;
   -moz-osx-font-smoothing: auto;

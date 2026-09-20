@@ -221,6 +221,57 @@ fn preference_survives_an_empty_registry() {
     assert!(prefer_first(vec![], "a").is_empty());
 }
 
+// ── ids_for_mode ────────────────────────────────────────────────────
+
+fn ids_of(v: &[&str]) -> Vec<String> {
+    v.iter().map(|s| (*s).to_string()).collect()
+}
+
+#[test]
+fn keyboard_mode_offers_no_scanner_at_all() {
+    // A keyboard-wedge scanner types into the focused field and sends
+    // Enter; there is no port for HAL to open. Offering one anyway is how
+    // a wedge terminal came to open COM7 and report a scanner failure.
+    let got = crate::hardware::ids_for_mode(
+        ids_of(&["scanner:usb:1", "scanner:serial:COM7"]),
+        "keyboard",
+    );
+    assert!(got.is_empty(), "{got:?} must be empty in keyboard mode");
+}
+
+#[test]
+fn a_disabled_scanner_offers_nothing() {
+    // "none" is the explicit off switch added alongside the mode select.
+    let got = crate::hardware::ids_for_mode(ids_of(&["scanner:usb:1"]), "none");
+    assert!(got.is_empty());
+}
+
+#[test]
+fn serial_mode_offers_only_port_backed_scanners() {
+    let got = crate::hardware::ids_for_mode(
+        ids_of(&["scanner:usb:1", "scanner:serial:COM7", "scanner:bt:COM9"]),
+        "serial",
+    );
+    // Filtering preserves the list's order, which is the family-ranked
+    // order from the registry — it does not re-sort.
+    assert_eq!(got, ids_of(&["scanner:serial:COM7", "scanner:bt:COM9"]));
+}
+
+#[test]
+fn auto_and_unset_modes_offer_everything() {
+    // A profile predating the mode field reads as "", which must behave
+    // like auto rather than silently disabling the scanner.
+    for mode in ["auto", "", "AUTO", " something-else "] {
+        let got =
+            crate::hardware::ids_for_mode(ids_of(&["scanner:usb:1", "scanner:serial:COM7"]), mode);
+        assert_eq!(
+            got,
+            ids_of(&["scanner:usb:1", "scanner:serial:COM7"]),
+            "mode {mode:?} must not narrow the list"
+        );
+    }
+}
+
 #[tokio::test]
 async fn starting_a_scanner_without_an_event_sink_fails_closed() {
     // Wave-D Option A: the shell emits barcode:* through the injected sink;
