@@ -375,6 +375,12 @@ The wizard's step 7 offers *link this device to my account*. The Google variant:
    credential/device lists (§1.4), so encryption and non-export are inherited, not invented.
    The listener closes; the page says "return to the app".
 
+**The one browser page on this path speaks both site languages (2026-09-26).** The tab that
+lands on the loopback listener is served by Rust, so the app's Fluent bundles cannot reach it,
+and routing a locale through the IPC to choose a single sentence would cost more than the
+sentence. It carries the English line and its Indonesian twin (`lang="id"`), which is better
+than one language that is wrong for half the merchants. A test asserts both are present.
+
 **No session is created and none is stored.** The transient state is a one-time code with a
 short TTL. Consequence: the in-memory `webOtpStore` and its restart behaviour (§1.1) never
 become a desktop problem, and there is no refresh-token model to design.
