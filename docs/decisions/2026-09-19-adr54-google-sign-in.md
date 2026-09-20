@@ -527,6 +527,19 @@ credential-storage-form gate is satisfied rather than sidestepped.
 > also *writes* them on its own pairing path, so the two are two ways to the same state rather than a
 > conflict: whichever ran last holds a credential the server has registered, and a superseded
 > `sync_terminals` row is inert because verification looks up by `(terminal_id, secret_hash)`.
+>
+> **Why the registration carries a `tenant_id` when the bootstrap's does not.** Measured, because the
+> two paths differ and only one of them can be right for a licensed device: `verify_terminal_credentials`
+> is a **pre-tenant read** under a BYPASSRLS discovery role whose whole purpose is to *learn* the tenant
+> from the row (`kasirmu-api/src/pg.rs:986-1023`), and `sync_terminals` is FORCE-RLS with
+> `USING (tenant_id = current_setting('oz.tenant_id', true))` (`pg_tests.rs:1402-1403`). So the row's
+> `tenant_id` is the authority for the tenant every token minted from that credential will act as: send
+> the wrong one and the row exists but its own device cannot see it. The bootstrap's tenant-less
+> registration (`sync_bootstrap.rs:325-331`) is the legacy/dev pairing whose own comment says the claim it
+> produces "simply identifies no recipient row" — not a model for a licensed device.
+>
+> Not claimed: that the cloud holds a *plan* row for that tenant. Unknown tenants read as free, which the
+> gate tolerates deliberately (`sync_client.rs:398`, "a free tenant is gated, not broken").
 behind it — and the terminal credential both paths still owe (step 6).
 
 ### 2.7 Tablet: the email path, never the Google one
