@@ -622,7 +622,11 @@ curl -sS -X POST "https://api.northflank.com/v1/projects/$PROJECT/services/$SERV
 auto-builds + auto-deploys on every push itself. Same outcome, but invisible in
 GitHub Actions. Until 2026-09-02 this sentence recommended `deploy.yml` as "the
 preferred, auditable path"; that workflow is retired (`deploy.yml.bak`, `23c963303`)
-and its `northflank-deploy` successor in `dev-ci.yml` cannot fire on push — see §8.5.
+and its `northflank-deploy` successor **is live** in `dev-ci.yml` and **does** fire on push
+(`on.push` at `:6-7`), gated for *both* entry points on `github.ref == 'refs/heads/main'`
+(`:753-763`): a merge to `main` deploys, a dispatch **from `main`** deploys, and a dispatch
+from a `0.0.*` branch is refused on purpose. The sentence that stood here claimed the deploy
+"cannot fire on push"; the workflow's own comment at `:749-751` names that claim as false.
 So today the native git trigger is the **only** automatic option — which is the
 outcome this paragraph used to call the less auditable one.
 
