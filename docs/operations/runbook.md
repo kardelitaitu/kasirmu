@@ -570,6 +570,11 @@ failures to expect, and what each means:
   for the web form and `/api/v1/desktop/link/` for the device link (step 7b of the
   licence-server deploy). A web sign-in that works while the wizard's Google button does not
   is exactly this: the desktop path missing from the console.
+  > **You can check registration without the console.** Ask Google: build the authorize URL
+  > with the client id and the callback under test and GET it. An unregistered `redirect_uri`
+  > answers `400 redirect_uri_mismatch` *before* consent; a registered one answers `302`
+  > onward. Measured 2026-09-26 — it settled a "did we register these?" question in one call,
+  > and a `302` also proves the client id itself is valid.
 - `400 invalid oauth state` after the consent screen: the browser did not send the
   `oz_oauth_state` cookie back — something in front of the licence host is stripping
   cookies, or the flow was started on one host and returned to the other.
