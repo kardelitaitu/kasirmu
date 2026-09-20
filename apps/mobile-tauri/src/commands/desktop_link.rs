@@ -1,0 +1,43 @@
+//! Device-link commands (ADR #54 §2.5) — the tablet shell's copy of the desktop command.
+//!
+//! The setup wizard lives in the shared `ui/`, so this step renders in BOTH shells; a command
+//! only one shell registered would be an IPC parity gap the tablet discovers at runtime.
+//!
+//! The body is the same bridge call; the device's own credentials are read from the encrypted
+//! Settings row, so no licence secret crosses IPC.
+
+use std::time::Duration;
+
+use tauri::State;
+
+use crate::error::AppError;
+use crate::state::AppState;
+
+/// How long the wizard waits for the browser round trip (the server's pending link lives ten
+/// minutes; five is enough for a consent screen and short enough not to pin a spinner).
+const LINK_WAIT: Duration = Duration::from_secs(300);
+
+/// Link this device to the account that signs in with Google.
+#[tauri::command]
+pub async fn link_device_google(
+    state: State<'_, AppState>,
+) -> Result<kasirmu_core::desktop_link::LinkedAccount, AppError> {
+    let (api_key, machine_id) = {
+        let ctx = state.bridge_ctx();
+        kasirmu_bridge::license::stored_credentials(&ctx).await?
+    };
+    let base_url = kasirmu_core::attestation::resolved_origin().url;
+    kasirmu_bridge::desktop_link::link_device(
+        &base_url,
+        &api_key,
+        &machine_id,
+        LINK_WAIT,
+        |url: String| async move {
+            crate::commands::browser::open_in_browser(&url)
+                .await
+                .map_err(|e| kasirmu_bridge::error::BridgeError::Internal(e.to_string()))
+        },
+    )
+    .await
+    .map_err(Into::into)
+}

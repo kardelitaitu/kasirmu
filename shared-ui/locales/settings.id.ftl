@@ -133,8 +133,17 @@ setup-step-staff = Staf
 setup-step-hardware = Perangkat Keras
 setup-step-business-rules = Aturan Bisnis
 setup-step-data-cloud = Data & Cloud
+setup-step-account = Akun
 setup-step-review = Tinjauan
 setup-step-aria = Langkah { $number }: { $label }
+
+setup-account-title = Akun Anda
+setup-account-desc = Opsional. Tautkan POS ini ke akun kasir.mu Anda agar bisa masuk di web dengan Google.
+setup-account-google = Lanjutkan dengan Google
+setup-account-waiting = Menunggu browser Anda…
+setup-account-linked = Tertaut ke { $email }.
+setup-account-failed = Tidak dapat menautkan perangkat ini. Coba lagi, atau lewati dan tautkan nanti.
+setup-account-optional = Anda bisa melewati ini. Kunci lisensi Anda tetap menjalankan POS.
 setup-progress-aria = Kemajuan setup
 setup-preset-question = Toko seperti apa yang Anda jalankan?
 setup-preset-desc = Pilih preset untuk memulai dengan cepat, atau sesuaikan setiap fitur nanti.

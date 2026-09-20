@@ -638,6 +638,7 @@ pub fn run() {
                 commands::setup::get_enabled_features,
                 commands::setup::complete_setup,
                 commands::setup::dismiss_setup_wizard,
+                commands::desktop_link::link_device_google,
                 commands::browser::open_product_images,
                 commands::setup::get_setup_status,
                 commands::tax::list_tax_rates_scoped,

@@ -19,6 +19,8 @@ pub mod avatars;
 pub mod branding;
 /// External-browser commands (ADR #38).
 pub mod browser;
+/// Device-link commands (ADR #54 §2.5).
+pub mod desktop_link;
 /// Product bundle commands.
 pub mod bundles;
 /// Category CRUD commands.

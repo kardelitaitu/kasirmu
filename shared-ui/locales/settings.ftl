@@ -52,8 +52,17 @@ setup-step-staff = Staff
 setup-step-hardware = Hardware
 setup-step-business-rules = Business Rules
 setup-step-data-cloud = Data & Cloud
+setup-step-account = Account
 setup-step-review = Review
 setup-step-aria = Step { $number }: { $label }
+
+setup-account-title = Your account
+setup-account-desc = Optional. Link this POS to your kasir.mu account so you can sign in on the web with Google.
+setup-account-google = Continue with Google
+setup-account-waiting = Waiting for your browser…
+setup-account-linked = Linked to { $email }.
+setup-account-failed = Could not link this device. You can try again, or skip and link it later.
+setup-account-optional = You can skip this. Your licence key still runs the POS.
 
 setup-progress-aria = Setup progress
 

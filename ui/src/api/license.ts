@@ -45,6 +45,28 @@ export async function getMachineId(): Promise<string> {
   return loggedInvoke('get_machine_id');
 }
 
+/** The account a device was linked to (ADR #54). */
+export interface LinkedAccountDto {
+  /** Tenant record id the identity was bound to. */
+  tenantId: string;
+  /** Provider key — `google` today. */
+  provider: string;
+  /** The address the provider verified. */
+  email: string;
+}
+
+/**
+ * Link this device to the account that signs in with Google (ADR #54 §2.5).
+ *
+ * Opens the system browser at Google's consent screen and waits for the licence server's
+ * one-time code on a loopback port, so this call resolves only once the user has finished
+ * (or the wait times out) — several minutes, not milliseconds. The device's own licence
+ * credentials are read by the shell; no secret is passed from here.
+ */
+export async function linkDeviceGoogle(): Promise<LinkedAccountDto> {
+  return loggedInvoke('link_device_google');
+}
+
 /**
  * Get the device-level hardware fingerprint (SPEC-2026-TRIAL-LOCK):
  * "hw_" + SHA-256 hex of the hardware anchor, stable across reinstalls.

@@ -58,7 +58,7 @@ function selectPreset(index: number) {
 
 /** Navigate through remaining steps from current step to review. */
 function navigateToReview() {
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 7; i++) {
     clickNext();
   }
 }
@@ -230,7 +230,7 @@ describe('SetupWizard — interactions', () => {
     expect(screen.getByText('Payment Methods')).toBeInTheDocument();
   });
 
-  it('navigates through all 8 steps', () => {
+  it('navigates through all 9 steps', () => {
     render(<SetupWizard />, { wrapper: FluentWrapper });
 
     selectPreset(0);
@@ -242,6 +242,7 @@ describe('SetupWizard — interactions', () => {
       'Hardware & Peripherals',
       'Business Rules',
       'Data, Reporting & Cloud',
+      'Your account',
       'Review Your Setup',
     ];
 
@@ -270,7 +271,7 @@ describe('SetupWizard — interactions', () => {
     expect(dots[2]).toHaveClass('setup-step-dot--pending');
   });
 
-  // ── Review screen (Step 8) ─────────────────────────────────────
+  // ── Review screen (Step 9) ─────────────────────────────────────
 
   it('review screen shows enabled and disabled feature tag clouds', () => {
     render(<SetupWizard />, { wrapper: FluentWrapper });
@@ -369,7 +370,7 @@ describe('SetupWizard — interactions', () => {
     clickNext();
     await toggleFeature('Inventory Tracking');
 
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       clickNext();
     }
 

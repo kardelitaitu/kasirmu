@@ -289,7 +289,13 @@ const SCREENS: ScreenEntry[] = [
   {
     name: 'SetupWizard',
     tsx: 'setup/SetupWizard.tsx',
+    // `StepAccount.tsx` shares this sheet, so the used-class walk has to read it.
+    // `lsp-root` lives in `components/LiveSetupPreview.css`, but the wizard sheet names it
+    // inside a `:has()` — so it belongs to a child component, which is what externalClasses
+    // is for (the dead-class walk reads this file's TSX, not the child's).
     css: ['setup/SetupWizard.css'],
+    additionalTsx: ['setup/components/StepAccount.tsx'],
+    externalClasses: ['lsp-root'],
   },
 
   // ── Customers ─────────────────────────────────────────
