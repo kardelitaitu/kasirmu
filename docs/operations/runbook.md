@@ -547,6 +547,12 @@ curl -s -X POST "$BASE/api/v1/desktop/link/email/consume" -H 'Content-Type: appl
 ```
 
 Then finish **one real sign-in in a browser** and confirm the account portal lists it
+
+**Known dead end, deliberate (ADR #54 §9 O2).** Account linking lives only in the setup wizard, so
+a device that skipped the Account step — or whose credential was revoked — cannot be linked from
+inside the running app; there is no Settings repair path. Recovery means re-running the wizard on a
+fresh install. The wizard's failure copy says "continue without linking" rather than promising a
+later path, because there is none.
 under *Sign-in methods* — that is the only check that exercises Google itself. Two
 failures to expect, and what each means:
 

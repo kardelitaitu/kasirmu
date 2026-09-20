@@ -726,11 +726,13 @@ rendered where it is relied on, rather than left implicit in a server comment.
 
 An unknown provider renders as its raw name instead of a blank row, so a future GitHub identity
 degrades visibly rather than silently.
-- **Loopback any-port behaviour for a Desktop-type client is assumed, not yet proven here.**
-  It is how installed-app CLIs work and the doc describes a random available port, but it is
-  the first thing to confirm in the sandbox (§8). If it proves false, the fix is
-  configuration only — a Web-type client with one pinned, registered port — not a code
-  change.
+- **~~Loopback any-port behaviour for a Desktop-type client is assumed, not yet proven here.~~**
+  **Resolved 2026-09-26 — the question is moot in the shipped design.** Google never sees the
+  app's port: the desktop link uses the same **Web-application** client as the web flow, the
+  registered callback belongs to the licence server (§2.8), and the server then hands the app a
+  one-time code at `http://127.0.0.1:<port>` — a plain redirect to a listener on the same
+  machine, with no Google-side registration or behaviour involved. What this bullet called the
+  fallback *is* what shipped; reading the handler and the console table settled it, not testing.
 - **A wizard-only entry point has no in-app repair path.** See §9 O2.
 - **The licence server makes one outbound call to `kasirmu-api`** to register the terminal
   (§2.5 step 6), adding a cross-service dependency and an admin key (`OZ_ADMIN_KEY`) to the
@@ -807,6 +809,9 @@ Each phase ships independently.
   keep the wizard as the only *entry point* surface but let Settings → Sync re-run the same
   one-shot link (§2.5/§2.6) — still no session, still no account UI. Otherwise the dead end
   is deliberate and should be stated in the support runbook.
+  **Partly discharged 2026-09-26:** the wizard's failure copy said "skip and link it later",
+  which promised this missing repair path in words; it now says "continue without linking", and the
+  support runbook states the dead end (option two above) with the reason it is deliberate.
 - **O3 — Email mismatch in the wizard.** Recommended: refuse and name the registered
   address, offering the email-code method. The alternative is to allow a mismatch whenever
   the device presents a valid `api_key`, which re-opens §2.5's physical-access risk.
