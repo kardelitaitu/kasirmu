@@ -20,8 +20,8 @@ the rest), and a tool that reports stale line numbers on every row would drown t
 noise this ledger's own convention already disowns: names carry, lines rot.
 
 Usage:
-    python .agents/verify-plan-citations.py [path/to/plan.md ...]
-    python .agents/verify-plan-citations.py --self-test
+    python .agents/scripts/verify-plan-citations.py [path/to/plan.md ...]
+    python .agents/scripts/verify-plan-citations.py --self-test
 """
 from __future__ import annotations
 
@@ -29,7 +29,12 @@ import pathlib
 import re
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+# Three levels up, not two: this file lives in `.agents/scripts/`, so `parent.parent`
+# is `.agents` and every citation gets graded against the wrong directory — which is what
+# silently happened when the script moved here from `.agents/`, and it reports present
+# paths as STALE rather than failing loudly. The self-test cannot catch it: `self_test()`
+# overwrites ROOT with its own temp tree, so it is green while a real run is wrong.
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 
 ROW_RE = re.compile(r"^[ \t]*[-*][ \t]+\[[ \t]\][ \t]+(.*)$", re.M)
 CITE_RE = re.compile(r"`((?:ui|apps|crates|scripts|docs|packages|modules|platform|tests)/[A-Za-z0-9_./+-]*)`")
@@ -136,7 +141,7 @@ def main() -> int:
         return 1 if bad else 0
 
     plans = [pathlib.Path(a) for a in sys.argv[1:] if not a.startswith("-")] or [
-        ROOT / "todo-refactor-kasirmu-app-agents-3.md"
+        ROOT / ".agents" / "reviews" / "done-todo-refactor-oz-pos-app-agents-3.md"
     ]
     worst = 0
     for plan in plans:
