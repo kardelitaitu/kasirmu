@@ -3,6 +3,16 @@ name: onboarding-guide
 description: Meta-skill that routes tasks to the right kasir.mu skill. Use when starting a new task and unsure which specialized skill applies. Read this first when joining the project or picking up an unfamiliar area.
 ---
 
+<!-- Audit stamp: 2026-09-20 · Budak-Korporat · status: PARTIAL — router only. Added the
+`css-layout-verification` row to the skill router, pointing at
+`.agents/skills/css-layout-verification/SKILL.md`. Verified this pass: that skill file exists and
+declares the matching `name`; the paths the new skill cites (`ui/src/app/tablet/tablet.css`,
+`ui/src/app/tablet/TabletAppLayout.tsx`, `ui/src/__tests__/restaurantCardHeight.test.ts`,
+`ui/e2e/playwright.config.ts`, `ui/src/theme/tokens.css`) all exist; `@playwright/test` resolves from
+`ui/node_modules` with Chromium under AppData/Local/ms-playwright, and the measurements quoted in the
+skill were re-run this pass rather than transcribed. Nothing else in this file was re-audited this
+pass; the 2026-09-19, 2026-09-08 and 2026-09-15 stamps below still stand for the rest. -->
+
 <!-- Audit stamp: 2026-09-19 · Budak-Korporat · status: PARTIAL — router only. Added two rows to the
 skill router — `brand-asset-pipeline` and `android-apk-build` — each pointing at
 `.agents/skills/<name>/SKILL.md`. Also merged a DUPLICATE `brand-asset-pipeline` row and its duplicate
@@ -73,6 +83,7 @@ What do you want to do?
 | Diagnose, reproduce, and repair failing tests or CI checks on an active pull request | **`pr-repair`** |
 | Create a new pull request with branch-prefixed title and comprehensive description derived from 50–100 commits | **`pr-create-pull-request`** |
 | Explore code structurally instead of grepping — find symbols, trace callers and callees, map a change's blast radius, audit dead code or hot paths, query the knowledge graph | **`codebase-memory`** |
+| Prove what a stylesheet actually does when jsdom cannot compute layout — which edge a fixed bar lands on, whether a strip overflows, whether a label is clipped or wrapped; or when a CSS-contract test passes but the UI looks wrong | **`css-layout-verification`** |
 
 **Discovery is not a router row — it is a standing rule.** `AGENTS.md` requires the knowledge
 graph *before* reading files or grepping for symbols, so `codebase-memory` applies to every
