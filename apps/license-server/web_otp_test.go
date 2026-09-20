@@ -944,8 +944,8 @@ func TestOTPStore_SweepRemovesExpired(t *testing.T) {
 		codes:    make(map[string]*otpCode),
 		sessions: make(map[string]*webSession),
 	}
-	store.codes["expired@example.com"] = &otpCode{hash: "x", expiresAt: time.Now().Add(-time.Minute)}
-	store.codes["fresh@example.com"] = &otpCode{hash: "y", expiresAt: time.Now().Add(time.Hour)}
+	store.codes["expired@example.com"] = &otpCode{purpose: purposeLogin, hash: "x", expiresAt: time.Now().Add(-time.Minute)}
+	store.codes["fresh@example.com"] = &otpCode{purpose: purposeLogin, hash: "y", expiresAt: time.Now().Add(time.Hour)}
 	store.sessions["expiredhash"] = &webSession{tenantID: "t", expiresAt: time.Now().Add(-time.Minute)}
 	store.sessions["freshhash"] = &webSession{tenantID: "t", expiresAt: time.Now().Add(time.Hour)}
 

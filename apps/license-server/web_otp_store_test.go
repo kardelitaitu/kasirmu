@@ -25,9 +25,32 @@ func TestStore_StoreAndTakeCode(t *testing.T) {
 	}
 }
 
+// §2.6: the store keys by purpose as well as by email. The property has two halves, and the
+// second is the one a careless implementation drops — the wrong door must refuse WITHOUT
+// consuming, or a login attempt could destroy the link code the user was just sent.
+func TestStore_CodesArePurposeScoped(t *testing.T) {
+	s := &otpStore{codes: map[string]*otpCode{}, sessions: map[string]*webSession{}}
+	s.storeCodeFor(purposeLink, "a@b.com", "link-hash")
+
+	if _, ok := s.takeCode("a@b.com"); ok {
+		t.Fatal("a link code must not be spendable as a login code")
+	}
+	if hash, ok := s.takeCodeFor(purposeLink, "a@b.com"); !ok || hash != "link-hash" {
+		t.Fatal("the wrong door must refuse without consuming the code")
+	}
+
+	s.storeCode("a@b.com", "login-hash")
+	if _, ok := s.takeCodeFor(purposeLink, "a@b.com"); ok {
+		t.Fatal("a login code must not be spendable as a link code")
+	}
+	if hash, ok := s.takeCode("a@b.com"); !ok || hash != "login-hash" {
+		t.Fatal("the link door must refuse without consuming a login code")
+	}
+}
+
 func TestStore_TakeCodeExpired(t *testing.T) {
 	s := &otpStore{codes: map[string]*otpCode{}, sessions: map[string]*webSession{}}
-	s.codes["a@b.com"] = &otpCode{hash: "abc123", expiresAt: time.Now().Add(-time.Minute)}
+	s.codes["a@b.com"] = &otpCode{purpose: purposeLogin, hash: "abc123", expiresAt: time.Now().Add(-time.Minute)}
 	if _, ok := s.takeCode("a@b.com"); ok {
 		t.Error("takeCode must miss for an expired code")
 	}
@@ -106,8 +129,8 @@ func TestStore_TouchSessionUnknownNoOp(t *testing.T) {
 
 func TestStore_SweepRemovesExpiredCodesAndSessions(t *testing.T) {
 	s := &otpStore{codes: map[string]*otpCode{}, sessions: map[string]*webSession{}}
-	s.codes["expired"] = &otpCode{hash: "x", expiresAt: time.Now().Add(-time.Minute)}
-	s.codes["fresh"] = &otpCode{hash: "y", expiresAt: time.Now().Add(time.Hour)}
+	s.codes["expired"] = &otpCode{purpose: purposeLogin, hash: "x", expiresAt: time.Now().Add(-time.Minute)}
+	s.codes["fresh"] = &otpCode{purpose: purposeLogin, hash: "y", expiresAt: time.Now().Add(time.Hour)}
 	s.sessions["sess-expired"] = &webSession{tenantID: "t", expiresAt: time.Now().Add(-time.Minute)}
 	s.sessions["sess-fresh"] = &webSession{tenantID: "t", expiresAt: time.Now().Add(time.Hour)}
 

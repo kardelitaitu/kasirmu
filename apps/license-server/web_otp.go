@@ -61,9 +61,25 @@ const (
 
 // ── In-memory stores ─────────────────────────────────────────────────
 
+// otpPurpose keeps codes from being interchangeable across flows (ADR #54 §2.6):
+// a code minted to prove an account for a device link must not be spendable as a
+// login, and a login code must not be spendable as a link. The store keys by
+// purpose as well as by email, and a code presented to the wrong flow is refused
+// without being consumed.
+type otpPurpose string
+
+const (
+	// purposeLogin covers every existing code: web sign-in, password reset, recovery.
+	purposeLogin otpPurpose = "login"
+	// purposeLink proves the account for a device link (the tablet's path, and the
+	// desktop fallback when the account is not a Google one).
+	purposeLink otpPurpose = "link"
+)
+
 // otpCode is a pending verification code for one email.
 type otpCode struct {
 	hash      string // sha256 of the 6-digit code (never store plaintext)
+	purpose   otpPurpose
 	expiresAt time.Time
 }
 
@@ -86,21 +102,37 @@ var webOtpStore = &otpStore{
 	sessions: make(map[string]*webSession),
 }
 
-// storeCode records a pending code for the email.
+// storeCode records a pending LOGIN code for the email.
 func (s *otpStore) storeCode(email, codeHash string) {
+	s.storeCodeFor(purposeLogin, email, codeHash)
+}
+
+// storeCodeFor records a pending code for one purpose.
+func (s *otpStore) storeCodeFor(purpose otpPurpose, email, codeHash string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.codes[email] = &otpCode{hash: codeHash, expiresAt: time.Now().Add(webOtpTTL)}
+	s.codes[email] = &otpCode{hash: codeHash, purpose: purpose, expiresAt: time.Now().Add(webOtpTTL)}
 }
 
 // takeCode atomically reads and deletes the code for the email.
 // Returns ("", false) when missing or expired — callers treat both the
 // same (generic 401) so verify-otp never reveals which case occurred.
 func (s *otpStore) takeCode(email string) (hash string, ok bool) {
+	return s.takeCodeFor(purposeLogin, email)
+}
+
+// takeCodeFor atomically reads and deletes the code for one purpose.
+//
+// A code issued for a DIFFERENT purpose is refused and left in place: consuming it
+// would let one flow spend the other's proof, which is the substitution §2.6 forbids.
+func (s *otpStore) takeCodeFor(purpose otpPurpose, email string) (hash string, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	c, exists := s.codes[email]
-	if !exists || time.Now().After(c.expiresAt) {
+	if !exists || c.purpose != purpose {
+		return "", false
+	}
+	if time.Now().After(c.expiresAt) {
 		delete(s.codes, email)
 		return "", false
 	}

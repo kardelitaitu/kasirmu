@@ -311,6 +311,9 @@ func main() {
 		se.Router.POST("/api/v1/desktop/link/google/start", handleDesktopLinkStart(app))
 		se.Router.GET("/api/v1/desktop/link/google/callback", handleDesktopLinkCallback(app))
 		se.Router.POST("/api/v1/desktop/link/consume", handleDesktopLinkConsume(app))
+		// The emailed-code alternative (ADR #54 §2.6): no browser, so the tablet can use it.
+		se.Router.POST("/api/v1/desktop/link/email/request", handleDesktopLinkEmailRequest(app))
+		se.Router.POST("/api/v1/desktop/link/email/consume", handleDesktopLinkEmailConsume(app))
 		// User dashboard (ADR #42 Phase 2) — session-authed read endpoints.
 		se.Router.GET("/api/v1/web/usage", handleWebUsage(app))
 		se.Router.GET("/api/v1/web/devices", handleWebDevices(app))
