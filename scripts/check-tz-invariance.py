@@ -114,7 +114,25 @@ if len(distinct) == 1 and not failed:
     print(f"PASS: identical result under {len(ZONES)} host zones -> {distinct.pop()}")
     sys.exit(0)
 
-print("FAIL: the anchored range depends on the host timezone.")
+# Two different findings used to print the same headline, and only one of them is
+# about the host zone. If every zone failed IDENTICALLY, the zone cannot be the
+# variable: the same cases failed under UTC+14, UTC-7, UTC+7 and UTC. That is an
+# ordinary red (or a run that did not finish), and calling it timezone dependence
+# sends the next reader after a bug that is not there. Measured 2026-09-20: this
+# tool printed "194 passed, 51 failed" in all four zones at once, the headline
+# named the host timezone, and the truth was elsewhere -- the same six files
+# returned 245 passed / 0 failed in every zone on the next eleven runs, and four
+# back-to-back concurrent-pair experiments (two zones in parallel, exactly what
+# the local concurrency=2 path does) reproduced nothing. Zone dependence is the
+# DISAGREEMENT between zones, which is what `distinct` measures; that is the case
+# this gate exists for.
+if len(distinct) > 1:
+    print("FAIL: the anchored range depends on the host timezone.")
+else:
+    print("FAIL: every zone failed IDENTICALLY, so the host timezone is not the variable.")
+    print("      This is a red run, but not the regression this gate exists to catch: read the")
+    print("      failures below as an ordinary test failure, or as a run that did not complete.")
+    print("      Only DIFFERING results across zones indicate timezone dependence.")
 for tz, s in results.items():
     print(f"  {tz:22s} {s}")
 sys.exit(1)
