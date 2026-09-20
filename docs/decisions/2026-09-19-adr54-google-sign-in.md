@@ -448,6 +448,16 @@ one account cannot address another's identities, and a *foreign* id answers `404
 cover the two refusals that matter plus the happy path. There is deliberately **no
 last-credential guard**: the account email is the root credential, so unlinking the last
 identity cannot lock anyone out and such a guard would protect no state.
+
+**Shipped 2026-09-19 (account portal):** the dashboard now shows the linked methods and offers
+**Unlink** per row (`AccountSignInMethods.tsx`), wired to those two endpoints from `AccountView`,
+which owns the fetch and the call so the session lifecycle stays in one place — the same split
+the devices section uses. The card ends with the sentence that makes the button safe to press:
+*the email code always works, so unlinking cannot lock you out*. That is the §2.3 invariant
+rendered where it is relied on, rather than left implicit in a server comment.
+
+An unknown provider renders as its raw name instead of a blank row, so a future GitHub identity
+degrades visibly rather than silently.
 - **Loopback any-port behaviour for a Desktop-type client is assumed, not yet proven here.**
   It is how installed-app CLIs work and the doc describes a random available port, but it is
   the first thing to confirm in the sandbox (§8). If it proves false, the fix is
