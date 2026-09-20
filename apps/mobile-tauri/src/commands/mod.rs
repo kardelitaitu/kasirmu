@@ -19,8 +19,6 @@ pub mod avatars;
 pub mod branding;
 /// External-browser commands (ADR #38).
 pub mod browser;
-/// Device-link commands (ADR #54 §2.5).
-pub mod desktop_link;
 /// Product bundle commands.
 pub mod bundles;
 /// Category CRUD commands.
@@ -29,6 +27,8 @@ pub mod categories;
 pub mod currencies;
 /// Customer CRUD commands.
 pub mod customers;
+/// Device-link commands (ADR #54 §2.5).
+pub mod desktop_link;
 /// Exchange-rate commands.
 pub mod exchange_rates;
 /// Feature-flag commands.
