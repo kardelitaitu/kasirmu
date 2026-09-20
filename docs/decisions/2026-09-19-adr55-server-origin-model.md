@@ -113,6 +113,11 @@ machinery.
 - **`OZ_REDIRECT_ONLY`/`OZ_SYNC_REDIRECT_URL` remains the migration path** (HTTP 421, ADR #11),
   not this list. The list is how a client *starts*; the redirect is how a fleet *moves*. Note the
   421 middleware covers `/api/sync/*` only (`redirect.rs:39-40`), which is exactly the gap the
+
+**Deployment order (measured 2026-09-19):** `/api/v1/license/attest` answers 404 on the live
+host today, because the endpoint is in this tree and not yet deployed. The client degrades
+safely — a failed attestation caches nothing, so `license_server_url()` stays on the compiled
+MAIN — which means the cascade is inert, and correct, until the licence server ships first.
   auth-side cascade fills.
 
 **Shipped 2026-09-19 (client):** `crates/kasirmu-core/src/attestation.rs` generates the nonce,
@@ -186,7 +191,15 @@ have caught the fork in §1.
   production fallback name, which means a developer's machine can silently sync to production.
 - **O3 — Should the gate gain CI coverage?** It is local-only today (`scripts/gates.json`
   `server-origins`, no `ci` block), which is honest rather than omitted.
-- **O4 — Does the marketing host split need the same treatment?** `worker.ts:79` sets
+- **O4 — ANSWERED BY MEASUREMENT (2026-09-19): there is no marketing-host fork.** Both
+  `kasir.mu` and `ozpos.my.id` return byte-identical `/llms.txt` (7256 bytes) and the same 302 on
+  `/admin/login`, so they are one Worker bound to two custom domains; `MARKETING_HOST =
+  'kasir.mu'` is merely the canonical name for internal rewrites and needs no change. The API
+  layer matches: `/api/health` answers 200 on **both** `license.kasir.mu` and
+  `license.ozpos.my.id`, which is the empirical form of §2.3's alias-not-replica premise. What
+  ADR #54 §2.4's `next` allowlist needs is therefore both marketing names, not a correction.
+  Caveat: identical content today is evidence of one deployment, not a guarantee about DNS or
+  renewal, which is exactly what §2.4's attestation is for.
   `MARKETING_HOST = 'kasir.mu'` and `DASHBOARD_HOSTS = {'admin.kasir.mu'}` while the runbook
   deploys `ozpos.my.id` (`:1004`, `:1096`) — the same fork, one layer out, and it decides the
   OAuth `next` allowlist in ADR #54 §2.4.
