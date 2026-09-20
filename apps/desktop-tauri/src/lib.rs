@@ -135,7 +135,7 @@ pub fn run() {
             // before the user can issue another mutation. The Apply mutex
             // also serializes this recovery with any early UI request.
             let recovery_app_handle = app.handle().clone();
-            platform_startup::spawn_daemon("topology recovery", async move {
+            platform_startup::spawn_once("topology recovery", async move {
                 let state = recovery_app_handle.state::<AppState>();
                 if let Err(error) = commands::topology::recover_pending_topology_apply_at_startup(&state).await {
                     tracing::error!(error = %error, "topology recovery failed; Apply remains blocked until recovery succeeds");
@@ -155,7 +155,7 @@ pub fn run() {
             // stay out of discovery. An operator configures hardware on the
             // settings screen; this turns that into drivers.
             let hardware_app_handle = app.handle().clone();
-            platform_startup::spawn_daemon("hardware bootstrap", async move {
+            platform_startup::spawn_once("hardware bootstrap", async move {
                 let state = hardware_app_handle.state::<AppState>();
                 let registry = state.registry.clone();
                 let base_dir = state
@@ -236,7 +236,7 @@ pub fn run() {
             #[cfg(debug_assertions)]
             {
                 let bootstrap_db = app.state::<AppState>().db.clone();
-                platform_startup::spawn_daemon("sync auto-provision", async move {
+                platform_startup::spawn_once("sync auto-provision", async move {
                     crate::sync_bootstrap::auto_provision_local_sync(bootstrap_db).await;
                 });
             }
@@ -248,7 +248,7 @@ pub fn run() {
             // Fire-and-forget on purpose: boot is never blocked on a probe, and an
             // unreachable MAIN degrades to the canonical default exactly as it does
             // today until the cascade resolves to the fallback.
-            platform_startup::spawn_daemon("server origin attestation", async move {
+            platform_startup::spawn_once("server origin attestation", async move {
                 let nonce = kasirmu_core::attestation::generate_nonce();
                 match kasirmu_core::attestation::resolve_attested_origin(&nonce).await {
                     Some(resolved) => tracing::info!(
