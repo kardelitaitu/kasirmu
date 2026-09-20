@@ -129,6 +129,43 @@ func TestOAuthStartIsUnavailableWhenUnconfigured(t *testing.T) {
 	})
 }
 
+func TestOAuthStartIsRateLimitedPerIP(t *testing.T) {
+	// `/start` is unauthenticated. The store's ceiling bounds memory; this bucket bounds
+	// how much availability one caller can take from everyone else.
+	t.Setenv("OZ_GOOGLE_CLIENT_ID", "client-abc")
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+
+	for i := 0; i < oauthStartMax; i++ {
+		rec := doJSON(mux, http.MethodGet, "/api/v1/web/oauth/google/start", "", "")
+		if rec.Code != http.StatusFound {
+			t.Fatalf("request %d should redirect to the consent screen, got %d: %s", i+1, rec.Code, rec.Body.String())
+		}
+	}
+	rec := doJSON(mux, http.MethodGet, "/api/v1/web/oauth/google/start", "", "")
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("request %d must be refused, got %d: %s", oauthStartMax+1, rec.Code, rec.Body.String())
+	}
+}
+
+func TestOAuthStartLimiterDoesNotConsumeBudgetWhenUnconfigured(t *testing.T) {
+	// A 503 must not spend the caller's budget: an operator who has not set the client id
+	// yet would otherwise find every sign-in refused for 15 minutes after configuring it.
+	t.Setenv("OZ_GOOGLE_CLIENT_ID", "")
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+
+	for i := 0; i < oauthStartMax+5; i++ {
+		rec := doJSON(mux, http.MethodGet, "/api/v1/web/oauth/google/start", "", "")
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf("an unconfigured deployment must answer 503, got %d", rec.Code)
+		}
+	}
+	if len(oauthStartLimiter.entries) != 0 {
+		t.Errorf("an unconfigured 503 must leave the budget untouched, got %d bucket(s)", len(oauthStartLimiter.entries))
+	}
+}
+
 // ── /callback ──────────────────────────────────────────────────────
 
 func TestOAuthCallbackRejectsAMissingOrUnknownState(t *testing.T) {

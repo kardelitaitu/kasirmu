@@ -281,6 +281,7 @@ func windowSweepLoop() {
 		webResetRequestLimiter.sweep()
 		webResetVerifyLimiter.sweep()
 		exchangeConsumeLimiter.sweep()
+		oauthStartLimiter.sweep()
 	}
 }
 

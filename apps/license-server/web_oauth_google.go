@@ -50,6 +50,13 @@ const (
 	// oauthTokenTimeout bounds the token exchange: a hung provider must not hold
 	// a request handler open.
 	oauthTokenTimeout = 10 * time.Second
+	// oauthStartMax / oauthStartWindow bound how many sign-ins one host may begin.
+	// `/start` is unauthenticated: without this a single host can fill the pending map and
+	// answer every other user 503 until the TTL drains — the store's ceiling bounds MEMORY,
+	// this bounds the damage one caller can do. Looser than the OTP limiter's 10 on purpose:
+	// a shared office IP signs several people in, and a withdrawn consent is a legit retry.
+	oauthStartMax    = 30
+	oauthStartWindow = 15 * time.Minute
 )
 
 // The two endpoints are variables rather than constants so tests can point them at a
@@ -75,6 +82,13 @@ type oauthStateStore struct {
 }
 
 var googleOAuthState = &oauthStateStore{pending: make(map[string]*oauthPending)}
+
+// oauthStartLimiter is a per-IP bucket on beginning a sign-in (see oauthStartMax).
+var oauthStartLimiter = &windowLimiter{
+	entries: make(map[string]*windowEntry),
+	limit:   oauthStartMax,
+	window:  oauthStartWindow,
+}
 
 // put records a pending sign-in, dropping anything already expired.
 //
@@ -350,6 +364,14 @@ func handleWebOAuthGoogleStart(app core.App) func(e *core.RequestEvent) error {
 			// a redirect to a consent screen that cannot complete.
 			return e.JSON(http.StatusServiceUnavailable, map[string]any{
 				"error": "google sign-in is not configured",
+			})
+		}
+
+		// Consume the per-IP budget before minting anything: an unconfigured deployment
+		// answered above without touching it, and a refused caller must leave no state.
+		if !oauthStartLimiter.allow(e.RealIP()) {
+			return e.JSON(http.StatusTooManyRequests, map[string]any{
+				"error": "rate limit exceeded, try again later",
 			})
 		}
 

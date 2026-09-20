@@ -1181,6 +1181,10 @@ func resetRateLimiters() {
 	exchangeConsumeLimiter.entries = make(map[string]*windowEntry)
 	exchangeConsumeLimiter.mu.Unlock()
 
+	oauthStartLimiter.mu.Lock()
+	oauthStartLimiter.entries = make(map[string]*windowEntry)
+	oauthStartLimiter.mu.Unlock()
+
 	// Escalating brute-force login lockout (login_lockout.go) — clear so
 	// tests that exercise repeated failed attempts start from a clean slate.
 	loginLockoutTrackerInst.mu.Lock()
