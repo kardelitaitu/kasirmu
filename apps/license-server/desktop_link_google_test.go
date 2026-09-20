@@ -71,6 +71,66 @@ func linkFlow(t *testing.T, mux http.Handler, apiKey, state string) string {
 	return location[strings.Index(location, "link_code=")+len("link_code="):]
 }
 
+// The wizard shows this reason, so the branch that produces it must be exercised: a refusal
+// resolved correctly is still useless if the callback answers with a code or a blank page.
+func TestDesktopLinkCallbackHandsTheReasonBackForARefusedIdentity(t *testing.T) {
+	t.Setenv("OZ_GOOGLE_CLIENT_ID", "client-abc")
+	t.Setenv("OZ_GOOGLE_CLIENT_SECRET", "secret")
+	claims := validClaims("client-abc")
+	claims["email_verified"] = false
+	restore := fakeGoogleToken(t, claims)
+	defer restore()
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	_, apiKey := seedLinkDevice(t, app)
+
+	if rec := doJSON(mux, http.MethodPost, "/api/v1/desktop/link/google/start", "Bearer "+apiKey,
+		startBody("0123456789abcdef")); rec.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", rec.Code, rec.Body.String())
+	}
+	rec := doJSON(mux, http.MethodGet,
+		"/api/v1/desktop/link/google/callback?state=0123456789abcdef&code=auth-code", "", "")
+	if rec.Code != http.StatusFound {
+		t.Fatalf("callback: %d %s", rec.Code, rec.Body.String())
+	}
+	location := rec.Header().Get("Location")
+	if location != "http://127.0.0.1:49152?link_error=refused_unverified" {
+		t.Fatalf("Location = %q, want the loopback listener carrying the refusal", location)
+	}
+	// And a refusal must not leave an identity behind.
+	if rows := identityRows(t, app, providerGoogle, "1234567890"); len(rows) != 0 {
+		t.Errorf("a refused identity must not be stored, got %d row(s)", len(rows))
+	}
+}
+
+// A token minted for a DIFFERENT client is the failure a wrong OZ_GOOGLE_CLIENT_ID produces, and
+// it must surface as a reason rather than as a link or a crash.
+func TestDesktopLinkCallbackRefusesATokenForAnotherClient(t *testing.T) {
+	t.Setenv("OZ_GOOGLE_CLIENT_ID", "client-abc")
+	t.Setenv("OZ_GOOGLE_CLIENT_SECRET", "secret")
+	restore := fakeGoogleToken(t, validClaims("some-other-client"))
+	defer restore()
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	_, apiKey := seedLinkDevice(t, app)
+
+	if rec := doJSON(mux, http.MethodPost, "/api/v1/desktop/link/google/start", "Bearer "+apiKey,
+		startBody("0123456789abcdef")); rec.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", rec.Code, rec.Body.String())
+	}
+	rec := doJSON(mux, http.MethodGet,
+		"/api/v1/desktop/link/google/callback?state=0123456789abcdef&code=auth-code", "", "")
+	if rec.Code != http.StatusFound {
+		t.Fatalf("callback: %d %s", rec.Code, rec.Body.String())
+	}
+	if location := rec.Header().Get("Location"); location != "http://127.0.0.1:49152?link_error=invalid_token" {
+		t.Fatalf("Location = %q, want the loopback listener carrying invalid_token", location)
+	}
+	if rows := identityRows(t, app, providerGoogle, "1234567890"); len(rows) != 0 {
+		t.Errorf("a token for another client must link nothing, got %d row(s)", len(rows))
+	}
+}
+
 func TestDesktopLinkStartRequiresARegisteredDevice(t *testing.T) {
 	t.Setenv("OZ_GOOGLE_CLIENT_ID", "client-abc")
 	app, mux := dashboardMux(t)
