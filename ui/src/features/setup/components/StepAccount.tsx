@@ -167,7 +167,7 @@ export default function StepAccount() {
           {emailState === 'failed' && (
             <p className="setup-step-error" role="alert">
               <Localized id="setup-account-failed">
-                Could not link this device. You can try again, or skip and link it later.
+                Could not link this device. You can try again, or continue without linking.
               </Localized>
             </p>
           )}
@@ -197,7 +197,7 @@ export default function StepAccount() {
           {link.kind === 'failed' && (
             <p className="setup-step-error" role="alert">
               <Localized id="setup-account-failed">
-                Could not link this device. You can try again, or skip and link it later.
+                Could not link this device. You can try again, or continue without linking.
               </Localized>
             </p>
           )}
