@@ -50,7 +50,7 @@ total_start=$(date +%s)
 step "root policy" "python3 scripts/verify-root-policy.py" python3 scripts/verify-root-policy.py
 step "root policy self-test" "python3 scripts/verify-root-policy.py --self-test" python3 scripts/verify-root-policy.py --self-test
 
-# ── Rust (mirrors CI `rust` job) ──────────────────────────────────────────
+# ── Rust (mirrors CI `cargo-check` + `cargo-nextest` jobs) ──────────────────────────────────────────
 step "cargo fmt" "cargo fmt --all -- --check" cargo fmt --all -- --check
 
 # Workspace-wide clippy (single compilation pass instead of N per-package invocations).
@@ -147,8 +147,8 @@ fi
 
 # ── Migration (LOCAL ONLY — no CI job runs this) ──────────────────────────
 # This comment used to read "mirrors CI `migration` job". There is no such job:
-# dev-ci.yml's ten jobs are changes, website, cargo-check, cargo-nextest, ui-test,
-# i18n, ci-docs-drift, static-gates, release-readiness, northflank-deploy. The
+# dev-ci.yml's eleven jobs are changes, website, cargo-check, cargo-nextest, ui-test,
+# i18n, ci-docs-drift, static-gates, release-readiness, release-bridge-test (push-only), northflank-deploy. The
 # confusion is understandable because two neighbouring gates DO have CI backing since
 # 0.0.37 (pg-schema-drift and migration-column-types, both in static-gates), but this
 # one is the SQLite migrate-up path and nothing enforces it off a developer machine.
@@ -236,7 +236,7 @@ else
     echo -e "${YELLOW}⚠ supply chain advisories skipped (cargo-deny not installed — cargo install cargo-deny)${NC}"
 fi
 
-# ── Go: license-server (mirrors CI `go` job — auto-detected) ────────────
+# ── Go: license-server (mirrors the Go steps in CI `static-gates` — auto-detected) ────────────
 # The license-server is a Go service (auth, licensing, webhooks, revenue).
 # CI gates on gofmt + go vet + `go test -short`; the local gate mirrors
 # that so a push can't pass locally then fail CI. Only the -short suite
@@ -249,7 +249,7 @@ else
     echo -e "${YELLOW}⚠ Go license-server checks skipped (go not found or apps/license-server missing)${NC}"
 fi
 
-# ── UI (mirrors CI `ui` job — auto-detected) ──────────────────────────────
+# ── UI (mirrors CI `ui-test` job — auto-detected) ──────────────────────────────
 # Windows can retain esbuild.exe briefly after a Vite/test process exits,
 # causing npm ci's node_modules cleanup to fail with EPERM. Retry once after
 # terminating only the known native helper; dependency-resolution failures
@@ -340,7 +340,7 @@ else
     echo -e "${YELLOW}⚠ UI checks skipped (npm not found or ui/package-lock.json missing)${NC}"
 fi
 
-# ── Website (mirrors CI website.yml `check` job — auto-detected) ─────────
+# ── Website (mirrors CI `dev-ci.yml#website` — auto-detected) ─────────
 # Review follow-up (H2): the admin/dashboard SPA helpers (admin-utils.js)
 # and the worker auth gate have vitest suites that previously ran nowhere
 # but a manual `npm test`. Gate: scripts/gates.json → "website-tests".
