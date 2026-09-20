@@ -324,6 +324,14 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		se.Router.POST("/api/v1/web/logout", handleLogout(app))
 		se.Router.POST("/api/v1/web/exchange-issue", handleExchangeIssue(app))
 		se.Router.POST("/api/v1/web/exchange-consume", handleExchangeConsume(app))
+		// The identity collection is created programmatically in production; the test
+		// app mirrors that boot step so a scenario can exercise the callback.
+		if err := ensureTenantIdentitiesCollection(app); err != nil {
+			return err
+		}
+		// Google sign-in (ADR #54).
+		se.Router.GET("/api/v1/web/oauth/google/start", handleWebOAuthGoogleStart(app))
+		se.Router.GET("/api/v1/web/oauth/google/callback", handleWebOAuthGoogleCallback(app))
 		// ADR #42 dashboard endpoints (user + admin).
 		se.Router.GET("/api/v1/web/usage", handleWebUsage(app))
 		se.Router.GET("/api/v1/web/devices", handleWebDevices(app))

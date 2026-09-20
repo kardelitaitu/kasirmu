@@ -17,16 +17,21 @@ package main
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pocketbase/pocketbase/core"
 )
 
 const (
@@ -39,13 +44,19 @@ const (
 	// oauthScopes is identity only: no Google API is called, and no offline access
 	// is requested, so no refresh token is ever issued (ADR #54 §2.1).
 	oauthScopes = "openid email profile"
-	// googleAuthEndpoint and googleTokenEndpoint are overridable per call so tests
-	// drive a fake rather than the network.
-	googleAuthEndpoint  = "https://accounts.google.com/o/oauth2/v2/auth"
-	googleTokenEndpoint = "https://oauth2.googleapis.com/token"
+	// oauthMaxPending caps how many sign-ins may be in flight at once. Without a
+	// cap, /start is an unauthenticated write into a map bounded only by its TTL.
+	oauthMaxPending = 10000
 	// oauthTokenTimeout bounds the token exchange: a hung provider must not hold
 	// a request handler open.
 	oauthTokenTimeout = 10 * time.Second
+)
+
+// The two endpoints are variables rather than constants so tests can point them at a
+// local fake; production never reassigns them.
+var (
+	googleAuthEndpoint  = "https://accounts.google.com/o/oauth2/v2/auth"
+	googleTokenEndpoint = "https://oauth2.googleapis.com/token"
 )
 
 // oauthPending is one started sign-in, keyed by its state value.
@@ -66,7 +77,10 @@ type oauthStateStore struct {
 var googleOAuthState = &oauthStateStore{pending: make(map[string]*oauthPending)}
 
 // put records a pending sign-in, dropping anything already expired.
-func (s *oauthStateStore) put(state string, p *oauthPending) {
+//
+// Returns false when the in-flight ceiling is reached: /start is unauthenticated, so
+// an unbounded map would let one host hold the process's memory for a TTL window.
+func (s *oauthStateStore) put(state string, p *oauthPending) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
@@ -75,7 +89,11 @@ func (s *oauthStateStore) put(state string, p *oauthPending) {
 			delete(s.pending, key)
 		}
 	}
+	if len(s.pending) >= oauthMaxPending {
+		return false
+	}
 	s.pending[state] = p
+	return true
 }
 
 // take atomically reads and deletes the pending sign-in for a state value.
@@ -265,4 +283,191 @@ func validateIDToken(idToken, clientID string, now time.Time) (*oauthIDClaims, e
 		Email:         normalizeEmail(claims.Email),
 		EmailVerified: claims.EmailVerified,
 	}, nil
+}
+
+// ── Helpers the handlers share ──────────────────────────────────────
+
+// oauthSiteURL is the public marketing site the flow returns to. Configured once
+// rather than taken from the request, which is why no host allowlist is needed
+// here: the host is ours, and only the PATH is ever attacker-influenced.
+func oauthSiteURL() string {
+	if v := strings.TrimSpace(os.Getenv("OZ_WEB_SITE_URL")); v != "" {
+		return strings.TrimSuffix(v, "/")
+	}
+	return "https://kasir.mu"
+}
+
+// oauthNextPath restricts the post-login path to a same-site path.
+//
+// The same shape lib/safe-next.ts enforces in the browser: a leading slash, never a
+// second slash, and none of the characters the URL parser normalises into one
+// (backslash, tab, CR, LF) — `/[backslash]evil.com` is the form that made a prefix
+// test insufficient there, and this is the server-side twin of that guard.
+func oauthNextPath(raw string) string {
+	const fallback = "/en/account"
+	if raw == "" || !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") {
+		return fallback
+	}
+	if strings.ContainsAny(raw[1:], "\\\t\n\r") {
+		return fallback
+	}
+	return raw
+}
+
+// oauthRedirectURI is the callback URL Google must have registered. The explicit
+// override wins; otherwise it is derived from the host this request arrived on,
+// which is the host the browser used and therefore the one the operator registered.
+func oauthRedirectURI(e *core.RequestEvent) string {
+	if v := strings.TrimSpace(os.Getenv("OZ_GOOGLE_REDIRECT_URI")); v != "" {
+		return v
+	}
+	return "https://" + e.Request.Host + "/api/v1/web/oauth/google/callback"
+}
+
+// clearOAuthStateCookie expires the browser binding for a finished flow.
+func clearOAuthStateCookie(e *core.RequestEvent) {
+	http.SetCookie(e.Response, &http.Cookie{
+		Name:     oauthStateCookie,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// ── GET /api/v1/web/oauth/google/start ─────────────────────────────
+
+// handleWebOAuthGoogleStart begins the web sign-in: it mints a state value, records
+// the pending flow, binds the state to this browser with a cookie, and redirects to
+// Google.
+func handleWebOAuthGoogleStart(app core.App) func(e *core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		clientID := strings.TrimSpace(os.Getenv("OZ_GOOGLE_CLIENT_ID"))
+		if clientID == "" {
+			// Same shape as request-otp's unconfigured SMTP answer: a visible 503, never
+			// a redirect to a consent screen that cannot complete.
+			return e.JSON(http.StatusServiceUnavailable, map[string]any{
+				"error": "google sign-in is not configured",
+			})
+		}
+
+		state, verifier, challenge, err := newOAuthState()
+		if err != nil {
+			log.Printf("/web/oauth/google/start: %v", err)
+			return e.JSON(http.StatusInternalServerError, map[string]any{"error": "could not start sign-in"})
+		}
+		if !googleOAuthState.put(state, &oauthPending{
+			next:      oauthNextPath(e.Request.URL.Query().Get("next")),
+			verifier:  verifier,
+			expiresAt: time.Now().Add(oauthStateTTL),
+		}) {
+			return e.JSON(http.StatusServiceUnavailable, map[string]any{
+				"error": "too many sign-ins in progress, try again shortly",
+			})
+		}
+
+		// Bind the state to THIS browser: a state value that leaks into a log or a
+		// referrer cannot then be completed from somewhere else (login CSRF).
+		http.SetCookie(e.Response, &http.Cookie{
+			Name:     oauthStateCookie,
+			Value:    state,
+			Path:     "/",
+			MaxAge:   int(oauthStateTTL.Seconds()),
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
+		})
+		return e.Redirect(http.StatusFound, oauthAuthorizeURL(clientID, oauthRedirectURI(e), state, challenge))
+	}
+}
+
+// ── GET /api/v1/web/oauth/google/callback ──────────────────────────
+
+// handleWebOAuthGoogleCallback completes the flow: state checked against both the
+// store and the browser cookie, the code exchanged server-side, the claims validated,
+// the identity resolved, and a one-time F1 code handed to the marketing host.
+func handleWebOAuthGoogleCallback(app core.App) func(e *core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		clientID := strings.TrimSpace(os.Getenv("OZ_GOOGLE_CLIENT_ID"))
+		clientSecret := strings.TrimSpace(os.Getenv("OZ_GOOGLE_CLIENT_SECRET"))
+		if clientID == "" || clientSecret == "" {
+			return e.JSON(http.StatusServiceUnavailable, map[string]any{
+				"error": "google sign-in is not configured",
+			})
+		}
+
+		query := e.Request.URL.Query()
+		// The user declined, or Google reported a problem: land them back on the
+		// login page rather than on a JSON error they cannot act on.
+		if refused := query.Get("error"); refused != "" {
+			log.Printf("/web/oauth/google/callback: provider refused: %s", refused)
+			return e.Redirect(http.StatusFound, oauthSiteURL()+"/en/login?oauth="+url.QueryEscape(refused))
+		}
+		state := query.Get("state")
+		code := query.Get("code")
+		if state == "" || code == "" {
+			return e.JSON(http.StatusBadRequest, map[string]any{"error": "missing state or code"})
+		}
+		cookie, cookieErr := e.Request.Cookie(oauthStateCookie)
+		if cookieErr != nil || cookie.Value == "" ||
+			subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(state)) != 1 {
+			return e.JSON(http.StatusBadRequest, map[string]any{"error": "invalid oauth state"})
+		}
+		pending, ok := googleOAuthState.take(state)
+		clearOAuthStateCookie(e)
+		if !ok {
+			// Unknown, expired, or already used — one answer for all three.
+			return e.JSON(http.StatusBadRequest, map[string]any{"error": "invalid oauth state"})
+		}
+
+		token, err := exchangeOAuthCode(googleTokenEndpoint, clientID, clientSecret,
+			oauthRedirectURI(e), code, pending.verifier)
+		if err != nil {
+			// The body can carry a redirect_uri or client_id diagnosis; log it, answer
+			// generically so nothing about our configuration reaches the browser.
+			log.Printf("/web/oauth/google/callback: token exchange failed: %v", err)
+			return e.JSON(http.StatusBadGateway, map[string]any{"error": "sign-in could not be completed"})
+		}
+		claims, err := validateIDToken(token.IDToken, clientID, time.Now())
+		if err != nil {
+			log.Printf("/web/oauth/google/callback: id_token rejected: %v", err)
+			return e.JSON(http.StatusUnauthorized, map[string]any{"error": "sign-in could not be completed"})
+		}
+
+		tenant, outcome, err := resolveIdentity(app, providerGoogle, claims.Subject,
+			claims.Email, claims.EmailVerified, "")
+		if err != nil {
+			log.Printf("/web/oauth/google/callback: resolve failed: %v", err)
+			return e.JSON(http.StatusInternalServerError, map[string]any{"error": "sign-in could not be completed"})
+		}
+		switch outcome {
+		case IdentityBound, IdentityLinked, IdentityCreated:
+			log.Printf("/web/oauth/google: %s identity for tenant %s (%s)", providerGoogle, tenant.Id, outcome)
+		case IdentityRefusedReserved:
+			return e.JSON(http.StatusForbidden, map[string]any{"error": "this address cannot sign in"})
+		case IdentityRefusedUnverified:
+			return e.JSON(http.StatusForbidden, map[string]any{"error": "your email address is not verified with Google"})
+		case IdentityConflict:
+			return e.JSON(http.StatusConflict, map[string]any{"error": "this identity is linked to another account"})
+		default:
+			log.Printf("/web/oauth/google/callback: unexpected outcome %q", outcome)
+			return e.JSON(http.StatusInternalServerError, map[string]any{"error": "sign-in could not be completed"})
+		}
+
+		// The session token itself must never reach a URL: hand the Worker a
+		// single-use code instead (hardening F1), exactly as the OTP flow does.
+		exchangeCode, err := webExchangeStore.mint(tenant.Id)
+		if err != nil {
+			log.Printf("/web/oauth/google/callback: mint failed for tenant %s: %v", tenant.Id, err)
+			return e.JSON(http.StatusInternalServerError, map[string]any{"error": "sign-in could not be completed"})
+		}
+		target := oauthSiteURL() + pending.next
+		separator := "?"
+		if strings.Contains(target, "?") {
+			separator = "&"
+		}
+		return e.Redirect(http.StatusFound, target+separator+"code="+url.QueryEscape(exchangeCode))
+	}
 }
