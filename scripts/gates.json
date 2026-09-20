@@ -604,6 +604,13 @@
       "status": "required",
       "runners": { "check.sh": ["unified routes"] },
       "_note": "Added in 0.0.39. Every /api route the licence server registers must be claimed by the FIRST matching handle in apps/unified/Caddyfile that proxies to :8080 — caddy handle is first-match-wins, so the generic /api/* fallback does not cover anything under /api/v1/*. A route without a carve-out answers 404 in production while its tests pass, which is how the whole device-link flow (ADR #54 §2.5) sat unrouted. Runner: node scripts/check-unified-routes.mjs."
+    },
+    {
+      "id": "auditor-selftests",
+      "label": "Docs-auditor checkers still run",
+      "status": "required",
+      "runners": { "check.sh": ["auditor self-tests"] },
+      "_note": "Added in 0.0.39. A checker that cannot run is indistinguishable from a checker that found nothing: check-api-surface.py had been dead since apps/desktop-client was renamed, and check-nav-paths.py reported SELF-TEST WRONG because its self-test read the live nav. This runs every self-test the docs-auditor ships (three today). Runner: sh scripts/check-auditor-selftests.sh."
     }
   ]
 }
