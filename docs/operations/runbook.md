@@ -406,7 +406,7 @@ docker volume prune
 | Dockerfile | `ops/docker/Dockerfile.unified` (under `ops/docker/`) |
 | Port | `80` (caddy; routes to :8080 PocketBase / :3099 Rust) |
 | Volume | single volume at `/data` (Northflank free tier = 1 volume) |
-| Build trigger | **`workflow_dispatch` only** — Actions → Dev CI → Run workflow, which runs `northflank-deploy`. There is no push-triggered build; see §8.5 for why the `push` branch of that job's `if:` is unreachable |
+| Build trigger | A push to **`main`** runs Dev CI, and `northflank-deploy` builds the linked branch automatically when `NORTHFLANK_API_TOKEN` is set (`dev-ci.yml:791`). A manual **Actions → Dev CI → Run workflow** also works — but dispatch it **from `main`**: Northflank builds the service's linked branch (`main`, see §8.6) and a dispatch from a `0.0.*` branch is deliberately refused (§8.5), so **code reaches production by landing on `main`, not by dispatching from a release branch**. |
 
 **Single-volume layout (DOCKER-11):**
 
@@ -488,6 +488,18 @@ curl -s -X POST "$BASE/api/v1/license/activate" \
 curl -s -o /dev/null -w '%{http_code}' "$BASE/_/"       # admin UI → 200
 curl -s -o /dev/null -w '%{http_code}' -X POST \
   "$BASE/api/v1/paddle/webhook"                          # 503 not-configured (not 404)
+
+# Origin attestation (ADR #55). 200 proves the route exists; the openssl verify
+# proves the deployed server signs with the key the POS binaries embed
+# (crates/kasirmu-core/oz-license.key.pub). A 404 means the licence server
+# predates the endpoint -- clients then stay on the compiled MAIN and the
+# cascade is inert, which is safe but silent.
+NONCE=$(openssl rand -hex 16); printf %s "$NONCE" > /tmp/attest.nonce
+curl -s -X POST "$BASE/api/v1/license/attest" -H 'Content-Type: application/json' \
+  -d "{\"nonce\":\"$NONCE\"}" -o /tmp/attest.json
+python3 -c "import json,base64;d=json.load(open('/tmp/attest.json'));open('/tmp/attest.sig','wb').write(base64.b64decode(d['signature']));open('/tmp/attest.payload','wb').write(('ozpos-origin-attest-v1:'+open('/tmp/attest.nonce').read().strip()).encode())"
+openssl dgst -sha256 -verify crates/kasirmu-core/oz-license.key.pub \
+  -signature /tmp/attest.sig /tmp/attest.payload    # -> Verified OK
 ```
 
 Also: create the PocketBase superuser via the `/_/` first-boot installer
