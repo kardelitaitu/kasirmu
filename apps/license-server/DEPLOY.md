@@ -274,6 +274,17 @@ The license server requires the RSA private key as an environment variable. **Ne
       Leave the override unset and all four are required -- the web flow's `oz_oauth_state` cookie
       is host-scoped, so a flow started on one name and returned on the other dies at
       `400 invalid oauth state`.
+      **Authorized JavaScript origins: leave empty.** Those entries exist for Google's browser-side JS
+      (GSI / One Tap / `google.accounts.id`), which nothing here uses — measured 2026-09-26 by
+      grepping the repo for `gsi/client`, `accounts.google.com/gsi`, `@react-oauth/google` and
+      `google.accounts`: no hits. Both flows are server-side redirects (`web_oauth_google.go:106-109`
+      builds the authorize URL, `:429` redirects), so only the redirect URIs are consulted. Add
+      origins only if a One Tap button is ever added: then `https://kasir.mu`, `https://ozpos.my.id`,
+      and dev `http://localhost:4321`.
+      **Check the consent screen's publishing status.** While it is "Testing", only listed test users
+      can finish sign-in: the operator's own account works and every merchant gets `access_denied`,
+      which reads as a server bug. Publish, or add test users. Scopes stay `openid email profile` —
+      non-sensitive, so no Google review is required.
     - **Key:** `OZ_GOOGLE_CLIENT_ID` — the Web-application client id.
     - **Key:** `OZ_GOOGLE_CLIENT_SECRET` — its secret. Server-side only: the app never carries it,
       and the device link is PKCE on top, so the app's own copy is useless even if extracted.
