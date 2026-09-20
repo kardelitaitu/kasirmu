@@ -274,6 +274,23 @@ describe('TabletAppShell — routing', () => {
         expect(screen.getByTestId('setup-wizard')).toBeInTheDocument();
       });
     });
+
+    it('prefers the setup wizard over login on a fresh install (no session)', async () => {
+      // The combination the suite never covered, and the one a fresh device
+      // actually boots into: setup incomplete AND no session. `!session` used
+      // to be tested first, so an unconfigured terminal landed on
+      // StaffLoginScreen — asking staff to authenticate against a terminal
+      // nobody had set up.
+      vi.mocked(getSetupStatus).mockResolvedValue({ completed: false, preset: null });
+      mockNoSession();
+
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('setup-wizard')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('staff-login-screen')).not.toBeInTheDocument();
+    });
   });
 
   // ── Auth gating ───────────────────────────────────────────────

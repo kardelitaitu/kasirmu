@@ -192,18 +192,40 @@ export default function TabletAppShell() {
     return <AppBootSplash />;
   }
 
-  if (!session) {
-    return (
-      <LazyBoundary>
-        <StaffLoginScreen />
-      </LazyBoundary>
-    );
-  }
-
+  // ── First-run setup runs BEFORE the login gate (ADR #41 §2.1) ─────
+  // The ADR is explicit. "State A: New / Uninitialized Device" — no local
+  // config yet — says "the application boots directly into the Setup Wizard
+  // (/setup)", and authentication happens *inside* onboarding (create a
+  // tenant, or connect an existing one). Only "State B: Registered /
+  // Enrolled Device" "boots directly to the Staff Login / Lock Screen".
+  // Testing `!session` first inverted that: every fresh device landed on
+  // StaffLoginScreen with the terminal unconfigured.
+  //
+  // Safe pre-login: the wizard's three commands are UNAUTHENTICATED by design
+  // (`kasirmu-bridge/src/setup.rs` — `get_setup_status`, `complete_setup` and
+  // `dismiss_setup_wizard` each take only `&BridgeCtx` and write the GLOBAL db
+  // via `lock_global()`; contrast `seed_default_roles_scoped` in the same file,
+  // which takes a session token and checks a permission). The wizard reads no
+  // auth/workspace context, and `onSkip` reaches login even if
+  // `dismissSetupWizard` fails, so this cannot trap the terminal.
+  //
+  // The desktop AppShell keeps the wizard after `!session`, and must: it runs two
+  // earlier pre-login gates the tablet cannot — `!bootAllowed` (licence
+  // activation) and `hasUsers === false` (owner bootstrap). The tablet registers
+  // neither `get_license_status` nor `has_users`, so without this branch its
+  // first-run funnel is empty.
   if (!hasCompletedSetup) {
     return (
       <LazyBoundary>
         <SetupWizard onComplete={handleComplete} onSkip={handleSkip} onLaunch={() => setHasCompletedSetup(true)} />
+      </LazyBoundary>
+    );
+  }
+
+  if (!session) {
+    return (
+      <LazyBoundary>
+        <StaffLoginScreen />
       </LazyBoundary>
     );
   }
