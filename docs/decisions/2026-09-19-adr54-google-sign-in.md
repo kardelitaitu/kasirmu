@@ -290,7 +290,7 @@ The signature is deliberately **not** verified, which is the direct consequence 
 choice to exchange server-side: the token arrives over TLS from Google's token endpoint in
 response to our request, so no third party can inject one — and that is also why no JWKS
 machinery is needed in Go. The claim checks stay, because a token minted for a different client,
-or an expired one replayed out of a log, must not authenticate here. Ten tests pin this,
+or an expired one replayed out of a log, must not authenticate here. Nineteen tests pin this
 including the three refusals that matter most: replayed state, foreign audience, expired token.
 
 **Shipped 2026-09-19 (routes):** `GET /api/v1/web/oauth/google/start` and
@@ -393,7 +393,7 @@ could attach a personal Google account to the shop's tenant and keep access.
 **Shipped 2026-09-19 (desktop server side):** `apps/license-server/desktop_link_google.go`
 implements all three endpoints — `/start` (device-authenticated, returns the consent URL),
 `/callback` (Google's return, which binds and redirects to the loopback listener), and
-`/consume` (loopback code in, linked account out). Five tests cover the properties that make
+`/consume` (loopback code in, linked account out). Nine tests cover the properties that make
 it safe: only a **loopback http redirect with an explicit port** is accepted (the value comes
 from the app and the callback redirects to it verbatim, so anything else is an open redirect
 that hands a one-time code to whoever asked); the tenant is proven by the device's `api_key`
@@ -419,7 +419,7 @@ registration call, and is the piece ADR #55 §5 already flags as the first thing
 **Shipped 2026-09-19 (client, pure half):** `kasirmu-core/src/desktop_link.rs` carries PKCE
 plus the two calls. It lives in `kasirmu-core` rather than `kasirmu-bridge` for the same reason
 the sync client does: the bridge deliberately has no HTTP stack, and every outbound call in this
-repo goes core → bridge → shell. Five tests pin it, including **RFC 7636's own worked example** —
+repo goes core → bridge → shell. Nine tests pin it (`cargo test -p kasirmu-core --lib desktop_link`),
 a challenge that merely round-trips against our verifier would pass everything and still fail
 against Google.
 
@@ -435,7 +435,7 @@ step 6.
 
 **Shipped 2026-09-19 (loopback listener):** `kasirmu-bridge/src/desktop_link.rs` binds an
 ephemeral port, hands out the literal `http://127.0.0.1:<port>` redirect URI, and waits for the
-redirect — answering the browser with a static page and returning what it carried. Eight tests.
+redirect — answering the browser with a static page and returning what it carried. Twelve tests.
 
 Three details that are the difference between working and nearly working:
 
@@ -613,9 +613,10 @@ Native Android Google sign-in (Android-type client + SHA-1 + Credential Manager 
 desktop, `main.mobile.tsx` marks tablet — because the two builds share every component and differ
 only in their entry, which is the seam this section names. `StepAccount` renders the Google
 control on desktop and, on tablet, a line saying the account links itself when you sign in with
-Google **on the web**. Two tests pin both halves.
-
-> **Still owed from this section:** the tablet's own path — linking *via the emailed code* — is not
+Google **on the web**. Two tests pin both halves — the Google control on the desktop shell and
+its absence on the tablet, which offers the emailed code instead — and a third pins the tablet's
+retry after a failed verification (2026-09-26). The pair still names only the shell decision;
+the retry case belongs to the step's own copy.
 > built. The interim is truthful rather than a stand-in: §2.3's web flow attaches the identity to
 > the tenant whose address the provider verified, so signing in on the web really does link the
 > store's account. What is missing is doing it **from the device** without a browser round trip,
