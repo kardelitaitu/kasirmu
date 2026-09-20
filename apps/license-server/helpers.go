@@ -1,3 +1,29 @@
+// Package main houses the license-server helpers shared across handlers:
+// credential extraction, request parsing, billing-period normalization, body
+// redaction, and — added for the rate-limit keying fix — client-IP
+// normalization.
+//
+// # Client-IP hop model (rate-limit keying)
+//
+// Every rate-limit lane keys on e.RealIP(). That call only trusts the
+// X-Forwarded-For chain once Settings.TrustedProxy.Headers is seeded, and
+// before this fix nothing seeded it, so the Caddy reverse_proxy peer
+// (localhost:8080) collapsed every client to the loopback address.
+//
+// The production proxy stack appends exactly two entries to X-Forwarded-For
+// on the path to the license server:
+//
+//   - the edge (istio on license.kasir.mu, or Cloudflare on
+//     license.ozpos.my.id) appends the *client*,
+//   - Caddy (reverse_proxy → localhost:8080) appends the *edge*.
+//
+// So the real client sits 2 hops from the right end of the chain. The edge
+// (Cloudflare) case is special: it exposes the client directly via the
+// single-valued CF-Connecting-IP header, which the "cf" mode prefers.
+//
+// normalizeClientIP resolves the hop-correct entry and the router middleware
+// in main.go collapses the whole chain to that one value, so RealIP() — and
+// therefore every limiter — keys on the real client, never 127.0.0.1.
 package main
 
 import (
@@ -6,7 +32,14 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"net"
+	"net/http"
+	"net/netip"
+	"os"
+	"strconv"
 	"strings"
+
+	"github.com/pocketbase/pocketbase/core"
 )
 
 // bearerPrefix is the RFC 6750 scheme required on the Authorization header.
@@ -124,4 +157,172 @@ func redactRequestBody(body []byte) string {
 		return string(body)
 	}
 	return string(redacted)
+}
+
+// clientIPMode selects how normalizeClientIP resolves the real client IP.
+// It is read from the LICENSE_CLIENTIP_MODE env var (case-insensitive).
+//
+//   - "off": always return remoteIP unchanged (legacy pre-fix behaviour,
+//     e.g. when testing behind no proxy or in a local single-hop setup).
+//   - "xff": (default) resolve the hop-correct entry from the LAST
+//     X-Forwarded-For value (see the package doc for the 2-hop model).
+//   - "cf": prefer the single-valued CF-Connecting-IP header when it parses
+//     as an IP, else fall back to the "xff" behaviour.
+//
+// Any unrecognized value falls back to "xff" so a typo can never silently
+// re-introduce the one-budget-for-all-clients failure.
+type clientIPMode string
+
+const (
+	clientIPModeOff clientIPMode = "off"
+	clientIPModeXFF clientIPMode = "xff"
+	clientIPModeCF  clientIPMode = "cf"
+)
+
+// resolveClientIPMode returns the active LICENSE_CLIENTIP_MODE, defaulting to
+// "xff" when the variable is unset or empty. Unrecognized values also map to
+// "xff" (fail-safe, never to "off") so a misconfiguration cannot collapse every
+// client onto the loopback budget.
+func resolveClientIPMode() clientIPMode {
+switch strings.ToLower(strings.TrimSpace(os.Getenv("LICENSE_CLIENTIP_MODE"))) {
+	case "off":
+		return clientIPModeOff
+	case "cf":
+		return clientIPModeCF
+	default:
+		// "xff" and anything unrecognized (including empty) → XFF.
+		return clientIPModeXFF
+	}
+}
+
+// resolveTrustedHops returns the number of X-Forwarded-For hops to walk back
+// from the right end to reach the real client. It is read from
+// LICENSE_TRUSTED_HOPS (default 2) and is clamped to >= 1 so a zero or
+// negative value — which normalizeClientIP would otherwise treat as "return
+// remoteIP" — still yields a usable hop count rather than silently disabling
+// the fix.
+func resolveTrustedHops() int {
+	raw := strings.TrimSpace(os.Getenv("LICENSE_TRUSTED_HOPS"))
+	if raw == "" {
+		return 2
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return 2
+	}
+	if n < 1 {
+		return 1
+	}
+	return n
+}
+
+// normalizeClientIP resolves the real client IP that the rate limiter should
+// key on, from the proxy X-Forwarded-For chain (or CF-Connecting-IP).
+//
+// Parameters:
+//   - header: the inbound request headers (read-only: the value is returned,
+//     never written — the collapsing middleware in main.go owns the write).
+//   - remoteIP: the connection peer (e.Request.RemoteAddr with the port
+//     stripped). Returned unchanged for any ambiguous case.
+//   - hops: how many entries from the RIGHT end of the last X-Forwarded-For
+//     value the client sits at (see the package doc: 2 in production).
+//
+// Behaviour by mode (resolveClientIPMode):
+//   - clientIPModeOff: returns remoteIP unchanged.
+//   - clientIPModeCF: if the single-valued CF-Connecting-IP header parses as
+//     an IP, returns it; otherwise falls through to XFF behaviour.
+//   - clientIPModeXFF (default): reads the LAST X-Forwarded-For header value
+//     (the one the nearest trusted proxy appended), splits on ",", trims each
+//     entry, keeps only entries that parse with netip.ParseAddr, and returns
+//     the entry at index len(ips)-hops.
+//
+// If hops <= 0, hops > len(valid), or the X-Forwarded-For header is absent,
+// normalizeClientIP returns remoteIP unchanged. Garbage and empty entries in
+// the chain are skipped WITHOUT counting toward hops, so a forged prepended
+// entry can never shift which real entry is returned — only a genuine proxy
+// append (always at the right end) changes the resolved IP.
+func normalizeClientIP(header http.Header, remoteIP string, hops int) string {
+	mode := resolveClientIPMode()
+	if mode == clientIPModeOff {
+		return remoteIP
+	}
+
+	if mode == clientIPModeCF {
+		if cf := strings.TrimSpace(header.Get("CF-Connecting-IP")); cf != "" {
+			if _, err := netip.ParseAddr(cf); err == nil {
+				return cf
+			}
+		}
+		// Fall through to XFF behaviour when CF-Connecting-IP is missing/garbage.
+	}
+
+	// XFF behaviour: the LAST header occurrence is the one the nearest trusted
+	// proxy appended, which is exactly what RealIP() trusts once TrustedProxy
+	// is seeded. Only valid IPs count toward the hop walk.
+	values := header.Values("X-Forwarded-For")
+	if len(values) == 0 {
+		return remoteIP
+	}
+	chain := strings.Split(values[len(values)-1], ",")
+
+	valid := make([]string, 0, len(chain))
+	for _, e := range chain {
+		trimmed := strings.TrimSpace(e)
+		if trimmed == "" {
+			continue
+		}
+		if _, err := netip.ParseAddr(trimmed); err != nil {
+			continue
+		}
+		valid = append(valid, trimmed)
+	}
+
+	if hops <= 0 || hops > len(valid) {
+		return remoteIP
+	}
+	return valid[len(valid)-hops]
+}
+
+// stripPort returns host without its optional ":port" suffix, mirroring the
+// port handling RealIP()'s fallback (e.RemoteIP()) relies on. A bare host
+// with no colon is returned unchanged; an IPv6 literal in brackets keeps the
+// brackets.
+func stripPort(remoteAddr string) string {
+	if remoteAddr == "" {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		// No port present (e.g. a bare IP or unix socket path) — use as-is.
+		return remoteAddr
+	}
+	return host
+}
+
+// seedClientIPSettings installs the trusted-proxy configuration that makes
+// e.RealIP() (and therefore every rate limiter) trust the X-Forwarded-For
+// header. Before this, Settings.TrustedProxy.Headers was empty, so RealIP()
+// fell back to e.RemoteIP() — which is the Caddy loopback peer — collapsing
+// every client onto 127.0.0.1 and one shared budget.
+//
+// UseLeftmostIP is deliberately LEFT FALSE: the router middleware in main.go
+// collapses X-Forwarded-For to exactly ONE value, so leftmost/rightmost is
+// irrelevant and we avoid any ambiguity about which entry RealIP() picks.
+//
+// The seed is idempotent per boot — if the header is already trusted it is a
+// no-op — and persists via app.Save (which reloads the in-memory settings,
+// so RealIP() sees it immediately, even for the very next request). The
+// PB_SETTINGS row defaults exist only for a screenshots-import scenario; this
+// guarantees the running server is correct regardless of how pb_data was
+// provisioned.
+func seedClientIPSettings(app core.App) error {
+	s := app.Settings()
+	// Already seeded: keep the existing config (do not overwrite a deliberate
+	// operator change such as extra headers or UseLeftmostIP=true).
+	if len(s.TrustedProxy.Headers) == 1 && s.TrustedProxy.Headers[0] == "X-Forwarded-For" {
+		return nil
+	}
+	s.TrustedProxy.Headers = []string{"X-Forwarded-For"}
+	// Leave UseLeftmostIP at its zero value (false).
+	return app.Save(s)
 }
