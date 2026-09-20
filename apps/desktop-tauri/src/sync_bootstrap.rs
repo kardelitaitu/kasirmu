@@ -34,11 +34,17 @@ use kasirmu_core::sync_client;
 use rusqlite::Connection;
 use tokio::sync::Mutex;
 
-/// Default cloud sync server — the unified auth+sync service at the custom
-/// domain. Sourced from the single compiled origin list (ADR #55); this dev
-/// bootstrap points at the second name for the same deployment, matching the
-/// behaviour it has always had.
-const LOCAL_SYNC_URL: &str = kasirmu_core::server_origin::FALLBACK_SERVER_ORIGIN;
+/// Default cloud sync server for a debug build: the local Docker stack.
+///
+/// Sourced from the single compiled origin list (ADR #55). It is deliberately the
+/// loopback dev origin and NOT the production fallback name it used to carry: a
+/// debug build that silently auto-provisions against a real tenant can pull
+/// production data over a developer's database, and can push test sales into it.
+/// The probe below still gates every write, so this only connects when the local
+/// stack (scripts/dev-up.ps1) is actually answering — and `should_auto_provision`
+/// returns false the moment a URL is configured, so a developer who has pointed
+/// this machine at production keeps that setting.
+const LOCAL_SYNC_URL: &str = kasirmu_core::server_origin::DEBUG_SYNC_ORIGIN;
 
 /// How many probe + token attempts before giving up. The docker backend
 /// can take a few seconds to answer on a cold start, so a bounded retry

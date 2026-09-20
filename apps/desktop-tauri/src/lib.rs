@@ -228,7 +228,7 @@ pub fn run() {
             // A fresh dev DB ships with an empty `sync_server_url` and sync
             // disabled, so the background daemon silently no-ops until the
             // user manually configures Settings → Sync. If the cloud server
-            // (`https://license.ozpos.my.id`) is up, request a JWT and
+            // (`DEBUG_SYNC_ORIGIN` — the local Docker stack) is up, request a JWT and
             // persist the connection. Spawned BEFORE the sync daemon so the
             // daemon's first tick (60–120s out) sees the fresh config. Never
             // runs in release builds — an existing configuration is never
