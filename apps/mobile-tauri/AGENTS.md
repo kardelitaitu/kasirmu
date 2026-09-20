@@ -80,7 +80,7 @@ Tauri CLI. Tauri only regenerates it when it is missing:
 gen/android/
   app/build.gradle.kts
   app/src/main/AndroidManifest.xml
-  app/src/main/java/com/ozpos/tablet/MainActivity.kt
+  app/src/main/java/mu/kasir/mobile/MainActivity.kt
   build.gradle.kts
   gradle/
   gradle.properties
