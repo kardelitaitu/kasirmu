@@ -63,6 +63,39 @@ async fn a_refused_address_or_a_rate_limit_maps_to_a_field_error() {
     }
 }
 
+#[cfg(feature = "sync-http")]
+#[tokio::test]
+async fn the_terminal_credential_is_parsed_when_the_server_issues_one() {
+    // Additive by design: absent means the link earned no credential, present means it did, and
+    // the camelCase names are what the licence server writes.
+    let (origin, server) = one_shot_server(
+        "HTTP/1.1 200 OK",
+        r#"{"tenantId":"t-1","email":"o@e.com","verified":true,"terminal":{"issued":true,"terminalId":"mach-1","deviceSecret":"ds-1"}}"#
+            .to_string(),
+    );
+    let account = consume_desktop_link_code(&origin, "key-abc", "mach-1", "654321")
+        .await
+        .expect("consume");
+    server.join().expect("server thread");
+
+    let terminal = account.terminal.expect("a credential was issued");
+    assert!(terminal.issued);
+    assert_eq!(terminal.terminal_id.as_deref(), Some("mach-1"));
+    assert_eq!(terminal.device_secret.as_deref(), Some("ds-1"));
+    assert!(terminal.reason.is_none());
+
+    // A reply carrying no credential leaves the field absent — an older server still parses.
+    let (origin, server) = one_shot_server(
+        "HTTP/1.1 200 OK",
+        r#"{"tenantId":"t-2","email":"o@e.com","verified":true}"#.to_string(),
+    );
+    let bare = consume_desktop_link_code(&origin, "key-abc", "mach-1", "654321")
+        .await
+        .expect("consume");
+    server.join().expect("server thread");
+    assert!(bare.terminal.is_none(), "an older server must still parse");
+}
+
 /// Serve exactly one canned HTTP response and hand back the request the client sent.
 ///
 /// Reads until the declared body length arrives: a single `read` can return only the
