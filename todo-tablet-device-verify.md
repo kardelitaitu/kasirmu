@@ -1,6 +1,6 @@
 # Tablet device verification — close the b-full `[unrun]` blocker (b-full §9 follow-on)
 
-<!-- Audit stamp: 2026-09-20 · DSH · status: NEW, UNEXECUTED · extends todo-tablet-dialog-content-uri.md §9. Builds a real arm64 debug APK for apps/mobile-tauri (mu.kasir.mobile) and exercises the four behaviours that plan could only assert as [unrun]. The todo- token stays until the four device exercises have RUN and PASSED (AGENTS.md rename rule). -->
+<!-- Audit stamp: 2026-09-20 · DSH · status: BUILD DONE, EXERCISE PENDING · extends todo-tablet-dialog-content-uri.md §9. Builds a real arm64 debug APK for apps/mobile-tauri (mu.kasir.mobile) and exercises the four behaviours that plan could only assert as [unrun]. The todo- token stays until the four device exercises have RUN and PASSED (AGENTS.md rename rule). -->
 
 **Document:** `todo-tablet-device-verify.md`
 **Role:** Verification pass — one workstream, one gate (the device)
@@ -35,9 +35,20 @@
 
 ## Results (filled during execution)
 
+### Step 3 — Build (DONE 2026-09-20)
+- Command: `cargo tauri android build --apk --debug --target aarch64` (Git Bash + env block from step 2).
+- Wall time 3h 02m (Rust cross-compile dominated; first clean build). Exit 0.
+- Artifact: `apps/mobile-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk` (325,685,364 bytes, 2026-09-21 00:58).
+- `aapt2 dump badging` → `package: name=mu.kasir.mobile versionName=0.0.39`, `native-code: arm64-v8a` (aarch64 lib bundled — the very thing the bare `cargo build` could not produce).
+- Note: Tauri emitted `app-universal-debug.apk` (all ABIs) despite `--target aarch64`; arm64-v8a is present, which is what the tablet needs. JDK-21 pin held; Gradle ran clean (only the benign source/target-8 deprecation warning).
+- **This closes the technical half of caveat #2 (b-full §1 pt. 2): the cross-compile is proven to work.** What remains is the on-device exercise, gated solely on a connected tablet.
+
+### Steps 4–6 — Device exercise (PENDING)
+- `adb devices` STILL EMPTY as of this commit — no tablet attached yet. Blocked on the owner connecting the Redmi (USB debugging / wireless ADB).
+
 | # | Flow | Result | Evidence |
 |---|---|---|---|
-| 1 | Image picker | _pending_ | _ |
-| 2 | Export .kasirpkg | _pending_ | _ |
-| 3 | Import .kasirpkg | _pending_ | _ |
-| 4 | Backup to destination | _pending_ | _ |
+| 1 | Image picker | _pending (no device)_ | _ |
+| 2 | Export .kasirpkg | _pending (no device)_ | _ |
+| 3 | Import .kasirpkg | _pending (no device)_ | _ |
+| 4 | Backup to destination | _pending (no device)_ | _ |
