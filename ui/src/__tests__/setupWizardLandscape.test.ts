@@ -15,7 +15,7 @@ import { resolve } from 'path';
  *     `LANDSCAPE_QUERY` in `useOrientation.ts`, because CSS cannot import a
  *     JS string — so the duplication is asserted rather than trusted.
  *  2. **Insets are read once.** `env(safe-area-inset-*)` appears on `:root`
- *     in `reset.css` and nowhere else; every full-screen surface consumes the
+ *     in `tokens.css` and nowhere else; every full-screen surface consumes the
  *     `--inset-*` tokens. A sheet that re-derives them keeps working, which is
  *     why the drift would otherwise go unnoticed.
  * ────────────────────────────────────────────────────────────────── */
