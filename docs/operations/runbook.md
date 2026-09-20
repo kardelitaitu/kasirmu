@@ -534,6 +534,21 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/v1/terminals" \
 # For the end-to-end check, take a throwaway tenant: activate (or recover) it and use the
 # api_key the response returns — the only time a key is ever visible — with the machine_id that
 # activation registered. Then request, read the code from the mailbox, and consume:
+KEY="<the api_key activation returned>"; MACHINE="<that machine_id>"; ACCOUNT="<its email>"
+curl -s -X POST "$BASE/api/v1/desktop/link/email/request" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $KEY" \
+  -d "{\"machine_id\":\"$MACHINE\",\"email\":\"$ACCOUNT\"}"
+#   503 -> OZ_SMTP_HOST is unset        403 -> not this store's account address
+curl -s -X POST "$BASE/api/v1/desktop/link/email/consume" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $KEY" -d "{\"machine_id\":\"$MACHINE\",\"code\":\"<code>\"}"
+#   expect {"tenantId":...,"verified":true,"terminal":{"issued":true,...}}
+#   terminal.issued=false means OZ_SYNC_API_URL is unset or the sync service refused the
+#   admin key: the account is linked, the device simply holds no sync credential.
+```
+
+Then finish **one real sign-in in a browser** and confirm the account portal lists it
+under *Sign-in methods* — that is the only check that exercises Google itself. Two
+failures to expect, and what each means:
 
 - `redirect_uri_mismatch` from Google: the callback for **this** host **and this flow** is not
   registered. Four URIs are needed — both hosts crossed with both paths, `/api/v1/web/oauth/`
