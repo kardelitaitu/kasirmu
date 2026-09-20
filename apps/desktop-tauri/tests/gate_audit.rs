@@ -52,6 +52,11 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("analytics", 2, &["ANALYTICS_VIEW"]),
     ("audit", 7, &["AUDIT_EXPORT", "AUDIT_VIEW"]),
     ("auth", 1, &["OPERATOR_IMPERSONATE"]),
+    // Pinned at their measured shape (the test compares through a BTreeMap, so the
+    // row order is not load-bearing): avatars gained a STAFF_UPDATE gate and
+    // desktop_link gates nothing yet, both without a census update.
+    ("avatars", 1, &["STAFF_UPDATE"]),
+    ("desktop_link", 0, &[]),
     ("branding", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("browser", 0, &[]),
     (
@@ -86,7 +91,7 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
             "CUSTOMERS_VIEW",
         ],
     ),
-    ("data", 5, &["DATA_EXPORT", "SETTINGS_EDIT"]),
+    ("data", 6, &["DATA_EXPORT", "SETTINGS_EDIT"]),
     ("edc", 3, &["SALES_PROCESS", "SALES_REFUND", "SALES_VOID"]),
     ("email", 3, &["REPORTS_SCHEDULE", "SETTINGS_EDIT"]),
     ("exchange_rates", 0, &[]),
