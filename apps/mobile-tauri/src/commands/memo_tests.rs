@@ -263,7 +263,7 @@ async fn ack_goes_to_the_cloud_and_carries_the_wire_contract() {
     // wire: POST /api/v1/memos/{id}/ack, Bearer token, acknowledged_by
     // body, MemoAckCloud JSON response.
     use std::sync::Arc as StdArc;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::AsyncWriteExt;
     use tokio::net::TcpListener;
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -275,9 +275,7 @@ async fn ack_goes_to_the_cloud_and_carries_the_wire_contract() {
         let Ok((mut socket, _)) = listener.accept().await else {
             return;
         };
-        let mut buffer = vec![0_u8; 16 * 1024];
-        let n = socket.read(&mut buffer).await.unwrap_or(0);
-        let request = String::from_utf8_lossy(&buffer[..n]).into_owned();
+        let request = read_request(&mut socket).await;
         *captured_server.lock().await = Some(request);
         // Snake_case: the server's MemoAckResult has no serde rename, so
         // its wire body is snake_case — the same shape MemoAckCloud parses.
@@ -509,6 +507,54 @@ async fn ack_falls_back_to_local_write_with_seeded_recipient() {
 // device→row translation its local read and ack perform — and must not ask at
 // all for a device that resolves to no row.
 
+// Read one COMPLETE HTTP request off the socket.
+//
+// The three stubs in this file used to do a single `socket.read()`. TCP is a
+// byte stream, so the body frequently arrives in a SECOND segment and the
+// capture recorded only the head — which made `split("\r\n\r\n").nth(1)` yield
+// `None` and the assertion "the registration request must carry a JSON body"
+// fail. It failed only under a full-suite run, because run alone the two
+// segments arrived together.
+//
+// Measured 2026-09-20: two consecutive `cargo test -p kasirmu-mobile --lib`
+// runs each failed exactly one memo test and a DIFFERENT one each time
+// (`cloud_ack_pairs_with_the_resolved_row_id_…` then
+// `ack_goes_to_the_cloud_and_carries_the_wire_contract`), while each passed
+// alone — one race, two symptoms. After this fix: four consecutive full runs
+// green, 677 passed / 0 failed.
+async fn read_request(socket: &mut tokio::net::TcpStream) -> String {
+    let mut buf: Vec<u8> = Vec::with_capacity(1024);
+    let mut chunk = vec![0_u8; 4096];
+    loop {
+        // Complete once the head has ended AND, if the head declares a body,
+        // that many body bytes have actually arrived.
+        let complete = match buf.windows(4).position(|w| w == b"\r\n\r\n") {
+            Some(i) => {
+                let head_end = i + 4;
+                let head = String::from_utf8_lossy(&buf[..head_end]).to_ascii_lowercase();
+                let len: usize = head
+                    .lines()
+                    .find_map(|l| l.strip_prefix("content-length:"))
+                    .and_then(|v| v.trim().parse().ok())
+                    .unwrap_or(0);
+                buf.len() >= head_end + len
+            }
+            None => false,
+        };
+        if complete || buf.len() > 1024 * 1024 {
+            break;
+        }
+        let n = tokio::io::AsyncReadExt::read(socket, &mut chunk)
+            .await
+            .unwrap_or(0);
+        if n == 0 {
+            break; // the client closed; nothing more is coming
+        }
+        buf.extend_from_slice(&chunk[..n]);
+    }
+    String::from_utf8_lossy(&buf).into_owned()
+}
+
 /// A one-shot fake cloud: captures the request it receives, then answers the
 /// memo-display contract with `body`.
 ///
@@ -519,7 +565,7 @@ async fn fake_cloud(
     body: &'static str,
 ) -> (String, std::sync::Arc<tokio::sync::Mutex<Option<String>>>) {
     use std::sync::Arc as StdArc;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::AsyncWriteExt;
     use tokio::net::TcpListener;
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -531,9 +577,8 @@ async fn fake_cloud(
         let Ok((mut socket, _)) = listener.accept().await else {
             return;
         };
-        let mut buffer = vec![0_u8; 16 * 1024];
-        let n = socket.read(&mut buffer).await.unwrap_or(0);
-        *sink.lock().await = Some(String::from_utf8_lossy(&buffer[..n]).into_owned());
+        let request = read_request(&mut socket).await;
+        *sink.lock().await = Some(request);
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
             body.len(),
@@ -651,7 +696,7 @@ async fn scripted_cloud(
     ack_reply: impl Fn() -> (u16, String) + Send + 'static,
 ) -> (String, std::sync::Arc<tokio::sync::Mutex<Vec<String>>>) {
     use std::sync::Arc as StdArc;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::AsyncWriteExt;
     use tokio::net::TcpListener;
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -663,9 +708,7 @@ async fn scripted_cloud(
             let Ok((mut socket, _)) = listener.accept().await else {
                 return;
             };
-            let mut buffer = vec![0_u8; 16 * 1024];
-            let n = socket.read(&mut buffer).await.unwrap_or(0);
-            let request = String::from_utf8_lossy(&buffer[..n]).into_owned();
+            let request = read_request(&mut socket).await;
             let (status, body) = if request.starts_with("POST /api/v1/terminals ") {
                 // Echo the pairing's terminal_id back, the way the real
                 // registration endpoint does — and record the request whole.
