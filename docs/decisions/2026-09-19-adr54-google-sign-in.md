@@ -653,12 +653,22 @@ Each phase ships independently.
   + opener) registered in `lib.rs`; `ui/src/api/account.ts`; the wizard step; terminal
   registration on consume.
 - **P4 — Email variant + tablet exclusion.** The purpose-bound link code (§2.6) and the
+  **As shipped (2026-09-19), which differs from the sketch above:** the HTTP half lives in
+  `kasirmu-core/src/desktop_link.rs`, not the bridge — the bridge is contractually free of an HTTP
+  stack (its own `browser.rs` says why), so PKCE and the two calls sit beside the attestation client,
+  and the bridge owns only the loopback listener. The command is `commands/desktop_link.rs` in BOTH
+  shells, and the wrapper sits in `ui/src/api/license.ts`.
   platform helper that keeps the Google control off Android.
 
 ## 8. Verification
 
 - Go: resolver matrix (§3) as a table test, including reserved-admin refusal, `409` on
   foreign `sub`, `email_verified=false` refusal, and equivalence of the two creation doors.
+  **Shipped 2026-09-20:** `TestBothSignupDoorsProduceEquivalentTenantRows` drives both doors —
+  request-otp creating a tenant, and the Google web flow creating one — and compares every field
+  the schema carries, exempting only the row identity, the random credential material, and
+  `email_verified`, which the doors reach at different moments (and which the test pins
+  separately, so the exemption cannot quietly invert).
 - Go: state single-use and expiry; purpose-bound link codes rejected by `/web/verify-otp`;
   link codes refused when replayed with a different `machine_id`.
 - Bridge: `oauth_tests.rs` for PKCE derivation, URL construction, and `redirect_uri`
