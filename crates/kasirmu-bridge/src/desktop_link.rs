@@ -76,9 +76,9 @@ impl LoopbackListener {
     pub fn wait_for_callback(self, timeout: Duration) -> Result<LinkCallback, BridgeError> {
         let deadline = Instant::now() + timeout;
         // Non-blocking so the deadline is honoured without a second thread.
-        self.listener.set_nonblocking(true).map_err(|e| {
-            BridgeError::Internal(format!("loopback listener setup: {e}"))
-        })?;
+        self.listener
+            .set_nonblocking(true)
+            .map_err(|e| BridgeError::Internal(format!("loopback listener setup: {e}")))?;
         loop {
             if Instant::now() >= deadline {
                 return Err(BridgeError::Internal(
@@ -95,7 +95,9 @@ impl LoopbackListener {
                     std::thread::sleep(Duration::from_millis(20));
                 }
                 Err(e) => {
-                    return Err(BridgeError::Internal(format!("loopback accept failed: {e}")));
+                    return Err(BridgeError::Internal(format!(
+                        "loopback accept failed: {e}"
+                    )));
                 }
             }
         }
@@ -212,7 +214,6 @@ fn decode_component(raw: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-
 /// Runs one device link from bind to linked account.
 ///
 /// `open` receives the consent URL and is responsible for launching the browser; injecting
@@ -235,7 +236,7 @@ where
     F: FnOnce(String) -> Fut,
     Fut: std::future::Future<Output = Result<(), BridgeError>>,
 {
-    use kasirmu_core::desktop_link::{generate_pkce, start_desktop_link, consume_desktop_link};
+    use kasirmu_core::desktop_link::{consume_desktop_link, generate_pkce, start_desktop_link};
 
     let listener = LoopbackListener::bind()?;
     let redirect_uri = listener.redirect_uri();

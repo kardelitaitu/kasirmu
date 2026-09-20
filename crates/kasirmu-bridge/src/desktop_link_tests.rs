@@ -18,12 +18,18 @@ fn send(port: u16, target: &str) -> String {
 #[test]
 fn parse_callback_target_reads_the_code_and_the_reason() {
     let cases: Vec<(&str, Option<LinkCallback>)> = vec![
-        ("GET /?link_code=abc123 HTTP/1.1", Some(LinkCallback::Code("abc123".into()))),
+        (
+            "GET /?link_code=abc123 HTTP/1.1",
+            Some(LinkCallback::Code("abc123".into())),
+        ),
         (
             "GET /?link_error=access_denied HTTP/1.1",
             Some(LinkCallback::Error("access_denied".into())),
         ),
-        ("GET /cb?link_code=zzz&extra=1 HTTP/1.1", Some(LinkCallback::Code("zzz".into()))),
+        (
+            "GET /cb?link_code=zzz&extra=1 HTTP/1.1",
+            Some(LinkCallback::Code("zzz".into())),
+        ),
         ("GET / HTTP/1.1", None),
         ("GET /favicon.ico HTTP/1.1", None),
         ("GET /?foo=bar HTTP/1.1", None),
@@ -121,7 +127,10 @@ fn wait_for_callback_gives_up_at_the_deadline() {
         matches!(outcome, Err(BridgeError::Internal(ref m)) if m.contains("timed out")),
         "{outcome:?}"
     );
-    assert!(started.elapsed() < Duration::from_secs(3), "must not overrun the deadline");
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "must not overrun the deadline"
+    );
 }
 
 #[test]
@@ -130,7 +139,8 @@ fn the_relay_page_never_reflects_the_query() {
     // would be script injection into a page they are looking at.
     let listener = LoopbackListener::bind().expect("bind");
     let port = listener.port();
-    let client = std::thread::spawn(move || send(port, "/?link_error=%3Cscript%3Ealert(1)%3C/script%3E"));
+    let client =
+        std::thread::spawn(move || send(port, "/?link_error=%3Cscript%3Ealert(1)%3C/script%3E"));
 
     let outcome = listener
         .wait_for_callback(Duration::from_secs(5))
@@ -153,7 +163,10 @@ fn the_relay_page_never_reflects_the_query() {
 type Responder = Box<dyn Fn(usize, &str) -> (String, String) + Send>;
 
 /// A stub licence server answering `count` requests, returning the raw requests it saw.
-fn stub_server(count: usize, responder: Responder) -> (String, std::thread::JoinHandle<Vec<String>>) {
+fn stub_server(
+    count: usize,
+    responder: Responder,
+) -> (String, std::thread::JoinHandle<Vec<String>>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let port = listener.local_addr().expect("addr").port();
     let handle = std::thread::spawn(move || {
@@ -253,12 +266,15 @@ async fn link_device_walks_bind_start_redirect_consume() {
                 let redirect = field(request, "redirect_uri");
                 (
                     ok_status(),
-                    format!("{{\"authorizeUrl\":\"https://accounts.google.com/auth?redirect_uri={redirect}\"}}"),
+                    format!(
+                        "{{\"authorizeUrl\":\"https://accounts.google.com/auth?redirect_uri={redirect}\"}}"
+                    ),
                 )
             } else {
                 (
                     ok_status(),
-                    r#"{"tenantId":"t-1","provider":"google","email":"owner@example.com"}"#.to_string(),
+                    r#"{"tenantId":"t-1","provider":"google","email":"owner@example.com"}"#
+                        .to_string(),
                 )
             }
         }),
@@ -281,12 +297,18 @@ async fn link_device_walks_bind_start_redirect_consume() {
     assert_eq!(account.tenant_id, "t-1");
     assert_eq!(account.email, "owner@example.com");
     assert!(
-        seen[0].starts_with(&format!("POST {} ", kasirmu_core::desktop_link::LINK_START_PATH)),
+        seen[0].starts_with(&format!(
+            "POST {} ",
+            kasirmu_core::desktop_link::LINK_START_PATH
+        )),
         "{}",
         seen[0]
     );
     assert!(
-        seen[1].starts_with(&format!("POST {} ", kasirmu_core::desktop_link::LINK_CONSUME_PATH)),
+        seen[1].starts_with(&format!(
+            "POST {} ",
+            kasirmu_core::desktop_link::LINK_CONSUME_PATH
+        )),
         "{}",
         seen[1]
     );
@@ -295,7 +317,10 @@ async fn link_device_walks_bind_start_redirect_consume() {
     assert!(seen[1].contains(r#""link_code":"code-1""#), "{}", seen[1]);
     assert!(seen[1].contains(r#""machine_id":"mach-1""#), "{}", seen[1]);
     // The verifier goes to the server, never to the browser.
-    assert!(!seen[0].contains(&field(&seen[1], "link_code")), "nonsense guard");
+    assert!(
+        !seen[0].contains(&field(&seen[1], "link_code")),
+        "nonsense guard"
+    );
 }
 
 #[tokio::test]
@@ -306,7 +331,9 @@ async fn link_device_reports_a_refused_flow_as_invalid() {
             let redirect = field(request, "redirect_uri");
             (
                 ok_status(),
-                format!("{{\"authorizeUrl\":\"https://accounts.google.com/auth?redirect_uri={redirect}\"}}"),
+                format!(
+                    "{{\"authorizeUrl\":\"https://accounts.google.com/auth?redirect_uri={redirect}\"}}"
+                ),
             )
         }),
     );
@@ -336,7 +363,12 @@ async fn link_device_reports_a_refused_flow_as_invalid() {
 async fn link_device_gives_up_when_the_browser_never_returns() {
     let (stub, server) = stub_server(
         1,
-        Box::new(|_, _| (ok_status(), r#"{"authorizeUrl":"https://accounts.google.com/auth"}"#.to_string())),
+        Box::new(|_, _| {
+            (
+                ok_status(),
+                r#"{"authorizeUrl":"https://accounts.google.com/auth"}"#.to_string(),
+            )
+        }),
     );
 
     let started = Instant::now();
@@ -354,19 +386,31 @@ async fn link_device_gives_up_when_the_browser_never_returns() {
         matches!(outcome, Err(BridgeError::Internal(ref m)) if m.contains("timed out")),
         "{outcome:?}"
     );
-    assert!(started.elapsed() < Duration::from_secs(3), "must not overrun the timeout");
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "must not overrun the timeout"
+    );
 }
 
 #[tokio::test]
 async fn link_device_propagates_an_opener_failure() {
     let (stub, server) = stub_server(
         1,
-        Box::new(|_, _| (ok_status(), r#"{"authorizeUrl":"https://accounts.google.com/auth"}"#.to_string())),
+        Box::new(|_, _| {
+            (
+                ok_status(),
+                r#"{"authorizeUrl":"https://accounts.google.com/auth"}"#.to_string(),
+            )
+        }),
     );
 
-    let outcome = link_device(&stub, "key-abc", "mach-1", Duration::from_secs(5), |_| async {
-        Err(BridgeError::Internal("no browser available".to_string()))
-    })
+    let outcome = link_device(
+        &stub,
+        "key-abc",
+        "mach-1",
+        Duration::from_secs(5),
+        |_| async { Err(BridgeError::Internal("no browser available".to_string())) },
+    )
     .await;
     server.join().expect("stub thread");
 
@@ -375,4 +419,3 @@ async fn link_device_propagates_an_opener_failure() {
         "{outcome:?}"
     );
 }
-
