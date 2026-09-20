@@ -41,10 +41,20 @@
 }
 
 /* ── Bottom tab navigation ────────────────────────── */
+/* The bar is a horizontally SWIPEABLE strip, not a fixed row of at most seven
+   tabs. It used to be `justify-content: space-around` with no overflow rule,
+   while the caller sliced the registry to seven items — so every further tab
+   was silently dropped and the seven that remained were squeezed narrower than
+   their own labels. Now the strip scrolls: items keep their natural width, and
+   a half-visible tab at the edge is the cue that there is more.
+
+   `justify-content: safe center` centres the strip while it fits and falls back
+   to start-aligned once it overflows. Plain `center` cannot: it would push the
+   leading tabs to a negative offset that a scroll container cannot reach. */
 .tablet-shell .tablet-tab-bar {
   display: flex;
   align-items: center;
-  justify-content: space-around;
+  justify-content: safe center;
   height: var(--tablet-bottom-nav-height);
   min-height: var(--tablet-bottom-nav-height);
   background: var(--color-bg-elevated);
@@ -52,6 +62,26 @@
   padding: 0 var(--space-2);
   padding-bottom: var(--inset-bottom);
   z-index: var(--z-sticky);
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Horizontal panning is the bar's own gesture. `pan-x` stops the vertical
+     drag that scrolls the page from being stolen here (the bar is fixed
+     chrome), and `contain` keeps a flick from chaining into the content. */
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  /* Touch chrome: a scrollbar would sit on top of the tab labels. */
+  scrollbar-width: none;
+}
+
+.tablet-shell .tablet-tab-bar::-webkit-scrollbar {
+  display: none;
+}
+
+/* The `<nav>` wrapper is an unstyled block today, and the column-flex parent
+   would otherwise be free to shrink it and squeeze the bar it exists to hold. */
+.tablet-shell .tablet-tab-bar-nav {
+  flex: 0 0 auto;
 }
 
 .tablet-shell .tablet-tab-item {
@@ -60,6 +90,10 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-0_5);
+  /* `0 0 auto`: keep every tab at its natural width so the strip overflows and
+     scrolls instead of compressing. Without this the flex default lets a long
+     strip shrink the items below their labels. */
+  flex: 0 0 auto;
   min-width: var(--tablet-tap-target);
   min-height: var(--tablet-tap-target);
   padding: var(--space-1) var(--space-3);
@@ -75,6 +109,12 @@
   transition:
     color var(--duration-150) var(--ease-out),
     background-color var(--duration-150) var(--ease-out);
+}
+
+/* Rendered by TabletAppLayout but previously unstyled. A wrapping label would
+   make one tab taller than its neighbours and defeat the fixed bar height. */
+.tablet-shell .tablet-tab-label {
+  white-space: nowrap;
 }
 
 .tablet-shell .tablet-tab-item:active {

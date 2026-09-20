@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { withFluent } from '@/i18n/test-utils';
-import TabletAppLayout from '@/app/tablet/TabletAppLayout';
+import TabletAppLayout, { FALLBACK_TAB_LIMIT } from '@/app/tablet/TabletAppLayout';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
 const mockGetNavItems = vi.fn();
@@ -62,10 +62,62 @@ describe('TabletAppLayout', () => {
     expect(screen.getByText('Settings')).toBeTruthy();
   });
 
-  it('limits nav items to 7', () => {
+  it('caps the FALLBACK tab set at FALLBACK_TAB_LIMIT', () => {
+    // No `workspaceScreens`, so the whole (8-item) mock registry is the tab
+    // set. The fallback is the entire application nav — 41 items for an owner
+    // — so it is capped; the bar scrolls but should not become the sidebar.
     renderLayout();
     const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(7);
+    expect(tabs).toHaveLength(FALLBACK_TAB_LIMIT);
+    expect(mockGetNavItems).toHaveBeenCalled();
+  });
+
+  it('does NOT cap the workspace-declared tab set', () => {
+    // A workspace declares its screens in `workspace_type_screens` (ordered,
+    // owner-configured). Rendering only the first 7 silently discards the
+    // rest: the seeded `admin` workspace declares 15 screens, 13 of them nav
+    // items, so the cap dropped 6 with no signal. All 8 mocked routes are
+    // declared here — more than FALLBACK_TAB_LIMIT — and all 8 must render.
+    renderLayout({
+      workspaceScreens: [
+        'sales',
+        'products',
+        'customers',
+        'settings',
+        'reports',
+        'kds',
+        'inventory',
+        'staff',
+      ],
+    });
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs).toHaveLength(8);
+    expect(tabs.length).toBeGreaterThan(FALLBACK_TAB_LIMIT);
+    // The tab past the old cap is the point of the test.
+    expect(screen.getByText('Staff')).toBeTruthy();
+  });
+
+  it('renders the active tab even when it sits past the fallback cap', () => {
+    // Before the declared list was rendered in full, navigating to a route
+    // past index 7 rendered no tab for it at all, so the bar highlighted
+    // nothing. Declared screens are what make that reachable.
+    renderLayout({
+      route: 'staff',
+      workspaceScreens: [
+        'sales',
+        'products',
+        'customers',
+        'settings',
+        'reports',
+        'kds',
+        'inventory',
+        'staff',
+      ],
+    });
+    const active = screen
+      .getAllByRole('tab')
+      .find((t) => t.getAttribute('aria-selected') === 'true');
+    expect(active?.textContent).toContain('Staff');
   });
 
   it('highlights the active route', () => {
