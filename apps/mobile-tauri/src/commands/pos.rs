@@ -1,6 +1,6 @@
 /*
 last audited 25-07-26 by RSA-Agent (mobile-tauri slice A: pos head+sweep)
-crate: mobile-tauri | status: SAFE | lint: CLEAN
+crate: kasirmu-mobile | status: SAFE | lint: CLEAN
 findings: sweep + guard sites verified — both Percentage::new unwraps (lines 57, 100) preceded by explicit 0..=100 range checks with SAFETY comments; authz decorators present; cart/sale state machine lives in kasirmu_core (audited). Coverage note: risk-ranked sampling, not full deep read
 next: none | perf: N/A
 */

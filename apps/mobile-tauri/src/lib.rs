@@ -1,6 +1,6 @@
 /*
 last audited 25-07-26 by RSA-Agent (mobile-tauri slice A: verified)
-crate: mobile-tauri | status: SAFE | lint: CLEAN
+crate: kasirmu-mobile | status: SAFE | lint: CLEAN
 findings: clean — matches desktop-tauri guarded patterns. Coverage note: verified under the risk-ranked sampling protocol (global sweep clean), not line-by-line deep read
 next: none | perf: N/A
 */
@@ -103,7 +103,7 @@ pub fn run() {
         // Fire-and-forget on purpose: boot is never blocked on a probe, and an
         // unreachable MAIN degrades to the canonical default exactly as it does
         // today until the cascade resolves to the fallback.
-        platform_startup::spawn_daemon("server origin attestation", async move {
+        platform_startup::spawn_once("server origin attestation", async move {
             let nonce = kasirmu_core::attestation::generate_nonce();
             match kasirmu_core::attestation::resolve_attested_origin(&nonce).await {
                 Some(resolved) => tracing::info!(
@@ -116,7 +116,7 @@ pub fn run() {
                 ),
             }
         });
-                    platform_startup::spawn_daemon("hardware bootstrap", async move {
+                    platform_startup::spawn_once("hardware bootstrap", async move {
                         let state = hardware_app_handle.state::<AppState>();
                         let registry = state.registry.clone();
                         let base_dir = state
