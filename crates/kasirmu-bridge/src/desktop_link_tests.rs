@@ -93,6 +93,12 @@ fn wait_for_callback_returns_the_code_and_answers_the_browser() {
     assert_eq!(outcome, LinkCallback::Code("abc123".into()));
     assert!(response.starts_with("HTTP/1.1 200 OK"), "{response}");
     assert!(response.contains("close this window"), "{response}");
+    // The browser tab is the Rust side's only user-facing surface, so it carries both site
+    // languages rather than whichever one a plumbed locale would have picked.
+    assert!(
+        response.contains("menutup jendela ini") && response.contains("lang=\"id\""),
+        "{response}"
+    );
 }
 
 #[test]

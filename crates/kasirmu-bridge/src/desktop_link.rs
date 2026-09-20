@@ -31,9 +31,15 @@ pub enum LinkCallback {
 ///
 /// Static on purpose: nothing from the query is interpolated, so no `link_error` value
 /// can inject markup into a page the user is looking at.
+///
+/// Both site languages, because this page is served by the Rust side to a BROWSER: the app's
+/// Fluent bundles cannot reach it, and plumbing a locale through the IPC just to choose a
+/// sentence would cost more than the sentence. One line in each language beats one language
+/// that is wrong for half the merchants.
 const RELAY_PAGE: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
     <title>OZ-POS</title></head><body style=\"font-family:system-ui;padding:3rem;text-align:center\">\
-    <p>You can close this window and return to the app.</p></body></html>";
+    <p>You can close this window and return to the app.</p>\
+    <p lang=\"id\">Anda dapat menutup jendela ini dan kembali ke aplikasi.</p></body></html>";
 
 /// A bound loopback listener waiting for one device-link redirect.
 #[derive(Debug)]
