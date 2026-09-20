@@ -21,6 +21,12 @@
 #     Google's documented exception to its https rule):
 #       http://localhost:8080/api/v1/web/oauth/google/callback
 #       http://localhost:8080/api/v1/desktop/link/google/callback
+#     Point the RETURN host at your local site too — the default is the live kasir.mu, which
+#     would try to spend a code your local server minted:
+#       OZ_WEB_SITE_URL=http://localhost:4321
+#     (the default CORS allowlist already admits that origin), and serve the website against
+#     this API — `PUBLIC_LICENSE_API_URL=http://localhost:8080`, see website/README.md §local.
+#
 #     Then open http://localhost:8080/api/v1/web/oauth/google/start?next=/en/account
 
 services:
