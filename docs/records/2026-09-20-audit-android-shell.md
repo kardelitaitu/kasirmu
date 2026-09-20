@@ -354,11 +354,12 @@ cloud backup and device transfer.
   So the repo's two figures are two different commands, and neither was recorded with its command.
   **The discipline to add is: print the command beside the number.** The durable size fix, when
   someone wants one, is `abiList` — it survives scaffold regeneration, which an edit to
-  `RustPlugin.kt` or `build.gradle.kts` does not. **Open item, recorded rather than edited:**
-  `apps/mobile-tauri/AGENTS.md:189-190` gives the debug APK as 152.7 MB without naming its
-  command, and 152.7 MB is the `--target aarch64` path, while the same table's command at `:184`
-  passes no `--target` and would produce the ~583 MB build. Correcting that needs a REV stamp plus
-  a re-measurement of both paths, which this revision did not run.
+  `RustPlugin.kt` or `build.gradle.kts` does not.
+
+  **Resolved in the same pass** (`14c8f58f5`). `apps/mobile-tauri/AGENTS.md`'s build-cost table now
+  names the invocation behind each figure and gives the four-ABI debug cost, with a REV 7 stamp. The
+  26.9 MB / 152.7 MB figures are qualified rather than re-measured: re-measuring both paths is still
+  worth doing, but it no longer blocks reading the table correctly.
 
 ---
 
@@ -376,6 +377,6 @@ opener routing, the three unrequested permissions, the orientation lock, and D3'
 Revision 2 narrowed one of those: the permission item is **three** permissions
 (`POST_NOTIFICATIONS`, `BLUETOOTH_CONNECT`, `BLUETOOTH_SCAN`), not four — CAMERA's runtime
 request path already exists in the generated scaffold and only lacks code that asks for the
-camera. It also leaves one documentation item open rather than settled: the build-cost table in
-`apps/mobile-tauri/AGENTS.md` does not name the command behind its 152.7 MB debug figure, and
-the command it does document would produce a ~583 MB build.
+camera. The one documentation item it raised — the build-cost table in `apps/mobile-tauri/AGENTS.md`
+not naming the command behind its 152.7 MB debug figure, and the command it does document producing
+a ~583 MB build — is fixed in `14c8f58f5`.
