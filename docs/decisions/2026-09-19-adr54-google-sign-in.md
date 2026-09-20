@@ -510,8 +510,17 @@ excludes the Google control, so a caller cannot re-enable either half. Five stri
 the dev-mock cannot answer these commands, so `ipc-parity-allowlist.json` carries them with reasons, as it
 does for the Google control.
 
-**Still owed:** the terminal credential both paths promise (step 6), which stays deferred until deployment
-makes it exercisable — and the wizard's copy on the tablet now describes only what exists.
+**Shipped 2026-09-26 (terminal credential, step 6):** `/consume` now registers the device with the sync
+service and returns a one-time `device_secret`; both shells store it through the typed encrypting setters
+(`sync_terminal_id`, `sync_terminal_secret`), so the credential is encrypted at rest and the
+credential-storage-form gate is satisfied rather than sidestepped.
+
+> **Best-effort, and it says so.** This is the one cross-service call in the link path, so an
+> unconfigured, unreachable or refusing sync service does NOT fail the link — the reply carries
+> `terminal.issued: false` with a reason and the server logs it loudly. Four tests pin that: the
+> registration reaching the stub with the admin key and the right body, the unconfigured case, a
+> 401 from the sync service (with the identity still linked), and the email door issuing the same
+> credential. `OZ_SYNC_API_URL` has no default — addresses are declared, never guessed (#55).
 behind it — and the terminal credential both paths still owe (step 6).
 
 ### 2.7 Tablet: the email path, never the Google one
