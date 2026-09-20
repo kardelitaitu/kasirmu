@@ -146,3 +146,233 @@ fn the_relay_page_never_reflects_the_query() {
         "the page must stay static: {response}"
     );
 }
+
+// ── the whole flow, with a stub licence server and a fake browser ─────
+
+/// One canned response, chosen from the request the responder sees.
+type Responder = Box<dyn Fn(usize, &str) -> (String, String) + Send>;
+
+/// A stub licence server answering `count` requests, returning the raw requests it saw.
+fn stub_server(count: usize, responder: Responder) -> (String, std::thread::JoinHandle<Vec<String>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let handle = std::thread::spawn(move || {
+        let mut seen = Vec::new();
+        for i in 0..count {
+            let (mut stream, _) = listener.accept().expect("accept");
+            stream.set_nonblocking(false).ok();
+            let request = read_request(&mut stream);
+            let (status, body) = responder(i, &request);
+            let response = format!(
+                "{status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(response.as_bytes());
+            let _ = stream.flush();
+            seen.push(request);
+        }
+        seen
+    });
+    (format!("http://127.0.0.1:{port}"), handle)
+}
+
+/// Reads a full request: headers plus the declared body length.
+fn read_request(stream: &mut TcpStream) -> String {
+    let mut buffer: Vec<u8> = Vec::new();
+    let mut chunk = [0_u8; 4096];
+    loop {
+        let read = stream.read(&mut chunk).unwrap_or(0);
+        if read == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+        let text = String::from_utf8_lossy(&buffer);
+        if let Some(headers_end) = text.find("\r\n\r\n") {
+            let declared = text[..headers_end]
+                .lines()
+                .find_map(|line| {
+                    line.to_ascii_lowercase()
+                        .strip_prefix("content-length:")
+                        .and_then(|value| value.trim().parse::<usize>().ok())
+                })
+                .unwrap_or(0);
+            if buffer.len() >= headers_end + 4 + declared {
+                break;
+            }
+        }
+    }
+    String::from_utf8_lossy(&buffer).to_string()
+}
+
+/// Best-effort `"field":"value"` read from a request body — enough for a stub.
+fn field(request: &str, name: &str) -> String {
+    let needle = format!("\"{name}\":\"");
+    match request.find(&needle) {
+        Some(at) => {
+            let rest = &request[at + needle.len()..];
+            rest[..rest.find('"').unwrap_or(0)].to_string()
+        }
+        None => String::new(),
+    }
+}
+
+/// Plays the browser: finds the loopback port in the consent URL and sends the callback.
+fn fake_browser(url: &str, target: &str) {
+    // The real server percent-encodes the redirect_uri inside the consent URL; a stub may
+    // echo it raw. Accept both, so this helper is about the flow rather than one encoding.
+    let encoded = "127.0.0.1%3A";
+    let plain = "127.0.0.1:";
+    let at = if let Some(found) = url.find(encoded) {
+        found + encoded.len()
+    } else if let Some(found) = url.find(plain) {
+        found + plain.len()
+    } else {
+        panic!("the consent URL must carry our loopback redirect: {url}");
+    };
+    let port: u16 = url[at..]
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect::<String>()
+        .parse()
+        .expect("port");
+    let target = target.to_string();
+    std::thread::spawn(move || send(port, &target));
+}
+
+fn ok_status() -> String {
+    "HTTP/1.1 200 OK".to_string()
+}
+
+#[tokio::test]
+async fn link_device_walks_bind_start_redirect_consume() {
+    let (stub, server) = stub_server(
+        2,
+        Box::new(|i, request| {
+            if i == 0 {
+                // Echo the caller's own redirect_uri, exactly as the real server does.
+                let redirect = field(request, "redirect_uri");
+                (
+                    ok_status(),
+                    format!("{{\"authorizeUrl\":\"https://accounts.google.com/auth?redirect_uri={redirect}\"}}"),
+                )
+            } else {
+                (
+                    ok_status(),
+                    r#"{"tenantId":"t-1","provider":"google","email":"owner@example.com"}"#.to_string(),
+                )
+            }
+        }),
+    );
+
+    let account = link_device(
+        &stub,
+        "key-abc",
+        "mach-1",
+        Duration::from_secs(5),
+        |url: String| {
+            fake_browser(&url, "/?link_code=code-1");
+            Ok(())
+        },
+    )
+    .await
+    .expect("a completed link");
+    let seen = server.join().expect("stub thread");
+
+    assert_eq!(account.tenant_id, "t-1");
+    assert_eq!(account.email, "owner@example.com");
+    assert!(
+        seen[0].starts_with(&format!("POST {} ", kasirmu_core::desktop_link::LINK_START_PATH)),
+        "{}",
+        seen[0]
+    );
+    assert!(
+        seen[1].starts_with(&format!("POST {} ", kasirmu_core::desktop_link::LINK_CONSUME_PATH)),
+        "{}",
+        seen[1]
+    );
+    // The code the browser carried is what the second call spends, and the device is
+    // named on both calls so the server can bind the code to it.
+    assert!(seen[1].contains(r#""link_code":"code-1""#), "{}", seen[1]);
+    assert!(seen[1].contains(r#""machine_id":"mach-1""#), "{}", seen[1]);
+    // The verifier goes to the server, never to the browser.
+    assert!(!seen[0].contains(&field(&seen[1], "link_code")), "nonsense guard");
+}
+
+#[tokio::test]
+async fn link_device_reports_a_refused_flow_as_invalid() {
+    let (stub, server) = stub_server(
+        1,
+        Box::new(|_, request| {
+            let redirect = field(request, "redirect_uri");
+            (
+                ok_status(),
+                format!("{{\"authorizeUrl\":\"https://accounts.google.com/auth?redirect_uri={redirect}\"}}"),
+            )
+        }),
+    );
+
+    let outcome = link_device(
+        &stub,
+        "key-abc",
+        "mach-1",
+        Duration::from_secs(5),
+        |url: String| {
+            fake_browser(&url, "/?link_error=access_denied");
+            Ok(())
+        },
+    )
+    .await;
+    server.join().expect("stub thread");
+
+    match outcome {
+        Err(BridgeError::Invalid(message)) => {
+            assert!(message.contains("access_denied"), "{message}");
+        }
+        other => panic!("a declined consent must be an Invalid error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn link_device_gives_up_when_the_browser_never_returns() {
+    let (stub, server) = stub_server(
+        1,
+        Box::new(|_, _| (ok_status(), r#"{"authorizeUrl":"https://accounts.google.com/auth"}"#.to_string())),
+    );
+
+    let started = Instant::now();
+    let outcome = link_device(
+        &stub,
+        "key-abc",
+        "mach-1",
+        Duration::from_millis(150),
+        |_| Ok(()),
+    )
+    .await;
+    server.join().expect("stub thread");
+
+    assert!(
+        matches!(outcome, Err(BridgeError::Internal(ref m)) if m.contains("timed out")),
+        "{outcome:?}"
+    );
+    assert!(started.elapsed() < Duration::from_secs(3), "must not overrun the timeout");
+}
+
+#[tokio::test]
+async fn link_device_propagates_an_opener_failure() {
+    let (stub, server) = stub_server(
+        1,
+        Box::new(|_, _| (ok_status(), r#"{"authorizeUrl":"https://accounts.google.com/auth"}"#.to_string())),
+    );
+
+    let outcome = link_device(&stub, "key-abc", "mach-1", Duration::from_secs(5), |_| {
+        Err(BridgeError::Internal("no browser available".to_string()))
+    })
+    .await;
+    server.join().expect("stub thread");
+
+    assert!(
+        matches!(outcome, Err(BridgeError::Internal(ref m)) if m.contains("no browser")),
+        "{outcome:?}"
+    );
+}
+

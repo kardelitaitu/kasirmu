@@ -212,6 +212,65 @@ fn decode_component(raw: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+
+/// Runs one device link from bind to linked account.
+///
+/// `open` receives the consent URL and is responsible for launching the browser; injecting
+/// it is what keeps this function free of any UI toolkit, and lets a test drive the whole
+/// flow — bind, PKCE, start, redirect, consume — without a window or a real browser.
+///
+/// A failure the server reports through the redirect (`link_error`) becomes
+/// [`BridgeError::Invalid`] so the wizard can explain it; a transport failure or a silent
+/// browser stays [`BridgeError::Internal`].
+pub async fn link_device<F>(
+    base_url: &str,
+    api_key: &str,
+    machine_id: &str,
+    timeout: std::time::Duration,
+    open: F,
+) -> Result<kasirmu_core::desktop_link::LinkedAccount, BridgeError>
+where
+    F: FnOnce(String) -> Result<(), BridgeError>,
+{
+    use kasirmu_core::desktop_link::{generate_pkce, start_desktop_link, consume_desktop_link};
+
+    let listener = LoopbackListener::bind()?;
+    let redirect_uri = listener.redirect_uri();
+    let pkce = generate_pkce();
+    let state = kasirmu_core::attestation::generate_nonce();
+
+    let authorize_url = start_desktop_link(
+        base_url,
+        api_key,
+        machine_id,
+        &state,
+        &pkce.verifier,
+        &redirect_uri,
+    )
+    .await?;
+
+    // Open only after the flow is recorded server-side: a browser that arrives before the
+    // pending state exists has nothing to complete.
+    open(authorize_url)?;
+
+    // The wait blocks; parking it keeps the caller's runtime free.
+    let outcome = tokio::task::spawn_blocking(move || listener.wait_for_callback(timeout))
+        .await
+        .map_err(|e| BridgeError::Internal(format!("loopback task failed: {e}")))??;
+
+    let code = match outcome {
+        LinkCallback::Code(code) => code,
+        LinkCallback::Error(reason) => {
+            return Err(BridgeError::Invalid(format!(
+                "the sign-in was not completed ({reason})"
+            )));
+        }
+    };
+    // The `?` above converts through `From<CoreError>`; a tail expression must say so.
+    consume_desktop_link(base_url, api_key, machine_id, &code)
+        .await
+        .map_err(BridgeError::from)
+}
 #[cfg(test)]
 #[path = "desktop_link_tests.rs"]
 mod tests;
