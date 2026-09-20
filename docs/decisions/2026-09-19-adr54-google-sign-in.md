@@ -203,6 +203,17 @@ No new Worker code: the callback lands on the licence host (the marketing host h
 `/api/v1` proxy) and rejoins the existing consumer. `next` must be validated against an
 allowlist of our hosts and relative paths or it is an open redirect.
 
+That clause shipped as code on 2026-09-19, and it shipped because it was not merely
+aspirational: `website/src/lib/safe-next.ts` resolves `?next=` by **origin comparison**, and the
+guard it replaced was bypassable. `AuthForm.tsx` tested `next.startsWith('/') &&
+!next.startsWith('//')`, which correctly rejects `//evil.com` — and passes `/[backslash]evil.com`
+and `/<tab>/evil.com`, both of which the URL parser normalises into a protocol-relative
+navigation to another origin (`[backslash]` becomes `/`, and tab/CR/LF are stripped before
+parsing). All three were measured against the parser before the fix; two of them escaped.
+Because the fix is an origin check rather than a new prefix test, it also covers the shapes
+nobody enumerated. The OAuth callback returns through this same parameter, so §2.4 must reuse
+that helper and must not write a second, weaker guard.
+
 No Google-hosted script, so `script-src` and `frame-src` are untouched and `form-action`
 is respected by using a link.
 
