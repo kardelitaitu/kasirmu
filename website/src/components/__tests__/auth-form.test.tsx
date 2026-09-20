@@ -428,6 +428,11 @@ describe('AuthForm — Google failure reasons', () => {
 
     const plain = await renderAuthForm('en');
     expect(plain.container.querySelector('[role="alert"]')).toBeNull();
+
+    // An unknown token must still say something: ADR #54's note claims it renders `failed`
+    // rather than a blank, so the claim gets a test instead of a reader's trust.
+    const unknown = await renderAuthForm('en', 'something-new-from-the-server');
+    expect(unknown.container.textContent).toContain('could not be completed');
   });
 });
 
