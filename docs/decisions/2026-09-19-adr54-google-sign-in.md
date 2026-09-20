@@ -585,8 +585,8 @@ offered.
 
 | Client | Type | Redirect | Secret |
 |---|---|---|---|
-| Web | Web application | both names for the same deployment (ADR #55): both names for the same deployment (ADR #55): `https://license.kasir.mu/api/v1/web/oauth/google/callback` **and** `https://license.ozpos.my.id/api/v1/web/oauth/google/callback` **and** `https://license.ozpos.my.id/api/v1/web/oauth/google/callback` | server env only |
-| Desktop | **Desktop app** | none registered — loopback, app-chosen port | optional per Google; server-side only if present |
+| Web | Web application | both names for the same deployment (ADR #55): `https://license.kasir.mu/api/v1/web/oauth/google/callback` **and** `https://license.ozpos.my.id/api/v1/web/oauth/google/callback` **and** `https://license.ozpos.my.id/api/v1/web/oauth/google/callback` | server env only |
+| Desktop | Web application (shared with Web) — **corrected 2026-09-26** | the same client carries BOTH paths on BOTH names: `/api/v1/web/oauth/google/callback` and `/api/v1/desktop/link/google/callback` | server-side only |
 
 Consent screen: External, scopes `openid email profile` only, published to Production. No
 sensitive-scope review is required for basic identity scopes; brand verification (verified

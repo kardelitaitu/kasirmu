@@ -530,9 +530,11 @@ Then finish **one real sign-in in a browser** and confirm the account portal lis
 under *Sign-in methods* — that is the only check that exercises Google itself. Two
 failures to expect, and what each means:
 
-- `redirect_uri_mismatch` from Google: the callback for **this** host is not registered in
-  the console. Both `https://license.kasir.mu/...` and `https://license.ozpos.my.id/...`
-  must be listed (step 7b of the licence-server deploy).
+- `redirect_uri_mismatch` from Google: the callback for **this** host **and this flow** is not
+  registered. Four URIs are needed — both hosts crossed with both paths, `/api/v1/web/oauth/`
+  for the web form and `/api/v1/desktop/link/` for the device link (step 7b of the
+  licence-server deploy). A web sign-in that works while the wizard's Google button does not
+  is exactly this: the desktop path missing from the console.
 - `400 invalid oauth state` after the consent screen: the browser did not send the
   `oz_oauth_state` cookie back — something in front of the licence host is stripping
   cookies, or the flow was started on one host and returned to the other.

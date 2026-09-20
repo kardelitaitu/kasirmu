@@ -251,6 +251,14 @@ The license server requires the RSA private key as an environment variable. **Ne
       host that is live but unregistered fails every sign-in with `redirect_uri_mismatch`:
       - `https://license.kasir.mu/api/v1/web/oauth/google/callback`
       - `https://license.ozpos.my.id/api/v1/web/oauth/google/callback`
+      - `https://license.kasir.mu/api/v1/desktop/link/google/callback`
+      - `https://license.ozpos.my.id/api/v1/desktop/link/google/callback`
+      
+      **Four, not two.** The web flow and the desktop/tablet device link are different paths on the
+      SAME Web-application client, so both callback paths need registering on both hosts. The device
+      link does not redirect to the app: Google returns to the licence server, which exchanges the
+      code and hands the app a one-time code on its loopback listener, so no app-chosen port is ever
+      registered here.
     - **Key:** `OZ_GOOGLE_CLIENT_ID` — the Web-application client id.
     - **Key:** `OZ_GOOGLE_CLIENT_SECRET` — its secret. Server-side only: the desktop flow
       is PKCE and never carries one.
