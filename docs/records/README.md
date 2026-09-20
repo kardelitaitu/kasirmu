@@ -56,6 +56,9 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 50 | sync | [ADR #50: Sync Authentication Hardening (token refresh, gating, terminal credentials)](../decisions/2026-09-11-adr50-sync-auth-hardening.md) | Accepted (2026-09-11) - partially implemented |
 | 51 | settings | [ADR #51: Sealed Settings Ingest Policy — One Funnel for Every Untrusted Settings Lane](../decisions/2026-09-11-adr51-sealed-settings-ingest-policy.md) | Accepted (2026-09-11) |
 | 52 | settings | [ADR #52: Tracked Settings Funnel Refuses Cleartext Credentials](../decisions/2026-09-12-adr52-tracked-settings-funnel-refuses-cleartext-credentials.md) | Accepted (2026-09-12) |
+| 53 | architecture | [ADR #53: The UI Vocabulary Boundary — what the application layer may say about a renderer](../decisions/2026-09-15-adr53-ui-vocabulary-boundary.md) | Adopted (2026-09-15) — Option A implemented as rule ui-framework-vocabulary at 0ca2c0f27, landing at zero findings with no baseline; the Option A premise was corrected ~22:55, see Correction |
+| 54 | security | [ADR #54: Google Sign-In — web sign-in/sign-up and desktop setup-wizard account linking](../decisions/2026-09-19-adr54-google-sign-in.md) | Proposed (2026-09-19) — nothing implemented |
+| 55 | security | [ADR #55: One Server Origin — the compiled list, the fallback pair and the allowlists that must agree with it](../decisions/2026-09-19-adr55-server-origin-model.md) | Implemented (2026-09-19) — resolver, literal collapse, drift gate, attestation (endpoint and client) and the boot-time cascade are all shipped |
 
 ### Research Notes
 
@@ -96,11 +99,15 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | --- | --- | --- |
 | sync | [Sync settings ingest admits and the redirect that carries them](2026-09-12-sync-settings-ingest-and-redirect-census.md) | — |
 | general | [ADR #51 From the Other Side — the Admitted Set and the Redirect's Second Writer](2026-09-13-adr51-admitted-set-and-blind-sides.md) | — |
+| ui | [Appraisal: todo-review-type.md (Local-First & Frontend Architecture)](2026-09-15-frontend-architecture-todo-appraisal.md) | — |
 | general | [JOURNAL](JOURNAL.md) | — |
 | general | [ADR #7 Conditional Scoping — the Fallback Class](adr7-conditional-scoping-fallback-class.md) | — |
 | general | [Audit Closed Findings — Archive](audit-closed-findings.md) | — |
 | general | [Audit Open Findings — Consolidated](audit-open-findings.md) | — |
 | general | [Fluent Page Audit — Full Journal](fluent-page-audit.md) | — |
+| general | [SEO audit — kasir.mu marketing site (on-page, technical, content)](seo-audit-19-09-26.md) | — |
+| general | [SEO review — robots.txt and llms.txt (kasir.mu)](seo-robots-llms-review-19-09-26.md) | — |
+| general | [Skill audit — .agents/skills/ — 18-09-26](skill-audit-18-09-26.md) | — |
 | staff | [SQLite / Postgres Roles](sqlite-pg-roles.md) | — |
 | money | [Statutory Rounding & Tax-Estimate Stamps](statutory-rounding-and-estimate-stamps.md) | — |
 
