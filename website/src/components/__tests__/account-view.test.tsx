@@ -39,11 +39,17 @@ function badRequest(status: number) {
   return { ok: false, status, json: async () => ({}) };
 }
 
-function stubMe(subscription?: Record<string, unknown> | null): void {
+const STUB_LICENSE = { key: 'OZ-TEST-0001', tierKey: 'pro', status: 'active', expiresAt: '2027-01-01' };
+
+function stubMe(
+  subscription?: Record<string, unknown> | null,
+  /** Pass null for an account that has never activated a license. */
+  license: Record<string, unknown> | null = STUB_LICENSE,
+): void {
   mockFetch(() =>
     okJson({
       tenant: { email: 'test@example.com', emailVerified: true, status: 'active' },
-      license: { key: 'OZ-TEST-0001', tierKey: 'pro', status: 'active', expiresAt: '2027-01-01' },
+      license,
       subscription: subscription ?? null,
     }),
   );
@@ -79,6 +85,22 @@ function assertText(container: HTMLElement, text: string): void {
 function assertNoText(container: HTMLElement, text: string): void {
   expect(container.textContent).not.toContain(text);
 }
+
+/** The value cell of the account's tier row. */
+function tierValue(container: HTMLElement): string | null {
+  // The label is "Plan" in en (i18n en.json account.tier) — matching on /tier/ found nothing.
+  const dt = Array.from(container.querySelectorAll('dt')).find((n) => /plan|tier/i.test(n.textContent ?? ''));
+  return dt?.nextElementSibling?.textContent ?? null;
+}
+
+// A just-signed-up account has neither a subscription nor an activated license, and the
+// tier row still has to name a real tier: `free` is the floor. It used to render an empty
+// dash, which is what a new Google signup saw.
+it('shows the free tier for a brand-new account instead of a blank', async () => {
+  stubMe(null, null);
+  const { container } = await renderAccount('en');
+  expect(tierValue(container)).toBe('free');
+});
 
 beforeEach(() => {
   vi.clearAllMocks();

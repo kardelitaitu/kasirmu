@@ -20,10 +20,17 @@ interface Props {
   labels: Labels;
   /** Tenant status used as a fallback when the license has no status. */
   tenantStatus: string;
+  /**
+   * The account's effective tier. Never blank: an active subscription wins, then the
+   * tier the license was minted with, and a brand-new account is on `free`. The floor
+   * is not decoration -- "no tier" is not a state a customer can be in, and rendering
+   * one as a dash is what a new signup saw.
+   */
+  tierKey: string;
   license?: License;
 }
 
-export default function AccountLicense({ locale, labels, tenantStatus, license }: Props) {
+export default function AccountLicense({ locale, labels, tenantStatus, tierKey, license }: Props) {
   return (
     <section className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm" aria-label={t(labels, 'account.license')}>
       <h2 className="text-lg font-semibold">{t(labels, 'account.license')}</h2>
@@ -39,7 +46,7 @@ export default function AccountLicense({ locale, labels, tenantStatus, license }
         </div>
         <div>
           <dt className="text-muted">{t(labels, 'account.tier')}</dt>
-          <dd className="mt-1 font-medium capitalize">{license?.tierKey ?? '—'}</dd>
+          <dd className="mt-1 font-medium capitalize">{tierKey}</dd>
         </div>
         <div>
           <dt className="text-muted">{t(labels, 'account.status')}</dt>

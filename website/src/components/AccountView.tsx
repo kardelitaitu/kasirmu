@@ -586,6 +586,11 @@ export default function AccountView({ locale, labels }: Props) {
       ? Boolean(licenseApiUrl())
       : Boolean(bundleYearly?.priceId) && !isPlaceholderPriceId(bundleYearly?.priceId) && isPaddleConfigured());
 
+  // The effective tier, and it is never blank: an active subscription wins, then the tier
+  // the license was minted with, and a brand-new account is on `free`. Both consumers below
+  // need the same answer -- the visible tier and the device-limit checks.
+  const effectiveTier = subscription?.tierKey || license?.tierKey || 'free';
+
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       {tenant && (
@@ -593,7 +598,7 @@ export default function AccountView({ locale, labels }: Props) {
       )}
 
       {tenant && (
-        <AccountLicense locale={locale} labels={labels} tenantStatus={tenant.status} license={license} />
+        <AccountLicense locale={locale} labels={labels} tenantStatus={tenant.status} tierKey={effectiveTier} license={license} />
       )}
 
       {/* Quick Action Navigation Grid */}
@@ -605,7 +610,7 @@ export default function AccountView({ locale, labels }: Props) {
           locale={locale}
           labels={labels}
           devices={devices}
-          licenseTierKey={license?.tierKey}
+          licenseTierKey={effectiveTier}
           revokingId={revokingId}
           revokeError={revokeError}
           onRevoke={(d) => void revokeDevice(d)}
