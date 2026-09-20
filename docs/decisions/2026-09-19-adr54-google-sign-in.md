@@ -439,6 +439,15 @@ quietly remove it.
 - **Auto-link merges a password account with a Google identity on first Google sign-in.**
   Accepted: the account *is* the email (`idx_tenants_email` unique) and Google asserts
   verified control of it. Audit-logged, and the dashboard must offer unlink.
+
+**Shipped 2026-09-19 (management endpoints):** `GET /api/v1/web/identities` lists the session
+tenant's linked methods and `DELETE /api/v1/web/identities/{id}` unlinks one — the unlink this
+paragraph promised. Both are scoped by the session rather than by anything in the request, so
+one account cannot address another's identities, and a *foreign* id answers `404` rather than
+`403`, because a distinguishable refusal would let a caller probe which ids exist. Six tests
+cover the two refusals that matter plus the happy path. There is deliberately **no
+last-credential guard**: the account email is the root credential, so unlinking the last
+identity cannot lock anyone out and such a guard would protect no state.
 - **Loopback any-port behaviour for a Desktop-type client is assumed, not yet proven here.**
   It is how installed-app CLIs work and the doc describes a random available port, but it is
   the first thing to confirm in the sandbox (§8). If it proves false, the fix is
