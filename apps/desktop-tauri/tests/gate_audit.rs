@@ -277,6 +277,7 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ("analytics", 0, &[]),
     ("audit", 0, &[]),
     ("auth", 1, &["OPERATOR_IMPERSONATE"]),
+    ("avatars", 0, &[]),
     ("branding", 0, &[]),
     // ADR #36/#37/#38 opener browser plugin: no permission-gated commands.
     ("browser", 0, &[]),
@@ -297,6 +298,11 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
             "CUSTOMERS_VIEW",
         ],
     ),
+    // Pinned at their measured (0 calls, no keys), same call as setting-
+    // up a module: the census walks every non-skipped .rs in the commands
+    // dir, so an added module is a row even when it gates nothing.
+    ("data", 0, &[]),
+    ("desktop_link", 0, &[]),
     ("exchange_rates", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("features", 2, &["SETTINGS_EDIT"]),
     ("fiscal", 0, &[]),
@@ -337,6 +343,7 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
             "PRODUCTS_UPDATE",
         ],
     ),
+    ("products_images", 0, &[]),
     (
         "promotions",
         4,
@@ -397,6 +404,7 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
         ],
     ),
     ("tax", 1, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    ("testing", 0, &[]),
     (
         "terminals",
         10,
