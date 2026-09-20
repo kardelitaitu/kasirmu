@@ -558,11 +558,6 @@ guard that keeps this table honest.
 > route. The paragraph below is kept as the dated record it is.
 >
 > **Code-level finding, flagged not fixed.** Adding `push: branches: [main]` to
-> **Superseded 2026-09-19:** the `push: branches: [main]` this finding proposed is now
-> declared (`dev-ci.yml:6-7`), and `northflank-deploy` is gated on
-> `github.ref == 'refs/heads/main'` for both entry points (`:753-763`), so a merge to `main`
-> deploys. The stale claim that the deploy "cannot fire on push", corrected in §8.6 the same
-> day, is what this note used to support.
 > `dev-ci.yml` would make the old claim true again. That reinstates automatic production
 > deploys gated only by the seven jobs `northflank-deploy` `needs`, so it is a decision
 > for whoever owns the deploy. It is also entangled with the gap AGENTS.md records: that
