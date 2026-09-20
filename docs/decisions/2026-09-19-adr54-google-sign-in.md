@@ -261,6 +261,12 @@ login page with the reason rather than to a JSON error.
 
 Two bounds worth naming. `/start` is unauthenticated and writes into a map, so the store now
 refuses past `oauthMaxPending` rather than growing without limit within its TTL. And the
+A third bound followed from asking what the ceiling does *not* protect: it bounds **memory**, not
+**availability**, so a host could still spend everyone else's sign-ins by filling the map and forcing
+`503`s for a TTL window. `/start` now takes a per-IP bucket (30/15 min — looser than the OTP limiter's
+10, because a shared office IP signs several people in and a withdrawn consent is a legitimate retry),
+and a `503` from an unconfigured deployment deliberately does *not* consume that budget, or an operator
+who sets the client id last would find every sign-in refused for fifteen minutes.
 Both halves of that bound are now tested: the ceiling refuses the entry past it, and expired
 entries are swept on insert, so a full map cannot wedge the endpoint shut.
 post-login path is validated by `oauthNextPath`, the server-side twin of `lib/safe-next.ts` —
