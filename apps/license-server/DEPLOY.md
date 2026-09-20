@@ -262,8 +262,10 @@ The license server requires the RSA private key as an environment variable. **Ne
     - **Key:** `OZ_GOOGLE_CLIENT_ID` — the Web-application client id.
     - **Key:** `OZ_GOOGLE_CLIENT_SECRET` — its secret. Server-side only: the app never carries it,
       and the device link is PKCE on top, so the app's own copy is useless even if extracted.
-    - **Key:** `OZ_GOOGLE_REDIRECT_URI` (optional) — pin the callback URL instead of
-      deriving it from the request Host (set it when a proxy rewrites Host).
+    - **Key:** `OZ_GOOGLE_REDIRECT_URI` (optional) — pin the callback instead of deriving it from
+      the request Host (set it when a proxy rewrites Host). One override covers both paths: the
+      server takes its origin and adds whichever callback the flow needs, so you still register all
+      four URIs above.
     - **Key:** `OZ_WEB_SITE_URL` (optional, default `https://kasir.mu`) — the host the flow
       returns to. It is the only place the return host is decided, which is why the
       post-login *path* is the only attacker-influenced part of the redirect.
