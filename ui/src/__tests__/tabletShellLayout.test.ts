@@ -27,6 +27,7 @@ const css = readFileSync(CSS_PATH, 'utf-8');
 
 const APP_LAYOUT = '.tablet-shell .app-layout';
 const TAB_BAR = '.tablet-shell .tablet-tab-bar';
+const SHELL = '.tablet-shell';
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -37,6 +38,11 @@ function ruleBody(selector: string): string {
   const bodies = [...css.matchAll(re)].map((m) => m[1]!);
   expect(bodies.length, `expected a rule for ${selector}`).toBeGreaterThan(0);
   return bodies[0]!;
+}
+
+function ruleBodies(selector: string): string[] {
+  const re = new RegExp(`(?:^|\\n)[ \\t]*${escapeRe(selector)}\\s*\\{([^}]*)\\}`, 'g');
+  return [...css.matchAll(re)].map((m) => m[1]!);
 }
 
 describe('tablet shell keeps the tab bar at the bottom', () => {
@@ -55,10 +61,24 @@ describe('tablet shell keeps the tab bar at the bottom', () => {
     expect(ruleBody(APP_LAYOUT)).toMatch(/display:\s*flex/);
   });
 
-  it('pins the shell so the bar cannot scroll away with the content', () => {
-    const body = ruleBody(APP_LAYOUT);
-    expect(body).toMatch(/height:\s*100dvh/);
-    expect(body).toMatch(/overflow:\s*hidden/);
+  it('sizes the layout to the shell, and the shell to the viewport', () => {
+    // `.app-layout` used to re-assert `100dvh` INSIDE a shell that had already
+    // subtracted its display insets, so the two added up. Measured in Chromium
+    // at 1097x686 with --inset-top 32 / --inset-bottom 24: the shell's border
+    // box was 742px, the bar's bottom edge sat 32px past the fold and the
+    // document scrolled. The shell owns the viewport height; the layout fills
+    // whatever the shell has left.
+    const layout = ruleBody(APP_LAYOUT);
+    expect(layout).toMatch(/height:\s*100%\s*;/);
+    // Declaration-specific on purpose: a comment inside the body would satisfy a
+    // bare `/100dvh/` search in the wrong direction.
+    expect(layout).not.toMatch(/height:\s*100dvh/);
+    expect(layout).toMatch(/overflow:\s*hidden/);
+
+    // `.tablet-shell` is declared more than once, so find the body that carries
+    // the height rather than assuming it is the first one.
+    const shell = ruleBodies(SHELL).find((b) => /height:\s*100dvh/.test(b));
+    expect(shell, 'the shell must pin itself to the viewport').toBeTruthy();
   });
 
   it('keeps the bar consuming the bottom display inset', () => {

@@ -175,14 +175,25 @@ describe('display insets are read once and consumed everywhere', () => {
     expect(page).toMatch(/--setup-gutter:\s*var\(--space-6\)/);
   });
 
-  it('applies the insets on the tablet shell', () => {
+  it('splits the inset ownership: the shell takes top/left/right, the tab bar takes the bottom', () => {
     // `.tablet-shell` is declared twice at top level — as the shell root, and
     // again in the safe-area block — so look for the body that carries the
     // insets rather than assuming it is the first one.
     const bodies = ruleBodies(TABLET_CSS, '\\.tablet-shell');
     expect(bodies.length).toBeGreaterThan(1);
-    const withInsets = bodies.filter((b) => INSET_TOKENS.every((t) => b.includes(`var(${t})`)));
+    const SHELL_INSETS = ['--inset-top', '--inset-left', '--inset-right'];
+    const withInsets = bodies.filter((b) => SHELL_INSETS.every((t) => b.includes(`var(${t})`)));
     expect(withInsets).toHaveLength(1);
+    // The bottom edge is deliberately NOT the shell's. The tab bar is the
+    // bottom-most element and pads itself, so its elevated background still
+    // reaches the screen edge instead of stopping short over a strip of
+    // `--color-bg`. Both layers padding it double-spaced the bar and, with
+    // `.app-layout` at `100dvh`, overflowed the viewport by the inset sum.
+    expect(withInsets[0]).not.toContain('--inset-bottom');
+
+    const bar = ruleBody(TABLET_CSS, '\\.tablet-shell \\.tablet-tab-bar');
+    expect(bar).toBeTruthy();
+    expect(bar).toContain('padding-bottom: var(--inset-bottom)');
   });
 
   it('narrows only the gutter at the small breakpoint, not the insets', () => {

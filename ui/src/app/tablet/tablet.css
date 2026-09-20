@@ -42,11 +42,20 @@
  *
  * Two more signals agree with the bottom edge: the height token is
  * `--tablet-bottom-nav-height`, and the bar consumes
- * `padding-bottom: var(--inset-bottom)`. */
+ * `padding-bottom: var(--inset-bottom)`.
+ *
+ * `height: 100%`, NOT a re-asserted viewport unit. The shell is
+ * `height: 100dvh` with the reset's `box-sizing: border-box`, so its display
+ * insets are already subtracted from that height; restating the full viewport
+ * here added them back and overflowed by exactly inset-top + inset-bottom
+ * (measured in Chromium at 1097x686: 742px of shell in a 686px viewport, with
+ * the bar's bottom edge 32px past the fold and the document scrollable). At
+ * the insets' `0` defaults both forms are identical, which is why this was
+ * invisible on a device with no cutout and its system bars hidden. */
 .tablet-shell .app-layout {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  height: 100%;
   overflow: hidden;
   background: var(--color-bg);
 }
@@ -291,10 +300,25 @@
 
 /* ── Safe area handling ───────────────────────────── */
 /* Insets are read once, on `:root`, in `ui/src/theme/tokens.css`; the shell
-   only applies them. Do not re-derive them from `env()` here. */
+   only applies them. Do not re-derive them from `env()` here.
+ *
+ * The shell owns top/left/right — the CONTENT area's insets — and sizes itself
+ * to the viewport so they come OUT of it (`box-sizing: border-box`). It does
+ * NOT own the bottom one: the tab bar is the bottom-most element and pads
+ * itself with `--inset-bottom` instead, so its elevated background still
+ * reaches the screen edge instead of stopping short and leaving a strip of
+ * `--color-bg` beneath it. Applying the bottom inset in BOTH places
+ * double-spaced the bar and, because `.app-layout` re-asserted `100dvh`,
+ * overflowed the viewport. Measured in Chromium at 1097x686 with
+ * `--inset-top: 32px` / `--inset-bottom: 24px`: before, the shell's border box
+ * was 742px, the bar's bottom edge sat 32px past the fold and the document
+ * scrolled; after, 686px, the bar ends flush at 686 and nothing scrolls.
+ * With the insets at their `0` defaults — this tablet, where the system bars
+ * are hidden and there is no cutout — both forms are identical, which is
+ * exactly why the defect stayed invisible. */
 .tablet-shell {
+  height: 100dvh;
   padding-top: var(--inset-top);
-  padding-bottom: var(--inset-bottom);
   padding-left: var(--inset-left);
   padding-right: var(--inset-right);
 }
