@@ -35,6 +35,8 @@ pub mod avatars;
 pub mod categories;
 /// Currency + exchange-rate command bodies (Wave A / S4).
 pub mod currency;
+/// Loopback listener for the desktop device link (ADR #54 §2.5).
+pub mod desktop_link;
 /// Fiscalization command bodies (Wave A / S6).
 pub mod fiscal;
 /// Product-variant command bodies (Wave A / S7).
