@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef, lazy } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { useOrientation } from '@/hooks/useOrientation';
 import TabletAppLayout from './TabletAppLayout';
 import { completeSetup, dismissSetupWizard, getSetupStatus } from '@/api/settings';
 import { useFeatures } from '@/hooks/useFeatures';
@@ -32,11 +31,28 @@ const WorkspaceSettingsModal = lazy(() => import('@/features/settings/WorkspaceS
  * workspace picker when no instance is selected.
  */
 export default function TabletAppShell() {
-  // P14-3: Lock to landscape-primary on tablet devices. Only need the
-  // side effect (locking the screen + listening for orientation changes).
-  // Consume `orientation.isLandscape` from the hook return if a screen
-  // needs to reflow its layout on rotation.
-  useOrientation('landscape-primary');
+  // Orientation is handled in CSS, not here.
+  //
+  // This shell used to call `useOrientation('landscape-primary')` to "lock to
+  // landscape on tablet devices". That request cannot be enforced in the
+  // Android WebView — `screen.orientation.lock` is absent, so the hook reports
+  // `supported: false` and the call is a silent no-op. Measured 2026-09-20: the
+  // same installed build rendered at 1200x1920 (portrait) and then 1920x1200
+  // (landscape), so the app rotates freely. The request was never a guarantee,
+  // and believing it is exactly why neither `tablet.css` nor `SetupWizard.css`
+  // contained a single orientation rule.
+  //
+  // Layout now branches on `@media (orientation: landscape)` in those sheets,
+  // so a rotation re-lays-out without a React re-render. `useOrientation`
+  // remains the mechanism for a STRUCTURAL orientation need — choosing a
+  // different component tree, or a column count CSS cannot express — and this
+  // shell has none, so it does not call the hook. If a descendant ever needs
+  // one, call it there and consume `orientation.isLandscape`; do not re-add a
+  // lock.
+  //
+  // If the product decision is landscape-ONLY, the enforceable mechanism is the
+  // Android manifest (`android:screenOrientation="sensorLandscape"` on
+  // `.MainActivity`), not the Web API.
 
   const [loading, setLoading] = useState(true);
   const [hasCompletedSetup, setHasCompletedSetup] = useState(false);

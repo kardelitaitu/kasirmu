@@ -50,7 +50,7 @@
   background: var(--color-bg-elevated);
   border-top: 1px solid var(--color-border);
   padding: 0 var(--space-2);
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding-bottom: var(--inset-bottom);
   z-index: var(--z-sticky);
 }
 
@@ -225,11 +225,13 @@
 }
 
 /* ── Safe area handling ───────────────────────────── */
+/* Insets are read once, on `:root`, in `ui/src/theme/tokens.css`; the shell
+   only applies them. Do not re-derive them from `env()` here. */
 .tablet-shell {
-  padding-top: env(safe-area-inset-top, 0);
-  padding-bottom: env(safe-area-inset-bottom, 0);
-  padding-left: env(safe-area-inset-left, 0);
-  padding-right: env(safe-area-inset-right, 0);
+  padding-top: var(--inset-top);
+  padding-bottom: var(--inset-bottom);
+  padding-left: var(--inset-left);
+  padding-right: var(--inset-right);
 }
 
 /* ── Scrollbar styling for touch ──────────────────── */

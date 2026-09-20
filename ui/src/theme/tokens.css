@@ -344,6 +344,36 @@
   --color-scope-terminal:            #94a3b8;
   --color-scope-terminal-bg:         rgba(148, 163, 184, 0.12);
   --color-scope-terminal-border:     rgba(148, 163, 184, 0.25);
+
+  /* ── Display insets — the one place `env()` is read ──────────────
+   * The Android host is edge-to-edge with the system bars HIDDEN
+   * (`MainActivity.hideSystemBars`), and the mobile entry declares
+   * `viewport-fit=cover` (`ui/index.mobile.html`). The WebView therefore owns
+   * the whole display and the app is responsible for whatever still overlaps
+   * it: a display cutout, or the gesture-navigation home indicator. Hiding the
+   * bars does NOT zero these — a cutout keeps reporting its inset.
+   *
+   * Read them ONCE, here, and consume the tokens everywhere else. A surface
+   * that re-derives them from `env()` drifts from this one the first time a
+   * host reports them differently, and the duplication is invisible because
+   * both spellings keep working. `env()` is `0` in a plain browser and in
+   * jsdom, which is what the fallback encodes.
+   *
+   * Every FULL-SCREEN surface applies these itself, because they do not
+   * inherit through a component boundary: the shell
+   * (`ui/src/app/tablet/tablet.css`) and the setup wizard
+   * (`ui/src/features/setup/SetupWizard.css`) — the wizard renders *instead of*
+   * the shell on a fresh device, so it inherits none of the shell's padding.
+   *
+   * These are deliberately NOT theme-dependent, so they live in `:root` only.
+   * Do not restate them in the light/dark blocks: a per-theme copy would imply
+   * the insets follow the theme, and `themeTokenCompliance` reads a restated
+   * token as a second source of truth.
+   */
+  --inset-top:    env(safe-area-inset-top, 0);
+  --inset-right:  env(safe-area-inset-right, 0);
+  --inset-bottom: env(safe-area-inset-bottom, 0);
+  --inset-left:   env(safe-area-inset-left, 0);
 }
 
 /* ══════════════════════════════════════════════════════════════
