@@ -97,6 +97,7 @@ step "exhaustive-deps ratchet" "python3 scripts/verify-exhaustive-deps.py" pytho
 # baseline entries fail. This is static-only and has no runtime impact.
 step "architecture boundaries" "python3 scripts/verify-architecture-boundaries.py --strict" python3 scripts/verify-architecture-boundaries.py --strict
 step "server origins" "node scripts/check-server-origins.mjs" node scripts/check-server-origins.mjs
+step "env docs" "node scripts/check-env-docs.mjs" node scripts/check-env-docs.mjs
 
 # ── Money formatting gate (IDR/JPY/KWD exp-2 regression guard) ───────────
 # Fails when production .rs code hardcodes `/ 100` division or `{}.{:02}`

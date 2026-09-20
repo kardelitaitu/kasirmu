@@ -590,6 +590,13 @@
       "status": "required",
       "runners": { "check.sh": ["server origins"] },
       "_note": "Added in 0.0.39. Reads the compiled origin list in crates/kasirmu-core/src/server_origin.rs (ADR #55) and fails when a Tauri CSP, the Worker CSP, the Worker LICENSE_API_URL fallback, the settings draft, or either Rust dev fallback disagrees with it. The drift it guards was live: the compiled auth URL said license.kasir.mu while both Tauri CSPs, the desktop bootstrap, the settings draft and the runbook all said license.ozpos.my.id, so a host change silently needed a release and nothing detected the mismatch. Local-only (no CI runner): needs node and nothing else."
+    },
+    {
+      "id": "env-docs",
+      "label": "Environment variables are documented",
+      "status": "required",
+      "runners": { "check.sh": ["env docs"] },
+      "_note": "Added in 0.0.39. Every OZ_* variable read by the Go licence server or the Rust crates/apps must appear in .env.example, apps/license-server/DEPLOY.md or docs/operations/runbook.md. Test scaffolding is skipped, so a child-probe knob never forces a deployment entry. Runner: node scripts/check-env-docs.mjs."
     }
   ]
 }
