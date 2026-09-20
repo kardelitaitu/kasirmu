@@ -28,6 +28,11 @@ const identityCollection = "tenant_identities"
 // migrations (ADR #54 §2.2).
 const providerGoogle = "google"
 
+// identityEventCollection is the audit trail for §2.3 decisions: which identity resolved to
+// which tenant, and which attempts were refused. Written from the resolver's single exit, so
+// no branch can be added without being recorded.
+const identityEventCollection = "identity_events"
+
 // IdentityOutcome classifies a resolution so callers can map it to a response.
 // The set is the §2.3 matrix: a caller that has to re-decide anything is a
 // caller that can drift from this table.
@@ -99,6 +104,74 @@ func ensureTenantIdentitiesCollection(app core.App) error {
 	return app.Save(collection)
 }
 
+// ensureIdentityEventsCollection creates the audit collection when missing and repairs its
+// rules when it exists. Same boot shape as the identities collection (ADR #54 §2.3).
+func ensureIdentityEventsCollection(app core.App) error {
+	existing, err := app.FindCollectionByNameOrId(identityEventCollection)
+	if err == nil {
+		return ensureSuperuserOnlyRules(app, existing)
+	}
+
+	tenantsColl, err := app.FindCollectionByNameOrId("tenants")
+	if err != nil {
+		return fmt.Errorf("tenants collection not found: %w", err)
+	}
+
+	collection := core.NewBaseCollection(identityEventCollection)
+	// Superuser-only: an audit row names an identity and its verdict, which is security
+	// state — and an anonymous write here could bury a real event in noise.
+	collection.ListRule = nil
+	collection.ViewRule = nil
+	collection.CreateRule = nil
+	collection.UpdateRule = nil
+	collection.DeleteRule = nil
+
+	collection.Fields.Add(&core.TextField{Name: "provider", Required: true, Max: 32})
+	collection.Fields.Add(&core.TextField{Name: "subject", Required: true, Max: 255})
+	collection.Fields.Add(&core.TextField{Name: "email_at_provider", Required: false, Max: 255})
+	// The verdict, as one of the IdentityOutcome values.
+	collection.Fields.Add(&core.TextField{Name: "outcome", Required: true, Max: 32})
+	// Optional: a refusal may have no tenant (the address identified none, or the caller
+	// claimed one it does not hold).
+	collection.Fields.Add(&core.RelationField{
+		Name:         "tenant",
+		Required:     false,
+		CollectionId: tenantsColl.Id,
+		MaxSelect:    1,
+	})
+	collection.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
+	collection.Fields.Add(&core.AutodateField{Name: "updated", OnCreate: true, OnUpdate: true})
+	collection.Indexes = append(collection.Indexes,
+		"CREATE INDEX idx_identity_events_subject ON identity_events (provider, subject)")
+
+	return app.Save(collection)
+}
+
+// recordIdentityEvent writes one audit row for a resolved identity attempt.
+//
+// Best-effort on purpose: a failed audit write is logged loudly and the sign-in still
+// succeeds. Refusing a legitimate sign-in because the audit sink hiccuped costs the user
+// more than the gap it would leave, and the log line names the event either way.
+func recordIdentityEvent(app core.App, provider, subject, email string, outcome IdentityOutcome, tenantID string) {
+	collection, err := app.FindCollectionByNameOrId(identityEventCollection)
+	if err != nil {
+		log.Printf("identity audit: %s collection missing, %q %s not recorded: %v",
+			identityEventCollection, email, outcome, err)
+		return
+	}
+	record := core.NewRecord(collection)
+	record.Set("provider", provider)
+	record.Set("subject", subject)
+	record.Set("email_at_provider", email)
+	record.Set("outcome", string(outcome))
+	if tenantID != "" {
+		record.Set("tenant", tenantID)
+	}
+	if err := app.Save(record); err != nil {
+		log.Printf("identity audit: could not record %s for %q: %v", outcome, email, err)
+	}
+}
+
 // findIdentity returns the record linking a provider subject, or nil when the
 // subject is not linked yet.
 func findIdentity(app core.App, provider, subject string) (*core.Record, error) {
@@ -155,6 +228,21 @@ func touchIdentity(app core.App, record *core.Record) {
 // pass "" for the web flow, where the email decides. emailVerified must be the
 // provider's own assertion — an unproven address never links and never creates.
 func resolveIdentity(app core.App, provider, subject, email string, emailVerified bool, claimedTenantID string) (*core.Record, IdentityOutcome, error) {
+	tenant, outcome, err := resolveIdentityOutcome(app, provider, subject, email, emailVerified, claimedTenantID)
+	// One write site, at the funnel's exit: a branch added inside cannot forget to be audited,
+	// and the refusals land in the trail too — they are what an investigation looks for.
+	if err == nil && outcome != "" {
+		tenantID := claimedTenantID
+		if tenant != nil {
+			tenantID = tenant.Id
+		}
+		recordIdentityEvent(app, provider, subject, normalizeEmail(email), outcome, tenantID)
+	}
+	return tenant, outcome, err
+}
+
+// resolveIdentityOutcome is the §2.3 decision itself; see resolveIdentity for the contract.
+func resolveIdentityOutcome(app core.App, provider, subject, email string, emailVerified bool, claimedTenantID string) (*core.Record, IdentityOutcome, error) {
 	email = normalizeEmail(email)
 
 	// (1) A binding is authoritative and survives an email change at the provider

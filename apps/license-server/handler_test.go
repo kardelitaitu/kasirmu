@@ -329,6 +329,9 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		if err := ensureTenantIdentitiesCollection(app); err != nil {
 			return err
 		}
+		if err := ensureIdentityEventsCollection(app); err != nil {
+			return err
+		}
 		// Google sign-in (ADR #54).
 		se.Router.GET("/api/v1/web/oauth/google/start", handleWebOAuthGoogleStart(app))
 		se.Router.GET("/api/v1/web/oauth/google/callback", handleWebOAuthGoogleCallback(app))

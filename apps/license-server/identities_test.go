@@ -233,6 +233,93 @@ func TestResolveIdentityConflictsWhenBoundToAnotherTenant(t *testing.T) {
 	}
 }
 
+func TestResolveIdentityRecordsEveryOutcomeInTheAuditTrail(t *testing.T) {
+	app := newIdentityApp(t)
+	if err := ensureIdentityEventsCollection(app); err != nil {
+		t.Fatalf("ensureIdentityEventsCollection: %v", err)
+	}
+	if err := ensureTenantIdentitiesCollection(app); err != nil {
+		t.Fatalf("ensureTenantIdentitiesCollection: %v", err)
+	}
+
+	tenant, outcome, err := resolveIdentity(app, providerGoogle, "aud-1", "audit@example.com", true, "")
+	if err != nil || outcome != IdentityCreated {
+		t.Fatalf("setup: %v %s", err, outcome)
+	}
+	// A re-sign-in resolves to `bound` and must add its own row: an audit TRAIL records
+	// attempts, so a second sign-in updating the first row would erase the history.
+	if _, outcome, err = resolveIdentity(app, providerGoogle, "aud-1", "audit@example.com", true, ""); err != nil || outcome != IdentityBound {
+		t.Fatalf("re-sign-in: %v %s", err, outcome)
+	}
+	if _, outcome, err = resolveIdentity(app, providerGoogle, "aud-2", "unverified@example.com", false, ""); err != nil || outcome != IdentityRefusedUnverified {
+		t.Fatalf("unverified: %v %s", err, outcome)
+	}
+	if _, outcome, err = resolveIdentity(app, providerGoogle, "aud-3", "other@example.com", true, tenant.Id); err != nil || outcome != IdentityRefusedMismatch {
+		t.Fatalf("mismatch: %v %s", err, outcome)
+	}
+	other, err := createTenantForEmail(app, "third@example.com")
+	if err != nil {
+		t.Fatalf("create other tenant: %v", err)
+	}
+	if _, outcome, err = resolveIdentity(app, providerGoogle, "aud-1", "audit@example.com", true, other.Id); err != nil || outcome != IdentityConflict {
+		t.Fatalf("conflict: %v %s", err, outcome)
+	}
+
+	records, err := app.FindRecordsByFilter(identityEventCollection, "", "-created", 0, 0, nil)
+	if err != nil {
+		t.Fatalf("read the trail: %v", err)
+	}
+	byOutcome := map[string]*core.Record{}
+	for _, row := range records {
+		byOutcome[row.GetString("outcome")] = row
+	}
+	// One row per attempt, including the refusals — those are what an investigation looks for.
+	if len(records) != 5 {
+		t.Fatalf("expected one row per attempt, got %d", len(records))
+	}
+	for _, want := range []IdentityOutcome{
+		IdentityCreated, IdentityBound, IdentityRefusedUnverified, IdentityRefusedMismatch, IdentityConflict,
+	} {
+		if byOutcome[string(want)] == nil {
+			t.Errorf("no audit row for %s", want)
+		}
+	}
+	if row := byOutcome[string(IdentityCreated)]; row != nil {
+		if row.GetString("tenant") != tenant.Id {
+			t.Errorf("the created row must name the tenant it made, got %q", row.GetString("tenant"))
+		}
+		if row.GetString("email_at_provider") != "audit@example.com" {
+			t.Errorf("the row must carry the provider address, got %q", row.GetString("email_at_provider"))
+		}
+		if row.GetString("provider") != providerGoogle || row.GetString("subject") != "aud-1" {
+			t.Errorf("the row must name the identity: %q %q", row.GetString("provider"), row.GetString("subject"))
+		}
+	}
+	if row := byOutcome[string(IdentityRefusedUnverified)]; row != nil && row.GetString("tenant") != "" {
+		t.Errorf("an unverified refusal has no tenant to name, got %q", row.GetString("tenant"))
+	}
+}
+
+func TestResolveIdentitySurvivesAMissingAuditSink(t *testing.T) {
+	// The write is best-effort on purpose: refusing a legitimate sign-in because the audit
+	// sink is gone costs the user more than the gap it leaves, and the log line names it.
+	app := newIdentityApp(t)
+	if err := ensureIdentityEventsCollection(app); err != nil {
+		t.Fatalf("ensureIdentityEventsCollection: %v", err)
+	}
+	collection, err := app.FindCollectionByNameOrId(identityEventCollection)
+	if err != nil {
+		t.Fatalf("find the audit collection: %v", err)
+	}
+	if err := app.Delete(collection); err != nil {
+		t.Fatalf("drop the audit collection: %v", err)
+	}
+
+	if _, outcome, err := resolveIdentity(app, providerGoogle, "aud-x", "survivor@example.com", true, ""); err != nil || outcome != IdentityCreated {
+		t.Fatalf("a missing audit sink must not break linking: %v %s", err, outcome)
+	}
+}
+
 func TestResolveIdentityRefreshesTheLastSignInStamp(t *testing.T) {
 	app := newIdentityApp(t)
 	if _, outcome, err := resolveIdentity(app, providerGoogle, "sub-touch", "touch@example.com", true, ""); err != nil || outcome != IdentityCreated {

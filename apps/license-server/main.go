@@ -366,6 +366,9 @@ func main() {
 		if err := ensureTenantIdentitiesCollection(app); err != nil {
 			return err
 		}
+		if err := ensureIdentityEventsCollection(app); err != nil {
+			return err
+		}
 		go startTrialEmailScheduler(app)
 
 		// ── Auto-resume scanner (LSE-15) ───────────────────────────
