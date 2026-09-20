@@ -157,6 +157,14 @@ Unique index on `(provider, subject)`. Added to `pb_schema.json` **and** as an i
 `ensureTenantIdentitiesCollection` boot step in `main.go`, following the established
 `ensureEmailVerifiedField` / `ensurePasswordHashField` pattern (`main.go:134-200`), so
 existing `pb_data` volumes upgrade in place.
+>
+> **Deviation (2026-09-19): the collection is created programmatically, and only
+> there.** `ensureTenantIdentitiesCollection` runs at boot for a fresh volume and
+> an existing one alike, so one code path covers both and the collection definition
+> cannot drift from the code that reads it. `pb_schema.json` is deliberately left
+> alone; it is not added to `requiredCollections`, because nothing at boot requires
+> the table and listing it there would turn a missing identity table into a
+> failed deployment.
 
 Email is deliberately *not* the identity key: Google emails change, and our own account email
 is changeable from the dashboard. `tenants.email` stays `UNIQUE` and stays the account key.
@@ -184,6 +192,17 @@ Resolve a demonstrated identity (Google `sub`, or an emailed code) to a tenant:
 Auto-link at step 4 is not a convenience, it is a correctness requirement: if the same email
 arrives through two doors, both must resolve to one account, or "use Google or your own
 email" silently produces two accounts for one person and the second one has no licence.
+
+**Shipped 2026-09-19 (server half):** `apps/license-server/identities.go` implements the table
+above as one function, `resolveIdentity(app, provider, subject, email, emailVerified,
+claimedTenantID)`, returning a typed outcome (`bound` / `linked` / `created` /
+`refused_reserved` / `refused_unverified` / `refused_mismatch` / `conflict`) so both the web
+flow and the desktop device-link flow consume the same decision instead of re-deriving it.
+`identities_test.go` pins eight cases — the create, the idempotent re-sign-in, the link that
+flips `email_verified`, the reserved-address refusal (including a case-variant address, since
+the reservation compares normalised), the unverified-address refusal, the ordering guard that
+the reservation fires *before* the verification gate, the conflict that never rebinds, and the
+device path's email-match requirement.
 
 ### 2.4 Web: server-side redirect, reusing the F1 handoff
 
