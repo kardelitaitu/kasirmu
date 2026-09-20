@@ -2,7 +2,7 @@
 
 **Specification ID:** SPEC-2026-TRIAL-LOCK  
 **Status:** Active Draft — ⚠️ trial definition re-scoped (see note)  
-**Target Module:** `crates/oz-security`, `apps/desktop-tauri/src/commands/license.rs`, License Auth Server (PocketBase)  
+**Target Module:** `crates/kasirmu-security`, `apps/desktop-tauri/src/commands/license.rs`, License Auth Server (PocketBase)  
 **Date:** 2026-07-20  
 
 > **Re-scope note (2026-08-17):** the flat **90-day free trial** referenced
@@ -23,7 +23,7 @@ This specification defines the architecture, cryptographic hardware fingerprinti
 
 ---
 
-## 2. Hardware Fingerprint Generation (`oz-security`)
+## 2. Hardware Fingerprint Generation (`kasirmu-security`)
 
 The hardware fingerprint MUST be deterministic, unique to the physical machine, and resilient against application uninstalls, disk formatting, or MAC address spoofing.
 
@@ -147,7 +147,7 @@ The central license auth server (`license.ozpos.my.id`) maintains a `trial_regis
 2. **Local Storage**: The POS client caches the signed JWT token in `local_settings.json` and SQLite `system_state`.
 3. **Clock-Tamper Resistance**:
    - On boot, the client verifies the token's RSA signature using the embedded **RSA Public Key**.
-   - If the system clock is manipulated backward (e.g. set to year 2020), `oz-security` compares system time against last known transaction timestamps (`sales.created_at`). If `system_time < max(sales.created_at)`, a `CLOCK_TAMPER_DETECTED` lock is triggered.
+   - If the system clock is manipulated backward (e.g. set to year 2020), `kasirmu-security` compares system time against last known transaction timestamps (`sales.created_at`). If `system_time < max(sales.created_at)`, a `CLOCK_TAMPER_DETECTED` lock is triggered.
 4. **Lock Screen State**:
    - If `NOW() > trial_expires_at` or server returns `403 Forbidden`, the UI switches to the **Trial Expired Lock Screen**.
    - All checkout functions (`complete_sale`) return `AppError::LicenseExpired`.
@@ -157,7 +157,7 @@ The central license auth server (`license.ozpos.my.id`) maintains a `trial_regis
 ## 6. Verification Plan
 
 ### Automated Unit Tests
-- `cargo test -p oz-security` for hardware fingerprint determinism and Sha256 hashing.
+- `cargo test -p kasirmu-security` for hardware fingerprint determinism and Sha256 hashing.
 - Mock tests verifying RSA signature verification and clock tamper detection.
 
 ### Integration Testing
