@@ -1,4 +1,4 @@
-# scripts/check.ps1 — Windows dev gate: a fixer first, then a set of checks.
+# scripts/check.ps1 — Windows dev gate: a set of CHECKS, with an optional auto-fix afterwards.
 #
 # This is NOT a mirror of CI, whatever an older header here said. The workflow it used to
 # name (ci.yml) is retired at .github/workflows/attic/ci.yml.bak; the live ones are
@@ -8,11 +8,11 @@
 # scripts/check.sh; for what a push actually gates see .githooks/pre-push ->
 # scripts/run-pre-push.py, which is path-routed.
 #
-# It also REWRITES the tree. Steps 1-2 auto-fix clippy and fmt *before* the verify steps,
-# so a formatting or lint violation is silently repaired rather than reported -- the
-# `fmt --all -- --check` below cannot fail on anything those steps can fix. `--allow-dirty`
-# lets that happen on a dirty shared checkout, where it can edit another lane's in-flight
-# files. Treat a green run here as "my machine builds", never as "CI will pass".
+# Order matters and is deliberate: every verify step (fmt --check, clippy -D warnings)
+# runs FIRST and can fail the run. The auto-fix step runs LAST and only as a convenience
+# on a clean tree -- it is skipped with a printed reason whenever `git status --porcelain`
+# is non-empty, so it can never rewrite another lane's in-flight files in a shared
+# checkout (the reason the repo dropped cargo fmt from pre-commit on 2026-09-13).
 #
 # Usage:  powershell -File scripts\check.ps1
 #         powershell -File scripts\check.ps1 -Fast   (dev: unit tests + fmt + clippy only)
@@ -90,11 +90,7 @@ function Step {
     }
 }
 
-# --- Phase 1: auto-fix --------------------------------------------------
-Step -Name "clippy auto-fix" -RetryCommand "cargo clippy --fix --allow-dirty -- --allow warnings" -ScriptBlock {
-    cargo clippy --fix --allow-dirty -- --allow warnings
-}
-Step -Name "cargo fmt" -RetryCommand "cargo fmt --all" -ScriptBlock { cargo fmt --all }
+# --- Phase 1: checks ----------------------------------------------------
 $pythonCommand = if (Get-Command "python3" -ErrorAction SilentlyContinue) { "python3" } elseif (Get-Command "python" -ErrorAction SilentlyContinue) { "python" } else { $null }
 if ($pythonCommand) {
     Step -Name "architecture boundaries" -RetryCommand "$pythonCommand scripts/verify-architecture-boundaries.py --strict" -ScriptBlock { & $pythonCommand scripts/verify-architecture-boundaries.py --strict }
@@ -108,8 +104,8 @@ if ($pythonCommand) {
 Step -Name "cargo fmt (verify)" -RetryCommand "cargo fmt --all -- --check" -ScriptBlock {
     cargo fmt --all -- --check
 }
-Step -Name "clippy workspace" -RetryCommand "cargo clippy --workspace --all-targets -- -D warnings" -ScriptBlock {
-    cargo clippy --workspace --all-targets -- -D warnings
+Step -Name "clippy workspace" -RetryCommand "cargo clippy --workspace --all-targets --all-features -- -D warnings" -ScriptBlock {
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
 }
 
 $cpuCount = $env:NUMBER_OF_PROCESSORS
@@ -187,7 +183,8 @@ if ((Get-Command "npm" -ErrorAction SilentlyContinue) -and (Test-Path "ui/packag
             $ErrorActionPreference = "SilentlyContinue"
             try {
                 $global:LASTEXITCODE = 0
-                $e2eResult = npx playwright test --config e2e/playwright.config.ts --project=desktop 2>&1
+                # repo entry point: boots the Docker backend + Vite, then runs Playwright
+                $e2eResult = npm run e2e 2>&1
                 if ($LASTEXITCODE -ne 0) {
                     Write-Host "WARN (some tests failed)" -ForegroundColor Yellow
                     Write-Host "  E2E failures are non-blocking. Last lines of the run:"
@@ -218,6 +215,20 @@ if ((Get-Command "npm" -ErrorAction SilentlyContinue) -and (Test-Path "ui/packag
 # --- Generate stats.json -------------------------------------------------
 Step -Name "generate code stats" -RetryCommand "powershell -File scripts\stats.ps1" -ScriptBlock {
     & powershell -File scripts\stats.ps1
+}
+
+# --- Auto-fix (convenience, LAST) ---------------------------------------
+# Runs strictly AFTER every check above, so it can never mask a violation.
+# Skipped on a dirty tree: --allow-dirty would rewrite another lane's in-flight files.
+$dirtyPaths = @(git status --porcelain)
+if ($dirtyPaths.Count -eq 0) {
+    Step -Name "clippy auto-fix" -RetryCommand "cargo clippy --fix --allow-dirty -- --allow warnings" -ScriptBlock {
+        cargo clippy --fix --allow-dirty -- --allow warnings
+    }
+    Step -Name "cargo fmt" -RetryCommand "cargo fmt --all" -ScriptBlock { cargo fmt --all }
+    Write-Host "tree is now formatted and lint-clean"
+} else {
+    Write-Host "SKIP auto-fix (working tree is dirty - $($dirtyPaths.Count) path(s) modified); no files were rewritten"
 }
 
 # --- Done ---------------------------------------------------------------
