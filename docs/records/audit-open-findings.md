@@ -696,6 +696,36 @@ reproduce; each correction is inline, in the bullet that carries it.
   different tips inside twenty minutes because the tree is shared and moving, so cite it only with its
   minute and its tip. This belongs to `apps/tablet-client`, not to this lane.
 
+### Dated correction (2026-09-20, 13:53 +07) — GI-1's note half is closed, and the `ci` keys were the true half
+
+**The finding reproduced exactly, a week after it was filed.** Re-ran GI-1's pattern
+(`local[- ]only|no ci key` matched against `_note`, restricted to records that also carry a `ci` key)
+over `scripts/gates.json` at 13:45 +07: **4 records matched and 3 still stated the falsehood** — the
+same figures the 09-13 pass reported, so nothing had rotted in the week it sat, and the three notes
+were still the wrong half. The workflow settles it again on today's tree, at shifted lines:
+`verify-test-shadow-copies.py` at `dev-ci.yml:673`, `verify-ipc-parity.py` at `:675`,
+`verify-topology-parity.py` at `:683`, `verify-scoped-coverage.sh` at `:691` (13:50 +07) — all four
+run in CI, so a note reading "check.sh is its only runner" contradicted its own record.
+
+**Repair.** The three `_note` values (`scoped-coverage`, `topology-parity`, `test-shadow-copies`) now
+state the CI runner and the local runner and cite this entry. The false wording was **removed rather
+than annotated**, because `gates.json` is a live manifest and not a dated record; the historical
+wording is preserved here, in this register, which is what a register is for. The `runners` field was
+**not** touched: `runners` lists local runners only and `ci` carries the workflow — the convention
+every other wired record follows (`no-hardcoded-money-format`, `doc-uniqueness`, `ipc-parity`) — so
+only the prose was stale.
+
+**Re-measured after the repair.** 11 records mention local-only; 7 carry no `ci` key at all and are
+correctly local-only (`root-policy`, `docker-dry-run`, `migration`, `a11y-advisory`, `perf-smoke`,
+`updater-signature`, `server-origins`); 4 carry a `ci` value; **1 still matches the pattern and is not
+a defect** — `ipc-parity`, whose note already records that its local-only claim "was itself stale and
+was corrected here". GI-1's note half is therefore 3 defects → 0.
+
+**Still open, unchanged.** GI-1's deeper observation stands: nothing polices whether a note is
+*true*. `python3 scripts/verify-ci-docs-drift.py` reports **0 drift items** both before and after this
+repair (13:52 +07), because it tests that a `_note` exists rather than that its content matches the
+tree. That is GI-2's point and this correction does not touch it.
+
 ## GI-4 scope — this register is itself an enumeration mirror, outside MIRRORS (`GI-4-SCOPE`, OPEN, added 2026-09-13 12:12 +07, tip `222839216`)
 
 **Status:** ONE finding, filed from another worker's pass and kept verbatim below. The measured
