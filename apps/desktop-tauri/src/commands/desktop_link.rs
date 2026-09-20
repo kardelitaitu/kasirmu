@@ -88,9 +88,13 @@ pub async fn link_device_email_consume(
         kasirmu_bridge::license::stored_credentials(&ctx).await?
     };
     let base_url = kasirmu_core::attestation::resolved_origin().url;
-    let account =
-        kasirmu_core::desktop_link::consume_desktop_link_code(&base_url, &api_key, &machine_id, &code)
-            .await?;
+    let account = kasirmu_core::desktop_link::consume_desktop_link_code(
+        &base_url,
+        &api_key,
+        &machine_id,
+        &code,
+    )
+    .await?;
     store_earned_credential(&state, account.terminal.as_ref()).await?;
     Ok(account)
 }
