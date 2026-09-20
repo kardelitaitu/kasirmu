@@ -541,6 +541,28 @@ app the login flow's step 2 is a 4-digit PIN pad, so tapping the submit arrow wi
 advances the 2-dot step indicator: a cheap end-to-end check that the JS state machine **and** the
 backend round-trip both work, needing no credentials.
 
+### Verify the *installed* build, not just the artifact
+
+A current artifact does **not** mean a current device. Measured 2026-09-20: the tablet still ran the
+07:34 build while the repo's artifact was the 07:58 one, because `be96322ac` (*resolve the attested
+server origin at boot*) landed at **07:44** — *between* the two builds. The device was missing a real
+feature, not merely running a re-signed copy. Cheapest tell first:
+
+```bash
+"$ADB" shell dumpsys package mu.kasir.mobile | grep -E 'lastUpdateTime|versionName|flags='
+# then pull and md5-compare — a match is the strongest single check
+"$ADB" pull "$("$ADB" shell pm path mu.kasir.mobile | sed 's/^package://' | tr -d '\r')" \
+  "C:/Users/<you>/AppData/Local/Temp/installed.apk"
+md5sum "C:/Users/<you>/AppData/Local/Temp/installed.apk" "$APK"
+```
+
+Measured: the stale install md5'd `cc6245b2…` (28 191 963 B) against the artifact's `80ac7bd2…`
+(28 190 795 B), and its `.so` differed too (`bf7dcc96…` vs `604c3597…`). After `adb install -r` the two
+APK md5s matched exactly. **`adb pull` needs a Windows destination path**: it is a Windows binary, so
+given `/tmp/x.apk` the file lands in `C:\tmp\` and the following `ls`/`md5sum` on the POSIX path reports
+"not found" — the same class of trap as the §1 and §7 notes. `lastUpdateTime` alone settles it without
+any pull.
+
 **`grep -i kasirmu` does NOT match `mu.kasir.mobile`.** "kasirmu" is not a substring of
 "kasir.mobile", so `ps -A | grep kasirmu` returns empty while the app is running — which reads exactly
 like "the app died on launch". Measured 2026-09-20: it cost a false crash conclusion. **Use
