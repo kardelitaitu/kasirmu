@@ -224,6 +224,23 @@ allowlist of our hosts and relative paths or it is an open redirect.
 
 That clause shipped as code on 2026-09-19, and it shipped because it was not merely
 aspirational: `website/src/lib/safe-next.ts` resolves `?next=` by **origin comparison**, and the
+
+**Shipped 2026-09-19 (OAuth security core):** `apps/license-server/web_oauth_google.go` carries
+the parts that decide whether a callback may sign anyone in, and every one of them is testable
+without Google or a network: the single-use 10-minute state store (an expired or replayed state
+is refused exactly like an unknown one); the PKCE pair with its S256 challenge; a
+fixed-parameter authorize URL (`openid email profile`, no offline access, and
+`prompt=select_account` so a shared browser never silently reuses whoever is signed into
+Google); the server-side code exchange, whose token endpoint is a *parameter* so tests drive a
+fake; and the ID-token claims check — `iss`, `aud` (string or array), `exp`, a subject, and a
+normalised email, with `email_verified` carried through for the resolver to enforce.
+
+The signature is deliberately **not** verified, which is the direct consequence of §2.5's own
+choice to exchange server-side: the token arrives over TLS from Google's token endpoint in
+response to our request, so no third party can inject one — and that is also why no JWKS
+machinery is needed in Go. The claim checks stay, because a token minted for a different client,
+or an expired one replayed out of a log, must not authenticate here. Ten tests pin this,
+including the three refusals that matter most: replayed state, foreign audience, expired token.
 guard it replaced was bypassable. `AuthForm.tsx` tested `next.startsWith('/') &&
 !next.startsWith('//')`, which correctly rejects `//evil.com` — and passes `/[backslash]evil.com`
 and `/<tab>/evil.com`, both of which the URL parser normalises into a protocol-relative
