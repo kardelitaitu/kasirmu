@@ -584,14 +584,6 @@ behind it — and the terminal credential both paths still owe (step 6).
 
 ### 2.7 Tablet: the email path, never the Google one
 
-**One UX hole closed 2026-09-26.** The tablet's failure message says "try again", and until
-this round that was not quite true: the code field rendered only while the state was `sent`, so
-a **wrong** code collapsed it and the only route back was to request another one — a second
-email and a second rate-limit slot for a typo. The field now stays whenever a code was actually
-requested (`codeSent`), retyping clears the error, and the test that pins it was falsified
-before it was trusted: with the condition reverted it fails, and it names the reason in its
-title rather than in a comment.
-
 
 The Google control is excluded from the tablet build. Google closes both browser routes on
 Android (§1.7), and there is no platform helper today, so one is introduced for the wizard
@@ -618,6 +610,14 @@ Google **on the web**. Two tests pin both halves.
 Tauri mobile plugin) is future work, and iOS is out of scope until it is paired with Sign in
 with Apple, which App Store Review Guideline 4.8 requires when third-party social login is
 offered.
+
+**One UX hole closed 2026-09-26.** The tablet's failure message says "try again", and until
+this round that was not quite true: the code field rendered only while the state was `sent`, so
+a **wrong** code collapsed it and the only route back was to request another one — a second
+email and a second rate-limit slot for a typo. The field now stays whenever a code was actually
+requested (`codeSent`), retyping clears the error, and the test that pins it was falsified
+before it was trusted: with the condition reverted it fails, and it names the reason in its
+title rather than in a comment.
 
 ### 2.8 Console configuration
 
