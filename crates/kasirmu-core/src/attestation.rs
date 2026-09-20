@@ -115,6 +115,10 @@ pub fn source_for(origin: &str) -> Option<OriginSource> {
 }
 
 /// Ask one origin to attest a nonce, verifying the answer against a key.
+///
+/// Feature-gated like every other HTTP path in this crate, so a
+/// `--no-default-features` build still compiles without reqwest.
+#[cfg(feature = "sync-http")]
 pub async fn attest_origin_with(
     origin: &str,
     nonce: &str,
@@ -158,6 +162,7 @@ pub async fn attest_origin_with(
 }
 
 /// Ask one origin to attest a nonce, verifying against the embedded key.
+#[cfg(feature = "sync-http")]
 pub async fn attest_origin(origin: &str, nonce: &str) -> Result<(), CoreError> {
     attest_origin_with(origin, nonce, crate::license_verification::LICENSE_PUBLIC_KEY_PEM).await
 }
@@ -191,6 +196,7 @@ pub fn resolved_origin() -> ResolvedServerOrigin {
 /// A candidate is accepted only when it *attests*; a transport failure or a bad
 /// signature simply moves to the next entry. Callers invoke this once at boot,
 /// before any credential is sent, and must not re-run it mid-session.
+#[cfg(feature = "sync-http")]
 pub async fn resolve_attested_origin(nonce: &str) -> Option<ResolvedServerOrigin> {
     for origin in release_ladder() {
         if attest_origin(origin, nonce).await.is_ok() {

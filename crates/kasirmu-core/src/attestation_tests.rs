@@ -91,3 +91,88 @@ fn sources_are_labelled_only_for_compiled_origins() {
     assert_eq!(source_for(fallback), Some(OriginSource::Fallback));
     assert_eq!(source_for("https://evil.example.com"), None);
 }
+
+/// Serve exactly one canned HTTP response and hand back the request the client sent.
+#[cfg(feature = "sync-http")]
+fn one_shot_server(status_line: &'static str, body: String) -> (String, std::thread::JoinHandle<String>) {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let handle = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut buffer = [0_u8; 8192];
+        let read = stream.read(&mut buffer).unwrap_or(0);
+        let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+        let response = format!(
+            "{status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let _ = stream.write_all(response.as_bytes());
+        request
+    });
+    (format!("http://127.0.0.1:{port}"), handle)
+}
+
+/// The WIRE contract: path, body field name, and the echoed-nonce guard.
+///
+/// A payload literal asserted on both sides of the language boundary proves the two
+/// agree about the signed string; it proves nothing about the HTTP contract around it.
+/// This is that half.
+#[cfg(feature = "sync-http")]
+#[tokio::test]
+async fn attest_origin_posts_the_nonce_to_the_attest_path() {
+    let (key, pem) = keypair();
+    let nonce = "0123456789abcdef";
+    let signature = sign_payload(&key, &attestation_payload(nonce));
+    let body = format!("{{\"nonce\":\"{nonce}\",\"signature\":\"{signature}\"}}");
+    let (origin, server) = one_shot_server("HTTP/1.1 200 OK", body);
+
+    let result = attest_origin_with(&origin, nonce, &pem).await;
+    let request = server.join().expect("server thread");
+
+    assert!(result.is_ok(), "a valid attestation must pass: {result:?}");
+    assert!(
+        request.starts_with(&format!("POST {ATTEST_PATH} ")),
+        "unexpected request line: {request}"
+    );
+    assert!(
+        request.contains(&format!("\"nonce\":\"{nonce}\"")),
+        "the nonce must travel in the body under its wire name: {request}"
+    );
+}
+
+#[cfg(feature = "sync-http")]
+#[tokio::test]
+async fn attest_origin_rejects_an_answer_for_a_different_nonce() {
+    // The echoed nonce is what binds the signature to THIS request: without the
+    // check, a signature harvested from any other flow would be accepted.
+    let (key, pem) = keypair();
+    let nonce = "0123456789abcdef";
+    let signature = sign_payload(&key, &attestation_payload("fedcba9876543210"));
+    let body = format!("{{\"nonce\":\"fedcba9876543210\",\"signature\":\"{signature}\"}}");
+    let (origin, server) = one_shot_server("HTTP/1.1 200 OK", body);
+
+    let result = attest_origin_with(&origin, nonce, &pem).await;
+    server.join().expect("server thread");
+
+    assert!(result.is_err(), "a mismatched nonce must be refused");
+}
+
+#[cfg(feature = "sync-http")]
+#[tokio::test]
+async fn attest_origin_rejects_transport_and_body_failures() {
+    let (_key, pem) = keypair();
+    for (name, status, body) in [
+        ("non-200", "HTTP/1.1 503 Service Unavailable", "{}".to_string()),
+        ("not json", "HTTP/1.1 200 OK", "not json".to_string()),
+        ("no signature", "HTTP/1.1 200 OK", "{\"nonce\":\"0123456789abcdef\"}".to_string()),
+    ] {
+        let (origin, server) = one_shot_server(status, body);
+        let result = attest_origin_with(&origin, "0123456789abcdef", &pem).await;
+        server.join().expect("server thread");
+        assert!(result.is_err(), "{name} must be refused");
+    }
+}
+
