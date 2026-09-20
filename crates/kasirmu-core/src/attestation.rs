@@ -116,8 +116,10 @@ pub fn source_for(origin: &str) -> Option<OriginSource> {
 
 /// Ask one origin to attest a nonce, verifying the answer against a key.
 ///
-/// Feature-gated like every other HTTP path in this crate, so a
-/// `--no-default-features` build still compiles without reqwest.
+/// Feature-gated to match the convention the rest of this crate follows for HTTP
+/// paths. Note that `--no-default-features` does NOT currently build for this crate
+/// (`license_verification.rs` and `sync_auth.rs` use reqwest ungated) — the attribute
+/// keeps this module consistent rather than claiming a configuration that works.
 #[cfg(feature = "sync-http")]
 pub async fn attest_origin_with(
     origin: &str,
