@@ -267,6 +267,17 @@ main question rather than an afterthought.
   Caveat: identical content today is evidence of one deployment, not a guarantee about DNS or
   renewal, which is exactly what §2.4's attestation is for.
   `MARKETING_HOST = 'kasir.mu'` and `DASHBOARD_HOSTS = {'admin.kasir.mu'}` while the runbook
+
+  **Re-verified 2026-09-26 (the dashboard fork is not one).** The question this caveat raises is
+  whether the second name needs its own panel hosts. Measured, they are not panels:
+  `admin.kasir.mu` serves the admin sign-in (title `kasir.mu Admin — Sign in`) and
+  `dashboard.kasir.mu` serves the account portal (`kasir.mu — Account`), while
+  `admin.ozpos.my.id` and `dashboard.ozpos.my.id` both serve the **marketing homepage**
+  (`kasir.mu — POS Kasir Offline-First untuk Indonesia`) — the Worker falling through to the
+  default site exactly as `DASHBOARD_HOSTS = {'admin.kasir.mu'}` implies. So the kasir.mu-only
+  set is correct, and the CORS default needs the marketing second name (added below) but no
+  ozpos panel hosts. A reader who "fixes" the apparent asymmetry would be adding origins no
+  browser ever presents.
   deploys `ozpos.my.id` (`:1004`, `:1096`) — the same fork, one layer out, and it decides the
   OAuth `next` allowlist in ADR #54 §2.4.
 
