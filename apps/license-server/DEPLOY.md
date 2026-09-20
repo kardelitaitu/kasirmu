@@ -241,6 +241,27 @@ The license server requires the RSA private key as an environment variable. **Ne
    - **Key:** `OZ_WEB_ALLOWED_ORIGINS` — comma-separated origins allowed to call the web endpoints. **Defaults are already correct** for the current setup (`https://kasir.mu`, `https://dashboard.kasir.mu`, `https://admin.kasir.mu`, `http://localhost:4321`); only set this if you deploy the website to a different origin. **If you do set it, read §7.2 first** — a stale value silently breaks the whole login surface.
 7. (Optional) Session lifetime override:
    - **Key:** `OZ_WEB_SESSION_TTL` — Go duration, default `24h` (e.g. `72h` to extend dashboard sessions).
+7b. **Google sign-in (ADR #54) — optional.** Both keys enable it; with
+    `OZ_GOOGLE_CLIENT_ID` unset the endpoints answer `503` and the login button hides
+    itself, so an unconfigured deployment is safe rather than broken.
+    - **Register BOTH callback URIs first**, in Google Cloud → APIs & Services →
+      Credentials → the Web-application OAuth client. Redirect URIs match exactly, so a
+      host that is live but unregistered fails every sign-in with `redirect_uri_mismatch`:
+      - `https://license.kasir.mu/api/v1/web/oauth/google/callback`
+      - `https://license.ozpos.my.id/api/v1/web/oauth/google/callback`
+    - **Key:** `OZ_GOOGLE_CLIENT_ID` — the Web-application client id.
+    - **Key:** `OZ_GOOGLE_CLIENT_SECRET` — its secret. Server-side only: the desktop flow
+      is PKCE and never carries one.
+    - **Key:** `OZ_GOOGLE_REDIRECT_URI` (optional) — pin the callback URL instead of
+      deriving it from the request Host (set it when a proxy rewrites Host).
+    - **Key:** `OZ_WEB_SITE_URL` (optional, default `https://kasir.mu`) — the host the flow
+      returns to. It is the only place the return host is decided, which is why the
+      post-login *path* is the only attacker-influenced part of the redirect.
+    - **Scopes:** `openid email profile` only. No Google API is called and no offline access
+      is requested, so no refresh token exists and no sensitive-scope review is needed; the
+      consent screen shows the bare project id until brand verification passes.
+    - **The admin login page deliberately has no Google button:** the deployment admin
+      address is refused by the resolver (ADR #54 §2.3), so offering it would only yield a 403.
 8. Add the **billing webhook** secrets (required for the checkout → provisioning flow — Paddle for global, Midtrans for Indonesia, ADR #39):
    - **Key:** `PADDLE_WEBHOOK_SECRET` — the endpoint secret key from Paddle → Developer tools → Notifications → Edit destination. Without it the webhook answers `503 not configured`. **Boot gate:** the server fails fast at startup if this (or `PADDLE_PRICE_TIERS`) is missing or malformed, so a misconfigured deploy can never silently answer 503/500 on every event.
    - **Key:** `PADDLE_PRICE_TIERS` — comma-separated `price_id:tier_key:period[:bundle_id]` pairs mapping every Paddle price to a tier, e.g. `pri_01h7abc123:pro,pri_01h7def456:premium` (the `:period` segment is "month" or "year" — the webhook cross-checks it against billing_cycle.interval; the optional `:bundle_id` segment marks a vertical-bundle price, C3.2 — see below). **The six sandbox prices are catalogued (2026-08-31)** — the website carries the real ids for Plus/Pro/Premium × monthly/yearly; only the bundle and the Pro A/B variant still use `pri_placeholder_*` ids (degrading those checkouts to the mailto fallback). Current sandbox map (see also `docs/operations/go-live-checklist.md`):
