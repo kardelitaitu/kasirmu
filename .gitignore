@@ -277,3 +277,11 @@ manager-journal.md
 .agents/git-repair-2026-09-15/index.bak
 .agents/git-repair-2026-09-15/old-branch-tip.txt
 .agents/git-repair-2026-09-15/reflog-HEAD.txt
+# 2026-09-20: the CodeBuddy harness's own state directory (settings.local.json,
+# worktrees/). Not repo content. worktrees/ holds a SECOND full checkout of this
+# repo, and leaving it visible made check-dead-refs.py index that checkout as if
+# it were this tree's docs: 211 unresolved references across 44 docs, every one of
+# them under .codebuddy/worktrees/ and none of them this repo's. Ignoring the
+# directory removes both the status noise and the false findings, through the
+# checker's existing git-ignored skip rather than a new rule of its own.
+/.codebuddy/
