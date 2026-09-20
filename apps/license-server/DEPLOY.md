@@ -241,9 +241,11 @@ The license server requires the RSA private key as an environment variable. **Ne
    - **Key:** `OZ_WEB_ALLOWED_ORIGINS` — comma-separated origins allowed to call the web endpoints. **Defaults are already correct** for the current setup (`https://kasir.mu`, `https://dashboard.kasir.mu`, `https://admin.kasir.mu`, `http://localhost:4321`); only set this if you deploy the website to a different origin. **If you do set it, read §7.2 first** — a stale value silently breaks the whole login surface.
 7. (Optional) Session lifetime override:
    - **Key:** `OZ_WEB_SESSION_TTL` — Go duration, default `24h` (e.g. `72h` to extend dashboard sessions).
-7b. **Google sign-in (ADR #54) — optional.** Both keys enable it; with
-    `OZ_GOOGLE_CLIENT_ID` unset the endpoints answer `503` and the login button hides
-    itself, so an unconfigured deployment is safe rather than broken.
+7b. **Google sign-in (ADR #54).** Both keys enable it. With `OZ_GOOGLE_CLIENT_ID` unset
+    both endpoints answer `503`, so the deployment is safe — but the sign-in button on the
+    login page is gated on the **API URL**, not on this key, so it still renders and the
+    click lands on that JSON `503`. Set the keys before announcing the feature; do not add a
+    second switch to hide the button, because two switches that must agree is how they drift.
     - **Register BOTH callback URIs first**, in Google Cloud → APIs & Services →
       Credentials → the Web-application OAuth client. Redirect URIs match exactly, so a
       host that is live but unregistered fails every sign-in with `redirect_uri_mismatch`:

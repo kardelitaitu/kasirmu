@@ -500,7 +500,28 @@ curl -s -X POST "$BASE/api/v1/license/attest" -H 'Content-Type: application/json
 python3 -c "import json,base64;d=json.load(open('/tmp/attest.json'));open('/tmp/attest.sig','wb').write(base64.b64decode(d['signature']));open('/tmp/attest.payload','wb').write(('ozpos-origin-attest-v1:'+open('/tmp/attest.nonce').read().strip()).encode())"
 openssl dgst -sha256 -verify crates/kasirmu-core/oz-license.key.pub \
   -signature /tmp/attest.sig /tmp/attest.payload    # -> Verified OK
+
+# Google sign-in (ADR #54). The two states are deliberately distinguishable:
+curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/v1/web/oauth/google/start"
+#   503 -> OZ_GOOGLE_CLIENT_ID is unset (nothing else to diagnose)
+#   302 -> configured; the headers below prove BOTH endpoints are live without
+#          touching Google, and that the browser-binding cookie is being set:
+curl -s -D - -o /dev/null "$BASE/api/v1/web/oauth/google/start?next=/en/account" \
+  | grep -Ei '^(HTTP|location|set-cookie)'
+#   Location must be https://accounts.google.com/... and Set-Cookie must carry
+#   oz_oauth_state (HttpOnly, Secure, Lax).
 ```
+
+Then finish **one real sign-in in a browser** and confirm the account portal lists it
+under *Sign-in methods* — that is the only check that exercises Google itself. Two
+failures to expect, and what each means:
+
+- `redirect_uri_mismatch` from Google: the callback for **this** host is not registered in
+  the console. Both `https://license.kasir.mu/...` and `https://license.ozpos.my.id/...`
+  must be listed (step 7b of the licence-server deploy).
+- `400 invalid oauth state` after the consent screen: the browser did not send the
+  `oz_oauth_state` cookie back — something in front of the licence host is stripping
+  cookies, or the flow was started on one host and returned to the other.
 
 Also: create the PocketBase superuser via the `/_/` first-boot installer
 link (or shell: `pocketbase superuser upsert EMAIL PASS`).
