@@ -133,6 +133,21 @@ check(
   'apps/desktop-tauri/src/sync_bootstrap.rs: carries its own origin literal',
 );
 
+// 5. The licence server's CORS default list must carry both marketing names, not only the
+//    canonical one. ADR #55 measured that kasir.mu and ozpos.my.id are one Worker on two
+//    domains, and /en/account/ answers on each — so a merchant signing in at the second name
+//    sends `Origin: https://ozpos.my.id`, and the web endpoints (OTP, identities, logout) would
+//    refuse it. The names are the licence origins without the `license.` label, so they are
+//    derived here rather than repeated.
+const marketing = (origin) => origin.replace('https://license.', 'https://');
+const webOtp = read('apps/license-server/web_otp.go');
+for (const origin of [marketing(MAIN), marketing(FALLBACK)]) {
+  check(
+    webOtp.includes('"' + origin + '"'),
+    'apps/license-server/web_otp.go: the default CORS allowlist must name ' + origin,
+  );
+}
+
 if (findings.length > 0) {
   console.error('server-origins: ' + findings.length + ' finding(s) against ' + SOURCE);
   for (const f of findings) console.error('  - ' + f);

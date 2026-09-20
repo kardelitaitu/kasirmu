@@ -414,12 +414,17 @@ func constantTimeHashEq(a, b string) bool {
 // ── CORS allowlist ───────────────────────────────────────────────────
 
 // webAllowedOrigins returns the comma-separated OZ_WEB_ALLOWED_ORIGINS
-// allowlist, defaulting to the current kasir.mu domain and the local
-// dev origin. Additionally, OZ_CORS_ORIGINS (extra comma-separated
-// origins, used by the Rust cloud server) is merged in so operators only
-// need to set one env var for both services. Requests without an Origin
-// header (curl, POS clients, server-to-server) are always allowed —
-// CORS only governs browsers.
+// allowlist, defaulting to BOTH marketing names and the local dev origin.
+// Additionally, OZ_CORS_ORIGINS (extra comma-separated origins, used by the
+// Rust cloud server) is merged in so operators only need to set one env var
+// for both services. Requests without an Origin header (curl, POS clients,
+// server-to-server) are always allowed — CORS only governs browsers.
+//
+// Both names, not just the canonical one: ADR #55 measured that kasir.mu and
+// ozpos.my.id are one Worker on two domains, and /en/account/ answers 200 on
+// each — so a merchant signing in on the second name sends
+// `Origin: https://ozpos.my.id` and would otherwise be refused by the very
+// endpoints ADR #54 added. One entry per name is the whole fix.
 func webAllowedOrigins() []string {
 	// Primary allowlist from OZ_WEB_ALLOWED_ORIGINS.
 	v := strings.TrimSpace(os.Getenv("OZ_WEB_ALLOWED_ORIGINS"))
@@ -427,6 +432,7 @@ func webAllowedOrigins() []string {
 	if v == "" {
 		out = []string{
 			"https://kasir.mu",
+			"https://ozpos.my.id",
 			"https://dashboard.kasir.mu",
 			"https://admin.kasir.mu",
 			"http://localhost:4321",

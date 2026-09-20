@@ -238,7 +238,11 @@ The license server requires the RSA private key as an environment variable. **Ne
 
    > **Deliverability honesty:** without your own domain + SPF/DKIM/DMARC, inbox placement is best-effort — codes may land in spam. Once you own a domain: set `OZ_SMTP_FROM=noreply@<domain>`, add the provider's SPF include + DKIM records (and a DMARC policy), then the verified-sender fallback is no longer needed. This is the actual fix for "signup codes never land in spam".
 6. (Optional) Web API CORS allowlist override:
-   - **Key:** `OZ_WEB_ALLOWED_ORIGINS` — comma-separated origins allowed to call the web endpoints. **Defaults are already correct** for the current setup (`https://kasir.mu`, `https://dashboard.kasir.mu`, `https://admin.kasir.mu`, `http://localhost:4321`); only set this if you deploy the website to a different origin. **If you do set it, read §7.2 first** — a stale value silently breaks the whole login surface.
+   - **The defaults already cover both names** — `https://kasir.mu` and `https://ozpos.my.id`
+     (ADR #55: one Worker on two domains, and `/en/account/` answers on each), plus the
+     dashboard/admin hosts and the local dev origin. Set the key below only to add an origin;
+     setting it **replaces** the whole list.
+   - **Key:** `OZ_WEB_ALLOWED_ORIGINS` — comma-separated origins allowed to call the web endpoints. **Defaults are already correct** for the current setup (`https://kasir.mu`, `https://ozpos.my.id`, `https://dashboard.kasir.mu`, `https://admin.kasir.mu`, `http://localhost:4321`); only set this if you deploy the website to a different origin. **If you do set it, read §7.2 first** — a stale value silently breaks the whole login surface.
 7. (Optional) Session lifetime override:
    - **Key:** `OZ_WEB_SESSION_TTL` — Go duration, default `24h` (e.g. `72h` to extend dashboard sessions).
 7b. **Google sign-in (ADR #54).** Both keys enable it. With `OZ_GOOGLE_CLIENT_ID` unset

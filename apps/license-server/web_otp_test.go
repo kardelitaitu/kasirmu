@@ -817,8 +817,14 @@ func TestWebSessionTTL_InvalidEnvFallsBack(t *testing.T) {
 
 func TestWebAllowedOrigins_Default(t *testing.T) {
 	origins := webAllowedOrigins()
-	if len(origins) != 4 {
-		t.Fatalf("expected 4 default origins, got %d: %v", len(origins), origins)
+	if len(origins) != 5 {
+		t.Fatalf("expected 5 default origins, got %d: %v", len(origins), origins)
+	}
+	// Both marketing names, not only the canonical one: kasir.mu and ozpos.my.id are one
+	// Worker on two domains (ADR #55) and /en/account/ answers on each, so a merchant signing
+	// in at the second name sends an Origin the web endpoints must already allow.
+	if !strings.Contains(strings.Join(origins, ","), "https://ozpos.my.id") {
+		t.Errorf("the default allowlist must carry the second marketing name, got %v", origins)
 	}
 	if !strings.Contains(strings.Join(origins, ","), "kasir.mu") {
 		t.Errorf("expected kasir.mu origin in defaults, got %v", origins)
@@ -886,8 +892,8 @@ func TestWebAllowedOrigins_CorsOriginsEmpty(t *testing.T) {
 	// Empty OZ_CORS_ORIGINS should not add anything.
 	t.Setenv("OZ_CORS_ORIGINS", "")
 	origins := webAllowedOrigins()
-	if len(origins) != 4 {
-		t.Errorf("expected 4 default origins with empty OZ_CORS_ORIGINS, got %d: %v", len(origins), origins)
+	if len(origins) != 5 {
+		t.Errorf("expected 5 default origins with empty OZ_CORS_ORIGINS, got %d: %v", len(origins), origins)
 	}
 }
 
