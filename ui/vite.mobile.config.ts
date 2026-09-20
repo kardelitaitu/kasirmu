@@ -46,7 +46,7 @@ function mobileEntryAtRoot(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react(), mobileEntryAtRoot()],
 
   resolve: {
@@ -61,6 +61,28 @@ export default defineConfig({
     // "Could not load …/ui/src/locales/shared.ftl?raw". vite.config.ts uses the
     // same two entries in this form — keep them in step.
     alias: [
+      // The Tauri API mocks are DEV-SERVER-ONLY, exactly as in vite.config.ts — they let the
+      // tablet shell be previewed and driven in a plain browser with no Rust backend, and they
+      // must never reach a build (a packaged APK resolving the mock would run on fake data).
+      //
+      // This config carried NEITHER entry until 2026-09-20: `npm run dev:mobile` therefore served
+      // a shell whose every invoke() hit the real `@tauri-apps/api/core`, where a plain browser
+      // has no `__TAURI_INTERNALS__`, so each call threw
+      // "Cannot read properties of undefined (reading 'invoke')" and the app's retry loop
+      // re-issued it forever. The wizard rendered; nothing behind it ever answered. Keep these
+      // two entries in step with vite.config.ts.
+      ...(command === 'serve'
+        ? [
+            {
+              find: /^@tauri-apps\/api\/core$/,
+              replacement: `${fileURLToPath(new URL('./src/dev-mock/tauri-api.ts', import.meta.url))}`,
+            },
+            {
+              find: /^@tauri-apps\/api\/event$/,
+              replacement: `${fileURLToPath(new URL('./src/dev-mock/tauri-event.ts', import.meta.url))}`,
+            },
+          ]
+        : []),
       {
         find: /^@\/locales\//,
         replacement: fileURLToPath(new URL('../shared-ui/locales/', import.meta.url)),
@@ -112,4 +134,4 @@ export default defineConfig({
       ignored: ['**/apps/**'],
     },
   },
-});
+}));
