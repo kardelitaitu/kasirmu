@@ -326,6 +326,22 @@ that helper and must not write a second, weaker guard.
 No Google-hosted script, so `script-src` and `frame-src` are untouched and `form-action`
 is respected by using a link.
 
+**Corrected 2026-09-26 — the web half answered a browser with JSON.** Only a *declined consent*
+reached the login page; every other failure — a stale state, a failed exchange, an unverified or
+reserved address, a conflict — answered `400`/`502`/`403`/`409` JSON. That is the wrong shape for a
+URL Google sends a user's browser to: no way back and nothing to read. Both halves now redirect to
+`/en/login?oauth=<token>` — the desktop flow's `link_error=` shape, one surface over — the token
+vocabulary is fixed in the handler and never carries provider text or configuration detail (the log
+keeps the diagnosis), and the login page maps it to a sentence: `state`, the three refusals, and
+`failed` for everything else. An unknown token renders `failed` rather than a blank, in a
+`role="alert"` banner above the form.
+
+> **Structural debt in THIS section, recorded rather than left implicit:** the notes below were
+> appended across many rounds and several landed mid-paragraph, so §2.4's prose is now interleaved
+> with its own implementation history — the same damage §2.6 was repaired for. The next pass should
+> reassemble it the same way: the ADR's original text first (the diagram and the `safe-next` clause),
+> then the shipped notes in order.
+
 ### 2.5 Desktop: loopback + PKCE, exchanged server-side, handed off once
 
 The wizard's step 7 offers *link this device to my account*. The Google variant:
