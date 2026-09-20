@@ -240,6 +240,23 @@ choice to exchange server-side: the token arrives over TLS from Google's token e
 response to our request, so no third party can inject one — and that is also why no JWKS
 machinery is needed in Go. The claim checks stay, because a token minted for a different client,
 or an expired one replayed out of a log, must not authenticate here. Ten tests pin this,
+
+**Shipped 2026-09-19 (routes):** `GET /api/v1/web/oauth/google/start` and
+`.../callback` are registered in `main.go` and mirrored in the test app's route table, so the
+whole flow is exercised through the real router. `/start` mints the state, records the pending
+flow, binds the state to the browser with an HttpOnly/Secure/SameSite=Lax cookie, and redirects
+to the consent screen; `/callback` checks the state against **both** the store and that cookie
+(a leaked state is useless without the browser that started the flow), exchanges the code
+server-side, validates the claims, calls `resolveIdentity`, and hands the marketing host a
+single-use F1 code — never a session token in a URL. A declined consent returns the user to the
+login page with the reason rather than to a JSON error.
+
+Two bounds worth naming. `/start` is unauthenticated and writes into a map, so the store now
+refuses past `oauthMaxPending` rather than growing without limit within its TTL. And the
+post-login path is validated by `oauthNextPath`, the server-side twin of `lib/safe-next.ts` —
+same shape, same rejections (`//`, `/\`, `/<tab>/`), because the two guards must not disagree
+about what a same-site path is. The redirect *host* is never attacker-influenced: it comes from
+`OZ_WEB_SITE_URL`, so only the path needed validating and no host allowlist was required.
 including the three refusals that matter most: replayed state, foreign audience, expired token.
 guard it replaced was bypassable. `AuthForm.tsx` tested `next.startsWith('/') &&
 !next.startsWith('//')`, which correctly rejects `//evil.com` — and passes `/[backslash]evil.com`
