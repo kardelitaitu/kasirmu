@@ -477,7 +477,7 @@ sqlite3 /data/pb_data/data.db "SELECT id,email,status,email_verified FROM tenant
 curl -s -X POST "$B/api/v1/web/request-otp" -H 'Content-Type: application/json' -d "{\"email\":\"$E\"}"
 curl -s -X POST "$B/api/v1/web/verify-otp"  -H 'Content-Type: application/json' -d "{\"email\":\"$E\",\"code\":\"<code>\"}"
 # 3. that session must be admin (200, not 401/403) — also the proof the env value matches the row.
- # 4. OZ_ADMIN_KEY must be present, and OZ_ADMIN_EMAIL is write-once:
+ # 4. OZ_ADMIN_KEY must be present, and OZ_ADMIN_EMAIL is write-once: it must never change after first boot.
  #    `OZ_PRODUCTION=1` makes the SYNC service refuse to start without the key
  #    (`kasirmu-api`: "requires OZ_ADMIN_KEY to be set (no open token mint)"). Read that as a
  #    check, not as a boot guarantee: in the UNIFIED image supervisord restarts that program
