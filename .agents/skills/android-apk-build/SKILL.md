@@ -18,7 +18,7 @@ is `libkasirmu_mobile_lib.so`, and minifiers strip the space from a media query 
 build that was piped through `tail` instead of handed a log file — the APK is complete, `apksigner
 verify` is what separates written from half-written, and **killing the stalled wrapper also kills the
 sccache server**, so the next build dies with `os error 10054` reported as `could not compile
-kasirmu-core` and needs a plain re-run. · -->
+kasirmu-core` and needs a plain re-run. · Pass 7 (2026-09-20, Android audit lane): **the Pass-6 claim that `cargo tauri android build` never runs `build.beforeBuildCommand` was WRONG, and the section it heads is corrected in place.** The grep it rested on (`run_hook` 0 times under `src/mobile/`) is a false negative — the call is in the shared `crate::build::setup`, which `src/mobile/android/build.rs:197` invokes with `mobile = true`. Re-measured two ways: 2.11.4's source (`src/build.rs:187-196`, inside `setup`) and a real `cargo tauri android build --apk --target aarch64` on the installed 2.11.1, whose log printed `Running beforeBuildCommand` and advanced `ui/dist-mobile/index.html` mtime 11:32:18 -> 12:27:04 inside the build. The corrected section keeps the hazard that IS real (a gitignored dist plus a Gradle/Studio-driven `cargo`, which has no hook) and records the other defect this lane found: `apps/mobile-tauri/build-android-frontend.bat` ran the DESKTOP build (`ui/dist`) — a filename that promises the Android frontend and prepared an artifact no Android build reads, and the likeliest source of the `10:42:31` figure the old text cited. · -->
 
 # Android build, sign, install and wireless ADB
 
@@ -687,25 +687,44 @@ trusting an APK rescued from a killed build. Then kill the wrapper and carry on.
 version directory must exist — list it rather than assuming `37.0.0`, and note that `$ANDROID_HOME` is
 **not** exported in a fresh shell, so re-export it or use the literal path.
 
-### `cargo tauri android build` does NOT build the frontend
+### `cargo tauri android build` DOES build the frontend — the "0 hits under `src/mobile/`" test was a false negative
 
-Its own `--help` says otherwise — `src/mobile/android/build.rs` carries the line *"It also runs your
-`build.beforeBuildCommand`"* — but the code does not. Measured 2026-09-20 against tauri-cli 2.11.4:
-`run_hook` appears **0 times** anywhere under `src/mobile/` and once in `src/build.rs`, which is the
-desktop path. So `build.beforeBuildCommand` in `apps/mobile-tauri/tauri.conf.json` is **inert for
-Android**, and `build.frontendDist` is embedded exactly as it lies on disk.
+*(Refuted and corrected 2026-09-20, Android audit. This section said the opposite for a day, on the
+strength of a lexical grep. Kept with its correction rather than deleted, because that grep is a trap
+somebody will reach for again.)*
 
-**Consequence: "I changed the frontend and rebuilt the APK" can be false.** Measured the same day: a
-build that produced a fresh APK at `11:16:09` embedded a `ui/dist-mobile/` still dated `10:42:31`, so it
-carried a tab-bar stylesheet two commits stale. The APK's md5 *did* change — because a peer's Rust edits
-had landed — which is exactly why an md5 delta proves nothing about your own change.
+The `--help` line — *"It also runs your `build.beforeBuildCommand`"* — is truthful. Two independent
+measurements of the code path:
 
-Build the frontend yourself, then hand the build a prebuilt dist:
+1. **Source, tauri-cli 2.11.4.** `run_hook` *is* absent from `src/mobile/`, because the mobile path does
+   not call the hook itself: `src/mobile/android/build.rs:197` calls
+   `crate::build::setup(&interface, &mut build_options, tauri_config, dirs, true)`, and `setup` — the only
+   `pub fn` in that region of `src/build.rs` — is where `run_hook("beforeBuildCommand", …)` sits
+   (`src/build.rs:187-196`). A grep scoped to the directory misses a call made one level up.
+2. **The installed CLI, run for real.** `cargo tauri android build --apk --target aarch64` (tauri-cli
+   2.11.1) printed `Running beforeBuildCommand` for `npm run build:mobile --prefix ../ui`, ran
+   `tsc -b && vite build --config vite.mobile.config.ts`, and advanced `ui/dist-mobile/index.html` from
+   `11:32:18` to `12:27:04` inside that build. The APK it produced embeds the bundle written during it.
+
+**What is still true, and is the only SILENT route to a stale embed:**
+
+* `ui/dist-mobile` is **gitignored** (`ui/.gitignore:4`), so it is whatever the last frontend build on
+  *this machine* left. A fresh clone has none, and `generate_context!` embeds whatever is there.
+* **A Gradle-driven `cargo` does not run the hook.** `gen/android`'s `:app:rustBuildArm64*` task invokes
+  `cargo` directly — Android Studio's Run button, or a bare `gradlew assembleRelease` — and the hook belongs
+  to the Tauri CLI. With a dist older than the frontend sources, that path embeds the stale bundle silently,
+  and an md5 that moved because a peer's Rust edits landed proves nothing about your own change.
+
+So the prebuild below is the right habit for the Gradle path and harmless for the CLI path:
 
 ```bash
 cd /c/dev/ozpos/ui && npm run build:mobile      # tsc -b && vite build --config vite.mobile.config.ts
-# then the §8 recipe, whose -c flag is harmless either way since the hook never runs
+# then the §8 recipe; the CLI runs the hook again, in 9-30 s
 ```
+
+**A `ui/dist` mtime is not evidence about the APK.** `apps/mobile-tauri/build-android-frontend.bat` ran the
+DESKTOP `npm run build` — writing `ui/dist`, which no Android build reads — until the Android audit
+corrected it to `build:mobile` on 2026-09-20. Only `ui/dist-mobile` is embedded.
 
 **Verify the bundle, not the binary.** `ui/dist-mobile/assets/` is the thing Tauri embeds, so check it
 directly — grep for a *value* your change introduced, which survives minification (a CSS keyword like
