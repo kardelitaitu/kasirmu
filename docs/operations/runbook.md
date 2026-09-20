@@ -511,24 +511,29 @@ curl -s -D - -o /dev/null "$BASE/api/v1/web/oauth/google/start?next=/en/account"
 #   Location must be https://accounts.google.com/... and Set-Cookie must carry
 #   oz_oauth_state (HttpOnly, Secure, Lax).
 
-# The tablet's path (ADR #54 §2.6-§2.7), end to end with a real device and its mailbox.
-# It is also the only check that exercises OZ_SYNC_API_URL:
-KEY="<tenant api_key>"; MACHINE="<registered machine id>"; ACCOUNT="<the tenant email>"
-curl -s -X POST "$BASE/api/v1/desktop/link/email/request" -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $KEY" \
-  -d "{\"machine_id\":\"$MACHINE\",\"email\":\"$ACCOUNT\"}"
-#   503 -> OZ_SMTP_HOST is unset        403 -> not this store's account address
-# ...then read the 6-digit code out of the mailbox and spend it:
-curl -s -X POST "$BASE/api/v1/desktop/link/email/consume" -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $KEY" -d "{\"machine_id\":\"$MACHINE\",\"code\":\"<code>\"}"
-#   expect {"tenantId":...,"verified":true,"terminal":{"issued":true,...}}
-#   terminal.issued=false means OZ_SYNC_API_URL is unset or the sync service refused the
-#   admin key: the account is linked, the device simply holds no sync credential.
-```
+# The device link's server side. The wizard's own flow needs a real device, and a device's
+# api_key never leaves it: it is issued once at activation and stored hashed here. So these
+# check the WIRING — which is what breaks on a new deployment:
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/v1/desktop/link/email/request" \
+  -H 'Content-Type: application/json' -d '{}'
+#   400 -> the route exists and rejects a body with no machine_id   404 -> the deploy predates it
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/v1/desktop/link/email/consume" \
+  -H 'Content-Type: application/json' -d '{}'
+#   400 as well.
 
-Then finish **one real sign-in in a browser** and confirm the account portal lists it
-under *Sign-in methods* — that is the only check that exercises Google itself. Two
-failures to expect, and what each means:
+# The sync service the link will call (OZ_SYNC_API_URL). Production sets OZ_ADMIN_KEY, and the
+# endpoint must say so:
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/v1/terminals" \
+  -H 'Content-Type: application/json' -d '{}'
+#   401 -> reachable and demanding the admin key   404 -> caddy is not routing /api/v1/* to it
+#   200 -> NO admin key is configured and the endpoint is OPEN: fix that before onboarding.
+# Inside the unified container, confirm the address OZ_SYNC_API_URL names is the one answering:
+#   docker exec <container> curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+#     http://127.0.0.1:3099/api/v1/terminals -H 'Content-Type: application/json' -d '{}'
+
+# For the end-to-end check, take a throwaway tenant: activate (or recover) it and use the
+# api_key the response returns — the only time a key is ever visible — with the machine_id that
+# activation registered. Then request, read the code from the mailbox, and consume:
 
 - `redirect_uri_mismatch` from Google: the callback for **this** host **and this flow** is not
   registered. Four URIs are needed — both hosts crossed with both paths, `/api/v1/web/oauth/`
