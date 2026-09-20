@@ -546,7 +546,7 @@ cannot destroy the code the user was just sent — both halves are pinned by
 
 The address must be the **tenant's own**: the device proves which tenant it holds with its api_key, so the
 submitted address is a confirmation rather than an identity claim, and a device can never aim a code at a
-mailbox it does not hold. No `tenant_identities` row is written — nothing federated was linked — and the
+mailbox it does not hold. No `tenant_identities` row is written — nothing federated was linked — and the proof of inbox control stays where the email flow already keeps it, `tenants.email_verified`.
 
 **Its audit is the log, not `identity_events` — and that is consistent, not an omission.** §2.3's
 matrix says a *link* audits both the insert and the flag flip, but this door inserts nothing: it
@@ -554,7 +554,6 @@ creates no identity, so there is no resolution for `resolveIdentity` to record. 
 can follow is the pair of `log.Printf` lines the path emits — “link code sent for tenant …” on the
 request and “tenant … verified by emailed code” on the consume — which is what the runbook's check
 reads when a merchant reports that linking failed.
-proof of inbox control stays where the email flow already keeps it, `tenants.email_verified`.
 
 > **A consequence worth knowing:** the login lockout is shared, as §2.6 requires. A user who tries their
 > link code in the *login* form gets a 5-second (escalating) wait before the link door will answer. That is
@@ -601,7 +600,6 @@ credential-storage-form gate is satisfied rather than sidestepped.
 >
 > Not claimed: that the cloud holds a *plan* row for that tenant. Unknown tenants read as free, which the
 > gate tolerates deliberately (`sync_client.rs:398`, "a free tenant is gated, not broken").
-behind it — and the terminal credential both paths still owe (step 6).
 
 ### 2.7 Tablet: the email path, never the Google one
 
@@ -613,7 +611,15 @@ The tablet keeps account linking **via the emailed code**, which needs no browse
 and therefore still works on Android. Excluding the whole feature on tablet would be the
 lazier choice and is rejected.
 
-Native Android Google sign-in (Android-type client + SHA-1 + Credential Manager behind a
+Native Android Google sign-in (Android-type client + SHA-1 + Credential Manager behind a Tauri mobile plugin) is future work, and iOS is out of scope until it is paired with Sign in
+with Apple, which App Store Review Guideline 4.8 requires when third-party social login is
+offered.
+
+> **Still owed from this section:** the tablet's own path — linking *via the emailed code* — is not
+> built. The interim is truthful rather than a stand-in: §2.3's web flow attaches the identity to
+> the tenant whose address the provider verified, so signing in on the web really does link the
+> store's account. What is missing is doing it **from the device** without a browser round trip,
+> which is the half that needs the emailed-code flow.
 
 **Enforced 2026-09-19:** the exclusion is now real and tested. The shell flag lives in
 `ui/src/utils/shellKind.ts`, set by each entry point before the first render — `main.tsx` marks
@@ -624,13 +630,6 @@ Google **on the web**. Two tests pin both halves — the Google control on the d
 its absence on the tablet, which offers the emailed code instead — and a third pins the tablet's
 retry after a failed verification (2026-09-26). The pair still names only the shell decision;
 the retry case belongs to the step's own copy.
-> built. The interim is truthful rather than a stand-in: §2.3's web flow attaches the identity to
-> the tenant whose address the provider verified, so signing in on the web really does link the
-> store's account. What is missing is doing it **from the device** without a browser round trip,
-> which is the half that needs the emailed-code flow.
-Tauri mobile plugin) is future work, and iOS is out of scope until it is paired with Sign in
-with Apple, which App Store Review Guideline 4.8 requires when third-party social login is
-offered.
 
 **One UX hole closed 2026-09-26.** The tablet's failure message says "try again", and until
 this round that was not quite true: the code field rendered only while the state was `sent`, so
@@ -645,7 +644,6 @@ Account step is the **only** surface that can link a device (`linkDeviceGoogle` 
 nowhere else, and sign-in is wizard-scoped by request), and nothing re-opens the wizard once the
 setup flag is set — so the app promised a path it does not have. It now says "continue without
 linking", in both dictionaries and both JSX fallbacks.
-
 ### 2.8 Console configuration
 
 | Client | Type | Redirect | Secret |

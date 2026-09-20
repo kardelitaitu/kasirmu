@@ -546,15 +546,9 @@ curl -s -X POST "$BASE/api/v1/desktop/link/email/consume" -H 'Content-Type: appl
 #   admin key: the account is linked, the device simply holds no sync credential.
 ```
 
-Then finish **one real sign-in in a browser** and confirm the account portal lists it
-
-**Known dead end, deliberate (ADR #54 §9 O2).** Account linking lives only in the setup wizard, so
-a device that skipped the Account step — or whose credential was revoked — cannot be linked from
-inside the running app; there is no Settings repair path. Recovery means re-running the wizard on a
-fresh install. The wizard's failure copy says "continue without linking" rather than promising a
-later path, because there is none.
-under *Sign-in methods* — that is the only check that exercises Google itself. Two
+Then finish **one real sign-in in a browser** and confirm the account portal lists it under *Sign-in methods* — that is the only check that exercises Google itself. Two
 failures to expect, and what each means:
+
 
 - `redirect_uri_mismatch` from Google: the callback for **this** host **and this flow** is not
   registered. Four URIs are needed — both hosts crossed with both paths, `/api/v1/web/oauth/`
@@ -564,6 +558,12 @@ failures to expect, and what each means:
 - `400 invalid oauth state` after the consent screen: the browser did not send the
   `oz_oauth_state` cookie back — something in front of the licence host is stripping
   cookies, or the flow was started on one host and returned to the other.
+
+**Known dead end, deliberate (ADR #54 §9 O2).** Account linking lives only in the setup wizard, so
+a device that skipped the Account step — or whose credential was revoked — cannot be linked from
+inside the running app; there is no Settings repair path. Recovery means re-running the wizard on a
+fresh install. The wizard's failure copy says "continue without linking" rather than promising a
+later path, because there is none.
 
 Also: create the PocketBase superuser via the `/_/` first-boot installer
 link (or shell: `pocketbase superuser upsert EMAIL PASS`).
