@@ -47,6 +47,15 @@ KNOWN LIMITATIONS (deliberate, and worth knowing before you trust a clean run):
     ("install/uninstall/shortcut/update wiring"). These are rare and are handled with the
     pragma rather than a heuristic that would start eating real findings.
 
+  * Symbol references are NOT checked, only paths. Measured 2026-09-19: the docs name 18 Go
+    test functions (`TestXxx`) and 38 Rust `*_tests.rs` files. All 18 resolved, so this is a
+    prophylactic gap rather than a live defect — but a doc promising a test that was renamed or
+    never written reads exactly like this tool's other findings, and one did slip through a
+    hand-audit of an ADR's verification section (ADR #54 §8, equivalence of the two signup
+    doors). A future symbol rule must accept a PREFIX match: `TestMidtransWebhook` is used as a
+    `go test -run` regex and matches twelve tests, so an exact-existence rule would report the
+    one reference that is most deliberately correct as dead.
+
   Opt-out pragma: put "dead-ref: ok" in an HTML comment on the line, or on the line
   above it. Same contract as eslint-disable-next-line or #[allow(...)]: the doc states
   the reference is intentional, in one token, where a reader can see it.
