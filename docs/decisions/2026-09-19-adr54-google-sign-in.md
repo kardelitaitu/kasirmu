@@ -257,6 +257,24 @@ post-login path is validated by `oauthNextPath`, the server-side twin of `lib/sa
 same shape, same rejections (`//`, `/\`, `/<tab>/`), because the two guards must not disagree
 about what a same-site path is. The redirect *host* is never attacker-influenced: it comes from
 `OZ_WEB_SITE_URL`, so only the path needed validating and no host allowlist was required.
+
+**Shipped 2026-09-19 (website):** the login form offers "Continue with Google" above the
+email/password tabs, with an "or use your email" divider — an **anchor, not a form**, since the
+Worker CSP sets `form-action 'self'` and the link navigates to the licence host, which then
+redirects to Google. It is hidden entirely when the API URL is absent, because offering an entry
+that can only 404 is worse than not offering it. Strings live in both dictionaries (`en`/`id`),
+declared in `AUTH_FORM_LABELS` and asserted used by the island-label-coverage guard.
+
+**The admin login page deliberately gets no Google button.** The deployment admin address is
+refused by the resolver (§2.3), so the entry would only ever produce a 403 — the refusal and the
+absent button are the same decision seen from two sides.
+
+**Configuration is documented before it is needed:** `.env.example` and the licence server's
+`DEPLOY.md` (step 7b, inserted rather than renumbered so no existing cross-reference moves) carry
+`OZ_GOOGLE_CLIENT_ID` / `OZ_GOOGLE_CLIENT_SECRET` / `OZ_GOOGLE_REDIRECT_URI` / `OZ_WEB_SITE_URL`,
+each naming the failure it prevents. The console-first order is stated as a requirement: redirect
+URIs match exactly, so registering both callback URIs **before** deploying is what keeps either
+live host from failing every sign-in with `redirect_uri_mismatch`.
 including the three refusals that matter most: replayed state, foreign audience, expired token.
 guard it replaced was bypassable. `AuthForm.tsx` tested `next.startsWith('/') &&
 !next.startsWith('//')`, which correctly rejects `//evil.com` — and passes `/[backslash]evil.com`
