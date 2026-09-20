@@ -367,6 +367,23 @@ loses a bound the other still has.
 wizard step) and the terminal credential of step 6 — the latter needs the sync API's admin-key
 registration call, and is the piece ADR #55 §5 already flags as the first thing to cut.
 
+**Shipped 2026-09-19 (client, pure half):** `kasirmu-core/src/desktop_link.rs` carries PKCE
+plus the two calls. It lives in `kasirmu-core` rather than `kasirmu-bridge` for the same reason
+the sync client does: the bridge deliberately has no HTTP stack, and every outbound call in this
+repo goes core → bridge → shell. Five tests pin it, including **RFC 7636's own worked example** —
+a challenge that merely round-trips against our verifier would pass everything and still fail
+against Google.
+
+> **That test caught a real interoperability bug.** `generate_pkce` first reused the crate's
+> `generate_nonce`, which is a 32-character UUID — and RFC 7636 requires **at least 43**
+> characters, so Google would have rejected every exchange with `invalid_request`. Reuse was the
+> right instinct and the wrong helper; the length assertion is what said so. Now two UUIDv4s (64
+> hex characters, 244 bits) from the same CSPRNG the crate already trusts.
+
+**Still to do on this path:** the shell half — the loopback listener, launching the system
+browser, and the wizard step that calls these two functions — and the terminal credential of
+step 6.
+
 ### 2.6 Desktop alternative: an emailed code, same destination
 
 The same step offers *email me a code instead*, because not every account is Google and
