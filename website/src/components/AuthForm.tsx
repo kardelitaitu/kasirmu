@@ -5,6 +5,7 @@ import PasswordField, { PASSWORD_FIELD_LABELS } from './PasswordField';
 import PasswordStrength, { PASSWORD_STRENGTH_LABELS } from './PasswordStrength';
 import OtpInput from './OtpInput';
 import { licenseApiUrl } from '../lib/runtime-config';
+import { sameOriginPath } from '../lib/safe-next';
 
 /**
  * Sign-in form (website-plan.md §5/§11). Payment is register-first: the
@@ -173,7 +174,10 @@ export default function AuthForm({ locale, labels }: Props) {
         // Invalid URL or network error — fall through to the next handler.
       }
     }
-    const target = next && next.startsWith('/') && !next.startsWith('//') ? next : `/${locale}/account`;
+    // Security: an origin check, not a prefix test. The previous guard returned
+    // '/\evil.com' verbatim, and the URL parser resolves that to //evil.com — a
+    // protocol-relative navigation to another origin. See lib/safe-next.ts.
+    const target = sameOriginPath(next, '/' + locale + '/account');
     // R1: exchange the token so the Worker sets the httpOnly cookie on the
     // marketing host. The Worker catches ?code= on any path, consumes it,
     // sets the cookie, and redirects to a clean URL — the real session
