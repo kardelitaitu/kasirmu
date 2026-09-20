@@ -584,7 +584,6 @@ behind it — and the terminal credential both paths still owe (step 6).
 
 ### 2.7 Tablet: the email path, never the Google one
 
-
 The Google control is excluded from the tablet build. Google closes both browser routes on
 Android (§1.7), and there is no platform helper today, so one is introduced for the wizard
 (the mobile seams are `main.mobile.tsx` / `index.mobile.html`).
