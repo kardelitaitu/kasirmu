@@ -185,6 +185,19 @@ Resolve a demonstrated identity (Google `sub`, or an emailed code) to a tenant:
    (`web_otp.go:595-600`). Never create and never link. **This check must precede the link
    step**: creation is already guarded inside `createTenant` (`web_otp.go:696-698`), but
    nothing guards *linking*, and the admin's own `tenants` row already exists with
+   `email_verified = false` — so a link attempt would attach a Google identity to the admin
+   tenant and flip it verified.
+4. Not bound, but the email resolves to a tenant → **link** (insert the identity row), flip
+   `email_verified` to true if it was false, and audit both. Requires
+   `email_verified = true` as asserted by Google.
+5. Otherwise → **create** via the existing shared creation path
+   (`createTenantForEmail`, `web_otp.go:642`) and then set `email_verified = true`,
+   because Google proved the mailbox and the code round-trip is redundant. One creation
+   function for both signups, so they cannot drift.
+
+Auto-link at step 4 is not a convenience, it is a correctness requirement: if the same email
+arrives through two doors, both must resolve to one account, or "use Google or your own
+email" silently produces two accounts for one person and the second one has no licence.
 
 **Shipped 2026-09-19 (audit trail):** `identity_events` records one row per resolution —
 provider, subject, provider address, outcome, and the tenant when there is one — written from
@@ -199,19 +212,6 @@ The write is **best-effort by design** — a failed insert is logged loudly and 
 proceeds. Refusing a legitimate sign-in because the audit sink hiccuped costs the user more than
 the gap it leaves. The reader is the licence server's own PocketBase admin console; no bespoke
 audit UI is built, and none is promised here.
-   `email_verified = false` — so a link attempt would attach a Google identity to the admin
-   tenant and flip it verified.
-4. Not bound, but the email resolves to a tenant → **link** (insert the identity row), flip
-   `email_verified` to true if it was false, and audit both. Requires
-   `email_verified = true` as asserted by Google.
-5. Otherwise → **create** via the existing shared creation path
-   (`createTenantForEmail`, `web_otp.go:642`) and then set `email_verified = true`,
-   because Google proved the mailbox and the code round-trip is redundant. One creation
-   function for both signups, so they cannot drift.
-
-Auto-link at step 4 is not a convenience, it is a correctness requirement: if the same email
-arrives through two doors, both must resolve to one account, or "use Google or your own
-email" silently produces two accounts for one person and the second one has no licence.
 
 **Shipped 2026-09-19 (server half):** `apps/license-server/identities.go` implements the table
 above as one function, `resolveIdentity(app, provider, subject, email, emailVerified,
@@ -547,6 +547,13 @@ cannot destroy the code the user was just sent — both halves are pinned by
 The address must be the **tenant's own**: the device proves which tenant it holds with its api_key, so the
 submitted address is a confirmation rather than an identity claim, and a device can never aim a code at a
 mailbox it does not hold. No `tenant_identities` row is written — nothing federated was linked — and the
+
+**Its audit is the log, not `identity_events` — and that is consistent, not an omission.** §2.3's
+matrix says a *link* audits both the insert and the flag flip, but this door inserts nothing: it
+creates no identity, so there is no resolution for `resolveIdentity` to record. What an operator
+can follow is the pair of `log.Printf` lines the path emits — “link code sent for tenant …” on the
+request and “tenant … verified by emailed code” on the consume — which is what the runbook's check
+reads when a merchant reports that linking failed.
 proof of inbox control stays where the email flow already keeps it, `tenants.email_verified`.
 
 > **A consequence worth knowing:** the login lockout is shared, as §2.6 requires. A user who tries their
