@@ -16,9 +16,18 @@
 #     Rust paths BEFORE and AFTER each run, and the provenance belongs in any sentence quoted
 #     from it. It grades "HEAD + this dirt", never "the commit".
 #
-# Usage:  bash .agents/verify-lane.sh            # rust + gates (default)
-#         bash .agents/verify-lane.sh --ui       # also npm typecheck + the touched UI suites
-#         bash .agents/verify-lane.sh --head     # grade the COMMIT, not the dirt
+# Usage:  bash .agents/scripts/verify-lane.sh             # rust + gates (default)
+#         bash .agents/scripts/verify-lane.sh --ui        # also npm typecheck + the touched UI suites
+#         bash .agents/scripts/verify-lane.sh --head      # grade the COMMIT, not the dirt
+#         bash .agents/scripts/verify-lane.sh --self-test # the harness's own controls, in seconds
+#
+# Run it from the repo root. Every path here is CWD-relative ($LOG, the graded
+# `-p` names, the `git status` dirt listing) and the script deliberately does
+# not chdir: it sits in `.agents/scripts/`, one level below the tree it grades,
+# so resolving paths from $0 would paper over a wrong CWD instead of failing in
+# it. This header used to name `.agents/verify-lane.sh`, which has not existed
+# since the script moved into `scripts/`; a copy-pasted usage line failed with
+# "No such file or directory" rather than with anything that pointed here.
 #
 # --head exists because the dirt warning above turned out to cut both ways. On 2026-09-16 this
 # lane committed a retirement while the tree was red from a neighbour's uncommitted `pos.rs`, and
