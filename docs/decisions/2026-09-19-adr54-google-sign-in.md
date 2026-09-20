@@ -339,6 +339,14 @@ keeps the diagnosis), and the login page maps it to a sentence: `state`, the thr
 `failed` for everything else. An unknown token renders `failed` rather than a blank, in a
 `role="alert"` banner above the form.
 
+They also return to the **user's own locale**, which the first version got wrong: the redirect
+hardcoded `/en/login`, while the success path had always honoured the locale through `next`
+(the site's button sends `next=/<locale>/account`) — so an Indonesian merchant got an English
+error page. `/start` now records the locale from that validated path in a short-lived cookie
+beside the state, and every failure redirect reads it back. It is a cookie rather than server
+state because the pending record can be *gone* by the time a failure is reported, and the
+locale must still be knowable.
+
 ### 2.5 Desktop: loopback + PKCE, exchanged server-side, handed off once
 
 The wizard's step 7 offers *link this device to my account*. The Google variant:
