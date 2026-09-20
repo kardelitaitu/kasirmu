@@ -102,7 +102,13 @@ mod debt;
 /// another lane and travelled here because `lib.rs` could not be committed without it —
 /// it is the single new debt row, and it is recorded in docs/records/JOURNAL.md. Raising
 /// this records what landed; it does not approve it.
-const REGISTERED_FLOOR: usize = 332;
+///
+/// The 20-09-20 backup closeout step (332 -> 333) adds `data::create_backup_to`, the
+/// tablet-only backup-to-destination twin (b-full Phase 3 open item, §3.3 / §9 of
+/// todo-tablet-dialog-content-uri.md). It is a Gated ADR #49 shim over `kasirmu_bridge`,
+/// so it moves no ceiling and no ledger row — purely a surface-count increase, exactly
+/// like the seven file-picker shims. Raising this records what landed; it does not approve it.
+const REGISTERED_FLOOR: usize = 333;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.

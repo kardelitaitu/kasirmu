@@ -34,15 +34,22 @@
 //! names `kasirmu_bridge::data` therefore reads `Gated` — all three doors are
 //! ledger-neutral and add no debt row.
 //!
-//! ## Deliberately absent: the backup pair
+//! ## Deliberately absent: the status pair, present: the backup-to-destination twin
 //!
-//! `create_backup` / `get_backup_status` (and their `_scoped` twins) are **not**
-//! here. They take no destination — `create_backup(db_path)` — so they write
-//! wherever the shell's own `default_backup_path` lands, which on Android is
-//! inside the app's private storage with no way for the operator to reach it.
-//! Giving them a user-chosen destination is a contract change to a command the
-//! desktop also calls, so it is an open owner decision (see
-//! `todo-tablet-dialog-content-uri.md` §3.3), not something this module assumes.
+//! `get_backup_status` / `get_backup_status_scoped` are **not** here — status read
+//! has no destination concern, so the desktop's pair stays the tablet's source of
+//! truth and the panel's mount fetch still calls them (silently no-op on the tablet,
+//! exactly as before this module existed; see `useBackupStatus.ts`).
+//!
+//! `create_backup` / `create_backup_scoped` are also **not** here: they take no
+//! destination — `create_backup(db_path)` — so they write wherever the shell's own
+//! `default_backup_path` lands, which on Android is inside the app's private storage
+//! with no way for the operator to reach it. That is why the tablet got its own
+//! command instead of a contract change to the desktop's: [`create_backup_to`] takes
+//! the cache path the UI bridged from the save dialog's `content://` URI and writes
+//! there, then the UI walks the bytes out — the same two-leg cross as `export_data`
+//! (see `todo-tablet-dialog-content-uri.md` §3.3). The owner chose the tablet-only
+//! variant so the desktop's `create_backup` / `get_backup_status` stay untouched.
 
 use tauri::{State, command};
 
@@ -106,6 +113,36 @@ pub async fn import_data(
 ) -> Result<ImportDataResult, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::data::import_data(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
+}
+
+// ── Command: backup to a chosen destination (tablet only) ──────
+
+/// Backup the database to an operator-chosen destination (tablet only).
+///
+/// The desktop's `create_backup` / `create_backup_scoped` take no destination and
+/// write to the shell's `default_backup_path` — inside private storage on Android,
+/// unreachable by the operator. This command takes the cache path the UI already
+/// bridged from the save dialog's `content://` URI and writes there; the UI then
+/// walks the bytes out to the real URI, exactly like `export_data`. The chosen
+/// path is an ordinary cache path, never the URI itself — `tokio::fs` cannot open a
+/// URI, so the crossing is done in JS on purpose, as in the export and import shims.
+///
+/// ADR #49 applies verbatim: the body is the bridge's `create_backup_to`, this shim
+/// only borrows a `BridgeCtx` and maps `BridgeError` back to `AppError`; it holds no
+/// SQL, no gate and no lock, and the gate kind and order stay the bridge's. It names
+/// `kasirmu_bridge::data` and therefore resolves through `permissions::DATA_EXPORT`,
+/// so it reads `Gated` and adds no debt row — ledger-neutral, like
+/// `create_backup_scoped`.
+#[command]
+pub async fn create_backup_to(
+    session_token: String,
+    target_path: String,
+    state: State<'_, AppState>,
+) -> Result<kasirmu_bridge::data::BackupResult, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::data::create_backup_to(&ctx, &session_token, &target_path)
         .await
         .map_err(Into::into)
 }

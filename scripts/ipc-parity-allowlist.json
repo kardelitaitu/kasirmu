@@ -25,6 +25,7 @@
     "close_shift_scoped",
     "create_backup",
     "create_backup_scoped",
+    "create_backup_to",
     "create_cash_payout_scoped",
     "create_inventory_location",
     "create_inventory_transaction",

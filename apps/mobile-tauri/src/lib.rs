@@ -585,6 +585,11 @@ pub fn run() {
                 commands::data::export_data,
                 commands::data::import_preview,
                 commands::data::import_data,
+                // Backup-to-destination (b-full Phase 3 closeout, 2026-09-20):
+                // tablet-only twin of create_backup that writes to the cache path
+                // the UI bridged from the save dialog's content:// URI. The desktop
+                // pair (create_backup / get_backup_status) is intentionally untouched.
+                commands::data::create_backup_to,
                 commands::exchange_rates::list_exchange_rates_scoped,
                 commands::exchange_rates::list_latest_exchange_rates_scoped,
                 commands::exchange_rates::create_exchange_rate_scoped,

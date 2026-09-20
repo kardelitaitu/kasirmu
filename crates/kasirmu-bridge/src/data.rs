@@ -814,6 +814,41 @@ pub async fn create_backup_scoped(
     create_backup_direct(ctx, db_path).await
 }
 
+/// Backup to an operator-chosen destination (tablet variant).
+///
+/// The desktop's `create_backup`/`create_backup_scoped` have no destination:
+/// they write wherever `default_backup_path` lands, which on Android is inside
+/// the app's private storage where the operator cannot open the file. This
+/// variant instead takes `target_path` — on the tablet, the cache path the UI
+/// bridged from the `content://` URI the save dialog returned — so the bytes
+/// end up somewhere the operator can actually collect. It is the same two-leg
+/// cross `export_data` uses, so path traversal is rejected the same way (C-1).
+///
+/// Gating lives here, not in the shell shim: the session is resolved and
+/// `permissions::DATA_EXPORT` enforced, exactly as in `create_backup_scoped`.
+pub async fn create_backup_to(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    target_path: &str,
+) -> Result<BackupResult, BridgeError> {
+    // F-017: enforce per-domain permission on this command.
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::DATA_EXPORT)
+        .await?;
+    // C-1: Contain output path — reject path traversal. The desktop path the
+    // operator chose is benign, but a bridged cache path is constructed by JS
+    // and must not escape the app cache via `..`.
+    validate_contained_path(target_path)?;
+    let conn = ctx.lock_global().await;
+    let store = Store::new(&conn);
+    store.backup(target_path)?;
+    let size_bytes = std::fs::metadata(target_path).map(|m| m.len()).unwrap_or(0);
+    Ok(BackupResult {
+        path: target_path.to_string(),
+        size_bytes,
+    })
+}
+
 #[cfg(test)]
 #[path = "data_tests.rs"]
 mod data_tests;
