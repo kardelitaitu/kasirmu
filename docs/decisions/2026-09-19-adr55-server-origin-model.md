@@ -2,14 +2,13 @@
 num: 55
 area: security
 title: "ADR #55: One Server Origin — the compiled list, the fallback pair and the allowlists that must agree with it"
-status: Partially implemented (2026-09-19) — resolver, literal collapse, drift gate and the attestation endpoint shipped; client verification and the reachability cascade proposed
+status: Implemented (2026-09-19) — resolver, literal collapse, drift gate, attestation (endpoint and client) and the boot-time cascade are all shipped
 ---
 
 # ADR #55: One Server Origin
 
-**Status:** Partially implemented (2026-09-19). §2.1-§2.3 and §2.6 are shipped, together with
-the attestation endpoint (§2.4, server half); the client-side attestation verification and the
-reachability cascade (§2.5) are proposed and deliberately gated behind each other.
+**Status:** Implemented (2026-09-19). §2.1-§2.3, §2.4 (endpoint and client) and §2.5 (boot-time
+resolution, pinning, transport-only fallback) are shipped. The tablet carries the same boot call.
 **Date:** 2026-09-19
 **Recorded against:** branch `0.0.39` @ `ef0c0456d`
 **Tags:** security, config, sync, auth, deployment, drift
@@ -77,7 +76,7 @@ Both names must resolve to the same caddy host and the same data. A fallback ans
 different database would silently fork a shop's data, which is why §2.5 is only meaningful under
 that assumption. This is an operator invariant, not something the client can verify.
 
-### 2.4 Attestation before credential (endpoint shipped, client pending)
+### 2.4 Attestation before credential (shipped)
 
 `license.api_key`, the sync JWT and the ADR #54 terminal `device_secret` are bearer credentials,
 and a cascade widens where they can be sent to two domains plus a loopback port. Before any
@@ -102,7 +101,7 @@ This is also what makes a *pinned* origin safe: URL keys are classified as endpo
 than credentials (`settings_tests.rs:796`) and are therefore outside the sealed-settings
 machinery.
 
-### 2.5 Cascade rules (proposed)
+### 2.5 Cascade rules (shipped)
 
 - **Transport failure only** — DNS, connect, TLS, timeout. Never on an HTTP status, and never on
   `401`/`403`: retrying a credential rejection against a second host is credential spraying.
@@ -115,6 +114,18 @@ machinery.
   not this list. The list is how a client *starts*; the redirect is how a fleet *moves*. Note the
   421 middleware covers `/api/sync/*` only (`redirect.rs:39-40`), which is exactly the gap the
   auth-side cascade fills.
+
+**Shipped 2026-09-19 (client):** `crates/kasirmu-core/src/attestation.rs` generates the nonce,
+posts it, verifies the answer against `LICENSE_PUBLIC_KEY_PEM` and caches the winner in a
+process-wide `OnceLock`; `license_server_url()` then prefers that cached origin, so every
+credential-bearing call inherits the cascade without changing any call site. Both Tauri shells
+prime it once from their setup hook with `platform_startup::spawn_daemon`, fire-and-forget, so
+boot is never blocked on a probe and an unreachable MAIN degrades to the compiled default exactly
+as it did before.
+
+Client verification deliberately does **not** honour the `BOOTSTRAP_FREE` sentinel that
+`verify_license_signature` accepts in debug builds, and the echoed nonce must match the one sent;
+both are pinned by tests, together with a foreign-key rejection and a cross-nonce rejection.
 
 ### 2.6 Allowlists carry both names, and a gate keeps them honest
 
