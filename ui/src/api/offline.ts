@@ -129,6 +129,14 @@ export interface SyncSettingsDto {
   serverUrl: string | null;
   hasApiKey: boolean;
   enabled: boolean;
+  /**
+   * The origin the app actually resolved to (ADR #55): the environment
+   * override, an attested pin, or the canonical compiled origin. Diagnostics,
+   * not a setting — and never the value the UI saves back.
+   */
+  resolvedOrigin: string;
+  /** Which tier supplied `resolvedOrigin` (env-override | pinned | main | fallback | debug-local). */
+  resolvedOriginSource: string;
 }
 
 /** Arguments for updating cloud sync settings. */

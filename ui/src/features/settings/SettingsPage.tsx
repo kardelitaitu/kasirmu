@@ -9,7 +9,7 @@ import { setDecimalSep } from '@/utils/storage';
 import { useAuth } from '@/contexts/AuthContext';
 import { roleAtLeast, normalizeRole } from '@/utils/role';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { SettingsProvider, useSettings } from '@/contexts/SettingsContext';
+import { DEFAULT_RESOLVED_ORIGIN, SettingsProvider, useSettings } from '@/contexts/SettingsContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { type SyncSettingsDto } from '@/api/offline';
 
@@ -124,6 +124,9 @@ function SettingsPageContent() {
     serverUrl: null,
     hasApiKey: false,
     enabled: false,
+    // Placeholder until the first fetch reports the app's real resolution.
+    resolvedOrigin: DEFAULT_RESOLVED_ORIGIN,
+    resolvedOriginSource: 'main',
   });
   const [syncServerUrl, setSyncServerUrl] = useState('');
   const [syncApiKey, setSyncApiKey] = useState('');

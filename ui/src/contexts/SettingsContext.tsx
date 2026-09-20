@@ -62,6 +62,13 @@ export interface SettingsState {
 const DEFAULT_LOCAL_SYNC_SERVER_URL = 'https://license.kasir.mu';
 
 /**
+ * The compiled canonical origin (ADR #55). Reported as the resolved origin until
+ * the first fetch replaces it with the app's actual resolution — an environment
+ * override, an attested pin, or this default.
+ */
+export const DEFAULT_RESOLVED_ORIGIN = 'https://license.kasir.mu';
+
+/**
  * Give an unconfigured settings page a usable cloud-sync draft.
  *
  * A missing/blank URL means there is no target to connect to, regardless of
@@ -98,6 +105,8 @@ const DEFAULT_SETTINGS: SettingsState = {
     serverUrl: DEFAULT_LOCAL_SYNC_SERVER_URL,
     hasApiKey: false,
     enabled: false,
+    resolvedOrigin: DEFAULT_RESOLVED_ORIGIN,
+    resolvedOriginSource: 'main',
   },
   brand: { colour: '#147EFB', storeName: '' },
   preferences: { cardSize: 0, fontSize: 0, fontSmoothing: 'antialiased' },

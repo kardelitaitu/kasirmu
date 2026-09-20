@@ -341,6 +341,7 @@ settings-btn-revert-aria =
 settings-saved = Tersimpan!
 settings-section-sync = Sinkronisasi Cloud
 settings-sync-server-url = URL Server
+settings-sync-resolved-origin = Server yang dipakai: { $origin } ({ $source })
 settings-sync-api-key = Kunci API
 settings-sync-enabled = Aktifkan Sinkronisasi Cloud
 settings-sync-enabled-aria = Aktifkan/nonaktifkan sinkronisasi cloud

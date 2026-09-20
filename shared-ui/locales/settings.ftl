@@ -350,6 +350,7 @@ settings-btn-revert-aria =
 settings-saved = Saved!
 settings-section-sync = Cloud Sync
 settings-sync-server-url = Server URL
+settings-sync-resolved-origin = Server in use: { $origin } ({ $source })
 settings-sync-api-key = API Key
 settings-sync-enabled = Enable Cloud Sync
 settings-sync-enabled-aria = Toggle cloud sync

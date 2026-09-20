@@ -199,7 +199,7 @@ const { invokeMock, defaultImpl } = vi.hoisted(() => {
         return { cardsize: '2', fontsize: '1', 'font-smoothing': 'antialiased' };
       case 'get_cloud_sync_settings':
       case 'get_sync_settings_scoped':
-        return { serverUrl: null, hasApiKey: false, enabled: false };
+        return { serverUrl: null, hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' };
       case 'get_all_currencies':
       case 'list_currencies_scoped':
         return SAMPLE_CURRENCIES;
@@ -275,7 +275,7 @@ function ReceiptToggleHost() {
   );
 }
 
-const INITIAL_SYNC: SyncSettingsDto = { serverUrl: null, hasApiKey: false, enabled: false };
+const INITIAL_SYNC: SyncSettingsDto = { serverUrl: null, hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' };
 
 function SyncToggleHost() {
   const [sync, setSync] = useState(INITIAL_SYNC);

@@ -69,7 +69,7 @@ const RECEIPT_A: ReceiptSettingsDto = {
 const STORE_A: StoreSettingsDto = {
   name: 'Org A', address: 'Jl. Lama 1', taxId: 'TAX-A', branch: 'A-1', currency: 'IDR', logo: 'a.png',
 };
-const SYNC_A: SyncSettingsDto = { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true };
+const SYNC_A: SyncSettingsDto = { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' };
 const BRAND_A: BrandSettings = { primary_colour: '#147EFB', logo_path: null, store_name: 'Org A' };
 
 // ── ORG B: what the server holds after switchOrganization ──────────────
@@ -77,7 +77,7 @@ const STORE_B: StoreSettingsDto = {
   name: 'Org B', address: 'Jl. Baru 9', taxId: 'TAX-B', branch: 'B-2', currency: 'SGD',
 };
 const RECEIPT_B: ReceiptSettingsDto = { ...RECEIPT_A, taxRoundingMode: 'truncate' };
-const SYNC_B: SyncSettingsDto = { serverUrl: 'https://tenant-b.example.com', hasApiKey: false, enabled: false };
+const SYNC_B: SyncSettingsDto = { serverUrl: 'https://tenant-b.example.com', hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' };
 const BRAND_B: BrandSettings = { primary_colour: '#ff0000', logo_path: null, store_name: 'Org B' };
 
 function snapshotOf(over: Partial<SettingsSaveSnapshot> = {}): SettingsSaveSnapshot {
@@ -302,8 +302,8 @@ describe('useSettingsSave after a partial load', () => {
   it('does not clear a configured sync server URL', async () => {
     // hasPartialError left the sync draft empty while the server holds a URL.
     const s = setup({
-      draft: { sync: { serverUrl: null, hasApiKey: false, enabled: false }, syncServerUrl: '' },
-      snapshot: snapshotOf({ syncServerUrl: '', sync: { serverUrl: null, hasApiKey: false, enabled: false } }),
+      draft: { sync: { serverUrl: null, hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' }, syncServerUrl: '' },
+      snapshot: snapshotOf({ syncServerUrl: '', sync: { serverUrl: null, hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' } }),
       server: { sync: SYNC_A },
     });
     await s.run();

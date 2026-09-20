@@ -35,7 +35,7 @@ const RECEIPT: ReceiptSettingsDto = {
 const STORE: StoreSettingsDto = {
   name: 'Org A', address: 'Jl. Lama 1', taxId: 'TAX-A', branch: 'A-1', currency: 'IDR', logo: 'a.png',
 };
-const SYNC: SyncSettingsDto = { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true };
+const SYNC: SyncSettingsDto = { serverUrl: 'https://sync.example.com', hasApiKey: true, enabled: true, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' };
 const BRAND = { primary_colour: '#147EFB', store_name: 'Org A' };
 const PREFS: Record<string, string> = { cardsize: '2', fontsize: '1', 'font-smoothing': 'antialiased' };
 
@@ -149,7 +149,7 @@ describe('planSaveTasks fires on edited AND differs, never on differs alone', ()
   const ORG_B_SERVER = {
     receipt: { ...RECEIPT, taxRoundingMode: 'truncate' },
     store: { name: 'Org B', address: 'Jl. Baru 9', taxId: 'TAX-B', branch: 'B-2', currency: 'SGD' },
-    sync: { serverUrl: 'https://tenant-b.example.com', hasApiKey: false, enabled: false },
+    sync: { serverUrl: 'https://tenant-b.example.com', hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' },
     brand: { primary_colour: '#ff0000', store_name: 'Org B' },
   };
 
@@ -265,9 +265,9 @@ describe('planSaveTasks per family', () => {
   it('does not clear a configured sync URL the page never edited', () => {
     // Partial load: draft URL empty, Revert target empty, server configured.
     const p = plan(
-      { sync: { serverUrl: null, hasApiKey: false, enabled: false }, syncServerUrl: '' },
+      { sync: { serverUrl: null, hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' }, syncServerUrl: '' },
       { sync: SYNC },
-      { sync: { serverUrl: null, hasApiKey: false, enabled: false }, syncServerUrl: '' },
+      { sync: { serverUrl: null, hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' }, syncServerUrl: '' },
     );
     expect(byName('sync').fires).toBe(false);
     expect(p.every((t) => !t.fires)).toBe(true);
