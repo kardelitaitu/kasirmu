@@ -288,6 +288,12 @@ func main() {
 		if err := ensureBuildIntegrityReports(app); err != nil {
 			return err
 		}
+		// ADR #57 §2.4: the alert cooldown store the build-integrity scanner
+		// reads and writes. Created here so a missing collection cannot silently
+		// make every scan re-alert.
+		if err := ensureBuildIntegrityAlertState(app); err != nil {
+			return err
+		}
 		// C4.3: add-on marketplace field on license_keys
 		if err := ensureAddonsField(app); err != nil {
 			return err
@@ -466,6 +472,15 @@ func main() {
 		}
 		bindPasswordRotationHook(app)
 		go startPasswordRotationScheduler(app)
+
+		// ── Build-integrity alert scanner (ADR #57 §2.4) ───────────
+		// The READER half of ADR #57: §2.1 ships the reporting and the
+		// server classifies every report, so without this the verdicts are
+		// a log nobody reads. Daily at 08:00 UTC, the same rhythm as the
+		// password reminder. It never locks a device — §Q4 routes every
+		// finding to this human rather than to an automatic refusal —
+		// and it re-alerts at most weekly per tenant and condition.
+		go startBuildIntegrityScheduler(app)
 
 		// ── Root → PocketBase admin UI redirect ───────────────────
 		// The bare domain (https://license.kasir.mu) 301-redirects to

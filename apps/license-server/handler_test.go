@@ -277,6 +277,10 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		if err := ensureBuildIntegrityReports(app); err != nil {
 			return err
 		}
+		// Mirror production boot: the alert cooldown store (ADR #57 §2.4).
+		if err := ensureBuildIntegrityAlertState(app); err != nil {
+			return err
+		}
 		// Mirror production boot: add the license_keys.is_trial bool
 		// (segmented trials, C2.1) via the same idempotent migration path
 		// the deployed server uses.
