@@ -532,16 +532,14 @@ export default function AppShell() {
     return <AppBootSplash />;
   }
 
+  // ADR #58 §2.6: if the subscription is revoked, show the data-export screen
+  // rather than the re-activation or login screen. The merchant cannot log in
+  // but CAN export their data via the no-session twin (export_data_without_session).
+  if (subscriptionState === 'revoked') {
+    return <RevokedScreen />;
+  }
+
   if (!bootAllowed) {
-    // ADR #58 §2.6: if the subscription is revoked, show the data-export screen
-    // rather than the re-activation screen. The merchant cannot log in but CAN
-    // export their data via the no-session twin (export_data_without_session).
-    // This check runs inside !bootAllowed so the revoked screen is only shown
-    // when the licence itself has blocked the boot — not for an existing active
-    // install whose ride-along verdict arrives while the operator is logged in.
-    if (subscriptionState === 'revoked') {
-      return <RevokedScreen />;
-    }
     return (
       <ActivationFlow
         initialError={licenseError}

@@ -13,12 +13,14 @@ import MemoBanner from '@/features/memo/MemoBanner';
 import { isAnyAriaModalOpen, consumeShortcut } from '@/utils/modal-guard';
 import { useOrientation } from '@/hooks/useOrientation';
 import { toWorkspaceType, type WorkspaceType } from '@/features/settings/workspaceType';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 
 // ── PERF-01: workspace/flow screens load on demand ────────────────
 const ProvisioningFlow = lazy(() => import('@/features/setup/ProvisioningFlow'));
 const StaffLoginScreen = lazy(() => import('@/features/auth/StaffLoginScreen'));
 const CreatePinScreen = lazy(() => import('@/features/auth/CreatePinScreen'));
 const SessionLockScreen = lazy(() => import('@/features/auth/SessionLockScreen'));
+const RevokedScreen = lazy(() => import('@/features/auth/RevokedScreen'));
 const WorkspaceHome = lazy(() => import('@/features/workspaces/WorkspaceHome'));
 const RetailPosScreen = lazy(() => import('@/features/retail/RetailPosScreen'));
 const PosScreen = lazy(() => import('@/features/sales/PosScreen'));
@@ -118,6 +120,7 @@ export default function TabletAppShell() {
   const [isLocked, setIsLocked] = useState(false);
   const { enabled, loaded: featuresLoaded } = useFeatures();
   const { session } = useAuth();
+  const { state: subscriptionState } = useSubscription();
   // ADR #4 Phase 3b: use WorkspaceContext for device-bound auto-boot.
   const {
     activeWorkspace,
@@ -286,6 +289,17 @@ export default function TabletAppShell() {
     return (
       <LazyBoundary>
         <ProvisioningFlow onProvisioned={() => setHasCompletedSetup(true)} />
+      </LazyBoundary>
+    );
+  }
+
+  // ADR #58 §2.6: if the subscription is revoked, show the data-export screen
+  // rather than the login screen. The merchant cannot log in but CAN
+  // export their data via the no-session twin (export_data_without_session).
+  if (subscriptionState === 'revoked') {
+    return (
+      <LazyBoundary>
+        <RevokedScreen />
       </LazyBoundary>
     );
   }

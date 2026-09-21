@@ -59,6 +59,12 @@ export interface LinkedAccountDto {
   provider: string;
   /** The address the provider verified. */
   email: string;
+/** The sync credential earned from linking, when the server issued one. */
+  terminal?: {
+    terminalId?: string;
+    issued?: boolean;
+    reason?: string;
+  };
 }
 
 /**
@@ -81,6 +87,12 @@ export interface VerifiedAccountDto {
   email: string;
   /** Whether the account now counts as verified. */
   verified: boolean;
+  /** The sync credential earned from linking, when the server issued one. */
+  terminal?: {
+    terminalId?: string;
+    issued?: boolean;
+    reason?: string;
+  };
 }
 
 /**

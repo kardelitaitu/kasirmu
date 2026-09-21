@@ -27,6 +27,10 @@ vi.mock('@/features/setup/ProvisioningFlow', () => ({
   default: () => <div data-testid="provisioning-flow">Provisioning Flow</div>,
 }));
 
+vi.mock('@/features/auth/RevokedScreen', () => ({
+  default: () => <div data-testid="revoked-screen">Account suspended</div>,
+}));
+
 vi.mock('@/features/auth/StaffLoginScreen', () => ({
   default: () => <div data-testid="staff-login-screen">Login</div>,
 }));
@@ -169,6 +173,21 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => mockAuthSession(),
 }));
 
+let mockSubscriptionState = 'active';
+
+vi.mock('@/contexts/SubscriptionContext', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    useSubscription: () => ({
+      caps: null,
+      state: mockSubscriptionState,
+      loading: false,
+      refresh: vi.fn(),
+    }),
+  };
+});
+
 // ── Mock workspace context (dynamic per test) ──────────────────
 
 const mockWorkspace = vi.fn();
@@ -254,6 +273,7 @@ describe('TabletAppShell — routing', () => {
     vi.mocked(getFirstRunState).mockResolvedValue({ state: 'provisioned', location_id: 'loc-1', owner_user_id: 'user-1', mode: 'local', home_region: 'global', tenant_id: null });
     vi.mocked(hasUsers).mockReset();
     vi.mocked(hasUsers).mockResolvedValue({ has_users: true });
+    mockSubscriptionState = 'active';
     // Shrink the lost-response retry window so the recovery test below
     // exercises real timeouts without waiting seconds per attempt.
     bootRetryConfig.timeoutMs = 25;
@@ -737,6 +757,18 @@ describe('TabletAppShell — routing', () => {
       } finally {
         blocker.remove();
       }
+    });
+  });
+
+  describe('ADR #58 §2.6 — Revoked tenant gate', () => {
+    it('renders RevokedScreen when subscriptionState is revoked on a provisioned tablet', async () => {
+      mockSubscriptionState = 'revoked';
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('revoked-screen')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('staff-login-screen')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('pos-screen')).not.toBeInTheDocument();
     });
   });
 });

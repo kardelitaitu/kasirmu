@@ -167,6 +167,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
           location_kind: kindForPreset(storeType),
           mode,
           tenant_id: linkedAccount?.tenantId ?? null,
+          device_credential_id: linkedAccount?.terminal?.terminalId ?? terminalId,
         });
         addToast({
           type: 'success',

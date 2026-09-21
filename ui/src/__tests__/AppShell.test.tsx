@@ -20,6 +20,10 @@ vi.mock('@/features/kds/KdsScreen', () => ({
   default: () => <div data-testid="kds-screen">Kitchen Display System</div>,
 }));
 
+vi.mock('@/features/auth/RevokedScreen', () => ({
+  default: () => <div data-testid="revoked-screen">Account suspended</div>,
+}));
+
 vi.mock('@/features/retail/RetailPosScreen', () => ({
   default: ({ onNavigate }: { onNavigate?: (route: string) => void }) => (
     <div data-testid="retail-pos-screen">
@@ -153,6 +157,21 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => mockAuthSession(),
 }));
 
+let mockSubscriptionState = 'active';
+
+vi.mock('@/contexts/SubscriptionContext', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    useSubscription: () => ({
+      caps: null,
+      state: mockSubscriptionState,
+      loading: false,
+      refresh: vi.fn(),
+    }),
+  };
+});
+
 // ── Workspace context mock (dynamic per test) ─────────────────
 
 const mockWorkspace = vi.fn();
@@ -230,6 +249,7 @@ function mockKitchenRole() {
 describe('AppShell — KDS workspace navigation', () => {
   beforeEach(() => {
     // Reset auth mock to default (cashier) before each test
+    mockSubscriptionState = 'active';
     mockAuthSession.mockReset();
     mockAuthSession.mockReturnValue({
       session: {
@@ -1116,6 +1136,16 @@ describe('AppShell — KDS workspace navigation', () => {
         expect(screen.getByTestId('analytics-page-stub')).toBeInTheDocument();
       });
       expect(screen.queryByText('Access Denied')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('ADR #58 §2.6 — Revoked tenant gate', () => {
+    it('renders RevokedScreen when subscriptionState is revoked', async () => {
+      mockSubscriptionState = 'revoked';
+      await renderWithProviders(<AppShell />, staffFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('revoked-screen')).toBeInTheDocument();
+      });
     });
   });
 });
