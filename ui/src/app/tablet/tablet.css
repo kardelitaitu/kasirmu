@@ -358,7 +358,7 @@
 
 /* ── T3: declared page layouts (ADR-0001 Slice 1b) ──────────────────────
  * The tablet entry (ui/src/main.mobile.tsx + TabletAppLayout.tsx) loads
- * theme/*.css and this sheet — NOT AppLayout.css — so the shell's two
+ * theme (css) and this sheet — NOT AppLayout.css — so the shell's two
  * layout-marker rules need their tablet copy here, exactly as .skip-to-content
  * above already does. The desktop twin lives at the same rules in
  * ui/src/app/AppLayout.css; keep the pair in step.

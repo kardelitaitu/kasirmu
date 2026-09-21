@@ -569,7 +569,7 @@
  * (ui/src/registries/page-registry/index.ts). Both shells render the same two
  * nodes, so both rules live in THIS sheet — the desktop entry imports it
  * (ui/src/main.tsx) and the tablet entry imports it too (ui/src/main.mobile.tsx
- * loads theme/*.css + this? no: TabletAppLayout imports tablet.css, and
+ * loads theme (css) + this? no: TabletAppLayout imports tablet.css, and
  * AppLayout.css arrives with main.tsx on desktop. tablet.css carries the
  * tablet's own copy of these two rules, exactly as it already does for
  * .skip-to-content).
