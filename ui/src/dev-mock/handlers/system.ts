@@ -373,7 +373,7 @@ export const systemHandlers: Record<string, MockHandler> = {
       home_region: 'global',
     };
   },
-  'complete_setup': () => null,
+
   'version': () => ({ name: 'oz-pos', version: pkg.version, rustVersion: '1.80', target: 'x86_64' }),
   'version_scoped': () => ({ name: 'oz-pos', version: pkg.version, rustVersion: '1.80', target: 'x86_64' }),
 
