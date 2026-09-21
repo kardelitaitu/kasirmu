@@ -316,6 +316,114 @@ fn earlier_migration_re_applies_after_later_ones_move_the_schema() {
     );
 }
 
+/// COMPLIANCE: every registered migration must survive a drift re-apply against
+/// the *final* schema, not only the schema it was born into.
+///
+/// `cosmetic_edit_to_any_migration_re_applies_cleanly` re-applies a migration
+/// against the state right after it ran, and the test above pins one subject.
+/// Neither could catch the class that bricked `kasirmu-app` at startup on
+/// 21-09-26: `20260813_init.sql` drifted (ADR #56 §2.6 edited it in place), and
+/// the re-apply died on the loyalty seed, which names the column
+/// `20260831_loyalty_multiplier_fixedpoint.sql` drops — no gate exercised the
+/// drift path of every migration against a *fully migrated* database, so the
+/// failure surfaced on a merchant's machine instead of here. The init-specific
+/// test below pins that incident's exact checksum; this sweep is the general
+/// property.
+///
+/// For every entry the sweep applies the whole registry, edits one entry
+/// (comment-only — enough to trigger the checksum drift), and requires the
+/// re-apply to succeed. The set that cannot is measured and explicit. A new
+/// failure here means the edited migration's statements no longer replay against
+/// the final schema: fix the statement (make it idempotent, or move it into the
+/// migration that replaces the object it names, as `20260911_memo_fk_restrict.sql`
+/// did), or list the migration below with the DB-03 justification for why
+/// re-running it is impossible by construction.
+#[test]
+fn every_migration_re_applies_against_the_final_schema() {
+    // Measured over the registry, not assumed. Each entry is a one-shot
+    // data/rename migration whose script consumes the state it transforms:
+    // `20260831_loyalty_multiplier_fixedpoint.sql` converts a column and then
+    // drops the source it reads, `20260906_rename_store_to_location.sql`
+    // renames the tables it reads, `20260911_memo_fk_restrict.sql` rebuilds
+    // `memos` reading `location_id` — which its successor
+    // `20260913_memo_locations.sql` then drops — and `20260913` itself rebuilds
+    // a table out of a definition it replaces. The forward-only contract (DB-03,
+    // `platform/core/src/database/migrations.rs`) already assigns that class to
+    // backup-plus-forward-repair rather than re-apply. A migration joining or
+    // leaving this list changes the assert below, so the residual stays
+    // explicit and measured.
+    //
+    // The prefix sweep's residual (`cosmetic_edit_to_any_migration_re_applies_cleanly`)
+    // is one entry SHORTER than this one: it re-applies `20260911` against the
+    // schema as of `20260911`, where `location_id` still exists. This sweep is
+    // the stronger property — replayable against the *final* schema — and the
+    // two lists must not be conflated.
+    const NOT_REAPPLIABLE_AGAINST_FINAL_SCHEMA: &[&str] = &[
+        "20260831_loyalty_multiplier_fixedpoint.sql",
+        "20260906_rename_store_to_location.sql",
+        "20260911_memo_fk_restrict.sql",
+        "20260913_memo_locations.sql",
+    ];
+
+    let mut not_reappliable: Vec<String> = Vec::new();
+    let mut failures: Vec<String> = Vec::new();
+    for index in 0..ALL.len() {
+        let id = ALL[index].id;
+        // Only the entry under test is edited; every other one keeps the SQL
+        // whose checksum the full apply stored, so it is not dragged into the
+        // drift path as well.
+        let drifted: Vec<platform_core::database::Migration> = ALL
+            .iter()
+            .enumerate()
+            .map(|(position, mig)| platform_core::database::Migration {
+                id: mig.id,
+                sql: if position == index {
+                    Box::leak(format!("{}\n-- cosmetic drift probe\n", mig.sql).into_boxed_str())
+                        as &'static str
+                } else {
+                    mig.sql
+                },
+            })
+            .collect();
+
+        let mut conn = fresh();
+        // The whole registry first: the re-apply below runs against the *final*
+        // schema, exactly as it does for a database whose init script drifted.
+        platform_core::database::run(&mut conn, ALL)
+            .unwrap_or_else(|err| panic!("applying the full registry failed: {err}"));
+
+        let before = stored_checksum(&conn, id);
+        match platform_core::database::run(&mut conn, &drifted) {
+            Ok(()) => {
+                assert_ne!(
+                    before,
+                    stored_checksum(&conn, id),
+                    "the cosmetic edit to {id} was not detected as drift — the re-apply path \
+                     was skipped, so this sweep proves nothing for it"
+                );
+            }
+            Err(err) => {
+                not_reappliable.push(id.to_string());
+                failures.push(format!("{id}: {err}"));
+            }
+        }
+    }
+
+    // One verdict over the whole registry, so a change to the residual reports
+    // the full diff in a single failure instead of one migration at a time.
+    // A migration MISSING from the list now fails: fix the statement (make it
+    // idempotent, or move it into the migration that replaces the object it
+    // names, as `20260911_memo_fk_restrict.sql` did), or add it with the DB-03
+    // justification. One PRESENT but now passing should be removed.
+    assert_eq!(
+        not_reappliable,
+        NOT_REAPPLIABLE_AGAINST_FINAL_SCHEMA,
+        "the set of migrations that cannot survive drift against the final schema changed. \
+         Failures:\n{}",
+        failures.join("\n")
+    );
+}
+
 /// The frozen init script must stay re-appliable after a later migration has
 /// replaced a column it seeds.
 ///
