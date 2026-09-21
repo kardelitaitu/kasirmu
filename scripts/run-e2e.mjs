@@ -32,7 +32,7 @@
  */
 
 import { execSync, spawn } from 'child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { generateKeyPairSync } from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
@@ -660,6 +660,26 @@ function getChangedSpecs() {
   }
 }
 
+/**
+ * Every UI spec on disk, as repo-relative `e2e/<name>.spec.ts` paths.
+ *
+ * The run's population must come from the directory, not a hand-kept list: the
+ * old `--ui-only` array named 10 paths while 29 specs existed, so 17 of them —
+ * including tablet-viewport and kds — were never executed by the documented
+ * command, and a green run reported nothing about the gap. A new spec is now
+ * picked up by existing.
+ */
+function collectSpecFiles() {
+  try {
+    return readdirSync(resolve(UI_DIR, 'e2e'))
+      .filter((f) => f.endsWith('.spec.ts'))
+      .sort()
+      .map((f) => `e2e/${f}`);
+  } catch {
+    return [];
+  }
+}
+
 /** Run Playwright tests. */
 function runPlaywright() {
   let cmd = `npx playwright test --config e2e/playwright.config.ts`;
@@ -689,18 +709,13 @@ function runPlaywright() {
     if (API_ONLY) {
       specs = ['e2e/api.spec.ts'];
     } else if (UI_ONLY) {
-      specs = [
-        'e2e/auth.spec.ts',
-        'e2e/sale.spec.ts',
-        'e2e/pos-workflows.spec.ts',
-        'e2e/product.spec.ts',
-        'e2e/shift.spec.ts',
-        'e2e/settings.spec.ts',
-        'e2e/new-flows.spec.ts',
-        'e2e/e2e-sale-to-history.spec.ts',
-        'e2e/e2e-shift-reconciliation.spec.ts',
-        'e2e/e2e-settings-persist.spec.ts',
-      ];
+      // `--ui-only` documents itself as "All UI E2E tests (excl. API)"
+      // (ui/README.md). It used to be a hand-maintained list of 10 paths, which
+      // silently stopped running 17 of the 29 specs on disk — a new spec was
+      // simply never executed, and a green run said nothing about it. Derive
+      // the population from the directory instead, so adding a spec is enough
+      // to make it run.
+      specs = collectSpecFiles().filter((f) => !f.endsWith('api.spec.ts'));
     }
   }
 
