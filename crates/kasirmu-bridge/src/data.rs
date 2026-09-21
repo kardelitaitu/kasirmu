@@ -365,7 +365,7 @@ async fn create_backup_direct(
     })
 }
 
-/// Export data.
+/// Export data, session-gated.
 pub async fn export_data(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
@@ -374,6 +374,49 @@ pub async fn export_data(
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, kasirmu_core::permissions::SETTINGS_EDIT)
         .await?;
+    export_data_direct(ctx, args).await
+}
+
+/// A read-only, local-only export twin that takes NO session (ADR #58 §4a Q-A option 3).
+///
+/// **Why this exists, and why it cannot be a later follow-up.** ADR #58 §2.5 refuses new
+/// sessions on a revoked tenant and invalidates live ones. Every export command resolves a
+/// session and requires `SETTINGS_EDIT` — that one included — so once §2.5 holds, no export
+/// path is reachable AT ALL, and §2.6's promise that a merchant keeps their data becomes a
+/// sentence with no mechanism. The ADR is explicit that this twin is a **prerequisite of
+/// §2.5's enforcement, not a follow-up to it**: the data is already on the merchant's disk,
+/// so withholding it buys no protection while creating legal exposure.
+///
+/// **The precedent is `create_backup` above**, and it is followed deliberately rather than
+/// re-invented: an unauthenticated twin beside its gated sibling, sharing one body, emitting
+/// a warning that the permission was not checked. That command is the reason the
+/// registration ledger already has a `no_session_resolution` home for this row.
+///
+/// **What makes this safe where a general unauthenticated command would not be:** it is
+/// READ-ONLY and LOCAL-ONLY. It exports; it cannot import, mutate, or reach the network. The
+/// failure mode of a mis-scoped export is a merchant reading their own data — the outcome
+/// §2.6 exists to produce — whereas the failure mode of a mis-scoped session mask is granting
+/// selling rights to a banned tenant.
+pub async fn export_data_without_session(
+    ctx: &BridgeCtx<'_>,
+    args: ExportDataArgs,
+) -> Result<ExportDataResult, BridgeError> {
+    tracing::warn!(
+        event = "export_ungated_no_session",
+        operation = "export_data_without_session",
+        skipped_permission = permissions::DATA_EXPORT,
+        "ran a data export with no session identity presented: this command takes no token, so the permission was not checked"
+    );
+    export_data_direct(ctx, args).await
+}
+
+/// The body of `export_data`, without the gate. Private for the same reason as
+/// `create_backup_direct`: only the gated twin can reach the ungated path without emitting the
+/// warning, so the two cannot drift into two different exports.
+async fn export_data_direct(
+    ctx: &BridgeCtx<'_>,
+    args: ExportDataArgs,
+) -> Result<ExportDataResult, BridgeError> {
     // C-1: Contain output path — reject path traversal.
     validate_contained_path(&args.output_path)?;
     use kasirmu_core::kasirpkg::KasirpkgPayload;

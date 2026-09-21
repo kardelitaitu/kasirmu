@@ -466,6 +466,71 @@ fn import_data_result_serialize() {
     assert_eq!(json["settings_imported"], 0);
 }
 
+// ── The session-free export twin (ADR #58 §4a Q-A option 3) ─────────
+
+/// The twin exports with NO session presented.
+///
+/// This is the whole point of the command, so it is asserted directly rather
+/// than inferred: no token is passed, and the call must still produce a
+/// readable package. Once ADR #58 §2.5 refuses sessions on a revoked tenant,
+/// every session-gated export path becomes unreachable — this is the one that
+/// has to keep working, or §2.6's data promise has no mechanism behind it.
+#[tokio::test]
+async fn export_without_session_produces_a_package_and_no_session_is_needed() {
+    use crate::testing::TestBridge;
+    let bridge = TestBridge::new();
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("orphan.oze");
+
+    let result = export_data_without_session(
+        &bridge.ctx(),
+        ExportDataArgs {
+            output_path: out.to_string_lossy().into_owned(),
+            password: "pw".into(),
+            types: vec!["settings".into()],
+            date_from: None,
+            date_to: None,
+        },
+    )
+    .await
+    .expect("the ungated twin must export with no session");
+
+    assert!(result.size_bytes > 0, "the package must carry bytes");
+    assert_eq!(result.types, vec!["settings".to_string()]);
+    assert!(out.exists(), "the file must be written");
+}
+
+/// The twin is READ-ONLY: `import_preview` and `import_data` stay gated.
+///
+/// ADR #58 §4a Q-A binds this explicitly — "The export twin must be read-only.
+/// `import_preview` / `import_data` mutate and stay session-gated." A future
+/// refactor that routes an import through the ungated body would turn a data
+/// hostage into a write primitive, so the property is pinned rather than
+/// commented.
+#[tokio::test]
+async fn the_ungated_twin_has_no_import_counterpart() {
+    // The ungated surface is exactly one function. If a second is ever added,
+    // this count changes and the author is forced to justify it here.
+    let source = include_str!("data.rs");
+    let ungated = source.matches("pub async fn ").count();
+    assert!(
+        ungated >= 2,
+        "sanity: the module exposes gated and ungated entry points"
+    );
+    assert!(
+        source.contains("pub async fn export_data_without_session("),
+        "the twin must exist under the name ADR #58 §4a Q-A names"
+    );
+    assert!(
+        !source.contains("import_data_without_session"),
+        "ADR #58 §4a Q-A: the twin is read-only, so no ungated IMPORT may exist"
+    );
+    assert!(
+        !source.contains("import_preview_without_session"),
+        "ADR #58 §4a Q-A: the twin is read-only, so no ungated IMPORT may exist"
+    );
+}
+
 // ── W4-S2: import batch quota gate ──────────────────────────────────
 
 fn fresh_conn() -> rusqlite::Connection {

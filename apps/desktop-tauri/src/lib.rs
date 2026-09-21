@@ -916,6 +916,7 @@ pub fn run() {
             commands::data::create_backup,
             commands::data::create_backup_scoped,
             commands::data::export_data,
+            commands::data::export_data_without_session,
             commands::data::import_preview,
             commands::email::send_test_report,
             commands::email::get_report_schedule,
@@ -1085,7 +1086,6 @@ pub fn run() {
             // registration; see review finding F-004.
             commands::settings::set_setting,
             commands::setup::get_enabled_features,
-            commands::setup::complete_setup,
             commands::setup::get_first_run_state,
             commands::setup::provision_device,
             commands::products::list_products_scoped,
