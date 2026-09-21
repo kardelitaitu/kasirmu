@@ -16,6 +16,8 @@ import {
   LATENCY_GOOD_MAX_MS,
   LATENCY_WARN_MAX_MS,
   fromWireHealth,
+  isSyncUnconfigured,
+  toneForBinaryHealth,
   toneForHealth,
   type WireHealth,
 } from '@/hooks/connectionHealth';
@@ -48,11 +50,49 @@ describe('toneForHealth', () => {
     expect(toneForHealth('connected', null)).toBe('bad');
   });
 
+  it('renders an unconfigured service as warn, never as bad', () => {
+    // The regression this whole state exists for: a tablet with no sync
+    // server URL drew the same red pill as a server that was down, and read
+    // as an outage. Red is a claim about a service that stopped answering.
+    expect(toneForHealth('unconfigured', null)).toBe('warn');
+    expect(toneForHealth('unconfigured', null)).not.toBe('bad');
+  });
+
+  it('does not render an unconfigured service as good either', () => {
+    // Sync genuinely is not running; green would hide that from support.
+    expect(toneForHealth('unconfigured', null)).not.toBe('good');
+  });
+
+  it('keeps unconfigured distinct from disconnected in both tone maps', () => {
+    expect(toneForHealth('unconfigured', null)).not.toBe(toneForHealth('disconnected', null));
+    expect(toneForBinaryHealth('unconfigured')).toBe('warn');
+    expect(toneForBinaryHealth('unconfigured')).not.toBe(toneForBinaryHealth('disconnected'));
+  });
+
   it('ignores latency when the service is degraded', () => {
     // A degraded server answering fast is still degraded; latency must not
     // upgrade the tone.
     expect(toneForHealth('degraded', 1)).toBe('warn');
     expect(toneForHealth('degraded', 99_999)).toBe('warn');
+  });
+});
+
+describe('isSyncUnconfigured', () => {
+  it('recognises the answer the probe itself gives when unconfigured', () => {
+    expect(isSyncUnconfigured('No server URL configured', false)).toBe(true);
+  });
+
+  it('does not relabel a real ping failure as unconfigured', () => {
+    // Both answers arrive as ok:false with latency_ms: None — ping_server's
+    // transport-error and sync-http-disabled branches carry no latency
+    // either. Only the status string separates them.
+    expect(isSyncUnconfigured('Connection failed: connection refused', false)).toBe(false);
+    expect(isSyncUnconfigured('sync-http feature is disabled', false)).toBe(false);
+    expect(isSyncUnconfigured('Server returned 503 Service Unavailable', false)).toBe(false);
+  });
+
+  it('never fires on a successful probe', () => {
+    expect(isSyncUnconfigured('No server URL configured', true)).toBe(false);
   });
 });
 

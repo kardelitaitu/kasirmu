@@ -86,7 +86,11 @@ describe('useSyncConnection', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
-    expect(result.current.state).toBe('disconnected');
+    // "No server URL configured" is the probe saying this device was never
+    // set up — its own state, not the outage state. The recovery below is
+    // unchanged: whatever the reason, the 5 s band re-probes and picks up a
+    // URL written while the app was open.
+    expect(result.current.state).toBe('unconfigured');
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5_000);
@@ -206,6 +210,60 @@ describe('useSyncConnection', () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(result.current.state).toBe('connected');
+  });
+
+  it('reports an unconfigured device as unconfigured, not as disconnected', async () => {
+    mockTestSyncConnection.mockResolvedValue({
+      ok: false,
+      status: 'No server URL configured',
+      latencyMs: null,
+    });
+
+    const { result } = renderHook(() => useSyncConnection());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    expect(result.current.state).toBe('unconfigured');
+    expect(result.current.state).not.toBe('disconnected');
+    expect(result.current.latencyMs).toBeNull();
+  });
+
+  it('still reports a genuinely failing probe as disconnected', async () => {
+    // The other direction of the same distinction: a configured server that
+    // did not answer keeps the red state. Latency is null here too, so a
+    // mapping that keyed off latency alone would get this one wrong.
+    mockTestSyncConnection.mockResolvedValue({
+      ok: false,
+      status: 'Connection failed: connection refused',
+      latencyMs: null,
+    });
+
+    const { result } = renderHook(() => useSyncConnection());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    expect(result.current.state).toBe('disconnected');
+    expect(result.current.state).not.toBe('unconfigured');
+  });
+
+  it('recovers from unconfigured into connected once a server URL exists', async () => {
+    mockTestSyncConnection
+      .mockResolvedValueOnce({ ok: false, status: 'No server URL configured', latencyMs: null })
+      .mockResolvedValueOnce({ ok: true, status: 'Connected', latencyMs: 6 });
+
+    const { result } = renderHook(() => useSyncConnection());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(result.current.state).toBe('unconfigured');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(result.current.state).toBe('connected');
+    expect(result.current.latencyMs).toBe(6);
   });
 
   it('retries while disconnected drop out of the 5s backoff into a fresh probe', async () => {

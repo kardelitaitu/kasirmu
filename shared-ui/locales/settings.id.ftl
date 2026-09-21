@@ -434,6 +434,9 @@ settings-save-partial = Sebagian pengaturan gagal disimpan. Coba lagi.
 settings-load-failed = Gagal memuat pengaturan
 settings-retry = Coba Lagi
 settings-sync-not-configured = Sinkronisasi belum dikonfigurasi. Masukkan URL server dan aktifkan sinkronisasi.
+# Pil sinkronisasi di bilah status: perangkat belum punya URL server sama
+# sekali — celah konfigurasi, bukan gangguan jaringan. Sengaja bukan "Luring".
+statusbar-sync-unconfigured-msg = { $name } · Belum dikonfigurasi
 settings-sync-status-idle = Siap
 settings-sync-status-ok = Terhubung
 settings-sync-pending-count = { $count } tertunda

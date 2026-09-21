@@ -445,6 +445,9 @@ settings-save-partial = Some settings could not be saved. Try again.
 settings-load-failed = Failed to load settings
 settings-retry = Retry
 settings-sync-not-configured = Sync is not configured. Enter a server URL and enable sync.
+# Status-bar sync pill: the device has NO server URL at all — a configuration
+# gap, not an outage. Deliberately not "Offline" (statusbar-offline-msg).
+statusbar-sync-unconfigured-msg = { $name } · Not configured
 settings-sync-status-idle = Ready
 settings-sync-status-ok = Connected
 settings-sync-pending-count = { $count } pending
