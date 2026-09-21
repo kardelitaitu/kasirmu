@@ -295,10 +295,9 @@ const ORIENTATION_MATCHERS: ReadonlyArray<[string, () => boolean]> = [
 ];
 
 if (typeof window !== 'undefined' && !window.matchMedia) {
-  // jsdom ships no MediaQueryList either, and `readIsLandscape` only trusts a
-  // query the host really evaluated (`mql instanceof window.MediaQueryList`),
-  // so the stub has to be one. EventTarget supplies the listener plumbing and
-  // keeps `dispatchEvent` returning a boolean.
+  // jsdom ships no MediaQueryList either, so the stub has to be one: callers
+  // may feature-detect it, and EventTarget supplies the listener plumbing while
+  // keeping `dispatchEvent` returning a boolean.
   class MockMediaQueryList extends EventTarget {
     readonly media: string;
     matches: boolean;
