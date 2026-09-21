@@ -1,5 +1,12 @@
 # ADR #57 audit — handoff note for the session mid-edit
 
+> **APPLIED 2026-09-22 — superseded as a handoff, retained as the audit record.** Everything in §1,
+> §2 and §7 was applied directly to the ADR once it was clean (`b83d0bdcd`, `54358b204` by the peer;
+> then `docs(decisions): apply ADR 57's remaining audit findings and re-measure its anchors`). §4's
+> open decision — the escalation rule implemented twice, once in Rust with no caller and once in Go
+> as the one that fires — is still open and still unrecorded in the ADR. Read this file as evidence,
+> not as work to pick up.
+
 **From:** DSH docs-auditor pass (separate session), 2026-09-22
 **For:** the session currently editing `docs/decisions/2026-10-04-adr57-client-tamper-resistance.md`
 (§2.4, the new `quota_effect.go` POS-quota signal) — fold these into your pass; do not hand back.
