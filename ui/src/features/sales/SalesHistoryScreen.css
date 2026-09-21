@@ -7,7 +7,14 @@
      a display:contents wrapper, so a named query would find nothing in every
      mount that does not go through the shell (tests, e2e harness, this screen
      rendered standalone). An unnamed query against the nearest container is the
-     same measurement inside the shell and stays correct outside it. */
+     same measurement inside the shell and stays correct outside it.
+
+     Fixed-position descendants are safe here: `container-type: inline-size`
+     applies layout containment WITHOUT the `contain: layout` behaviour that
+     would re-root a `position: fixed` child, and this sheet has a fixed overlay
+     below. Measured 2026-09-22 in Chromium: a fixed inset:0 child of a 400x200
+     `container-type: inline-size` box reports 1200x800 against a 1200x800
+     viewport - the viewport, not the box. */
   container-type: inline-size;
 }
 
