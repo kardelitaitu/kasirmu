@@ -65,7 +65,6 @@
     "get_low_stock_alerts_at_location_scoped",
     "get_machine_id",
     "get_pg_sync_settings_scoped",
-    "get_primary_location_scoped",
     "get_report_schedule",
     "get_report_schedule_scoped",
     "get_shift_report_scoped",

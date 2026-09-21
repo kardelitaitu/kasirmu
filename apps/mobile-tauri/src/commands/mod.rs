@@ -53,6 +53,8 @@ pub mod kds;
 pub mod legal_entities;
 /// Read-only licence commands (the tablet's half of the licence surface).
 pub mod license;
+/// Location commands — the tablet's primary-location read (settings hub).
+pub mod locations;
 /// Local payment method commands (slice 6).
 pub mod local_payment;
 /// Loyalty / rewards commands.

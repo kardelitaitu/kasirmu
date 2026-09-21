@@ -760,6 +760,9 @@ pub fn run() {
                 // and billing management stay desktop-only.
                 commands::license::get_license_status,
                 commands::license::check_license_status,
+                // Primary-location read: the shared Business Defaults cards
+                // (regional / local-payment / receipt-format) resolve it first.
+                commands::locations::get_primary_location_scoped,
                 // Regional configuration read model (slice 2, saas-2 design).
                 commands::regional::get_regional_config_scoped,
                 // Regional configuration write path (slice 3, saas-2 design).
