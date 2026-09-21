@@ -502,6 +502,38 @@ reading the surface on a cadence, and (b) Q5's fingerprint field is on a shipped
 Until both hold, the honest statement is that the server does not detect tampering — §3.3 carries
 that as a residual rather than this section implying otherwise.
 
+> **Gate (a) re-read against the tree (2026-09-21) — the reader already exists; the missing piece
+> is a notification, not a person.**
+>
+> The premise of gate (a) is that `NeedsAttention` has no reader. Reading the read path rather
+> than assuming it showed that the opposite is now true in the code:
+>
+> - The producer is `apps/license-server/admin_stats.go:587-668`, which already emits three
+>   categories (`grace_period`, `expired_active`, `refund`), capped at 20, each date-stamped.
+> - The consumer is **live and deliberately placed above the fold**:
+>   `website/public/admin/admin.js:357-373` builds the alert card and inserts it with
+>   `c.insertBefore(attCard, c.firstChild)` — above the revenue hero — under a comment stating
+>   the intent: *"so the operator sees action items before the numbers."*
+>
+> So "no new UI, the signal lands where an operator is already looking" (above) is not a hope; it
+> is the shipped behaviour. A named person is therefore not the long pole, and requiring one will
+> keep §2.4 deferred for no security benefit — the panel is unread **only if the operator never
+> opens the dashboard**, which naming a person does not change.
+>
+> **The honest replacement for gate (a) is a notification**, since the real failure mode is not
+> "nobody looks" but "nobody looks *because nothing changed*". Until such a trigger exists, gate
+> (a) is not satisfied and §2.4 stays deferred.
+>
+> **Consequence found while checking: the queue types cannot be built ahead of the field.** A plan
+> to add `integrity_mismatch`/`integrity_unknown_persistent` rows to `attentionItem` was dropped
+> on evidence: `grep` for `build_fingerprint|build_integrity|integrity_mismatch|
+> unknown_persistent|accepted_pins|release_channels` across `apps/` returns **nothing**, and
+> `crates/kasirmu-core/src/build_fingerprint.rs` is a closed island — `fold_build_integrity`,
+> `BuildIntegritySignal` and `BuildFingerprintVerdict` have **no non-test caller** anywhere.
+> Adding the rows now would create queue entries no code path can ever write, which is the same
+> "appearance of protection" defect this section names, one layer down. The rows are downstream of
+> Q5, and are not independently buildable.
+
 ### Q4 — Is `unknown` allowed to operate indefinitely, or does it escalate? `[was policy]` — DECIDED
 
 | Option | Pros | Cons |
@@ -583,6 +615,21 @@ records agree, and that agreement is what makes option A correct rather than mer
 **Implementation note:** if ADR #58 §2.3's option C is adopted (ride any authenticated call), the
 fingerprint field travels on the same calls at no additional cost. The two records should therefore
 be implemented together.
+
+> **Correction (2026-09-21): "the same calls" are the LICENCE server's, not the sync snapshot's.**
+> Adoption of ADR #58 option C was implemented as a scheduling change, not a wire change — see the
+> §Q1 correction in
+> `2026-10-04-adr58-online-licence-heartbeat-and-revocation.md`. The sync snapshot is built and
+> Redis/ETag-cached by the **cloud server** (`apps/cloud-server/src/sync_api.rs`), which holds no
+> licence knowledge; a verdict or integrity field placed there would be served stale or bust the
+> cache on every heartbeat.
+>
+> The carrier that actually works for this field is the **licence server's** authenticated call
+> (`POST /api/v1/license/status`), which is where the revocation ride-along now runs from
+> (`platform/sync/src/daemon_tick.rs` `run_license_ride_along`). A fingerprint field added there
+> inherits that cadence for free and lands next to `device_revoked`, which is the verdict it is
+> read alongside. **This does not change Q5's option A** — the field still rides an existing
+> authenticated call rather than a new command — it only names which server owns that call.
 
 
 ---

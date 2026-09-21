@@ -2,18 +2,19 @@
 num: 58
 area: licensing
 title: "ADR #58: Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State"
-status: Proposed (2026-10-04) — the Revoked state, the session lock and the export twin are IMPLEMENTED; the pre-expiry window is not
+status: Proposed (2026-10-04) — the Revoked state, the session lock, the export twin, the ride-along and the pre-expiry window are IMPLEMENTED
 ---
 
 # ADR #58: Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State
 
-**Status:** Proposed (2026-10-04). **Updated 2026-10-05: §2.1 (`Revoked`), §2.4a.2 (the device
-verdict) and §2.5 (the session lock) are IMPLEMENTED**, as is §4a Q-A's export twin. The
+**Status:** Proposed (2026-10-04). **Updated 2026-09-21: §2.1 (`Revoked`), §2.4a.2 (the device
+verdict), §2.5 (the session lock), §4a Q-A's export twin, §2.3's pre-expiry window (§4a Q-B option
+B) and §4a Q1 option B (the ride-along) are all IMPLEMENTED.** The
 great majority of the pipeline below is **already
 implemented and tested**; the decision was about *one* new lifecycle state and *one* new
-timestamp, plus the policy that surrounds them. **The timestamp half is NOT built**: §2.3's
-pre-expiry window has no enforcement point yet, and §2.2's `Revoked` row in the state table is now
-true while its window row is not. IMPLEMENTED and TO BUILD are marked per item.
+timestamp, plus the policy that surrounds them. Both halves are now built — see the §Q1 and §Q-B
+implementation notes for what shipped, and for the correction that the ride-along needed no new
+wire field. IMPLEMENTED and TO BUILD are marked per item.
 **Date:** 2026-10-04 (implementation recorded 2026-10-05)
 **Recorded against:** branch `0.0.39` @ `2c30e735c` (anchors and the poll interval re-measured at `e26bd3733` in audit pass 2 — see §1.3a and §2.3)
 **Supersedes (in part):** ADR #41 §2.1 "State B: Registered / Enrolled Device" — specifically its
@@ -281,7 +282,13 @@ defeats the mechanism.
 
 ### 2.3 Re-authentication is required only in the last 3 days before expiry
 
-**TO BUILD — and corrected 2026-10-04: there is no NEW heartbeat, but a background poll ships
+**IMPLEMENTED (2026-09-21) — see §4a Q-B.** The window gate ships as
+`shouldPollLicense` in `ui/src/features/settings/LicenseSettings.tsx`, and the ride-along that
+makes the gate safe ships in `platform/sync/src/daemon_tick.rs`. Every arm of the rule below is
+pinned by a test. The historical note follows, because it records what the tree looked like when
+the decision was taken.
+
+**Corrected 2026-10-04: there is no NEW heartbeat, but a background poll ships
 today.** An earlier revision read *"There is no periodic heartbeat … the device makes no licence call
 at all."* **That is false against the tree.** `ui/src/features/settings/LicenseSettings.tsx:69-75`
 defines `POLL_INTERVAL_MS` and `:210-224` starts it with
@@ -917,6 +924,37 @@ response envelope already exists.
 the same authenticated calls. Both fields ride one change to the sync/status envelope, so the two
 records must be implemented together or a field will be added twice.
 
+> **Correction (2026-09-21) — the `sync/status envelope` named above is the wrong carrier for the
+> REVOCATION half, and the revocation half is now BUILT.**
+>
+> Reading the candidate carrier in the tree showed it cannot hold a licence verdict:
+>
+> - The sync snapshot is built and cached by the **cloud server**
+>   (`apps/cloud-server/src/sync_api.rs`): the JSON is serialised once and served from a
+>   Redis-backed cache keyed by an ETag version. A verdict placed there would be served **stale for
+>   the cache's whole lifetime**, or would have to bust the ETag on every heartbeat — turning a bulk
+>   data cache into a per-request recompute.
+> - The cloud server holds **no licence knowledge at all**. Its only subscription references are
+>   Stripe *plan* updates in `webhooks.rs`; it cannot author a revocation verdict regardless.
+>
+> No new field is needed anywhere. `LicenseStatusResponse`
+> (`crates/kasirmu-core/src/license_verification.rs`) **already carries** `status`,
+> `device_revoked`, `expires_at` and `grace_until`, and the licence server already authors them.
+> The only thing missing was **when** the call fires.
+>
+> **What shipped, therefore, was not a wire change but a scheduling change.** The sole caller of
+> `check_license_status` was the Settings screen's poll — `LicenseSettings.tsx` arms a timer on
+> mount and tears it down on unmount — so a device whose Settings screen was never opened never
+> learned it had been revoked. The call now also runs from the background sync daemon
+> (`platform/sync/src/daemon_tick.rs` `run_license_ride_along`, phase 5), which ticks every
+> 60–120s for every configured terminal regardless of UI. The three local effects of a verdict were
+> extracted into one core function, `apply_license_verdict_to_cache`, so this path and the
+> screen-driven path cannot drift apart; the write-then-sweep ordering §2.5 depends on is that
+> function's contract.
+>
+> The residual this leaves is narrower than §3.3's and stated there: a device that is powered off,
+> or running no daemon, is still unreachable — unchanged by this work.
+
 **The residual, stated:** a device that is offline and outside its window still cannot be reached,
 so its ban latency remains expiry-bound. Option B narrows the exposure to offline devices rather
 than eliminating it. §3.3 carries this as a bounded residual, and it is the correct trade against
@@ -1069,6 +1107,26 @@ signal.
 connected device has neither the poll nor the ride-along status. Option A is the safe interim:
 until B ships, the corrected §2.3 text above already scopes the claim to *"no new call is owed"*,
 which is true of the poll as it stands.
+
+> **IMPLEMENTED (2026-09-21).** Both halves of the sequencing are now satisfied, and in the order
+> this section requires:
+>
+> 1. **The ride-along landed first** (`platform/sync/src/daemon_tick.rs`
+>    `run_license_ride_along`), so a connected device learns its verdict from the daemon's
+>    60–120s tick with no screen open. See the §Q1 correction note for why this is a scheduling
+>    change rather than a new envelope field.
+> 2. **Then the poll was gated.** `ui/src/features/settings/LicenseSettings.tsx` now calls
+>    `shouldPollLicense(payload, Date.now())` before arming the interval and returns early when it
+>    is `false`, so no timer exists outside the window. The rule is §2.3's, arm for arm: free tier
+>    → never; absent/unparseable `expires_at` → never (§2.3's `NULL` arm, failing open rather
+>    than manufacturing an obligation); outside the last 3 days → never; inside → poll.
+>
+> **The test that used to prove the opposite was inverted, not deleted.** The Settings fixtures
+> defaulted to a far-future `expires_at`, which is now *outside* the window and therefore arms no
+> timer at all; two polling tests failed on the change, correctly. The fixture now defaults to
+> in-window (expires in ~1 day) so the existing poll tests still exercise the poll, and seven new
+> tests pin each arm of the gate — including one asserting `setInterval` is **not** called and
+> `checkLicenseStatus` is **not** invoked for a licence 90 days out.
 
 ### Q-C — Does an existing `revoked_at` on a DEVICE outlive a tenant un-revoke? `[deferrable]` — DECIDED
 
