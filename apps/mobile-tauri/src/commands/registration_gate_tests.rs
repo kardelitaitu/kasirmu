@@ -127,7 +127,18 @@ mod debt;
 /// shrinks by one — `get_first_run_state` and `provision_device` replaced them
 /// two-for-two on the surface, and one of the three retired doors
 /// (`get_setup_status`) had no successor at all.
-const REGISTERED_FLOOR: usize = 334;
+///
+/// The ADR #57 §2.1 step (334 -> 336) moves it UP by two, and the reason is the
+/// honest one for a registration gate: `health::get_build_fingerprint` is a new
+/// door that takes NO session, so it is carried on the ledger as
+/// `no_session_resolution` rather than being gated. That is deliberate, not an
+/// oversight — the command reports this installation's own APK signing
+/// certificate, which is a property of the public build and needs no authority
+/// to read, and the tablet's licence surface must be diagnosable BEFORE a session
+/// exists (the same property `get_device_id` and `get_local_ip` beside it have).
+/// It exists so the fingerprint read is observable on a fresh install, where the
+/// licence-status call — its only other caller — returns before reaching the JNI.
+const REGISTERED_FLOOR: usize = 336;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.

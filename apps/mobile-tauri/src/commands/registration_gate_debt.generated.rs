@@ -56,6 +56,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("health::version", "no_session_resolution"),
     ("health::get_device_id", "no_session_resolution"),
     ("health::get_local_ip", "no_session_resolution"),
+    ("health::get_build_fingerprint", "no_session_resolution"),
     (
         "pos::add_line_scoped",
         "resolves_session_names_no_permission",
@@ -256,7 +257,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// (Re-read 20-09-26: 324, and the floor was raised to it in the same pass as the
 /// ceilings below. The generator writing this number does not move the floor, so the
 /// two are only ever equal in a pass that touches both files.)
-pub const REGISTERED_TOTAL: usize = 334;
+pub const REGISTERED_TOTAL: usize = 336;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///
