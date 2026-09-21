@@ -108,7 +108,17 @@ mod debt;
 /// todo-tablet-dialog-content-uri.md). It is a Gated ADR #49 shim over `kasirmu_bridge`,
 /// so it moves no ceiling and no ledger row — purely a surface-count increase, exactly
 /// like the seven file-picker shims. Raising this records what landed; it does not approve it.
-const REGISTERED_FLOOR: usize = 333;
+///
+/// The ADR #56 §2.1/§2.2 step (333 -> 335) is the provisioning pass, and it is TWO for a
+/// reason worth keeping visible: `setup::get_first_run_state` and `setup::provision_device`
+/// replace the retired `setup::get_setup_status` and `setup::dismiss_setup_wizard`. All four
+/// are `no_session_resolution`, and that is the point rather than an oversight: provisioning
+/// creates the FIRST owner, so it must run before any session can exist — the same property
+/// `setup::complete_setup` has had since it was registered. Both new commands are therefore
+/// carried on the debt ledger deliberately, not by omission. The net debt movement is +2
+/// (two rows in, two rows out); the ceiling rise below records what landed and does not
+/// approve it.
+const REGISTERED_FLOOR: usize = 335;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.

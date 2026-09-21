@@ -86,12 +86,12 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("settings::set_setting", "no_session_resolution"),
     ("setup::get_enabled_features", "no_session_resolution"),
     ("setup::complete_setup", "no_session_resolution"),
-    ("setup::dismiss_setup_wizard", "no_session_resolution"),
+    ("setup::get_first_run_state", "no_session_resolution"),
+    ("setup::provision_device", "no_session_resolution"),
     (
         "browser::open_product_images_scoped",
         "resolves_session_names_no_permission",
     ),
-    ("setup::get_setup_status", "no_session_resolution"),
     ("security::get_key_rotation_info", "no_session_resolution"),
     ("workspaces::list_workspaces", "no_session_resolution"),
     (

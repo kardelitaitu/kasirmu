@@ -99,7 +99,8 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("settings::set_setting", "no_session_resolution"),
     ("setup::get_enabled_features", "no_session_resolution"),
     ("setup::complete_setup", "no_session_resolution"),
-    ("setup::dismiss_setup_wizard", "no_session_resolution"),
+    ("setup::get_first_run_state", "no_session_resolution"),
+    ("setup::provision_device", "no_session_resolution"),
     ("desktop_link::link_device_google", "no_session_resolution"),
     (
         "desktop_link::link_device_email_request",
@@ -110,7 +111,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "no_session_resolution",
     ),
     ("browser::open_product_images", "no_session_resolution"),
-    ("setup::get_setup_status", "no_session_resolution"),
     ("workspaces::list_workspaces", "no_session_resolution"),
     (
         "workspaces::list_workspace_screens",
@@ -163,6 +163,8 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "hardware::discover_hardware_scoped",
         "resolves_session_names_no_permission",
     ),
+    ("license::get_license_status", "no_session_resolution"),
+    ("license::check_license_status", "no_session_resolution"),
     (
         "offline::enqueue_offline_scoped",
         "resolves_session_names_no_permission",
@@ -255,7 +257,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// (Re-read 20-09-26: 324, and the floor was raised to it in the same pass as the
 /// ceilings below. The generator writing this number does not move the floor, so the
 /// two are only ever equal in a pass that touches both files.)
-pub const REGISTERED_TOTAL: usize = 333;
+pub const REGISTERED_TOTAL: usize = 335;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///
@@ -308,7 +310,7 @@ pub const REGISTERED_TOTAL: usize = 333;
 /// Nothing else in that pass moved the count: the seven commands registered
 /// alongside it (`data::*`, `avatars::*` writes, `products_images::*`) are all
 /// `Gated` shims over `kasirmu-bridge` and added no rows.
-pub const DEBT_CEILING: usize = 89;
+pub const DEBT_CEILING: usize = 91;
 
 /// Lowered from 89 by T11: `settings::set_hardware_settings` shed its row by deletion,
 /// not by gating. Its only argument beyond the DTO was a renderer-supplied `user_id` --
@@ -328,10 +330,18 @@ pub const DEBT_CEILING: usize = 89;
 /// a pre-auth bootstrap query cannot resolve a session, so class 1 is where it
 /// belongs. The other class did not move (see `DEBT_CEILING` above for why the
 /// seven commands registered beside it added nothing).
-pub const NO_SESSION_RESOLUTION: usize = 45;
+/// 45 -> 47 with `setup::get_first_run_state` and `setup::provision_device`
+/// (ADR #56 §2.1/§2.2): both replace retired doors, both are class 1, and
+/// class 1 is STRUCTURAL for them rather than an omission. Provisioning creates
+/// the FIRST owner, so it must be reachable before any session exists — the
+/// same property `setup::complete_setup` has carried since it was registered.
+/// Their two predecessors (`setup::get_setup_status` and
+/// `setup::dismiss_setup_wizard`) left the ledger in the same pass.
+pub const NO_SESSION_RESOLUTION: usize = 47;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
 /// 45 + 44 = 89 = `DEBT_CEILING`, as the class counts must sum to the ledger.
+/// 47 + 44 = 91 after the ADR #56 provisioning pass (two rows in, two out).
 pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 44;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).
