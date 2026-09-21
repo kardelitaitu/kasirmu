@@ -2,19 +2,27 @@
 num: 57
 area: security
 title: "ADR #57: Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection"
-status: Proposed (2026-10-04) — the grace ceiling, the sentinel guard and the fingerprint VERDICT are implemented; the client reporting, the pin store and server-side detection are not
+status: Proposed (2026-10-04) — the grace ceiling, the sentinel guard, the fingerprint verdict and the Q4 escalation fold are implemented; the client reporting, the pin store and server-side detection are not
 ---
 
 # ADR #57: Client Tamper Resistance Without Play Integrity
 
-**Status:** Proposed (2026-10-04). **Updated 2026-10-05:** §2.2's verdict rule now has an
-implementation (`kasirmu_core::build_fingerprint`), §2.6's required test was found to ALREADY EXIST
-and was verified under `--release`, and §2.3's grace ceiling was already implemented. **Still to
-build: §2.1's client half** (the Android APK signing-certificate computation and its reporting),
-the `release_channels` pin store §Q-B decided, and §2.4's server-side detection — which is where
-§Q3's human assignment blocks. Some controls below are **already implemented and verified**
+**Status:** Proposed (2026-10-04). **Updated 2026-09-21:** §Q4's escalation fold is implemented
+(`kasirmu_core::build_fingerprint`), and §Q3's gate (a) has been rewritten from *"a named person
+reads `NeedsAttention`"* to *"a violation notification exists"* — the read path was checked and the
+reader already exists in code, so the old criterion would have deferred §2.4 indefinitely without
+changing anyone's behaviour. **Still to build: §2.1's client half** (the Android APK
+signing-certificate computation and its reporting), the `release_channels` pin store §Q-B decided,
+and §2.4's server-side detection — now gated on the field shipping and a notification, both of
+which are one unit of work. Some controls below are **already implemented and verified**
 (marked IMPLEMENTED with evidence); the rest are **to build** (marked TO BUILD). No control is
 claimed that this record does not either cite or name as work.
+
+**Verified against the tree 2026-09-21.** §Q4's escalation fold (`fold_build_integrity`,
+`BuildIntegritySignal`) has **no non-test caller** and no stored consecutive count; and
+`grep` for `build_fingerprint|build_integrity|accepted_pins|release_channels` across `apps/`
+returns **nothing**, so no server-side producer exists for either the field or a queue row. §2.4
+remains honestly unbuilt and §3.3 carries it.
 **Date:** 2026-10-04
 **Recorded against:** branch `0.0.39` @ `2c30e735c`
 **Related:** ADR #50 (sync auth hardening), ADR #55 (server origin model), ADR #56 (first-run
@@ -406,6 +414,14 @@ saying so is the point of this note:
   rule they will eventually enforce is now written down and pinned by tests, so the day the client
   and the queue arrive, the precedence is already decided and cannot be re-derived wrongly.
 
+**The 2026-09-21 Q4 work changed no row either**, for the third time and the same reason: the
+escalation fold (`fold_build_integrity`) is likewise a pure function with **no caller and no
+stored counter** — nothing feeds it a report and nothing remembers the consecutive count between
+sync cycles. It fixes *what the trigger will be* (§Q-C: ≥7 `unknown` reports in a rolling 7-day
+window, evaluated per tenant) so the number is not re-derived under pressure. Until the field
+ships, the residual is unchanged: **a patched client that deletes the reporting line is not
+noticed, because there is no reporting line to delete.**
+
 **The table is the authority on the shipped state. The IMPLEMENTED notes in §2 are the authority on
 what exists. Where they disagree about severity, this table wins** — it is the one a reader consults
 when asking "are we protected?", and the answer today is no.
@@ -478,8 +494,8 @@ conversation.
 DEFERRED until two prerequisites hold, and the deferral is deliberate rather than an omission.**
 
 The destination is settled, because the infrastructure already exists and is proven:
-`apps/license-server/admin_stats.go:576-605` computes a `NeedsAttention` list today, including a
-`grace_period` category. Quota and fingerprint violations become two more rows in that list — no
+`apps/license-server/admin_stats.go:574-668` computes a `NeedsAttention` list today (emitted at
+`:790`), including a `grace_period` category. Quota and fingerprint violations become two more rows in that list — no
 new UI, the signal lands where an operator is already looking, and §2.4's response policy (flag,
 never auto-terminate) is a human reading a queue.
 
@@ -488,51 +504,64 @@ neither does today:
 
 | Prerequisite | State | Why it gates the build |
 |---|---|---|
-| A named person who reads `NeedsAttention` on a stated cadence | **Not assigned** | A queue with no reader is the exact failure §2.4 warns about |
-| The fingerprint field actually shipping (Q5) | **Not built** | Detection has nothing to detect until the field exists on a sync payload |
+| The fingerprint field actually shipping (Q5) | **Not built** | Detection has nothing to detect until the field exists on an authenticated payload |
+| A violation **notification**, not a named reader | **Not built** | Nothing prompts an operator to open a surface they already have open |
 
-**The argument for deferring rather than assigning a role title:** a queue is only a control if
-someone acts on it. Naming an owner who does not operationally exist would let this record *claim*
-coverage it does not have — which is worse than an honest deferral, because the next reader would
-treat the gap as closed. Detection built before an owner exists creates the *appearance* of
-protection while providing none.
+**Gate (a) was rewritten 2026-09-21, from "a named person" to "a notification".** The original
+criterion assumed `NeedsAttention` had no reader, and reading the read path showed that is no
+longer true:
 
-**Trigger to revisit, so this is not deferred forever:** build §2.4 when (a) someone is named and
-reading the surface on a cadence, and (b) Q5's fingerprint field is on a shipped sync payload.
+- Producer: `apps/license-server/admin_stats.go:574-668` (items appended at `:604`, `:635`,
+  `:662`) emits three categories — `grace_period`, `expired_active`, `refund` — capped at 20,
+  each date-stamped.
+- Consumer: `website/public/admin/admin.js:357-373` renders the alert card and inserts it with
+  `c.insertBefore(attCard, c.firstChild)` — **above the revenue hero** — under a comment stating
+  the intent: *"so the operator sees action items before the numbers."*
+
+So `NeedsAttention` is already surfaced where an operator looks, and the paragraph above ("the
+signal lands where an operator is already looking") is shipped behaviour rather than a hope. Naming
+a person does **not** change whether someone opens a dashboard they already open, so the old gate
+(a) would have kept §2.4 deferred indefinitely for no security benefit.
+
+**What the old gate was actually protecting, kept.** The original concern — "a queue with no reader
+is the exact failure §2.4 warns about" — is real, and the replacement preserves it exactly: the
+failure mode is not "nobody looks" but "nobody looks *because nothing changed*". A notification is
+the trigger that makes an unread queue impossible, and it is the piece that was genuinely missing.
+The criterion is *tightened*, not relaxed: it now requires an artifact, where before it required a
+name that could be written down without changing any behaviour.
+
+**The machinery for the notification already exists and is proven**, which is why this gate is
+cheap once the field lands — the work is a third scanner in an existing family rather than a new
+subsystem:
+
+- `apps/license-server/password_rotation.go` runs a **daily scheduler that emails the admin**
+  (`OZ_ADMIN_EMAIL`, falling back to `defaultAdminEmail`) and carries a throttle interval
+  (`passwordRotationReminderInterval`) so a standing condition does not re-notify daily.
+- `apps/license-server/trial_emails.go` supplies the **per-event idempotency log**
+  (`trial_email_log`, `emailAlreadySent`, `logTrialEmailSent`) so one violation notifies once.
+- Both are registered as boot goroutines (`main.go:434,451`) and both **skip cleanly when
+  `OZ_SMTP_HOST` is unset**, which is the fail-open direction this record requires elsewhere.
+
+**A violation alert has nothing to scan until the field exists**, so the two prerequisites are
+ordered: the field first, the notification with it. They are one unit of work, not two.
+
+**Trigger to revisit, so this is not deferred forever:** build §2.4 when (a) Q5's fingerprint field
+rides a shipped authenticated payload, **and** (b) a violation notification exists — a scanner in
+the family above that alerts the operator when a fingerprint first fails or persists as unknown.
 Until both hold, the honest statement is that the server does not detect tampering — §3.3 carries
 that as a residual rather than this section implying otherwise.
 
-> **Gate (a) re-read against the tree (2026-09-21) — the reader already exists; the missing piece
-> is a notification, not a person.**
->
-> The premise of gate (a) is that `NeedsAttention` has no reader. Reading the read path rather
-> than assuming it showed that the opposite is now true in the code:
->
-> - The producer is `apps/license-server/admin_stats.go:587-668`, which already emits three
->   categories (`grace_period`, `expired_active`, `refund`), capped at 20, each date-stamped.
-> - The consumer is **live and deliberately placed above the fold**:
->   `website/public/admin/admin.js:357-373` builds the alert card and inserts it with
->   `c.insertBefore(attCard, c.firstChild)` — above the revenue hero — under a comment stating
->   the intent: *"so the operator sees action items before the numbers."*
->
-> So "no new UI, the signal lands where an operator is already looking" (above) is not a hope; it
-> is the shipped behaviour. A named person is therefore not the long pole, and requiring one will
-> keep §2.4 deferred for no security benefit — the panel is unread **only if the operator never
-> opens the dashboard**, which naming a person does not change.
->
-> **The honest replacement for gate (a) is a notification**, since the real failure mode is not
-> "nobody looks" but "nobody looks *because nothing changed*". Until such a trigger exists, gate
-> (a) is not satisfied and §2.4 stays deferred.
->
-> **Consequence found while checking: the queue types cannot be built ahead of the field.** A plan
-> to add `integrity_mismatch`/`integrity_unknown_persistent` rows to `attentionItem` was dropped
-> on evidence: `grep` for `build_fingerprint|build_integrity|integrity_mismatch|
-> unknown_persistent|accepted_pins|release_channels` across `apps/` returns **nothing**, and
-> `crates/kasirmu-core/src/build_fingerprint.rs` is a closed island — `fold_build_integrity`,
-> `BuildIntegritySignal` and `BuildFingerprintVerdict` have **no non-test caller** anywhere.
-> Adding the rows now would create queue entries no code path can ever write, which is the same
-> "appearance of protection" defect this section names, one layer down. The rows are downstream of
-> Q5, and are not independently buildable.
+> **Consequence found while checking, 2026-09-21: the queue types cannot be built ahead of the
+> field.** A plan to add `integrity_mismatch`/`integrity_unknown_persistent` rows to
+> `attentionItem` was dropped on evidence. `grep` for `build_fingerprint|build_integrity|
+> integrity_mismatch|unknown_persistent|accepted_pins|release_channels` across `apps/` returns
+> **nothing**, and `crates/kasirmu-core/src/build_fingerprint.rs` is a closed island —
+> `fold_build_integrity`, `BuildIntegritySignal` and `BuildFingerprintVerdict` have **no
+> non-test caller** anywhere, and nothing stores the consecutive count. Adding the rows now would
+> create queue entries **no code path can ever write**, which is the same "appearance of
+> protection" defect this section names, one layer down. The rows are downstream of Q5 and are not
+> independently buildable — which is consistent with the two prerequisites above being one unit of
+> work rather than two.
 
 ### Q4 — Is `unknown` allowed to operate indefinitely, or does it escalate? `[was policy]` — DECIDED
 
@@ -724,7 +753,7 @@ for the sync-disabled tenant that ADR #56 §2.4 exempts, and B because it can ne
 than a week even for a device reporting hourly.
 
 **Aligned with the §Q3 cadence, which is the point.** The escalation lands in the
-`NeedsAttention` queue (`admin_stats.go:574-611`), whose existing entries are **date-stamped and
+`NeedsAttention` queue (`admin_stats.go:574-668`), whose existing entries are **date-stamped and
 day-scale** — the grace-period category carries a `grace_until` date at :599-603. A trigger measured
 in calendar time is the unit that queue is read in, so the 7-day window is also the cadence at which
 a human can actually act. Counting cycles would put a sub-hour signal into a day-scale queue and

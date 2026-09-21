@@ -403,8 +403,10 @@ offline device on the expiry bound.
 explicit: B is simply a weaker guarantee, and ban latency for paid tenants would then have to be
 stated in the merchant-facing terms rather than assumed to be immediate.
 
-**The same call carries ADR #57's build fingerprint** (§Q5 there). One envelope change serves both
-records.
+**The same call carries ADR #57's build fingerprint** (§Q5 there) — the licence server's
+authenticated call, per the correction at §Q1 below. One scheduling change served both records in
+practice: the field rides the call the ride-along already makes, so no new wire surface is added
+twice.
 
 ### 2.4 Fail-open on transport, fail-closed on an explicit verdict
 
@@ -863,9 +865,10 @@ different product than the one ADR #56 specifies.
 
 **The exemption is honest, but it is NOT bounded — corrected 2026-10-04.** An earlier revision of
 this paragraph claimed the exposure was *"the same Free-user exposure ADR #57 §2.4 bounds by
-server-side detection."* **That bound does not exist:** ADR #57 §Q3 defers §2.4's detection until a
-queue owner is named and the fingerprint field ships. Citing it made an unbounded hole read as a
-managed one.
+server-side detection."* **That bound does not exist:** ADR #57 §Q3 defers §2.4's detection until
+the fingerprint field ships **and a violation notification exists** (gate (a) rewritten 2026-09-21
+from "a named queue owner" — the reader already exists in code, so naming one changed nothing).
+Citing it made an unbounded hole read as a managed one.
 
 The accurate chain, now recorded in ADR #56 §2.4 as well:
 
