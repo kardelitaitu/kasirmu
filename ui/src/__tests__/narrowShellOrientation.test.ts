@@ -78,6 +78,7 @@ const SHELL_CSS = 'app/AppLayout.css';
 const TABLET_CSS = 'app/tablet/tablet.css';
 const RETAIL_CSS = 'features/retail/RetailPosScreen.css';
 const KDS_CSS = 'features/kds/KdsScreen.css';
+const SALES_HISTORY_CSS = 'features/sales/SalesHistoryScreen.css';
 
 /* ── Text helpers ───────────────────────────────────────────── */
 
@@ -311,6 +312,7 @@ interface MigratedSheet {
 const MIGRATED: readonly MigratedSheet[] = [
   { sheet: RETAIL_CSS, containerSelector: '.retail-pos', tiers: [880], narrowShellPx: 640 },
   { sheet: KDS_CSS, containerSelector: '.kds', tiers: [900, 640], narrowShellPx: 640 },
+  { sheet: SALES_HISTORY_CSS, containerSelector: '.sales-history', tiers: [880], narrowShellPx: 640 },
 ] as const;
 
 /**
@@ -718,6 +720,15 @@ function gradeShellSlot(sheet: string, css: string, selector: string): Finding[]
 
 /** Synthetic sheets the planted tests feed the graders; never read from disk. */
 const PLANTED = {
+  /** A migrated sheet that grew a query without declaring the box it measures. */
+  salesHistoryNoContainer:
+    '.sales-history { padding: 1rem; }\n' +
+    '@container (max-width: 880px) { .sales-history-cell-id { display: none; } }\n',
+  /** A class the sheet styles as a PARENT, hidden as if it were one lane. */
+  salesHistoryWrapperShed:
+    '.sales-history { container-type: inline-size; }\n' +
+    '.sales-history-table > .sales-history-cell-id { color: red; }\n' +
+    '@container (max-width: 880px) { .sales-history-table { display: none; } }\n',
   /** RetailPos tiers declared finest-first — the wider gate would win. */
   retailTierOrder:
     '.retail-pos { container-type: inline-size; }\n' +
@@ -905,6 +916,8 @@ describe('narrow-shell / extreme-aspect verification (ADR-0001 Slice 7)', () => 
     ).toEqual([
       RETAIL_CSS +
         ' matches nothing below 880px, and a box narrower than 640px gets the wide layout with no rule of its own — this is the coverage ADR-0001 Slice 7 measures, not a claim that the sheet is wrong',
+      SALES_HISTORY_CSS +
+        ' matches nothing below 880px, and a box narrower than 640px gets the wide layout with no rule of its own — this is the coverage ADR-0001 Slice 7 measures, not a claim that the sheet is wrong',
     ]);
   });
 
@@ -948,6 +961,19 @@ describe('narrow-shell / extreme-aspect verification (ADR-0001 Slice 7)', () => 
       gradeMigratedSheet({ sheet: RETAIL_CSS, containerSelector: '.retail-pos', tiers: [880], narrowShellPx: 640 }, PLANTED.noContainer).map((f) => f.pattern),
       'the fence no longer fires on a sheet that queries a container it never declares',
     ).toContain('container-not-declared');
+
+    // Planted 3b — the same gap, one sheet over: a query with no box of its own.
+    expect(
+      gradeMigratedSheet({ sheet: SALES_HISTORY_CSS, containerSelector: '.sales-history', tiers: [880], narrowShellPx: 640 }, PLANTED.salesHistoryNoContainer).map((f) => f.pattern),
+      'the fence no longer fires on a sales-history sheet that queries a container it never declares',
+    ).toContain('container-not-declared');
+
+    // Planted 5b — the shedding manner, one sheet over: the hidden target is the
+    // table the sheet styles as the PARENT of the cell it means to shed.
+    expect(
+      gradeShedding(SALES_HISTORY_CSS, PLANTED.salesHistoryWrapperShed, 880).map((f) => f.pattern),
+      'the fence no longer fires when the sales-history tier hides a wrapper instead of a lane',
+    ).toContain('tier-hides-wrapper');
 
     // Planted 4 — a folding tier that hides nothing at all.
     expect(
@@ -1006,6 +1032,10 @@ describe('narrow-shell / extreme-aspect verification (ADR-0001 Slice 7)', () => 
     expect(
       shapeOnly(gradeMigratedSheet(MIGRATED[1]!, source(KDS_CSS))),
       'the graders reject the real KdsScreen.css',
+    ).toEqual([]);
+    expect(
+      shapeOnly(gradeMigratedSheet(MIGRATED[2]!, source(SALES_HISTORY_CSS))),
+      'the graders reject the real SalesHistoryScreen.css',
     ).toEqual([]);
     expect(
       gradeOrientationGates(SHELL_CSS, source(SHELL_CSS), 1023),
