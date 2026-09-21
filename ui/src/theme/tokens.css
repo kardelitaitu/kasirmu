@@ -287,6 +287,18 @@
    * restated token reads as a second source of truth). */
   --statusbar-height: 28px;
 
+  /* The memo stack's bottom clearance, DEFAULT value. Each SHELL overrides
+   * this on its own layout root as "its own bottom chrome height +
+   * --space-6" (the desktop shell: AppLayout.css's .app-layout uses
+   * calc(var(--statusbar-height) + var(--space-6)); the tablet shell owns
+   * its own copy). The default is the chrome-free value: on fullscreen
+   * branches (POS/KDS) there is no shell ancestor to inherit an override
+   * from, so the stack keeps its historic 24px gutter. MemoBanner.css
+   * consumes it as bottom: var(--memo-bottom-inset, var(--space-6)) — the
+   * var() fallback and this default agree, so the fallback never masks a
+   * missing declaration. Chrome geometry, not theme: :root only. */
+  --memo-bottom-inset: var(--space-6);
+
   /* ── Z-index ──────────────────────────────────────────────── */
   --z-base:      0;
   --z-dropdown:  100;
