@@ -394,10 +394,10 @@ What is held now:
   fix was later committed from this side of the campaign, under one git identity, so the commit
   metadata cannot separate the two.
 - The scratch artefacts beside the captures were not this lane's. `.tmp-re2.cjs`/`.tmp-re3.cjs`
-  were deleted as trivially regenerable; `.tmp-android-audit/` and `.tmp-dbcheck/kasir.db` were
-  **left in place** — the former's evidence is not in `docs/records/2026-09-20-audit-android-shell.md`,
-  the latter is another lane's fixture, still byte-unchanged (2,207,744 bytes, mtime
-  2026-09-21 14:25:47) and the row that makes §2.2 readable.
+  were deleted as trivially regenerable; `.tmp-android-audit/` was
+  **left in place** — its evidence is not in `docs/records/2026-09-20-audit-android-shell.md`.
+  `.tmp-dbcheck/kasir.db` and `crates/kasirmu-core/tests/tmp_real_db_replay.rs` have since been
+  cleaned from the checkout.
 - The live dev database this record's later evidence runs against carries state the registry
   cannot produce: `store_profiles` and `user_store_access` still exist beside their renamed
   successors (`locations`, `user_location_access`), empty, though the rename migration's
@@ -410,8 +410,6 @@ What is held now:
   fatal — rather than on the `no such table` a registry-only database would raise there; the
   attribution control in the same probe (registry minus the rename migration) applies
   cleanly, ledger 60 → 61.
-- `crates/kasirmu-core/tests/tmp_real_db_replay.rs` is still untracked in the tree, its own
-  header claiming it is deleted before commit.
 
 ## 7. STRUCTURE AFTER THE ARCHITECTURE PASS
 
@@ -425,8 +423,8 @@ in four files:
 | `platform/core/src/database/proofs_tests.rs` | Those proofs' 16 tests, moved verbatim from the statement layer's file | 357 |
 | `platform/core/src/database/statements.rs` | Reading SQL: splitting a script into statements, tokens and canonical forms, the significance predicate | 350 |
 | `platform/core/src/database/statements_tests.rs` | That layer's 3 tests | 83 |
-| `platform/core/src/database/migrations.rs` | The ledger and the policy: registry, checksums, the drift decision, orchestration | 577 (573 code, 3-line test wiring) |
-| `platform/core/src/database/migrations_tests.rs` | The runner's 33 tests, moved out of the production file | 980 |
+| `platform/core/src/database/migrations.rs` | The ledger and the policy: registry, checksums, the drift decision, orchestration | 578 |
+| `platform/core/src/database/migrations_tests.rs` | The runner's 34 tests, moved out of the production file | 1025 |
 
 Dependencies run one way — `migrations` → {`statements`, `proofs`}, both modules private to
 the tree; `proofs` imports the text layer's tokenizer and parsers, never the reverse. Four
@@ -447,10 +445,12 @@ site reddens two end-to-end tests.
 
 Behaviour was checked, not assumed: `platform-core` lib **397 passed** and `kasirmu-core --lib
 migrations::` **37 passed**, with the forced-drift replay of §2.2 unchanged after the move.
-After the pre-execution arm was added it is **404 passed** (`database::migrations` 33,
+After the pre-execution arm was added it was **404 passed** (`database::migrations` 33,
 `database::statements` 19) and `kasirmu-core --lib migrations::` still **37 passed** — the seven
 new tests are the arm's own contract plus one runner pin on the AUTOINCREMENT counter. After the
-proof/test split the `platform-core` totals are unchanged — **404 passed** (`database::migrations`
-33, `database::statements` 3, `database::proofs` 16) — every test moved by name, none rewritten;
-`kasirmu-core --lib migrations::` reads **38 passed**, the one-test rise being `789f21134`'s
-re-apply pin, not this split's.
+proof/test split the `platform-core` totals were **404 passed** (`database::migrations`
+33, `database::statements` 3, `database::proofs` 16). Following the classifier hardening in
+`5cd0e2468` (adding `the_classifier_excuses_exactly_its_four_texts`), the runner suite holds
+**34 passed** (`database::migrations` 34, `database::statements` 3, `database::proofs` 16 —
+totalling **405 passed** in `platform-core` lib), and `kasirmu-core --lib migrations::` holds
+**38 passed**.
