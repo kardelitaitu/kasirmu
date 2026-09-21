@@ -179,10 +179,25 @@ Staged, because the fix changes how a live server keys its buckets:
 ## 7. UNRELATED FINDINGS WORTH FIXING
 
 - `OZ_LICENSE_PRIVATE_KEY` in the root `.env` is written as a quoted multi-line PEM
-  (`.env:51-78`), but any line-`=` loader — docker compose, and whatever pushes `.env` into
-  Northflank secrets — reads only `.env:51`, the bare 27-character
-  `-----BEGIN PRIVATE KEY-----` opener. Whatever consumes that file cannot be getting a
-  valid key.
+  (`.env:51-78`). **Corrected 2026-09-21 by measurement: Docker Compose reads it correctly.**
+  `docker compose -f ops/docker/docker-compose.yml --project-directory . config` exits 0 with
+  empty stderr, so the `${OZ_LICENSE_PRIVATE_KEY:?…}` guard at
+  `ops/docker/docker-compose.yml:117` is satisfied; the resolved value carries both
+  `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----` across 143 newlines, i.e. the
+  PEM survives interpolation intact. `scripts/validate-env.mjs:3-19` documents the same grammar
+  ("quoted values may span multiple lines") and cites this very key. An earlier revision of this
+  record claimed any line-`=` loader reads only the bare 27-character opener; that is
+  **disproven for Compose**.
+- What survives from the above, and is still unexplained: a 28-byte value did reach a container
+  this session ("key length: 28 bytes, starts with: `"-----BEGIN PRIVATE KEY-----`"). The loader
+  that produced it is now **unidentified** — Compose is exonerated, and the untested suspects are
+  a line-based `docker run --env-file` reader, a shell `export $(cat .env)` / `source .env`
+  path, or a hand-built container invocation. None has been tested.
+- Practical consequence for the local stack: `docker compose up` is **not** blocked by the PEM.
+  The remaining local gap is that `crates/kasirmu-core/oz-license-private.pem` does not exist on
+  this machine (git-ignored by `.gitignore:70` `*.pem`), which only matters to the fallback path
+  in `scripts/dev-up.ps1:216-220` / `scripts/dev-up.sh:194-202` that runs when the env var is
+  UNSET.
 - `PADDLE_WEBHOOK_SECRET` and `PADDLE_PRICE_TIERS` are absent from `.env`; only
   `PUBLIC_PADDLE_CLIENT_TOKEN` and `PUBLIC_PADDLE_ENVIRONMENT` are present (`.env:84-85`).
 - Agent docs describe `KASIRMU_*`-prefixed env names (`AGENTS.md:51-54`) while `.env` uses
