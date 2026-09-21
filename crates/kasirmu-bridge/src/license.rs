@@ -28,9 +28,8 @@ use kasirmu_core::license_verification::{
     ActivateLicenseRequest, RenewLicenseRequest, SignedSubscriptionPayload,
     activate_license as core_activate_license, apply_license_verdict_to_cache,
     check_license_status as core_check_license_status,
-    pause_subscription as core_pause_subscription,
-    renew_license as core_renew_license, resume_subscription as core_resume_subscription,
-    store_subscription, verify_license_signature,
+    pause_subscription as core_pause_subscription, renew_license as core_renew_license,
+    resume_subscription as core_resume_subscription, store_subscription, verify_license_signature,
 };
 use kasirmu_core::permissions;
 use kasirmu_core::subscription::{SubscriptionTier, TenantSubscription};

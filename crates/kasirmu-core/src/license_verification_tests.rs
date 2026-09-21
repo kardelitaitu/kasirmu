@@ -486,7 +486,11 @@ fn test_trial_activation_vertical_all_segments() {
 // ── apply_license_verdict_to_cache (ADR #58 option C) ──────────
 
 /// Build a minimal status response for the verdict tests.
-fn status_response(status: &str, device_revoked: bool, expires_at: Option<&str>) -> LicenseStatusResponse {
+fn status_response(
+    status: &str,
+    device_revoked: bool,
+    expires_at: Option<&str>,
+) -> LicenseStatusResponse {
     LicenseStatusResponse {
         tenant_id: "test-tenant".into(),
         status: status.into(),
@@ -534,10 +538,7 @@ fn verdict_return_is_the_tenant_status_not_the_device_flag() {
         "a device revocation is not a tenant revocation"
     );
 
-    let tenant = apply_license_verdict_to_cache(
-        &conn,
-        &status_response("revoked", false, None),
-    );
+    let tenant = apply_license_verdict_to_cache(&conn, &status_response("revoked", false, None));
     assert!(tenant, "the revoked tenant status must be reported");
 }
 
@@ -554,14 +555,18 @@ fn verdict_caches_and_clears_the_device_flag() {
 
     apply_license_verdict_to_cache(&conn, &status_response("active", true, None));
     assert_eq!(
-        Settings::get(&conn, keys::DEVICE_REVOKED).unwrap().as_deref(),
+        Settings::get(&conn, keys::DEVICE_REVOKED)
+            .unwrap()
+            .as_deref(),
         Some("true"),
         "a revoked device must be cached as true"
     );
 
     apply_license_verdict_to_cache(&conn, &status_response("active", false, None));
     assert_eq!(
-        Settings::get(&conn, keys::DEVICE_REVOKED).unwrap().as_deref(),
+        Settings::get(&conn, keys::DEVICE_REVOKED)
+            .unwrap()
+            .as_deref(),
         Some("false"),
         "an un-revoke must clear the cached verdict, not leave it stuck"
     );

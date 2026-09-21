@@ -483,11 +483,13 @@ async fn run_license_ride_along(db: &DbConnection) {
                 .ok()
                 .flatten()
                 .filter(|s| !s.is_empty())?;
-            let machine_id =
-                kasirmu_core::settings::Settings::get(&conn, kasirmu_core::settings::keys::MACHINE_ID)
-                    .ok()
-                    .flatten()
-                    .unwrap_or_default();
+            let machine_id = kasirmu_core::settings::Settings::get(
+                &conn,
+                kasirmu_core::settings::keys::MACHINE_ID,
+            )
+            .ok()
+            .flatten()
+            .unwrap_or_default();
             Some((api_key_enc, machine_id))
         })
         .await
@@ -504,16 +506,15 @@ async fn run_license_ride_along(db: &DbConnection) {
     let api_key = match kasirmu_core::crypto::decrypt_api_key(&api_key_enc, &machine_id) {
         Ok(k) => k,
         Err(e) => {
-            tracing::debug!("licence ride-along: api key decryption failed, treating as legacy plaintext: {e}");
+            tracing::debug!(
+                "licence ride-along: api key decryption failed, treating as legacy plaintext: {e}"
+            );
             api_key_enc
         }
     };
 
-    let resp = match kasirmu_core::license_verification::check_license_status(
-        &api_key,
-        &machine_id,
-    )
-    .await
+    let resp = match kasirmu_core::license_verification::check_license_status(&api_key, &machine_id)
+        .await
     {
         Ok(r) => r,
         Err(e) => {
