@@ -114,6 +114,92 @@ pub fn classify_build_fingerprint(
     BuildFingerprintVerdict::Mismatch
 }
 
+/// Consecutive `Unknown` reports that escalate to a queue signal (ADR #57 §Q4).
+///
+/// Seven, per the record's stated reasoning: at one report per sync cycle it
+/// separates a permanently-broken client from an intermittent failure while
+/// staying inside a working day. **This number is a tuning parameter, not a
+/// security boundary** — the record says so explicitly, and the routing to a
+/// human is the boundary.
+pub const UNKNOWN_REPORTS_BEFORE_ESCALATION: u32 = 7;
+
+/// What an operator queue should be told about one tenant's build integrity.
+///
+/// This is the ESCALATION half of ADR #57 §Q4, deliberately separate from the
+/// per-report [`BuildFingerprintVerdict`]: a verdict describes one report, and
+/// this describes a pattern across reports. Collapsing them would make a single
+/// dropped field indistinguishable from a persistent one, which is precisely
+/// the false-positive that §Q4 chose a human queue to absorb.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BuildIntegritySignal {
+    /// Nothing for an operator to read.
+    None,
+    /// Positive evidence of a re-signed APK (§2.1).
+    Mismatch,
+    /// The reporting has been unusable for long enough to stop looking like noise
+    /// (§2.2 + §Q4). NOT the same finding as `Mismatch` and must not be shown as
+    /// one: this is "we cannot see", that is "we can see, and it is wrong".
+    UnknownPersistent,
+}
+
+impl BuildIntegritySignal {
+    /// The stored/wire keyword, matching the serde form.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Mismatch => "mismatch",
+            Self::UnknownPersistent => "unknown_persistent",
+        }
+    }
+
+    /// Whether this signal is something an operator should be shown.
+    #[must_use]
+    pub fn needs_operator_attention(self) -> bool {
+        !matches!(self, Self::None)
+    }
+}
+
+/// Fold one report's verdict into a tenant's running integrity signal.
+///
+/// Q4 option B, as a pure state machine: `unknown` reports ACCUMULATE, and once
+/// they reach [`UNKNOWN_REPORTS_BEFORE_ESCALATION`] the tenant escalates. Any
+/// usable report — `valid` or `mismatch` — RESETS the counter, because either
+/// one proves the reporting path works; a single detectable report in between
+/// must not be carried forward as a broken channel.
+///
+/// **Why the counter resets rather than decays.** A decay would let an attacker
+/// stay permanently under the threshold by emitting one usable report every few
+/// cycles, which re-opens the bypass §Q4 option A was rejected for. Reset-on-
+/// usable keeps the rule honest: N CONSECUTIVE unusable reports means the
+/// channel really has been broken for N cycles.
+///
+/// **The signal never locks anything.** §Q4 routes escalation to the operator
+/// queue (§Q3) and never to an automatic lockout, because a serialization bug, a
+/// field rename or a partially-rolled-out client would each produce `unknown`
+/// from legitimate devices — and darking every affected till is worse than the
+/// abuse it would prevent. CALLERS MUST NOT turn this into a session refusal.
+#[must_use]
+pub fn fold_build_integrity(
+    previous_consecutive_unknowns: u32,
+    verdict: BuildFingerprintVerdict,
+) -> (u32, BuildIntegritySignal) {
+    match verdict {
+        BuildFingerprintVerdict::Mismatch => (0, BuildIntegritySignal::Mismatch),
+        BuildFingerprintVerdict::Valid => (0, BuildIntegritySignal::None),
+        BuildFingerprintVerdict::Unknown => {
+            let consecutive = previous_consecutive_unknowns.saturating_add(1);
+            let signal = if consecutive >= UNKNOWN_REPORTS_BEFORE_ESCALATION {
+                BuildIntegritySignal::UnknownPersistent
+            } else {
+                BuildIntegritySignal::None
+            };
+            (consecutive, signal)
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "build_fingerprint_tests.rs"]
 mod tests;
