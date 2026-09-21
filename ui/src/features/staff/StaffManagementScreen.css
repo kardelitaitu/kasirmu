@@ -96,7 +96,7 @@
   color: var(--color-fg-secondary);
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--duration-150), color var(--duration-150);
 }
 
 .staff-mgmt-back-btn:hover {
