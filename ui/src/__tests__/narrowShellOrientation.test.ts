@@ -86,6 +86,7 @@ const KDS_EXPO_CSS = 'features/kds/ExpoScreen.css';
 const TRANSIT_AUDIT_CSS = 'features/inventory/TransitAuditScreen.css';
 const CATEGORY_MGMT_CSS = 'features/categories/CategoryManagementScreen.css';
 const STAFF_MGMT_CSS = 'features/staff/StaffManagementScreen.css';
+const MULTI_STORE_DASHBOARD_CSS = 'features/locations/MultiStoreDashboardScreen.css';
 
 /* ── Text helpers ───────────────────────────────────────────── */
 
@@ -327,6 +328,7 @@ const MIGRATED: readonly MigratedSheet[] = [
   { sheet: TRANSIT_AUDIT_CSS, containerSelector: '.transit-audit-container', tiers: [640, 480], narrowShellPx: 640 },
   { sheet: CATEGORY_MGMT_CSS, containerSelector: '.cat-mgmt', tiers: [480], narrowShellPx: 640 },
   { sheet: STAFF_MGMT_CSS, containerSelector: '.staff-mgmt', tiers: [900, 600], narrowShellPx: 640 },
+  { sheet: MULTI_STORE_DASHBOARD_CSS, containerSelector: '.multi-store-dashboard', tiers: [640, 480], narrowShellPx: 640 },
 ] as const;
 
 /**
@@ -816,6 +818,17 @@ const PLANTED = {
     '.staff-mgmt { container-type: inline-size; }\n' +
     '@container (max-width: 600px) { .staff-mgmt-field--horizontal { flex-direction: column; } }\n' +
     '@container (max-width: 900px) { .staff-mgmt-table th:nth-child(5) { display: none; } }\n',
+  /**
+   * MultiStoreDashboard's two tiers declared finest-first — the wider gate
+   * would win. The 640/480 ladder's ORDER plant: the 480px tier is below the
+   * 640px narrow-shell case on purpose (that is coherent coverage, not a missing
+   * gate), but a max-width gate written above the 640px one can never be the
+   * tier in force.
+   */
+  multiStoreDashboardTierOrder:
+    '.multi-store-dashboard { container-type: inline-size; }\n' +
+    '@container (max-width: 480px) { .multi-store-kpi-grid { grid-template-columns: 1fr; } }\n' +
+    '@container (max-width: 640px) { .multi-store-layout { flex-direction: column; } }\n',
   /** RetailPos tiers declared finest-first — the wider gate would win. */
   retailTierOrder:
     '.retail-pos { container-type: inline-size; }\n' +
@@ -1210,6 +1223,18 @@ describe('narrow-shell / extreme-aspect verification (ADR-0001 Slice 7)', () => 
     expect(
       shapeOnly(gradeMigratedSheet(MIGRATED[9]!, source(STAFF_MGMT_CSS))),
       'the graders reject the real StaffManagementScreen.css',
+    ).toEqual([]);
+
+    // Planted 1f — the inverted tier order, on the 640/480 ladder of the
+    // multi-store dashboard.
+    expect(
+      gradeMigratedSheet({ sheet: MULTI_STORE_DASHBOARD_CSS, containerSelector: '.multi-store-dashboard', tiers: [640, 480], narrowShellPx: 640 }, PLANTED.multiStoreDashboardTierOrder).map((f) => f.pattern),
+      'the fence no longer fires when MultiStoreDashboard declares its wider max-width tier last',
+    ).toContain('tier-order');
+
+    expect(
+      shapeOnly(gradeMigratedSheet(MIGRATED[10]!, source(MULTI_STORE_DASHBOARD_CSS))),
+      'the graders reject the real MultiStoreDashboardScreen.css',
     ).toEqual([]);
     expect(
       gradeOrientationGates(SHELL_CSS, source(SHELL_CSS), 1023),
