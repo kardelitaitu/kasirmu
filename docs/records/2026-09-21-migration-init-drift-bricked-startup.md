@@ -274,8 +274,17 @@ What is held now:
 
 **Remaining open limits**
 
-- **No failed drift re-apply on real bytes.** Failure is proven on fixtures; the one real-bytes
-  failure on record (§2.1) predates the fix.
+- **Closed — the failed drift re-apply is now proven on real bytes, and with it the pre-fix
+  counterfactual.** The runner at `61d3abdbe^` was built in a throwaway worktree (the shared
+  checkout was never modified) and run against a copy of the archived capture whose stored init
+  checksum had been forced back to the pre-ADR-56 value. It returned `platform error: database
+  error: table loyalty_tiers has no column named earn_multiplier`; its own instrumentation names
+  the statement the batch died on — the init script's seed `INSERT OR IGNORE INTO loyalty_tiers
+  (… earn_multiplier …)`, a column a later migration drops — and shows the classifier matching
+  neither `already exists` nor `duplicate column name`, so the statement-by-statement attempt was
+  never entered. The copy kept its 60 applied rows and the drifted checksum, so every boot would
+  have failed identically. At HEAD the same input returns `Ok`, applies the 61st row and restores
+  the registry's checksum. This supersedes §2.2's "not a second end-to-end run" clause.
 - **The second production caller is untested.** `apps/cloud-server/src/db.rs:134,143` calls the
   runner too and has never seen drifted bytes.
 - **The app path is proven by proxy.** No test drives the setup hook, and the replays connect
