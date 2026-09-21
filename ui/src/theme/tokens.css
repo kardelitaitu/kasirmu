@@ -275,6 +275,18 @@
   --touch-target-min: 44px;
   --touch-target-comfortable: 48px;
 
+  /* ── Shell chrome heights ───────────────────────────────────
+   * The desktop status bar's height, single-sourced here so a sibling
+   * layout rule can read it (custom properties inherit DOWNWARD only,
+   * so a value declared on .app-statusbar itself would be invisible to
+   * .app-layout — the ancestor that needs it for the memo-stack bottom
+   * inset: --memo-bottom-inset = "shell's own bottom chrome height +
+   * --space-6", the clearance the fixed .memo-stack sits above). The
+   * value is chrome geometry, not theme: it is deliberately NOT
+   * restated in the light/dark blocks (see the inset note below — a
+   * restated token reads as a second source of truth). */
+  --statusbar-height: 28px;
+
   /* ── Z-index ──────────────────────────────────────────────── */
   --z-base:      0;
   --z-dropdown:  100;
