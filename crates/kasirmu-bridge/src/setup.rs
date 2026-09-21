@@ -7,7 +7,7 @@
 //! log lines are byte-identical to the original command bodies.
 
 use kasirmu_core::db::provisioning::{LocationKind, ProvisioningMode, ProvisioningRecord};
-use kasirmu_core::{FeatureRegistry, Settings, Store, features};
+use kasirmu_core::{Settings, Store};
 use serde::{Deserialize, Serialize};
 
 use crate::ctx::BridgeCtx;
@@ -211,77 +211,18 @@ pub async fn get_enabled_features(
     Ok(EnabledFeaturesResult { features })
 }
 
-/// Persist the chosen preset and features, then mark setup as complete.
-///
-/// Called by the front-end when the user clicks "Complete Setup" on
-/// the last step of the wizard.
-pub async fn complete_setup(
-    ctx: &BridgeCtx<'_>,
-    args: CompleteSetupArgs,
-) -> Result<(), BridgeError> {
-    let db = ctx.lock_global().await;
-
-    // Convert feature key strings → Feature enum variants.
-    let mut registry = FeatureRegistry::new();
-    for key in &args.features {
-        if let Some(feat) = features::feature_from_key(key) {
-            registry.enable(feat);
-        } else {
-            tracing::warn!(feature = %key, "unknown feature key in setup, skipping");
-        }
-    }
-
-    // Save features + preset + completed flag in a single transaction.
-    let tx = db.unchecked_transaction()?;
-    {
-        let store = Store::new(&tx);
-
-        // 1. Seed built-in roles (idempotent — skips existing).
-        store.seed_default_roles()?;
-
-        // 2. Persist features.
-        // RUST-08: write feature rows directly into the outer transaction.
-        // `store.save_features` -> Settings::set_batch opens its OWN
-        // unchecked_transaction, which would be a nested BEGIN inside the
-        // tx above ("cannot start a transaction within a transaction") —
-        // same class as the CLI-1 / import_data fixes.
-        for (key, value) in registry.to_settings_rows() {
-            Settings::set(&tx, &key, &value)?;
-        }
-
-        // 3. Prune stale feature rows that are no longer enabled.
-        Settings::prune_stale_features(&tx, &registry)?;
-
-        // 4. Save the preset name.
-        Settings::set(
-            &tx,
-            kasirmu_core::settings::keys::STORE_PRESET,
-            &args.preset,
-        )?;
-
-        // 5. Mark setup as complete.
-        Settings::set(&tx, kasirmu_core::settings::keys::SETUP_COMPLETE, "1")?;
-
-        // 6. Set default currency.
-        Settings::set_default_currency(&tx, &args.default_currency)?;
-
-        // 7. Dismiss the wizard so it doesn't show on next launch.
-        Settings::set(
-            &tx,
-            kasirmu_core::settings::keys::SHOW_SETUP_WIZARD,
-            "false",
-        )?;
-    }
-    tx.commit()?;
-
-    tracing::info!(
-        preset = %args.preset,
-        feature_count = %args.features.len(),
-        "setup wizard completed"
-    );
-
-    Ok(())
-}
+// ── Retired by ADR #56 §2.2 ──────────────────────────────────────────
+//
+// `complete_setup` was REMOVED here. It wrote exactly the two booleans §2.1
+// retires (steps 5 and 7 below, `SETUP_COMPLETE` and `SHOW_SETUP_WIZARD`), and
+// once both shells' first-run path calls `provision_device` nothing invoked it:
+// the wizard that used to call it is no longer on the critical path (§2.3).
+//
+// The effective content it persisted is NOT lost — `provision_device` step 5
+// writes the feature rows, the preset and the default currency from the same
+// statement list, inside the transaction that also creates the location and
+// the owner. What is gone is the pair of writes that let a terminal claim to
+// be set up without being provisioned.
 
 /// The first-run state for one terminal (ADR #56 §2.1).
 ///

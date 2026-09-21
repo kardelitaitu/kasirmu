@@ -1,523 +1,155 @@
+//! Tests for the bridge's setup / first-run provisioning surface (ADR #56).
+//!
+//! This file REPLACED a suite built around `complete_setup` and the two setup
+//! booleans. Those are retired (§2.2), so their tests could not survive — but
+//! the properties they pinned did not all belong to the command, and the ones
+//! that did not are kept below.
+//!
+//! What is deliberately NOT re-tested here: the provisioning transaction. It
+//! is covered by 21 tests in `kasirmu_core::db::provisioning` — the guard, the
+//! replay, the rollback, both schema CHECKs and the workspace topology.
+//! Re-asserting it through this shim would be the mirrored-copy failure mode
+//! this module's own history warns about.
+
 use super::*;
 use crate::testing::TestBridge;
-use kasirmu_core::migrations;
-use rusqlite::Connection;
 
-/// Create a fresh in-memory connection with migrations applied.
-fn fresh_conn() -> Connection {
+fn fresh_conn() -> rusqlite::Connection {
     crate::testing::temp_conn()
 }
 
-/// Run the bridge `complete_setup` command over the harness context.
+/// Seed the two rows `provisioning` carries foreign keys to.
 ///
-/// The desktop sibling re-implemented the operation list on a plain
-/// `&Connection` because the Tauri command needed a runtime; the relocated
-/// tests drive the real bridge command body end to end instead.
-async fn run_complete_setup(
-    tb: &TestBridge,
-    preset: &str,
-    features: &[&str],
-) -> Result<(), BridgeError> {
-    let args = CompleteSetupArgs {
-        preset: preset.to_string(),
-        features: features.iter().map(|&key| key.to_string()).collect(),
-        default_currency: "IDR".to_string(),
-    };
-    complete_setup(&tb.ctx(), args).await
-}
-
-#[tokio::test]
-async fn complete_setup_persists_features() {
-    let tb = TestBridge::new();
-
-    run_complete_setup(
-        &tb,
-        "simple-retail",
-        &[
-            "cash-payment",
-            "barcode-scanning",
-            "receipt-printing",
-            "inventory-tracking",
-            "categories-enabled",
-            "tax-engine",
-        ],
+/// `provisioning.location_id` REFERENCES `locations(id)` and
+/// `owner_user_id` REFERENCES `users(id)`, so a fixture naming an unseeded id
+/// is refused by SQLite — which is the constraint working, not an obstacle to
+/// route around.
+fn seed_refs(conn: &rusqlite::Connection) {
+    conn.execute_batch(
+        "INSERT INTO locations (id, name) VALUES ('loc-1', 'Main');
+         INSERT INTO roles (id, name) VALUES ('owner', 'Owner');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id) VALUES ('user-1', 'owner', 'x', 'Owner', 'owner');",
     )
-    .await
     .unwrap();
-
-    let ctx = tb.ctx();
-    let db = ctx.lock_global().await;
-
-    // Verify setup is marked complete.
-    let completed = Settings::get(&db, kasirmu_core::settings::keys::SETUP_COMPLETE)
-        .unwrap()
-        .unwrap();
-    assert_eq!(completed, "1");
-
-    let preset = Settings::get(&db, kasirmu_core::settings::keys::STORE_PRESET)
-        .unwrap()
-        .unwrap();
-    assert_eq!(preset, "simple-retail");
 }
 
-#[test]
-fn get_setup_status_defaults_to_not_completed() {
-    let conn = fresh_conn();
+// ── The derived first-run state (ADR #56 §2.1) ──────────────────────
 
-    let completed = Settings::get(&conn, kasirmu_core::settings::keys::SETUP_COMPLETE).unwrap();
-    assert_eq!(completed, None);
-
-    let preset = Settings::get(&conn, kasirmu_core::settings::keys::STORE_PRESET).unwrap();
-    assert_eq!(preset, None);
+#[tokio::test]
+async fn first_run_state_is_unprovisioned_with_no_row() {
+    // The replacement for "get_setup_status returns not completed when the key
+    // is absent". Note what this CANNOT be fooled by: there is no key to set,
+    // so a caller cannot reach `provisioned` by writing a setting.
+    let tb = TestBridge::new();
+    let state = get_first_run_state(&tb.ctx(), "dev-1").await.unwrap();
+    assert!(matches!(state, FirstRunStateDto::Unprovisioned));
 }
 
 #[tokio::test]
-async fn complete_setup_skips_unknown_features() {
+async fn the_retired_setup_keys_cannot_forge_a_provisioned_terminal() {
+    // The counter-example that makes the test above worth having. These are the
+    // exact two writes the retired commands performed (`SETUP_COMPLETE` and
+    // `SHOW_SETUP_WIZARD`); neither may move the derived state. If a future
+    // refactor reintroduced a boolean fallback, this is what catches it.
     let tb = TestBridge::new();
-
-    run_complete_setup(
-        &tb,
-        "custom",
-        &["cash-payment", "made-up-feature"], // unknown, should be skipped
-    )
-    .await
-    .unwrap();
-
-    let ctx = tb.ctx();
-    let db = ctx.lock_global().await;
-
-    // Should still succeed.
-    let completed = Settings::get(&db, kasirmu_core::settings::keys::SETUP_COMPLETE)
-        .unwrap()
-        .unwrap();
-    assert_eq!(completed, "1");
-
-    // Only cash-payment should be enabled.
-    let store = Store::new(&db);
-    let loaded = store.load_features().unwrap();
-    assert!(loaded.is_enabled(kasirmu_core::Feature::CashPayment));
-    assert!(!loaded.is_enabled(kasirmu_core::Feature::BarcodeScanning));
-}
-
-#[tokio::test]
-async fn complete_setup_empty_features() {
-    let tb = TestBridge::new();
-
-    run_complete_setup(&tb, "empty-store", &[]).await.unwrap();
-
-    let ctx = tb.ctx();
-    let db = ctx.lock_global().await;
-
-    let completed = Settings::get(&db, kasirmu_core::settings::keys::SETUP_COMPLETE)
-        .unwrap()
-        .unwrap();
-    assert_eq!(completed, "1");
-
-    let preset = Settings::get(&db, kasirmu_core::settings::keys::STORE_PRESET)
-        .unwrap()
-        .unwrap();
-    assert_eq!(preset, "empty-store");
-
-    // No features should be enabled.
-    let store = Store::new(&db);
-    let loaded = store.load_features().unwrap();
-    assert_eq!(loaded.count(), 0);
-}
-
-#[tokio::test]
-async fn complete_setup_with_different_presets() {
-    let tb = TestBridge::new();
-
-    // Test restaurant preset.
-    run_complete_setup(
-        &tb,
-        "restaurant",
-        &[
-            "restaurant",
-            "cash-payment",
-            "receipt-printing",
-            "inventory-tracking",
-            "categories-enabled",
-            "discount-engine",
-            "tax-engine",
-            "kitchen-display",
-            "table-management",
-            "staff-login",
-        ],
-    )
-    .await
-    .unwrap();
-
-    let ctx = tb.ctx();
-    let db = ctx.lock_global().await;
-
-    let completed = Settings::get(&db, kasirmu_core::settings::keys::SETUP_COMPLETE)
-        .unwrap()
-        .unwrap();
-    assert_eq!(completed, "1");
-
-    let preset = Settings::get(&db, kasirmu_core::settings::keys::STORE_PRESET)
-        .unwrap()
-        .unwrap();
-    assert_eq!(preset, "restaurant");
-
-    // Verify restaurant-specific features.
-    let store = Store::new(&db);
-    let loaded = store.load_features().unwrap();
-    assert!(loaded.is_enabled(kasirmu_core::Feature::Restaurant));
-    assert!(loaded.is_enabled(kasirmu_core::Feature::KitchenDisplay));
-    assert!(loaded.is_enabled(kasirmu_core::Feature::TableManagement));
-    assert!(loaded.is_enabled(kasirmu_core::Feature::StaffLogin));
-    assert!(!loaded.is_enabled(kasirmu_core::Feature::SimpleRetail));
-    assert!(!loaded.is_enabled(kasirmu_core::Feature::CardPayment));
-}
-
-#[tokio::test]
-async fn complete_setup_all_features_single_preset() {
-    let tb = TestBridge::new();
-
-    // Full-store preset: 24 feature keys.
-    run_complete_setup(
-        &tb,
-        "full-store",
-        &[
-            "simple-retail",
-            "cash-payment",
-            "card-payment",
-            "multi-currency",
-            "inventory-tracking",
-            "product-variants",
-            "categories-enabled",
-            "staff-login",
-            "staff-roles",
-            "shift-management",
-            "audit-log",
-            "barcode-scanning",
-            "receipt-printing",
-            "cash-drawer",
-            "customer-display",
-            "nfc-reader",
-            "discount-engine",
-            "tax-engine",
-            "loyalty-program",
-            "promotions-engine",
-            "product-bundles",
-            "reporting",
-            "analytics",
-            "export-import",
-        ],
-    )
-    .await
-    .unwrap();
-
-    let ctx = tb.ctx();
-    let db = ctx.lock_global().await;
-
-    let store = Store::new(&db);
-    let loaded = store.load_features().unwrap();
-    assert!(loaded.count() >= 20);
-    assert!(loaded.is_enabled(kasirmu_core::Feature::SimpleRetail));
-    assert!(loaded.is_enabled(kasirmu_core::Feature::Analytics));
-
-    // Prune should be a no-op since all features match.
-    let removed = Settings::prune_stale_features(&db, &loaded).unwrap();
-    assert_eq!(removed, 0);
-}
-
-#[tokio::test]
-async fn complete_setup_allows_multiple_calls() {
-    let tb = TestBridge::new();
-
-    // First call with simple-retail.
-    run_complete_setup(
-        &tb,
-        "simple-retail",
-        &["cash-payment", "barcode-scanning", "receipt-printing"],
-    )
-    .await
-    .unwrap();
-
-    // Second call overwrites with restaurant (pruning handles cleanup).
-    run_complete_setup(
-        &tb,
-        "restaurant",
-        &[
-            "restaurant",
-            "cash-payment",
-            "kitchen-display",
-            "table-management",
-            "staff-login",
-        ],
-    )
-    .await
-    .unwrap();
-
-    let ctx = tb.ctx();
-    let db = ctx.lock_global().await;
-
-    // Preset was overwritten.
-    let preset = Settings::get(&db, kasirmu_core::settings::keys::STORE_PRESET)
-        .unwrap()
-        .unwrap();
-    assert_eq!(preset, "restaurant");
-
-    // Features should be from restaurant, not simple-retail.
-    let store = Store::new(&db);
-    let loaded = store.load_features().unwrap();
-    assert!(loaded.is_enabled(kasirmu_core::Feature::Restaurant));
-    assert!(!loaded.is_enabled(kasirmu_core::Feature::SimpleRetail));
-}
-
-#[test]
-fn complete_setup_args_deserialize() {
-    let json = r##"{"preset":"simple-retail","features":["cash-payment","receipt-printing"]}"##;
-    let args: CompleteSetupArgs = serde_json::from_str(json).unwrap();
-    assert_eq!(args.preset, "simple-retail");
-    assert_eq!(args.features.len(), 2);
-}
-
-#[test]
-fn complete_setup_args_debug() {
-    let args = CompleteSetupArgs {
-        preset: "custom".into(),
-        features: vec![],
-        default_currency: "IDR".into(),
-    };
-    let d = format!("{args:?}");
-    assert!(d.contains("custom"));
-}
-
-#[test]
-fn setup_status_serialize() {
-    let status = SetupStatus {
-        completed: true,
-        preset: Some("restaurant".into()),
-    };
-    let json = serde_json::to_value(&status).unwrap();
-    assert_eq!(json["completed"], true);
-    assert_eq!(json["preset"], "restaurant");
-}
-
-#[test]
-fn setup_status_serialize_not_completed() {
-    let status = SetupStatus {
-        completed: false,
-        preset: None,
-    };
-    let json = serde_json::to_value(&status).unwrap();
-    assert_eq!(json["completed"], false);
-    assert!(json["preset"].is_null());
-}
-
-#[test]
-fn setup_status_debug() {
-    let status = SetupStatus {
-        completed: false,
-        preset: None,
-    };
-    let d = format!("{status:?}");
-    assert!(d.contains("false"));
-}
-
-#[test]
-fn enabled_features_result_serialize() {
-    let result = EnabledFeaturesResult {
-        features: vec!["cash-payment".into(), "barcode-scanning".into()],
-    };
-    let json = serde_json::to_value(&result).unwrap();
-    let arr = json["features"].as_array().unwrap();
-    assert_eq!(arr.len(), 2);
-}
-
-#[test]
-fn enabled_features_result_debug() {
-    let result = EnabledFeaturesResult {
-        features: vec!["tax-engine".into()],
-    };
-    let d = format!("{result:?}");
-    assert!(d.contains("tax-engine"));
-}
-
-#[tokio::test]
-async fn complete_setup_persists_all_settings() {
-    let tb = TestBridge::new();
-
-    run_complete_setup(&tb, "simple-retail", &["cash-payment", "receipt-printing"])
-        .await
-        .unwrap();
-
-    let ctx = tb.ctx();
-    let db = ctx.lock_global().await;
-
-    // Verify DB state directly.
-    let complete = Settings::get(&db, kasirmu_core::settings::keys::SETUP_COMPLETE)
-        .unwrap()
-        .unwrap();
-    assert_eq!(complete, "1");
-
-    let preset = Settings::get(&db, kasirmu_core::settings::keys::STORE_PRESET)
-        .unwrap()
-        .unwrap();
-    assert_eq!(preset, "simple-retail");
-
-    // Feature flags.
-    let cash = Settings::get(&db, "feature.cash-payment").unwrap().unwrap();
-    assert_eq!(cash, "1");
-    let receipt = Settings::get(&db, "feature.receipt-printing")
-        .unwrap()
-        .unwrap();
-    assert_eq!(receipt, "1");
-
-    // Unknown feature should NOT be present.
-    assert_eq!(Settings::get(&db, "feature.card-payment").unwrap(), None);
-}
-
-#[tokio::test]
-async fn complete_setup_without_transaction_leaves_partial_state() {
-    let tb = TestBridge::new();
-
-    // Run a successful setup first.
-    run_complete_setup(&tb, "simple-retail", &["cash-payment"])
-        .await
-        .unwrap();
-
-    let ctx = tb.ctx();
-    let db = ctx.lock_global().await;
-
-    // Write feature rows, preset (but NOT setup_complete) outside a
-    // transaction, simulating a crash halfway through.
     {
-        let mut registry = FeatureRegistry::new();
-        registry.enable(kasirmu_core::Feature::CardPayment);
-
-        let store = Store::new(&db);
-        store.save_features(&registry).unwrap();
-        Settings::prune_stale_features(&db, &registry).unwrap();
-        Settings::set(&db, kasirmu_core::settings::keys::STORE_PRESET, "broken").unwrap();
-        // Crashing here — setup_complete is NOT written.
-    }
-
-    // setup_complete is still "1" from the first call because the
-    // second attempt crashed before writing it.
-    let complete = Settings::get(&db, kasirmu_core::settings::keys::SETUP_COMPLETE)
-        .unwrap()
-        .unwrap();
-    assert_eq!(complete, "1");
-
-    // preset was written (outside a transaction, so visible despite crash).
-    let preset = Settings::get(&db, kasirmu_core::settings::keys::STORE_PRESET)
-        .unwrap()
-        .unwrap();
-    assert_eq!(preset, "broken");
-}
-
-#[tokio::test]
-async fn complete_setup_twice_preserves_latest() {
-    let tb = TestBridge::new();
-
-    // Run setup twice with different presets.
-    run_complete_setup(&tb, "first", &["cash-payment", "barcode-scanning"])
-        .await
-        .unwrap();
-
-    run_complete_setup(
-        &tb,
-        "second",
-        &["restaurant", "cash-payment", "kitchen-display"],
-    )
-    .await
-    .unwrap();
-
-    let ctx = tb.ctx();
-    let db = ctx.lock_global().await;
-
-    // Second setup's results are in effect.
-    let preset = Settings::get(&db, kasirmu_core::settings::keys::STORE_PRESET)
-        .unwrap()
-        .unwrap();
-    assert_eq!(preset, "second");
-
-    let store = Store::new(&db);
-    let loaded = store.load_features().unwrap();
-    assert!(loaded.is_enabled(kasirmu_core::Feature::Restaurant));
-    assert!(loaded.is_enabled(kasirmu_core::Feature::KitchenDisplay));
-    assert!(!loaded.is_enabled(kasirmu_core::Feature::BarcodeScanning));
-    assert!(!loaded.is_enabled(kasirmu_core::Feature::SimpleRetail));
-}
-
-// ── show_setup_wizard tests ─────────────────────────────────────
-
-#[test]
-fn show_setup_wizard_defaults_to_true() {
-    let conn = fresh_conn();
-    // No setup ran → key should be absent (defaults to true/show).
-    let val = Settings::get(&conn, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD).unwrap();
-    assert_eq!(val, None, "absent means show wizard");
-}
-
-#[tokio::test]
-async fn show_setup_wizard_is_false_after_complete_setup() {
-    let tb = TestBridge::new();
-
-    run_complete_setup(&tb, "restaurant", &["cash-payment"])
-        .await
-        .unwrap();
-
-    let ctx = tb.ctx();
-    let db = ctx.lock_global().await;
-    let val = Settings::get(&db, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD)
-        .unwrap()
-        .unwrap();
-    assert_eq!(val, "false");
-}
-
-#[tokio::test]
-async fn show_setup_wizard_is_false_after_dismiss() {
-    let tb = TestBridge::new();
-
-    dismiss_setup_wizard(&tb.ctx()).await.unwrap();
-
-    let ctx = tb.ctx();
-    let db = ctx.lock_global().await;
-    let val = Settings::get(&db, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD)
-        .unwrap()
-        .unwrap();
-    assert_eq!(val, "false");
-}
-
-#[tokio::test]
-async fn get_setup_status_returns_completed_when_wizard_dismissed() {
-    let tb = TestBridge::new();
-
-    dismiss_setup_wizard(&tb.ctx()).await.unwrap();
-
-    let raw = {
         let ctx = tb.ctx();
         let db = ctx.lock_global().await;
-        Settings::get(&db, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD)
-            .unwrap()
-            .unwrap()
-    };
-    assert_eq!(raw, "false");
+        Settings::set(
+            &db,
+            kasirmu_core::settings::keys::SHOW_SETUP_WIZARD,
+            "false",
+        )
+        .unwrap();
+        Settings::set(&db, kasirmu_core::settings::keys::SETUP_COMPLETE, "1").unwrap();
+    }
 
-    let status = get_setup_status(&tb.ctx()).await.unwrap();
-    assert!(status.completed);
+    let state = get_first_run_state(&tb.ctx(), "dev-1").await.unwrap();
+    assert!(
+        matches!(state, FirstRunStateDto::Unprovisioned),
+        "ADR #56 §2.1: the row is the gate, so no legacy key may forge a provisioned terminal"
+    );
 }
 
 #[tokio::test]
-async fn get_setup_status_returns_not_completed_when_key_absent() {
-    let tb = TestBridge::new();
+async fn a_provisioning_row_is_what_makes_a_terminal_provisioned() {
+    // The positive leg, and the only one that can produce `Provisioned`: the
+    // gate reads a real row through the same accessor the shell's command uses.
+    let conn = fresh_conn();
+    seed_refs(&conn);
+    let store = Store::new(&conn);
+    store
+        .provision_terminal(&kasirmu_core::db::provisioning::ProvisioningRecord {
+            terminal_id: "dev-1".into(),
+            tenant_id: None,
+            location_id: Some("loc-1".into()),
+            owner_user_id: Some("user-1".into()),
+            device_id: None,
+            mode: kasirmu_core::db::provisioning::ProvisioningMode::Local,
+            home_region: "global".into(),
+            provisioned_at: String::new(),
+        })
+        .unwrap();
 
-    let status = get_setup_status(&tb.ctx()).await.unwrap();
-    assert!(!status.completed, "absent key means not completed");
+    let tb = TestBridge::new().with_conn(conn);
+    let state = get_first_run_state(&tb.ctx(), "dev-1").await.unwrap();
+    match state {
+        FirstRunStateDto::Provisioned {
+            location_id,
+            owner_user_id,
+            mode,
+            home_region,
+            tenant_id,
+        } => {
+            assert_eq!(location_id.as_deref(), Some("loc-1"));
+            assert_eq!(owner_user_id.as_deref(), Some("user-1"));
+            assert_eq!(mode, "local");
+            assert_eq!(home_region, "global");
+            assert_eq!(tenant_id, None);
+        }
+        FirstRunStateDto::Unprovisioned => panic!("a stored row must read as provisioned"),
+    }
 }
 
-// ── Token rejection test ──────────────────────────────
+#[tokio::test]
+async fn the_gate_is_keyed_per_terminal() {
+    // §5 Q4: a tablet can be replaced independently of the store, so the
+    // question is per-device. Provisioning one must not answer for its
+    // neighbour — the failure this prevents is a second terminal silently
+    // inheriting the first one's setup.
+    let conn = fresh_conn();
+    seed_refs(&conn);
+    Store::new(&conn)
+        .provision_terminal(&kasirmu_core::db::provisioning::ProvisioningRecord {
+            terminal_id: "dev-1".into(),
+            tenant_id: None,
+            location_id: Some("loc-1".into()),
+            owner_user_id: None,
+            device_id: None,
+            mode: kasirmu_core::db::provisioning::ProvisioningMode::Local,
+            home_region: "global".into(),
+            provisioned_at: String::new(),
+        })
+        .unwrap();
 
-#[test]
-fn setup_scoped_rejects_invalid_token() {
-    let tb = TestBridge::new();
-    let ctx = tb.ctx();
-    let result = ctx.resolve_session("nonexistent-token");
-    assert!(matches!(result, Err(BridgeError::InvalidSession)));
+    let tb = TestBridge::new().with_conn(conn);
+    assert!(matches!(
+        get_first_run_state(&tb.ctx(), "dev-1").await.unwrap(),
+        FirstRunStateDto::Provisioned { .. }
+    ));
+    assert!(matches!(
+        get_first_run_state(&tb.ctx(), "dev-2").await.unwrap(),
+        FirstRunStateDto::Unprovisioned
+    ));
+}
+
+// ── Enabled features (unchanged surface) ────────────────────────────
+
+#[tokio::test]
+async fn enabled_features_reads_the_feature_registry() {
+    let conn = fresh_conn();
+    let tb = TestBridge::new().with_conn(conn);
+    // A fresh store has no enabled features; the read must answer, not fail.
+    let result = get_enabled_features(&tb.ctx()).await.unwrap();
+    assert!(result.features.is_empty());
 }

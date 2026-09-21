@@ -118,7 +118,16 @@ mod debt;
 /// carried on the debt ledger deliberately, not by omission. The net debt movement is +2
 /// (two rows in, two rows out); the ceiling rise below records what landed and does not
 /// approve it.
-const REGISTERED_FLOOR: usize = 335;
+///
+/// The ADR #56 §2.2 retirement step (335 -> 334) is the FIRST time this floor has
+/// moved DOWN, and it moved for the reason the ratchet exists to make visible:
+/// the ledger showed `complete_setup` and `dismiss_setup_wizard` as DEBT that
+/// nothing could ever gate, because both wrote the two booleans §2.1 retires.
+/// Deleting them is how the debt is PAID rather than excused, so the floor
+/// shrinks by one — `get_first_run_state` and `provision_device` replaced them
+/// two-for-two on the surface, and one of the three retired doors
+/// (`get_setup_status`) had no successor at all.
+const REGISTERED_FLOOR: usize = 334;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.

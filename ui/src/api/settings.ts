@@ -145,14 +145,7 @@ export const getHardwareSettingsScoped = (sessionToken: string): Promise<Hardwar
 export const setHardwareSettingsScoped = (sessionToken: string, args: HardwareSettingsDto): Promise<void> =>
   loggedInvoke<void>('set_hardware_settings_scoped', { sessionToken, args });
 
-// ── Setup Wizard ─────────────────────────────────────────────────
-
-/** Arguments for completing the initial setup wizard. */
-export interface CompleteSetupArgs {
-  preset: string;
-  features: string[];
-  default_currency?: string;
-}
+// ── First-run provisioning ───────────────────────────────────────
 
 /** Which onboarding tier produced this terminal (ADR #56 §2.4). */
 export type ProvisioningMode = 'local' | 'linked';
@@ -207,9 +200,9 @@ export interface ProvisionDeviceResult {
   home_region: string;
 }
 
-/** Complete the initial setup wizard with a preset and enabled features. */
-export const completeSetup = (args: CompleteSetupArgs): Promise<void> =>
-  loggedInvoke<void>('complete_setup', { args });
+// `completeSetup` / `CompleteSetupArgs` were REMOVED with the command itself
+// (ADR #56 §2.2/§2.3): it wrote the two booleans §2.1 retires, and nothing
+// called it once both shells' first-run path became `provisionDevice`.
 
 /**
  * Read this terminal's first-run state (ADR #56 §2.1).

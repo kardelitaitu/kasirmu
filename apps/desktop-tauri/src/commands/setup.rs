@@ -16,7 +16,7 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use kasirmu_bridge::setup::{CompleteSetupArgs, EnabledFeaturesResult, SetupStatus};
+pub use kasirmu_bridge::setup::{EnabledFeaturesResult};
 
 // ── Commands ─────────────────────────────────────────────────────────
 
@@ -34,22 +34,11 @@ pub async fn get_enabled_features(
         .map_err(Into::into)
 }
 
-/// Persist the chosen preset and features, then mark setup as complete.
-///
-/// Called by the front-end when the user clicks "Complete Setup" on
-/// the last step of the wizard.
-#[tauri::command]
-pub async fn complete_setup(
-    state: State<'_, AppState>,
-    args: CompleteSetupArgs,
-) -> Result<(), AppError> {
-    let ctx = state.bridge_ctx();
-    kasirmu_bridge::setup::complete_setup(&ctx, args)
-        .await
-        .map_err(Into::into)
-}
-
 // ── Retired by ADR #56 §2.2 ──────────────────────────────────────────
+//
+// `complete_setup` was REMOVED here with its bridge twin. It wrote the two
+// booleans §2.1 retires (`SETUP_COMPLETE`, `SHOW_SETUP_WIZARD`), and nothing
+// called it once the first-run path became `provision_device` (§2.3).
 //
 // `get_setup_status` and `dismiss_setup_wizard` were REMOVED here. Both
 // existed to serve the three booleans §2.1 retires: the dismissal key a

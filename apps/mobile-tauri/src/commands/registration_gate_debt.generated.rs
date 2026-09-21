@@ -98,7 +98,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("settings::gateway_status", "no_session_resolution"),
     ("settings::set_setting", "no_session_resolution"),
     ("setup::get_enabled_features", "no_session_resolution"),
-    ("setup::complete_setup", "no_session_resolution"),
     ("setup::get_first_run_state", "no_session_resolution"),
     ("setup::provision_device", "no_session_resolution"),
     ("desktop_link::link_device_google", "no_session_resolution"),
@@ -257,7 +256,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// (Re-read 20-09-26: 324, and the floor was raised to it in the same pass as the
 /// ceilings below. The generator writing this number does not move the floor, so the
 /// two are only ever equal in a pass that touches both files.)
-pub const REGISTERED_TOTAL: usize = 335;
+pub const REGISTERED_TOTAL: usize = 334;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///
