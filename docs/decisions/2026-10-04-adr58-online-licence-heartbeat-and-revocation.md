@@ -458,9 +458,14 @@ twice.
 **IMPLEMENTED for transport — but by the UI, not by a guard, and only incidentally
 (corrected 2026-10-04; see §1.3a; anchors re-measured 2026-10-04, audit pass 2).** The old citation
 of a bridge cache-write warn pointed at a local-database write after a *successful* response; the
-Rust path returns `Err` on transport failure (`license.rs:519-521`). What actually keeps a till
-open is `LicenseSettings.tsx:162-171` having no lock branch. **Treatment as a pinned, tested rule is TO BUILD** — the distinction is behavioural and
-must be tested, not merely inherited from an error handler's omission:
+Rust path returns `Err` on transport failure (`crates/kasirmu-bridge/src/license.rs:530-532`).
+What actually keeps a till open is `ui/src/features/settings/LicenseSettings.tsx:206-215` having no
+lock branch. **Treatment as a pinned, tested rule is TO BUILD** — the distinction is behavioural
+and must be tested, not merely inherited from an error handler's omission. *(Re-verified
+2026-09-22: no such test exists — a search for a rejecting-HTTP-client fail-open test across
+`crates/kasirmu-core/src/license_verification_tests.rs` and
+`crates/kasirmu-bridge/src/license_tests.rs` returns nothing, so this marker is accurate rather
+than stale.):*
 
 | Server response | Client behaviour |
 |---|---|
@@ -1000,8 +1005,12 @@ records must be implemented together or a field will be added twice.
 >   Redis-backed cache keyed by an ETag version. A verdict placed there would be served **stale for
 >   the cache's whole lifetime**, or would have to bust the ETag on every heartbeat — turning a bulk
 >   data cache into a per-request recompute.
-> - The cloud server holds **no licence knowledge at all**. Its only subscription references are
->   Stripe *plan* updates in `webhooks.rs`; it cannot author a revocation verdict regardless.
+> - The cloud server holds **no licence-VERDICT knowledge**, which is the claim this argument
+>   needs. It *does* own plan rows and plan gating — the `tenant_plans` table and
+>   `OZ_ENFORCE_PLANS` (`apps/cloud-server/src/config.rs:71,189`) — so "no licence knowledge at all"
+>   overstated it. What it cannot do is **author a revocation verdict**, because the signed
+>   subscription and every licence verdict are minted by the licence server. *(Corrected
+>   2026-09-22.)*
 >
 > No new field is needed anywhere. `LicenseStatusResponse`
 > (`crates/kasirmu-core/src/license_verification.rs`) **already carries** `status`,
@@ -1175,7 +1184,9 @@ routed an import through the ungated body would turn a data-hostage remedy into 
 so the absence is pinned rather than commented.
 
 **Verification run:** `cargo test -p kasirmu-bridge --lib` → **1344 passed, 0 failed**;
-the desktop registration ratchet → **14/14**.
+the desktop registration ratchet → **14/14**
+(`apps/desktop-tauri/src/commands/registration_gate_tests.rs`; re-counted 2026-09-22 — 14 `#[test]`
+functions, so the figure is a named test file's count, not a repo-wide debt total).
 
 ### Q-B — Does the background Settings poll survive §2.3, and who gates it? `[blocking]` — DECIDED
 
