@@ -64,6 +64,25 @@ fn malformed_override_falls_through_to_the_next_tier() {
     assert_eq!(resolved.source, OriginSource::Pinned);
 }
 
+/// The documented contract, made executable: the ladder moves on a reachability
+/// fault, never on an answer. 429 and the credential verdicts must NOT advance —
+/// the license server throttles per IP, so retrying a throttle against the second
+/// name spends a second token from the same bucket for nothing.
+#[test]
+fn the_ladder_advances_only_on_a_reachability_fault() {
+    for status in [403_u16, 404, 421, 500, 502, 503, 504] {
+        assert!(advances_ladder(status), "HTTP {status} must advance");
+    }
+    for status in [400_u16, 401, 409, 429] {
+        assert!(!advances_ladder(status), "HTTP {status} must NOT advance");
+    }
+    // 429 is the measured tablet failure; keep it named even if the loop changes.
+    assert!(
+        !advances_ladder(429),
+        "throttling is an answer, not a fault"
+    );
+}
+
 #[test]
 fn release_ladder_is_main_then_fallback() {
     assert_eq!(

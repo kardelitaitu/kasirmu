@@ -78,6 +78,11 @@ implementation-status walkthrough.
 | 51 | [Sealed Settings Ingest Policy — One Funnel for Every Untrusted Settings Lane](./2026-09-11-adr51-sealed-settings-ingest-policy.md) | Accepted (2026-09-11) |
 | 52 | [Tracked Settings Funnel Refuses Cleartext Credentials](./2026-09-12-adr52-tracked-settings-funnel-refuses-cleartext-credentials.md) | Accepted (2026-09-12) |
 | 54 | [Google Sign-In — web sign-in/sign-up and desktop setup-wizard account linking](./2026-09-19-adr54-google-sign-in.md) | Proposed (2026-09-19) — nothing implemented |
+| 55 | [One Server Origin — the compiled list, the fallback pair and the allowlists that must agree with it](./2026-09-19-adr55-server-origin-model.md) | Accepted (2026-09-19) |
+| 56 | [First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the multi-boolean boot gate](./2026-10-04-adr56-first-run-provisioning.md) | Proposed (2026-10-04) — nothing implemented |
+| 57 | [Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection](./2026-10-04-adr57-client-tamper-resistance.md) | Proposed (2026-10-04) — part implemented, part to build |
+| 58 | [Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State](./2026-10-04-adr58-online-licence-heartbeat-and-revocation.md) | Proposed (2026-10-04) — mechanism largely implemented, one state to add |
+| 59 | [Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and the built-vs-module seam](./2026-10-04-adr59-regional-topology-and-modular-delivery.md) | Proposed (2026-10-04) — nothing implemented |
 
 ## Research notes
 

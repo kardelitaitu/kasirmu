@@ -135,6 +135,10 @@ function main() {
   console.log(`${BOLD}${CYAN}  OZ-POS — UI Validation Gates${NC}`);
   console.log(`${BOLD}${CYAN}═══════════════════════════════════════${NC}\n`);
 
+  // ── 0. Data-testid compliance ─────────────────────────────────────────
+  // R1 kebab-case + R2 no cross-file duplicate selector (scripts/check-testid.mjs).
+  gate('Data-testid compliance', 'npm run testid:check');
+
   // ── 1. Lint ────────────────────────────────────────────────────────────
   gate('ESLint', 'npm run lint');
 

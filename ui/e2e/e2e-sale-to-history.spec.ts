@@ -9,7 +9,7 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
  *
  * CSS contract:
  *   .retail-product-btn           — product card in grid
- *   [data-testid="cart-panel-line-item"] — cart line
+ *   [data-testid="retail-cart-line-item"] — cart line
  *   .retail-cart-action-btn--pay  — Pay button (Store POS / RetailCartPanel)
  *   [data-testid="payment-modal"] — payment modal
  *   [data-testid="quick-pay-button"] — quick tender button
@@ -45,7 +45,7 @@ test.describe('Critical Path: Sale → Sales History', () => {
     await page.waitForTimeout(500);
 
     // Verify cart has 1 line item.
-    const cartLines = page.locator('[data-testid="cart-panel-line-item"]');
+    const cartLines = page.locator('[data-testid="retail-cart-line-item"]');
     await expect(cartLines.first()).toBeVisible({ timeout: 5_000 });
     expect(await cartLines.count()).toBe(1);
 
@@ -111,7 +111,7 @@ test.describe('Critical Path: Sale → Sales History', () => {
 
     // ── Step 6: Verify cart is empty (sale completed) ───────────────
     // After a successful sale the cart should have zero line items.
-    await expect(page.locator('[data-testid="cart-panel-line-item"]')).toHaveCount(0, { timeout: 5_000 });
+    await expect(page.locator('[data-testid="retail-cart-line-item"]')).toHaveCount(0, { timeout: 5_000 });
 
     // ── Step 7: Navigate to Sales History ───────────────────────────
     // In store-pos workspace, sales history is a sub-view. Press F6 or

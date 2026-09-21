@@ -10,10 +10,14 @@
  * `@webview_devtools_remote_<pid>` socket and this script attaches to it over
  * `adb forward`, then speaks Chrome DevTools Protocol to it.
  *
- * That makes two things possible that nothing else in this repo can do:
+ * That makes four things possible that nothing else in this repo can do:
  * `Page.captureScreenshot` renders the page even while the tablet shows its
  * lockscreen, and `Runtime.evaluate` reads the live DOM and its computed
- * styles — so a layout claim can be measured instead of inferred.
+ * styles — so a layout claim can be measured instead of inferred. On top of
+ * that, elements can be addressed by their `data-testid` instead of guessed
+ * pixel coordinates: an agent enumerates what is addressable, then taps or
+ * waits on a named element. That turns the WebView into something a script can
+ * act on without knowing the device's screen geometry.
  *
  * Commands (from the repo root):
  *
@@ -23,6 +27,9 @@
  *   node scripts/android-cdp.mjs screenshot .tmp-android-audit/page.png
  *   node scripts/android-cdp.mjs console --seconds 10
  *   node scripts/android-cdp.mjs tap 960 600
+ *   node scripts/android-cdp.mjs elements [--filter <substr>]
+ *   node scripts/android-cdp.mjs tap-testid <testid>
+ *   node scripts/android-cdp.mjs wait-testid <testid> [--timeout <ms>]
  *
  * Requires: the debug APK installed and running, and `adb` on PATH. Exit code
  * is 1 when the device, the socket or the command fails, so it can gate a
@@ -245,10 +252,126 @@ function show(value) {
   else console.log(JSON.stringify(value, null, 2));
 }
 
+/**
+ * Enumerate every element carrying a [data-testid] in the live page.
+ * Returns only elements with a non-zero rect — display:none / zero-size nodes
+ * are skipped, because a caller can only tap or wait on a painted box — and
+ * how many were skipped, so an agent sees the addressable surface in full.
+ * @param {string} [filter] optional substring matched against the testid.
+ * @returns {Promise<{elements: Array<{testid:string,tag:string,text:string,rect:{x:number,y:number,width:number,height:number}}>, skipped:number}>}
+ */
+async function listElements(filter) {
+  // Build the in-page expression once, interpolating the filter as JSON so an
+  // argv value can never break out of the expression (string-injection guard).
+  const expression = `(function () {
+    const out = [];
+    let skipped = 0;
+    const filter = ${JSON.stringify(filter)};
+    for (const el of document.querySelectorAll('[data-testid]')) {
+      const testid = el.getAttribute('data-testid');
+      if (filter && !testid.includes(filter)) continue;
+      const r = el.getBoundingClientRect();
+      const rect = { x: r.x, y: r.y, width: r.width, height: r.height };
+      if (rect.width === 0 || rect.height === 0) { skipped++; continue; }
+      out.push({
+        testid,
+        tag: el.tagName.toLowerCase(),
+        text: (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40),
+        rect,
+      });
+    }
+    return { elements: out, skipped };
+  })()`;
+  return evaluate(expression);
+}
+
+/**
+ * Resolve an element by its data-testid and tap its rect centre.
+ * The element is scrolled into view and the rect re-read, because a rect
+ * measured before a scroll is stale. The tap itself goes through the existing
+ * tap() so the behaviour is identical to the coordinate command — a tap at the
+ * rect centre, in device-independent CSS pixels.
+ * @param {string} testid
+ */
+async function tapTestid(testid) {
+  // JSON.stringify guards the testid so it cannot break out of the expression.
+  // The viewport is read INSIDE the IIFE (page scope, where `window` is valid)
+  // and returned alongside the rect — the bounds check below runs in Node and
+  // must never touch a page global, or it dies with "window is not defined".
+  const resolved = await evaluate(`(function () {
+    const el = document.querySelector('[data-testid=' + ${JSON.stringify(testid)} + ']');
+    if (!el) {
+      const all = Array.from(document.querySelectorAll('[data-testid]')).map((e) => e.getAttribute('data-testid'));
+      return { missing: true, nearest: all };
+    }
+    el.scrollIntoView({ block: 'center' });
+    const r = el.getBoundingClientRect();
+    return {
+      missing: false,
+      rect: { x: r.x, y: r.y, width: r.width, height: r.height },
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    };
+  })()`);
+  if (resolved.missing) {
+    const nearest = (resolved.nearest || []).slice(0, 8);
+    throw new Error(
+      `no element with data-testid=${JSON.stringify(testid)}` +
+        (nearest.length ? ` — nearest: ${nearest.join(', ')}` : ""),
+    );
+  }
+  const rect = resolved.rect;
+  // A zero-size rect means the element is hidden — tapping (0,0) would hit
+  // whatever sits at the origin, so refuse instead of guessing.
+  if (rect.width === 0 || rect.height === 0) {
+    throw new Error(`element data-testid=${JSON.stringify(testid)} has a zero-size rect (hidden?) — refusing to tap (0,0)`);
+  }
+  const cx = rect.x + rect.width / 2;
+  const cy = rect.y + rect.height / 2;
+  // Compare against the viewport read in-page; never reference `window` here.
+  if (cx < 0 || cy < 0 || cx > resolved.viewport.width || cy > resolved.viewport.height) {
+    throw new Error(`element data-testid=${JSON.stringify(testid)} is off-screen at (${cx},${cy}) after scrollIntoView`);
+  }
+  return tap(cx, cy);
+}
+
+/**
+ * Poll in-page until the element exists and has a non-zero rect.
+ * This is what makes the read-measure-act loop reliable on a UI that mounts
+ * asynchronously — without it every caller writes its own retry.
+ * @param {string} testid
+ * @param {number} [timeoutMs] poll budget in ms (default 5000).
+ */
+async function waitTestid(testid, timeoutMs = 5000) {
+  // JSON.stringify guards the testid; timeoutMs is a plain number emitted into
+  // the expression. The promise is returned to evaluate(), which awaits it
+  // (awaitPromise: true), so the CDP timeout still bounds a hung renderer.
+  const expression = `(function () {
+    const target = ${JSON.stringify(testid)};
+    const budget = ${Number(timeoutMs) || 5000};
+    const start = Date.now();
+    return new Promise((resolve) => {
+      (function check() {
+        const el = document.querySelector('[data-testid=' + target + ']');
+        if (el) {
+          const r = el.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0) { resolve({ found: true }); return; }
+        }
+        if (Date.now() - start >= budget) { resolve({ found: false }); return; }
+        requestAnimationFrame(check);
+      })();
+    });
+  })()`;
+  const result = await evaluate(expression);
+  if (!result.found) {
+    throw new Error(`timed out after ${timeoutMs}ms waiting for data-testid=${JSON.stringify(testid)}`);
+  }
+  return { found: testid };
+}
+
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
   if (!command) {
-    throw new Error("usage: android-cdp.mjs targets|eval|screenshot|console|tap");
+    throw new Error("usage: android-cdp.mjs targets|eval|screenshot|console|tap|elements|tap-testid|wait-testid");
   }
   const pid = prepareForward();
 
@@ -277,6 +400,21 @@ async function main() {
     case "tap":
       show(await tap(Number(rest[0]), Number(rest[1])));
       break;
+    case "elements": {
+      const filterIdx = rest.indexOf("--filter");
+      const filter = filterIdx >= 0 ? rest[filterIdx + 1] : undefined;
+      show(await listElements(filter));
+      break;
+    }
+    case "tap-testid":
+      show(await tapTestid(rest[0]));
+      break;
+    case "wait-testid": {
+      const timeoutIdx = rest.indexOf("--timeout");
+      const timeout = timeoutIdx >= 0 ? Number(rest[timeoutIdx + 1]) : 5000;
+      show(await waitTestid(rest[0], timeout));
+      break;
+    }
     default:
       throw new Error(`unknown command: ${command}`);
   }

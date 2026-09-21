@@ -13,7 +13,7 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
  *   .retail-cart-action-btn--pay  — Pay button
  *   .retail-fn-bar            — Function key bar (F1-F6)
  *   .retail-fn-key            — Individual function key labels
- *   [data-testid="cart-panel-line-item"] — Cart line item
+ *   [data-testid="retail-cart-line-item"] — Cart line item
  *   [data-testid="payment-modal"] — Payment modal
  */
 
@@ -82,7 +82,7 @@ test.describe('POS Workflows', () => {
     await productCards.first().click();
 
     // Cart must have a line item.
-    await expect(page.locator('[data-testid="cart-panel-line-item"]').first()).toBeVisible({ timeout: 3_000 });
+    await expect(page.locator('[data-testid="retail-cart-line-item"]').first()).toBeVisible({ timeout: 3_000 });
 
     // Click the void/clear button — this opens the Clear Cart confirm
     // dialog (retail-clear-overlay) instead of clearing immediately.
@@ -96,7 +96,7 @@ test.describe('POS Workflows', () => {
     await confirmClear.click();
 
     // Cart must be empty (auto-wait handles timing).
-    await expect(page.locator('[data-testid="cart-panel-line-item"]')).toHaveCount(0, { timeout: 3_000 });
+    await expect(page.locator('[data-testid="retail-cart-line-item"]')).toHaveCount(0, { timeout: 3_000 });
 
     // The action bar (incl. Pay) is not rendered once the cart is empty.
     await expect(page.locator('.retail-cart-empty')).toBeVisible({ timeout: 3_000 });

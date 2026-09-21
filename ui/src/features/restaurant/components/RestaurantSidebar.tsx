@@ -344,7 +344,7 @@ export function RestaurantSidebar({
                 <span>Deducting: {cartActions.deductionLocationName}</span>
               </Localized>
               {cartActions.deductionOverridden && (
-                <span className="restaurant-sidebar-override" data-testid="deduction-override-indicator">
+                <span className="restaurant-sidebar-override" data-testid="restaurant-sidebar-deduction-override">
                   {' '}(Override)
                 </span>
               )}

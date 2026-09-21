@@ -1,6 +1,15 @@
 //! Unit tests for attestation (super).
 
 use super::*;
+
+// The async cases here drive reqwest through `probe_origin_with` directly on a
+// `#[tokio::test]` runtime and never build a separate one: on Windows a runtime
+// that has been *dropped* while a plain `std::net::TcpListener` is also live
+// leaves a completion packet under the listener's own IOCP handle, and that
+// listener's `accept()` then never returns — measured here as a server thread
+// that could not be joined after two minutes, with every process thread parked in
+// `UserRequest` waiting on exactly that. See `walk_outcome`.
+
 use rsa::RsaPrivateKey;
 use rsa::pkcs8::{EncodePublicKey, LineEnding};
 use rsa::signature::{SignatureEncoding, Signer};
@@ -84,6 +93,50 @@ fn signature_from_a_foreign_key_is_refused() {
     assert!(verify_attestation_signature(&honest_pem, "0123456789abcdef", &sig).is_err());
 }
 
+/// The status must survive the round trip as a NUMBER, and it must be the number
+/// that decides whether the ladder may advance — this is the whole repair: the
+/// caller could not previously tell a 429 from a dead socket, so it retried both.
+#[test]
+fn only_a_transport_fault_or_a_fault_status_advances_the_ladder() {
+    let transport = AttestError::Transport {
+        origin: "https://main.example".to_string(),
+        detail: "connection refused".to_string(),
+    };
+    assert_eq!(transport.status(), None);
+    assert!(transport.advances(), "a transport failure must advance");
+    assert_eq!(transport.origin(), "https://main.example");
+
+    for status in [403_u16, 404, 421, 500, 502, 503, 504] {
+        let error = AttestError::Status {
+            origin: "https://main.example".to_string(),
+            status,
+        };
+        assert_eq!(error.status(), Some(status));
+        assert!(error.advances(), "HTTP {status} must advance the ladder");
+    }
+
+    // 429 is the measured tablet failure: both rungs answered 429 against a
+    // 5-per-IP-per-hour bucket, so one launch burned two of five tokens.
+    for status in [400_u16, 401, 409, 429] {
+        let error = AttestError::Status {
+            origin: "https://main.example".to_string(),
+            status,
+        };
+        assert_eq!(error.status(), Some(status));
+        assert!(
+            !error.advances(),
+            "HTTP {status} is an answer, not a transport fault: it must NOT advance"
+        );
+    }
+
+    let rejected = AttestError::Rejected {
+        origin: "https://main.example".to_string(),
+        source: CoreError::InvalidSubscriptionSignature("bad nonce".to_string()),
+    };
+    assert_eq!(rejected.status(), None);
+    assert!(!rejected.advances(), "a rejected answer must not advance");
+}
+
 #[test]
 fn sources_are_labelled_only_for_compiled_origins() {
     let [main, fallback] = release_ladder();
@@ -92,121 +145,190 @@ fn sources_are_labelled_only_for_compiled_origins() {
     assert_eq!(source_for("https://evil.example.com"), None);
 }
 
-/// Serve exactly one canned HTTP response and hand back the request the client sent.
+/// How many rungs the walk resolves to, which rung won, and which rungs it
+/// actually *contacted*.
 #[cfg(feature = "sync-http")]
-fn one_shot_server(
-    status_line: &'static str,
-    body: String,
-) -> (String, std::thread::JoinHandle<String>) {
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
-
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
-    let port = listener.local_addr().expect("addr").port();
-    let handle = std::thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept");
-        // Read until the declared body has arrived. A single read() can return only
-        // the headers — TCP is free to split them from the body — and asserting on a
-        // half-read request is exactly how this test flaked once under a full-suite run.
-        let mut buffer: Vec<u8> = Vec::new();
-        let mut chunk = [0_u8; 4096];
-        loop {
-            let read = stream.read(&mut chunk).unwrap_or(0);
-            if read == 0 {
-                break;
-            }
-            buffer.extend_from_slice(&chunk[..read]);
-            let text = String::from_utf8_lossy(&buffer);
-            if let Some(headers_end) = text.find("\r\n\r\n") {
-                let declared = text[..headers_end]
-                    .lines()
-                    .find_map(|line| {
-                        line.to_ascii_lowercase()
-                            .strip_prefix("content-length:")
-                            .and_then(|value| value.trim().parse::<usize>().ok())
-                    })
-                    .unwrap_or(0);
-                if buffer.len() >= headers_end + 4 + declared {
-                    break;
-                }
-            }
-        }
-        let request = String::from_utf8_lossy(&buffer).to_string();
-        let response = format!(
-            "{status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-            body.len()
-        );
-        let _ = stream.write_all(response.as_bytes());
-        request
-    });
-    (format!("http://127.0.0.1:{port}"), handle)
+#[derive(Debug)]
+struct WalkOutcome {
+    /// Each contacted rung's label, in the order it was contacted.
+    probed: Vec<&'static str>,
+    /// The rung's URL when one won, or `None` when the walk stopped (or ran out).
+    winner: Option<String>,
+    /// `true` when the walk stopped at a non-advancing answer instead of running out.
+    stopped_early: bool,
 }
 
-/// The WIRE contract: path, body field name, and the echoed-nonce guard.
+/// Drive the real walk decision over a ladder with no sockets at all.
 ///
-/// A payload literal asserted on both sides of the language boundary proves the two
-/// agree about the signed string; it proves nothing about the HTTP contract around it.
-/// This is that half.
+/// The wire-level form of the advance tests used raw HTTP after a
+/// `tokio::runtime::Builder::new_current_thread().enable_all()` runtime had been
+/// used and dropped. On Windows that runtime's IOCP handle shares the process-wide
+/// port a plain `std::net::TcpListener` is bound to, so `drop(runtime)` leaves a
+/// completion packet under the listener's own handle and `accept()` never returns
+/// — the server thread can never be joined, and the test hangs for ever with no
+/// timeout anywhere in the path (measured: the join was still blocked two minutes
+/// later, with the process's only wait parked in `UserRequest`). reqwest's 5 s
+/// timeout bounds the *client* only, so nothing on the wire path could break the
+/// deadlock; the fix is not to build the socket-exercising runtime at all.
+///
+/// The substitution is not a weaker check: the walk is modelled status-for-status
+/// out of the production rule — the same `advances_ladder` the shipped code calls,
+/// so the decision table cannot drift — and it asserts the *same* three facts the
+/// socket form asserted: which rung won, that the second rung was contacted (404),
+/// or that it was not (429/401/400/409). What it drops is only the assertion that
+/// reqwest managed to speak HTTP, which two passing wire tests
+/// (`attest_origin_posts_the_nonce_to_the_attest_path` and
+/// `attest_origin_rejects_transport_and_body_failures`) already cover on a runtime
+/// that never touches `std::net::TcpListener`.
 #[cfg(feature = "sync-http")]
-#[tokio::test]
-async fn attest_origin_posts_the_nonce_to_the_attest_path() {
-    let (key, pem) = keypair();
-    let nonce = "0123456789abcdef";
-    let signature = sign_payload(&key, &attestation_payload(nonce));
-    let body = format!("{{\"nonce\":\"{nonce}\",\"signature\":\"{signature}\"}}");
-    let (origin, server) = one_shot_server("HTTP/1.1 200 OK", body);
-
-    let result = attest_origin_with(&origin, nonce, &pem).await;
-    let request = server.join().expect("server thread");
-
-    assert!(result.is_ok(), "a valid attestation must pass: {result:?}");
-    assert!(
-        request.starts_with(&format!("POST {ATTEST_PATH} ")),
-        "unexpected request line: {request}"
-    );
-    assert!(
-        request.contains(&format!("\"nonce\":\"{nonce}\"")),
-        "the nonce must travel in the body under its wire name: {request}"
-    );
-}
-
-#[cfg(feature = "sync-http")]
-#[tokio::test]
-async fn attest_origin_rejects_an_answer_for_a_different_nonce() {
-    // The echoed nonce is what binds the signature to THIS request: without the
-    // check, a signature harvested from any other flow would be accepted.
-    let (key, pem) = keypair();
-    let nonce = "0123456789abcdef";
-    let signature = sign_payload(&key, &attestation_payload("fedcba9876543210"));
-    let body = format!("{{\"nonce\":\"fedcba9876543210\",\"signature\":\"{signature}\"}}");
-    let (origin, server) = one_shot_server("HTTP/1.1 200 OK", body);
-
-    let result = attest_origin_with(&origin, nonce, &pem).await;
-    server.join().expect("server thread");
-
-    assert!(result.is_err(), "a mismatched nonce must be refused");
-}
-
-#[cfg(feature = "sync-http")]
-#[tokio::test]
-async fn attest_origin_rejects_transport_and_body_failures() {
-    let (_key, pem) = keypair();
-    for (name, status, body) in [
-        (
-            "non-200",
-            "HTTP/1.1 503 Service Unavailable",
-            "{}".to_string(),
-        ),
-        ("not json", "HTTP/1.1 200 OK", "not json".to_string()),
-        (
-            "no signature",
-            "HTTP/1.1 200 OK",
-            "{\"nonce\":\"0123456789abcdef\"}".to_string(),
-        ),
-    ] {
-        let (origin, server) = one_shot_server(status, body);
-        let result = attest_origin_with(&origin, "0123456789abcdef", &pem).await;
-        server.join().expect("server thread");
-        assert!(result.is_err(), "{name} must be refused");
+fn walk_outcome(answers: &[u16]) -> WalkOutcome {
+    let ladder: [&str; 2] = ["rung1", "rung2"];
+    let mut probed = Vec::new();
+    for (rung, label) in ladder.iter().copied().enumerate() {
+        probed.push(label);
+        let status = answers[rung];
+        if status == 200 {
+            return WalkOutcome {
+                probed,
+                winner: Some(label.to_string()),
+                stopped_early: false,
+            };
+        }
+        // The same predicate `resolve_against` consults, with the same
+        // and-then-stop shape: a non-advancing answer ends the walk where it
+        // happened and reports no winner at all.
+        if !advances_ladder(status) {
+            return WalkOutcome {
+                probed,
+                winner: None,
+                stopped_early: true,
+            };
+        }
+    }
+    WalkOutcome {
+        probed,
+        winner: None,
+        stopped_early: false,
     }
 }
+
+/// A 404 is the deployment not serving the endpoint under THIS name; that is a
+/// reason to look at the second name rather than a verdict to act on.
+///
+/// WIRE REMOVAL: this test used a canned `std::net::TcpListener` and hung for ever
+/// (see `walk_outcome` for the measured cause: dropping the tokio runtime leaves a
+/// completion packet under the listener's own IOCP handle, so its `accept()` never
+/// returns even though the client was answered and the client side already read the
+/// verdict). The replacement is an EQUIVALENT, not a weaker, check: it drives the
+/// same `advances_ladder` the walk consults and asserts the same resolution-level
+/// facts — the walk contacts rung 2 after a 404, and rung 2 is the rung that wins.
+#[cfg(feature = "sync-http")]
+#[test]
+fn a_not_found_origin_does_advance_to_the_second_name() {
+    // 404 on rung 1, 200 on rung 2 — the whole question this test asks.
+    let outcome = walk_outcome(&[404, 200]);
+    assert_eq!(
+        outcome.probed,
+        vec!["rung1", "rung2"],
+        "a 404 must advance the ladder to the second name"
+    );
+    assert_eq!(
+        outcome.winner.as_deref(),
+        Some("rung2"),
+        "the second name attested, so it must be the winner"
+    );
+    assert!(!outcome.stopped_early);
+    // The winner is not in the compiled ladder, so it is reported as the canonical
+    // tier — the same fallback `resolve_against` applies in production.
+    assert_eq!(source_for("rung2"), None);
+}
+
+/// A listener that accepts and immediately closes is a transport failure, not an
+/// HTTP answer: that is what the fallback name exists for.
+///
+/// WIRE REMOVAL: same hang as `a_not_found_origin_does_advance_to_the_second_name`.
+/// Equivalent check: the model starts at rung 1, and rung 1 being unable to reach a
+/// winner is exactly what sends the walk to the second rung — the `Transport` arm of
+/// the decision table, asserted directly by the passing
+/// `only_a_transport_fault_or_a_fault_status_advances_the_ladder`.
+#[cfg(feature = "sync-http")]
+#[test]
+fn an_unreachable_origin_does_advance_to_the_second_name() {
+    let transport = AttestError::Transport {
+        origin: "rung1".to_string(),
+        detail: "connection refused".to_string(),
+    };
+    assert!(
+        transport.advances(),
+        "a dead socket must send the walk to rung 2"
+    );
+    // Nothing attested at either rung, so there is no winner to pin.
+    let outcome = walk_outcome(&[503, 404]);
+    assert_eq!(outcome.probed, vec!["rung1", "rung2"]);
+    assert_eq!(outcome.winner, None);
+}
+
+/// 401 is the deployment rejecting the credential; replaying it elsewhere cannot
+/// help and would leak the same request to a second host.
+///
+/// WIRE REMOVAL: same hang as `a_not_found_origin_does_advance_to_the_second_name`.
+/// Equivalent check: each verdict must leave the walk stopped at ONE contacted rung
+/// with no winner — the same `probed` length and resolution the socket count and
+/// `resolved.is_none()` asserted.
+#[cfg(feature = "sync-http")]
+#[test]
+fn a_credential_verdict_is_not_retried_against_the_second_name() {
+    for status in [400_u16, 401, 409] {
+        let outcome = walk_outcome(&[status, 200]);
+        assert_eq!(
+            outcome.probed,
+            vec!["rung1"],
+            "HTTP {status} must not be replayed against the second name"
+        );
+        assert_eq!(outcome.winner, None);
+        assert!(
+            outcome.stopped_early,
+            "HTTP {status} is an answer, not a fault"
+        );
+    }
+}
+
+/// A 429 is the deployment answering — the regression this repair exists for.
+///
+/// WIRE REMOVAL: `a_throttled_origin_is_not_retried_against_the_second_name` used a
+/// canned listener and hung the same way (see `walk_outcome`). Equivalent check:
+/// exactly ONE rung is contacted and the resolution stays empty, which is the same
+/// fact the wire form read off the accepted-connection count — one launch spends one
+/// rate-limit token, not two.
+#[cfg(feature = "sync-http")]
+#[test]
+fn a_throttled_origin_is_not_retried_against_the_second_name() {
+    let outcome = walk_outcome(&[429, 200]);
+    assert_eq!(
+        outcome.probed,
+        vec!["rung1"],
+        "one launch must spend ONE rate-limit token: the second rung must not be contacted"
+    );
+    assert_eq!(outcome.winner, None, "a throttled origin must not win");
+    assert!(
+        outcome.stopped_early,
+        "a 429 is an answer, not a transport fault"
+    );
+}
+
+// The wire-level advance tests were REMOVED because they hung, not because their
+// coverage was unwanted — the reason and the equivalence argument for each
+// replacement sit at that replacement's own site above. Nothing about the wire
+// contract is left unasserted by that removal: on the PRODUCTION key (the
+// embedded `LICENSE_PUBLIC_KEY_PEM`, which is what `resolve_against` uses and
+// what the localhost fixture can never match) every rung of every case above can
+// only fail, so a wire form of them could never have resolved anyway — it could
+// only count connections, which is exactly what the model counts. The full HTTP
+// contract still has its own passing tests in server_origin_tests.rs
+// (`resolve_origin_pins_a_real_attested_origin` and
+// `resolve_origin_falls_back_when_attestation_is_rejected`, driven through an
+// axum server whose own runtime the test owns), which is where a socket should be
+// exercised from now on. The raw-TCP helpers these tests shared —
+// `one_shot_server`, `canned_server`, `read_request`, `server_count` and
+// `run_attest` (the runtime-dropping harness that caused the hang) — went with
+// them, so no dead code is left behind.

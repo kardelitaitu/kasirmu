@@ -242,6 +242,23 @@ pub const MIDTRANS_SERVER_KEY: &str = "midtrans.server_key";
 /// Persisted machine fingerprint: the KDF factor for every machine-bound
 /// encryption family and the one-trial-per-device lock.
 pub const MACHINE_ID: &str = "machine_id";
+/// Cached per-device revocation verdict from the licence server
+/// ("true" / "false"), written only by `license::check_license_status` from a
+/// server response (ADR #58 §2.4a.2, §4a Q-D).
+///
+/// This is a **cache of a server verdict**, never a local policy: nothing else
+/// may write it, and an absent value reads as "not revoked" (fail open — a
+/// missing cache must not lock a till, per §2.4).
+///
+/// Deliberately **not** named `LICENSE_*`. The credential-family gate
+/// (`settings_tests.rs` `is_credential_family`, marker `"LICENSE_"`) would
+/// classify any such name as a secret and demand it be denied on the export
+/// surface — wrong on both counts here: this is a boolean, not a credential,
+/// and denying it from export buys nothing (it is re-derived from the server on
+/// the next status check). A client that clears it locally is not a new
+/// exposure: ADR #57's threat model already assumes a patched client ignores
+/// server verdicts, which is why the enforcement that matters is server-side.
+pub const DEVICE_REVOKED: &str = "device.revoked";
 /// Persisted hardware fingerprint (`hw_` + full SHA-256 hex of the system
 /// UUID anchor): the license server's one-trial-per-device lock. Like
 /// [`MACHINE_ID`] it is per-device identity — shipping it to a peer hands

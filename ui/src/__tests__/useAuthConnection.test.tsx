@@ -12,11 +12,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useAuthConnection } from '@/hooks/useAuthConnection';
 import { testAuthConnection } from '@/api/license';
+import { testSyncConnection } from '@/api/offline';
 import { toneForHealth } from '@/hooks/connectionHealth';
 import { isUnaskableCommandError } from '@/utils/app-error';
+import { setShellKind } from '@/utils/shellKind';
 
 vi.mock('@/api/license', () => ({
   testAuthConnection: vi.fn(),
+}));
+
+vi.mock('@/api/offline', () => ({
+  testSyncConnection: vi.fn(),
 }));
 
 /** Flush pending microtasks so the in-flight async check() settles. */
@@ -413,6 +419,97 @@ describe('isUnaskableCommandError', () => {
     expect(isUnaskableCommandError(new Error(
       "Error invoking remote method 'test_auth_connection': Error: No handler registered for 'test_auth_connection'",
     ))).toBe(false);
+  });
+});
+
+// ── The tablet shell: a probe it CAN actually run ───────────────────────────
+//
+// The tablet build registers no licence commands, so `test_auth_connection` is
+// rejected at the IPC boundary there. Detecting that AFTER the call left the
+// pill permanently UNKNOWN — a grey blink that says nothing, forever. The fix
+// is a shell-aware probe chosen BEFORE the call: on a tablet the hook asks
+// `test_sync_connection`, which the mobile shell registers unscoped, and then
+// reports the REAL answer. These cases pin all three halves: which command is
+// invoked, that a good answer reads connected, and that a bad one reads
+// disconnected — never stuck on checking.
+describe('useAuthConnection - tablet shell probes the command it registers', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    setShellKind('tablet');
+    vi.mocked(testAuthConnection).mockReset();
+    vi.mocked(testSyncConnection).mockReset();
+  });
+
+  afterEach(() => {
+    // Restored, so no later case can inherit the tablet shell.
+    setShellKind('desktop');
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('probes test_sync_connection and never the unregistered auth command', async () => {
+    vi.mocked(testSyncConnection).mockResolvedValue({ ok: true, status: 'healthy', latencyMs: 42 });
+
+    renderHook(() => useAuthConnection());
+    await flush();
+
+    expect(testSyncConnection).toHaveBeenCalled();
+    expect(testAuthConnection).not.toHaveBeenCalled();
+  });
+
+  it('resolves a successful tablet probe to connected, not a permanent checking', async () => {
+    vi.mocked(testSyncConnection).mockResolvedValue({ ok: true, status: 'healthy', latencyMs: 42 });
+
+    const { result } = renderHook(() => useAuthConnection());
+    expect(result.current.state).toBe('checking'); // the pre-resolution state only
+    await flush();
+
+    expect(result.current.state).toBe('connected');
+    expect(result.current.latencyMs).toBe(42);
+    expect(toneForHealth(result.current.state, result.current.latencyMs)).toBe('good');
+  });
+
+  it('resolves a failing tablet probe to disconnected and never stays checking', async () => {
+    // No server URL configured: the command RUNS and answers ok:false. That is a
+    // real measurement of a real call, so red is the honest reading — and it is
+    // exactly what the old permanent 'checking' hid.
+    vi.mocked(testSyncConnection).mockResolvedValue({
+      ok: false, status: 'No server URL configured', latencyMs: null,
+    });
+
+    const { result } = renderHook(() => useAuthConnection());
+    await flush();
+
+    expect(result.current.state).not.toBe('checking');
+    expect(result.current.state).toBe('disconnected');
+    expect(toneForHealth(result.current.state, result.current.latencyMs)).toBe('bad');
+  });
+
+  it('resolves a throwing tablet probe to disconnected and never stays checking', async () => {
+    vi.mocked(testSyncConnection).mockRejectedValue(new Error('connection refused: econnrefused'));
+
+    const { result } = renderHook(() => useAuthConnection());
+    await flush();
+
+    expect(result.current.state).not.toBe('checking');
+    expect(result.current.state).toBe('disconnected');
+  });
+
+  it('keeps re-polling the tablet probe so a recovered server turns the pill green', async () => {
+    // Not stuck: a real probe keeps a real schedule, so a later success lands.
+    vi.mocked(testSyncConnection)
+      .mockResolvedValueOnce({ ok: false, status: 'No server URL configured', latencyMs: null })
+      .mockResolvedValue({ ok: true, status: 'healthy', latencyMs: 12 });
+
+    const { result } = renderHook(() => useAuthConnection());
+    await flush();
+    expect(result.current.state).toBe('disconnected');
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    await flush();
+
+    expect(result.current.state).toBe('connected');
+    expect(testAuthConnection).not.toHaveBeenCalled();
   });
 });
 

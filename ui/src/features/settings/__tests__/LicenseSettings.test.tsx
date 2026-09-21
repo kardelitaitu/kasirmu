@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import LicenseSettings from '../LicenseSettings';
+import LicenseSettings, { POLL_INTERVAL_MS } from '../LicenseSettings';
 import { getLicenseStatus, checkLicenseStatus } from '@/api/license';
 
 const mockAddToast = vi.fn();
@@ -136,6 +136,8 @@ const SERVER_STATUS = {
   status: 'active',
   tier: 'pro',
   active: true,
+  // ADR #58 §2.4a.2: the device verdict rides the status payload.
+  deviceRevoked: false,
   expiresAt: '2026-01-01T00:00:00Z',
   graceUntil: '2026-02-01T00:00:00Z',
   maxLocations: 5,
@@ -685,6 +687,26 @@ describe('LicenseSettings', () => {
       // Always restore real timers + setInterval to prevent leakage.
       vi.useRealTimers();
       globalThis.setInterval = origSetInterval;
+    });
+
+    it('registers the poll interval at POLL_INTERVAL_MS (5 min, not 30 s)', async () => {
+      vi.mocked(checkLicenseStatus).mockResolvedValue(SERVER_STATUS);
+      const intervals: number[] = [];
+      globalThis.setInterval = ((fn: (...args: unknown[]) => void, ms: number, ...args: unknown[]) => {
+        intervals.push(ms);
+        return origSetInterval(fn, Number.MAX_SAFE_INTEGER, ...args);
+      }) as typeof globalThis.setInterval;
+
+      render(<LicenseSettings />);
+      await waitFor(() => {
+        expect(screen.getByText('Live')).toBeInTheDocument();
+      });
+
+      // The licence server meters a shared credential lane, so the poll must be
+      // minutes apart, not the 30 s cadence (120 requests/hour) it used to spend.
+      expect(POLL_INTERVAL_MS).toBe(300_000);
+      expect(intervals).toContain(POLL_INTERVAL_MS);
+      expect(intervals).not.toContain(30_000);
     });
 
     it('shows "Checking…" before first poll completes', async () => {

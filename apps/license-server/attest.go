@@ -67,9 +67,15 @@ func validOpaqueToken(nonce string) bool {
 // handleAttest answers a nonce with a detached signature over attestPayload.
 //
 // Unauthenticated by design: the client has not chosen an origin yet, so it has
-// no credential to present. That is why the nonce is length- and charset-bounded
-// and shares the existing per-IP budget with the other unauthenticated lanes
-// rather than minting a second one.
+// no credential to present. The nonce is therefore length- and charset-bounded
+// so the signer can never be fed attacker-chosen bytes.
+//
+// Rate limiting uses attestLimiter, a per-IP budget of its own — NOT the
+// ipRateLimiter shared by activate/recover/renew/status/pause/resume/trial/
+// enterprise-trial. This endpoint verifies no credential and mints only a
+// fixed-size signature over that bounded nonce, while a normal app launch
+// calls it once; leaving it on the 5/hr credential budget meant five ordinary
+// launches in an hour left the user's own activation attempts answering 429.
 func handleAttest(app core.App) func(e *core.RequestEvent) error {
 	return func(e *core.RequestEvent) error {
 		e.Request.Body = http.MaxBytesReader(e.Response, e.Request.Body, webMaxBodyBytes)
@@ -81,16 +87,16 @@ func handleAttest(app core.App) func(e *core.RequestEvent) error {
 		if err := json.NewDecoder(e.Request.Body).Decode(&req); err != nil {
 			// Consume the budget on a malformed body too, so probing with
 			// garbage cannot buy unlimited signatures.
-			ipRateLimiter.allow(clientIP)
+			attestLimiter.allow(clientIP)
 			return e.JSON(http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
 		}
 		if !validOpaqueToken(req.Nonce) {
-			ipRateLimiter.allow(clientIP)
+			attestLimiter.allow(clientIP)
 			return e.JSON(http.StatusBadRequest, map[string]any{
 				"error": "nonce must be 16-64 characters of [A-Za-z0-9_-]",
 			})
 		}
-		if !ipRateLimiter.allow(clientIP) {
+		if !attestLimiter.allow(clientIP) {
 			return e.JSON(http.StatusTooManyRequests, map[string]any{
 				"error": "rate limit exceeded, try again later",
 			})

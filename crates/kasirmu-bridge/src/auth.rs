@@ -23,6 +23,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 use foundation::validate_not_empty;
+use kasirmu_core::Settings;
 use kasirmu_core::auth::LoginSession;
 use kasirmu_core::db::Store;
 use kasirmu_core::db::assignments::ScopeType;
@@ -33,6 +34,7 @@ use kasirmu_core::db::audit_security::{
 use kasirmu_core::session::SessionContext;
 use kasirmu_core::subscription::TenantSubscription;
 use kasirmu_security::mask::mask_token;
+use platform_core::settings::keys;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -627,6 +629,33 @@ pub async fn create_session(
             "Workspace type '{}' is not entitled by the tenant subscription",
             args.type_key
         )));
+    }
+
+    // ADR #58 §2.4a.2: refuse a session on a device a tenant admin revoked.
+    //
+    // The verdict is the *cached* server answer (written by
+    // `license::check_license_status`), so this is a local read and cannot
+    // block on the network — §2.7 forbids a network call that could brick a
+    // register. `args.terminal_id` is already resolved by the caller, so no
+    // new plumbing is needed.
+    //
+    // Fail-open by construction: an absent or unparseable value reads as
+    // "not revoked", because a missing cache must never lock a till (§2.4).
+    {
+        let conn = ctx.lock_global().await;
+        let revoked = Settings::get(&conn, keys::DEVICE_REVOKED)?
+            .map(|v| v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        if revoked {
+            tracing::warn!(
+                user_id = %args.user_id,
+                terminal_id = %args.terminal_id,
+                "session creation denied — this device has been revoked by an administrator"
+            );
+            return Err(BridgeError::Invalid(
+                "This device has been revoked. Contact your administrator.".into(),
+            ));
+        }
     }
 
     let token = insert_session(

@@ -3,6 +3,15 @@ name: onboarding-guide
 description: Meta-skill that routes tasks to the right kasir.mu skill. Use when starting a new task and unsure which specialized skill applies. Read this first when joining the project or picking up an unfamiliar area.
 ---
 
+<!-- Audit stamp: 2026-09-21 · Buffy · status: PARTIAL — router only. Added two rows to the
+skill router — `deploy-northflank` and `deploy-cloudflare` — each pointing at
+`.agents/skills/<name>/SKILL.md`. Both skill files exist and declare the matching `name`; every
+path they cite was checked to exist before being written (ops/docker/Dockerfile.unified,
+website/wrangler.toml, website/worker.ts, scripts/wrangler-deploy.sh, scripts/verify-deployment.py,
+docs/operations/runbook.md, docs/operations/go-live-checklist.md, apps/license-server/DEPLOY.md).
+Nothing else in this file was re-audited this pass; the 2026-09-20, 2026-09-19, 2026-09-08 and
+2026-09-15 stamps below still stand for the rest. -->
+
 <!-- Audit stamp: 2026-09-20 · Budak-Korporat · status: PARTIAL — router only. Added the
 `css-layout-verification` row to the skill router, pointing at
 `.agents/skills/css-layout-verification/SKILL.md`. Verified this pass: that skill file exists and
@@ -84,6 +93,9 @@ What do you want to do?
 | Create a new pull request with branch-prefixed title and comprehensive description derived from 50–100 commits | **`pr-create-pull-request`** |
 | Explore code structurally instead of grepping — find symbols, trace callers and callees, map a change's blast radius, audit dead code or hot paths, query the knowledge graph | **`codebase-memory`** |
 | Prove what a stylesheet actually does when jsdom cannot compute layout — which edge a fixed bar lands on, whether a strip overflows, whether a label is clipped or wrapped; or when a CSS-contract test passes but the UI looks wrong | **`css-layout-verification`** |
+| Drive, inspect or screenshot the RUNNING Android tablet app over CDP - address elements by data-testid, read the WebView console, capture a frame while the tablet is locked, tap an element, or hit 'no devtools socket (release build)' | **`android-ui-automation`** |
+| Deploy or re-deploy the backend (the unified auth + sync container) to Northflank, trigger or poll a build, change the service's environment or Dockerfile, or verify that a live deploy actually landed | **`deploy-northflank`** |
+| Deploy or verify the kasir.mu website Worker on Cloudflare, change the runtime licence-server URL or a Worker secret, or rotate the Cloudflare API token | **`deploy-cloudflare`** |
 
 **Discovery is not a router row — it is a standing rule.** `AGENTS.md` requires the knowledge
 graph *before* reading files or grepping for symbols, so `codebase-memory` applies to every

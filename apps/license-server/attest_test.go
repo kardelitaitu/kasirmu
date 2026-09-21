@@ -13,6 +13,8 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -89,5 +91,129 @@ func TestSignDetachedRoundTripsOverAttestPayload(t *testing.T) {
 	otherHash := sha256.Sum256([]byte(attestPayload("fedcba9876543210")))
 	if err := rsa.VerifyPKCS1v15(pub, crypto.SHA256, otherHash[:], sig); err == nil {
 		t.Fatal("signature verified over a nonce that was never sent")
+	}
+}
+
+// TestAttestHasItsOwnRateLimitBudget proves the boot-time attest probe no
+// longer spends the credential lanes' 5/hr per-IP budget: one IP may attest
+// repeatedly (a normal app launch attests once) while its 6th /activate is
+// still refused. If the two shared a bucket, either the attest calls would
+// have been blocked or the activation would have been let through.
+func TestAttestHasItsOwnRateLimitBudget(t *testing.T) {
+	resetRateLimiters()
+	app, se := setupDirectApp(t)
+	defer app.Cleanup()
+
+	// registerTestRoutes does not mirror production's /attest mount (main.go
+	// only), so mount it here against the same router handle.
+	se.Router.POST("/api/v1/license/attest", handleAttest(app))
+
+	mux, err := se.Router.BuildMux()
+	if err != nil {
+		t.Fatalf("BuildMux failed: %v", err)
+	}
+
+	// PocketBase's RealIP() parses RemoteAddr via net.SplitHostPort, so supply
+	// the port:IP form (same pattern as TestActivateHandler_RateLimited).
+	testIP := "10.99.99.77"
+	testAddr := testIP + ":1234"
+
+	// More attests than a whole credential budget: 5 must not be the ceiling.
+	const attests = 8 // > ipRateLimiter.maxPerHr
+	for i := 0; i < attests; i++ {
+		req := httptest.NewRequest("POST", "/api/v1/license/attest",
+			strings.NewReader(`{"nonce":"abcdefghijklmnop"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = testAddr
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("attest %d/%d: expected 200, got %d: %s", i+1, attests, rec.Code, rec.Body.String())
+		}
+	}
+
+	// The same IP's credential budget is untouched by those requests.
+	seedLicenseKey(t, app, "OZ-ATTEST-SPLIT01", "pro", "unused", "2099-12-31 23:59:59.000Z")
+	activate := func() int {
+		req := httptest.NewRequest("POST", "/api/v1/license/activate",
+			strings.NewReader(`{"key":"OZ-ATTEST-SPLIT01","email":"attestsplit0001@example.com","machine_id":"attestsplitmach01"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = testAddr
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	for i := 0; i < ipRateLimiter.maxPerHr; i++ {
+		if code := activate(); code == http.StatusTooManyRequests {
+			t.Fatalf("activation %d/%d should have been allowed: attest consumed the credential budget",
+				i+1, ipRateLimiter.maxPerHr)
+		}
+	}
+	if code := activate(); code != http.StatusTooManyRequests {
+		t.Fatalf("activation %d should be rate limited, got %d", ipRateLimiter.maxPerHr+1, code)
+	}
+}
+
+// TestStatusPollHasItsOwnRateLimitBudget proves the shipped Settings screen's
+// 30s /status poll no longer spends the credential lanes' 5/hr per-IP budget:
+// one IP may poll status far more than a whole credential budget while its 6th
+// /activate is still refused. If the two shared a bucket, either the 6th status
+// poll would have been blocked or the 6th activation would have been let
+// through. That is the production defect this test pins: a screen left open for
+// 2.5 minutes used to 429 every licence operation for the rest of the hour.
+func TestStatusPollHasItsOwnRateLimitBudget(t *testing.T) {
+	resetRateLimiters()
+	app, se := setupDirectApp(t)
+	defer app.Cleanup()
+
+	// 15 chars: PocketBase's implicit id field enforces that limit.
+	seedTenant(t, app, "statuspoll00001", "statuspollapikey1", "active")
+
+	mux, err := se.Router.BuildMux()
+	if err != nil {
+		t.Fatalf("BuildMux failed: %v", err)
+	}
+
+	// PocketBase's RealIP() parses RemoteAddr via net.SplitHostPort, so supply
+	// the port:IP form (same pattern as TestActivateHandler_RateLimited).
+	testIP := "10.99.99.78"
+	testAddr := testIP + ":1234"
+
+	poll := func() int {
+		req := httptest.NewRequest("POST", "/api/v1/license/status", nil)
+		req.Header.Set("Authorization", "Bearer statuspollapikey1")
+		req.RemoteAddr = testAddr
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	// More polls than a whole credential budget: 5 must not be the ceiling.
+	const polls = 12 // > ipRateLimiter.maxPerHr
+	for i := 0; i < polls; i++ {
+		if code := poll(); code != http.StatusOK {
+			t.Fatalf("status poll %d/%d: expected 200, got %d", i+1, polls, code)
+		}
+	}
+
+	// The same IP's credential budget is untouched by those polls.
+	seedLicenseKey(t, app, "OZ-STATUS-SPLIT01", "pro", "unused", "2099-12-31 23:59:59.000Z")
+	activate := func() int {
+		req := httptest.NewRequest("POST", "/api/v1/license/activate",
+			strings.NewReader(`{"key":"OZ-STATUS-SPLIT01","email":"statuspoll0001@example.com","machine_id":"statuspollmach01"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = testAddr
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	for i := 0; i < ipRateLimiter.maxPerHr; i++ {
+		if code := activate(); code == http.StatusTooManyRequests {
+			t.Fatalf("activation %d/%d should have been allowed: the status poll consumed the credential budget",
+				i+1, ipRateLimiter.maxPerHr)
+		}
+	}
+	if code := activate(); code != http.StatusTooManyRequests {
+		t.Fatalf("activation %d should be rate limited, got %d", ipRateLimiter.maxPerHr+1, code)
 	}
 }

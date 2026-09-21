@@ -10,7 +10,19 @@ package main
 //	GET  /api/v1/web/usage    — tenant usage stats (device/terminal count + limits)
 //	GET  /api/v1/web/devices  — registered devices for the tenant
 //	POST /api/v1/web/devices/{id}/revoke — revoke one device (self-service)
+//
+// The three endpoints above are the only ones this file serves. An earlier
+// version of this comment also listed
+//
 //	PATCH /api/v1/web/settings — update tenant preferences (region, notifications)
+//
+// which was never implemented: no handler, no route registration in main.go,
+// and no caller in website/. It is removed rather than built, because
+// ADR #59 §2.1a decides that the tenant's region is an admin-only field —
+// the tenant-facing dashboard deliberately does not offer a region control,
+// so neither this endpoint nor a "region" tenant preference is planned.
+// Listed here so the next reader does not rediscover the mismatch, or
+// implement a feature that an ADR has since rejected.
 
 import (
 	"log"

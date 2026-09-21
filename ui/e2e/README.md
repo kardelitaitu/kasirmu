@@ -59,7 +59,7 @@ CSS contract is documented in each spec file's header comment.
 | Workspace card | `.workspace-card` | — |
 | ProductLookupScreen | `.product-card-btn` | — |
 | RetailPosScreen cart | `.retail-cart-action-btn--pay` | `cart-panel` |
-| CartPanel line | — | `cart-panel-line-item` |
+| RetailCartPanel line | `.retail-cart-line-sku` | `retail-cart-line-item` |
 | PaymentModal | `.payment-modal` | `payment-modal` |
 | ReceiptPreview | `.receipt-preview-paper` | — |
 | Settings sidebar | `.settings-sidebar` | `settings-sidebar` |

@@ -24,6 +24,12 @@ export interface ServerLicenseStatus {
   status: string;
   tier: string;
   active: boolean;
+  /**
+   * Whether **this device** has been revoked by a tenant admin
+   * (ADR #58 §2.4a.2). Server-authored; the shell refuses to open a session
+   * while it is set.
+   */
+  deviceRevoked: boolean;
   expiresAt: string | null;
   graceUntil: string | null;
   /** Tier location quota — wire field keeps the historical `maxLocations` name (1g wire rename pending). */

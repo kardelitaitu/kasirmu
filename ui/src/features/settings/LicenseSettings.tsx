@@ -66,8 +66,13 @@ function relativeTime(ms: number, l10n: ReturnType<typeof useLocalization>['l10n
 /** Duration (ms) for row flash after a server status update. */
 const FLASH_DURATION = 1_400;
 
-/** Default 30-second polling interval for server status checks. */
-const POLL_INTERVAL_MS = 30_000;
+/** Polling interval for server status checks.
+ *
+ * 5 minutes, not 30 seconds: the licence server meters a shared credential lane
+ * (~5 requests/hour) and licence state simply does not change that fast, so a
+ * 30-second poll spent ~120 requests/hour to learn nothing. This is a server-load
+ * and battery trade-off — use the Refresh button for an immediate check. */
+export const POLL_INTERVAL_MS = 300_000;
 
 /** Maximum consecutive failures before showing offline indicator. */
 const MAX_POLL_FAILURES = 3;

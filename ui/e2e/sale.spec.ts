@@ -11,7 +11,7 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
  *   .retail-product-btn           — clickable product card (RetailPosScreen product grid)
  *   .retail-cart-action-btn--pay — Pay button in cart panel
  *   [data-testid="cart-panel"]   — Cart panel container
- *   [data-testid="cart-panel-line-item"] — Single cart line
+ *   [data-testid="retail-cart-line-item"] — Single cart line
  *   [data-testid="line-item-remove-button"] — Remove line button
  *   [data-testid="payment-modal"] — Payment modal
  *   [data-testid="quick-pay-button"] — Quick tender button in modal
@@ -48,7 +48,7 @@ test.describe('Complete Sale Flow', () => {
     await productCards.first().click();
 
     // Cart must contain at least 1 line item.
-    const cartLines = page.locator('[data-testid="cart-panel-line-item"]');
+    const cartLines = page.locator('[data-testid="retail-cart-line-item"]');
     await expect(cartLines.first()).toBeVisible({ timeout: 5_000 });
     expect(await cartLines.count()).toBe(1);
 
@@ -68,7 +68,7 @@ test.describe('Complete Sale Flow', () => {
     await productCards.first().click();
 
     // Cart must have exactly 1 line (stacked quantity).
-    const cartLines = page.locator('[data-testid="cart-panel-line-item"]');
+    const cartLines = page.locator('[data-testid="retail-cart-line-item"]');
     await expect(cartLines.first()).toBeVisible({ timeout: 5_000 });
     expect(await cartLines.count()).toBe(1);
 
@@ -242,7 +242,7 @@ test.describe('Complete Sale Flow', () => {
     await productCards.first().click();
 
     // Verify cart has 1 line.
-    const cartLines = page.locator('[data-testid="cart-panel-line-item"]');
+    const cartLines = page.locator('[data-testid="retail-cart-line-item"]');
     await expect(cartLines.first()).toBeVisible({ timeout: 5_000 });
     expect(await cartLines.count()).toBe(1);
 
@@ -297,7 +297,7 @@ test.describe('Payment Methods', () => {
 
     // Verify cart has 1 line.
     await expect(
-      page.locator('[data-testid="cart-panel-line-item"]').first(),
+      page.locator('[data-testid="retail-cart-line-item"]').first(),
     ).toBeVisible({ timeout: 5_000 });
 
     // Read the grand total before discount.

@@ -62,6 +62,12 @@ var requiredCollections = []string{
 // OZ_LICENSE_PRIVATE_KEY environment variable at startup.
 var privateKey *rsa.PrivateKey
 
+// clientIPObs is the process-wide bounded observer that logs the raw
+// X-Forwarded-For chain + resolved client IP for the first
+// clientIPObserveCap distinct IPs. It is a package-level singleton so every
+// request shares one capped seen-set and counter (see helpers.go).
+var clientIPObs = newClientIPObserver()
+
 func main() {
 	app := pocketbase.New()
 
@@ -116,6 +122,43 @@ func main() {
 
 	// ── Register custom license API routes ───────────────────────
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		// Rate-limit keying fix (H2 confirmed defect): every limiter keys on
+		// e.RealIP(), and RealIP() only trusts X-Forwarded-For once
+		// Settings.TrustedProxy.Headers is seeded. Without it the Caddy
+		// reverse_proxy peer (localhost:8080) collapsed every client onto the
+		// loopback address, so all clients worldwide shared ONE budget.
+		//
+		// Seed the trusted-proxy setting and register a router-level middleware
+		// that collapses the XFF chain to the single real client IP BEFORE any
+		// route handler runs — so RealIP() (and therefore every limiter) sees the
+		// client, not 127.0.0.1. UseLeftmostIP stays false: because the
+		// middleware already reduces XFF to exactly ONE value, leftmost/rightmost
+		// is irrelevant.
+		hops := resolveTrustedHops()
+		if err := seedClientIPSettings(app); err != nil {
+			log.Printf("[client-ip] failed to seed TrustedProxy settings: %v", err)
+		} else {
+			log.Printf("[client-ip] TrustedProxy seeded: X-Forwarded-For trusted, %d hop(s) from edge", hops)
+		}
+		se.Router.BindFunc(func(e *core.RequestEvent) error {
+			// Capture the RAW inbound forwarded chain BEFORE the collapse below,
+			// so the bounded observer can report what the edge actually sent.
+			rawXFF := e.Request.Header.Get("X-Forwarded-For")
+			remoteIP := stripPort(e.Request.RemoteAddr)
+			clientIP := normalizeClientIP(e.Request.Header, remoteIP, hops)
+			// Collapse to exactly one value so RealIP() re-parses a single clean
+			// entry regardless of leftmost/rightmost policy.
+			e.Request.Header.Set("X-Forwarded-For", clientIP)
+			// Bounded observability: log the raw chain + remote + resolved IP for
+			// the first clientIPObserveCap distinct resolved IPs only, so we learn
+			// in production whether the edges append or replace X-Forwarded-For
+			// without probing the rate-limited service. No-op after the cap and
+			// never per-request (guarded by the mutex/counter in helpers.go).
+			clientIPObs.LogResolveInfo(rawXFF, remoteIP, clientIP)
+			clientIPObs.LogResolveMatchesRemote(rawXFF, remoteIP, clientIP)
+			return e.Next()
+		})
+
 		// First boot on an empty pb_data volume: import the embedded
 		// collections schema so /activate, /renew, and /status find their
 		// collections instead of a fresh-but-broken deployment.

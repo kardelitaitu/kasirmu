@@ -39,7 +39,7 @@ test.describe('Refund Flow', () => {
 
     // The cart panel should show at least one line item. The panel
     // container is .retail-cart (no data-testid="cart-panel" exists).
-    await expect(page.locator('[data-testid="cart-panel-line-item"]').first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('[data-testid="retail-cart-line-item"]').first()).toBeVisible({ timeout: 5_000 });
 
     // Click the Pay button to open the payment modal.
     const payBtn = page.locator('.retail-cart-action-btn--pay').first();

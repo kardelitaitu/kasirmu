@@ -169,6 +169,7 @@ fn server_license_status_dto_camel_case() {
         status: "active".into(),
         tier: "pro".into(),
         active: true,
+        device_revoked: false,
         expires_at: Some("2027-01-01T00:00:00Z".into()),
         grace_until: Some("2027-01-15T00:00:00Z".into()),
         max_locations: 2,
@@ -180,6 +181,8 @@ fn server_license_status_dto_camel_case() {
     // The §B staged-migration rename: the wire field is now maxLocations.
     assert!(json.contains("\"maxLocations\""));
     assert!(json.contains("\"active\":true"));
+    // ADR #58 §2.4a.2: the device verdict rides the IPC DTO in camelCase.
+    assert!(json.contains("\"deviceRevoked\":false"));
 }
 
 #[test]
@@ -189,6 +192,7 @@ fn server_license_status_dto_null_optionals() {
         status: "canceled".into(),
         tier: "free".into(),
         active: false,
+        device_revoked: true,
         expires_at: None,
         grace_until: None,
         max_locations: 1,
@@ -196,6 +200,9 @@ fn server_license_status_dto_null_optionals() {
     let json = serde_json::to_string(&dto).unwrap();
     assert!(json.contains("\"expiresAt\":null"));
     assert!(json.contains("\"graceUntil\":null"));
+    // The verdict is independent of subscription state: a canceled tenant's
+    // device can be revoked, and the field must survive serialization.
+    assert!(json.contains("\"deviceRevoked\":true"));
 }
 
 // ── store_subscription → TenantSubscription round-trip ───────

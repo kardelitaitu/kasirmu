@@ -256,6 +256,40 @@ func handleAdminRevokeDevice(app core.App) func(e *core.RequestEvent) error {
 	}
 }
 
+// clearTenantDeviceRevocations clears revoked_at on every tenant_machines
+// row for a tenant, returning how many were cleared.
+//
+// Called from the grant-subscription flip so "un-revoke this tenant" releases
+// its devices too (ADR #58 §4a Q-C). Without this, the client-side device check
+// (§2.4a.2) would keep refusing sessions for an account that is active again.
+//
+// Best-effort: rows are cleared independently so one bad record cannot leave
+// the rest revoked, and the caller logs the partial count. A device that
+// should stay revoked is re-revoked with the existing per-device endpoint.
+func clearTenantDeviceRevocations(app core.App, tenantID string) (int, error) {
+	machines, err := app.FindRecordsByFilter("tenant_machines", "tenant_id = {:tenant_id}", "", 0, 0,
+		map[string]any{"tenant_id": tenantID})
+	if err != nil {
+		return 0, err
+	}
+	cleared := 0
+	var firstErr error
+	for _, machine := range machines {
+		if formatDateField(machine, "revoked_at") == "" {
+			continue
+		}
+		machine.Set("revoked_at", "")
+		if err := app.Save(machine); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		cleared++
+	}
+	return cleared, firstErr
+}
+
 // ── POST /api/v1/admin/tenants/{id}/grant-subscription ────────────
 
 // grantSubscriptionRequest is the body for the manual grant endpoint —
@@ -380,10 +414,30 @@ func handleAdminGrantSubscription(app core.App) func(e *core.RequestEvent) error
 			return e.JSON(http.StatusInternalServerError, map[string]any{"error": "grant failed"})
 		}
 		// A tenant that just paid must not stay revoked/suspended.
+		//
+		// This flip is deliberate and tested (see admin_lifecycle_test.go,
+		// "Revoked tenant flipped to active") — it is NOT the bug ADR #58
+		// §2.4a.3 briefly claimed it was. What it must also do, now that the
+		// per-device verdict is ENFORCED client-side (§2.4a.2), is clear the
+		// device rows: otherwise an active tenant's tills keep refusing
+		// sessions, because nothing else clears tenant_machines.revoked_at.
+		// ADR #58 §4a Q-C option B.
 		if tenant.GetString("status") != "active" {
 			tenant.Set("status", "active")
 			if saveErr := app.Save(tenant); saveErr != nil {
 				log.Printf("/admin/tenants/%s/grant-subscription: tenant status flip failed: %v", tenant.Id, saveErr)
+			}
+			// Clear per-device revocations so "un-revoke this tenant" means
+			// the whole account (ADR #58 §4a Q-C). Best-effort per row: one
+			// failing save must not fail the grant, which has already been
+			// written above.
+			cleared, clearErr := clearTenantDeviceRevocations(app, tenant.Id)
+			if clearErr != nil {
+				log.Printf("/admin/tenants/%s/grant-subscription: clearing device revocations failed after %d cleared: %v",
+					tenant.Id, cleared, clearErr)
+			} else if cleared > 0 {
+				log.Printf("/admin/tenants/%s/grant-subscription: cleared %d revoked device(s) with the tenant un-revoke",
+					tenant.Id, cleared)
 			}
 		}
 		log.Printf("/admin/tenants/%s/grant-subscription: tenant %q → %s until %s (reason: %q)",

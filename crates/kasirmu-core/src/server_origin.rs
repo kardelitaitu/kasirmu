@@ -141,11 +141,31 @@ pub fn resolve_origin(
 
 /// The ordered reachability ladder for a release build.
 ///
-/// Both entries are names for the same deployment; a caller walks this list only
-/// on a *transport* failure and never on an HTTP status, so that a credential
-/// rejection can never be retried against a second host.
+/// Both entries are names for the same deployment. A caller walks this list only
+/// when the previous entry could not be *reached* — see [`advances_ladder`] — and
+/// never because the deployment answered an HTTP status that is an outcome rather
+/// than a transport fault, so that neither a credential rejection nor a throttle
+/// can be retried against a second host.
 pub fn release_ladder() -> [&'static str; 2] {
     [MAIN_SERVER_ORIGIN, FALLBACK_SERVER_ORIGIN]
+}
+
+/// Whether an HTTP status from one rung should send the caller to the next.
+///
+/// The ladder exists for reachability, not for answers. Both rungs are names for
+/// the same deployment, so an answer that came from that deployment is final:
+///
+/// - **Advance** on 403 and 404 — the deployment is up but is not serving the
+///   attest endpoint under this name — and on 421 and any 5xx, which are
+///   per-connection or per-instance faults another name may not share.
+/// - **Never advance** on 429, nor on 400/401/409 or any other 4xx. A throttle
+///   (the license server runs a per-IP bucket) and a credential verdict were
+///   produced by the deployment this client must talk to; replaying them against
+///   the second name spends another rate-limit token from the same bucket and
+///   breaks the documented contract. The status is preserved for the caller to
+///   log instead.
+pub fn advances_ladder(status: u16) -> bool {
+    matches!(status, 403 | 404 | 421) || (500..600).contains(&status)
 }
 
 #[cfg(test)]

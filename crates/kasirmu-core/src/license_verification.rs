@@ -270,6 +270,18 @@ pub struct LicenseStatusResponse {
     pub tier: String,
     /// Whether the subscription is active.
     pub active: bool,
+    /// Whether **this device** has been revoked by a tenant admin
+    /// (ADR #58 §2.4a.2).
+    ///
+    /// Server-authored, from `tenant_machines.revoked_at` for the `machine_id`
+    /// this client sent. `#[serde(default)]` so a server that predates the
+    /// field parses as `false` — the pre-existing behaviour, never a lockout.
+    ///
+    /// The verdict is only meaningful when the client actually sent a
+    /// non-empty `machine_id`; with no machine id the server cannot resolve a
+    /// row and answers `false`. That is the fail-open direction §2.4 requires.
+    #[serde(default)]
+    pub device_revoked: bool,
     /// When the subscription expires (RFC 3339).
     #[serde(default)]
     pub expires_at: Option<String>,
@@ -558,16 +570,33 @@ pub async fn renew_license(req: &RenewLicenseRequest) -> Result<RenewLicenseResp
 /// captured in webserver access logs, CDN logs, browser history, or
 /// `Referer` request headers.
 ///
+/// The body carries `machine_id`, which the server needs to resolve this
+/// device's `tenant_machines` row and answer `device_revoked`
+/// (ADR #58 §2.4a.2). Before that field was sent, the server's device lookup
+/// never ran and the verdict was always `false` — a revocation capability
+/// that existed at both endpoints and was never joined up.
+///
+/// An **empty** `machine_id` is sent as-is rather than omitted: the server
+/// skips its lookup on an empty value and answers `device_revoked: false`,
+/// which is the fail-open direction (no machine identity means no verdict,
+/// never a lockout).
+///
 /// # Arguments
 /// * `api_key` - The API key returned by the activation response, used
 ///   to authenticate this status check.
-pub async fn check_license_status(api_key: &str) -> Result<LicenseStatusResponse, CoreError> {
+/// * `machine_id` - The persisted machine fingerprint (`keys::MACHINE_ID`),
+///   used by the server to identify this device.
+pub async fn check_license_status(
+    api_key: &str,
+    machine_id: &str,
+) -> Result<LicenseStatusResponse, CoreError> {
     let url = format!("{}/api/v1/license/status", license_server_url());
     let client = reqwest::Client::new();
 
     let resp = client
         .post(&url)
         .bearer_auth(api_key)
+        .json(&serde_json::json!({ "machine_id": machine_id }))
         .timeout(std::time::Duration::from_secs(15))
         .send()
         .await

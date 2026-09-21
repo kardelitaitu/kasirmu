@@ -203,7 +203,7 @@ export default function RetailCartPanel({
                   </tr>
                 </thead>
                 <tbody>{lines.map((line, idx) => (
-                    <tr key={line.id} data-testid="cart-panel-line-item">
+                    <tr key={line.id} data-testid="retail-cart-line-item">
                       <td className="retail-cart-line-sku">{idx + 1}</td>
                       <td>
                         <div className="retail-cart-line-name">
