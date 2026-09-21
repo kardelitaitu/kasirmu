@@ -68,6 +68,45 @@ Two guards, because the ambient `JAVA_HOME` is the unreliable part:
    regardless of what the shell or Studio exports. Verified 2026-09-19 with `JAVA_HOME` deliberately
    left on the JBR 25 path: `gradlew help` reports `BUILD SUCCESSFUL`.
 
+### ⚠️ `TMP` must be a REAL Windows dir — a POSIX path breaks sccache
+
+`~/.cargo/config.toml` on this host sets `build.rustc-wrapper = "sccache"`, so
+**every** `rustc` call is wrapped. sccache creates a per-compile temp directory
+*under `TMP`*, and if that path is not creatable it fails the whole build with a
+message that does not name the wrapper:
+
+```
+sccache: encountered fatal error
+sccache: error: Failed to create temp dir
+sccache: caused by: The system cannot find the path specified. (os error 3)
+          at path "C:\Users\<user>\AppData\Local\Temp\tauri-cli-<pid>\sccacheXXXXXX"
+  ... exit code: 0xfffffffe
+```
+
+**Two distinct traps**, both hit on 2026-09-22 while verifying the ADR #57
+fingerprint read:
+
+1. **Do not set `TMP=/tmp/...` on Windows.** The per-process recipe above is
+   written for Git-bash, where `/tmp` resolves for *shell* commands — but the
+   native `sccache.exe` receives the literal string and cannot create it. Use a
+   real path, e.g. `TMP=C:\dev\ozpos\.tmp-build` (created first).
+2. **A failure POISONS every later build until the daemon is killed.** sccache
+   runs a persistent server that keeps the environment it was first started
+   with, so after one bad run every subsequent `cargo tauri android build` fails
+   with the *same stale* `tauri-cli-<old-pid>` path no matter how the calling
+   shell is fixed:
+
+   ```powershell
+   Get-Process sccache | Stop-Process -Force   # then rebuild
+   ```
+
+   The stale `tauri-cli-<pid>` directory it names will not exist on disk, which
+   is the tell that you are looking at a leftover daemon rather than a bad path
+   in the current shell.
+
+Setting `RUSTC_WRAPPER=` in the shell does **not** help: the wrapper comes from
+`config.toml`, not the environment.
+
 ### ⚠️ Set `TMP` / `TEMP` / `TMPDIR` to a per-process dir (avoids the WebSocket RPC race)
 
 Tauri 2's CLI starts a WebSocket server on `127.0.0.1:<random>` and writes the
