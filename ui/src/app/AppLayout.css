@@ -569,11 +569,18 @@
  * .page-rotate-prompt — the portrait fallback for a page whose registration
  * declares 'landscape-locked'. It is an OVERLAY, never a gate: the page stays
  * mounted, scrollable and usable underneath (see renderPageLayout's contract in
- * AppShell.tsx), so the panel sits at the bottom of the content slot, clears
- * the tablet's bottom tab bar, and is pointer-transparent except for its own
- * box. Fixed (not absolute) on purpose: the prompt must stay visible while the
- * PAGE underneath scrolls. It replaces the old bare <p> text, which a tablet
- * rendered nearly invisible flush against the page content.
+ * AppShell.tsx), so the panel sits at the bottom of the content slot and is
+ * pointer-transparent except for its own box. Fixed (not absolute) on purpose:
+ * the prompt must stay visible while the PAGE underneath scrolls. It replaces
+ * the old bare <p> text, which a tablet rendered nearly invisible flush
+ * against the page content.
+ *
+ * No bottom clearance is reserved here: THIS shell has no bottom tab bar, so
+ * the extra padding is the tablet copy's job (tablet.css). The desktop shell's
+ * only bottom chrome is the 28px .app-statusbar strip (StatusBar.css:12), which
+ * is a sibling of .app-layout-body (AppLayout.tsx:146 vs :324) and therefore
+ * OUTSIDE the scroll area — the panel is vertically centred over the whole
+ * viewport and nothing in the content slot is hidden behind it.
  *
  * Backdrop: --color-bg-overlay (the scrim of every modal in the tree) at 70%,
  * sized in vh/vw so it also covers the shell on a phone-sized viewport. */
@@ -583,10 +590,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  /* `padding-bottom` used to be `calc(var(--space-4) + var(--tablet-tap-target,
+     var(--space-12)))` — a TABLET token (48px), defined only by the tablet
+     shell's own root block (tablet.css:14), borrowed here to "clear the tablet's
+     bottom tab bar". It was wrong on both counts: the desktop shell renders no
+     tab bar at all, and the token is undefined on desktop, so it silently
+     resolved to its `--space-12` fallback and reserved 48px of phantom space
+     under a panel that has nothing beneath it. The desktop shell has no bottom
+     chrome inside the scroll area, so the plain `--space-4` above is the whole
+     contract and the tablet twin in tablet.css owns the bar clearance. */
   padding: var(--space-4);
-  /* Clears the tablet's bottom tab bar (--tablet-tap-target); it is a no-op on
-     desktop, where that token falls back to the touch minimum. */
-  padding-bottom: calc(var(--space-4) + var(--tablet-tap-target, var(--space-12)));
   background: color-mix(in srgb, var(--color-bg-overlay) 70%, transparent);
   z-index: var(--z-overlay);
   pointer-events: none;
