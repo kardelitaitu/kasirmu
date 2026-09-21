@@ -402,7 +402,7 @@ docker volume prune
 | Setting | Value |
 |---------|-------|
 | Service name | `oz-cloud` |
-| Public URL | `https://license.ozpos.my.id` |
+| Public URL | **two names, one service**: `https://license.kasir.mu` (canonical) and `https://license.ozpos.my.id` (alias) |
 | Dockerfile | `ops/docker/Dockerfile.unified` (under `ops/docker/`) |
 | Port | `80` (caddy; routes to :8080 PocketBase / :3099 Rust) |
 | Volume | single volume at `/data` (Northflank free tier = 1 volume) |
@@ -477,22 +477,51 @@ Sessions are in-memory (`web_otp.go:13-19`), so a restart drops admin sessions: 
 > including the RLS migration). Keep the `/data` volume either way — PocketBase
 > stays on SQLite under `/data/pb_data`.
 
+> ⚠️ **Known defect — every client shares one rate-limit budget (measured 2026-09-21).**
+> The licence server's limiters are keyed on `e.RealIP()` (`apps/license-server/ratelimit.go:52`,
+> `maxPerHr: 5`). PocketBase v0.39.6's `RealIP()` trusts `X-Forwarded-For` only once
+> `Settings.TrustedProxy.Headers` is populated, and returns `RemoteIP()` when that set is
+> **empty** — the Caddy reverse-proxy peer, i.e. loopback. Nothing in this repo seeded it, so the
+> production key collapsed to loopback and **all clients shared ONE 5-per-hour budget across nine
+> lanes**, meaning the fifth request from anywhere on earth 429'd everyone else. Full analysis:
+> `docs/records/2026-09-21-license-ratelimit-collapse.md`. A fix exists in commits `fb0626518`
+> (attest split onto its own 60/hr budget), `e6e254881` (`seedClientIPSettings` + the
+> XFF-collapsing middleware, `apps/license-server/main.go:131-144`), `0ce2483a1` (hop-index clamp,
+> `helpers.go:307-310`) and `061f3bff6` (a 429 no longer advances the origin ladder) — **and it is
+> NOT deployed.** Ship it, then follow the staged verification in §5 of that record.
+
 ### Verification checklist (post-deploy)
 
 **Run one command first.** `python scripts/verify-deployment.py` probes this surface and exits
-non-zero while any ADR #54 route is missing, printing the expected status for each. Measured
-2026-09-26 on the live host: `POST /api/v1/license/activate` and the pre-existing `/api/v1/web/*`
-routes answered (400/401), `/api/sync/snapshot` answered 401, while every `/api/v1/desktop/link/*`
-and `/api/v1/web/oauth/*` route answered **404** -- the container predated ADR #54. On a tablet the
-sign-in path is the emailed code and the link response is what carries the sync credential, so
-that one gap presents as "the app cannot reach auth or sync", and the client gets blamed.
+non-zero while any ADR #54 route is missing, printing the expected status for each. Its default
+base is `https://license.kasir.mu` (`scripts/verify-deployment.py:116`), the canonical name.
+
+**Status measured 2026-09-21: the deployment is COMPLETE.** Every route the verifier checks
+answers — `GET /api/v1/web/me` and `GET /api/v1/web/identities` → 401, `POST
+/api/v1/desktop/link/email/request` → 400, `POST /api/v1/desktop/link/google/start` → 400,
+`POST /api/v1/web/request-otp` → 400, `GET /api/sync/snapshot` → 401, `POST /api/v1/terminals`
+→ 422, and both OAuth endpoints → 302 (configured) — so the `deployment COMPLETE` verdict is
+current, not the 2026-09-26 `predated ADR #54` reading this section used to carry.
+
+**Two probe paths that produce 404 by design — do not read them as a stale deploy.**
+`/api/v1/desktop/link/` and `/api/v1/desktop/link/start` **do not exist in the source**; the
+registered paths are `google/start`, `google/callback`, `consume`, `email/request` and
+`email/consume` (`apps/license-server/main.go:338-343`). A 404 there is correct behaviour. On a
+tablet the sign-in path is the emailed code and the link response is what carries the sync
+credential, so a genuine gap in *that* surface presents as "the app cannot reach auth or sync",
+and the client gets blamed — which is why the check to trust is the script's route list, not a
+hand-typed URL.
 
 > Two traps in this area, both measured. **Probe with the right method**: PocketBase answers 404,
 > not 405, for a wrong method on an existing route, so `GET /api/v1/web/request-otp` looks dead
-> while `POST` returns 400. And **pace the probes**: `license.ozpos.my.id` is fronted by
-> Cloudflare and a burst from one IP gets 403 for every `/api/v1/*` path, which reads as a broken
-> deployment until a single paced request returns the real status. The verifier stops at the first
-> throttle for this reason.
+> while `POST` returns 400. And **pace the probes — but only on the alias**. `license.ozpos.my.id`
+> is fronted by Cloudflare (measured 2026-09-21: `server: cloudflare` with a `cf-ray` header) and
+> a burst from one IP gets 403 for every `/api/v1/*` path on **that name**, which reads as a
+> broken deployment until a single paced request returns the real status. The canonical name
+> carries no `cf-ray` at all — `license.kasir.mu` sits behind istio-envoy + Caddy (measured
+> 2026-09-21: 12 spaced requests, no 403 and no rate-limit behaviour) — so a 403 burst is a
+> property of the alias edge, not of the deployment. The verifier stops at the first throttle for
+> this reason.
 
 ```bash
 BASE="https://license.ozpos.my.id"
