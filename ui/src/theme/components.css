@@ -459,6 +459,13 @@
      positioned in its own feature sheet, so the ::after anchors on it. */
   .restaurant-sidebar::after,
   .pos-cart-course-dropdown::after,
+  /* T3 rotate prompt (cbf4557f2): the panel is a direct child of the
+     overlay, so the ::after anchors on the child itself — the same
+     relative-anchor pattern as .kds-picker-modal. The tablet shell's
+     twin (.tablet-shell .page-rotate-prompt > *) is named separately
+     because tablet.css is a different sheet with its own rule. */
+  .page-rotate-prompt > *::after,
+  .tablet-shell .page-rotate-prompt > *::after,
   :global(.dark) .panel::after {
     content: '';
   position: absolute;
@@ -603,6 +610,8 @@
   .kds-routing-confirm::after,
   .restaurant-sidebar::after,
   .pos-cart-course-dropdown::after,
+  .page-rotate-prompt > *::after,
+  .tablet-shell .page-rotate-prompt > *::after,
   :global(.dark) .panel::after { display: none; }
 }
 
@@ -734,6 +743,8 @@
 .kds-routing-confirm::after,
 .restaurant-sidebar::after,
 .pos-cart-course-dropdown::after,
+.page-rotate-prompt > *::after,
+.tablet-shell .page-rotate-prompt > *::after,
 :global(.dark) .panel::after { display: none; }
 }
 

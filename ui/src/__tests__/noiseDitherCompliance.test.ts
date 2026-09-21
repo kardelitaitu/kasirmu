@@ -191,6 +191,13 @@ const KNOWN_NOISE_SELECTORS = [
   // to ::after in components.css (main list + both @media parity blocks).
   '.restaurant-sidebar',
   '.pos-cart-course-dropdown',
+  // T3 rotate prompt (cbf4557f2): the panel is a DIRECT CHILD of the overlay in
+  // both shells, so the child selector itself carries --shadow-xl and has to be
+  // named — the desktop rule in app/AppLayout.css and the tablet twin in
+  // app/tablet/tablet.css. Both are wired to ::after in components.css (main
+  // list + both @media parity blocks).
+  '.page-rotate-prompt > *',
+  '.tablet-shell .page-rotate-prompt > *',
 ];
 
 /** CSS selectors that are exempt from noise-dither even though they use --shadow-* */
