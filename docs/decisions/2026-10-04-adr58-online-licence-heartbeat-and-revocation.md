@@ -475,9 +475,8 @@ labelled *revoke this device* (`admin_tenant_lifecycle.go:225`), and its blast r
 its label. Flipping `tenants.status` would make a stolen-tablet action end an entire multi-terminal
 business — the asymmetry §4 Q2 resolves in favour of the smaller radius.
 
-**Enforcement point, if A is taken:** `create_session` beside the existing entitlement gate.
-It **already receives `args.terminal_id`** (`auth.rs:636`), so the gate itself needs no new
-plumbing:
+**Enforcement point:** `create_session` beside the existing entitlement gate. It **already
+receives `args.terminal_id`** (`auth.rs:636`), so the gate itself needs no new plumbing:
 
 ```
 create_session → load subscription → verify_signature()   [existing :617]
@@ -486,9 +485,43 @@ create_session → load subscription → verify_signature()   [existing :617]
               → check allows_workspace_type()            [existing :620]
 ```
 
-**Where the verdict is cached is §4a Q-D's decision** — it already rules for a local cache beside
+**Where the verdict is cached is §4a Q-D's decision** — it rules for a local cache beside
 `tenant_subscription` rather than a network call inside `create_session`, which §2.7 forbids from
 being able to brick a register.
+
+#### IMPLEMENTED 2026-10-04 — option A shipped
+
+All three points of the protocol are now wired, and each was verified by running the tests, not by
+inspection:
+
+| # | Change | Evidence |
+|---|---|---|
+| 1 | `check_license_status` sends `{"machine_id": …}` | `crates/kasirmu-core/src/license_verification.rs` — signature gained `machine_id: &str`, body added to the POST. `machine_id` was **already resolved** by the bridge wrapper for API-key decryption (`license.rs:496-501`), so no new plumbing was needed |
+| 2 | `LicenseStatusResponse` + `ServerLicenseStatusDto` carry `device_revoked` | `#[serde(default)]` on the core type, so a server predating the field parses as `false` — additive, never a new lockout |
+| 3 | `create_session` refuses on the cached verdict | `crates/kasirmu-bridge/src/auth.rs`, beside the entitlement gate |
+
+**Cache key: `device.revoked` (`keys::DEVICE_REVOKED`), deliberately not `license.*`.** The
+credential-family gate (`settings_tests.rs` `is_credential_family`, marker `"LICENSE_"`) classifies
+any such name as a secret and demands it be denied on the export surface. Both halves of that are
+wrong here — it is a boolean, not a credential, and denying it from export buys nothing because it
+is re-derived from the server on the next status check. The name was chosen to avoid a false
+classification rather than to satisfy it.
+
+**Fail-open, and tested as such.** An absent or unparseable value reads as *not revoked*. Two
+regression tests pin both directions:
+`create_session_denies_a_revoked_device` and `create_session_allows_a_device_when_the_verdict_is_absent`.
+
+**Verification run:** `cargo test -p kasirmu-bridge --lib` → **1360 passed, 0 failed**;
+`cargo test -p kasirmu-core --lib` → **3112 passed, 0 failed**;
+`go test ./...` in `apps/license-server` → **ok (161s)**, including the pre-existing
+`TestStatusHandler_RevokeMachine` (`handler_test.go:4381`) that the server half already had;
+`npm run typecheck` and the `LicenseSettings` suite (52 tests) in `ui/`.
+
+**What shipped with it:** §4a Q-C option B, the clearing path. The device check is *enforcing*, so
+shipping it alone would have left an active tenant with locked tills; both landed in one change
+(`clearTenantDeviceRevocations` + `TestAdminGrantSubscription_ClearsDeviceRevocations`). Q-C's
+option A (a per-device un-revoke endpoint) remains unbuilt and covers the case this path cannot:
+a tenant that is already active with one revoked device.
 
 **Also required:** a live session on a revoked device must be invalidated, not merely refused on
 next login. The session store is in-memory (`auth.rs:251-257`) and already prunes expired entries.
@@ -939,6 +972,26 @@ that outlives its own reversal, produced by the record's own recommended flow.
 **This is the interaction §2.4a.2's fix creates**, and it is the reason the two cannot be shipped
 independently: adding the device check without a clearing path converts a working un-revoke into a
 half-locked account.
+
+**IMPLEMENTED 2026-10-04 — option B shipped with the device check, not after it.** §2.4a.2's
+per-device verdict is now *enforced*, so a clearing path is not optional: without one, "the tenant
+paid" would leave an active account whose tills refuse sessions. Both halves landed together.
+
+**The implementation:** `clearTenantDeviceRevocations` (`admin_tenant_lifecycle.go`), called from
+the grant flip at the moment it re-activates a tenant. It clears `revoked_at` on every
+`tenant_machines` row for that tenant, **selectively** — rows without a timestamp are skipped, so
+the clear never writes a field it did not own — and best-effort per row, so one failing save cannot
+leave the rest revoked. A partial failure is logged with its count.
+
+**Tested:** `TestAdminGrantSubscription_ClearsDeviceRevocations` seeds one revoked device and one
+untouched device, grants a subscription, and asserts the revoked row is cleared **and** the
+untouched row is not disturbed.
+
+**Residual, and it is option A's job.** The clear runs only on the re-activation branch, so a tenant
+that is **already active** with a revoked device cannot use this path — `grant-subscription` refuses
+to stack on an active subscription (`admin_tenant_lifecycle.go:328`). Clearing that case needs the
+per-device un-revoke endpoint (option A), which remains additive and unbuilt. Recorded here so the
+limit is known rather than discovered.
 
 | Option | How it works | Trade-off |
 |---|---|---|
