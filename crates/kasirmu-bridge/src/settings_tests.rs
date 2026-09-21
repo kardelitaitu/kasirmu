@@ -9,7 +9,7 @@ use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
-    migrations::fresh_db()
+    crate::testing::temp_conn()
 }
 
 /// The portable-package refusal, asked of the sealed policy directly.

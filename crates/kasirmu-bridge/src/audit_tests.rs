@@ -109,7 +109,7 @@ fn export_dto_serialize_has_all_fields() {
 
 /// Global DB with an owner (all permissions) on the given tier.
 fn seeded_conn(tier_key: &str) -> rusqlite::Connection {
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();

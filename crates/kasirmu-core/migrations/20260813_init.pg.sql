@@ -3535,10 +3535,6 @@ INSERT INTO loyalty_tiers (id, name, min_points, points_per_unit, colour, sort_o
     ('tier-platinum', 'Platinum', 2000, 10, '#e5e4e2', 4, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 2000000)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, updated_at, signed_payload, api_key) VALUES
-    ('default', 'free', 'active', NULL, 1, 1, '["store-pos", "restaurant-pos", "admin"]', 'BOOTSTRAP_FREE', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), '', '')
-ON CONFLICT DO NOTHING;
-
 INSERT INTO workspace_types (key, name, description, layout_mode, icon, sort_order, accent_colour) VALUES
     ('restaurant-pos', 'Restaurant POS', 'Cashier terminal for restaurant ordering', 'fullscreen', 'restaurant', 1, ''),
     ('store-pos', 'Store POS', 'Cashier terminal for retail', 'fullscreen', 'store', 2, ''),
@@ -3555,10 +3551,6 @@ INSERT INTO workspaces (id, key, name, description, icon) VALUES
     ('ws-admin', 'admin', 'Admin', 'System settings, staff management, reports, audit logs, and configuration', 'admin'),
     ('ws-kds', 'kds', 'Kitchen Display', 'Order queue display for the kitchen — tap tickets to advance their status', 'kds'),
     ('ws-retail-pos', 'retail-pos', 'Retail POS', 'Cashier terminal for retail checkout', 'store')
-ON CONFLICT DO NOTHING;
-
-INSERT INTO legal_entities (id, tenant_id, name, legal_name, registration_number, tax_id, status, created_at, updated_at, country_code, locale, timezone, currency) VALUES
-    ('default:default-legal-entity', 'default', 'Default Legal Entity', 'Default Legal Entity', '', '', 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), '', '', '', '')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO workspace_type_screens (id, type_key, screen_key, sort_order) VALUES
@@ -3631,18 +3623,6 @@ INSERT INTO workspace_screens (id, workspace_key, screen_key, label, sort_order)
     (28, 'admin', 'locations', '', 13),
     (29, 'admin', 'exchange-rates', '', 14),
     (30, 'admin', 'design', '', 15)
-ON CONFLICT DO NOTHING;
-
-INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at, tenant_id, legal_entity_id, locale, ticket_prefix, index_id) VALUES
-    ('default', 'Default Store', '', '', 'USD', 'UTC', 0, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'default', 'default:default-legal-entity', '', '', NULL)
-ON CONFLICT DO NOTHING;
-
-INSERT INTO workspace_instances (id, type_key, location_id, name, description, colour, status, last_accessed_at, created_at, updated_at, bound_location_id, purpose_key) VALUES
-    ('default-restaurant-pos', 'restaurant-pos', 'default', 'Restaurant POS', 'Cashier terminal for restaurant ordering', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
-    ('default-store-pos', 'store-pos', 'default', 'Store POS', 'Cashier terminal for retail', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
-    ('default-warehouse', 'warehouse', 'default', 'Warehouse', 'Product and stock management', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
-    ('default-admin', 'admin', 'default', 'Admin', 'System administration', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
-    ('default-kds', 'kds', 'default', 'Kitchen Display', 'Kitchen order queue display', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general')
 ON CONFLICT DO NOTHING;
 
 -- tenant_id tables NOT yet under RLS — documented exemptions

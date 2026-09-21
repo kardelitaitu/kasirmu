@@ -4,6 +4,7 @@ use crate::settings::Settings;
 
 fn store() -> Store<'static> {
     let conn = crate::migrations::fresh_db();
+    crate::migrations::seed_provisioned_baseline(&conn);
     let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
     Store::new(conn)
 }
@@ -190,10 +191,13 @@ fn unknown_location_is_not_found_not_defaulted() {
 fn primary_config_follows_the_primary_row() {
     let store = store();
     insert_location(&store, "loc-primary", "MYR", "+08:00", "ms-MY");
+    // Only one row may hold is_primary = 1 (idx_locations_primary is a partial
+    // UNIQUE), so promoting this one must demote the provisioned baseline row
+    // first — the same swap set_primary_location performs.
     store
         .conn
         .execute(
-            "UPDATE locations SET is_primary = 1 WHERE id = 'loc-primary'",
+            "UPDATE locations SET is_primary = CASE WHEN id = 'loc-primary' THEN 1 ELSE 0 END",
             [],
         )
         .unwrap();
@@ -221,9 +225,10 @@ fn no_primary_location_is_none_not_defaults() {
 
 #[test]
 fn migration_backfills_existing_locations_with_a_blank_locale() {
-    // The seeded 'default' location predates the column. NOT NULL DEFAULT ''
-    // means it inherits rather than failing the read — the whole upgrade story
-    // of this slice in one assertion.
+    // The provisioned 'default' location postdates the column: it was
+    // created by the baseline *seeder* without a locale, and the NOT NULL
+    // DEFAULT '' means it inherits rather than failing the read — the whole
+    // upgrade story of this slice in one assertion.
     let store = store();
     let cfg = store.regional_config_for_location("default").unwrap();
     assert_eq!(cfg.locale.value, DEFAULT_LOCALE);

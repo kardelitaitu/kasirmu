@@ -3,8 +3,17 @@ use crate::inventory::{CANONICAL_DEFAULT_LOCATION_UUID, LocationId};
 use crate::migrations;
 use rusqlite::Connection;
 
+/// A provisioned store database.
+///
+/// ADR #56 §2.6 stopped the baseline migration seeding the `Default Store`
+/// location, the five `default-*` workspaces and the BOOTSTRAP_FREE
+/// subscription — `provision_device` creates them now, in one transaction.
+/// These tests exercise layers BELOW provisioning, so they run against what
+/// provisioning produces. See `migrations::seed_provisioned_baseline`.
 fn fresh() -> Connection {
-    migrations::fresh_db()
+    let conn = migrations::fresh_db();
+    migrations::seed_provisioned_baseline(&conn);
+    conn
 }
 
 fn store(conn: &Connection) -> Store<'_> {

@@ -466,7 +466,11 @@ fn region_code_parse_is_case_and_whitespace_insensitive() {
     // §Q2 option A warns about. Case and stray whitespace are folded, not
     // rejected, because they are the same region.
     for raw in ["global", "GLOBAL", "Global", "  global  "] {
-        assert_eq!(RegionCode::parse(raw).unwrap(), RegionCode::Global, "{raw:?}");
+        assert_eq!(
+            RegionCode::parse(raw).unwrap(),
+            RegionCode::Global,
+            "{raw:?}"
+        );
     }
 }
 

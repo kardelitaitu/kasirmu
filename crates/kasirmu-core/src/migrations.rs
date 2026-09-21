@@ -380,6 +380,40 @@ pub fn run(conn: &mut rusqlite::Connection) -> Result<(), crate::CoreError> {
     Ok(())
 }
 
+/// Seed the baseline rows ADR #56 §2.6 stopped shipping, for tests.
+///
+/// The §2.6 removal deleted three things the baseline migration used to seed
+/// unconditionally: the `Default Store` location, the five `default-*`
+/// workspace instances, and the `BOOTSTRAP_FREE` tenant subscription. Those
+/// rows are now created by `provision_device` in one transaction, because a
+/// store with no merchant should have no location and no workspaces.
+///
+/// Tests that exercise layers BELOW provisioning still need a provisioned
+/// store to run against, so this reproduces exactly what provisioning
+/// produces. It is the single place those rows are rebuilt, so the five
+/// workspace ids stay identical wherever a test asserts on them by name.
+///
+/// Deliberately NOT part of `fresh_db`: a test of first-run behaviour must
+/// see an UNPROVISIONED database, and seeding here by default would
+/// re-introduce the fiction §2.6 removed.
+#[doc(hidden)]
+pub fn seed_provisioned_baseline(conn: &rusqlite::Connection) {
+    conn.execute_batch(
+        "INSERT INTO locations (id, name, is_primary) VALUES ('default', 'Default Store', 1);
+         INSERT INTO legal_entities (id, tenant_id, name, legal_name) VALUES ('default:default-legal-entity', 'default', 'Default Legal Entity', 'Default Legal Entity');
+         UPDATE locations SET legal_entity_id = 'default:default-legal-entity' WHERE id = 'default';
+         INSERT INTO workspace_instances (id, type_key, location_id, name, description, colour, status, last_accessed_at) VALUES
+            ('default-restaurant-pos', 'restaurant-pos', 'default', 'Restaurant POS', 'Cashier terminal for restaurant ordering', NULL, 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            ('default-store-pos', 'store-pos', 'default', 'Store POS', 'Cashier terminal for retail', NULL, 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            ('default-warehouse', 'warehouse', 'default', 'Warehouse', 'Product and stock management', NULL, 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            ('default-admin', 'admin', 'default', 'Admin', 'System administration', NULL, 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            ('default-kds', 'kds', 'default', 'Kitchen Display', 'Kitchen order queue display', NULL, 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+         INSERT INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature)
+         VALUES ('default', 'free', 'active', NULL, 1, 1, '[\"store-pos\", \"restaurant-pos\", \"admin\"]', 'BOOTSTRAP_FREE');"
+    )
+    .expect("seed_provisioned_baseline failed");
+}
+
 /// Create a fresh in-memory database with all migrations already applied.
 ///
 /// Uses a [`std::sync::LazyLock`]ed pre-migrated snapshot connection.

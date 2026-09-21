@@ -5,7 +5,7 @@ use rusqlite::Connection;
 
 /// Create a fresh in-memory connection with migrations applied.
 fn fresh_conn() -> Connection {
-    migrations::fresh_db()
+    crate::testing::temp_conn()
 }
 
 /// Run the bridge `complete_setup` command over the harness context.

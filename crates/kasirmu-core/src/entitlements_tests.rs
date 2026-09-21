@@ -5,8 +5,13 @@ use crate::downgrade::QuotaDimension;
 use crate::migrations;
 use crate::subscription::SubscriptionTier;
 
+/// A provisioned store. See `migrations::seed_provisioned_baseline` for why
+/// the baseline rows are seeded here rather than shipped by the migration
+/// (ADR #56 §2.6).
 fn fresh_db() -> rusqlite::Connection {
-    migrations::fresh_db()
+    let conn = migrations::fresh_db();
+    migrations::seed_provisioned_baseline(&conn);
+    conn
 }
 
 /// Every tier's caps projection must equal the one limit table

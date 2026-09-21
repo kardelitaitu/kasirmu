@@ -182,7 +182,7 @@ fn make_profile(id: &str, name: &str) -> LocationProfile {
 /// store-a (1 instance) and store-b (1 instance) so cross-store isolation
 /// can be exercised. The harness owns a unique temp store dir.
 fn picker_state(global_seed: impl FnOnce(&rusqlite::Connection)) -> TestBridge {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_global_users(&conn);
     global_seed(&conn);
     let tb = crate::testing::TestBridge::new().with_conn(conn);
@@ -518,7 +518,7 @@ async fn list_workspaces_scoped_rejects_tampered_subscription_signature() {
 /// than relying on whatever `fresh_db` seeds, so a future change to the default
 /// location cannot quietly flip these assertions.
 fn conn_with_location(id: &str) -> rusqlite::Connection {
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     conn.execute(
         "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, 'Seeded Store')",
         rusqlite::params![id],

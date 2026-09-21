@@ -21,7 +21,7 @@ use kasirmu_core::migrations;
 /// the global connection before it is handed to the bridge (the hoisted
 /// stand-in for the desktop's post-construction `state.db` mutations).
 fn analytics_state(pre_seed: impl FnOnce(&rusqlite::Connection)) -> TestBridge {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();

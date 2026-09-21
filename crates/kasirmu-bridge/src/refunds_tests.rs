@@ -15,7 +15,7 @@ use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
-    migrations::fresh_db()
+    crate::testing::temp_conn()
 }
 
 fn seed_completed_sale(conn: &Connection) -> String {

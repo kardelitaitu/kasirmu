@@ -117,8 +117,20 @@ fn unique_store_dir() -> std::path::PathBuf {
 /// `StoreDatabaseManager::new(path, migrations::ALL)`. Seeding tests open
 /// and mutate their store DB through this handle *before* it is handed to
 /// `flow_bridge`, because `TestBridge` keeps the manager private.
+///
+/// Opens the store once so the provisioned baseline is seeded into it. ADR #56
+/// §2.6 stopped the baseline migration shipping the `default` location and its
+/// legal entity; `provision_device` creates them now, so a store DB that a test
+/// addresses as "default" must be provisioned the same way. Without this the
+/// store db is migrated but empty, and every scoped command answers NotFound.
 fn store_manager() -> StoreDatabaseManager {
-    StoreDatabaseManager::new(unique_store_dir(), migrations::ALL)
+    let manager = StoreDatabaseManager::new(unique_store_dir(), migrations::ALL);
+    {
+        let store_conn = manager.open_store("default").unwrap();
+        let store_conn = store_conn.lock().unwrap();
+        kasirmu_core::migrations::seed_provisioned_baseline(&store_conn);
+    }
+    manager
 }
 
 /// `TestBridge` with a fresh migrated global DB and an isolated store-db dir

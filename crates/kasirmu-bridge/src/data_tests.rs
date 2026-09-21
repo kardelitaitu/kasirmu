@@ -469,7 +469,7 @@ fn import_data_result_serialize() {
 // ── W4-S2: import batch quota gate ──────────────────────────────────
 
 fn fresh_conn() -> rusqlite::Connection {
-    kasirmu_core::migrations::fresh_db()
+    crate::testing::temp_conn()
 }
 
 /// One importable product row as `payload.products` carries them (a

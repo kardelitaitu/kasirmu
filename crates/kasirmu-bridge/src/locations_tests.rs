@@ -100,7 +100,7 @@ fn seed_owner(conn: &rusqlite::Connection) {
 /// rejection despite the UI reporting unlimited locations.
 #[tokio::test]
 async fn create_location_profile_scoped_end_to_end_owner() {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner(&conn);
     let tb = TestBridge::new().with_conn(conn);
     tb.sessions().write().unwrap().insert(
@@ -179,7 +179,7 @@ async fn create_location_profile_scoped_end_to_end_owner() {
 /// of Free because debug builds upgrade only the bootstrap Free tier.
 #[tokio::test]
 async fn create_location_profile_scoped_rejects_when_plus_quota_reached() {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner(&conn);
     let tb = TestBridge::new().with_conn(conn);
     tb.sessions().write().unwrap().insert(
@@ -256,7 +256,7 @@ async fn create_location_profile_scoped_rejects_when_plus_quota_reached() {
 /// PermissionDenied, not Internal.
 #[tokio::test]
 async fn create_location_profile_scoped_denies_staff_without_settings_edit() {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();
@@ -344,7 +344,7 @@ fn manager_session(tb: &TestBridge, token: &str) {
 /// scope — the gate this slice added.
 #[tokio::test]
 async fn update_location_profile_scoped_denies_manager_of_other_location() {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_location_scoped_manager(&conn, "loc-a");
     let tb = TestBridge::new().with_conn(conn);
     manager_session(&tb, "mgr-tok");
@@ -372,7 +372,7 @@ async fn update_location_profile_scoped_denies_manager_of_other_location() {
 /// does not blanket-deny them.
 #[tokio::test]
 async fn update_location_profile_scoped_allows_manager_of_own_location() {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_location_scoped_manager(&conn, "default");
     let tb = TestBridge::new().with_conn(conn);
     manager_session(&tb, "mgr-tok");
@@ -400,7 +400,7 @@ async fn update_location_profile_scoped_allows_manager_of_own_location() {
 /// non-preset value, as the legacy column default for un-migrated rows.
 #[tokio::test]
 async fn update_location_profile_scoped_rejects_unsupported_timezone() {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_location_scoped_manager(&conn, "default");
     let tb = TestBridge::new().with_conn(conn);
     manager_session(&tb, "mgr-tok");

@@ -4,8 +4,17 @@ use crate::{Cart, CartLine, SaleStatus, Sku};
 use rusqlite::Connection;
 use std::collections::HashSet;
 
+/// A provisioned store database.
+///
+/// ADR #56 §2.6 stopped the baseline migration seeding the `Default Store`
+/// location, the five `default-*` workspaces and the BOOTSTRAP_FREE
+/// subscription — `provision_device` creates them now, in one transaction.
+/// These tests exercise layers BELOW provisioning, so they run against what
+/// provisioning produces. See `migrations::seed_provisioned_baseline`.
 fn fresh() -> Connection {
-    migrations::fresh_db()
+    let conn = migrations::fresh_db();
+    migrations::seed_provisioned_baseline(&conn);
+    conn
 }
 
 fn store(conn: &Connection) -> Store<'_> {
@@ -2799,7 +2808,9 @@ fn complete_sale_partial_shortfall_rolls_back_sale_row() {
         "INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES
             ('loc-pri', 'Primary', 'store'),
             ('loc-sec', 'Secondary', 'warehouse');
-         INSERT OR IGNORE INTO locations (id, name, is_primary) VALUES ('store-1', 'Test Store', 1);
+         -- Not primary: the provisioned seeder already owns is_primary=1 (partial
+         -- unique), and this test only needs a locations row to point at.
+         INSERT OR IGNORE INTO locations (id, name, is_primary) VALUES ('store-1', 'Test Store', 0);
          INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name)
             VALUES ('ws-multi-test',
                 (SELECT key FROM workspace_types LIMIT 1),

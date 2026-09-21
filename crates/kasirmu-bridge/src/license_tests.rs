@@ -82,7 +82,7 @@ fn generate_machine_id_is_deterministic() {
 #[test]
 fn machine_id_is_persisted_in_settings() {
     use kasirmu_core::migrations;
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let id1 = generate_machine_id();
     // Simulate what get_machine_id does: persist to Settings.
     Settings::set_batch(&conn, &[("machine_id".to_string(), id1.clone())]).unwrap();
@@ -122,7 +122,7 @@ fn hardware_fingerprint_has_spec_shape_and_is_deterministic() {
 #[test]
 fn hardware_fingerprint_is_persisted_in_settings() {
     use kasirmu_core::migrations;
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let fp1 = generate_hardware_fingerprint();
     // Simulate what get_hardware_fingerprint does: persist to Settings.
     Settings::set_batch(&conn, &[("hardware_fingerprint".to_string(), fp1.clone())]).unwrap();
@@ -138,7 +138,7 @@ fn hardware_fingerprint_is_persisted_in_settings() {
 #[test]
 fn clock_tamper_detected_on_future_ledger_timestamps() {
     use kasirmu_core::migrations;
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
 
     // Insert a sale with a timestamp far in the future
     // (simulates OS clock being rolled back).
@@ -210,7 +210,7 @@ fn server_license_status_dto_null_optionals() {
 #[test]
 fn store_subscription_updates_tenant_subscription_default() {
     use kasirmu_core::migrations;
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
 
     // Verify bootstrap Free tier is seeded
     let sub = TenantSubscription::load(&conn, "default")
@@ -322,7 +322,7 @@ fn grace_deadline_fails_closed_on_unknown_tiers() {
 /// Proves the duplicate is closed without damaging the machine-bound lane.
 #[test]
 fn subscription_store_leaves_the_cleartext_column_empty_and_the_sealed_row_intact() {
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let machine_id = "MACHINE-FOR-CLEARTTEXT-COPY-TEST";
     let plaintext = "oz-live-API-KEY-9f2c1d";
 

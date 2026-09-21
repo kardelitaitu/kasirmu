@@ -120,6 +120,8 @@ pub mod products;
 pub mod profile;
 /// Promotion / discount CRUD.
 pub mod promotions;
+/// First-run provisioning records (ADR #56 §2.1).
+pub mod provisioning;
 /// CRUD for purchase orders.
 pub mod purchase_orders;
 /// Central creation-quota gate (W4-S1) — one decision point for every
@@ -157,8 +159,6 @@ pub mod stock_transfers;
 pub mod suppliers;
 /// CRUD for restaurant tables (floor plan, status management).
 pub mod tables;
-/// First-run provisioning records (ADR #56 §2.1).
-pub mod provisioning;
 /// Tax rate CRUD.
 pub mod tax;
 /// Terminal override CRUD.
