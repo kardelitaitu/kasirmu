@@ -19,7 +19,39 @@
  * labels, 40px at four). `width: max-content` also keeps the track hugging its
  * segments wherever it is mounted — block flow, flex or grid — leaving margins
  * and placement to the caller's own className hook.
+ *
+ * WIDTH, and why the cap is a scroll viewport AROUND the track: at
+ * `max-content` the track's width is decided by the labels, so a locale with
+ * long ones makes a strip wider than the box it sits in. Measured 2026-09-21 in
+ * the Indonesian locale: the six stock-transfer status segments are 786px,
+ * against 740px of container at a 1024px viewport, 736 at 800 and 704 at 768 —
+ * cut off, because a visible overflow neither scrolls nor wraps. English is
+ * 527px and fits, which is why only the second locale broke.
+ *
+ * Capping the TRACK would fix the box and break the thumb: `1fr` tracks are only
+ * equal while the grid is at `max-content`, because each track's automatic
+ * minimum is its OWN label's min-content — so under a cap the six tracks become
+ * unequal (the widest label holds its ~150px while the rest shrink), and a thumb
+ * sized `(100% - 6px) / count` drifts off the active segment by up to the
+ * difference. The scroll viewport keeps the track at `max-content`, so the
+ * columns stay equal and the thumb stays exact. Wrapping is not an option at
+ * all: one thumb cannot sit behind a segment on a second row.
  * ============================================================ */
+
+/* The control's OUTER box — what the surrounding layout sees, and the element
+ * the caller's `className` hook lands on. It hugs the track while there is room
+ * (`fit-content`), so nothing but the overflow case changes, and it is what caps
+ * the control at its container. `overflow-x: auto` also drops the automatic
+ * minimum size to zero, so a narrow parent can no longer be pushed wide by the
+ * strip. The scrollbar is hidden as the tablet shell's own tab bar
+ * (app/tablet/tablet.css:108) hides it: on a touch target the strip is dragged,
+ * and a focused segment is scrolled into view by the browser either way. */
+.segmented-tabs-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
 
 .segmented-tabs {
   position: relative;

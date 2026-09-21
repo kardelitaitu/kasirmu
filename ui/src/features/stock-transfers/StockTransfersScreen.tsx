@@ -364,7 +364,7 @@ export default function StockTransfersScreen() {
             <Skeleton variant="block" width="12rem" height="1.75rem" />
             <Skeleton variant="block" width="8rem" height="2.25rem" />
           </div>
-          <div className="stock-transfers-filters">
+          <div className="stock-transfers-filters-skeleton">
             {[0, 1, 2, 3, 4, 5].map((i) => (
               <Skeleton key={i} variant="block" width="5rem" height="1.75rem" style={{ borderRadius: 'var(--radius-full)' }} />
             ))}

@@ -20,7 +20,18 @@
  * label, and the thumb lands within 0.03px of the active tab over both two and
  * four uneven labels — a hug-width FLEX track with `flex: 1 1 0` does NOT
  * equalize (2px off at two labels, 40px at four), which is why the track is a
- * grid. Callers that need a screen-specific placement hook pass `className`.
+ * grid. Callers that need a screen-specific placement hook pass `className`,
+ * which lands on the scroll viewport that wraps the track — see the second
+ * element below.
+ *
+ * TWO ELEMENTS, on purpose. The outer `div` is the scroll viewport: it hugs the
+ * track while there is room and caps it at its container when there is not, so a
+ * strip whose labels are wider than the screen scrolls instead of being cut off
+ * (measured: the Indonesian stock-transfer segments are 786px against 740px of
+ * container at a 1024px viewport). The cap cannot move onto the track: `1fr`
+ * tracks are equal only at `max-content`, so a capped grid makes them unequal and
+ * drifts the thumb off the active segment — SegmentedTabs.css carries the detail.
+ * `role="tablist"` stays on the track, which is the box that holds the tabs.
  *
  * Callers own their strings. Each label arrives already localized (`Localized`
  * or a Fluent node) and the accessible name for the strip is passed in, so no
@@ -53,7 +64,11 @@ export interface SegmentedTabsProps<T extends string> {
   onSelect: (value: T) => void;
   /** Accessible name for the whole strip. */
   ariaLabel: string;
-  /** Screen-level placement hook (margin, justify-self), applied to the track. */
+  /**
+   * Screen-level placement hook (margin, justify-self), applied to the control's
+   * outer box — the scroll viewport wrapping the track — so a screen positions
+   * the whole control, not the part that can overflow it.
+   */
   className?: string;
 }
 
@@ -70,41 +85,44 @@ export function SegmentedTabs<T extends string>({
   const index = Math.max(0, items.findIndex((item) => item.value === activeValue));
 
   return (
+    // The scroll viewport. Its own box is the control's; the track inside it
+    // keeps `max-content` so the columns stay equal (see the module doc).
     <div
-      className={className ? `segmented-tabs ${className}` : 'segmented-tabs'}
-      role="tablist"
-      aria-label={ariaLabel}
+      className={className ? `segmented-tabs-scroll ${className}` : 'segmented-tabs-scroll'}
     >
-      {/* Decorative: no text, no pointer events, so it stays out of the
-          accessibility tree while the tabs announce selection via aria-selected.
-          The transform is LTR-only, like every other sheet in this repo. */}
-      <span
-        className="segmented-tab-indicator"
-        aria-hidden="true"
-        style={{
-          '--segmented-tab-index': index,
-          '--segmented-tab-count': items.length,
-        } as CSSProperties}
-      />
-      {items.map((item) => {
-        const active = item.value === activeValue;
-        return (
-          <button
-            key={item.value}
-            type="button"
-            role="tab"
-            id={item.tabId}
-            aria-selected={active}
-            aria-controls={item.controls}
-            aria-label={item.ariaLabel}
-            data-testid={item.testId}
-            className={active ? 'segmented-tab segmented-tab--active' : 'segmented-tab'}
-            onClick={() => onSelect(item.value)}
-          >
-            {item.label}
-          </button>
-        );
-      })}
+      <div className="segmented-tabs" role="tablist" aria-label={ariaLabel}>
+        {/* Decorative: no text, no pointer events, so it stays out of the
+            accessibility tree while the tabs announce selection via
+            aria-selected. The transform is LTR-only, like every other sheet in
+            this repo. */}
+        <span
+          className="segmented-tab-indicator"
+          aria-hidden="true"
+          style={{
+            '--segmented-tab-index': index,
+            '--segmented-tab-count': items.length,
+          } as CSSProperties}
+        />
+        {items.map((item) => {
+          const active = item.value === activeValue;
+          return (
+            <button
+              key={item.value}
+              type="button"
+              role="tab"
+              id={item.tabId}
+              aria-selected={active}
+              aria-controls={item.controls}
+              aria-label={item.ariaLabel}
+              data-testid={item.testId}
+              className={active ? 'segmented-tab segmented-tab--active' : 'segmented-tab'}
+              onClick={() => onSelect(item.value)}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -26,7 +26,15 @@
   margin-bottom: 0;
 }
 
-.stock-transfers-loading-skeleton .stock-transfers-filters {
+/* The loading placeholder is a row of blocks standing in for the strip. It must
+   not wear the strip's class: the strip is a hug-width grid now, so a shared
+   class gave this div neither a row nor a width — measured 2026-09-21, its six
+   blocks rendered as six STACKED bars (six distinct tops, one left) where the
+   pre-extraction rule (`display: flex; flex-wrap: wrap`) had them in a row. */
+.stock-transfers-filters-skeleton {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   margin-bottom: 0;
 }
 
