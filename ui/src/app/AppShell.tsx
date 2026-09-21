@@ -10,7 +10,7 @@ import { useFullscreen } from '@/hooks/useFullscreen';
 import { useOrientation } from '@/hooks/useOrientation';
 import { isAnyAriaModalOpen, consumeShortcut } from '@/utils/modal-guard';
 import { isCommandModifier } from '@/utils/keyboard-modifier';
-import AppLayout, { type AppRoute } from './AppLayout';
+import AppLayout, { type AppRoute, isSidebarOverlayPresented } from './AppLayout';
 import { getFirstRunState } from '@/api/settings';
 import { getDeviceId } from '@/api/system';
 import { useFeatures } from '@/hooks/useFeatures';
@@ -47,6 +47,9 @@ const WorkspaceSettingsModal = lazy(() => import('@/features/settings/WorkspaceS
 // picker even with a modal open, so a stuck overlay can never trap the
 // operator. It consumes the event so no other Escape listener reacts to the
 // same key (KEY-05); the topmost modal owns plain Escape while it is open.
+// The portrait sidebar overlay is one step ABOVE this handler for plain
+// Escape: while it is presented it takes the key first and closes itself
+// (AppLayout's scrim effect), so this handler defers to it — see the guard.
 function useWorkspaceNavShortcuts(active: string | null, onBack: () => void) {
   useEffect(() => {
     if (!active) return;
@@ -57,7 +60,18 @@ function useWorkspaceNavShortcuts(active: string | null, onBack: () => void) {
         if (isCommandModifier(e) && e.shiftKey) {
           consumeShortcut(e);
           onBack();
-        } else if (!e.defaultPrevented && !isAnyAriaModalOpen() && active !== 'restaurant-pos') {
+        } else if (
+          !e.defaultPrevented &&
+          // The portrait sidebar overlay, while it is presented, is the FIRST
+          // Escape owner: AppLayout listens on `document` in the CAPTURE phase
+          // and consumes the key, so this branch is normally skipped by
+          // `defaultPrevented` above. Asking explicitly states the contract
+          // rather than resting on listener order alone — and it closes the tick
+          // where the overlay is painted but its effect has not yet attached.
+          !isSidebarOverlayPresented() &&
+          !isAnyAriaModalOpen() &&
+          active !== 'restaurant-pos'
+        ) {
           consumeShortcut(e);
           onBack();
         }

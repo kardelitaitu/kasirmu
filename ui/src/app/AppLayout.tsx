@@ -9,6 +9,8 @@ import OrgSwitcher from '@/components/OrgSwitcher';
 import StockAlertBell from '@/components/StockAlertBell';
 import { useBrand } from '@/contexts/BrandContext';
 import { requiredLocalized } from '@/components';
+import { isAnyAriaModalOpen, consumeShortcut } from '@/utils/modal-guard';
+import { isCommandModifier } from '@/utils/keyboard-modifier';
 import StatusBar from './StatusBar';
 
 import { getNavItems, SECTION_LABELS, type SectionName } from '@/registries/menu-registry';
@@ -86,6 +88,30 @@ export interface AppLayoutProps {
 /** Routes that render without the top bar (hamburger + store switcher). */
 const ADMIN_ROUTES = new Set(['settings', 'features', 'data-management']);
 
+/**
+ * True while the expanded sidebar is a dismissable OVERLAY rather than an
+ * in-flow lane — i.e. while its scrim is actually painted.
+ *
+ * The scrim element is rendered whenever the sidebar is expanded; whether it
+ * PAINTS is decided by its own sheet (`AppLayout.css:679`, the
+ * `(orientation: portrait) and (max-width: 1023px)` branch). Reading the
+ * rendered computed style makes the cascade the single source of truth, so
+ * neither the orientation literal nor the width tier is copied into JS where
+ * it could drift from the CSS — the drift ADR-0001 exists to prevent.
+ *
+ * Exported because AppShell's workspace-Escape handler has to agree with the
+ * overlay about which of the two owns Escape.
+ *
+ * NOTE: jsdom loads no sheets, so in unit tests every scrim computes
+ * `display: block`. The overlay is therefore the default there and the in-flow
+ * lane is what a test would have to stage; in a real browser the computed style
+ * is the portrait branch itself.
+ */
+export function isSidebarOverlayPresented(): boolean {
+  const scrim = document.querySelector('.app-sidebar-scrim');
+  return scrim !== null && getComputedStyle(scrim).display !== 'none';
+}
+
 export default function AppLayout({ route, onNavigate, children, enabledFeatures, userRole, permissions, sessionToken }: AppLayoutProps) {
   const { l10n } = useLocalization();
   const { settings: brandSettings } = useBrand();
@@ -105,13 +131,37 @@ export default function AppLayout({ route, onNavigate, children, enabledFeatures
   // ── Escape dismisses the open overlay (the scrim's keyboard twin) ──
   // Only the expanded pane is a dismissable overlay; a collapsed sidebar is
   // an in-flow rail with nothing to close, so the listener is not attached.
+  //
+  // Bound on `document` in the CAPTURE phase, and that is load-bearing rather
+  // than a preference. `document` is an ancestor of the event target and
+  // `window` is the final bubble destination, so AppShell's workspace-Escape
+  // listener (a `document` BUBBLE listener) used to run FIRST and its
+  // consumeShortcut() stopPropagation() meant this handler never fired at all:
+  // Escape exited the workspace and unmounted the overlay instead of closing
+  // it. Capture reaches this node first, so the overlay is the first listener
+  // Escape meets — and because it consumes the key when it acts, exactly one of
+  // the two handlers ever acts on one Escape.
+  //
+  // The guards below are what keep the pair agreeing on the winner:
+  //   • a real dialog above the sidebar still owns Escape (isAnyAriaModalOpen —
+  //     the same guard AppShell's handler applies);
+  //   • a listener that already handled the key keeps it (e.defaultPrevented);
+  //   • the emergency chord Ctrl/Cmd+Shift+Escape is deliberately NOT claimed
+  //     here, so AppShell's modal-bypassing bypass keeps working with the
+  //     overlay open;
+  //   • outside the portrait branch the scrim does not paint, so Escape keeps
+  //     its workspace meaning (isSidebarOverlayPresented).
   useEffect(() => {
     if (sidebarCollapsed) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSidebarCollapsed(true);
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (isCommandModifier(e) && e.shiftKey) return;
+      if (isAnyAriaModalOpen() || !isSidebarOverlayPresented()) return;
+      consumeShortcut(e);
+      setSidebarCollapsed(true);
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
   }, [sidebarCollapsed]);
 
   // ── Section accordion state (single expanded section) ───────
