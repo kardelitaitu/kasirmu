@@ -278,17 +278,53 @@ if (typeof window !== 'undefined' && !window.PointerEvent) {
 
 // matchMedia is not implemented in jsdom; Fluent uses it for
 // responsive layouts. Stub it.
+//
+// `matches` is EVALUATED for orientation queries rather than pinned to
+// `false`. An unconditional `false` is a global trap: every reader — a
+// component, or `useOrientation.readIsLandscape` — silently sees "no" for
+// every query no matter what viewport the test simulated, so a landscape
+// viewport still reads portrait. Only the two bare orientation queries are
+// answered, from `window.innerWidth`/`innerHeight`; every other query keeps
+// the old `false`, because jsdom evaluates no width or media feature and a
+// half-implemented evaluator would be worse than an honest default. Compound
+// queries such as `(orientation: landscape) and (min-width: 48rem)` also stay
+// `false` — the width half cannot be honoured here.
+const ORIENTATION_MATCHERS: ReadonlyArray<[string, () => boolean]> = [
+  ['(orientation: landscape)', () => window.innerWidth > window.innerHeight],
+  ['(orientation: portrait)', () => window.innerHeight >= window.innerWidth],
+];
+
 if (typeof window !== 'undefined' && !window.matchMedia) {
-  window.matchMedia = (query: string) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: () => {},
-    removeListener: () => {},
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    dispatchEvent: () => false,
-  });
+  // jsdom ships no MediaQueryList either, and `readIsLandscape` only trusts a
+  // query the host really evaluated (`mql instanceof window.MediaQueryList`),
+  // so the stub has to be one. EventTarget supplies the listener plumbing and
+  // keeps `dispatchEvent` returning a boolean.
+  class MockMediaQueryList extends EventTarget {
+    readonly media: string;
+    matches: boolean;
+    onchange: ((ev: MediaQueryListEvent) => void) | null = null;
+
+    constructor(query: string) {
+      super();
+      this.media = query;
+      this.matches = ORIENTATION_MATCHERS.some(
+        ([q, evaluate]) => q === query.trim().toLowerCase() && evaluate(),
+      );
+    }
+
+    // Legacy MediaQueryList API — Fluent and older consumers still call it.
+    addListener(callback: ((ev: MediaQueryListEvent) => void) | null): void {
+      if (callback) this.addEventListener('change', callback as EventListener);
+    }
+
+    removeListener(callback: ((ev: MediaQueryListEvent) => void) | null): void {
+      if (callback) this.removeEventListener('change', callback as EventListener);
+    }
+  }
+
+  window.MediaQueryList = MockMediaQueryList as unknown as typeof MediaQueryList;
+  window.matchMedia = (query: string) =>
+    new MockMediaQueryList(query) as unknown as MediaQueryList;
 }
 
 // ResizeObserver is not implemented/simulated in jsdom; stub it so virtualised grids render.
