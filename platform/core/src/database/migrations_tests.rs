@@ -513,6 +513,81 @@ fn drift_with_idempotent_sql_auto_patches() {
     assert_eq!(exists, 1);
 }
 
+/// A drifted re-apply must leave the data byte-identical, and the statement that
+/// breaks that is one which *succeeds* while inserting nothing: SQLite allocates a
+/// rowid for every row an `OR IGNORE` attempt discards, so an `AUTOINCREMENT`
+/// table's counter advances although no row is inserted.
+#[test]
+fn drift_re_apply_leaves_the_autoincrement_counter_untouched() {
+    /// The shape `20260813_init.sql` uses for `workspace_screens`: the seed's
+    /// uniqueness is a `UNIQUE` constraint over columns the statement names,
+    /// while the `AUTOINCREMENT` key it never names is what advances.
+    const SEEDED: &[Migration] = &[Migration {
+        id: "001_seeded.sql",
+        sql: "CREATE TABLE IF NOT EXISTS screens (\
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,\
+                  workspace_key TEXT NOT NULL,\
+                  screen_key TEXT NOT NULL,\
+                  UNIQUE (workspace_key, screen_key)\
+              );\n\
+              INSERT OR IGNORE INTO screens (workspace_key, screen_key) \
+                  VALUES ('pos', 'grid'), ('pos', 'cart');\n\
+              CREATE INDEX screens_by_key ON screens (workspace_key);",
+    }];
+    /// The same script with a comment appended — a checksum-only drift whose
+    /// unguarded `CREATE INDEX` still collides, so the re-apply reaches the
+    /// statement-by-statement fallback, which is where the seed is re-run.
+    const SEEDED_DRIFTED: &[Migration] = &[Migration {
+        id: "001_seeded.sql",
+        sql: "CREATE TABLE IF NOT EXISTS screens (\
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,\
+                  workspace_key TEXT NOT NULL,\
+                  screen_key TEXT NOT NULL,\
+                  UNIQUE (workspace_key, screen_key)\
+              );\n\
+              INSERT OR IGNORE INTO screens (workspace_key, screen_key) \
+                  VALUES ('pos', 'grid'), ('pos', 'cart');\n\
+              CREATE INDEX screens_by_key ON screens (workspace_key);\n\
+              -- cosmetic drift probe",
+    }];
+
+    let count = |conn: &Connection| -> i64 {
+        conn.query_row("SELECT COUNT(*) FROM screens", [], |row| row.get(0))
+            .unwrap()
+    };
+    let sequence = |conn: &Connection| -> i64 {
+        conn.query_row(
+            "SELECT seq FROM sqlite_sequence WHERE name = 'screens'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+    };
+
+    let mut conn = fresh();
+    run(&mut conn, SEEDED).unwrap();
+    assert_eq!(count(&conn), 2, "the first run inserted both rows");
+    assert_eq!(sequence(&conn), 2);
+
+    run(&mut conn, SEEDED_DRIFTED).unwrap();
+
+    assert_eq!(
+        sequence(&conn),
+        2,
+        "a re-apply that inserts nothing must not advance the counter"
+    );
+    assert_eq!(count(&conn), 2, "and must not insert or duplicate a row");
+    // The drift was still repaired: the skip removes a side effect, not the fix.
+    let stored: String = conn
+        .query_row(
+            "SELECT checksum FROM schema_migrations WHERE id = '001_seeded.sql'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored, checksum_hex(SEEDED_DRIFTED[0].sql));
+}
+
 // ── DB-02: statement-level drift re-apply ───────────────────────
 
 /// A migration shaped like `20260901_product_images.sql`: a guarded

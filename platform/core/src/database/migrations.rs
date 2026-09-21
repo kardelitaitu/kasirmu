@@ -40,12 +40,14 @@ next: none | perf: single pass over registered migrations; the splitter runs onl
 //! This file is the **ledger and the policy**: which migrations exist, what was
 //! applied, what changed, and what to do about it. Everything that has to *read
 //! SQL* lives in `crate::database::statements` — splitting a script into
-//! statements, tokens and canonical forms, the parsers, and the proof that a
-//! refused statement's effect is already present. Three calls cross that
-//! boundary and every one is semantic — `split_statements`, `is_significant`
-//! (does this fragment have any effect?) and `already_satisfied`; no lexer
-//! primitive does. Nothing here inspects a token, and nothing there knows about
-//! `Migration`, `schema_migrations` or checksums.
+//! statements, tokens and canonical forms, the parsers, and the proofs that a
+//! statement's effect is already present. Four calls cross that boundary and
+//! every one is semantic — `split_statements`, `is_significant` (does this
+//! fragment have any effect?), `insert_would_insert_nothing` (would running it
+//! insert nothing?) and `already_satisfied` (does the error it just raised mean
+//! its effect is already there?); no lexer primitive does. Nothing here inspects
+//! a token, and nothing there knows about `Migration`, `schema_migrations` or
+//! checksums.
 
 use std::collections::HashMap;
 #[cfg(test)]
@@ -58,7 +60,9 @@ use rusqlite::OptionalExtension;
 use rusqlite::{Connection, Transaction, params};
 use sha2::{Digest, Sha256};
 
-use super::statements::{already_satisfied, is_significant, split_statements};
+use super::statements::{
+    already_satisfied, insert_would_insert_nothing, is_significant, split_statements,
+};
 use crate::error::PlatformError;
 
 /// One embedded migration.
@@ -457,6 +461,18 @@ fn apply_whole_script(conn: &mut Connection, mig: &Migration) -> Result<(), rusq
 /// Run a migration script one statement at a time, skipping the statements
 /// whose effect is already present and provably identical.
 ///
+/// A statement can be skipped at either of two moments, and both are needed:
+///
+/// * **Before it runs** — [`insert_would_insert_nothing`] proves an
+///   `INSERT OR IGNORE` seed's rows are all already there. This is the only
+///   skip that leaves the database byte-identical, because *running* such a
+///   statement still allocates a rowid per attempted row (advancing an
+///   `AUTOINCREMENT` table's `sqlite_sequence`) and fires `BEFORE INSERT`
+///   triggers for rows `OR IGNORE` then discards.
+/// * **After SQLite refuses it** — [`already_satisfied`] proves the error means
+///   the statement's effect has already landed, which covers the statements that
+///   cannot run at all in this schema.
+///
 /// Every skip is logged: a statement that is silently skipped is a statement
 /// whose intended change is *not* applied, and that decision must be
 /// auditable from the log alone.
@@ -469,6 +485,13 @@ fn apply_statement_by_statement(
         let statement = statement.trim();
         if !is_significant(statement) {
             continue; // whitespace, or nothing but comments
+        }
+        if insert_would_insert_nothing(&tx, statement)? {
+            tracing::info!(
+                migration = mig.id,
+                "drift re-apply: statement would insert nothing — skipped before execution"
+            );
+            continue;
         }
         if let Err(err) = tx.execute_batch(statement) {
             let message = err.to_string();

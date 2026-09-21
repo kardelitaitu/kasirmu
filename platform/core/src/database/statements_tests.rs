@@ -136,6 +136,171 @@ fn a_seed_against_a_table_that_does_not_exist_is_never_skipped() {
     ));
 }
 
+// ── Pre-execution proof: a seed that would insert nothing ────────
+
+/// Ask the pre-execution proof the way the runner does.
+fn would_insert_nothing(conn: &Connection, statement: &str) -> bool {
+    insert_would_insert_nothing(conn, statement).unwrap()
+}
+
+/// The shape `20260813_init.sql` uses for `workspace_screens`: an
+/// `AUTOINCREMENT` rowid key the seed does **not** name, plus a `UNIQUE`
+/// constraint over columns the seed does name.
+fn screens_like_the_init_script() -> Connection {
+    let conn = fresh();
+    conn.execute_batch(
+        "CREATE TABLE screens (\
+             id INTEGER PRIMARY KEY AUTOINCREMENT,\
+             workspace_key TEXT NOT NULL,\
+             screen_key TEXT NOT NULL,\
+             sort_order INTEGER NOT NULL DEFAULT 0,\
+             UNIQUE (workspace_key, screen_key)\
+         );\
+         INSERT INTO screens (workspace_key, screen_key, sort_order)\
+             VALUES ('pos', 'grid', 1), ('pos', 'cart', 2);",
+    )
+    .unwrap();
+    conn
+}
+
+const SCREENS_SEED: &str = "INSERT OR IGNORE INTO screens (workspace_key, screen_key, sort_order)\
+     VALUES ('pos', 'grid', 1), ('pos', 'cart', 2)";
+
+#[test]
+fn a_seed_whose_rows_are_already_there_would_insert_nothing() {
+    let conn = screens_like_the_init_script();
+    // Control: every row the seed offers is already in the table, so running it
+    // would insert nothing.
+    assert!(would_insert_nothing(&conn, SCREENS_SEED));
+
+    // An `AUTOINCREMENT` rowid the statement never names is not the only key
+    // that can reject a row: the primary key works the same way.
+    conn.execute_batch(
+        "CREATE TABLE codes (code TEXT PRIMARY KEY, name TEXT NOT NULL);\
+         INSERT INTO codes (code, name) VALUES ('IDR', 'Rupiah');",
+    )
+    .unwrap();
+    assert!(would_insert_nothing(
+        &conn,
+        "INSERT OR IGNORE INTO codes (code, name) VALUES ('IDR', 'Rupiah')"
+    ));
+
+    // Taking away a row the seed offers takes the proof away with it.
+    conn.execute(
+        "DELETE FROM screens WHERE workspace_key = 'pos' AND screen_key = 'cart'",
+        [],
+    )
+    .unwrap();
+    assert!(!would_insert_nothing(&conn, SCREENS_SEED));
+}
+
+#[test]
+fn a_seed_over_a_table_with_an_insert_trigger_is_never_skipped() {
+    let conn = screens_like_the_init_script();
+    assert!(would_insert_nothing(&conn, SCREENS_SEED));
+    // SQLite fires a BEFORE INSERT trigger even for a row `OR IGNORE` then
+    // discards, so on a table that carries one the statement can have an effect
+    // beyond the rows it does not insert — and is therefore run as before.
+    conn.execute_batch(
+        "CREATE TRIGGER screens_validate BEFORE INSERT ON screens \
+         BEGIN SELECT RAISE(ABORT, 'bad screen'); END;",
+    )
+    .unwrap();
+    assert!(!would_insert_nothing(&conn, SCREENS_SEED));
+}
+
+#[test]
+fn a_partial_unique_index_is_not_evidence() {
+    let conn = fresh();
+    // Two tables with the same row and the same index over `code` — one partial,
+    // one not. The partial index does not cover the row that is there, so the
+    // attempt really would insert, and the proof must agree with the database
+    // rather than with the index's column list.
+    conn.execute_batch(
+        "CREATE TABLE partials (id INTEGER PRIMARY KEY, code TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1);\
+         CREATE UNIQUE INDEX idx_partials_code ON partials (code) WHERE active = 1;\
+         INSERT INTO partials (code, active) VALUES ('x', 0);\
+         CREATE TABLE plains (id INTEGER PRIMARY KEY, code TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1);\
+         CREATE UNIQUE INDEX idx_plains_code ON plains (code);\
+         INSERT INTO plains (code, active) VALUES ('x', 0);",
+    )
+    .unwrap();
+
+    assert!(!would_insert_nothing(
+        &conn,
+        "INSERT OR IGNORE INTO partials (code) VALUES ('x')"
+    ));
+    // Control: the same statement, the same row, an index that is not partial.
+    assert!(would_insert_nothing(
+        &conn,
+        "INSERT OR IGNORE INTO plains (code) VALUES ('x')"
+    ));
+
+    // …and both verdicts match what the database actually does.
+    conn.execute_batch("INSERT OR IGNORE INTO partials (code) VALUES ('x')")
+        .unwrap();
+    assert_eq!(count(&conn, "SELECT COUNT(*) FROM partials"), 2);
+    conn.execute_batch("INSERT OR IGNORE INTO plains (code) VALUES ('x')")
+        .unwrap();
+    assert_eq!(count(&conn, "SELECT COUNT(*) FROM plains"), 1);
+}
+
+#[test]
+fn a_seed_that_names_no_unique_column_is_never_skipped() {
+    let conn = screens_like_the_init_script();
+    assert!(would_insert_nothing(&conn, SCREENS_SEED));
+    // `workspace_key` and `sort_order` are not unique on their own, so a row
+    // matching on them is not a row already there.
+    assert!(!would_insert_nothing(
+        &conn,
+        "INSERT OR IGNORE INTO screens (workspace_key, sort_order) VALUES ('pos', 1)"
+    ));
+}
+
+#[test]
+fn a_null_in_a_unique_column_is_not_evidence() {
+    let conn = fresh();
+    conn.execute_batch(
+        "CREATE TABLE nullables (id INTEGER PRIMARY KEY, tag TEXT UNIQUE);\
+         INSERT INTO nullables (tag) VALUES (NULL);",
+    )
+    .unwrap();
+    // SQLite treats NULLs as distinct, so the second NULL is inserted rather
+    // than ignored — and a `NULL` literal never matches `column = ?` anyway.
+    assert!(!would_insert_nothing(
+        &conn,
+        "INSERT OR IGNORE INTO nullables (tag) VALUES (NULL)"
+    ));
+    conn.execute_batch("INSERT OR IGNORE INTO nullables (tag) VALUES (NULL)")
+        .unwrap();
+    assert_eq!(count(&conn, "SELECT COUNT(*) FROM nullables"), 2);
+}
+
+#[test]
+fn only_the_plain_seed_shape_is_skipped_before_execution() {
+    let conn = screens_like_the_init_script();
+    assert!(would_insert_nothing(&conn, SCREENS_SEED));
+    // Without `OR IGNORE` the statement is not a no-op.
+    assert!(!would_insert_nothing(
+        &conn,
+        &SCREENS_SEED.replacen("INSERT OR IGNORE", "INSERT", 1)
+    ));
+    // A `SELECT` source offers rows the proof cannot read.
+    assert!(!would_insert_nothing(
+        &conn,
+        "INSERT OR IGNORE INTO screens (workspace_key, screen_key) SELECT 'pos', 'grid'"
+    ));
+    // Anything following the rows means this is not the shape the proof read.
+    let mut trailing = SCREENS_SEED.to_string();
+    trailing.push_str(" RETURNING id");
+    assert!(!would_insert_nothing(&conn, &trailing));
+    // And a statement whose rows are malformed is not a skip either.
+    assert!(!would_insert_nothing(
+        &conn,
+        "INSERT OR IGNORE INTO screens (workspace_key, screen_key) VALUES ('pos')"
+    ));
+}
+
 #[test]
 fn create_table_is_never_skipped() {
     let conn = loyalty_after_the_fixedpoint_migration();

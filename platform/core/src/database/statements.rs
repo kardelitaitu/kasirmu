@@ -15,9 +15,15 @@
 //! * **Parsing** — `parse_add_column` / `parse_create` read the declared shape
 //!   out of the two statement kinds whose effect can be checked against the
 //!   catalogue.
-//! * **Proof** — [`already_satisfied`] is the only entry point for that
-//!   decision: the runner hands it a refused statement and the error SQLite
-//!   raised.
+//! * **Proof** — two entry points, one per moment the decision gets made:
+//!   [`already_satisfied`], which the runner hands a refused statement and the
+//!   error SQLite raised, and [`insert_would_insert_nothing`], which answers
+//!   *before* execution whether an `INSERT OR IGNORE` seed's rows are all
+//!   already there. Executing an already-satisfied seed is not free — SQLite
+//!   allocates a rowid per attempted row, so an `AUTOINCREMENT` table's
+//!   `sqlite_sequence` entry advances, and a `BEFORE INSERT` trigger fires for a
+//!   row `OR IGNORE` then discards — so the pre-execution answer is what lets a
+//!   re-apply leave the data byte-identical.
 //!   It is deliberately conservative: a statement it cannot prove is never
 //!   skipped, because a wrong skip applies *nothing* while reporting success.
 //!   Passing the error message as `&str` keeps the proof free of `rusqlite`
@@ -729,55 +735,19 @@ fn seed_rows_already_present(
     tokens: &[Token<'_>],
     message: &str,
 ) -> Result<bool, PlatformError> {
-    // INSERT OR IGNORE INTO <table> ( <columns> ) VALUES ( … ), ( … )
-    let mut cursor = 1usize;
-    if !(tokens.get(cursor).is_some_and(|token| is_word(token, "OR"))
-        && tokens
-            .get(cursor + 1)
-            .is_some_and(|token| is_word(token, "IGNORE")))
-    {
-        return Ok(false);
-    }
-    cursor += 2;
-    if !tokens
-        .get(cursor)
-        .is_some_and(|token| is_word(token, "INTO"))
-    {
-        return Ok(false);
-    }
-    cursor += 1;
-    let Some(table) = tokens.get(cursor).and_then(identifier) else {
+    let Some(seed) = parse_ignore_seed(tokens) else {
         return Ok(false);
     };
-    cursor += 1;
-
-    let Some((first, last)) = paren_group(tokens, cursor) else {
-        return Ok(false);
-    };
-    let mut columns: Vec<String> = Vec::new();
-    for (start, end) in split_top_level(tokens, first, last) {
-        if end != start + 1 {
-            return Ok(false); // an expression in the column list: not a plain seed
-        }
-        match identifier(&tokens[start]) {
-            Some(name) => columns.push(name),
-            None => return Ok(false),
-        }
-    }
-    if columns.is_empty() {
-        return Ok(false);
-    }
-    cursor = last + 1;
 
     // The key the seed is identified by, and the absence half of the proof.
-    let keys = primary_key_columns(conn, &table)?;
+    let keys = primary_key_columns(conn, &seed.table)?;
     if keys.is_empty() {
         return Ok(false); // no such table, or a table without a primary key
     }
     let mut absent: Vec<String> = Vec::new();
     let mut present = 0usize;
-    for name in &columns {
-        if column_info(conn, &table, name)?.is_some() {
+    for name in &seed.columns {
+        if column_info(conn, &seed.table, name)?.is_some() {
             present += 1;
         } else {
             absent.push(name.clone());
@@ -790,55 +760,146 @@ fn seed_rows_already_present(
         return Ok(false);
     }
 
-    let mut key_positions: Vec<(String, usize)> = Vec::new();
-    for key in &keys {
-        match columns
-            .iter()
-            .position(|name| name.eq_ignore_ascii_case(key))
-        {
-            Some(position) => key_positions.push((key.clone(), position)),
-            None => return Ok(false), // the seed does not name the whole key
+    // The presence half: every row the seed offers is already there, on the
+    // whole primary key the statement names.
+    for row in &seed.rows {
+        if !row_already_present(conn, tokens, &seed, row, &keys)? {
+            return Ok(false); // a row the seed asks for is missing: never skipped
         }
     }
+    Ok(true)
+}
+
+/// Whether executing `statement` cannot insert anything: an `INSERT OR IGNORE …
+/// VALUES ( … )` whose every row duplicates a row the table already holds, under
+/// a uniqueness constraint the statement names in full.
+///
+/// This is the *pre-execution* half of the drift re-apply, and it exists because
+/// executing an already-satisfied seed is not free. SQLite allocates a rowid for
+/// every attempted row before the conflict is detected, so an `AUTOINCREMENT`
+/// table's `sqlite_sequence` entry advances, and a `BEFORE INSERT` trigger fires
+/// for a row `OR IGNORE` then discards — both measured, not assumed (one
+/// invocation and one sequence step for a single ignored row). Skipping the
+/// statement before it runs is the only way a re-apply leaves the data
+/// byte-identical, which is what [`super::migrations`] calls this for.
+///
+/// The proof is narrower than the statement it excuses, which is what makes the
+/// skip sound: every row must be rejected by a **non-partial, plain-column**
+/// uniqueness constraint the statement names — the primary key or a `UNIQUE`
+/// index — using the row's own literal values, and the table must carry no
+/// trigger that can fire on `INSERT`. A statement this function cannot prove is
+/// executed exactly as before — including one that would insert nothing for a
+/// reason this proof does not model, such as a `NOT NULL` or `CHECK` violation,
+/// which `OR IGNORE` also swallows.
+pub(super) fn insert_would_insert_nothing(
+    conn: &Connection,
+    statement: &str,
+) -> Result<bool, PlatformError> {
+    let tokens: Vec<Token<'_>> = tokenize(statement)
+        .into_iter()
+        .filter(|token| !is_terminator(token))
+        .collect();
+    let Some(seed) = parse_ignore_seed(&tokens) else {
+        return Ok(false);
+    };
+    if seed.end != tokens.len() {
+        return Ok(false); // something follows the rows: not the plain seed shape
+    }
+    if has_insert_trigger(conn, &seed.table)? {
+        return Ok(false); // the attempt could fire a trigger, so it is not a no-op
+    }
+    let constraints = unique_constraints(conn, &seed.table)?;
+    if constraints.is_empty() {
+        return Ok(false); // nothing the statement names can reject these rows
+    }
+    for row in &seed.rows {
+        let mut rejected = false;
+        for constraint in &constraints {
+            if row_already_present(conn, &tokens, &seed, row, constraint)? {
+                rejected = true;
+                break;
+            }
+        }
+        if !rejected {
+            return Ok(false); // this row would be inserted: never skipped
+        }
+    }
+    Ok(true)
+}
+
+/// A parsed `INSERT OR IGNORE INTO <table> ( <columns> ) VALUES ( … ), ( … )`.
+///
+/// Only this shape is ever reasoned about: a `SELECT` source, an expression in
+/// the column list, a row whose value count differs from the column count and a
+/// malformed tail all fail to parse, and a statement that fails to parse is never
+/// skipped either way.
+struct IgnoreSeed {
+    /// The table the rows are offered to.
+    table: String,
+    /// The columns the statement names, in the statement's own order.
+    columns: Vec<String>,
+    /// The token range of each `VALUES` row's values, aligned with `columns`.
+    rows: Vec<Vec<(usize, usize)>>,
+    /// One past the last token this seed consumed, so a caller can insist that
+    /// nothing follows the rows.
+    end: usize,
+}
+
+/// Parse an `INSERT OR IGNORE … VALUES ( … )` statement, or `None` when the
+/// statement is not that shape.
+fn parse_ignore_seed(tokens: &[Token<'_>]) -> Option<IgnoreSeed> {
+    if !tokens.first().is_some_and(|token| is_word(token, "INSERT")) {
+        return None;
+    }
+    // INSERT OR IGNORE INTO <table> ( <columns> ) VALUES ( … ), ( … )
+    let mut cursor = 1usize;
+    if !(tokens.get(cursor).is_some_and(|token| is_word(token, "OR"))
+        && tokens
+            .get(cursor + 1)
+            .is_some_and(|token| is_word(token, "IGNORE")))
+    {
+        return None;
+    }
+    cursor += 2;
+    if !tokens
+        .get(cursor)
+        .is_some_and(|token| is_word(token, "INTO"))
+    {
+        return None;
+    }
+    cursor += 1;
+    let table = tokens.get(cursor).and_then(identifier)?;
+    cursor += 1;
+
+    let (first, last) = paren_group(tokens, cursor)?;
+    let mut columns: Vec<String> = Vec::new();
+    for (start, end) in split_top_level(tokens, first, last) {
+        if end != start + 1 {
+            return None; // an expression in the column list: not a plain seed
+        }
+        columns.push(identifier(&tokens[start])?);
+    }
+    if columns.is_empty() {
+        return None;
+    }
+    cursor = last + 1;
 
     if !tokens
         .get(cursor)
         .is_some_and(|token| is_word(token, "VALUES"))
     {
-        return Ok(false);
+        return None;
     }
     cursor += 1;
 
-    let mut rows = 0usize;
+    let mut rows: Vec<Vec<(usize, usize)>> = Vec::new();
     while cursor < tokens.len() {
-        let Some((row_first, row_last)) = paren_group(tokens, cursor) else {
-            return Ok(false);
-        };
+        let (row_first, row_last) = paren_group(tokens, cursor)?;
         let values = split_top_level(tokens, row_first, row_last);
         if values.len() != columns.len() {
-            return Ok(false);
+            return None;
         }
-        let mut predicate = String::new();
-        let mut binds: Vec<Value> = Vec::new();
-        for (index, (key, position)) in key_positions.iter().enumerate() {
-            let (start, end) = values[*position];
-            let Some(literal) = seed_literal(tokens, start, end) else {
-                return Ok(false); // a computed key value is not a proof
-            };
-            if index > 0 {
-                predicate.push_str(" AND ");
-            }
-            predicate.push_str(&format!("{} = ?{}", quote_ident(key), index + 1));
-            binds.push(literal);
-        }
-        let probe = format!("SELECT 1 FROM {} WHERE {}", quote_ident(&table), predicate);
-        let found: Option<i64> = conn
-            .query_row(&probe, rusqlite::params_from_iter(binds), |row| row.get(0))
-            .optional()?;
-        if found.is_none() {
-            return Ok(false); // a row the seed asks for is missing: never skipped
-        }
-        rows += 1;
+        rows.push(values);
         cursor = row_last + 1;
         if tokens
             .get(cursor)
@@ -849,7 +910,115 @@ fn seed_rows_already_present(
         }
         break;
     }
-    Ok(rows > 0)
+    // A trailing comma leaves the cursor past it, which is not the end of a row.
+    if rows.is_empty()
+        || !tokens
+            .get(cursor.wrapping_sub(1))
+            .is_some_and(|token| token.kind == TokenKind::Punct && token.value == ")")
+    {
+        return None;
+    }
+    Some(IgnoreSeed {
+        table,
+        columns,
+        rows,
+        end: cursor,
+    })
+}
+
+/// Whether some row already in the seed's table matches `row` on every column of
+/// `constraint`, which is what makes `OR IGNORE` discard that row.
+///
+/// `Ok(false)` means *not evidence*: the statement does not name every column of
+/// the constraint, or names one with something other than a literal. A `NULL`
+/// literal is not evidence either, because `column = NULL` is never true in
+/// SQLite — so a row whose constraint column is null is never treated as
+/// already present.
+fn row_already_present(
+    conn: &Connection,
+    tokens: &[Token<'_>],
+    seed: &IgnoreSeed,
+    row: &[(usize, usize)],
+    constraint: &[String],
+) -> Result<bool, PlatformError> {
+    let mut predicate = String::new();
+    let mut binds: Vec<Value> = Vec::new();
+    for (index, column) in constraint.iter().enumerate() {
+        let Some(position) = seed
+            .columns
+            .iter()
+            .position(|named| named.eq_ignore_ascii_case(column))
+        else {
+            return Ok(false); // the statement does not name this constraint in full
+        };
+        let (start, end) = row[position];
+        let Some(literal) = seed_literal(tokens, start, end) else {
+            return Ok(false); // a computed value is not a proof
+        };
+        if index > 0 {
+            predicate.push_str(" AND ");
+        }
+        predicate.push_str(&format!("{} = ?{}", quote_ident(column), index + 1));
+        binds.push(literal);
+    }
+    let probe = format!(
+        "SELECT 1 FROM {} WHERE {}",
+        quote_ident(&seed.table),
+        predicate
+    );
+    let found: Option<i64> = conn
+        .query_row(&probe, rusqlite::params_from_iter(binds), |row| row.get(0))
+        .optional()?;
+    Ok(found.is_some())
+}
+
+/// The table's uniqueness constraints, as column lists: its primary key plus
+/// every `UNIQUE` index that is neither partial nor an expression index.
+///
+/// A partial index is excluded because rows outside its predicate are not
+/// rejected by it, and an expression index because its columns cannot be
+/// compared against the statement's literals.
+fn unique_constraints(conn: &Connection, table: &str) -> Result<Vec<Vec<String>>, PlatformError> {
+    let mut constraints: Vec<Vec<String>> = Vec::new();
+    let primary = primary_key_columns(conn, table)?;
+    if !primary.is_empty() {
+        constraints.push(primary);
+    }
+
+    let mut indexes = conn
+        .prepare("SELECT name FROM pragma_index_list(?1) WHERE \"unique\" = 1 AND partial = 0")?;
+    let names: Vec<String> = indexes
+        .query_map(params![table], |row| row.get(0))?
+        .collect::<Result<_, _>>()?;
+    drop(indexes);
+
+    for name in names {
+        let mut info = conn.prepare("SELECT name FROM pragma_index_info(?1)")?;
+        let columns: Vec<Option<String>> = info
+            .query_map(params![name], |row| row.get(0))?
+            .collect::<Result<_, _>>()?;
+        if columns.iter().all(Option::is_some) {
+            constraints.push(columns.into_iter().flatten().collect());
+        }
+    }
+    Ok(constraints)
+}
+
+/// Whether the table carries a trigger that a discarded insert could still fire.
+///
+/// Textual, and deliberately conservative: a trigger that only fires on `UPDATE`
+/// but writes to another table also answers `true`, which costs a skip and never
+/// a wrong one. SQLite runs a `BEFORE INSERT` trigger even for a row the
+/// `OR IGNORE` clause then discards (measured), so a table that carries one is
+/// never skipped before execution.
+fn has_insert_trigger(conn: &Connection, table: &str) -> Result<bool, PlatformError> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master \
+         WHERE type = 'trigger' AND tbl_name = ?1 AND upper(sql) LIKE '%INSERT%'",
+        params![table],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
 }
 
 /// The token range inside the parenthesised group that opens at `start`.
