@@ -7,6 +7,7 @@ import ExitSurveyModal from '@/components/ExitSurveyModal';
 import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { isTabletShell } from '@/utils/shellKind';
 import './LicenseSettings.css';
 import OverQuotaCard from './OverQuotaCard';
 
@@ -83,6 +84,10 @@ export default function LicenseSettings() {
   const l10nRef = useRef(l10n);
   l10nRef.current = l10n;
   const { addToast } = useToast();
+  // Pause/resume are billing actions and both commands are registered on the
+  // desktop shell only, so the tablet renders the subscription state without the
+  // two buttons. Read once, like the other shell checks.
+  const actionsAvailable = !isTabletShell();
   // This screen is rendered from SettingsPage (:824), inside WorkspaceProvider, so a session
   // exists. The token was not previously in scope here at all -- which is why both subscription
   // actions were reaching the unscoped, unchecked commands.
@@ -506,7 +511,7 @@ export default function LicenseSettings() {
         )}
 
         {/* ── C3.3: Pause / Resume subscription ── */}
-        {payload.status === 'active' && (
+        {actionsAvailable && payload.status === 'active' && (
           <div className="settings-license-row settings-license-row--actions">
             <span className="settings-license-label">
               <Localized id="settings-license-subscription-actions"><span>Subscription</span></Localized>
@@ -527,34 +532,34 @@ export default function LicenseSettings() {
           </div>
         )}
         {payload.status === 'paused' && (
-          <>
-            <div className="settings-license-row settings-license-row--warning">
-              <span className="settings-license-label">
-                <Localized id="settings-license-paused-until"><span>Paused until</span></Localized>
-              </span>
-              <span className="settings-license-value settings-license-value--warning">
-                {formatDate(serverStatus?.expiresAt ?? payload.expires_at, [...l10n.bundles][0]?.locales[0] ?? 'en-US')}
-              </span>
-            </div>
-            <div className="settings-license-row settings-license-row--actions">
-              <span className="settings-license-label">
-                <Localized id="settings-license-subscription-actions"><span>Subscription</span></Localized>
-              </span>
-              <span className="settings-license-value">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  loading={resuming}
-                  onClick={handleResume}
-                  aria-label={l10n.getString('settings-license-resume-aria')}
-                >
-                  <Localized id="settings-license-resume-subscription">
-                    <span>Resume subscription</span>
-                  </Localized>
-                </Button>
-              </span>
-            </div>
-          </>
+          <div className="settings-license-row settings-license-row--warning">
+            <span className="settings-license-label">
+              <Localized id="settings-license-paused-until"><span>Paused until</span></Localized>
+            </span>
+            <span className="settings-license-value settings-license-value--warning">
+              {formatDate(serverStatus?.expiresAt ?? payload.expires_at, [...l10n.bundles][0]?.locales[0] ?? 'en-US')}
+            </span>
+          </div>
+        )}
+        {actionsAvailable && payload.status === 'paused' && (
+          <div className="settings-license-row settings-license-row--actions">
+            <span className="settings-license-label">
+              <Localized id="settings-license-subscription-actions"><span>Subscription</span></Localized>
+            </span>
+            <span className="settings-license-value">
+              <Button
+                variant="primary"
+                size="sm"
+                loading={resuming}
+                onClick={handleResume}
+                aria-label={l10n.getString('settings-license-resume-aria')}
+              >
+                <Localized id="settings-license-resume-subscription">
+                  <span>Resume subscription</span>
+                </Localized>
+              </Button>
+            </span>
+          </div>
         )}
       </div>
 

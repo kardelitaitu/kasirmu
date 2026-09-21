@@ -17,6 +17,7 @@ import {
   recoverWorkspaceInstancesScoped,
 } from '@/api/workspaces';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { isTabletShell } from '@/utils/shellKind';
 
 /** Dimension key → FTL label, referenced literally so bundle parity can
  *  see every key is live (no dynamic composition). */
@@ -61,6 +62,10 @@ const PER_LOCATION_LABEL_IDS: Record<string, string> = {
  */
 export default function OverQuotaCard() {
   const { l10n } = useLocalization();
+  // Both remediation commands are registered on the desktop shell only, so the
+  // tablet renders the assessment without the two actions. Read once, like the
+  // other shell checks: a shell cannot become another shell.
+  const actionsAvailable = !isTabletShell();
   // The store this session is bound to. Named `resolvedStoreId` on this context
   // (`storeId` is the separate useWorkspaceScope() value) — passing it to the
   // remediation commands is what keeps the hint text and the action in agreement.
@@ -266,6 +271,7 @@ export default function OverQuotaCard() {
                 <span>{'Suspend the surplus registers of { $store }, or restore the ones an earlier downgrade suspended. Only this store is affected.'}</span>
               </Localized>
             </p>
+            {actionsAvailable && (
             <div className="settings-license-quota-remedy-actions">
               <Button
                 variant="secondary"
@@ -290,6 +296,7 @@ export default function OverQuotaCard() {
                 </Localized>
               </Button>
             </div>
+            )}
             {remedyNote && (
               <p
                 className="settings-hint"
@@ -382,26 +389,30 @@ export default function OverQuotaCard() {
                       <span>{'{ $current } of { $limit } — { $excess } over'}</span>
                     </Localized>
                   </span>
-                  <Button
-                    variant="secondary"
-                    loading={remedyBusy?.action === 'suspend' && remedyBusy.store === row.resourceId}
-                    disabled={remedyBusy !== null}
-                    onClick={() => void remediate('suspend', row.resourceId)}
-                  >
-                    <Localized id="settings-license-quota-remedy-suspend">
-                      <span>Suspend surplus</span>
-                    </Localized>
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    loading={remedyBusy?.action === 'recover' && remedyBusy.store === row.resourceId}
-                    disabled={remedyBusy !== null}
-                    onClick={() => void remediate('recover', row.resourceId)}
-                  >
-                    <Localized id="settings-license-quota-remedy-recover">
-                      <span>Restore suspended</span>
-                    </Localized>
-                  </Button>
+                  {actionsAvailable && (
+                    <Button
+                      variant="secondary"
+                      loading={remedyBusy?.action === 'suspend' && remedyBusy.store === row.resourceId}
+                      disabled={remedyBusy !== null}
+                      onClick={() => void remediate('suspend', row.resourceId)}
+                    >
+                      <Localized id="settings-license-quota-remedy-suspend">
+                        <span>Suspend surplus</span>
+                      </Localized>
+                    </Button>
+                  )}
+                  {actionsAvailable && (
+                    <Button
+                      variant="secondary"
+                      loading={remedyBusy?.action === 'recover' && remedyBusy.store === row.resourceId}
+                      disabled={remedyBusy !== null}
+                      onClick={() => void remediate('recover', row.resourceId)}
+                    >
+                      <Localized id="settings-license-quota-remedy-recover">
+                        <span>Restore suspended</span>
+                      </Localized>
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>
