@@ -334,6 +334,15 @@ pub const ALL: &[Migration] = &[
         id: "20261006_receipt_hierarchy_code.sql",
         sql: include_str!("../migrations/20261006_receipt_hierarchy_code.sql"),
     },
+    // First-run provisioning record (ADR #56 §2.1): one row per terminal, whose
+    // presence is the 'this device is set up' fact that replaces three
+    // independently-read booleans. Date 20261007 sorts last and only creates a
+    // new table, so it re-applies cleanly under the statement-level drift
+    // fallback.
+    Migration {
+        id: "20261007_provisioning.sql",
+        sql: include_str!("../migrations/20261007_provisioning.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

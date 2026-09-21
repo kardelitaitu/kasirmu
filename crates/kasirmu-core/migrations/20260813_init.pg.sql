@@ -812,6 +812,14 @@ BEGIN
             ('user_workspaces', 'user_id', 'TEXT', NULL::text, true),
             ('user_workspaces', 'ws_key', 'TEXT', NULL::text, true),
             ('user_workspaces', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('provisioning', 'terminal_id', 'TEXT', NULL::text, true),
+            ('provisioning', 'tenant_id', 'TEXT', NULL::text, false),
+            ('provisioning', 'location_id', 'TEXT', NULL::text, false),
+            ('provisioning', 'owner_user_id', 'TEXT', NULL::text, false),
+            ('provisioning', 'device_id', 'TEXT', NULL::text, false),
+            ('provisioning', 'mode', 'TEXT', NULL::text, true),
+            ('provisioning', 'home_region', 'TEXT', '''global''', true),
+            ('provisioning', 'provisioned_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('customers', 'id', 'TEXT', NULL::text, true),
             ('customers', 'name', 'TEXT', NULL::text, true),
             ('customers', 'email', 'TEXT', NULL::text, false),
@@ -2247,6 +2255,38 @@ CREATE TABLE IF NOT EXISTS user_workspaces (
     UNIQUE(user_id, ws_key)
 );
 
+CREATE TABLE IF NOT EXISTS provisioning (
+    -- Matches terminals.device_id (20260813_init.sql:929, UNIQUE), NOT the
+    -- terminals.id surrogate: a replaced tablet keeps its id but changes its
+    -- device, and a re-provisioned device must land on its own row.
+    terminal_id    TEXT PRIMARY KEY,
+    -- The LICENCE SERVER's tenant id, written only by a 'linked' install.
+    -- NULL for 'local'. Deliberately not the local literal 'default': the two
+    -- are different namespaces (ADR #56 §2.1) and comparing them is the bug
+    -- that section exists to prevent.
+    tenant_id      TEXT,
+    -- The locations row this terminal belongs to. ADR #56 §2.6 removes the
+    -- seeded 'Default Store' placeholder, so on a fresh install this is a row
+    -- provision_device created rather than one the migration shipped.
+    location_id    TEXT REFERENCES store_profiles(id),
+    owner_user_id  TEXT REFERENCES users(id),
+    -- TerminalCredential.terminal_id: the credential this device authenticates
+    -- to sync with.
+    device_id      TEXT,
+    -- Which tier of ADR #56 §2.4 was used. 'local' needs no network and is the
+    -- DEFAULT, not a fallback: the target deployment includes merchants with
+    -- unreliable connectivity. 'linked' adds the identity step.
+    mode           TEXT NOT NULL CHECK (mode IN ('local', 'linked')),
+    -- Residency mirror; see the header. 'global' initially (ADR #59 §Q6),
+    -- where 'global' means 'no residency commitment yet' and is NOT a country.
+    home_region    TEXT NOT NULL DEFAULT 'global',
+    provisioned_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    -- A linked install must name its tenant and device; a local one must not
+    -- pretend to. Enforced here rather than in Rust so a row written by any
+    -- future path (sync, downgrade, a repair script) cannot be incoherent.
+    CHECK (mode = 'local' OR (tenant_id IS NOT NULL AND device_id IS NOT NULL))
+);
+
 CREATE TABLE IF NOT EXISTS "customers" (
     id              TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
@@ -3320,6 +3360,8 @@ CREATE INDEX IF NOT EXISTS idx_products_store_category ON products(store_id, cat
 
 CREATE INDEX IF NOT EXISTS idx_products_tenant ON products(tenant_id);
 
+CREATE INDEX IF NOT EXISTS idx_provisioning_tenant ON provisioning (tenant_id);
+
 CREATE INDEX IF NOT EXISTS idx_receipt_barcodes_barcode ON receipt_barcodes(barcode);
 
 CREATE INDEX IF NOT EXISTS idx_receipt_barcodes_sale_id ON receipt_barcodes(sale_id);
@@ -3613,6 +3655,7 @@ ON CONFLICT DO NOTHING;
 --   over_quota_markers — tenant_id added schema-side ahead of multi-tenant writes; no PG write path audited yet -- cover when cloud sync lands
 --   payable_payments — no PG write path yet; desktop-local AP settlement history — cover when payables cloud sync lands
 --   payables — no PG write path yet; desktop-local AP ledger (Hutang) — cover when payables cloud sync lands
+--   provisioning — ADR #56 first-run record; written only by the desktop/tablet provision_device transaction against the LOCAL store DB, and never synced to PG. It records which server holds this tenant's data, so replicating it into the shared cloud schema would put one install's routing fact in every other tenant's reach for no read that exists. Cover if provisioning ever moves cloud-side
 --   receipt_formats — regional receipt-format axis; desktop-local write paths only (Store CRUD via the scoped commands) — tenant_id stamped schema-side from birth, cover when its PG write path lands; parent legal_entities is itself exempt pending the cloud-sync decision
 --   snapshot_versions — no PG write path audited; cover when snapshot sync reaches PG
 --   terminals — tenant_id added schema-side (56653839) ahead of multi-tenant writes; cover when create_terminal-class PG writes arrive

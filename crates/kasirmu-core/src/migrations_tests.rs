@@ -575,7 +575,8 @@ fn init_sql_creates_complete_schema_surface() {
     // re-measuring — is the 123rd; this assert is where that omission
     // surfaced. 20261006_receipt_hierarchy_code.sql adds the 124th–126th:
     // entity_index_cursors, entity_index_tombstones and
-    // receipt_number_counters. Count measured, not
+    // receipt_number_counters. 20261007_provisioning.sql adds the 127th:
+    // the per-terminal first-run record (ADR #56 §2.1). Count measured, not
     // guessed: the whole
     // registry was replayed through sqlite3 and sqlite_master counted.
     assert_eq!(
@@ -583,7 +584,7 @@ fn init_sql_creates_complete_schema_surface() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        126,
+        127,
         "table surface drifted"
     );
     assert_eq!(
@@ -642,7 +643,11 @@ fn init_sql_creates_complete_schema_surface() {
         // (tenant_id, display_code) backstop on sales. Its three composite
         // PRIMARY KEYs land as sqlite_autoindex_*, which this query
         // excludes.
-        185,
+        // 20261007_provisioning.sql adds one: idx_provisioning_tenant, the
+        // lookup behind the boot gate and provision_device's idempotency
+        // guard. Its TEXT PRIMARY KEY lands as sqlite_autoindex_*, excluded
+        // here as ever.
+        186,
         "index surface drifted"
     );
     assert_eq!(
@@ -804,6 +809,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20261004_midtrans_transactions.sql".to_string(),
             "20261005_kds_routing_rules.sql".to_string(),
             "20261006_receipt_hierarchy_code.sql".to_string(),
+            "20261007_provisioning.sql".to_string(),
         ]
     );
 
@@ -836,13 +842,14 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
     // from 20261003, plus midtrans_transactions from 20261004, plus
     // kds_routing_rules from 20261005, plus entity_index_cursors,
     // entity_index_tombstones and receipt_number_counters from
-    // 20261006 — each recorded once, idempotently).
+    // 20261006, plus provisioning from 20261007 — each recorded once,
+    // idempotently).
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        126,
+        127,
         "table surface must be unchanged after upgrade"
     );
 }

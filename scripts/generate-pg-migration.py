@@ -582,6 +582,14 @@ RLS_EXEMPT = {
         "no PG write path audited; cover when the admin surface "
         "writes it on PG"
     ),
+    "provisioning": (
+        "ADR #56 first-run record; written only by the desktop/tablet "
+        "provision_device transaction against the LOCAL store DB, and never "
+        "synced to PG. It records which server holds this tenant's data, so "
+        "replicating it into the shared cloud schema would put one install's "
+        "routing fact in every other tenant's reach for no read that exists. "
+        "Cover if provisioning ever moves cloud-side"
+    ),
 }
 
 
