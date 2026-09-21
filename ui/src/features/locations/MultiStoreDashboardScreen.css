@@ -1,6 +1,30 @@
 .multi-store-dashboard {
   padding: var(--space-6) var(--space-8);
   overflow-x: hidden;
+  /* The page's own query container (ADR-0001 T2 / Slice 5), measured on the box
+     the shell grants this screen - not the viewport. UNNAMED on purpose, the same
+     choice RetailPosScreen.css, KdsScreen.css, PosScreen.css, SalesHistoryScreen.css,
+     PaymentModal.css, EodReportScreen.css, ExpoScreen.css, TransitAuditScreen.css,
+     CategoryManagementScreen.css and StaffManagementScreen.css each record and for
+     the same reason: the shell's slot carries the name 'app-content', but the only
+     thing between it and .multi-store-dashboard is a display:contents wrapper, so a
+     named query would find no container in every mount that does not go through the
+     shell (tests, e2e harness, the screen rendered standalone). An unnamed query
+     against the nearest container is the same measurement inside the shell and stays
+     correct outside it.
+
+     MEASURED, NOT ASSUMED - the cost of this line. `container-type` makes the
+     element a layout-containment root, and layout containment is what would re-root
+     a `position: fixed` descendant. This screen renders <Modal> (the View details
+     dialog) as a fixed overlay INSIDE .multi-store-dashboard, so a re-rooted overlay
+     would be clipped to the dashboard box instead of covering the viewport. Probed
+     in Chromium - a fixed inset:0 child of a 400px `container-type: inline-size` box
+     still measures 1200x800 against a 1200x800 viewport, while the same child under
+     `contain: layout` measures 400x200 - so container-type does NOT re-root fixed
+     descendants and the modal keeps the viewport as its containing block. Unlike
+     .eod-report there is no max-width here, so the block-level stretch containment
+     suppresses has nothing to suppress. */
+  container-type: inline-size;
 }
 
 /* C2.2 Pro→Premium store-cap banner. */
@@ -243,4 +267,71 @@
 .multi-store-prefix-error {
   font-size: var(--text-sm);
   color: var(--color-danger);
+}
+
+/* ── Narrow-container tiers (ADR-0001 T2 / Slice 5) ────────────────
+   This sheet had no width rule of any kind before this slice - neither @media nor
+   @container - so nothing here responded to the box it was handed, and the
+   store-card grid paid for it.
+
+   WHAT IS MEASURED. .multi-store-dashboard above declares
+   container-type: inline-size, so every gate below reads the box the shell grants
+   this screen - not the window. Desktop landscape (a content slot at or above the
+   shell's own 1024px base case) matches neither tier and renders exactly as before:
+   both rules below are additive and live inside a max-width block.
+
+   THE ONE SURFACE THAT CANNOT FOLD. .multi-store-card-grid is repeat(3, 1fr) -
+   three fixed tracks with no minmax() floor - so the tracks keep shrinking past the
+   point where a card's own content fits. Measured in Chromium against this sheet plus
+   Card, Button and components.css: one card's min-content is 183.7px, and the binding
+   content is the "Configure topology" button, which carries white-space: nowrap from
+   the shared .btn (the "Indian/Mauritius" value column is second, at 102.3px). Three
+   of those, plus the grid's two var(--space-4) gaps, plus the root's own
+   2 x var(--space-8) horizontal padding, is
+
+       3 x 183.7 + 2 x 16 + 2 x 32 = 647.1px
+
+   - the slot below which the third track is under the card's min-content. The
+   label/value rows then overflow their box and .card's own overflow: hidden clips the
+   value: measured 3px of row overflow at a 640px slot, 9px at 620, 56px at 480, and
+   120px at the 288px slot a 320px tablet viewport hands this page (320 minus
+   tablet.css's 2 x 16px). A grid that cannot fit its own cards in a narrow slot is the
+   "cannot fit a narrow slot" case this slice exists for, so it folds.
+
+   WHAT IS DELIBERATELY NOT TIERED. Two candidates, both already adaptive and
+   therefore nothing to fold: .multi-store-stat-grid is
+   repeat(auto-fit, minmax(160px, 1fr)) and was measured folding 4 to 3 to 2 to 1 on
+   its own all the way down to the 288px slot; .multi-store-card-actions is a
+   flex-wrap: wrap row that never overflowed at any measured width. The header row is a
+   nowrap flex pair (h1 + primary Button) and also measured 0px of overflow down to
+   288px, so it gets no rule either - an honest "nothing to fold" rather than a planted
+   one.
+
+   WHY 640 AND 480, WIDEST FIRST. 640px is the shell's own narrow-shell case and sits
+   7px under the measured 647.1px floor, so the first tier covers the band in which the
+   3-up grid is over its tracks. (The residual 641-646px band, where the 3-up is up to
+   ~3px over, is the one width range this pair does not cover - stated rather than
+   hidden.) The second tier is the 2-up grid's own floor with headroom: two tracks need
+   2 x 183.7 + 16 + 64 = 447.4px, so 480px folds to a single column while the two-up
+   still fits with 16px to spare. It is the same 640/480 ladder TransitAuditScreen.css
+   records, and it is what keeps the page usable in the smallest shell slot: at 640px
+   the 2-up tracks are (640 - 64 - 16) / 2 = 280px, and at the tablet's 288px slot the
+   single column is 288 - 64 = 224px - both comfortably above the 183.7px min-content.
+   Widest first, because a max-width gate written after a narrower one can never be the
+   tier in force. */
+@container (max-width: 640px) {
+  /* Three tracks under a card's min-content clip the value column; two tracks of
+     (640 - 64 - 16) / 2 = 280px hold it with room to spare. */
+  .multi-store-card-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@container (max-width: 480px) {
+  /* One column. A 2-up track at the tablet's 288px slot would be
+     (288 - 64 - 16) / 2 = 104px, 80px under the card's min-content; full width there
+     is 288 - 64 = 224px, still above it. */
+  .multi-store-card-grid {
+    grid-template-columns: 1fr;
+  }
 }
