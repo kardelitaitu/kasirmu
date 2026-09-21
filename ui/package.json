@@ -18,6 +18,7 @@
     "dedupe:ftl": "python3 ../scripts/dedupe-ftl.py",
     "typecheck": "tsc --noEmit",
     "bundle:check": "node ../scripts/check-bundle.mjs",
+    "testid:check": "node ../scripts/check-testid.mjs",
     "bundle:check:mobile": "node ../scripts/check-bundle.mjs --config=vite.mobile.config.ts",
     "test": "vitest run",
     "test:a11y": "vitest run --reporter=verbose src/__tests__/a11y/",

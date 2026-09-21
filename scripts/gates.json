@@ -306,6 +306,13 @@
       "ci": { "workflow": "dev-ci.yml", "job": "ui-test" }
     },
     {
+      "id": "data-testid-compliance",
+      "label": "Data-testid compliance",
+      "status": "required",
+      "runners": { "check:all": ["testid"] },
+      "_note": "Ratchet on data-testid literals across ui/src: R1 kebab-case, R2 no full literal produced by two files. Its ONLY runner is check:all (scripts/check-ui.mjs leg 0); no workflow runs it yet, so a violation is invisible to CI today and only `cd ui && npm run check:all` catches it. Frozen spec: docs/plans/todo-testid-checker-spec.md."
+    },
+    {
       "id": "e2e",
       "label": "E2E tests",
       "status": "required",

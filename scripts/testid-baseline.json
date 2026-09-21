@@ -1,0 +1,16 @@
+{
+  "max_duplicate_contracts": 1,
+  "contracts": [
+    {
+      "literal": "product-grid-scroll",
+      "files": [
+        "ui/src/features/retail/RetailPosScreen.tsx",
+        "ui/src/features/retail/RetailProductGrid.tsx"
+      ],
+      "consumer": "ui/src/features/retail/RetailPosScreen.tsx:443 querySelector - renders no node",
+      "reason": "cross-file contract: the grid owns the node, the screen measures it",
+      "since": "2026-09-19"
+    }
+  ],
+  "_note": "Ratchet cap, not a dumping ground. Raise max_duplicate_contracts only by adding a contracts row in the SAME commit; each unit is a selector two components can fight over."
+}

@@ -127,6 +127,7 @@
 | CI path router test | `ci-docs-drift` | Required | `check.sh` (ci routing test) |
 | Windows config drift | `static-gates` | Required | `check.sh` (windows config) |
 | Unified healthcheck | `static-gates` | Required | `check.sh` (healthcheck script test) |
+| Data-testid compliance | — (no CI job) | Required | `check:all` (testid) — R1 kebab-case + R2 no full `data-testid` literal produced by two files (scripts/check-testid.mjs, baseline scripts/testid-baseline.json). Local-only: leg 0 of scripts/check-ui.mjs; no workflow runs it |
 | Bundle budget | — | Required | `check:all` (bundle budget) |
 | E2E tests | `e2e` | Required | `check:all` (e2e) |
 | Perf smoke | — | Required | `check:all` (perf smoke) |
@@ -262,6 +263,7 @@ Comprehensive pre-push gate mirroring CI. Runs:
 ### `scripts/check-ui.mjs` (Node, cross-platform)
 
 `npm run check:all` from `ui/` directory. Runs:
+0. Data-testid compliance
 1. ESLint
 2. TypeScript typecheck
 3. Unit tests (vitest)
