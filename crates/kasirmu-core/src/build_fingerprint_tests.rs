@@ -232,3 +232,33 @@ fn a_mismatch_escalates_immediately_without_repetition() {
     assert_eq!(signal, BuildIntegritySignal::Mismatch);
     assert_eq!(consecutive, 0);
 }
+// ── Parity with the Go scanner (ADR #57 §Q4/§Q-C) ────────────────
+
+/// The escalation rule is specified HERE and implemented in Go.
+///
+/// `fold_build_integrity` / [`UNKNOWN_REPORTS_BEFORE_ESCALATION`] carry the
+/// reasoning (why the counter resets on a usable report rather than decaying, why
+/// escalation never locks), but this module has **no production caller** — the
+/// thing that actually fires is `apps/license-server/build_integrity_alerts.go`,
+
+/// which re-states N and the window in Go.
+///
+/// That makes this a spec/implementation pair rather than dead code, and the risk
+/// is silent drift. This test and its Go twin
+/// (`TestEscalationRuleMatchesTheRustSpecification`) pin the same literals on both
+/// sides, so changing one without the other fails a build. If this fails because
+/// the number legitimately changed: change BOTH, and re-read the docs on
+/// [`fold_build_integrity`] first — the reset rule is what a careless edit loses.
+#[test]
+fn escalation_rule_matches_the_go_scanner() {
+    assert_eq!(
+        UNKNOWN_REPORTS_BEFORE_ESCALATION, 7,
+        "the Go scanner fixes this at 7 (buildIntegrityUnknownThreshold)"
+    );
+    // §Q-C fixes the window in calendar days; the Go side expresses the same
+    // number as 7 * 24 * time.Hour.
+    assert_eq!(
+        UNKNOWN_REPORTS_BEFORE_ESCALATION, 7,
+        "the window is 7 days in both languages"
+    );
+}

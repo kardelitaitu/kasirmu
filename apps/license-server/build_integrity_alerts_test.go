@@ -355,3 +355,32 @@ func TestQuotaAlert_BodyDoesNotAccuseTheMerchant(t *testing.T) {
 		t.Errorf("the body must show the cap, got:\n%s", body)
 	}
 }
+
+// ── Parity with the Rust specification ───────────────────────────
+
+// The escalation rule exists in two languages: `kasirmu_core::build_fingerprint`
+// (the SPECIFICATION — it carries the reasoning) and this scanner (the
+// IMPLEMENTATION that actually fires, since the Rust module has no production
+// caller). Nothing prevents them drifting except these tests.
+//
+// Both sides assert the same literals, so changing one without the other fails a
+// build. If you are here because this failed: change BOTH sides, and re-read
+// `fold_build_integrity` before you do — the reset-on-usable-report rule is the
+// part a careless edit loses.
+func TestEscalationRuleMatchesTheRustSpecification(t *testing.T) {
+	// kasirmu_core::build_fingerprint::UNKNOWN_REPORTS_BEFORE_ESCALATION
+	if buildIntegrityUnknownThreshold != 7 {
+		t.Errorf("threshold = %d, but the Rust spec fixes 7", buildIntegrityUnknownThreshold)
+	}
+	// §Q-C's window, in days.
+	if days := int(buildIntegrityUnknownWindow.Hours() / 24); days != 7 {
+		t.Errorf("window = %d days, but the Rust spec fixes 7", days)
+	}
+	// The cooldown is this side's own policy (the Rust spec does not fix it), but
+	// it is deliberately equal to the window: an ongoing condition re-alerts weekly
+	// rather than daily. Asserting it stops a future edit from making it longer
+	// than the window, which would let a standing condition go unreported.
+	if buildIntegrityAlertCooldown != buildIntegrityUnknownWindow {
+		t.Error("the alert cooldown should equal the window; a longer one hides a standing condition")
+	}
+}

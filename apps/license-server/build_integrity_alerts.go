@@ -40,19 +40,38 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
+// THE ESCALATION RULE EXISTS TWICE, deliberately: these constants are the FIRING
+// copy, and `kasirmu_core::build_fingerprint` is the specification they mirror.
+//
+// `fold_build_integrity` / `BuildIntegritySignal` / `UNKNOWN_REPORTS_BEFORE_ESCALATION`
+// in `crates/kasirmu-core/src/build_fingerprint.rs` encode the same rule WITH the
+// reasoning this file's constants cannot carry (why the counter RESETS on a usable
+// report rather than decaying, and why escalation never locks). That Rust module has
+// **no production caller** — the scanner below is what actually fires. So the pair is
+// a spec/implementation split, not dead code: the Rust side is where the rule is
+// DECIDED, this side is where it RUNS.
+//
+// The risk is silent drift, so `TestEscalationRuleMatchesTheRustSpecification` exists
+// on BOTH sides, pinning the shared numbers. A change to one without the other fails a
+// build rather than diverging quietly.
 const (
 	// buildIntegrityUnknownWindow is the rolling window §Q-C decided for the
 	// repeated-unknown rule, expressed in calendar days. §Q-C chose calendar time
 	// over sync cycles because the operator queue is read in day-scale units, and
 	// because "cycle" has no meaning for the sync-disabled tenant ADR #56 §2.4
 	// exempts.
+	//
+	// Mirrors the WINDOW half of the Rust spec (§Q-C: "at least K reports inside a
+	// rolling 7-day window").
 	buildIntegrityUnknownWindow = 7 * 24 * time.Hour
 	// buildIntegrityUnknownThreshold is N from §Q4 (7 consecutive reports).
+	//
+	// Mirrors `kasirmu_core::build_fingerprint::UNKNOWN_REPORTS_BEFORE_ESCALATION`.
 	//
 	// §Q4 fixes N=7 and §Q-C fixes the unit; §Q-C also calls both "tuning
 	// parameters, not security boundaries — the routing to a human IS the
 	// boundary". So this number may change without a new decision, and changing it
-	// must not be read as weakening anything.
+	// must not be read as weakening anything — but it must change on BOTH sides.
 	buildIntegrityUnknownThreshold = 7
 	// buildIntegrityAlertCooldown is the minimum gap between repeat alerts for the
 	// SAME tenant and condition. 7 days matches the window above: an ongoing
