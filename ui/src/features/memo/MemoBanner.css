@@ -60,6 +60,21 @@
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-2);
+  /* Click-through (same idiom as .toast-container in components.css, and
+     the .is-exiting rule below): this fixed overlay is pinned to the
+     viewport's bottom-left corner, so it physically overlaps whatever
+     bottom chrome a page parks there — measured on the tablet project,
+     the settings hub footer (a fullscreen route, so its footer IS the
+     viewport's bottom-left corner) had its theme toggle covered 37x23px
+     by the lowest bubble and Playwright refused the click as
+     intercepted. pointer-events is inherited, so one `none` here
+     silences the stack, the rows and the bubble boxes; the two real
+     controls (.memo-banner-open / .memo-banner-close) re-enable it in
+     their own rules. Paint order is untouched — z stays --z-overlay,
+     above content, below the reading card's --z-modal — the banner just
+     stops eating clicks aimed at the chrome beneath its non-interactive
+     padding. */
+  pointer-events: none;
 }
 
 /* Row wrapper: a pure height animator. Collapsed until mounted,
@@ -221,6 +236,9 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
+  /* Re-enable the stack's click-through (see .memo-stack): the bubble's
+     whole body is this one button, so it must keep receiving clicks. */
+  pointer-events: auto;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -384,6 +402,8 @@
   box-shadow: var(--shadow-sm);
   color: var(--color-fg-tertiary);
   cursor: pointer;
+  /* Re-enable the stack's click-through (see .memo-stack). */
+  pointer-events: auto;
 }
 
 @media (prefers-reduced-motion: no-preference) {
