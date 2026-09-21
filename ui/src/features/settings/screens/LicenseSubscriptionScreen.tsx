@@ -1,27 +1,25 @@
-//! LicenseSubscriptionScreen — blank Settings screen scaffold (settings rebuild).
+//! LicenseSubscriptionScreen — Settings → License Subscription.
 //!
 //! Migration provenance (orchestrator contract, settings-screens phase):
-//! Content moves here from `features/settings/LicenseSettings.tsx` (tier, seats, quota, server status).
-//! Intentionally renders no controls: this file exists so the route/placeholder is
-//! honest about its state, and every scaffold in this folder shares one stylesheet
-//! (`./screens-placeholder.css`) so the placeholder looks identical everywhere.
-//!
-//! Copy is Fluent-only: `settings-nav-*` for the title, plus the two shared
-//! placeholder notes. Both keys exist in `settings.ftl` and `settings.id.ftl`.
+//! content moved here from `features/settings/LicenseSettings.tsx` (tier, seats,
+//! quota, server status). The screen keeps the shared scaffold wrapper and title
+//! (`./screens-placeholder.css`) and renders the real component as its body —
+//! the same shape BusinessDefaultsScreen/SystemDiagnosticsScreen took — so the
+//! "being rebuilt" note is gone from this section. The shared migrating note
+//! stays: SettingsPage.test.tsx asserts it under EVERY section body (:426).
 
 import { Localized } from '@fluent/react';
+import LicenseSettings from '../LicenseSettings';
 import './screens-placeholder.css';
 
-/** Placeholder for Settings → License Subscription. */
+/** Settings → License Subscription. */
 export function LicenseSubscriptionScreen() {
   return (
     <section className="settings-screen-placeholder">
       <h1 className="settings-screen-placeholder-title">
         <Localized id="settings-nav-license-subscription">License Subscription</Localized>
       </h1>
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-placeholder">This page is being rebuilt.</Localized>
-      </p>
+      <LicenseSettings />
       <p className="settings-screen-placeholder-note">
         <Localized id="settings-screen-migrating">
           Existing settings content will move here selectively.
