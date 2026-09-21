@@ -276,6 +276,13 @@ func main() {
 		if err := ensureTenantRegionEvents(app); err != nil {
 			return err
 		}
+		// ADR #57 §Q-B: the release-channel pin store §2.1 compares a reported
+		// APK signing certificate against. Created programmatically because the
+		// admin write path targets it and a missing collection would make every
+		// pin write a silent no-op.
+		if err := ensureReleaseChannels(app); err != nil {
+			return err
+		}
 		// C4.3: add-on marketplace field on license_keys
 		if err := ensureAddonsField(app); err != nil {
 			return err
@@ -384,6 +391,11 @@ func main() {
 		se.Router.GET("/api/v1/admin/tenants/{id}", handleAdminGetTenant(app))
 		se.Router.PATCH("/api/v1/admin/tenants/{id}", handleAdminUpdateTenant(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/region", handleAdminSetRegion(app))
+		// ADR #57 §Q-B: the release-channel pin store's read and write routes.
+		// Admin-authored only — §Q-A makes an attacker who can append to the pin
+		// set the failure this control exists to prevent.
+		se.Router.GET("/api/v1/admin/release-channels/{channel}/pins", handleAdminGetReleasePins(app))
+		se.Router.POST("/api/v1/admin/release-channels/{channel}/pins", handleAdminSetReleasePins(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/activate", handleAdminActivate(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/renew", handleAdminRenew(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/revoke", handleAdminRevoke(app))
@@ -1088,6 +1100,83 @@ func recordRegionChange(app core.App, tenantID, actor, from, to, reason string) 
 		log.Printf("region audit: failed to record tenant=%s %s→%s (reason=%q): %v",
 			tenantID, from, to, reason, err)
 	}
+}
+
+// releaseChannelsCollection holds the accepted APK signing-certificate pins
+// per release channel (ADR #57 §Q-B option A).
+//
+// The name is a const so the migration, the admin writer and the tests cannot
+// drift apart — the same discipline `tenantRegionEventsCollection` follows.
+const releaseChannelsCollection = "release_channels"
+
+// ensureReleaseChannels creates the release-channel pin store (ADR #57 §Q-B).
+//
+// **Why this collection exists.** ADR #57 §2.1 says the server compares a
+// reported fingerprint "against the fingerprint(s) *it* holds for that tenant
+// release channel" — but §Q-B found that phrase appeared nowhere else in the
+// repository, so as originally written the comparison was against data nothing
+// produced. This is that store. §Q-B chose a channel-keyed record over a
+// per-tenant field because a keystore rotation is then ONE write rather than an
+// N-tenant coordinated update.
+//
+// **The pin is a SET, not a scalar** (§Q-A option B): during a keystore
+// rotation both the outgoing and incoming certificate must verify, so the field
+// is a JSON array. A scalar would make rotation an outage.
+//
+// **Not an unbounded allow-list.** §Q-A is explicit that an attacker who could
+// append to this set would have defeated §2.1, so membership is admin-authored
+// only: this collection is superuser-only (nil rules) and no public endpoint
+// touches it. The bound on set SIZE is enforced by the admin write path rather
+// than by a schema constraint, because PocketBase's JSON field has no length
+// rule; see `handleAdminSetReleasePins`.
+//
+// **Empty is meaningful, and means Unknown rather than Mismatch.** A channel
+// with no pins has made no claim about the build, and
+// `classify_build_fingerprint` (kasirmu-core) reads an empty accepted set as
+// `Unknown` on purpose — treating it as a mismatch would refuse renewal for
+// every tenant on a channel nobody has pinned yet.
+func ensureReleaseChannels(app core.App) error {
+	if existing, err := app.FindCollectionByNameOrId(releaseChannelsCollection); err == nil {
+		return ensureSuperuserOnlyRules(app, existing)
+	}
+	coll := core.NewBaseCollection(releaseChannelsCollection)
+	// The channel name. Today there is exactly one release keystore, so this is
+	// a set of one — the indirection is chosen for the rotation path, not for a
+	// multiplicity that exists yet.
+	coll.Fields.Add(&core.TextField{Name: "channel", Required: true, Max: 64})
+	// JSON array of accepted SHA-256 signing-certificate fingerprints. Stored as
+	// JSON rather than a relation so a rotation is one atomic field write.
+	coll.Fields.Add(&core.JSONField{Name: "accepted_pins", MaxSize: 64 * 1024})
+	// Free-text note recording WHY the current set is what it is (e.g. "rotated
+	// 2026-09-21, old cert kept until v0.0.40 is fully rolled out"). The next
+	// operator reading a surprising pin needs this, and §Q-A's rotation clause is
+	// unactionable without it.
+	coll.Fields.Add(&core.TextField{Name: "note", Max: 1024})
+	// The actor who last wrote the set, resolved the same way the region audit
+	// resolves it (a shared key or an admin-tenant session — neither is a stable
+	// user row).
+	coll.Fields.Add(&core.TextField{Name: "updated_by", Max: 256})
+	// created/updated are NOT implicit on a programmatically-built collection —
+	// unlike a JSON schema import, NewBaseCollection starts with only the id. The
+	// index below references created, so these must be added first; omitting them
+	// is what made the region-audit migration fail with "no such column: created".
+	coll.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
+	coll.Fields.Add(&core.AutodateField{Name: "updated", OnCreate: true, OnUpdate: true})
+	// Superuser-only. An empty-string rule would mean PUBLIC in PocketBase (LSE-5),
+	// which on this collection would let anyone append a pin and defeat §2.1.
+	coll.ListRule = nil
+	coll.ViewRule = nil
+	coll.CreateRule = nil
+	coll.UpdateRule = nil
+	coll.DeleteRule = nil
+	// One row per channel: the upsert in the admin writer relies on this.
+	coll.Indexes = append(coll.Indexes,
+		"CREATE UNIQUE INDEX idx_release_channels_channel ON release_channels (channel)")
+	if err := app.Save(coll); err != nil {
+		return fmt.Errorf("failed to create %s collection: %w", releaseChannelsCollection, err)
+	}
+	log.Printf("migrated: created %s collection (ADR #57 §Q-B release-channel pin store)", releaseChannelsCollection)
+	return nil
 }
 
 func ensureTrialClaims(app core.App) error {

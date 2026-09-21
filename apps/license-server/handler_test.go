@@ -267,6 +267,12 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		if err := ensureTenantRegionEvents(app); err != nil {
 			return err
 		}
+		// Mirror production boot: the release-channel pin store (ADR #57 §Q-B).
+		// createTestCollections omits it on purpose, so this exercises the same
+		// idempotent migration the deployed server runs.
+		if err := ensureReleaseChannels(app); err != nil {
+			return err
+		}
 		// Mirror production boot: add the license_keys.is_trial bool
 		// (segmented trials, C2.1) via the same idempotent migration path
 		// the deployed server uses.
@@ -366,6 +372,8 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		se.Router.PATCH("/api/v1/admin/tenants/{id}", handleAdminUpdateTenant(app))
 		// ADR #59 §2.1a step 2: admin-only residency move.
 		se.Router.POST("/api/v1/admin/tenants/{id}/region", handleAdminSetRegion(app))
+		se.Router.GET("/api/v1/admin/release-channels/{channel}/pins", handleAdminGetReleasePins(app))
+		se.Router.POST("/api/v1/admin/release-channels/{channel}/pins", handleAdminSetReleasePins(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/activate", handleAdminActivate(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/renew", handleAdminRenew(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/revoke", handleAdminRevoke(app))
