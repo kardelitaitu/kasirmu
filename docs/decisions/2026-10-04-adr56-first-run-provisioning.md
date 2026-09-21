@@ -2,14 +2,19 @@
 num: 56
 area: topology
 title: "ADR #56: First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the multi-boolean boot gate"
-status: Proposed (2026-10-04) — nothing implemented
+status: Proposed (2026-10-04) — the provisioning table, transaction, seed removal and IPC gate are IMPLEMENTED; the identity step is not
 ---
 
 # ADR #56: First-Run Provisioning
 
-**Status:** Proposed (2026-10-04). Nothing below is implemented. Section 1 is measurement against
-the tree as it stands; §2 is the decision; §3 is the consequence list and §4 the non-goals.
-**Date:** 2026-10-04
+**Status:** Proposed (2026-10-04). **Updated 2026-10-05: §2.1, §2.2 and §2.6 are now
+IMPLEMENTED**, and §2.3's critical path is replaced — the `local` tier provisions a working
+terminal end to end. **Not implemented: the `linked` tier's identity step (§2.3's `identify`
+leg, §2.5 pairing), which still has no UI.** The implemented halves were each verified by running
+tests, and the evidence is recorded per section rather than claimed here. Section 1 is measurement
+against the tree as it stood when the decision was taken; §2 is the decision; §3 is the consequence
+list and §4 the non-goals.
+**Date:** 2026-10-04 (implementation recorded 2026-10-05)
 **Recorded against:** branch `0.0.39` @ `2c30e735c` (the commit the measurements were taken at;
 `HEAD` has since advanced to `e6e254881` — "fix(license-server): key rate limits on the real
 client IP" — which touches none of the files cited below, so every §1 reading still holds. Re-derive
@@ -315,6 +320,36 @@ A failed read can no longer forge a verdict, because there is no boolean to forg
 DB yields no row, and the shell stays in `Unprovisioned`. This is what retires `boot-retry.ts`'s
 lost-response workaround (§1.4) — a retry becomes an ordinary idempotent re-read.
 
+#### IMPLEMENTED 2026-10-05 — §2.1 shipped
+
+The table, the record and the derived state are real, and the gate is wired on both shells.
+
+| # | What | Where |
+|---|---|---|
+| 1 | `provisioning` table, keyed per terminal | `crates/kasirmu-core/migrations/20261007_provisioning.sql` — the 127th table, a measured pin in `migrations_tests.rs` |
+| 2 | `ProvisioningRecord`, `ProvisioningMode`, `FirstRunState` | `crates/kasirmu-core/src/db/provisioning.rs` |
+| 3 | The bridge read + wire shape | `kasirmu_bridge::setup::get_first_run_state` → `FirstRunStateDto`, a tagged enum whose two states are mutually exclusive at the type level |
+| 4 | The IPC command on both shells | `commands::setup::get_first_run_state`, registered in both `lib.rs` handler lists |
+| 5 | Both boot gates read the row | `ui/src/app/AppShell.tsx` and `ui/src/app/tablet/TabletAppShell.tsx` — `state === 'provisioned'` replaces `completed` |
+
+**The three booleans are gone.** `get_setup_status` and `dismiss_setup_wizard` were removed from
+the bridge and both shells (§2.2's deletion), and `SHOW_SETUP_WIZARD` / `SETUP_COMPLETE` are no
+longer written by any provisioning path. §1.4's `boot-retry.ts` lost-response workaround survives
+as a retry around the two pre-auth reads, which is now safe in both directions because the read is
+idempotent rather than because re-issuing a write is harmless.
+
+**One override the implementation required, recorded because it narrows the gate.** The desktop
+`AppShell` has always treated an unknown setup read as "not first-run" and fallen through to login,
+while the tablet pins a failed read to the first-run flow. That asymmetry is KEPT, and it is now
+safer than it was: the tablet's direction can no longer strand a terminal, because the flow it
+reaches is the one that provisions it, whereas the old wizard's `onSkip` could mark setup complete
+with nothing provisioned. Both directions are pinned by tests
+(`TabletAppShell.test.tsx`, `appShellBootGate.test.tsx`).
+
+**Verification run:** `ui` — 601 files, **10233 passed, 0 failed**, including the 16-case boot-gate
+file that drives the converted read and the 29-case tablet shell; `cargo test -p kasirmu-core --lib`
+→ **3141 passed**; `cargo test -p kasirmu-bridge --lib` → **1360 passed**.
+
 ### 2.2 Provisioning is one idempotent transaction
 
 `provision_device(args)` writes, inside one `rusqlite` transaction, in this order:
@@ -349,6 +384,38 @@ latter pair. Removing them moves the registration ratchet and the
 of that generated file — and `get_enabled_features`'s ledger row at `:100` is what the feature-read
 replacement of §2.1 keeps alive.
 
+#### IMPLEMENTED 2026-10-05 — §2.2 shipped, in both halves
+
+`provision_device` is one transaction over the six steps above, in that order, with the marker
+written last (`crates/kasirmu-core/src/db/provisioning.rs`). The deletion follows it, as stated.
+
+**Two implementation notes that changed the code rather than the decision:**
+
+- **Step 4 calls `create_user_in_tx`, not `create_user`.** The latter opens its OWN transaction, so
+  calling it here was a nested `BEGIN` — "cannot start a transaction within a transaction". That is
+  the identical defect `create_user_in_tx` documents having caused for staff-with-profile creation
+  on 2026-08-31, so the existing helper was reused rather than re-derived.
+- **Step 3's `is_primary` is conditional.** The schema allows exactly one primary row
+  (`idx_locations_primary`, a partial UNIQUE from `20260906:22-23`), so writing `1` unconditionally
+  made provisioning a SECOND terminal fail with a constraint violation. A second terminal now
+  shares its merchant's primary instead of promoting itself.
+
+**The deletion, measured:** `get_setup_status` and `dismiss_setup_wizard` are gone from
+`kasirmu-bridge/src/setup.rs`, from both shells' command modules and from both `lib.rs` handler
+lists. The registration ledgers were REGENERATED rather than hand-edited (`setup::get_first_run_state`
+and `setup::provision_device` replaced the two rows). Both carry `no_session_resolution` deliberately:
+
+> provisioning creates the FIRST owner, so it must be reachable before any session exists — the same
+> structural property `setup::complete_setup` has carried since it was registered.
+
+That reasoning is recorded in the ledger's own pin block (`registration_gate_tests.rs`, the
+`REGISTERED_FLOOR` history) rather than only here, because the ratchet forces the next person to
+re-measure it.
+
+**Verification run:** `cargo test -p kasirmu-core --lib` → **3141 passed, 0 failed** (21 of them in
+`db::provisioning`, covering the guard, the replay, the rollback and both schema CHECKs);
+`cargo test -p kasirmu-bridge --lib` → **1360 passed**; both registration ratchets → **10/10**.
+
 ### 2.3 Identity-first, and the wizard collapses to what cannot be derived
 
 The provisioning flow is ordered by dependency, not by topic:
@@ -377,6 +444,41 @@ map it already is, evaluated instead of interrogated.
 **Rationale, stated as the principle:** onboarding must end at a working terminal, not at a
 configured one. Today's wizard ends at neither — it ends at a login screen with zero users
 (`onSkip`) or at a feature-toggle write against a store that does not exist (§1.3).
+
+#### PART IMPLEMENTED 2026-10-05 — the critical path is replaced; the identity leg is not
+
+**Built:** `ui/src/features/setup/ProvisioningFlow.tsx` is now what both shells render on the
+unprovisioned path, replacing `SetupWizard` there. It asks three things — store type, shop name,
+and owner (name, login, PIN) — and then calls `provision_device`. The wizard component itself is
+KEPT, because §2.3 removes its steps from the critical path rather than from the product: its
+later stages are the in-app settings a provisioned terminal now reaches.
+
+**Two deliberate omissions from the flow, both from this section rather than from scope:**
+
+- **No currency or timezone field.** The flow sends the preset's defaults. §2.3's "evaluated,
+  not interrogated" rule is the reason: the merchant answers a business question (what kind of
+  shop is this) rather than a technical one. A later slice resolves them from the scope chain.
+- **No account step.** A `local` install is the default (§2.4), so linking is an action on a
+  WORKING terminal rather than step 8 of a gate.
+
+**NOT built, and this is the honest gap: the `identify` leg.** The §2.3 diagram starts with
+`identify → tenant_id`, and there is no UI for it on either shell. What ships today is the `local`
+tier end to end; the `linked` tier's bridge contract exists (`ProvisionDeviceArgs.mode = 'linked'`
+with its tenant and credential ids, plus the schema CHECK that refuses a linked row without them)
+but nothing calls it. §2.5's tablet pairing flow is likewise unbuilt. Recorded here rather than in
+§3.3 so the two tiers' status cannot be misread from the diagram.
+
+**One thing the collapse removed that the ADR did not name:** `onSkip`. The wizard's Skip button
+and the `dismiss_setup_wizard` command behind it are both gone, because §1.5's trapdoor has no
+meaning once the marker is a row instead of a flag — there is nothing to skip PAST. The wizard
+component still exposes `onSkip` as an optional prop for its remaining callers; neither shell
+passes it.
+
+**Verification run:** `ui` — **601 files, 10233 passed, 0 failed**, including the layout, touch-
+target, focus-visible and theme-token walkers over the new sheet, and `screenExtraction.test.ts`
+(which forced a `SCREENS` entry for `ProvisioningFlow.css` — a new stylesheet may not join the
+shrink-only uncited list). `npm run lint` → 0 errors; `npm run lint:i18n` → no issues, keys in both
+bundles; `npx tsc --noEmit` → clean.
 
 ### 2.4 Two tiers, because offline-first cannot require the network
 
@@ -537,6 +639,44 @@ an obstacle.
 **What must NOT be removed:** the two `inventory_locations` rows (`20260813_init.sql:1517-1527`).
 They are system-managed pseudo-locations — `transit` is explicitly so in its own `INSERT` comment —
 and are genuine fixtures rather than fiction.
+
+#### IMPLEMENTED 2026-10-05 — §2.6 option C shipped, and the coupling proved real
+
+The three fiction seeds are gone from `crates/kasirmu-core/migrations/20260813_init.sql` (the
+`Default Store` profile, the five `default-*` workspace instances, and the `BOOTSTRAP_FREE`
+subscription) and `20260813_init.pg.sql` was regenerated — its seed count dropped 11 → 7, which is
+the drift guard confirming the edit reached the twin. The two `inventory_locations` rows are
+untouched, as §2.6 requires.
+
+**The coupling §2.6 predicted was exactly as large as predicted, and it is worth stating plainly:**
+removing the seeds broke **117 `kasirmu-core` tests and 114 `kasirmu-bridge` tests**. Every one was
+a FIXTURE that read a row the baseline no longer ships, not a product defect. The fix was one
+shared helper —
+
+```rust
+kasirmu_core::migrations::seed_provisioned_baseline(&conn)
+```
+
+— which rebuilds the rows `provision_device` now creates, called from each test module's own
+`fresh()`/`store()` constructor and from the bridge harness's `temp_conn()`. It is deliberately NOT
+part of `fresh_db()`: a test of first-run behaviour must see an UNPROVISIONED database, and seeding
+there by default would re-introduce the fiction this section removes.
+
+**Three assertions were INVERTED rather than deleted**, because the guarantee is worth more than the
+row: `seed_data_bootstraps_essential_rows` now asserts the locations table is EMPTY and that no
+sentinel subscription exists, and the lease-rename test asserts zero FK violations with no seeded
+rows left to hide behind. A deleted assertion would have let the fiction creep back silently; an
+inverted one fails if it does.
+
+**What the removal did NOT touch:** `legal_entities` rows are still created by
+`20260908_legal_entities.sql` from whatever tenants its `UNION` finds — with no seeded location and
+no seeded subscription, a fresh install now yields NO legal entity, and the migration's own
+`UPDATE locations SET legal_entity_id = ...` has no row to update. That is correct arithmetic, not
+an omission: provisioning creates the location and the entity together.
+
+**Verification run:** `cargo test -p kasirmu-core --lib` → **3141 passed, 0 failed**;
+`cargo test -p kasirmu-bridge --lib` → **1360 passed, 0 failed**;
+`python scripts/generate-pg-migration.py --check` → clean.
 
 ## 3. Consequences
 
