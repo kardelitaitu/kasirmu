@@ -528,6 +528,39 @@ the earlier citation pointed at a section that does not exist here.
 from an intermittent failure while staying inside a working day. The number is a tuning parameter,
 not a security boundary; the routing to a human *is* the boundary.
 
+**IMPLEMENTED 2026-10-05 — the escalation rule is real; the queue it feeds is not yet wired.**
+
+`kasirmu_core::build_fingerprint` now carries the Q4 decision as a pure state machine:
+`fold_build_integrity(previous_consecutive_unknowns, verdict) -> (u32, BuildIntegritySignal)`, with
+`UNKNOWN_REPORTS_BEFORE_ESCALATION = 7` and a `BuildIntegritySignal` of `None` / `Mismatch` /
+`UnknownPersistent`.
+
+**Three properties are pinned by tests rather than described:**
+
+- **The threshold is asserted from both sides.** One short of 7 does not escalate; the 7th does. An
+  off-by-one here either delays the signal past a working day or fires it on noise.
+- **A usable report RESETS the run, it does not decay it.** A decay would let an attacker stay
+  permanently under the threshold by emitting one usable report every few cycles — re-opening the
+  exact bypass option A was rejected for.
+- **`Mismatch` needs no repetition.** It is positive evidence (§2.5) whereas `Unknown` is an absence
+  of evidence; requiring repetition for a mismatch would let an attacker re-sign the APK and stay
+  unobserved by varying the count.
+
+**The control's LIMIT is pinned too, which is the more useful test.**
+`interleaving_a_usable_report_defeats_the_escalation` demonstrates that a client reporting a valid
+fingerprint every cycle never escalates — and asserts that this is *correct* behaviour for this rule,
+not a bug to fix by strengthening it. The honest statement is that the escalation catches a client
+whose reporting has genuinely stopped working, not one that reports a lie competently. §3.3's
+residual stands unchanged, and the test fails loudly if a future change makes the counter decay —
+which is the signal that the rule had been strengthened into something that cannot tell an
+intermittent fault from a careful attacker.
+
+**What is NOT wired: the queue.** `BuildIntegritySignal` has no consumer yet — nothing stores the
+consecutive count, nothing folds a report, and nothing reaches `NeedsAttention`. That is the same
+prerequisite Q3 names (a named reader), so the escalation lands in the same deferred block as §2.4.
+
+**Verification run:** `cargo test -p kasirmu-core --lib -- build_fingerprint` → **13 passed, 0 failed**.
+
 ### Q5 — Does the fingerprint field ride an existing sync call, or need a new command? `[was blocking]` — DECIDED
 
 | Option | Pros | Cons |
