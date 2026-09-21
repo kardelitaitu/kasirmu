@@ -262,11 +262,18 @@ revenue it protects. Termination stays a human decision; the system job is to ma
 
 ### 2.5 A quarantine state exists for the fingerprint mismatch
 
-**STILL TO BUILD — and the marker is worth reading carefully, because §2.4 shipped and this did not.**
-The *detection* half now works: a mismatch is classified, stored and emailed to an operator. What is
-absent is the graded *automatic* response — specifically, renewal refusal for a mismatched build.
-Today a flagged device is seen and can still renew, so the response is a human acting rather than the
-system. Detection without a response was §3.3's finding, and it is now the residue here.
+**STILL TO BUILD, and blocked on a DECISION rather than on effort.** The *detection* half works: a
+mismatch is classified, stored and emailed to an operator. What is absent is the graded *automatic*
+response — renewal refusal for a mismatched build. Today a flagged device is seen and can still
+renew, so the response is a human acting rather than the system.
+
+**The blocker, found by tracing the input rather than assuming it:** the refusal's input does not
+exist at the grain the existing guard reads. §2.4 stores reports per DEVICE, the renew request
+carries no `machine_id`, and no tenant-level integrity flag exists anywhere. Building this
+therefore requires choosing between a tenant-wide refusal (which contradicts this section's own
+severity argument) and a wire change (see the correction below). **No code change is made here on
+purpose:** either option is a decision, and the wrong one silently reintroduces the fleet lockout
+§Q4 rejected.
 
 The grades the eventual response will use already exist as states:
 
@@ -281,16 +288,39 @@ The grades the eventual response will use already exist as states:
 Refusing *renewal* rather than access is the correct severity for a **mismatch**: it denies the
 attacker persistence without locking a legitimate merchant out mid-shift on a false positive.
 
-**Where the refusal actually happens — corrected against the tree.** Renewal refusal is
-**server-side**, and it is already built: `apps/license-server/renew.go:76-81` refuses any tenant
-whose `status != "active"`. That guard is generic — it is not fingerprint-aware today, so a
-fingerprint mismatch reaches it only once §2.4's detection work marks the tenant. It is **not**
+**Where the refusal actually happens — corrected against the tree, and re-corrected 2026-09-22.**
+Renewal refusal is **server-side**, and the guard is already built:
+`apps/license-server/renew.go:76-81` refuses any tenant whose `status != "active"`. It is **not**
 `TenantSubscription::enforce_pos_writable` (`subscription.rs:1011`): that is a **selling** gate
 whose callers are the POS checkout paths (`bridge/pos.rs:1755`, `pos.rs:1975`, `offline.rs:236`,
 `core/src/db/sales_checkout.rs:206`, `core/src/db/sales_lifecycle.rs:176`). Wiring renewal refusal
 into it would refuse *sales*, not renewal. This record's earlier revision named it as the renewal
 mechanism, which would send an implementer one gate too deep. The two gates are unrelated and must
 stay so: `enforce_pos_writable` protects revenue collection, the server guard protects renewal.
+
+> **Correction 2026-09-22: "once §2.4's detection work marks the tenant" was wrong, and the
+> correction changes what §2.5 has left to build.** §2.4 does **not** mark the tenant.
+> `build_integrity_reports` rows are per **DEVICE** (`tenant_id` + `machine_id`), and a grep for
+> any tenant-level integrity flag (`integrity_flagged`, `build_integrity_status`, `quarantine`)
+> returns **nothing**. So the generic guard has no fingerprint-aware value to consult, and the
+> refusal is not merely "unwired" — its input does not exist at the grain the guard reads.
+>
+> **And the renew request cannot express a device decision**: `RenewRequest`
+> (`renew.go:19-23`) and `RenewLicenseRequest` (`license_verification.rs:239-251`) both carry
+> `tenant_id` + `key` only — no `machine_id` anywhere. That leaves two options, and they are NOT
+> equivalent:
+>
+> | Option | Cost | Consequence |
+> |---|---|---|
+> | **A. Flag the TENANT on a mismatch**, refuse its renewal | No wire change; small diff | Refuses **every** terminal of that tenant because ONE device was tampered, including honest tills elsewhere — the fleet-lockout failure §2.5 (:281-282) and §Q4 both chose to avoid, reintroduced at the tenant grain instead of the client grain |
+> | **B. Key the refusal per DEVICE** | `machine_id` added to the renew request on BOTH sides — a wire change, plus a fail-open rule for the empty-`machine_id` case (the problem the status call already solved at `license_verification.rs:573-582`) | Correct severity: the tampered terminal cannot renew, the tenant's other tills are unaffected |
+>
+> **Neither is built, and this record does not pick one silently.** Option A contradicts this
+> section's own stated severity, so it is rejected on the record's existing reasoning. Option B is
+> the right end state and needs its own decision, because it moves the client/server wire. Until
+> one is chosen, the shipped state is unchanged: a mismatched build is **detected, stored and
+> emailed**, and can still renew. That is §3.3's residual, and it is now narrower than "no response"
+> but wider than "refused".
 
 #### Precedence: `mismatch` (this record) vs the 3-day window (ADR #58 §2.3)
 
@@ -548,7 +578,7 @@ and emails the operator (`OZ_ADMIN_EMAIL`) on two conditions, distinguished deli
 | Residual | Bound — **as of 2026-09-21** |
 |---|---|
 | A2 exceeds local quota gates | **Still unbounded.** Untouched by this work: the alert reports builds, not quota use |
-| A1/A3 patch out fingerprint reporting | **Detected and alerted.** The deletion surfaces as repeated `unknown` and now reaches a human within a week |
+| A1/A3 patch out fingerprint reporting | **Detected and alerted, not refused.** The deletion surfaces as repeated `unknown` and reaches a human within a week; the device can still renew until §2.5 chooses its refusal grain |
 | A1/A3 report a fingerprint at all | **CLOSED as a capability.** The APK certificate is computed natively and sent; a re-signed APK produces a stored `mismatch` AND an alert |
 
 **What the notification deliberately does NOT do.** It never refuses a session, never revokes a
