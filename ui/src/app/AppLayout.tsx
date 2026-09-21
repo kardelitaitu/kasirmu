@@ -102,6 +102,18 @@ export default function AppLayout({ route, onNavigate, children, enabledFeatures
 
   const toggleSidebar = () => setSidebarCollapsed((prev) => !prev);
 
+  // ── Escape dismisses the open overlay (the scrim's keyboard twin) ──
+  // Only the expanded pane is a dismissable overlay; a collapsed sidebar is
+  // an in-flow rail with nothing to close, so the listener is not attached.
+  useEffect(() => {
+    if (sidebarCollapsed) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSidebarCollapsed(true);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [sidebarCollapsed]);
+
   // ── Section accordion state (single expanded section) ───────
   const [expandedSection, setExpandedSection] = useState<string | null>(() => {
     try {
@@ -144,6 +156,14 @@ export default function AppLayout({ route, onNavigate, children, enabledFeatures
       </a>
       {/* ── Body (sidebar + content) ──────────────────── */}
       <div className="app-layout-body">
+        {/* ── T1 portrait overlay scrim (inert above 1023px landscape) ── */}
+        {!sidebarCollapsed && (
+          <div
+            className="app-sidebar-scrim"
+            aria-hidden="true"
+            onClick={() => setSidebarCollapsed(true)}
+          />
+        )}
         {/* ── Sidebar ──────────────────────────────── */}
         <aside className={`app-sidebar${sidebarCollapsed ? ' collapsed' : ''}`} aria-label={l10n.getString('nav-main-aria')}>
           <div className="app-sidebar-header">

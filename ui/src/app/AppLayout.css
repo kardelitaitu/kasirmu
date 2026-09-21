@@ -71,6 +71,14 @@
   transition: width var(--duration-300) var(--ease-out), min-width var(--duration-300) var(--ease-out);
 }
 
+/* T1 scrim. Rendered by AppLayout.tsx only while the sidebar is expanded, but it
+ * paints ONLY in the portrait branch below (ADR-0001 Slice 3 / T1): in landscape
+ * and at 1024px+ the sidebar is a persistent lane, so a scrim there would dim the
+ * page for nothing. display:none is the base state, not a fallback. */
+.app-sidebar-scrim {
+  display: none;
+}
+
 .app-sidebar.collapsed {
   width: 60px;
   min-width: 60px;
@@ -690,6 +698,21 @@
     min-width: 220px;
     flex-direction: column;
     z-index: var(--z-sticky);
+  }
+
+  /* The dismissal surface: clicking it collapses the sidebar, i.e. closes the
+   * overlay. z-index is --z-dropdown (100), deliberately BELOW the pane's
+   * --z-sticky (200) — DOM order alone would put it under the aside, but an
+   * explicit lower z-index keeps it under even if a later rule stacks the pane.
+   * No ancestor in the chain is positioned, so `inset: 0` resolves against the
+   * initial containing block — the SAME box the absolute pane above resolves
+   * against, so scrim and pane share one geometry (viewport-wide dim, 220px pane). */
+  .app-sidebar-scrim {
+    display: block;
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--color-bg-overlay) 40%, transparent);
+    z-index: var(--z-dropdown);
   }
 
   /* The overlay needs a scrim's worth of separation from the page beneath. */
