@@ -81,6 +81,7 @@ const KDS_CSS = 'features/kds/KdsScreen.css';
 const SALES_HISTORY_CSS = 'features/sales/SalesHistoryScreen.css';
 const PAYMENT_MODAL_CSS = 'features/sales/PaymentModal.css';
 const POS_SCREEN_CSS = 'features/sales/PosScreen.css';
+const EOD_REPORT_CSS = 'features/sales/EodReportScreen.css';
 
 /* ── Text helpers ───────────────────────────────────────────── */
 
@@ -317,6 +318,7 @@ const MIGRATED: readonly MigratedSheet[] = [
   { sheet: SALES_HISTORY_CSS, containerSelector: '.sales-history', tiers: [880], narrowShellPx: 640 },
   { sheet: PAYMENT_MODAL_CSS, containerSelector: '.payment-overlay', tiers: [480], narrowShellPx: 640 },
   { sheet: POS_SCREEN_CSS, containerSelector: '.pos-screen', tiers: [720, 480], narrowShellPx: 640 },
+  { sheet: EOD_REPORT_CSS, containerSelector: '.eod-report', tiers: [800, 600], narrowShellPx: 640 },
 ] as const;
 
 /**
@@ -757,6 +759,24 @@ const PLANTED = {
     '.pos-screen { container-type: inline-size; }\n' +
     '.pos-close-shift-summary-grid > .pos-close-shift-summary-item { color: red; }\n' +
     '@container (max-width: 720px) { .pos-close-shift-summary-grid { display: none; } }\n',
+  /**
+   * A migrated sheet that QUERIES a container without declaring the box it
+   * measures. Written against EOD_REPORT_CSS, not copied from the PaymentModal
+   * or PosScreen fixtures: a case is only a control for the sheet it names.
+   */
+  eodReportNoContainer:
+    '.eod-report { padding: 1rem; }\n' +
+    '@container (max-width: 800px) { .eod-report-columns { grid-template-columns: 1fr; } }\n',
+  /**
+   * EodReport's two tiers declared finest-first. This is the ORDER plant for
+   * the 800/600 ladder: the 600px tier is below the 640px narrow-shell case on
+   * purpose (that is coherent coverage, not a missing gate), but a max-width
+   * gate written above the 800px one can never be the tier in force.
+   */
+  eodReportTierOrder:
+    '.eod-report { container-type: inline-size; }\n' +
+    '@container (max-width: 600px) { .eod-report-active-shift { flex-direction: column; } }\n' +
+    '@container (max-width: 800px) { .eod-report-columns { grid-template-columns: 1fr; } }\n',
   /** RetailPos tiers declared finest-first — the wider gate would win. */
   retailTierOrder:
     '.retail-pos { container-type: inline-size; }\n' +
@@ -1025,6 +1045,19 @@ describe('narrow-shell / extreme-aspect verification (ADR-0001 Slice 7)', () => 
       'the fence no longer fires when the PosScreen tier hides a wrapper instead of a lane',
     ).toContain('tier-hides-wrapper');
 
+    // Planted 3d — the container-not-declared shape, one sheet over: the EOD
+    // report queries a box nothing declares.
+    expect(
+      gradeMigratedSheet({ sheet: EOD_REPORT_CSS, containerSelector: '.eod-report', tiers: [800, 600], narrowShellPx: 640 }, PLANTED.eodReportNoContainer).map((f) => f.pattern),
+      'the fence no longer fires on an EOD-report sheet that queries a container it never declares',
+    ).toContain('container-not-declared');
+
+    // Planted 1c — the inverted tier order, on the 800/600 ladder.
+    expect(
+      gradeMigratedSheet({ sheet: EOD_REPORT_CSS, containerSelector: '.eod-report', tiers: [800, 600], narrowShellPx: 640 }, PLANTED.eodReportTierOrder).map((f) => f.pattern),
+      'the fence no longer fires when EodReport declares its wider max-width tier last',
+    ).toContain('tier-order');
+
     // Planted 4 — a folding tier that hides nothing at all.
     expect(
       gradeShedding(KDS_CSS, PLANTED.emptyTier, 900).map((f) => f.pattern),
@@ -1094,6 +1127,10 @@ describe('narrow-shell / extreme-aspect verification (ADR-0001 Slice 7)', () => 
     expect(
       shapeOnly(gradeMigratedSheet(MIGRATED[4]!, source(POS_SCREEN_CSS))),
       'the graders reject the real PosScreen.css',
+    ).toEqual([]);
+    expect(
+      shapeOnly(gradeMigratedSheet(MIGRATED[5]!, source(EOD_REPORT_CSS))),
+      'the graders reject the real EodReportScreen.css',
     ).toEqual([]);
     expect(
       gradeOrientationGates(SHELL_CSS, source(SHELL_CSS), 1023),
