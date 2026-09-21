@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, lazy } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, type ReactNode } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { requiredLocalized } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
@@ -7,13 +7,14 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useIdleTimer } from '@/hooks/useIdleTimer';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useFullscreen } from '@/hooks/useFullscreen';
+import { useOrientation } from '@/hooks/useOrientation';
 import { isAnyAriaModalOpen, consumeShortcut } from '@/utils/modal-guard';
 import { isCommandModifier } from '@/utils/keyboard-modifier';
 import AppLayout, { type AppRoute } from './AppLayout';
 import { completeSetup, dismissSetupWizard, getSetupStatus } from '@/api/settings';
 import { useFeatures } from '@/hooks/useFeatures';
 import { useTerminalProfile } from '@/hooks/useTerminalProfile';
-import { getPage, isPageAccessible } from '@/registries/page-registry';
+import { getPage, isPageAccessible, type PageRegistration } from '@/registries/page-registry';
 import { recordMark } from '@/utils/perf-metrics';
 import PermissionDenied from '@/components/PermissionDenied';
 import { ErrorState } from '@/components/ErrorState';
@@ -465,6 +466,20 @@ export default function AppShell() {
     { enabled: activeWorkspace !== 'store-pos' },
   );
 
+  // ── Page-declared layout (ADR-0001 Slice 1) ───────────────────
+  //
+  // The registry records what a page structurally needs; the shell is the one
+  // place that reads it. Called unconditionally here — hooks may not sit behind
+  // the early returns above, and the value it feeds is read further down at the
+  // registry render site.
+  //
+  // No lock request: `landscape-locked` is a declaration that the page needs the
+  // landscape tree, not a promise the host can keep (the Android WebView ignores
+  // `screen.orientation.lock` — see TabletAppShell). The rotation prompt is
+  // therefore derived from the MEASURED viewport, and the portrait fallback
+  // renders either way.
+  const { orientation } = useOrientation();
+
   // ── Escape key navigates back to workspace picker ────────────
 
   const handleBackToPicker = useCallback(() => {
@@ -714,9 +729,13 @@ export default function AppShell() {
       <>
         {!isCustomerKiosk && <MemoBanner />}
         {bootBadges}
-        <LazyBoundary>
-          <PageComponent />
-        </LazyBoundary>
+        {renderPageLayout(
+          <LazyBoundary>
+            <PageComponent />
+          </LazyBoundary>,
+          pageRegistration.layout,
+          orientation.isLandscape,
+        )}
       </>
     ) : null;
   }
@@ -739,14 +758,63 @@ export default function AppShell() {
             requiredPermission={pageRegistration!.requiredPermission}
           />
         ) : PageComponent ? (
-          <LazyBoundary>
-            <PageComponent />
-          </LazyBoundary>
+          renderPageLayout(
+            <LazyBoundary>
+              <PageComponent />
+            </LazyBoundary>,
+            pageRegistration!.layout,
+            orientation.isLandscape,
+          )
         ) : null}
       </AppLayout>
       {settingsModal}
     </>
   );
+}
+
+/**
+ * Apply a page's registry-declared `layout` to the rendered page (ADR-0001, tier
+ * T3). The registry records the structural need; this is the consumer T4 checks
+ * for. Both shells call it, so one registration behaves the same on either.
+ *
+ * - absent / 'fluid' — the page adapts to the space it is given (T2 container
+ *   queries). Returning the page node itself, not a wrapper around it, is what
+ *   keeps this branch a no-op instead of a new DOM layer.
+ * - 'landscape-locked' — the page needs a different structural tree in landscape.
+ *   The shell cannot enforce orientation (the Android WebView has no
+ *   `screen.orientation.lock`), so this renders the same page plus a rotation
+ *   prompt, and only while the MEASURED viewport is portrait: a prompt that
+ *   cannot clear would be worse than no prompt. The page stays mounted and usable
+ *   either way — the prompt is an overlay, never a gate.
+ * - 'custom' — the page owns its layout contract outside T1/T2, so the shell
+ *   renders it as-is inside the `data-layout="custom"` marker CSS keys off
+ *   instead of reaching into the page's own contract.
+ */
+function renderPageLayout(
+  page: ReactNode,
+  layout: PageRegistration['layout'],
+  isLandscape: boolean,
+): ReactNode {
+  if (layout === 'landscape-locked' && !isLandscape) {
+    return (
+      <>
+        {page}
+        <div className="page-rotate-prompt" data-layout="landscape-locked" role="status">
+          <Localized id="layout-rotate-to-landscape">
+            <p>Rotate your device to landscape for the full layout.</p>
+          </Localized>
+        </div>
+      </>
+    );
+  }
+  if (layout === 'custom') {
+    return (
+      <div className="page-layout-custom" data-layout="custom">
+        {page}
+      </div>
+    );
+  }
+  return page;
 }
 
 /**

@@ -1,17 +1,19 @@
-import { useState, useEffect, useCallback, useRef, lazy } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, type ReactNode } from 'react';
+import { Localized } from '@fluent/react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import TabletAppLayout from './TabletAppLayout';
 import { completeSetup, dismissSetupWizard } from '@/api/settings';
 import { readBootGate } from '@/utils/boot-retry';
 import { useFeatures } from '@/hooks/useFeatures';
-import { getPage, isPageAccessible } from '@/registries/page-registry';
+import { getPage, isPageAccessible, type PageRegistration } from '@/registries/page-registry';
 import PermissionDenied from '@/components/PermissionDenied';
 import { LazyBoundary } from '@/components/LazyBoundary';
 import { AppBootSplash } from '@/components/AppBootSplash';
 import MemoBanner from '@/features/memo/MemoBanner';
 import type { WizardState } from '@/features/setup/SetupWizard';
 import { isAnyAriaModalOpen, consumeShortcut } from '@/utils/modal-guard';
+import { useOrientation } from '@/hooks/useOrientation';
 import { toWorkspaceType, type WorkspaceType } from '@/features/settings/workspaceType';
 
 // ── PERF-01: workspace/flow screens load on demand ────────────────
@@ -24,6 +26,50 @@ const RetailPosScreen = lazy(() => import('@/features/retail/RetailPosScreen'));
 const PosScreen = lazy(() => import('@/features/sales/PosScreen'));
 const KdsScreen = lazy(() => import('@/features/kds/KdsScreen'));
 const WorkspaceSettingsModal = lazy(() => import('@/features/settings/WorkspaceSettingsModal'));
+
+/**
+ * Apply a page's registry-declared `layout` to the rendered page (ADR-0001 Slice
+ * 1). Deliberately a second copy of the desktop shell's helper rather than an
+ * import: it is the consumer the ADR's T4 check looks for, and a test can pin
+ * each shell's own render tree without a shared module's behaviour moving under
+ * both. Keep the two in step when the contract changes.
+ *
+ * - absent / 'fluid' — the page adapts to the space it is given; the page node
+ *   itself is returned, so this branch adds no DOM.
+ * - 'landscape-locked' — render the page plus a rotation prompt while the
+ *   MEASURED viewport is portrait, as an overlay only. There is no lock to
+ *   request (see the shell comment above): the page stays mounted and usable in
+ *   either orientation, which is the usable portrait fallback the contract asks
+ *   for.
+ * - 'custom' — the page owns its layout; wrap it in the `data-layout="custom"`
+ *   marker CSS keys off instead of reaching into the page's contract.
+ */
+function renderPageLayout(
+  page: ReactNode,
+  layout: PageRegistration['layout'],
+  isLandscape: boolean,
+): ReactNode {
+  if (layout === 'landscape-locked' && !isLandscape) {
+    return (
+      <>
+        {page}
+        <div className="page-rotate-prompt" data-layout="landscape-locked" role="status">
+          <Localized id="layout-rotate-to-landscape">
+            <p>Rotate your device to landscape for the full layout.</p>
+          </Localized>
+        </div>
+      </>
+    );
+  }
+  if (layout === 'custom') {
+    return (
+      <div className="page-layout-custom" data-layout="custom">
+        {page}
+      </div>
+    );
+  }
+  return page;
+}
 
 /**
  * Tablet-optimised application shell.
@@ -48,13 +94,19 @@ export default function TabletAppShell() {
   // so a rotation re-lays-out without a React re-render. `useOrientation`
   // remains the mechanism for a STRUCTURAL orientation need — choosing a
   // different component tree, or a column count CSS cannot express — and this
-  // shell has none, so it does not call the hook. If a descendant ever needs
-  // one, call it there and consume `orientation.isLandscape`; do not re-add a
-  // lock.
+  // shell still calls it only to READ `orientation.isLandscape` for a page's
+  // declared `layout` (ADR-0001 Slice 1) — a structural need the registry makes
+  // reviewable data. It still never requests a lock. If a descendant develops a
+  // structural need of its own, call the hook there; do not re-add a lock.
   //
   // If the product decision is landscape-ONLY, the enforceable mechanism is the
   // Android manifest (`android:screenOrientation="sensorLandscape"` on
   // `.MainActivity`), not the Web API.
+
+  // The page-declared layout (ADR-0001 Slice 1) is read from the registry at the
+  // render site below; this is the measured viewport it is judged against, called
+  // unconditionally because hooks may not sit behind the early returns.
+  const { orientation } = useOrientation();
 
   const [loading, setLoading] = useState(true);
   const [hasCompletedSetup, setHasCompletedSetup] = useState(false);
@@ -368,9 +420,13 @@ export default function TabletAppShell() {
           requiredPermission={pageRegistration?.requiredPermission}
         />
       ) : PageComponent ? (
-        <LazyBoundary>
-          <PageComponent />
-        </LazyBoundary>
+        renderPageLayout(
+          <LazyBoundary>
+            <PageComponent />
+          </LazyBoundary>,
+          pageRegistration!.layout,
+          orientation.isLandscape,
+        )
       ) : null}
       {/* The modal portals itself, so it does not matter which branch hosts it. */}
       {settingsModal}
