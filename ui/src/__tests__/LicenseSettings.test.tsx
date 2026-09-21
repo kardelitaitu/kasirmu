@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent, withFluentLocale } from '@/i18n/test-utils';
-import LicenseSettings from '@/features/settings/LicenseSettings';
+import LicenseSettings, { shouldPollLicense } from '@/features/settings/LicenseSettings';
 import { HARNESS_SESSION_TOKEN } from '@/__tests__/test-utils/harnessDefaults';
 import salesFtl from '@/locales/sales.ftl?raw';
 import settingsFtl from '@/locales/settings.ftl?raw';
@@ -128,7 +128,11 @@ function makePayload(overrides: Record<string, unknown> = {}) {
     max_pos_instances: 5,
     allowed_types: ['store-pos', 'kds'],
     starts_at: '2026-01-01T00:00:00Z',
-    expires_at: '2026-12-31T23:59:59Z',
+    // INSIDE the §2.3 re-authentication window by default (expires in ~1 day).
+    // The default must be in-window so the poll tests below exercise the poll:
+    // a far-future expiry is outside the window, which now deliberately arms
+    // no timer at all — see shouldPollLicense and the window tests.
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     grace_until: '2027-01-31T23:59:59Z',
     issued_at: '2025-12-15T10:00:00Z',
     ...overrides,
@@ -350,6 +354,52 @@ describe('LicenseSettings — EN', () => {
       await waitFor(() => {
         expect(screen.getByText(/inactive/i)).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('§2.3 re-authentication window gate (ADR 58 §4a Q-B option B)', () => {
+    const NOW = Date.parse('2026-09-21T12:00:00Z');
+    const days = (n: number) => new Date(NOW + n * 24 * 60 * 60 * 1000).toISOString();
+
+    it('does not poll outside the window', () => {
+      expect(shouldPollLicense({ tier_key: 'pro', expires_at: days(30) }, NOW)).toBe(false);
+    });
+
+    it('polls inside the window', () => {
+      expect(shouldPollLicense({ tier_key: 'pro', expires_at: days(1) }, NOW)).toBe(true);
+    });
+
+    it('polls exactly at the window boundary (expiry minus 3 days)', () => {
+      expect(shouldPollLicense({ tier_key: 'pro', expires_at: days(3) }, NOW)).toBe(true);
+    });
+
+    it('never polls the free tier, however close its expiry', () => {
+      expect(shouldPollLicense({ tier_key: 'free', expires_at: days(1) }, NOW)).toBe(false);
+    });
+
+    it('never polls a perpetual licence (unparseable/absent expiry)', () => {
+      // §2.3's NULL arm: there is no expiry for a 3-day window to precede.
+      expect(shouldPollLicense({ tier_key: 'pro', expires_at: '' }, NOW)).toBe(false);
+    });
+
+    it('does not poll with no payload', () => {
+      expect(shouldPollLicense(null, NOW)).toBe(false);
+    });
+
+    it('does not arm a timer outside the window', async () => {
+      // The gate's whole point: below the window no interval is created, so a
+      // device far from renewal makes no licence call at all from this screen.
+      const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+      mockGetLicenseStatus.mockResolvedValue({
+        payload: JSON.stringify(makePayload({ expires_at: days(90) })),
+        tier: 'pro',
+        status: 'active',
+      });
+      mockCheckLicenseStatus.mockResolvedValue({ tier: 'pro', active: true });
+      await renderWithFluent(<LicenseSettings />);
+      expect(mockCheckLicenseStatus).not.toHaveBeenCalled();
+      expect(setIntervalSpy).not.toHaveBeenCalled();
+      setIntervalSpy.mockRestore();
     });
   });
 

@@ -78,6 +78,45 @@ export const POLL_INTERVAL_MS = 300_000;
 /** Maximum consecutive failures before showing offline indicator. */
 const MAX_POLL_FAILURES = 3;
 
+/** The ADR #58 §2.3 re-authentication window: 3 days before `expires_at`. */
+export const REAUTH_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+
+/**
+ * Whether the licence poll may run for this payload (ADR #58 §2.3 / §4a Q-B
+ * option B).
+ *
+ * The rule from §2.3, arm for arm:
+ *
+ * - **Free tier** → never poll. There is no expiry to approach and nothing to
+ *   revoke; the tier is the floor.
+ * - **No/unparseable `expires_at`** → never poll. §2.3's `NULL` arm: a
+ *   perpetual or lifetime licence has no window for the 3 days to precede, and
+ *   a malformed timestamp must fail open rather than manufacture an obligation.
+ * - **Outside the last 3 days** → never poll. The device operates on its
+ *   locally stored signed subscription.
+ * - **Inside the last 3 days** → poll. Re-authentication is owed.
+ *
+ * **Why gate at all.** The poll is the only live revocation path for a
+ * connected device until the daemon ride-along shipped
+ * (`platform/sync/src/daemon_tick.rs` `run_license_ride_along`), so the
+ * daemon now carries that duty on its own 60–120s cadence for every
+ * configured terminal — including one whose Settings screen is closed. Gating
+ * this in-screen poll then costs no revocation latency while removing load
+ * that scaled with *screens left open* rather than with tenants near renewal.
+ *
+ * Exported for the unit test; not part of the component's public API.
+ */
+export function shouldPollLicense(
+  payload: Pick<LicensePayload, 'tier_key' | 'expires_at'> | null,
+  nowMs: number,
+): boolean {
+  if (!payload) return false;
+  if (payload.tier_key === 'free') return false;
+  const expiresAt = Date.parse(payload.expires_at);
+  if (Number.isNaN(expiresAt)) return false;
+  return nowMs >= expiresAt - REAUTH_WINDOW_MS;
+}
+
 /** License settings section — displays tier, expiry, grace period, and quotas. */
 export default function LicenseSettings() {
   const { l10n } = useLocalization();
@@ -210,10 +249,15 @@ export default function LicenseSettings() {
   // Initial load.
   useEffect(() => { load(); }, [load]);
 
-  // Start polling after initial load succeeds and user has a payload.
-  // Polling only begins once payload is set (license activated).
+  // Start polling after initial load succeeds and user has a payload, and
+  // only inside the §2.3 re-authentication window (see shouldPollLicense).
+  //
+  // Below the window there is no timer armed at all: the screen keeps whatever
+  // the initial load returned and the user can press Refresh for an immediate
+  // check. The daemon ride-along covers revocation for a closed screen.
   useEffect(() => {
     if (!payload) return;
+    if (!shouldPollLicense(payload, Date.now())) return;
 
     // Fire first poll immediately.
     void pollTick();
