@@ -515,7 +515,7 @@
 
   /* ── Cart Panel: 300ms slide (transform/opacity only) ──────────────
    * The panel's flex box is released before this runs — see the
-   * `min-width: 1024px` block at the foot of this file — so the products pane
+   * `@container (min-width: 1024px)` block at the foot of this file — so the products pane
    * reaches its final width in a SINGLE layout pass and only these two
    * compositor properties move. Animating `margin-right` here instead made the
    * restaurant grid re-solve its `auto-fill` columns on every frame for the
@@ -556,7 +556,7 @@
   }
 }
 
-@media (max-width: 1023px) {
+@container (max-width: 1023px) {
   .pos-resize-handle {
     display: none;
   }
@@ -582,7 +582,7 @@
  * release atomic; the 300ms motion itself stays on transform/opacity above.
  * Scoped to >= 1024px: below that the panel is a full-width sheet whose own
  * positioning has nothing to do with the products column. */
-@media (min-width: 1024px) {
+@container (min-width: 1024px) {
   .pos-cart-panel--exiting {
     position: absolute;
     /* The panel's own gutter. `top`/`right`/`bottom` stand in for the static
