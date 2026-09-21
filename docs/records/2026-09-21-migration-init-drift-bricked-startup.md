@@ -89,11 +89,45 @@ nothing. It does **not** exercise the drift re-apply against real bytes, which w
 under repair. The copy also holds 60 `schema_migrations` rows, fewer than the registry, so it
 predates at least `20261008_provisioning_legacy_backfill.sql`.
 
-Consequently the drift path is verified **by construction** — the unit test in §4 rewrites
-the stored checksum to the pre-ADR-56 value to force it — and by nothing else. Reproducing
-it against real bytes would need the copy's stored checksum set back to
-`f86bbbe00608dbd6f6a3cb40a82ee01be69d730763a51349adad92cffc78c013` (the value the test
-uses) and the runner re-run. That experiment has not been made.
+Consequently, as first archived, the drift path rested on **construction alone** — the unit
+test in §4 rewrites the stored checksum to the pre-ADR-56 value to force it.
+
+**The experiment it was missing has since been run.** Immediately after the fix landed as
+`61d3abdbe`, a fresh copy was taken of the live dev database
+(`%APPDATA%\mu.kasir.app\kasir.db` — the main file *and* its 675,712-byte write-ahead log,
+folding the WAL in first: a bare copy of the main file alone would have silently dropped
+those committed transactions), the copy's stored checksum forced back to `f86bbbe0…`, and
+the shipping runner (`kasirmu_core::migrations::run`, the same path the app's setup hook
+calls) run against it:
+
+```
+forced drift: stored checksum = f86bbbe00608dbd6f6a3cb40a82ee01be69d730763a51349adad92cffc78c013
+before: 60 migrations applied, 4 loyalty tiers
+after:  61 migrations applied, 4 loyalty tiers
+after:  stored checksum = e6f3504ed6456dc1dda75eda1b1e18a8cfcf94cdea3b75ca7bca3f2a8e147d66
+tiers: [("tier-bronze", 1000000), ("tier-gold", 1500000), ("tier-platinum", 2000000), ("tier-silver", 1250000)]
+REPLAY-OK (drift exercised)
+```
+
+Three things are established, and the third is the one that matters:
+
+- The copy was on the drift path when the run started — asserted, not assumed, because a
+  copy whose checksum already matches proves nothing. That is exactly the mistake behind the
+  earlier replay being read as validation.
+- 60 → 61 applied migrations is `20261008_provisioning_legacy_backfill.sql`, which this copy
+  legitimately lacked.
+- The stored checksum came back as the registry's current hash. Only a *completed* drift
+  re-apply writes that, so the branch fired — the run was not a silent no-op. This is the
+  same property the unit test asserts with "the drift re-apply did not patch the stored
+  checksum".
+
+Independently, the failure is real on those bytes and not a fixture artefact: running the
+init script's seed statement verbatim against the same copy raises
+`OperationalError: table loyalty_tiers has no column named earn_multiplier` — the exact
+message in §2.1 — while leaving all four tier rows untouched. The counterfactual for the
+pre-fix *runner* is the one recorded in §5 (the classifier as it stood at `61d3abdbe^`
+matched only `already exists` / `duplicate column name`), not a second end-to-end run: doing
+that would have meant reverting a committed file in a shared checkout.
 
 ### 2.3 The control runs
 
@@ -160,16 +194,17 @@ the new arm.
 - `cargo test -p platform-core --lib database::migrations` → **32 passed; 0 failed**.
 - Module-level only: the remaining ~3123 tests in `kasirmu-core` were filtered out, and no
   unfiltered workspace run was made.
-- The drift path has no real-database evidence — see §2.2. The unit test forces the drift by
-  rewriting the stored checksum; the replay against a real copy never entered that branch.
+- The drift path **now has** real-database evidence — see §2.2. The forced-drift replay
+  against a copy of the live dev database returned `REPLAY-OK`, patched the stored checksum
+  to the registry's hash and left the four seed rows intact.
 
 The `earn_multiplier` failure is **not live** in this working tree. It was reproduced above
 only from an archived capture.
 
-## 5. OPEN RISK AT TIME OF WRITING
+## 5. THE OPEN RISK, AND HOW IT CLOSED
 
 The commit that added the drift test (`a8b64719e`) did **not** take the runner fix, which
-remains uncommitted. HEAD therefore contains a test whose subject it cannot satisfy:
+stayed uncommitted. HEAD therefore contained a test whose subject it could not satisfy:
 
 | Check | Result |
 | --- | --- |
@@ -177,12 +212,30 @@ remains uncommitted. HEAD therefore contains a test whose subject it cannot sati
 | `git show HEAD:…/migrations.rs \| grep -c "has no column named"` | `0` — only `is_duplicate_object_error` at `:470` |
 | `git show HEAD:…/migrations_tests.rs \| grep -c init_script_re_applies…` | `1` — test present |
 
-A clean checkout of HEAD fails that test; it passes only in a checkout carrying the
-uncommitted runner change. The fix needs a commit before anyone else builds from this
-branch.
+A clean checkout of HEAD failed that test; it passed only in a checkout carrying the
+uncommitted runner change.
 
-Re-checked at this record's landing commit `cb740ab57`: the three greps return the same
-values and `platform/core/src/database/migrations.rs` is still ` M`.
+**Resolved the same evening.** The fix landed on its own as `61d3abdbe`
+(`platform/core/src/database/migrations.rs`, +289/−13, its own pathspec commit, no other
+file). The same three greps now read **4 / 2 / 1** where the table above shows 0 / 0 / 1 —
+they count occurrences, so the first two are the ones that moved, from absent to present.
+Verified at that commit:
+`cargo test -p kasirmu-core --lib migrations::` → 36 passed, and
+`cargo test -p platform-core --lib database::migrations` → 32 passed —
+`init_script_re_applies_after_a_later_migration_replaces_its_seed_column` among them, which
+it could not have passed before.
+
+Two things about that commit are worth keeping in view:
+
+- **It is fix-only and adds no tests.** Its seven new functions are all production code; the
+  drift tests were already on HEAD, which is exactly why HEAD was red.
+- **The proof code has no direct unit coverage.** The inline `mod tests` at
+  `platform/core/src/database/migrations.rs:1425` (predating the sibling-file rule, as
+  `manager.rs:429` acknowledges) never names `seed_rows_already_present`, `split_top_level`,
+  `paren_group`, `primary_key_columns` or `seed_literal`. Its only exercise is the single
+  `kasirmu-core` integration test, from one direction, on one seed shape. The property that
+  most needs pinning — that the proof must **refuse** to skip a seed whose rows are missing —
+  has no test at all.
 
 An observation, not a verified finding: widening the classifier to `no such table` admits a
 class that a dropped-and-replaced table shares with a genuinely absent one. The
