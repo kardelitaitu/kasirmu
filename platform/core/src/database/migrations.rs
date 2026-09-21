@@ -700,6 +700,126 @@ mod tests {
         assert_eq!(applied.len(), TEST_MIGRATIONS.len());
     }
 
+    /// The digest of known bytes, written down from outside this crate.
+    ///
+    /// Every other checksum assertion in this file compares `checksum_hex` with a
+    /// value `checksum_hex` itself wrote (`stored == checksum_hex(…)`), so a
+    /// change to *how* it hashes — which silently changes drift detection for
+    /// every database already in the field — leaves them all green. These
+    /// literals come from `sha256sum` over the exact bytes; the first is also a
+    /// published vector, so the pin does not rest on a value only this repository
+    /// ever produced.
+    #[test]
+    fn checksum_hex_matches_independently_computed_digests() {
+        const SCRIPT: &str = "CREATE TABLE t (id INTEGER PRIMARY KEY)\n";
+        /// `printf 'CREATE TABLE t (id INTEGER PRIMARY KEY)\n' | sha256sum`
+        const SCRIPT_SHA256: &str =
+            "d41b652bf285f8547f950532f73873f4184fe47bf08e0d0f55e80454b5e67973";
+
+        assert_eq!(
+            checksum_hex("abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(checksum_hex(SCRIPT), SCRIPT_SHA256);
+        // Line-ending normalisation is part of the digest rather than a step
+        // beside it: the CRLF spelling of the same script hashes to the *same*
+        // literal. That is what keeps the stored checksum of a Windows-authored
+        // file valid, and it is the half drift detection cannot survive losing —
+        // without it this hashes the CRLF bytes and returns
+        // `0009ec0748105c5ec64c829f3ce37612733f16b2ef73699011d1472fa26c0c66`.
+        assert_eq!(checksum_hex(&SCRIPT.replace('\n', "\r\n")), SCRIPT_SHA256);
+    }
+
+    /// The statement-level fallback is entered on the strength of a failure the
+    /// classifier recognises, and not otherwise.
+    ///
+    /// The two halves are one property. A failure outside the classifier's
+    /// vocabulary is reported verbatim and commits nothing (case U). A failure it
+    /// recognises earns the statement-by-statement attempt, which reaches a
+    /// *later* statement only by proving the earlier one already satisfied — so
+    /// the error it reports is the later statement's, not the one that let the
+    /// fallback in (case C). Neither half is observable from the other's setup,
+    /// which is why they are asserted together.
+    #[test]
+    fn the_statement_fallback_is_entered_only_for_a_classified_failure() {
+        let checksum = |conn: &Connection| -> Option<String> {
+            conn.query_row(
+                "SELECT checksum FROM schema_migrations WHERE id = '001_shape.sql'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+
+        // U — `CHECK constraint failed` is not one of the five texts the
+        // classifier knows, so no statement of this script may be excused.
+        let base = &[Migration {
+            id: "001_shape.sql",
+            sql: "CREATE TABLE shape (id INTEGER PRIMARY KEY, n INTEGER CHECK (n > 0))",
+        }];
+        let mut conn = fresh();
+        run(&mut conn, base).unwrap();
+        let before = checksum(&conn);
+
+        let unclassified = &[Migration {
+            id: "001_shape.sql",
+            sql: "INSERT INTO shape (id, n) VALUES (1, -1);\n\
+                  CREATE INDEX idx_shape_n ON shape(n);\n",
+        }];
+        let err = run(&mut conn, unclassified).unwrap_err();
+        assert!(
+            err.to_string().contains("CHECK constraint failed"),
+            "the failing statement's own error is what the user must see: {err}"
+        );
+        assert_eq!(
+            before,
+            checksum(&conn),
+            "a drift re-apply that failed must not record the new checksum"
+        );
+        let index_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name = 'idx_shape_n'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            index_rows, 0,
+            "nothing from the refused script may be committed"
+        );
+
+        // C — `duplicate column name` *is* recognised, and the first statement
+        // is already satisfied, so the attempt runs on. Statement 2 inserts one
+        // row; statement 3 repeats its primary key, which the classifier does not
+        // know.
+        let base2 = &[Migration {
+            id: "002_shape.sql",
+            sql: "CREATE TABLE shape2 (id INTEGER PRIMARY KEY, c TEXT)",
+        }];
+        let mut conn2 = fresh();
+        run(&mut conn2, base2).unwrap();
+        let drifted2 = &[Migration {
+            id: "002_shape.sql",
+            sql: "ALTER TABLE shape2 ADD COLUMN c TEXT;\n\
+                  INSERT INTO shape2 (id, c) VALUES (1, NULL);\n\
+                  INSERT INTO shape2 (id, c) VALUES (1, NULL);\n",
+        }];
+        let err2 = run(&mut conn2, drifted2).unwrap_err();
+        assert!(
+            err2.to_string().contains("UNIQUE constraint failed"),
+            "the fallback must get past the satisfied statement and report the one that \
+             actually blocked it: {err2}"
+        );
+        assert!(
+            !err2.to_string().contains("duplicate column name"),
+            "reporting the error the fallback was entered for means it never ran: {err2}"
+        );
+        let shape2_rows: i64 = conn2
+            .query_row("SELECT COUNT(*) FROM shape2", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(shape2_rows, 0, "the failed attempt must roll back");
+    }
+
     #[test]
     fn migration_checksums_are_stable_across_line_endings() {
         let lf = "CREATE TABLE test_table (id INTEGER PRIMARY KEY)\n";
