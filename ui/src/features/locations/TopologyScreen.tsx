@@ -1,3 +1,24 @@
+// DEAD (2026-09-22 · HEAD 21b1e90cb): unreachable by construction, and the removal was DELIBERATE.
+// There is no `topology` key among the 14 in SETTINGS_SCREENS (screens/registry.ts) and none in
+// KEPT_SECTIONS (hooks/useSettingsHashSection.ts:38-42), so a `#/settings/topology` deep link is
+// ignored and the hub opens its default section. That is pinned, not incidental:
+// SettingsPage.test.tsx "treats old-IA deep links as unknown: default section, hash untouched"
+// names topology alongside receipt and appearance as old-IA sections that are no longer accepted.
+//
+// UNLIKE the three dead settings sections (AboutSection / AppearanceSection / ReceiptSection,
+// labelled dead 2026-09-15 by 13348f9ae), this screen still has LIVE INBOUND LINKS.
+// MultiStoreDashboardScreen.tsx:150 and :159 set `#/settings/topology?...`, driven by the
+// "Configure topology" (:288, :374) and "Add location" (:180) controls. Those clicks are silent
+// no-ops today, and location creation/configuration therefore has no working path at all.
+//
+// That is a product gap rather than merely dead code, and it is deliberately NOT resolved here:
+// both resolutions change what a user can do. Restoring the route means re-adding the key to three
+// independently-asserted lists plus a nav item and its FTL keys, and reverses a decision the test
+// suite currently pins; removing the two controls removes "Add location" outright. Whoever owns
+// the Locations roadmap has to choose, so this comment records the state instead of guessing.
+//
+// Nothing in production imports this module, and its tests grade UI no user can reach.
+// Comment only — the code below is deliberately untouched.
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocalization } from '@fluent/react';
 import AdminLockedFeature from '@/components/AdminLockedFeature';
