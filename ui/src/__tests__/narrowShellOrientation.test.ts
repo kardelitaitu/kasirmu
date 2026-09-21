@@ -79,6 +79,8 @@ const TABLET_CSS = 'app/tablet/tablet.css';
 const RETAIL_CSS = 'features/retail/RetailPosScreen.css';
 const KDS_CSS = 'features/kds/KdsScreen.css';
 const SALES_HISTORY_CSS = 'features/sales/SalesHistoryScreen.css';
+const PAYMENT_MODAL_CSS = 'features/sales/PaymentModal.css';
+const POS_SCREEN_CSS = 'features/sales/PosScreen.css';
 
 /* ── Text helpers ───────────────────────────────────────────── */
 
@@ -313,6 +315,8 @@ const MIGRATED: readonly MigratedSheet[] = [
   { sheet: RETAIL_CSS, containerSelector: '.retail-pos', tiers: [880], narrowShellPx: 640 },
   { sheet: KDS_CSS, containerSelector: '.kds', tiers: [900, 640], narrowShellPx: 640 },
   { sheet: SALES_HISTORY_CSS, containerSelector: '.sales-history', tiers: [880], narrowShellPx: 640 },
+  { sheet: PAYMENT_MODAL_CSS, containerSelector: '.payment-overlay', tiers: [480], narrowShellPx: 640 },
+  { sheet: POS_SCREEN_CSS, containerSelector: '.pos-screen', tiers: [720, 480], narrowShellPx: 640 },
 ] as const;
 
 /**
@@ -729,6 +733,30 @@ const PLANTED = {
     '.sales-history { container-type: inline-size; }\n' +
     '.sales-history-table > .sales-history-cell-id { color: red; }\n' +
     '@container (max-width: 880px) { .sales-history-table { display: none; } }\n',
+  /**
+   * A migrated sheet that QUERIES a container without declaring the box it
+   * measures — the shape gradeMigratedSheet's `container-not-declared` exists
+   * for. Not a copy of PLANTED.noContainer: that one is written against
+   * RETAIL_CSS, and a case is only a control for the sheet it names.
+   */
+  paymentModalNoContainer:
+    '.payment-overlay { display: flex; }\n' +
+    '@container (max-width: 480px) { .payment-split-row { flex-direction: column; } }\n',
+  /** PosScreen's two tiers declared finest-first — the wider gate would win. */
+  posScreenTierOrder:
+    '.pos-screen { container-type: inline-size; }\n' +
+    '@container (max-width: 480px) { .pos-close-shift-modal { padding: 1rem; } }\n' +
+    '@container (max-width: 720px) { .pos-close-shift-summary-grid { grid-template-columns: 1fr; } }\n',
+  /**
+   * A class the POS sheet styles as a PARENT, hidden as if it were one lane.
+   * The child rule is what makes it a wrapper: without it the grader has no
+   * evidence that `.pos-close-shift-summary-grid` is an ancestor rather than a
+   * leaf, and hiding a leaf is exactly what this tier is allowed to do.
+   */
+  posScreenWrapperShed:
+    '.pos-screen { container-type: inline-size; }\n' +
+    '.pos-close-shift-summary-grid > .pos-close-shift-summary-item { color: red; }\n' +
+    '@container (max-width: 720px) { .pos-close-shift-summary-grid { display: none; } }\n',
   /** RetailPos tiers declared finest-first — the wider gate would win. */
   retailTierOrder:
     '.retail-pos { container-type: inline-size; }\n' +
@@ -975,6 +1003,28 @@ describe('narrow-shell / extreme-aspect verification (ADR-0001 Slice 7)', () => 
       'the fence no longer fires when the sales-history tier hides a wrapper instead of a lane',
     ).toContain('tier-hides-wrapper');
 
+    // Planted 3c — the same container-not-declared shape, one sheet over: the
+    // checkout modal queries a box (its own overlay) that nothing declares.
+    expect(
+      gradeMigratedSheet({ sheet: PAYMENT_MODAL_CSS, containerSelector: '.payment-overlay', tiers: [480], narrowShellPx: 640 }, PLANTED.paymentModalNoContainer).map((f) => f.pattern),
+      'the fence no longer fires on a payment-modal sheet that queries a container it never declares',
+    ).toContain('container-not-declared');
+
+    // Planted 1b — the inverted tier order, one sheet over. PosScreen is the
+    // first migrated sheet with TWO tiers, so this is the only plant that can
+    // fail on the ORDER rather than on a missing gate.
+    expect(
+      gradeMigratedSheet({ sheet: POS_SCREEN_CSS, containerSelector: '.pos-screen', tiers: [720, 480], narrowShellPx: 640 }, PLANTED.posScreenTierOrder).map((f) => f.pattern),
+      'the fence no longer fires when PosScreen declares its wider max-width tier last',
+    ).toContain('tier-order');
+
+    // Planted 5c — the shedding manner, one sheet over: the hidden target is
+    // the grid the POS sheet styles as the PARENT of the summary items.
+    expect(
+      gradeShedding(POS_SCREEN_CSS, PLANTED.posScreenWrapperShed, 720).map((f) => f.pattern),
+      'the fence no longer fires when the PosScreen tier hides a wrapper instead of a lane',
+    ).toContain('tier-hides-wrapper');
+
     // Planted 4 — a folding tier that hides nothing at all.
     expect(
       gradeShedding(KDS_CSS, PLANTED.emptyTier, 900).map((f) => f.pattern),
@@ -1036,6 +1086,14 @@ describe('narrow-shell / extreme-aspect verification (ADR-0001 Slice 7)', () => 
     expect(
       shapeOnly(gradeMigratedSheet(MIGRATED[2]!, source(SALES_HISTORY_CSS))),
       'the graders reject the real SalesHistoryScreen.css',
+    ).toEqual([]);
+    expect(
+      shapeOnly(gradeMigratedSheet(MIGRATED[3]!, source(PAYMENT_MODAL_CSS))),
+      'the graders reject the real PaymentModal.css',
+    ).toEqual([]);
+    expect(
+      shapeOnly(gradeMigratedSheet(MIGRATED[4]!, source(POS_SCREEN_CSS))),
+      'the graders reject the real PosScreen.css',
     ).toEqual([]);
     expect(
       gradeOrientationGates(SHELL_CSS, source(SHELL_CSS), 1023),
