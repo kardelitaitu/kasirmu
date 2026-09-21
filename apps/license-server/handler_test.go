@@ -806,11 +806,20 @@ func TestStatusHandler_TenantNoSubscription(t *testing.T) {
 	}
 }
 
-// TestStatusHandler_RateLimited verifies that /status shares the persisted
-// 5-per-IP-per-hour token bucket (it used to be completely unthrottled,
-// letting an attacker hammer the bcrypt verification without touching the
-// activate/renew budget). The bucket is drained BEFORE auth — like
-// /activate and /renew — so failed attempts cannot bypass the limiter.
+// TestStatusHandler_RateLimited verifies that /status is bounded by its OWN
+// per-IP budget (statusLimiter, statusMaxPerHr) that status.go draws on: it
+// used to be completely unthrottled, letting an attacker hammer the indexed
+// lookup + bcrypt verification for nothing. It no longer shares the credential
+// lanes' 5-per-IP-per-hour bucket — an authenticated, UI-driven poll (the
+// shipped Settings screen polls /status every 30s) must not be able to drain
+// the brute-force budget of the unauthenticated lanes.
+//
+// The budget is asserted as a CAP rather than as a tally of good calls: the
+// final check requires 429 on call statusMaxPerHr+1, so removing the limiter,
+// making it effectively unlimited, or drifting the constant all fail here. The
+// constant is referenced instead of hard-coded so the test cannot drift from
+// the budget. The bucket is drained BEFORE auth — like /activate and /renew —
+// so failed attempts cannot bypass the limiter.
 func TestStatusHandler_RateLimited(t *testing.T) {
 	resetRateLimiters()
 	app, se := setupDirectApp(t)
@@ -823,24 +832,31 @@ func TestStatusHandler_RateLimited(t *testing.T) {
 
 	mux, _ := se.Router.BuildMux()
 
-	// First 5 calls in the hour succeed (each consumes a token).
-	for i := 1; i <= 5; i++ {
+	// Every call the budget allows must be served, and must still authenticate.
+	// An unexpected 429 here is a verdict in its own right (the lane is stricter
+	// than its own budget), not a reason to weaken the assertion below.
+	for i := 1; i <= statusMaxPerHr; i++ {
 		req := httptest.NewRequest("POST", "/api/v1/license/status", nil)
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
+		if rec.Code == http.StatusTooManyRequests {
+			t.Fatalf("call %d/%d was rate limited but the budget is %d",
+				i, statusMaxPerHr, statusMaxPerHr)
+		}
 		if rec.Code != http.StatusOK {
-			t.Fatalf("call %d should succeed, got %d: %s", i, rec.Code, rec.Body.String())
+			t.Fatalf("call %d/%d: expected 200, got %d: %s",
+				i, statusMaxPerHr, rec.Code, rec.Body.String())
 		}
 	}
 
-	// The 6th call in the hour is rejected with 429.
+	// One call past the budget in the hour is rejected with 429.
 	req := httptest.NewRequest("POST", "/api/v1/license/status", nil)
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected 429 on the 6th call, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf("call %d should be rate limited, got %d: %s", statusMaxPerHr+1, rec.Code, rec.Body.String())
 	}
 }
 
@@ -1103,6 +1119,14 @@ func resetLimiterBuckets() {
 	contactRateLimiter.buckets = make(map[string]*tokenBucket)
 	contactRateLimiter.mu.Unlock()
 
+	// statusLimiter is in-memory only (see ratelimit.go) and keyed by IP, so
+	// every /status test shares one bucket unless it is cleared here: a test
+	// that spends the budget would otherwise 429 every later test (the shared
+	// TestApp reuses 127.0.0.1 as RemoteAddr).
+	statusLimiter.mu.Lock()
+	statusLimiter.buckets = make(map[string]*tokenBucket)
+	statusLimiter.mu.Unlock()
+
 	webLoginLimiter.mu.Lock()
 	webLoginLimiter.entries = make(map[string]*windowEntry)
 	webLoginLimiter.mu.Unlock()
@@ -1141,6 +1165,9 @@ func resetRateLimiters() {
 	ipRateLimiter.stop()
 	keyFailTracker.stop()
 	contactRateLimiter.stop()
+	if !statusLimiter.cleanupRunning {
+		statusLimiter.startCleanup()
+	}
 
 	ipRateLimiter.mu.Lock()
 	ipRateLimiter.buckets = make(map[string]*tokenBucket)
@@ -1160,6 +1187,12 @@ func resetRateLimiters() {
 	// contactRateLimiter is intentionally in-memory only (see contact.go).
 	contactRateLimiter.db = nil
 	contactRateLimiter.mu.Unlock()
+
+	statusLimiter.mu.Lock()
+	statusLimiter.buckets = make(map[string]*tokenBucket)
+	// statusLimiter is intentionally in-memory only (see ratelimit.go).
+	statusLimiter.db = nil
+	statusLimiter.mu.Unlock()
 
 	// Web OTP stores + windowed limiters (web_otp.go) are in-memory and
 	// keyed by email/IP — clear them so tests start from a clean slate.
