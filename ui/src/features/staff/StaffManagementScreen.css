@@ -10,6 +10,19 @@
    strip below the fold. `min-height: 0` on the scrolling child is what lets
    it shrink instead of stretching the root. */
 .staff-mgmt {
+  /* ADR-0001 T2 / Slice 5: this page's own query container, measured on the box
+     the shell grants this screen — the whole window here, because the page is
+     registered `fullscreen` and no .app-content slot wraps it. UNNAMED on
+     purpose, the choice RetailPosScreen.css, PosScreen.css and KdsScreen.css
+     each record: the shell's slot does carry the name `app-content`, but the
+     only thing between it and this root is a display:contents wrapper, so a
+     named query would find no container in every mount that does not go through
+     the shell (tests, e2e harness, the screen rendered standalone). An unnamed
+     query against the nearest container is the same measurement inside the shell
+     and stays correct outside it. Any other `container-type: inline-size`
+     added inside .staff-mgmt would silently capture the tiers at the foot of
+     this sheet. */
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   height: 100dvh;
@@ -706,3 +719,86 @@
   color: var(--color-warning, var(--color-fg));
   margin-bottom: var(--space-1);
 }
+
+/* ── Narrow-container tiers (ADR-0001 T2 / Slice 5) ─────────────────
+   This sheet carried no responsive rule at all, so every layout below was
+   sized for a full desktop window and nothing folded when the box shrank.
+   Measured against .staff-mgmt's own inline-size (declared at the top of this
+   sheet), not the window's. Widest tier first, so the narrower gate can still
+   be the one in force; desktop and landscape — a slot at or above 900px —
+   match neither tier and render exactly as before. Every rule here is
+   additive: all of it lives inside a max-width block. */
+
+@container (max-width: 900px) {
+  /* The header is a 1fr auto 1fr grid whose outer tracks are as wide as the
+     back button and the primary action. Measured with the box actually here:
+     the root padding alone (2x2rem) is 64px, the two 44px touch targets plus
+     one 0.75rem gap is ~100px, the Staff/Roles strip is ~120px, and "Add New
+     Role" at --text-base is ~120px. Holding the strip centred therefore needs
+     roughly 460px of CONTENT — under ~530px of box the grid has to take width
+     from the tab strip, and the segmented control's scroll viewport is what
+     pays for it: the labels are white-space: nowrap and the thumb geometry
+     depends on the columns staying equal, so a starved strip scrolls its second
+     tab out of reach instead of wrapping. Give the centre column its content
+     width and the two outer tracks the slack; a box that can hold the strip is
+     unaffected. */
+  .staff-mgmt-header {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+
+  /* The same arithmetic one line down: 64px of root padding leaves ~640px of
+     table for the seven columns (Role / Workspace / Name / Username / ID /
+     Status / actions), and the last two action buttons are 44px touch targets
+     with their own 0.5rem gap. The ID column is masked identity data —
+     secondary to the roster's job of finding and editing a person — so below
+     900px it folds away rather than being the column that pushes the actions
+     out of the wrap. The wrapper already scrolls horizontally, so nothing is
+     lost at a width that can still hold the rest. */
+  .staff-mgmt-table th:nth-child(5),
+  .staff-mgmt-table td:nth-child(5) {
+    display: none;
+  }
+
+  /* The two notice banners are a label/CTA row (staff-limit-approaching-premium
+     plus its upgrade button) with no wrapping: below 900px the text column is
+     squeezed by a button that cannot shrink, and the sentence breaks into a
+     narrow stack. Let the row wrap instead — the button drops under the text
+     and the banner keeps both on screen. */
+  .staff-mgmt-approaching-banner,
+  .staff-mgmt-quota-banner {
+    flex-wrap: wrap;
+  }
+}
+
+@container (max-width: 600px) {
+  /* Every identity field in the add/edit drawer is .staff-mgmt-field--horizontal:
+     a 7rem (112px) pinned label beside its input, which is a full-width
+     min-content floor before the input gets a single pixel. A 360px box minus
+     the popup's own chrome leaves ~300px, i.e. under 190px of input — a PIN or
+     a phone number is clipped rather than wrapped. Below 600px the label stops
+     being a lane and sits above its field, so the input takes the full row. The
+     drawer is a portal to document.body (SettingsPopup.tsx), so it is not a
+     descendant of this root and its own sheet is out of this fence's reach:
+     the fields keep their shared class, and that class is what folds here. */
+  .staff-mgmt-field--horizontal {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .staff-mgmt-field--horizontal > .staff-mgmt-label {
+    min-width: 0;
+  }
+
+  /* The page's 2rem horizontal gutters are 64px of a 360px box. At 600px and
+     below the roster table and the status footer get that back; the vertical
+     rhythm is unchanged. The footer keeps its 2rem elsewhere — only this tier
+     narrows it, and it already wraps its segments. */
+  .staff-mgmt-main {
+    padding: var(--space-6) var(--space-4);
+  }
+
+  .staff-mgmt-footer {
+    padding: var(--space-1) var(--space-4);
+  }
+}
+
