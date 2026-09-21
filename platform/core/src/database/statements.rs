@@ -10,11 +10,14 @@
 //!   `/* */` comment, a quoted literal or identifier, and a `CREATE TRIGGER`
 //!   body). The split is lossless, so a fragment cannot be silently dropped.
 //! * **Tokens** — [`tokenize`] and [`canonical_ddl`] give a comparable form of a
-//!   statement, used both here and by the runner's comment-only filter.
+//!   statement, used here and exposed to the runner only through
+//!   [`is_significant`], which says whether a fragment has any effect at all.
 //! * **Parsing** — `parse_add_column` / `parse_create` read the declared shape
 //!   out of the two statement kinds whose effect can be checked against the
 //!   catalogue.
-//! * **Proof** — [`already_satisfied`] is the only entry point the runner calls.
+//! * **Proof** — [`already_satisfied`] is the only entry point for that
+//!   decision: the runner hands it a refused statement and the error SQLite
+//!   raised.
 //!   It is deliberately conservative: a statement it cannot prove is never
 //!   skipped, because a wrong skip applies *nothing* while reporting success.
 //!   Passing the error message as `&str` keeps the proof free of `rusqlite`
@@ -325,6 +328,18 @@ pub(super) fn canonical_ddl(sql: &str) -> String {
         index += 1;
     }
     canonical(&kept)
+}
+
+/// Whether a fragment of a script has any effect at all.
+///
+/// The splitter's output is lossless, so a fragment can be whitespace, a
+/// trailing comment, or nothing but comments — those have to be filtered by
+/// whoever runs the statements, and this is the one place that decides it. A
+/// fragment is significant when tokens remain once terminators, a dropped
+/// `IF NOT EXISTS` clause and comments are accounted for, which is exactly what
+/// a non-empty canonical form means.
+pub(super) fn is_significant(statement: &str) -> bool {
+    !canonical_ddl(statement).is_empty()
 }
 
 /// Whether a token is a statement terminator.

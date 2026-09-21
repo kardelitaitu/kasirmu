@@ -245,3 +245,19 @@ fn canonical_ddl_ignores_if_not_exists_and_comments() {
                      );";
     assert_eq!(canonical_ddl(stored), canonical_ddl(statement));
 }
+
+#[test]
+fn only_a_real_statement_is_significant() {
+    // The fragments the splitter returns that have no effect: nothing at all,
+    // whitespace, and nothing but comments. The comment case is covered
+    // indirectly by `split_statements_ignores_semicolons_…`, through its count of
+    // significant fragments; the empty and whitespace-only cases are asserted
+    // nowhere else.
+    assert!(!is_significant(""));
+    assert!(!is_significant("   \n\t  "));
+    assert!(!is_significant("-- just a comment\n"));
+    assert!(!is_significant("/* just a block comment */"));
+    // A real statement is significant, however it is padded.
+    assert!(is_significant("CREATE TABLE t (a TEXT);"));
+    assert!(is_significant("  \nCREATE TABLE t (a TEXT);  "));
+}

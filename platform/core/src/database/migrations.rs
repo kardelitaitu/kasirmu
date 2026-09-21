@@ -41,10 +41,11 @@ next: none | perf: single pass over registered migrations; the splitter runs onl
 //! applied, what changed, and what to do about it. Everything that has to *read
 //! SQL* lives in `crate::database::statements` — splitting a script into
 //! statements, tokens and canonical forms, the parsers, and the proof that a
-//! refused statement's effect is already present. The two meet at exactly three
-//! calls: `split_statements`, `canonical_ddl` and `already_satisfied`. Nothing
-//! here inspects a token, and nothing there knows about `Migration`,
-//! `schema_migrations` or checksums.
+//! refused statement's effect is already present. Three calls cross that
+//! boundary and every one is semantic — `split_statements`, `is_significant`
+//! (does this fragment have any effect?) and `already_satisfied`; no lexer
+//! primitive does. Nothing here inspects a token, and nothing there knows about
+//! `Migration`, `schema_migrations` or checksums.
 
 use std::collections::HashMap;
 #[cfg(test)]
@@ -57,7 +58,7 @@ use rusqlite::OptionalExtension;
 use rusqlite::{Connection, Transaction, params};
 use sha2::{Digest, Sha256};
 
-use super::statements::{already_satisfied, canonical_ddl, split_statements};
+use super::statements::{already_satisfied, is_significant, split_statements};
 use crate::error::PlatformError;
 
 /// One embedded migration.
@@ -466,8 +467,8 @@ fn apply_statement_by_statement(
     let tx: Transaction = conn.transaction()?;
     for statement in split_statements(mig.sql) {
         let statement = statement.trim();
-        if statement.is_empty() || canonical_ddl(statement).is_empty() {
-            continue; // whitespace or a trailing comment
+        if !is_significant(statement) {
+            continue; // whitespace, or nothing but comments
         }
         if let Err(err) = tx.execute_batch(statement) {
             let message = err.to_string();
