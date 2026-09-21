@@ -59,6 +59,10 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 53 | architecture | [ADR #53: The UI Vocabulary Boundary — what the application layer may say about a renderer](../decisions/2026-09-15-adr53-ui-vocabulary-boundary.md) | Adopted (2026-09-15) — Option A implemented as rule ui-framework-vocabulary at 0ca2c0f27, landing at zero findings with no baseline; the Option A premise was corrected ~22:55, see Correction |
 | 54 | security | [ADR #54: Google Sign-In — web sign-in/sign-up and desktop setup-wizard account linking](../decisions/2026-09-19-adr54-google-sign-in.md) | Proposed (2026-09-19) — nothing implemented |
 | 55 | security | [ADR #55: One Server Origin — the compiled list, the fallback pair and the allowlists that must agree with it](../decisions/2026-09-19-adr55-server-origin-model.md) | Implemented (2026-09-19) — resolver, literal collapse, drift gate, attestation (endpoint and client) and the boot-time cascade are all shipped |
+| 56 | topology | [ADR #56: First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the mu…](../decisions/2026-10-04-adr56-first-run-provisioning.md) | Proposed (2026-10-04) — the provisioning table, transaction, seed removal and IPC gate are IMPLEMENTED; the identity step is not |
+| 57 | security | [ADR #57: Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side…](../decisions/2026-10-04-adr57-client-tamper-resistance.md) | Proposed (2026-10-04) — the grace ceiling, the sentinel guard and the fingerprint VERDICT are implemented; the client reporting, the pin store and server-side detection are not |
+| 58 | licensing | [ADR #58: Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State](../decisions/2026-10-04-adr58-online-licence-heartbeat-and-revocation.md) | Proposed (2026-10-04) — the Revoked state, the session lock and the export twin are IMPLEMENTED; the pre-expiry window is not |
+| 59 | topology | [ADR #59: Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and…](../decisions/2026-10-04-adr59-regional-topology-and-modular-delivery.md) | Proposed (2026-10-04) — the region field, admin route and audit trail are IMPLEMENTED; topology and modules are not |
 
 ### Research Notes
 
@@ -100,6 +104,10 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | sync | [Sync settings ingest admits and the redirect that carries them](2026-09-12-sync-settings-ingest-and-redirect-census.md) | — |
 | general | [ADR #51 From the Other Side — the Admitted Set and the Redirect's Second Writer](2026-09-13-adr51-admitted-set-and-blind-sides.md) | — |
 | ui | [Appraisal: todo-review-type.md (Local-First & Frontend Architecture)](2026-09-15-frontend-architecture-todo-appraisal.md) | — |
+| general | [Android shell audit — 2026-09-20](2026-09-20-audit-android-shell.md) | — |
+| subscription | [Licence rate-limit collapse — 2026-09-21](2026-09-21-license-ratelimit-collapse.md) | — |
+| release | [Migration init-script drift bricked startup — 2026-09-21](2026-09-21-migration-init-drift-bricked-startup.md) | — |
+| ui | [Driving the tablet UI — the method that works, and the blind one that does not — 2026-09-21](2026-09-21-tablet-ui-driving-method.md) | — |
 | general | [JOURNAL](JOURNAL.md) | — |
 | general | [ADR #7 Conditional Scoping — the Fallback Class](adr7-conditional-scoping-fallback-class.md) | — |
 | general | [Audit Closed Findings — Archive](audit-closed-findings.md) | — |
