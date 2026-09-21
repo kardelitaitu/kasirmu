@@ -893,12 +893,11 @@ absence of this gate is the bug, not a design.
 *Revision note:* this reverses §1.1's framing that the two ADR-cited orders were equally arguable.
 They were not; one of them cannot work.
 
-**Not implemented (re-audited 2026-09-22).** The tablet still has no licence-activation gate, so
-this decision stands decided-and-unbuilt. `get_license_status` has exactly one caller and
-`LicenseActivationScreen` exactly one render site, both in `ui/src/app/AppShell.tsx` (desktop),
-and `ui/src/app/tablet/TabletAppShell.tsx:269-274` still says in its own words that "licence
-activation remains desktop-only". Recorded as a status note here so the
-decision cannot be misread as shipped from §2 having moved forward.
+**IMPLEMENTED 2026-09-22.** Both shells now converge on the desktop's order (activate → identify → provision → login).
+`readBootGate` in `ui/src/utils/boot-retry.ts` includes `getLicenseStatus` in its parallel lost-response
+retry read. `TabletAppShell.tsx` gates `!bootAllowed` before `!hasCompletedSetup`, rendering
+`LicenseActivationScreen` wrapped in `LazyBoundary`. Existing installs bypass the gate via
+`setupCompleted || installExisting` parity with `AppShell.tsx`.
 
 ### Q3 — Does `local` mode ship in the first cut? `[was blocking]` — DECIDED
 

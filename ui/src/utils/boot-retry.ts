@@ -1,5 +1,6 @@
+import { getLicenseStatus, type LicenseStatusDto } from '@/api/license';
 import { getFirstRunState, type FirstRunState } from '@/api/settings';
-import { hasUsers } from '@/api/staff';
+import { hasUsers, type HasUsersResult } from '@/api/staff';
 import { getDeviceId } from '@/api/system';
 
 /**
@@ -54,8 +55,11 @@ export async function readWithRetry<T>(fn: () => Promise<T>): Promise<BootReadRe
 }
 
 /**
- * The two reads the tablet shell's boot gate makes, run in parallel with
+ * The three reads the tablet shell's boot gate makes, run in parallel with
  * independent verdicts — one read's failure cannot forge the other's answer.
+ *
+ * ADR #56 §5 Q2: includes licence status so tablet converges on desktop's
+ * activation-first boot ladder.
  *
  * The first-run read needs the device id first, and that lookup is INSIDE the
  * retried thunk so a dropped `get_device_id` response is retried with it rather
@@ -64,5 +68,9 @@ export async function readWithRetry<T>(fn: () => Promise<T>): Promise<BootReadRe
 export function readBootGate() {
   const firstRun = () =>
     getDeviceId().then((terminalId) => getFirstRunState(terminalId));
-  return Promise.all([readWithRetry<FirstRunState>(firstRun), readWithRetry(hasUsers)]);
+  return Promise.all([
+    readWithRetry<LicenseStatusDto>(getLicenseStatus),
+    readWithRetry<FirstRunState>(firstRun),
+    readWithRetry<HasUsersResult>(hasUsers),
+  ]);
 }

@@ -23,6 +23,16 @@ import sharedFtl from '@/locales/shared.ftl?raw';
 
 // ── Mock lazy screens (TabletAppShell lazy-imports these) ────────
 
+vi.mock('@/features/auth/LicenseActivationScreen', () => ({
+  default: ({ onActivated, initialError }: { onActivated: () => void; initialError?: string | null }) => (
+    <div data-testid="license-activation-screen">
+      <span>License Activation</span>
+      {initialError && <span data-testid="initial-error">{initialError}</span>}
+      <button type="button" onClick={onActivated}>Activate</button>
+    </div>
+  ),
+}));
+
 vi.mock('@/features/setup/ProvisioningFlow', () => ({
   default: () => <div data-testid="provisioning-flow">Provisioning Flow</div>,
 }));
@@ -121,7 +131,18 @@ vi.mock('@/hooks/useFeatures', () => ({
   })),
 }));
 
-// ── Mock API modules used by TabletAppShell ─────────────────────
+vi.mock('@/api/license', () => ({
+  getLicenseStatus: vi.fn(() => Promise.resolve({
+    isActive: true,
+    status: 'valid' as const,
+    tier: 'free',
+    payload: null,
+    message: null,
+  })),
+  activateLicense: vi.fn(),
+}));
+
+import { getLicenseStatus } from '@/api/license';
 
 vi.mock('@/api/settings', () => ({
   getFirstRunState: vi.fn(() => Promise.resolve({ state: 'provisioned', location_id: 'loc-1', owner_user_id: 'user-1', mode: 'local', home_region: 'global', tenant_id: null })),
@@ -269,6 +290,14 @@ function mockNoSession() {
 
 describe('TabletAppShell — routing', () => {
   beforeEach(() => {
+    vi.mocked(getLicenseStatus).mockReset();
+    vi.mocked(getLicenseStatus).mockResolvedValue({
+      isActive: true,
+      status: 'valid',
+      tier: 'free',
+      payload: null,
+      message: null,
+    });
     vi.mocked(getFirstRunState).mockReset();
     vi.mocked(getFirstRunState).mockResolvedValue({ state: 'provisioned', location_id: 'loc-1', owner_user_id: 'user-1', mode: 'local', home_region: 'global', tenant_id: null });
     vi.mocked(hasUsers).mockReset();
@@ -311,6 +340,51 @@ describe('TabletAppShell — routing', () => {
       await waitFor(() => {
         expect(screen.getByTestId('workspace-home')).toBeInTheDocument();
       });
+    });
+
+    it('renders the license activation screen on fresh unactivated install', async () => {
+      vi.mocked(getLicenseStatus).mockResolvedValue({
+        isActive: false,
+        status: 'missing',
+        tier: null,
+        payload: null,
+        message: 'No license installed',
+      });
+      vi.mocked(getFirstRunState).mockResolvedValue({ state: 'unprovisioned' as const });
+      vi.mocked(hasUsers).mockResolvedValue({ has_users: false });
+      mockNoSession();
+
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('license-activation-screen')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('provisioning-flow')).not.toBeInTheDocument();
+
+      // Activating transitions to the provisioning flow
+      fireEvent.click(screen.getByRole('button', { name: 'Activate' }));
+      await waitFor(() => {
+        expect(screen.getByTestId('provisioning-flow')).toBeInTheDocument();
+      });
+    });
+
+    it('bypasses license activation when device is already provisioned even if license is inactive', async () => {
+      vi.mocked(getLicenseStatus).mockResolvedValue({
+        isActive: false,
+        status: 'expired',
+        tier: null,
+        payload: null,
+        message: 'License expired',
+      });
+      vi.mocked(getFirstRunState).mockResolvedValue({ state: 'provisioned', location_id: 'loc-1', owner_user_id: 'user-1', mode: 'local', home_region: 'global', tenant_id: null });
+      vi.mocked(hasUsers).mockResolvedValue({ has_users: true });
+
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-home')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('license-activation-screen')).not.toBeInTheDocument();
     });
 
     it('renders the setup wizard when setup is incomplete', async () => {

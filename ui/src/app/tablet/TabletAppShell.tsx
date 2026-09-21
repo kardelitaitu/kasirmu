@@ -16,6 +16,7 @@ import { toWorkspaceType, type WorkspaceType } from '@/features/settings/workspa
 import { useSubscription } from '@/contexts/SubscriptionContext';
 
 // ── PERF-01: workspace/flow screens load on demand ────────────────
+const LicenseActivationScreen = lazy(() => import('@/features/auth/LicenseActivationScreen'));
 const ProvisioningFlow = lazy(() => import('@/features/setup/ProvisioningFlow'));
 const StaffLoginScreen = lazy(() => import('@/features/auth/StaffLoginScreen'));
 const CreatePinScreen = lazy(() => import('@/features/auth/CreatePinScreen'));
@@ -109,6 +110,8 @@ export default function TabletAppShell() {
   const { orientation } = useOrientation();
 
   const [loading, setLoading] = useState(true);
+  const [bootAllowed, setBootAllowed] = useState(false);
+  const [licenseError, setLicenseError] = useState<string | null>(null);
   const [hasCompletedSetup, setHasCompletedSetup] = useState(false);
   // null = UNKNOWN. Mirrors AppShell's hasAnyUsers: `false` is the value that
   // opens CreatePinScreen, so a failed/absent has_users read must stay null
@@ -166,10 +169,10 @@ export default function TabletAppShell() {
     return () => document.removeEventListener('keydown', handler);
   }, [activeWorkspace]);
 
-  // On mount, check if setup was already completed and whether any staff
-  // account exists. readBootGate runs the two reads in parallel with
-  // independent verdicts — one read's failure cannot forge the other's.
-  // Both reads are wrapped in the lost-response retry (boot-retry.ts): on
+  // On mount, check licence status, whether setup was already completed, and
+  // whether any staff account exists. readBootGate runs the three reads in parallel
+  // with independent verdicts — one read's failure cannot forge another's.
+  // All reads are wrapped in the lost-response retry (boot-retry.ts): on
   // Android, invokes issued while the backend is still initialising can be
   // answered into the void (Rust resolves; the response never reaches the
   // WebView), and without re-issuing the gate hung on the splash forever on
@@ -177,18 +180,23 @@ export default function TabletAppShell() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [setupRes, usersRes] = await readBootGate();
+      const [licenseRes, setupRes, usersRes] = await readBootGate();
       if (cancelled) return;
-      // A failed first-run read pins to `false` (the provisioning flow) — pinned
-      // by TabletAppShell.test.tsx as the safer failure direction: on a device
-      // whose provisioning state is unknown, the flow is the only route forward.
-      // ADR #56 §2.1: the row replaces the `setup.completed` boolean, so there is
-      // no flag a failed read could forge in the other direction either.
-      setHasCompletedSetup(setupRes.ok ? setupRes.value.state === 'provisioned' : false);
-      // Same unknown-is-not-no-users discipline as AppShell: a failed read
-      // leaves hasAnyUsers at null, which falls through to staff login.
-      // Only an answered `false` opens the owner bootstrap screen.
+
+      const setupCompleted = setupRes.ok && setupRes.value.state === 'provisioned';
+      setHasCompletedSetup(setupCompleted);
       setHasAnyUsers(usersRes.ok ? usersRes.value.has_users : null);
+
+      const licenceUsable =
+        licenseRes.ok && (licenseRes.value.isActive || licenseRes.value.status === 'gracePeriod');
+      const installExisting = usersRes.ok && usersRes.value.has_users;
+      setBootAllowed(licenceUsable || setupCompleted || installExisting);
+
+      if (licenseRes.ok && !licenceUsable && !setupCompleted && !installExisting) {
+        if (licenseRes.value.status !== 'missing') {
+          setLicenseError(licenseRes.value.message);
+        }
+      }
       setLoading(false);
     })();
     return () => { cancelled = true; };
@@ -258,41 +266,6 @@ export default function TabletAppShell() {
     return <AppBootSplash />;
   }
 
-  // ── First-run provisioning runs BEFORE the login gate (ADR #41 §2.1, ADR #56 §2.3) ──
-  // ADR #41 §2.1's "State A: New / Uninitialized Device" says the application
-  // boots directly into onboarding and authentication happens *inside* it.
-  // ADR #56 §2.3 keeps that ordering and narrows what it asks: the flow is
-  // store type -> owner -> one transaction, because onboarding must end at a
-  // WORKING terminal rather than a configured one.
-  //
-  // Safe pre-login: provisioning runs before any session exists BY DESIGN. A
-  // `local` install creates its own owner (§2.4), so the command that writes
-  // it cannot require a session — the same property the wizard's commands had.
-  //
-  // The desktop AppShell keeps this after `!session`, and must: it runs two
-  // earlier pre-login gates the tablet historically could not — `!bootAllowed`
-  // (licence activation) and `hasUsers === false` (owner bootstrap). Licence
-  // activation remains desktop-only; owner bootstrap is now part of
-  // provisioning on BOTH shells (§2.2), which is what removes the
-  // "completed wizard with zero users" dead end this comment used to record.
-  //
-  // Known consequence, recorded so it is not rediscovered as a bug: the mount
-  // read's catch sets `hasCompletedSetup = false`, so a FAILED first-run read
-  // reaches the provisioning flow BEFORE login rather than after it. On a
-  // genuinely fresh device that flow is the only route forward, whereas login
-  // would be a dead end; and because the answer is a ROW rather than a flag,
-  // an unreadable database cannot forge "already provisioned" either. The
-  // tablet's catch is pinned by two tests in TabletAppShell.test.tsx — a
-  // rejecting read with a session and a rejecting read without one — so
-  // changing it is a decision, not a cleanup.
-  if (!hasCompletedSetup) {
-    return (
-      <LazyBoundary>
-        <ProvisioningFlow onProvisioned={() => setHasCompletedSetup(true)} />
-      </LazyBoundary>
-    );
-  }
-
   // ADR #58 §2.6: if the subscription is revoked, show the data-export screen
   // rather than the login screen. The merchant cannot log in but CAN
   // export their data via the no-session twin (export_data_without_session).
@@ -300,6 +273,31 @@ export default function TabletAppShell() {
     return (
       <LazyBoundary>
         <RevokedScreen />
+      </LazyBoundary>
+    );
+  }
+
+  // ADR #56 §5 Q2: converge tablet boot order with desktop licence activation gate.
+  // Activation must precede identity linking, store provisioning, and user login.
+  if (!bootAllowed) {
+    return (
+      <LazyBoundary>
+        <LicenseActivationScreen
+          initialError={licenseError}
+          onActivated={() => setBootAllowed(true)}
+        />
+      </LazyBoundary>
+    );
+  }
+
+  // ── First-run provisioning runs BEFORE the login gate (ADR #41 §2.1, ADR #56 §2.3) ──
+  // ADR #41 §2.1's "State A: New / Uninitialized Device" says the application
+  // boots directly into onboarding and authentication happens *inside* it.
+  // ADR #56 §2.3 keeps that ordering: the flow is store type -> owner -> one transaction.
+  if (!hasCompletedSetup) {
+    return (
+      <LazyBoundary>
+        <ProvisioningFlow onProvisioned={() => setHasCompletedSetup(true)} />
       </LazyBoundary>
     );
   }
