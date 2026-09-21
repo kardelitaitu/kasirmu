@@ -1,6 +1,12 @@
 .eod-report {
   padding: var(--space-4);
   max-width: 75rem;
+  /* Restores the desktop placement `container-type` below would otherwise take
+     away: a layout-containment root is not stretched by `justify-self: normal`,
+     so without this the page would sit at its static position on a content slot
+     wider than 75rem instead of being centred in it. It changes nothing at or
+     below that width, where the clamped box fills its line box anyway. */
+  margin-inline: auto;
   /* The page's own query container (ADR-0001 T2 / Slice 5), measured on the box
      the shell grants this screen — not the viewport. UNNAMED on purpose, the
      same choice RetailPosScreen.css, KdsScreen.css, PosScreen.css,
@@ -11,15 +17,12 @@
      screen rendered standalone). An unnamed query against the nearest container
      is the same measurement inside the shell and stays correct outside it.
 
-     The COST, recorded rather than hidden: .eod-report already sets
-     max-width: 75rem, and container-type makes the element a layout containment
-     root, which suppresses the block-level justify-self: normal stretch — so on
-     a content slot wider than 75rem the page now sits at the slot's start
-     instead of being centred in it. Fixing that needs either a margin-inline:
-     auto here or a min(...) inside the max-width, and both change where the page
-     lands at desktop widths, which this slice is not allowed to do: max-width is
-     the one declaration in the sheet whose computed value must survive
-     unchanged. */
+     The COST, and what pays it: .eod-report already sets max-width: 75rem, and
+     container-type makes the element a layout containment root, which suppresses
+     the block-level justify-self: normal stretch — so without the margin-inline:
+     auto above, a content slot wider than 75rem would leave the page at its
+     static position instead of centred in the slot. The margin restores exactly
+     the pre-migration placement at that width and is a no-op below it. */
   container-type: inline-size;
 }
 
