@@ -2,7 +2,7 @@
 num: 57
 area: security
 title: "ADR #57: Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection"
-status: Proposed (2026-10-04) — the grace ceiling, the sentinel guard, the fingerprint verdict and the Q4 escalation fold are implemented; the client reporting, the pin store and server-side detection are not
+status: Proposed (2026-10-04) — the grace ceiling, the sentinel guard, the fingerprint verdict, the Q4 escalation fold and the release-channel pin store are implemented; the client reporting and server-side detection are not
 ---
 
 # ADR #57: Client Tamper Resistance Without Play Integrity
@@ -12,9 +12,10 @@ status: Proposed (2026-10-04) — the grace ceiling, the sentinel guard, the fin
 reads `NeedsAttention`"* to *"a violation notification exists"* — the read path was checked and the
 reader already exists in code, so the old criterion would have deferred §2.4 indefinitely without
 changing anyone's behaviour. **Still to build: §2.1's client half** (the Android APK
-signing-certificate computation and its reporting), the `release_channels` pin store §Q-B decided,
-and §2.4's server-side detection — now gated on the field shipping and a notification, both of
-which are one unit of work. Some controls below are **already implemented and verified**
+signing-certificate computation and its reporting) and §2.4's server-side detection — now gated on
+the field shipping and a notification, which are one unit of work. The `release_channels` pin
+store §Q-B decided **now ships** (`apps/license-server/release_pins.go`), so of §2.1's three
+missing pieces only the client leg remains. Some controls below are **already implemented and verified**
 (marked IMPLEMENTED with evidence); the rest are **to build** (marked TO BUILD). No control is
 claimed that this record does not either cite or name as work.
 
@@ -302,11 +303,17 @@ the admin surface in the first form must not mismatch a build that is perfectly 
 spellings are folded before comparison.
 
 **What is NOT built, stated so the table above is not misread.** This is the *classification* half:
-a pure function over a value the caller obtained. Missing: (a) the Android-side computation and
-reporting of the APK signing certificate, (b) the `release_channels` record §Q-B decided holds the
-pin set, and (c) the writer for it. §2.1's client leg therefore has no implementation yet, while the
-rule it feeds — including the §2.2 clause that keeps it from being bypassable by deleting one line —
-does.
+a pure function over a value the caller obtained. Missing: **the Android-side computation and
+reporting of the APK signing certificate** — the only piece still absent. Until it lands, no report
+reaches `classify_build_fingerprint`, so the rule below has no live input. §2.1's client leg
+therefore has no implementation yet, while the rule it feeds — including the §2.2 clause that keeps
+it from being bypassable by deleting one line — does.
+
+> **Updated 2026-09-21.** The two other items this paragraph used to list — the `release_channels`
+> record §Q-B decided (b) and its writer (c) — **now ship**: `ensureReleaseChannels` creates the
+> collection on boot and `apps/license-server/release_pins.go` provides the admin read/write routes.
+> See the §Q-B implementation note. The server side of §2.1 is therefore ready for a reporter; only
+> the Android leg is missing.
 
 **Verification run:** `cargo test -p kasirmu-core --lib` → **3151 passed, 0 failed** (7 of them in
 `build_fingerprint`). The §2.6 release-profile check is recorded at that section.
@@ -728,6 +735,39 @@ that only changes when a human rotates a key.
 keystore already lives. **If a single channel is all that ever ships, A and B behave identically —
 A is chosen because it is the shape that does not need a migration on the day a second channel
 exists, and because the record's own vocabulary is already channel-based.**
+
+> **IMPLEMENTED (2026-09-21).** The store, its writer and its reader ship, so §2.1's comparison no
+> longer targets data nothing produces:
+>
+> - **Collection** — `ensureReleaseChannels` (`apps/license-server/main.go`), registered in boot
+>   beside the other `ensure*` migrations and mirrored in the test harness so the tests run the
+>   same migration production does. Fields: `channel`, `accepted_pins` (JSON, `MaxSize` 64 KiB),
+>   `note`, `updated_by`, plus explicit `created`/`updated` autodates — a programmatically-built
+>   collection does NOT get them implicitly, and the unique index on `channel` references `created`.
+>   All five API rules are nil (superuser-only): an **empty-string** rule is PUBLIC in PocketBase
+>   (LSE-5), which on this collection would let anyone append a pin and defeat §2.1 outright.
+> - **Writer/reader** — `apps/license-server/release_pins.go`:
+>   `POST|GET /api/v1/admin/release-channels/{channel}/pins`, admin-authed via `adminAuth`.
+> - **The set is bounded** (`maxAcceptedPins = 4`) and **normalised** to lowercase 64-hex, the same
+>   folding `classify_build_fingerprint` performs, so a fingerprint pasted from `keytool`
+>   (uppercase, colon-separated) cannot mismatch a correct build. An unusable entry is **rejected,
+>   never dropped** — a silently-dropped pin is a build that stops verifying with no indication why.
+> - **Idempotent** on an unchanged set (`status: "unchanged"`), matching `handleAdminSetRegion`.
+>
+> **One defect found and fixed while building it, recorded because the failure was invisible on the
+> write path.** `acceptedPinsFromRecord` first type-asserted the field as `[]any`. PocketBase
+> returns a JSON field as `types.JSONRaw` (a `[]byte`), so every stored set read back as EMPTY —
+> while `POST` kept answering 200 with the pins echoed, because it responds from the request rather
+> than from storage. Nothing on the write path could see it, and nothing on the read path existed
+> before this change. The reader now round-trips through `encoding/json` like
+> `feature_grants.go` does, and `TestReleasePins_StoresAndReadsBackTheSet` plus
+> `TestReleasePins_NormalisesKeytoolSpelling` both fail against the old code.
+>
+> **What this does NOT close.** §2.1 remains unbuilt: nothing computes or reports an APK signing
+> certificate, so `accepted_pins` has no reporter yet and the classification still has no live
+> input. §3.3's first three rows are unchanged. What changed is that the *store* §2.1 compares
+> against now exists and is admin-writable — and an unpinned channel reads as `Unknown`, never
+> `Mismatch`, so this cannot refuse renewal for anyone today.
 
 ### Q-C — Are the 7 "consecutive" `unknown` reports sync cycles, or calendar days? `[deferrable]` — DECIDED
 
