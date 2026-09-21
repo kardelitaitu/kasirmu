@@ -235,6 +235,35 @@ pub async fn get_enabled_features(
 ///
 /// The shell renders from this: `unprovisioned` runs the provisioning flow,
 /// `provisioned` routes to a session (or the login screen when there is none).
+///
+/// # The runtime legacy backfill, and why it lives HERE
+///
+/// `20261008_provisioning_legacy_backfill.sql` writes the missing row from SQL,
+/// keyed on `terminals.device_id` — the only SQL-readable spelling of the
+/// hostname. A legacy install that never registered a terminal row has no such
+/// spelling, so that migration is inert for it and an already-set-up device
+/// re-enters onboarding on every boot. `terminal_id` HERE is that hostname
+/// (`get_device_id`), so the same rule can be applied where the SQL could not:
+/// a terminal with no row whose legacy signal proves the pre-#56 wizard
+/// completed gets its row written now, and reads as provisioned immediately.
+///
+/// The predicate is the migration's, and it is deliberately the same three
+/// facts: the key exists, its value is exactly `"false"`, and nothing else. A
+/// MISSING key or any other value leaves the device `Unprovisioned` — a forged
+/// row would silently skip onboarding for a genuinely new device, which is
+/// strictly worse than the bug this closes.
+///
+/// The write is `Store::provision_terminal`, which returns the existing row
+/// unchanged when one exists (an `INSERT` guarded by a read, in the same
+/// connection), so this is idempotent and can never overwrite or duplicate.
+///
+/// The row is shaped exactly as the migration's: `mode = 'local'`, `home_region
+/// = 'global'` (§Q6), and NULL tenant / owner / device — the legacy install had
+/// no licence-server tenant, no SQL-provable owner identity and no credential,
+/// so claiming any of them would be a guess. `location_id` is carried only
+/// when the device's own `terminals` row resolves it AND the `locations` row
+/// still exists, mirroring the migration's correlated subquery that yields NULL
+/// rather than a dangling id.
 pub async fn get_first_run_state(
     ctx: &BridgeCtx<'_>,
     terminal_id: &str,
@@ -243,9 +272,67 @@ pub async fn get_first_run_state(
     let store = Store::new(&db);
 
     Ok(match store.get_provisioning(terminal_id)? {
-        None => FirstRunStateDto::unprovisioned(),
+        None => match backfill_legacy_provisioning(&store, terminal_id)? {
+            Some(rec) => FirstRunStateDto::provisioned(&rec),
+            None => FirstRunStateDto::unprovisioned(),
+        },
         Some(rec) => FirstRunStateDto::provisioned(&rec),
     })
+}
+
+/// Write the provisioning row a legacy (pre-ADR-#56) install is missing.
+///
+/// Returns the stored record when the legacy signal proves the retired wizard
+/// completed this device's setup, and `None` in every other case — including
+/// the one that matters most: a device with no `store.show_setup_wizard` key,
+/// which is every fresh ADR-#56 install (`provision_device` deliberately does
+/// not write that key, and no migration seeds one).
+///
+/// Only `"false"` counts. That exact value was written by the two retired
+/// commands — `complete_setup` step 7 and `dismiss_setup_wizard` — and by
+/// nothing else, so it is a legacy-ONLY fact; `"true"` is the wizard's "show me"
+/// state and is not a completion.
+fn backfill_legacy_provisioning(
+    store: &Store<'_>,
+    terminal_id: &str,
+) -> Result<Option<ProvisioningRecord>, BridgeError> {
+    let completed = Settings::get(
+        store.conn,
+        kasirmu_core::settings::keys::SHOW_SETUP_WIZARD,
+    )?
+    .is_some_and(|v| v == "false");
+    if !completed {
+        return Ok(None);
+    }
+
+    // The location binding, and only when it still RESOLVES. `provisioning.location_id`
+    // is a FOREIGN KEY, so a stale binding must yield NULL rather than a dangling
+    // id — the same guard the migration's correlated subquery applies.
+    let bound = match store.get_terminal_by_device_id(terminal_id)? {
+        Some(t) => store
+            .get_terminal_bound_location(&t.id)?
+            .filter(|id| store.get_location_profile(id).ok().flatten().is_some()),
+        None => None,
+    };
+
+    let (record, created) = store.provision_terminal(&ProvisioningRecord {
+        terminal_id: terminal_id.to_owned(),
+        tenant_id: None,
+        location_id: bound,
+        owner_user_id: None,
+        device_id: None,
+        mode: ProvisioningMode::Local,
+        home_region: kasirmu_core::regional::DEFAULT_REGION.to_string(),
+        provisioned_at: String::new(),
+    })?;
+
+    if created {
+        tracing::info!(
+            terminal_id = %record.terminal_id,
+            "legacy setup backfilled a provisioning row at boot"
+        );
+    }
+    Ok(Some(record))
 }
 
 /// Provision one terminal in a single idempotent transaction (ADR #56 §2.2).
