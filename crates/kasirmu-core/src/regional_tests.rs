@@ -446,3 +446,36 @@ fn tax_regime_derivation_matches_the_landed_resolver_end_to_end() {
         .unwrap();
     assert!(none.is_none());
 }
+// ── RegionCode: the closed residency vocabulary (ADR #59 §Q2) ──────────
+
+#[test]
+fn region_code_round_trips_its_only_member() {
+    // `global` is the entire launch set (ADR #59 §Q6), so this pins the
+    // vocabulary's one legal value and the fact that it is lowercase on both
+    // the stored and the wire form.
+    assert_eq!(RegionCode::parse("global").unwrap(), RegionCode::Global);
+    assert_eq!(RegionCode::Global.as_str(), "global");
+    assert_eq!(RegionCode::Global.to_string(), "global");
+    assert_eq!(DEFAULT_REGION, RegionCode::Global);
+    assert_eq!(RegionCode::ALL, &[RegionCode::Global]);
+}
+
+#[test]
+fn region_code_parse_is_case_and_whitespace_insensitive() {
+    // One region must not acquire two spellings — the routing bug ADR #59
+    // §Q2 option A warns about. Case and stray whitespace are folded, not
+    // rejected, because they are the same region.
+    for raw in ["global", "GLOBAL", "Global", "  global  "] {
+        assert_eq!(RegionCode::parse(raw).unwrap(), RegionCode::Global, "{raw:?}");
+    }
+}
+
+#[test]
+fn region_code_parse_rejects_anything_outside_the_closed_set() {
+    // The set is closed: an unvalidated string must never open a second
+    // region implicitly. A country code is specifically NOT a region here —
+    // that is the market axis, and collapsing the two is what §2.2 forbids.
+    for raw in ["", "  ", "eu", "us", "ID", "asia", "global-2"] {
+        assert!(RegionCode::parse(raw).is_err(), "{raw:?} must be rejected");
+    }
+}
