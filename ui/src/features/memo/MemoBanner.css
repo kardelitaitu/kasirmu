@@ -54,7 +54,7 @@
 .memo-stack {
   position: fixed;
   left: var(--space-6);
-  bottom: var(--space-6);
+  bottom: var(--memo-bottom-inset, var(--space-6));
   z-index: var(--z-overlay);
   display: flex;
   flex-direction: column;
@@ -73,7 +73,17 @@
      their own rules. Paint order is untouched — z stays --z-overlay,
      above content, below the reading card's --z-modal — the banner just
      stops eating clicks aimed at the chrome beneath its non-interactive
-     padding. */
+     padding.
+
+     bottom comes from the SHELL, not from here: a hard-coded --space-6
+     inset is measured against chrome whose height the shell already
+     knows — the tablet tab bar is 64px + inset and the desktop status
+     bar 28px (--statusbar-height), so at a flat 24px the stack painted
+     40px and 4px over interactive chrome respectively. Each shell
+     declares --memo-bottom-inset as its own bottom-chrome height +
+     --space-6; the var() fallback is deliberate and load-bearing:
+     chrome-free fullscreen branches (POS/KDS) have no shell ancestor
+     and must keep today's --space-6 clearance. */
   pointer-events: none;
 }
 
@@ -116,6 +126,18 @@
 .memo-stack-item.is-exiting {
   grid-template-rows: minmax(0, 0fr);
   margin-top: calc(-1 * var(--space-2));
+  pointer-events: none;
+}
+
+/* The row's own `none` above is NOT inherited past an explicit `auto`:
+   .memo-banner-open re-enables pointer-events on itself, so during the
+   450ms exit an invisible bubble (opacity 0) stays hit-testable, its
+   open button is not disabled (only the close chip is), and a click
+   fires onExpand → the pending ack → the memo is permanently
+   discarded. This rule targets the descendants directly — (0,2,0)
+   beats .memo-banner-open's (0,1,0) — re-inerting the whole exiting
+   row without touching either live control's rule. */
+.memo-stack-item.is-exiting * {
   pointer-events: none;
 }
 
