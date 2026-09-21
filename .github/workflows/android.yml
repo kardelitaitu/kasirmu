@@ -13,6 +13,15 @@
 # broke it would be caught by a person, not a pipeline. This job closes that gap:
 # it compiles the tablet app for Android and fails if no APK is produced.
 #
+# VALIDATION, STATED SO NOBODY OVER-TRUSTS THIS FILE. It passes `actionlint` with
+# zero findings (2026-09-22), which covers the YAML structure, every `[object Object]`
+# expression, the action inputs, and the job graph. It has NEVER BEEN RUN — it
+# cannot be, locally. Two things that were therefore NOT checked: the `run:` shell
+# blocks (actionlint only lints those when `shellcheck` is on PATH, and it is not on
+# this machine), and whether the Android SDK/NDK install actually resolves on a
+# GitHub runner. Expect the first `workflow_dispatch` to be the real test; that is
+# also why the triggers are narrow, so a first-run failure cannot block a merge.
+#
 # TRIGGERS ARE DELIBERATELY NARROW. No pull_request/push trigger, so a workflow
 # that cannot be exercised locally cannot block anyone's normal flow. Promote it
 # to a PR trigger only after it has run green at least once via workflow_dispatch.
