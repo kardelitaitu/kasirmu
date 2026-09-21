@@ -2,13 +2,17 @@
 num: 59
 area: topology
 title: "ADR #59: Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and the built-vs-module seam"
-status: Proposed (2026-10-04) — nothing implemented
+status: Proposed (2026-10-04) — the region field, admin route and audit trail are IMPLEMENTED; topology and modules are not
 ---
 
 # ADR #59: Regional Topology and Modular Delivery
 
-**Status:** Proposed (2026-10-04). Nothing below is implemented. §1 measures what exists, §2 decides,
-§3 records consequences, §4 the non-goals, §5 the questions that need a human answer.
+**Status:** Proposed (2026-10-04). **Updated 2026-10-04 (second pass): §2.1a's sequencing steps 1–3
+are now IMPLEMENTED** — the `RegionCode` vocabulary, the `tenants.region` field with its backfill,
+the admin-only change route, and the durable audit collection. The multi-region topology, the
+migration orchestration (deliberately deferred, §2.1a step 4) and the module/fiscalization work are
+**not** implemented. §1 measures what exists, §2 decides, §3 records consequences, §4 the non-goals,
+§5 the questions that need a human answer.
 **Date:** 2026-10-04
 **Recorded against:** branch `0.0.39` @ `2c30e735c`
 **Related:** ADR #1 (module system — the kernel this builds on), ADR #41 §2.1 (device lifecycle, the
@@ -259,16 +263,52 @@ order**:
 orchestration becomes real when the second region does, which is the argument for building the
 field, the audit, and the admin surface now (§ "Sequencing" below).
 
-#### Sequencing for the current stage
+#### Sequencing for the current stage — steps 1–3 IMPLEMENTED 2026-10-04
 
-1. **Add `region` to the `tenants` collection**, defaulting to `"global"`. The PocketBase schema
-   currently has **no region field at all** — verified, zero matches for region/country in
-   `apps/license-server/pb_schema.json`.
+1. **Add `region` to the `tenants` collection**, defaulting to `"global"`. **DONE.**
+   The precedent verified in §1 — zero matches for region/country in
+   `apps/license-server/pb_schema.json` — held. The field is a single-value
+   select carrying the closed set, added to the embedded schema *and* by an
+   idempotent boot migration (`ensureRegionField`) that also backfills
+   existing rows. The backfill is the half that matters: PocketBase does not
+   apply a select default to rows that already exist, so an added-but-empty
+   column would have left every pre-existing tenant with no region at all.
 2. **Add the admin route**, reusing the `handleAdminUpdateTenant` shape.
-3. **Audit it**: actor, from-region, to-region, and a reason. `handleAdminUpdateTenant:212` already
-   logs its change; a region change additionally needs a durable row, because "why did this
-   tenant's data move" is precisely the question an incident review asks.
+   **DONE.** `POST /api/v1/admin/tenants/{id}/region`, admin-authenticated and
+   validated against the closed set before any write, so a typo yields 400
+   rather than a schema failure surfacing as a 500. It is idempotent on the
+   model §2.1a names — a tenant already in the requested region is a 200 no-op,
+   not an error.
+3. **Audit it**: actor, from-region, to-region, and a reason. **DONE.**
+   `tenant_region_events` is a new superuser-only collection holding all four,
+   written *before* the pointer moves so a crash between the two leaves a
+   visible, recoverable event rather than an unexplained completed move. Rules
+   are `nil`, never the empty string — LSE-5 records that an empty-string
+   rule is PUBLIC in PocketBase, and a brand-new collection is exactly where
+   that mistake gets repeated.
 4. **Do not build the migration orchestration yet.** With one region it would be untestable code.
+   **STILL THE RULING, unchanged.** Nothing above performs a data move, a
+   terminal `home_region` rewrite, or a token re-issue; §2.1a's ordering table
+   stands as the specification those steps must satisfy when a second region
+   exists.
+
+> **One correction the implementation forced, recorded because it changes the
+> stored semantics.** The original decision text described `region` as
+> "defaulting to `"global"`", and the first implementation read an EMPTY stored
+> value as if it were already `global` — making the move a no-op for exactly
+> the rows that needed it. An unset region and a region set to `global` are
+> different states: the first means "not yet placed", the second means "placed in
+> the launch region". The no-op test is now on the stored value, so an empty
+> one always writes, and the audit row records `from_region` as empty rather
+> than claiming a move that did not happen. A test caught this; the prose had
+> conflated the two states and the code inherited it.
+
+**Verification run (2026-10-04):** `go test ./...` in `apps/license-server` →
+**ok**, including 7 case tests over the route (unknown region, missing reason,
+idempotent no-op, auth required, 404, the positive move, and schema/Go
+vocabulary parity), 3 over the audit trail, and 2 over the field migration
+(idempotent add + backfill, and rejection of a value outside the closed set).
+`cargo test -p kasirmu-core --lib region_code` → **3 passed**.
 
 **Follow-up defect — already corrected in this tree.** `apps/license-server/web_dashboard.go` used
 to document `PATCH /api/v1/web/settings — update tenant preferences (region, notifications)`. **That
