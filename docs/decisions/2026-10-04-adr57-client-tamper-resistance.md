@@ -2,7 +2,7 @@
 num: 57
 area: security
 title: "ADR #57: Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection"
-status: Proposed (2026-10-04) — §2.1 (client reporting + server classification), §2.2's verdict rule, §2.3's grace ceiling, §2.6's sentinel guard, §Q4's escalation fold, §Q-B's pin store and §2.4's operator notification are all implemented
+status: Proposed (2026-10-04) — §2.1 (client reporting + server classification, verified on a real device), §2.2's verdict rule, §2.3's grace ceiling, §2.6's sentinel guard, §Q4's escalation fold, §Q-B's pin store and §2.4's operator notification are all implemented
 ---
 
 # ADR #57: Client Tamper Resistance Without Play Integrity
@@ -18,15 +18,32 @@ call, the `release_channels` pin store §Q-B decided, and the server-side classi
 (`apps/license-server/build_integrity_alerts.go`), which was the last gate on that section: a
 daily scanner alerts the operator on a pinned-set `mismatch`, and on repeated `unknown` per
 §Q4/§Q-C. §3.3's rows below have been re-stated against the new shipped state — detection AND a
-reader now exist, though neither is on-device verified (see the boundary note).
+reader now exist.
 
-**Verification boundary, stated rather than implied:** `cargo ndk -t arm64-v8a check -p
-kasirmu-mobile` proves the tablet app **compiles** for Android and the desktop build is untouched;
-the classifier and store are tested. **No test exercises the JNI call** — that needs a real device,
-and the Android CI job was retired by `23c963303` (2026-09-02). The on-device read is therefore
-**unverified** until someone builds an APK and inspects it. Some controls below are **already implemented and verified**
-(marked IMPLEMENTED with evidence); the rest are **to build** (marked TO BUILD). No control is
-claimed that this record does not either cite or name as work.
+**The on-device read is now VERIFIED, not merely compiled.** On 2026-09-22 a real tablet (Redmi Pad
+SE) reported its own signing certificate through the JNI path:
+
+```
+80225936dea046144ee13db692165e0aecdbb31a64e89c811955422b075956c9
+```
+
+read by invoking `get_build_fingerprint` over CDP in the running app, and **independently
+corroborated** with `apksigner verify --print-certs` on the very same APK — the two agree character
+for character, in lowercase bare 64-hex, which is the form
+`classify_build_fingerprint` compares against. Three tests in
+`apps/license-server/build_integrity_test.go` now pin that observed value, its keytool spelling, and
+its FORMAT (so a client-side format drift cannot silently turn every real device into a `mismatch`).
+
+**Why this needed a new command.** The fingerprint was previously produced only inside
+`check_license_status`, which returns before reaching the JNI when no licence is activated — so on a
+fresh or free-tier install the whole path was unreachable, and therefore untestable. `get_build_fingerprint`
+(`apps/mobile-tauri/src/commands/health.rs`) exposes the read on any device. It discloses nothing: the
+value is a property of the public APK.
+
+**Still not covered: CI.** The Android build job was retired by `23c963303` (2026-09-02), so nothing
+in CI exercises this path; the evidence above is a manual device run. Some controls below are
+**already implemented and verified** (marked IMPLEMENTED with evidence); the rest are **to build**
+(marked TO BUILD). No control is claimed that this record does not either cite or name as work.
 
 **Verified against the tree 2026-09-21.** §Q4's escalation fold (`fold_build_integrity`,
 `BuildIntegritySignal`) has **no non-test caller** and no stored consecutive count; and
@@ -366,12 +383,16 @@ derived view over that durable record. `classifyBuildFingerprint` on the server 
 `kasirmu_core::build_fingerprint::classify_build_fingerprint` arm for arm — including that an
 **empty pin set is `unknown`, not `mismatch`** — because the two must agree about the same report.
 
-**A note on what verification does and does not cover.** `cargo ndk -t arm64-v8a check -p
-kasirmu-mobile` compiles the whole tablet app against the Android target, and the desktop build is
-unchanged. The classifier, the store and the fail-open contract are covered by tests. **The JNI call
-itself is not covered by any test**: it needs a real device, and `apps/mobile-tauri/AGENTS.md`
-records that the Android CI job was retired (`23c963303`, 2026-09-02), so nothing in CI exercises
-it. Treat the on-device read as unverified until someone builds and inspects a real APK.
+**What verification covers, updated after the device run.** `cargo ndk -t arm64-v8a check -p
+kasirmu-mobile` compiles the whole tablet app against the Android target (desktop build unchanged);
+the classifier, the store and the fail-open contract are covered by tests; and the JNI read itself
+was **exercised on a real tablet on 2026-09-22**, returning the certificate `apksigner` reports for
+the same APK. See the status note at the top for the value and the method.
+
+**What is still NOT covered: CI.** `apps/mobile-tauri/AGENTS.md` records that the Android build job
+was retired (`23c963303`, 2026-09-02), so no automated leg exercises this path — the evidence is a
+manual device run. A regression would therefore be caught by a person, not by a pipeline, until that
+job is restored.
 
 **Verification run:** `cargo test -p kasirmu-core --lib` → **3151 passed, 0 failed** (7 of them in
 `build_fingerprint`). The §2.6 release-profile check is recorded at that section.
@@ -468,10 +489,12 @@ naming the debug short-circuit as the reason the test must not target `verify_li
   an operator — and then nothing happens automatically.** The response is a human reading a message,
   which §Q4 chose over an automatic refusal because a false positive must never dark a shop. The only
   AUTOMATIC bound remains §2.3's grace window for a paid tier.
-- **The reporting path is unverified on a real device.** Every claim above rests on the Android JNI
-  read, which no test exercises (see the status note). A fault there degrades to `unknown` — visible,
-  not silently permissive — but it would show up as the persistent-unknown alert rather than as a
-  mismatch, so the two alerts must be read differently until the on-device read is confirmed.
+- **The reporting path is verified on a real device, but only manually.** On 2026-09-22 a tablet
+  returned its own signing certificate correctly (see the status note), so the JNI read works as
+  designed. What remains unguarded is REGRESSION: with no Android CI leg, nothing would notice if a
+  later change broke the read. A fault there degrades to `unknown` — visible, not silently
+  permissive — but it would surface as the persistent-unknown alert rather than as a mismatch, so
+  the two alerts must still be read differently.
 
 #### What the 2026-10-05 work did and did not change in this table
 
