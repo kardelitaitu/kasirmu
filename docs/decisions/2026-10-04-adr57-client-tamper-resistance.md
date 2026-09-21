@@ -93,7 +93,8 @@ blur them into a single claim:
 
 `apps/mobile-tauri/tauri.conf.json:44` sets `minSdkVersion: 26` (Android 8.0, 2017). Distribution
 is sideloaded APKs (`apps/mobile-tauri/AGENTS.md`, Build section:
-`cargo tauri android build --apk` → `adb install`).
+`cargo tauri android build --apk`). That file documents `adb devices` for device checks and gives no
+`adb install` recipe — this record cited one until the 2026-09-22 re-measure.
 
 **This rules out Play Integrity, which an earlier draft of this record proposed.** Two independent
 reasons, either sufficient:
@@ -149,17 +150,17 @@ Each row is evidence, not intent. Verified against the tree on the date above.
 
 | Control | Evidence | Status |
 |---|---|---|
-| Signed subscriptions, verified before trust | `license_verification.rs:393,501,544` | IMPLEMENTED |
+| Signed subscriptions, verified before trust | `license_verification.rs:417` (the definition) verified at `:525` and `:568` | IMPLEMENTED |
 | Verification at *every* consumer, not just boot | `auth.rs:617`, `inventory.rs:112`, `history.rs:76` | IMPLEMENTED |
 | Fail-closed tier projection | `entitlements.rs:35,78,86` — unknown/absent/tampered → Free | IMPLEMENTED |
-| Canceled never in grace; out-of-grace reverts to Free | `subscription.rs:7` module findings, `:665` | IMPLEMENTED |
-| Clock-rollback detection, ledger-based | `subscription.rs:572`, `:534`; tolerance 30s (`:28`) | IMPLEMENTED |
-| Read-only lock, failing closed on an unreadable ledger | `subscription.rs:991-995` (`Err(_) => true`) | IMPLEMENTED |
-| Per-tier bounded offline grace | `subscription.rs:338`; Free 7 / Plus 14 / Pro 14 / Premium 30 / Enterprise 60 (`subscription_tests.rs:1168-1175`) | IMPLEMENTED |
+| Canceled never in grace; out-of-grace reverts to Free | `subscription.rs:7` module findings, `:691` | IMPLEMENTED |
+| Clock-rollback detection, ledger-based | `subscription.rs:588`, `:550`; tolerance 30s (`:28`) | IMPLEMENTED |
+| Read-only lock, failing closed on an unreadable ledger | `subscription.rs:1027-1031` (`Err(_) => true` at `:1030`) | IMPLEMENTED |
+| Per-tier bounded offline grace | `subscription.rs:338`; Free 7 / Plus 14 / Pro 14 / Premium 30 / Enterprise 60 (`subscription_tests.rs:1199-1207`) | IMPLEMENTED |
 | Quota gates on every capped dimension | **6 bridge call sites** (corrected 2026-09-22 — this row said 7 while listing six, and §2.4's own note below had already recorded the correction): `bridge/products.rs:701`, `staff.rs:1094`, `locations.rs:259`, `terminals.rs:455`, `workspaces.rs:324`, `inventory.rs:127`. The gate *definitions* live in `kasirmu-core/src/db/*.rs` (`enforce_product_quota`, `enforce_staff_quota`, …); what this row counts is the bridge call sites that invoke them | IMPLEMENTED |
-| Secrets/device keys denied in settings and export | `platform/core/src/settings/keys.rs:265,295`, gate-pinned at `:263` | IMPLEMENTED |
+| Secrets/device keys denied in settings and export | `platform/core/src/settings/keys.rs:282` (`SECRET_KEY_DENY_LIST`) and `:312` (`NON_EXPORTABLE_DEVICE_KEYS`) | IMPLEMENTED |
 | API key sealed to machine identity | Encrypt: `license.rs:141` (`encrypt_api_key(&resp.api_key, &machine_id_for_encryption)`). Decrypt: `license.rs:188` (`sealed_api_key` → `decrypt_api_key` at `:191`). Both halves are `crates/kasirmu-bridge/src/license.rs` | IMPLEMENTED |
-| Server-origin attestation, no debug shortcut | `attestation.rs:12-14,205-260`; echo-nonce check `:255` | IMPLEMENTED |
+| Server-origin attestation, no debug shortcut | `attestation.rs:12-14`, `:203-257` (`probe_origin_with`); echo-nonce check `:251` | IMPLEMENTED |
 
 **The existing posture is strong.** This record extends it; it does not replace it.
 
@@ -172,8 +173,8 @@ reported to the licence/sync server, which compares it against the fingerprint(s
 tenant release channel. See the implementation note at the end of this section for what ships, how
 the Android read is reached, and — importantly — what is still unverified.
 
-The signing key already exists and is controlled: `gen/android/app/build.gradle.kts:40-46` reads
-`keyAlias`/`password`/`storeFile` from the gitignored `gen/android/keystore.properties`, and the
+The signing key already exists and is controlled: `apps/mobile-tauri/gen/android/app/build.gradle.kts:40-46` reads
+`keyAlias`/`password`/`storeFile` from the gitignored `apps/mobile-tauri/gen/android/keystore.properties`, and the
 release build config attaches it (`:63-64`). No new key material is required.
 
 | Property | Why it matters |
@@ -192,7 +193,7 @@ reports a valid fingerprint (§2.2).
 
 **IMPLEMENTED 2026-09-21, on both sides.** A missing, malformed, or unparseable fingerprint is
 classified `unknown` and is **never** treated as `valid`. This mirrors the discipline the repo already applies to boot reads
-(`AppShell.tsx:235-240`: "unknown is not no users") and to attestation (`attestation.rs:12-14`:
+(`AppShell.tsx:253`: "unknown is not no users") and to attestation (`attestation.rs:12-14`:
 no debug shortcut where a credential departure is decided).
 
 Without this clause the control in §2.1 is trivially bypassed by deleting the reporting line — the
@@ -208,13 +209,14 @@ grace window of the tier they legitimately hold: 14 days (Plus/Pro), 30 (Premium
 60 (Enterprise).
 
 > **Correction (2026-10-04, found on review).** An earlier revision of this section listed
-> "7 days (Free)" in the sequence above. That was wrong. `subscription.rs:640-643` returns
-> `true` for Free *unconditionally* ("Free tier — always within grace"), and `:942-943` marks a
+> "7 days (Free)" in the sequence above. That was wrong. `subscription.rs:666-669` returns
+> `true` for Free *unconditionally* ("Free tier — always within grace"), and `:977-979` marks a
 > Free tier `Active` forever. `Free.offline_grace_days()` returns 7, but the value is **never
-> consumed for the `Free` variant** because the function returns before reaching it (`:665`). The
+> consumed for the `Free` variant** because the function returns before reaching it (`:691`). The
 > qualifier matters for one variant: `SubscriptionTier::OneTime` maps to `"free"`
-> (`subscription.rs:140`) and, not being the `Free` variant, is *not* caught by the `:641`
-> short-circuit — it reaches `:665` and **its 7-day value is consumed**. This is inert in practice
+> (`subscription.rs:140`) and, not being the `Free` variant, is *not* caught by the `:667`
+> short-circuit — it reaches `:691` and **its 7-day value is consumed**. *(Anchors re-measured
+> 2026-09-22.)* This is inert in practice
 > because nothing seeds a `one_time` row (the bootstrap row is `free`, `subscription.rs:673`), but
 > the blanket word "never" would have been a false claim about the code. **Free is
 > permanent, not time-bounded**, so there is no Free clock to exhaust — which is why this
@@ -342,8 +344,8 @@ attacker persistence without locking a legitimate merchant out mid-shift on a fa
 
 **Where the refusal actually happens — corrected against the tree, and re-corrected 2026-09-22.**
 Renewal refusal is **server-side**, and the guard is already built:
-`apps/license-server/renew.go:76-81` refuses any tenant whose `status != "active"`. It is **not**
-`TenantSubscription::enforce_pos_writable` (`subscription.rs:1011`): that is a **selling** gate
+`apps/license-server/renew.go:82-87` refuses any tenant whose `status != "active"`. It is **not**
+`TenantSubscription::enforce_pos_writable` (`subscription.rs:1047`): that is a **selling** gate
 whose callers are the POS checkout paths (`bridge/pos.rs:1755`, `pos.rs:1975`, `offline.rs:236`,
 `core/src/db/sales_checkout.rs:206`, `core/src/db/sales_lifecycle.rs:176`). Wiring renewal refusal
 into it would refuse *sales*, not renewal. This record's earlier revision named it as the renewal
@@ -399,7 +401,15 @@ be extended to *check failures*.
 already bounded (§2.3) and the renewal refusal removes persistence. Locking would trade a bounded
 risk for an unbounded false-positive risk against legitimate merchants.
 
-#### IMPLEMENTED 2026-10-05 — §2.2's verdict is real; §2.1's client half is not
+#### IMPLEMENTED 2026-10-05, CORRECTED 2026-09-22 — §2.2's verdict is real, and §2.1's client half SHIPPED too
+
+> **This heading read "…§2.1's client half is not" until 2026-09-22.** That was stale: §2.1's
+> client leg is built and verified — the Android computation
+> (`crates/kasirmu-hal/src/transport/apk_signature.rs`), its attach in the bridge
+> (`crates/kasirmu-bridge/src/build_integrity.rs:34`, `license.rs:528`), and the on-demand read
+> `get_build_fingerprint` (`apps/mobile-tauri/src/commands/health.rs:76`, registered at
+> `apps/mobile-tauri/src/lib.rs:620`). The status block and §2.1's own table said so; the heading
+> contradicted both, inside one record. This note records which of the two survives.
 
 `kasirmu_core::build_fingerprint` now classifies a reported fingerprint into three verdicts, which is
 what makes §2.2 enforceable rather than aspirational:
@@ -552,8 +562,11 @@ naming the debug short-circuit as the reason the test must not target `verify_li
   prevent tampering. Stated here so it cannot be over-claimed later.
 - **Server-side detection needs a home and an owner.** A signal with no response policy is
   noise; §2.4 conservative policy needs someone accountable for acting on it.
-- **New IPC + wire field.** The registration gate (`registration_gate_debt.generated.rs`) and the
-  IPC parity allowlist both move, on both shells.
+- **New IPC + wire field.** *(Corrected 2026-09-22: this read "…and the IPC parity allowlist both
+  move, on both shells", which the tree does not support.)* Exactly one ledger moved —
+  `apps/mobile-tauri/src/commands/registration_gate_debt.generated.rs:59`; the DESKTOP ledger has no
+  entry for it, and `scripts/ipc-parity-allowlist.json` has none either. The cost is real but
+  smaller than stated, and it is one shell rather than two.
 - **Build fingerprint must be *stable*.** If the release keystore is rotated or lost, every
   pinned fingerprint changes at once. Rotating it is therefore a coordinated operation, not a
   local one — and it must be recorded as such.
@@ -582,10 +595,14 @@ naming the debug short-circuit as the reason the test must not target `verify_li
 - **The "detected server-side" rows are the ones that will be misread, in BOTH directions.** They
   used to describe the design rather than the shipped state; as of 2026-09-21 detection and a reader
   both ship, so the older warning that "tampering is not detected at all" is no longer true either.
-  What is true is narrower and still not protection: **tampering is detected, recorded and emailed to
-  an operator — and then nothing happens automatically.** The response is a human reading a message,
-  which §Q4 chose over an automatic refusal because a false positive must never dark a shop. The only
-  AUTOMATIC bound remains §2.3's grace window for a paid tier.
+  **Corrected 2026-09-22 — the sentence here used to read "…and then nothing happens
+  automatically", with "the only AUTOMATIC bound remains §2.3's grace window", and the §2.5 work
+  made both false:** tampering is detected, recorded, emailed to an operator **and a `mismatch`
+  refuses that device's renewal** (`apps/license-server/renew.go:111` →
+  `deviceHasFingerprintMismatch`, `build_integrity.go:190`) — automatically, with no human involved.
+  What still needs a human is the *response policy*, not the response: no auto-termination, no lock,
+  and no session refusal on a repeated `unknown`, because §Q4 routes uncertainty to the operator
+  queue rather than to an automatic action.
 - **The reporting path is verified on a real device, but only manually.** On 2026-09-22 a tablet
   returned its own signing certificate correctly (see the status note), so the JNI read works as
   designed. What remains unguarded is REGRESSION: with no Android CI leg, nothing would notice if a
@@ -720,7 +737,7 @@ what this record decides, which removes most of option B's attraction.
 **What option A obliges us to do instead:** write the rotation procedure down *before* it is
 needed, because the failure mode it guards against — a lost or leaked release keystore — is
 unrecoverable for existing installs. That procedure belongs in `apps/mobile-tauri/AGENTS.md`, which
-already documents the signing configuration at `:40-46`, not here.
+already documents the signing configuration in its **Signing** section (`apps/mobile-tauri/AGENTS.md:176`+; corrected 2026-09-22 — this cited `:40-46`, which is the Gradle/JDK failure block), not here.
 
 **If the key is ever compromised:** option B becomes mandatory retroactively, and every tenant's
 pin set must accept both fingerprints during the migration. Recording this now is cheaper than
@@ -740,7 +757,7 @@ therefore what to patch. Telling the *operator* costs nothing and serves every l
 because a genuine enterprise rebuild is diagnosed by a human who already has admin access — not by
 a message on the affected terminal.
 
-**Consistent with how the repo already handles boot reads** (`AppShell.tsx:235-240`): the device
+**Consistent with how the repo already handles boot reads** (`AppShell.tsx:253`): the device
 learns only what it must act on, and the reason lives in logs and admin surfaces. The refusal
 remains visible to the merchant as a failed renewal, which is enough for them to open a support
 conversation.
@@ -751,7 +768,7 @@ conversation.
 DEFERRED until two prerequisites hold, and the deferral is deliberate rather than an omission.**
 
 The destination is settled, because the infrastructure already exists and is proven:
-`apps/license-server/admin_stats.go:574-668` computes a `NeedsAttention` list today (emitted at
+`apps/license-server/admin_stats.go:581-675` computes a `NeedsAttention` list today (emitted at
 `:790`), including a `grace_period` category. Quota and fingerprint violations become two more rows in that list — no
 new UI, the signal lands where an operator is already looking, and §2.4's response policy (flag,
 never auto-terminate) is a human reading a queue.
@@ -769,8 +786,7 @@ the record of why the deferral was deliberate:
 criterion assumed `NeedsAttention` had no reader, and reading the read path showed that is no
 longer true:
 
-- Producer: `apps/license-server/admin_stats.go:574-668` (items appended at `:604`, `:635`,
-  `:662`) emits three categories — `grace_period`, `expired_active`, `refund` — capped at 20,
+- Producer: `apps/license-server/admin_stats.go:581-675` (items appended at `:611`/`:642`/`:669`) emits three categories — `grace_period`, `expired_active`, `refund` — capped at 20,
   each date-stamped.
 - Consumer: `website/public/admin/admin.js:357-373` renders the alert card and inserts it with
   `c.insertBefore(attCard, c.firstChild)` — **above the revenue hero** — under a comment stating
@@ -797,7 +813,7 @@ subsystem:
   (`passwordRotationReminderInterval`) so a standing condition does not re-notify daily.
 - `apps/license-server/trial_emails.go` supplies the **per-event idempotency log**
   (`trial_email_log`, `emailAlreadySent`, `logTrialEmailSent`) so one violation notifies once.
-- Both are registered as boot goroutines (`main.go:434,451`) and both **skip cleanly when
+- Both are registered as boot goroutines (`main.go:457,474`) — corrected 2026-09-22; `:434`/`:451` were a webhook route and an `ensure*` migration, not the boot goroutines and both **skip cleanly when
   `OZ_SMTP_HOST` is unset**, which is the fail-open direction this record requires elsewhere.
 
 **A violation alert has nothing to scan until the field exists**, so the two prerequisites are
@@ -852,9 +868,10 @@ is the entire reason §2.2 exists.
 rolled-out client would each produce `unknown` reports from legitimate devices. Routing escalation
 to a human queue means the worst outcome is a support ticket — whereas an automatic lockout on the
 same bug would dark every till running the affected build. **ADR #58 §2.7** forbids the latter for
-the same reason ("Enforcement never depends on the local DB refusing to open",
-`2026-10-04-adr58-online-licence-heartbeat-and-revocation.md:440-447`). This record has no §2.7;
-the earlier citation pointed at a section that does not exist here.
+the same reason ("Enforcement never depends on the local DB refusing to open" —
+`2026-10-04-adr58-online-licence-heartbeat-and-revocation.md` **§2.7**; cited by line as `:440-447`
+until the 2026-09-22 re-measure, which lands on ADR #58's §2.4a.1 renew guard instead). This record
+has no §2.7 of its own; the earlier citation pointed at a section that does not exist here.
 
 **Suggested N: 7 consecutive reports**, which at one report per sync cycle separates a broken client
 from an intermittent failure while staying inside a working day. The number is a tuning parameter,
@@ -985,22 +1002,28 @@ change; B makes it an ordinary write. §3.2 already names keystore rotation as a
 rather than a local one — a set is the data shape that operation requires. Option A would ship a
 scalar and pay for it in an incident.
 
-**Bound and rule:** the set is capped (a small N, e.g. 4) and ordered, so it does not become an
-unbounded allow-list — an attacker who could append to it would have defeated §2.1. Membership is
-checked in constant time against the reported value; the cap is a security property, not a storage
-convenience.
+**Bound and rule:** the set is capped (`maxAcceptedPins = 4`), so it does not become an unbounded
+allow-list — an attacker who could append to it would have defeated §2.1. The cap is a security
+property, not a storage convenience. **Two corrections, 2026-09-22:** the set is **not ordered** —
+no ordering rule exists in code, and none is needed, because membership is a set test; and
+membership is **not** checked in constant time — `build_fingerprint.rs:108-111` is
+`accepted.iter().any(|e| normalize(e) == candidate)`, which short-circuits, and
+`build_integrity.go:100-104` loops the same way. At four pins neither has any practical
+consequence, but the claims were wrong as written, and an unimplemented constant-time guarantee is
+exactly the sort of assertion this record exists to avoid.
 
 ### Q-B — Where does the pinned fingerprint live server-side, and who writes it? `[blocking]` — DECIDED
 
 §2.1 says the server "compares it against the fingerprint(s) *it* holds for that tenant release
 channel". The phrase **"tenant release channel" appears nowhere else in the repository** — a
 repo-wide search for `release_channel` / `releaseChannel` returns **zero matches**, so this record is
-the only place the concept exists. No store, no table and no writer is named, so as written §2.1
+the only place the concept exists. *(True at decision time; `release_channels` now EXISTS — see the
+IMPLEMENTED note at the end of this section. Marked 2026-09-22.)* No store, no table and no writer is named, so as written §2.1
 specifies a comparison against data that nothing in the system produces.
 
 | Option | Pros | Cons |
 |---|---|---|
-| **A. A `release_channels` collection**, keyed by channel, holding the accepted pin set | One pin serves every tenant on the channel; rotation is one write; matches the "channel" language already used | A new collection and a new admin write path; today there is exactly **one** release channel (one keystore, `gen/android/app/build.gradle.kts:40-46`), so the indirection must earn its keep |
+| **A. A `release_channels` collection**, keyed by channel, holding the accepted pin set | One pin serves every tenant on the channel; rotation is one write; matches the "channel" language already used | A new collection and a new admin write path; today there is exactly **one** release channel (one keystore, `apps/mobile-tauri/gen/android/app/build.gradle.kts:40-46`), so the indirection must earn its keep |
 | **B. A field on the tenant record** (a per-tenant pin) | No new collection; the admin surface that already acts on a tenant writes it | Contradicts the word "channel": N tenants on one build need N identical writes, and Q1's rotation becomes an N-row coordinated update rather than one |
 | **C. Derive it from a hosted build artifact** at report time | The pin cannot drift from the shipped APK | Requires the server to hold and hash build artifacts — a release-pipeline dependency this record does not otherwise need, and a new failure mode when the artifact is unavailable |
 
@@ -1009,7 +1032,7 @@ admin surface and read by the sync server; with the honest note that today there
 channel.**
 
 The language in §2.1 and Q1 is already channel-scoped, and the deciding fact is operational: this
-project has **one** long-lived release keystore (`gen/android/app/build.gradle.kts:40-46`, Q1), so the
+project has **one** long-lived release keystore (`apps/mobile-tauri/gen/android/app/build.gradle.kts:40-46`, Q1), so the
 channel is a set of one — but the *rotation* story Q1 commits to is precisely the case where a
 per-tenant field (B) becomes an N-tenant coordinated write. A channel record makes rotation one
 write. Option C is rejected because it adds a release-pipeline dependency to the server for a value
@@ -1078,7 +1101,7 @@ for the sync-disabled tenant that ADR #56 §2.4 exempts, and B because it can ne
 than a week even for a device reporting hourly.
 
 **Aligned with the §Q3 cadence, which is the point.** The escalation lands in the
-`NeedsAttention` queue (`admin_stats.go:574-668`), whose existing entries are **date-stamped and
+`NeedsAttention` queue (`admin_stats.go:581-675`), whose existing entries are **date-stamped and
 day-scale** — the grace-period category carries a `grace_until` date at :599-603. A trigger measured
 in calendar time is the unit that queue is read in, so the 7-day window is also the cadence at which
 a human can actually act. Counting cycles would put a sub-hour signal into a day-scale queue and
@@ -1098,7 +1121,7 @@ place the client can actually read it.
 
 | Option | Pros | Cons |
 |---|---|---|
-| **A. Reuse ADR #58 §2.4a.1's single generic message** ("invalid api_key or tenant is not active", `renew.go:76-81`) | One code path, one message, no new string to leak; consistent with ADR #58's deliberate genericness (`2026-10-04-adr58-online-licence-heartbeat-and-revocation.md:289-293`); a fingerprint refusal is indistinguishable from a lapsed account | The *operator* cannot tell a fingerprint refusal from a billing lapse in that response — mitigated because diagnosis is admin-side by Q2 |
+| **A. Reuse ADR #58 §2.4a.1's single generic message** ("invalid api_key or tenant is not active", `renew.go:82-87`) | One code path, one message, no new string to leak; consistent with ADR #58's deliberate genericness (ADR #58 **§2.4a.1**; cited by line as `:289-293` until the 2026-09-22 re-measure); a fingerprint refusal is indistinguishable from a lapsed account | The *operator* cannot tell a fingerprint refusal from a billing lapse in that response — mitigated because diagnosis is admin-side by Q2 |
 | **B. A distinct message** ("this installation failed an integrity check") | Operator/merchant diagnostics | Exactly what Q2 rejected: it tells the attacker the control fired |
 | **C. A distinct message visible only to the admin surface**, generic on the wire | Diagnosis without disclosure | Requires the admin surface to join the refusal to the tenant, i.e. §2.4's detection to already be built (deferred on Q3) |
 
@@ -1106,7 +1129,7 @@ place the client can actually read it.
 
 ADR #58 §2.4a.1 already returns **one** message for every non-active status by design, and its own
 text names the cost — a client "cannot distinguish \"you are banned\" from \"your account lapsed\""
-— and accepts it (`2026-10-04-adr58-online-licence-heartbeat-and-revocation.md:289-293`). This record's
+— and accepts it (ADR #58 **§2.4a.1**; cited by line as `:289-293` until the 2026-09-22 re-measure). This record's
 Q2 reached the identical conclusion from the integrity side. Reusing the string makes the two records
 agree on the wire rather than merely in prose, and it means a fingerprint refusal is
 **indistinguishable from an ordinary lapse** — which is the property Q2 asks for. Option C is the
@@ -1143,3 +1166,5 @@ guard is just above it, and the device check sits beside it rather than replacin
 - **Not device attestation of the server.** That is ADR #55, and it protects the opposite
   direction (a credential leaving toward a lapsed host).
 - **Not a promise of perfect security.** See §1.3 exclusions and §3.3 residuals.
+
+> last audited 22-09-26 by docs-auditor
