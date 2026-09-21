@@ -86,20 +86,14 @@ function getScreenOrientation(): ScreenOrientationAPI | null {
  * Android soft keyboard: `adjustResize` shrinks `innerHeight` and can flip the
  * comparison while the sheet is still laying out landscape.
  *
- * The query is only trusted when the host really evaluated it (`instanceof
- * MediaQueryList`). jsdom ships no `MediaQueryList`, and the stub in
- * `ui/src/test-setup.ts` answers `false` to every query — trusting that would
- * pin `isLandscape` to false on a landscape viewport. Absent or unevaluated,
- * fall back to the viewport comparison, which is at least live.
+ * `matchMedia` is absent in some embedded hosts, so guard rather than
+ * require: the viewport comparison is the fallback for a host that cannot
+ * answer the query at all.
  */
 function readIsLandscape(): boolean {
-  if (
-    typeof window.matchMedia === 'function' &&
-    typeof window.MediaQueryList === 'function'
-  ) {
+  if (typeof window.matchMedia === 'function') {
     try {
-      const mql = window.matchMedia(LANDSCAPE_QUERY);
-      if (mql instanceof window.MediaQueryList) return mql.matches;
+      return window.matchMedia(LANDSCAPE_QUERY).matches;
     } catch {
       // Host threw from matchMedia — fall back to the viewport comparison.
     }
