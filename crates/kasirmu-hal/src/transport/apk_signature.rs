@@ -66,6 +66,14 @@ pub fn apk_signing_fingerprint() -> Result<Option<String>, String> {
         // Application context: `ActivityThread.currentApplication()` is the
         // documented route from library code with no Activity in hand, and is
         // what this crate already assumes needs no extra permission.
+        //
+        // Class-loader note, because it is the usual way this call fails:
+        // `FindClass` on a thread attached to the JVM (rather than the thread
+        // that entered Java) resolves through the SYSTEM loader, not the app
+        // loader. `ActivityThread` is a framework class on the bootclasspath, so
+        // the system loader finds it — which is precisely why this entry point is
+        // used instead of an app-defined helper class, which would not resolve
+        // here.
         let activity_thread = env.find_class("android/app/ActivityThread")?;
         let application = env
             .call_static_method(

@@ -153,3 +153,56 @@ func TestRecordBuildIntegrity_StoresTheNormalisedReport(t *testing.T) {
 		t.Errorf("stored fingerprint = %q, want the normalised lowercase form %q", got, unrelated)
 	}
 }
+
+// ── The on-device value, pinned (ADR #57 §2.1) ───────────────────
+
+// deviceFingerprint is the value a REAL tablet reported on 2026-09-22 (Redmi Pad
+// SE, universal debug+release APK signed with the debug keystore). It was read by
+// invoking get_build_fingerprint over CDP and independently corroborated with
+// `apksigner verify --print-certs` on the same APK — the two agree exactly.
+//
+// Why pin a literal: it is the only test in this package backed by on-device
+// evidence rather than by a fixture, so it fails loudly if the client’s output
+// FORMAT ever drifts from what the classifier accepts (case, separators, length).
+// A format drift here would make every real device classify as `mismatch`.
+const deviceFingerprint = "80225936dea046144ee13db692165e0aecdbb31a64e89c811955422b075956c9"
+
+func TestOnDeviceReportClassifiesAsValidAgainstItsOwnCertificate(t *testing.T) {
+	// The device reports its own signing certificate; the operator pins that same
+	// certificate. This is the ordinary correct-build case and it MUST be `valid`.
+	if got := classifyBuildFingerprint(deviceFingerprint, []string{deviceFingerprint}); got != buildVerdictValid {
+		t.Errorf("a device reporting its own pinned certificate = %q, want %q", got, buildVerdictValid)
+	}
+}
+
+func TestOnDeviceReportMatchesTheKeytoolSpelling(t *testing.T) {
+	// An operator pastes the keytool form (uppercase, colon-separated) into the
+	// admin route. That must verify the very same device, or every correctly
+	// pinned deployment would start refusing renewals.
+	upper := strings.ToUpper(deviceFingerprint)
+	var keytool strings.Builder
+	for i := 0; i < len(upper); i += 2 {
+		if i > 0 {
+			keytool.WriteByte(':')
+		}
+		keytool.WriteString(upper[i : i+2])
+	}
+	if got := classifyBuildFingerprint(deviceFingerprint, []string{keytool.String()}); got != buildVerdictValid {
+		t.Errorf("the keytool spelling of the device cert = %q, want %q", got, buildVerdictValid)
+	}
+}
+
+func TestOnDeviceFormatIsBareLowercaseHex(t *testing.T) {
+	// Pins the client’s output CONTRACT, not just its value: lowercase, bare,
+	// exactly 64 chars. Android returns uppercase/colon-free but a `hex::encode`
+	// of the digest is lowercase; anything else here means a format regression.
+	if len(deviceFingerprint) != 64 {
+		t.Errorf("device fingerprint length = %d, want 64", len(deviceFingerprint))
+	}
+	if deviceFingerprint != strings.ToLower(deviceFingerprint) {
+		t.Error("device fingerprint must be lowercase")
+	}
+	if strings.ContainsAny(deviceFingerprint, ": ") {
+		t.Error("device fingerprint must be bare hex, with no separators")
+	}
+}

@@ -613,6 +613,11 @@ pub fn run() {
                 commands::health::version,
                 commands::health::get_device_id,
                 commands::health::get_local_ip,
+                // ADR #57 §2.1: makes the APK signing-certificate read observable
+                // on any device, including one with no licence activated — the
+                // state in which its only other caller (the licence-status call)
+                // returns before reaching the JNI.
+                commands::health::get_build_fingerprint,
                 commands::pos::start_sale_scoped,
                 commands::pos::add_line_scoped,
                 commands::pos::set_line_course_scoped,
