@@ -2,12 +2,17 @@
 num: 57
 area: security
 title: "ADR #57: Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection"
-status: Proposed (2026-10-04) — part implemented, part to build
+status: Proposed (2026-10-04) — the grace ceiling, the sentinel guard and the fingerprint VERDICT are implemented; the client reporting, the pin store and server-side detection are not
 ---
 
 # ADR #57: Client Tamper Resistance Without Play Integrity
 
-**Status:** Proposed (2026-10-04). Some controls below are **already implemented and verified**
+**Status:** Proposed (2026-10-04). **Updated 2026-10-05:** §2.2's verdict rule now has an
+implementation (`kasirmu_core::build_fingerprint`), §2.6's required test was found to ALREADY EXIST
+and was verified under `--release`, and §2.3's grace ceiling was already implemented. **Still to
+build: §2.1's client half** (the Android APK signing-certificate computation and its reporting),
+the `release_channels` pin store §Q-B decided, and §2.4's server-side detection — which is where
+§Q3's human assignment blocks. Some controls below are **already implemented and verified**
 (marked IMPLEMENTED with evidence); the rest are **to build** (marked TO BUILD). No control is
 claimed that this record does not either cite or name as work.
 **Date:** 2026-10-04
@@ -264,9 +269,43 @@ be extended to *check failures*.
 already bounded (§2.3) and the renewal refusal removes persistence. Locking would trade a bounded
 risk for an unbounded false-positive risk against legitimate merchants.
 
+#### IMPLEMENTED 2026-10-05 — §2.2's verdict is real; §2.1's client half is not
+
+`kasirmu_core::build_fingerprint` now classifies a reported fingerprint into three verdicts, which is
+what makes §2.2 enforceable rather than aspirational:
+
+| Input | Verdict | Why it is not something else |
+|---|---|---|
+| absent (`None`) | `Unknown` | §2.2: absence is a verdict, never `valid` |
+| present but not 64 hex digits | `Unknown` | Unusable is the same class as absent — the device made no usable claim |
+| a SHA-256 the channel does not hold | `Mismatch` | Positive evidence: the re-signed APK |
+| a SHA-256 the channel holds | `Valid` | Matched against the SET §Q-B decided, so rotation is an ordinary write |
+| anything, when the channel holds NO pin | `Unknown` | A channel nobody pinned has made no claim; calling it a mismatch would refuse renewal for every tenant on it |
+
+**The `Unknown`/`Mismatch` split is the whole point, and it is pinned by a test.**
+`only_a_mismatch_counts_as_positive_evidence` asserts the predicate is true for exactly one verdict,
+because §2.5 refuses *renewal* on a mismatch and does nothing on an `Unknown`. Collapsing silence
+into evidence is the failure §2.2 names, and its consequence is a merchant lockout rather than a
+security hole — which is why the conservative direction is the default here.
+
+**Normalisation is not cosmetic and has its own test.** `keytool` prints a SHA-256 uppercase and
+colon-separated; Android's `PackageManager` returns it lowercase and bare. A fingerprint pasted into
+the admin surface in the first form must not mismatch a build that is perfectly correct, so both
+spellings are folded before comparison.
+
+**What is NOT built, stated so the table above is not misread.** This is the *classification* half:
+a pure function over a value the caller obtained. Missing: (a) the Android-side computation and
+reporting of the APK signing certificate, (b) the `release_channels` record §Q-B decided holds the
+pin set, and (c) the writer for it. §2.1's client leg therefore has no implementation yet, while the
+rule it feeds — including the §2.2 clause that keeps it from being bypassable by deleting one line —
+does.
+
+**Verification run:** `cargo test -p kasirmu-core --lib` → **3151 passed, 0 failed** (7 of them in
+`build_fingerprint`). The §2.6 release-profile check is recorded at that section.
+
 ### 2.6 `BOOTSTRAP_FREE` is constrained to Free, permanently
 
-**IMPLEMENTED, with a test to add.** `subscription.rs:518`:
+**IMPLEMENTED, and the test §2.6 asked for ALREADY EXISTED — verified 2026-10-05.** `subscription.rs:518`:
 
 ```rust
 if self.signature == BOOTSTRAP_FREE_SIGNATURE && self.tier.tier_key() == "free" {
@@ -279,9 +318,30 @@ a Free row confers Free entitlements, which the user already has. It is nonethel
 the risk is not the current branch but a future one: any edit that lets a non-Free tier reach this
 return is a full bypass.
 
-**TO BUILD — and scoped to the right function.** The test asserts the sentinel branch can never
-return `Ok` for a tier whose `tier_key() != "free"`, and a comment pinning that as an invariant
-rather than a convenience. This is cheap and closes the class.
+**THE TEST ALREADY EXISTS — this item is DONE, verified by running it rather than by reading it.**
+`sentinel_does_not_carry_a_paid_tier` (`subscription_tests.rs:196`) already asserts exactly what this
+section asks for, and it is **stronger** than the section specifies: it writes an `Enterprise` tier
+onto a sentinel-signed row and asserts rejection in release / the legacy permissive arm in debug, so
+a future widening of the guard shows up rather than passing silently.
+
+**One correction to this section's instruction to add the test.** The instruction was written as if
+the test were absent; it is present. What is worth recording instead is the release-profile proof,
+because the debug assertion cannot demonstrate the invariant: under `debug_assertions` the
+`verify_license_signature` short-circuit accepts the sentinel for ANY payload BY DESIGN, so the
+debug arm asserts the opposite of the security property.
+
+```text
+cargo test -p kasirmu-core --lib --release -- sentinel_does_not_carry_a_paid_tier  → ok
+```
+
+That run is what makes the claim true rather than the `#[cfg]` looking correct. **It is not part of
+any default test invocation** — `cargo test` in debug takes the other arm — so the invariant is
+unverified by the ordinary local loop and by any CI leg that does not pass `--release`. Recorded here
+because a reader should not assume a green `cargo test` covers it.
+
+**A comment pinning it as an invariant was added** at `subscription.rs:517-527`, naming the
+`tier_key()` half as the only thing preventing a 14-byte forgery from claiming a paid tier, and
+naming the debug short-circuit as the reason the test must not target `verify_license_signature`.
 
 > **Scope, stated explicitly, because the obvious target is the wrong one.** The test must target
 > `TenantSubscription::verify_signature` (`subscription.rs:517`) — the release-path policy where the
