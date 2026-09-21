@@ -291,3 +291,67 @@ func TestBuildIntegrityScanner_AlertBodyDistinguishesTheTwoConditions(t *testing
 		t.Error("the persistent-unknown alert must not read as an accusation")
 	}
 }
+
+// ── The quota alert ──────────────────────────────────────────────
+
+func TestQuotaAlert_NoSmtpLogsAndDoesNotStartACooldown(t *testing.T) {
+	// Same rule as the fingerprint alerts: an alert nobody received must not
+	// suppress the next one for a week.
+	app, _ := dashboardMux(t)
+	defer app.Cleanup()
+	t.Setenv("OZ_SMTP_HOST", "")
+	tenant := seedLifecycleTenant(t, app, "quotaalert@test.com", "active")
+	now := time.Now().UTC()
+
+	env := &buildIntegrityAlertEnv{to: "ops@test.com", smtpEnabled: false, now: now}
+	sent := alertTenantOverPosQuota(app, env, tenantOverQuota{
+		tenantID: tenant.Id, active: 3, cap: 2, tierKey: "pro",
+	})
+	if sent {
+		t.Error("no alert can be sent without a relay")
+	}
+	if suppressedByCooldown(app, tenant.Id, quotaAlertCondition, now.Add(time.Minute)) {
+		t.Error("a cooldown must not start for an alert that was never delivered")
+	}
+}
+
+func TestQuotaAlert_DoesNotSuppressTheFingerprintAlert(t *testing.T) {
+	// A tenant can be over quota AND have a tampered device. Those are two
+	// separate conversations, so alerting on one must not silence the other.
+	app, _ := dashboardMux(t)
+	defer app.Cleanup()
+	tenant := seedLifecycleTenant(t, app, "quotatwoalerts@test.com", "active")
+	now := time.Now().UTC()
+
+	recordBuildIntegrityAlert(app, buildIntegrityFinding{
+		tenantID:  tenant.Id,
+		condition: quotaAlertCondition,
+	}, now)
+
+	if suppressedByCooldown(app, tenant.Id, buildVerdictMismatch, now) {
+		t.Error("a quota alert must not suppress a fingerprint alert for the same tenant")
+	}
+}
+func TestQuotaAlert_BodyDoesNotAccuseTheMerchant(t *testing.T) {
+	// §2.4: an over-cap count has innocent explanations. An alert that reads as
+	// an accusation is one an operator learns to ignore, and it would contradict
+	// the response policy the section chose.
+	subject, body := renderQuotaAlert(tenantOverQuota{
+		tenantID: "t1", email: "a@test.com", active: 4, cap: 2, tierKey: "pro",
+	})
+	if !strings.Contains(subject, "more terminals") {
+		t.Errorf("subject should describe the condition, got %q", subject)
+	}
+	if !strings.Contains(body, "SIGNAL, not proof") {
+		t.Error("the body must state the finding is a signal, not a verdict")
+	}
+	if !strings.Contains(body, "Nothing has been locked") {
+		t.Error("the body must say nothing was locked, per the section anti-lockout policy")
+	}
+	if !strings.Contains(body, "4 active") {
+		t.Errorf("the body must show the observed count, got:\n%s", body)
+	}
+	if !strings.Contains(body, "Allowed:  2") {
+		t.Errorf("the body must show the cap, got:\n%s", body)
+	}
+}

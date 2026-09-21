@@ -121,8 +121,19 @@ func runBuildIntegrityScanner(app core.App) {
 		}
 	}
 
-	log.Printf("build-integrity-scanner: scan complete — %d findings, %d alerts sent",
-		len(mismatches)+len(unknowns), sent)
+	// §2.4’s other half: the quota-EFFECT signal. Independent of the fingerprint
+	// work — it compares what the tenant HAS against what their tier allows, so
+	// it catches a client that skips its local quota gates without consulting
+	// anything that client claims.
+	overQuota := findTenantsOverPosQuota(app)
+	for _, q := range overQuota {
+		if alertTenantOverPosQuota(app, env, q) {
+			sent++
+		}
+	}
+
+	log.Printf("build-integrity-scanner: scan complete — %d integrity findings, %d quota findings, %d alerts sent",
+		len(mismatches)+len(unknowns), len(overQuota), sent)
 }
 
 // buildIntegrityAlertEnv carries the per-scan configuration.
@@ -504,4 +515,90 @@ func ensureBuildIntegrityAlertState(app core.App) error {
 	}
 	log.Printf("migrated: created %s collection (ADR #57 §2.4 alert cooldown)", buildIntegrityAlertStateCollection)
 	return nil
+}
+
+// ── Quota-effect alert (ADR #57 §2.4, second signal) ──────────────
+
+// quotaAlertCondition is the alert-state key for this finding. Distinct from the
+// fingerprint conditions so the two never suppress each other: a tenant can be
+// over quota AND have a tampered device, and those are different conversations.
+const quotaAlertCondition = "pos_over_quota"
+
+// alertTenantOverPosQuota notifies the operator of one over-quota tenant.
+//
+// **The finding is a SIGNAL, not a verdict, and the body says so.** §2.4’s own
+// reasoning lists why an over-cap count is not proof of tampering: a legitimate
+// support correction, a restore from backup, or a tier change mid-sync all
+// produce it. The operator is asked to investigate, which is exactly the
+// response policy §2.4 chose over auto-termination.
+//
+// Reuses the fingerprint path’s cooldown machinery so an ongoing condition
+// re-alerts weekly rather than daily, and the no-SMTP arm still logs (and does
+// NOT start a cooldown) — an undelivered alert must not suppress the next one.
+func alertTenantOverPosQuota(app core.App, env *buildIntegrityAlertEnv, q tenantOverQuota) bool {
+	if suppressedByCooldown(app, q.tenantID, quotaAlertCondition, env.now) {
+		log.Printf("build-integrity-scanner: %s for tenant %s within cooldown — not re-alerting",
+			quotaAlertCondition, q.tenantID)
+		return false
+	}
+
+	log.Printf("build-integrity-scanner: %s — tenant=%s email=%q active=%d cap=%d tier=%s",
+		quotaAlertCondition, q.tenantID, q.email, q.active, q.cap, q.tierKey)
+
+	if !env.smtpEnabled {
+		log.Printf("build-integrity-scanner: OZ_SMTP_HOST not configured — quota alert for %s logged only", q.tenantID)
+		return false
+	}
+
+	subject, body := renderQuotaAlert(q)
+	if err := sendBuildIntegrityAlert(env.to, subject, body); err != nil {
+		log.Printf("build-integrity-scanner: failed to send quota alert for tenant %s: %v", q.tenantID, err)
+		return false
+	}
+	recordBuildIntegrityAlert(app, buildIntegrityFinding{
+		tenantID:  q.tenantID,
+		condition: quotaAlertCondition,
+	}, env.now)
+	log.Printf("build-integrity-scanner: alerted %q about %s for tenant %s", env.to, quotaAlertCondition, q.tenantID)
+	return true
+}
+
+// renderQuotaAlert builds the subject and body for an over-quota finding.
+func renderQuotaAlert(q tenantOverQuota) (subject, body string) {
+	tenant := q.email
+	if tenant == "" {
+		tenant = "(no email on record)"
+	}
+	subject = "kasir.mu: a tenant is running more terminals than their tier allows"
+	body = fmt.Sprintf(`Hi,
+
+A tenant has more active POS devices registered than their subscription permits.
+
+  Tenant:   %s (%s)
+  Devices:  %d active
+  Allowed:  %d
+  Tier:     %s
+
+This is a SIGNAL, not proof of wrongdoing. A local quota gate normally prevents
+this, so the usual innocent explanations are:
+
+  1. A tier change that has not fully synced to the affected terminal.
+  2. A restore from a backup taken on a larger plan.
+  3. A support correction that raised or lowered a limit by hand.
+
+The one explanation that is not innocent is a modified client that skipped the
+gate, which is what this signal exists to catch. Nothing about this report can
+tell those apart - only a person can.
+
+What to check:
+
+  - Whether the tenant recently changed tier or restored a backup.
+  - Whether the extra devices look like real terminals the merchant owns.
+  - If it looks deliberate, revoke the offending device from the admin surface.
+
+Nothing has been locked. This system deliberately never auto-terminates an
+account; a false positive must not dark a shop.
+
+--- The kasir.mu Team`, tenant, q.tenantID, q.active, q.cap, q.tierKey)
+	return subject, body
 }
