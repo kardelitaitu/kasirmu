@@ -363,6 +363,13 @@ workspace-card-unpin-aria = Unpin { $name }
 
 # Shell
 
+# Shell layout (ADR-0001, tier T3). The shell renders the portrait prompt for a
+# page registering layout="landscape-locked"; keep the child text the id string
+# resolves to in step with the fallback in AppShell/TabletAppShell.
+layout-rotate-to-landscape = Rotate your device to landscape for the full layout.
+layout-rotate-to-landscape-aria =
+    .aria-label = Rotate to landscape
+
 # Status Bar
 status-bar-connected = Backend connected
 status-bar-disconnected = Backend disconnected

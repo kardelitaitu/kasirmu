@@ -46,6 +46,13 @@ nav-orders = Pesanan
 error-boundary-title = Terjadi kesalahan
 error-boundary-retry = Coba Lagi
 
+# Shell layout (ADR-0001, tier T3). The shell renders the portrait prompt for a
+# page registering layout="landscape-locked"; keep the value in step with the
+# child text in AppShell/TabletAppShell (the English fallback).
+layout-rotate-to-landscape = Putar perangkat Anda ke lanskap untuk tata letak lengkap.
+layout-rotate-to-landscape-aria =
+    .aria-label = Putar ke lanskap
+
 # Status Bar
 status-bar-connected = Backend terhubung
 status-bar-disconnected = Backend terputus

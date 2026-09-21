@@ -556,6 +556,65 @@
   }
 }
 
+/* ── T3: declared page layouts (ADR-0001 Slice 1b) ──────────────────────
+ * Two classes are the shell's half of the registry's declared \`layout\` field
+ * (ui/src/registries/page-registry/index.ts). Both shells render the same two
+ * nodes, so both rules live in THIS sheet — the desktop entry imports it
+ * (ui/src/main.tsx) and the tablet entry imports it too (ui/src/main.mobile.tsx
+ * loads theme/*.css + this? no: TabletAppLayout imports tablet.css, and
+ * AppLayout.css arrives with main.tsx on desktop. tablet.css carries the
+ * tablet's own copy of these two rules, exactly as it already does for
+ * .skip-to-content).
+ *
+ * .page-rotate-prompt — the portrait fallback for a page whose registration
+ * declares 'landscape-locked'. It is an OVERLAY, never a gate: the page stays
+ * mounted, scrollable and usable underneath (see renderPageLayout's contract in
+ * AppShell.tsx), so the panel sits at the bottom of the content slot, clears
+ * the tablet's bottom tab bar, and is pointer-transparent except for its own
+ * box. Fixed (not absolute) on purpose: the prompt must stay visible while the
+ * PAGE underneath scrolls. It replaces the old bare <p> text, which a tablet
+ * rendered nearly invisible flush against the page content.
+ *
+ * Backdrop: --color-bg-overlay (the scrim of every modal in the tree) at 70%,
+ * sized in vh/vw so it also covers the shell on a phone-sized viewport. */
+.page-rotate-prompt {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  /* Clears the tablet's bottom tab bar (--tablet-tap-target); it is a no-op on
+     desktop, where that token falls back to the touch minimum. */
+  padding-bottom: calc(var(--space-4) + var(--tablet-tap-target, var(--space-12)));
+  background: color-mix(in srgb, var(--color-bg-overlay) 70%, transparent);
+  z-index: var(--z-overlay);
+  pointer-events: none;
+}
+
+.page-rotate-prompt > * {
+  pointer-events: auto;
+  max-width: 32ch;
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-bg-elevated);
+  color: var(--color-fg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-snug);
+  text-align: center;
+}
+
+/* .page-layout-custom — the marker for a page that owns its layout contract
+ * outside T1/T2 (registry layout: 'custom'). The shell only tags it; the page
+ * keeps its own rules. Stated so the class is not read as unstyled drift. */
+.page-layout-custom {
+  display: block;
+}
+
 /* Tablet portrait: full-width */
 @media (max-width: 768px) {
   .app-header {

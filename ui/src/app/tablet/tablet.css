@@ -356,6 +356,53 @@
   -webkit-user-select: text;
 }
 
+/* ── T3: declared page layouts (ADR-0001 Slice 1b) ──────────────────────
+ * The tablet entry (ui/src/main.mobile.tsx + TabletAppLayout.tsx) loads
+ * theme/*.css and this sheet — NOT AppLayout.css — so the shell's two
+ * layout-marker rules need their tablet copy here, exactly as .skip-to-content
+ * above already does. The desktop twin lives at the same rules in
+ * ui/src/app/AppLayout.css; keep the pair in step.
+ *
+ * .page-rotate-prompt — the portrait fallback for a page registering
+ * layout="landscape-locked". An overlay, never a gate: the page underneath
+ * stays mounted and usable. Fixed so it survives the page scrolling, and the
+ * extra bottom padding keeps the panel clear of this shell's bottom tab bar. */
+.tablet-shell .page-rotate-prompt {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  padding-bottom: calc(var(--space-4) + var(--tablet-tap-target, var(--space-12)));
+  background: color-mix(in srgb, var(--color-bg-overlay) 70%, transparent);
+  z-index: var(--z-overlay);
+  pointer-events: none;
+}
+
+.tablet-shell .page-rotate-prompt > * {
+  pointer-events: auto;
+  max-width: 32ch;
+  margin: 0;
+  padding: var(--tablet-spacing, var(--space-4)) var(--space-5);
+  background: var(--color-bg-elevated);
+  color: var(--color-fg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--tablet-radius, var(--radius-lg));
+  box-shadow: var(--shadow-xl);
+  font-size: var(--tablet-font-lg, var(--text-lg));
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-snug);
+  text-align: center;
+}
+
+/* .page-layout-custom — the marker for a page that owns its layout contract
+ * outside T1/T2 (registry layout: 'custom'). The shell only tags it; the page
+ * keeps its own rules. */
+.tablet-shell .page-layout-custom {
+  display: block;
+}
+
 /* ── T1: portrait — verified portrait-safe, no structural change ────────
  * ADR-0001 Slice 3 / T1. Slice 1 shipped the bottom tab bar as the tablet's
  * only nav (TabletAppLayout.tsx renders the bar, NOT `.app-sidebar`, which
