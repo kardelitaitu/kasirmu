@@ -331,8 +331,24 @@ What is held now:
   pragma, in the same function. Reproducing this needs `lib.rs`'s `.drectve` Common-Controls
   directive, which bin and `#[cfg(test)]` targets get but example targets do not — without it the
   probe exe dies with `STATUS_ENTRYPOINT_NOT_FOUND` before any of this runs.
-- **The snapshot carries no data** — 0 sales rows — so this exercises schema drift, not
-  data-bearing tables.
+- **Closed for every table that holds data, by digest rather than by ledger.** The replay was
+  re-run through the shipping runner against a copy of the live dev database (`kasir.db` with its
+  WAL and SHM, the app closed), which holds **485 rows across 25 of 131 tables** — `memos` 113,
+  `memo_revisions` 75, `memo_recipients` 59, `workspace_type_screens` 36, `settings` 34,
+  `workspace_screens` 31, `roles` 6, `workspaces` 6, `loyalty_tiers` 4, `users` 1 … — so per-table
+  row counts and a SHA-256 of every row's canonical content were compared before and after, not
+  just the ledger. Every one of the 131 tables is unchanged. The one skipped statement (the
+  `earn_multiplier` seed) left `loyalty_tiers` at its 4 rows with an identical digest, so the skip
+  inserted nothing and duplicated nothing; the 61st migration added only its own ledger row
+  (485 → 486). The only content that moves is SQLite's internal `sqlite_sequence`: each re-apply
+  advances two AUTOINCREMENT counters by exactly the number of `VALUES` rows in the two
+  `INSERT OR IGNORE` statements it re-executes — `workspace_screens` 60 → 90 → 120 (+30) and
+  `workspace_type_screens` 72 → 108 → 144 (+36) — because a conflict that `OR IGNORE` swallows
+  still allocates a rowid. Nothing is inserted or duplicated by it; the effect is gaps in
+  autoincrement ids, and it is inherent to re-executing the script, not to the skip proof, which
+  only ever sees statements that *error*. Still unmeasured, and honestly so: **0 sales rows**, and
+  no inventory movement — the data exercised here is configuration, memo and account data, not
+  transactions.
 - **A classifier observation, not a finding.** `no such table` admits a class a
   dropped-and-replaced table shares with a genuinely absent one; the proof refuses to skip
   either, so the arm is worth a look for `CREATE`/`ALTER` statements rather than known-broken.
