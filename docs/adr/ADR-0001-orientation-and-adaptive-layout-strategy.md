@@ -2,12 +2,15 @@
 num: 1
 area: frontend-architecture
 title: ADR-0001: Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared escape hatch, and a walker gate)
-status: Proposed (2026-10-11) — nothing implemented; only the wizard slice exists today
+status: Implemented (2026-10-11) — all four tiers landed and gated; 7 sheets migrated
 ---
 
 # ADR-0001: Orientation & Adaptive Layout Strategy
 
-**Status:** Proposed (2026-10-11). The decision below is a strategy; only Slice 0 is implemented.
+**Status:** Implemented (2026-10-11). All four tiers (T1 shell media queries, T2 container
+queries, T3 declared layout escape hatch, T4 walker gate) are in the tree and enforced. Slices
+0-7 landed; seven sheets migrated (RetailPos, KDS, SalesHistory, PaymentModal, PosScreen,
+EodReport, CartPanel). The remaining sheets are future Slice-5 work under the same gate.
 **Date:** 2026-10-11
 **Recorded against:** branch `0.0.39`
 **Tags:** css, layout, orientation, container-queries, tablet, tauri, gates, walker
@@ -196,19 +199,18 @@ consequence.
 
 ## Migration slices
 
-Each slice is independently landable and independently verifiable. **Slice 0 is done and is not
-part of this decision's work.**
+Each slice is independently landable and independently verifiable. **Slices 0-7 are landed.**
 
 | # | Slice | Content | Done condition |
 |---|---|---|---|
 | **0** | Wizard landscape *(shipped)* | `SetupWizard.css:604-659` — one orientation media query, the container widens, presets go three-up, features two-up, preview moves beside the presets. Pinned by `ui/src/__tests__/setupWizardLandscape.test.ts`. | Exists. This slice is the pattern T1 generalizes. |
-| **1** | Registry field + shell consumption | Add the layout/orientation preference to `PageRegistration` and read it in the shell. No page sets it yet. | A registration that sets the field changes the shell layout; a registration that does not, does not. |
-| **2** | Shell declares its container | `container-type: inline-size` on the shell content slot; document the slot in the shell CSS. | A page `.css` can use `@container` and see the slot's width, not the viewport's. |
-| **3** | Shell orientation tier (T1) | Shell chrome gets its `@media (orientation: …)` rules — rail, tab bar, insets, shell column count. | Rotating the app re-lays-out the shell with no React re-render. |
-| **4** | Walker suite (T4) | The sixth CSS walker: orientation literal outside the shell fails; unconsumed declared layout fails. | The suite fails on a planted violation and prints its denominator. |
-| **5** | Page migration, by feature | Convert page `.css` to container queries, feature by feature, largest first. | Each converted feature is verified at both orientations in its own slice, not in a batch. |
-| **6** | Keyboard-trap verification | A check that a focused field plus an open on-screen keyboard leaves the submit control reachable, in both orientations. | One runnable check per migrated form-bearing screen. |
-| **7** | Narrow-shell verification | Confirm the container-query pages behave in a shell narrower than the tablet, and in a desktop window dragged to portrait. | The extreme-aspect-ratio case is exercised, not assumed. |
+| **1** | Registry field + shell consumption | Add the layout/orientation preference to `PageRegistration` and read it in the shell. No page sets it yet. | A registration that sets the field changes the shell layout; a registration that does not, does not. **Done** (`9f26373f1`, `17765ab6e`, `cbf4557f2`). |
+| **2** | Shell declares its container | `container-type: inline-size` on the shell content slot; document the slot in the shell CSS. | A page `.css` can use `@container` and see the slot's width, not the viewport's. **Done** (`1e6d6bd8e`). |
+| **3** | Shell orientation tier (T1) | Shell chrome gets its `@media (orientation: …)` rules — rail, tab bar, insets, shell column count. | Rotating the app re-lays-out the shell with no React re-render. **Done** (`c4b26328a`; `AppLayout.css:658`, `tablet.css:437`). |
+| **4** | Walker suite (T4) | The sixth CSS walker: orientation literal outside the shell fails; unconsumed declared layout fails. | The suite fails on a planted violation and prints its denominator. **Done** (`4748e24df`, `5964fb7ef`; verified end-to-end by planting a real violation and watching it fail at file:line). |
+| **5** | Page migration, by feature | Convert page `.css` to container queries, feature by feature, largest first. | Each converted feature is verified at both orientations in its own slice, not in a batch. **Partially done** — 7 sheets migrated (RetailPos `952aaa0f8`, KDS `97bae2095`, PosScreen `b37236d56`, SalesHistory `cbf225512`, PaymentModal `a83995896`, EodReport `13b5e663b`+`a5e2933e5`, CartPanel `6de083368`). Remaining sheets are future work under the same gate. |
+| **6** | Keyboard-trap verification | A check that a focused field plus an open on-screen keyboard leaves the submit control reachable, in both orientations. | One runnable check per migrated form-bearing screen. **Done** (`e93880a16`; 5 tests, 2 form screens, 0 gaps). |
+| **7** | Narrow-shell verification | Confirm the container-query pages behave in a shell narrower than the tablet, and in a desktop window dragged to portrait. | The extreme-aspect-ratio case is exercised, not assumed. **Done** (`9d18ecf84`, `f9dd06ac2`, `ed3e941f2`; 8 tests, 6 sheets registered, 9 tiers graded, 2 gaps pinned as findings). |
 
 **Sequencing constraint:** slice 4 must land **before** slice 5 is broad. A gate that arrives
 after the migration is measuring a tree it can no longer change cheaply.
@@ -228,13 +230,21 @@ grep -rln "@media[^{]*orientation" ui/src --include='*.css' | wc -l
 # The breakpoint tokens the design system declares (width only, 268-272)
 grep -n "--bp-" ui/src/theme/tokens.css
 
-# The walker family, which currently asserts nothing about orientation
+# The walker family; the orientation suite (T4) is the sixth member and DOES assert orientation
 sed -n '13,20p' docs/frontend/css-verification.md
 ```
 
-**Status of the briefed figure:** the brief asserts 97/115 unresponsive. One instrumented count in
-this file (**139** `.css` files under `ui/src`) does not reconcile with a 115 denominator, and
-**115 is not produced by any command recorded here**. Treat 97/115 as the briefed working figure
-until the two commands above are run and their numbers written down.
+**Measured 2026-10-21** (replaces the briefed 97/115 figure, which no command reproduced):
 
-> last written 11-10-26 — status **Proposed**; not yet audited.
+```
+find ui/src -name '*.css' | wc -l                           → 139   (all sheets)
+find ui/src/features -name '*.css' | wc -l                  → 106   (feature sheets)
+grep -rln '@media' ui/src/features --include='*.css' | wc -l →  66   (feature sheets with ANY @media)
+   ⇒ 40 of 106 feature sheets (38%) declare no @media at all
+```
+
+The walker prints the same population live (`139 sheets parsed; 106 feature sheets fenced`), so the
+denominator is self-auditing rather than quoted. The honest figure is **40 of 106 feature sheets
+carry no width or orientation query**; the T4 gate is what keeps it visible.
+
+> last written 21-10-26 — status **Implemented**; not yet audited.
