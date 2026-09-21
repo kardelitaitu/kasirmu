@@ -2,7 +2,7 @@
 num: 57
 area: security
 title: "ADR #57: Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection"
-status: Proposed (2026-10-04) — the grace ceiling, the sentinel guard, the fingerprint verdict, the Q4 escalation fold and the release-channel pin store are implemented; the client reporting and server-side detection are not
+status: Proposed (2026-10-04) — the grace ceiling, the sentinel guard, the fingerprint verdict, the Q4 escalation fold, the release-channel pin store and the whole of §2.1 (client reporting + server classification) are implemented; §2.4's operator notification is not
 ---
 
 # ADR #57: Client Tamper Resistance Without Play Integrity
@@ -11,11 +11,18 @@ status: Proposed (2026-10-04) — the grace ceiling, the sentinel guard, the fin
 (`kasirmu_core::build_fingerprint`), and §Q3's gate (a) has been rewritten from *"a named person
 reads `NeedsAttention`"* to *"a violation notification exists"* — the read path was checked and the
 reader already exists in code, so the old criterion would have deferred §2.4 indefinitely without
-changing anyone's behaviour. **Still to build: §2.1's client half** (the Android APK
-signing-certificate computation and its reporting) and §2.4's server-side detection — now gated on
-the field shipping and a notification, which are one unit of work. The `release_channels` pin
-store §Q-B decided **now ships** (`apps/license-server/release_pins.go`), so of §2.1's three
-missing pieces only the client leg remains. Some controls below are **already implemented and verified**
+changing anyone's behaviour. **§2.1 now ships end to end** — the Android
+computation (`kasirmu-hal/src/transport/apk_signature.rs`), its reporting on the licence-status
+call, the `release_channels` pin store §Q-B decided, and the server-side classification
+(`apps/license-server/build_integrity.go`). **The one thing still to build is §2.4's operator
+notification**, which is now the sole gate on that section: the field ships, but nothing yet alerts
+an operator, so §2.4's queue remains unbuilt and §3.3 still carries it.
+
+**Verification boundary, stated rather than implied:** `cargo ndk -t arm64-v8a check -p
+kasirmu-mobile` proves the tablet app **compiles** for Android and the desktop build is untouched;
+the classifier and store are tested. **No test exercises the JNI call** — that needs a real device,
+and the Android CI job was retired by `23c963303` (2026-09-02). The on-device read is therefore
+**unverified** until someone builds an APK and inspects it. Some controls below are **already implemented and verified**
 (marked IMPLEMENTED with evidence); the rest are **to build** (marked TO BUILD). No control is
 claimed that this record does not either cite or name as work.
 
@@ -302,18 +309,54 @@ colon-separated; Android's `PackageManager` returns it lowercase and bare. A fin
 the admin surface in the first form must not mismatch a build that is perfectly correct, so both
 spellings are folded before comparison.
 
-**What is NOT built, stated so the table above is not misread.** This is the *classification* half:
-a pure function over a value the caller obtained. Missing: **the Android-side computation and
-reporting of the APK signing certificate** — the only piece still absent. Until it lands, no report
-reaches `classify_build_fingerprint`, so the rule below has no live input. §2.1's client leg
-therefore has no implementation yet, while the rule it feeds — including the §2.2 clause that keeps
-it from being bypassable by deleting one line — does.
+**All three pieces now ship — IMPLEMENTED 2026-09-21.** This paragraph previously listed three
+absent items; the third was the report itself. The full path is now built:
 
-> **Updated 2026-09-21.** The two other items this paragraph used to list — the `release_channels`
-> record §Q-B decided (b) and its writer (c) — **now ship**: `ensureReleaseChannels` creates the
-> collection on boot and `apps/license-server/release_pins.go` provides the admin read/write routes.
-> See the §Q-B implementation note. The server side of §2.1 is therefore ready for a reporter; only
-> the Android leg is missing.
+| Piece | Where |
+|---|---|
+| The Android-side computation | `crates/kasirmu-hal/src/transport/apk_signature.rs` |
+| Its reporting | `kasirmu_bridge::license::check_license_status` → `POST /api/v1/license/status` |
+| The `release_channels` pin store §Q-B decided | `ensureReleaseChannels` + `apps/license-server/release_pins.go` |
+| The server-side classification | `apps/license-server/build_integrity.go` |
+
+**How the Android computation is reached, and why not the way this record first assumed.** A
+Tauri plugin (the obvious first reading of "one IPC + one field") would have meant a new crate, a
+Gradle project, an ACL permission set and a `links`-keyed build script to call one Android API.
+The repository already had the mechanism: `crates/kasirmu-hal/src/transport/bt_android.rs` defines
+**the single `JNI_OnLoad`** in the app library and stashes the `JavaVM`, and `kasirmu-hal` is
+statically linked into `libkasirmu_mobile_lib.so` alongside this app. `apk_signature` is therefore a
+**sibling** of that module borrowing its captured VM through `bt_android::with_env`, not a second
+bridge. A second `JNI_OnLoad` anywhere in the same `.so` is a duplicate-symbol link error, so this
+is not merely cheaper — the VM can only be widened from the module that owns it.
+
+`hex` and `sha2` were added to `kasirmu-hal` **Android-gated** alongside `jni`, so no desktop
+path compiles them.
+
+**The value is computed in native code and never passes through the WebView.** A patched JS bundle
+can lie about many things, but rewriting this value requires patching the native library — a
+strictly higher bar, and the reason §2.1 chose a native computation.
+
+**Fail-open, at the source.** `apk_signing_fingerprint` returns `None` for every failure — no
+captured VM, no application context, no package info, absent signature, malformed certificate — and
+`None` omits the field rather than sending an empty string. Off Android it is always `None`. The
+server classifies an absent or unusable report as `unknown`, **never** `mismatch` (§2.2), so a
+device that cannot be fingerprinted is never refused a renewal because of it. The sync daemon's
+ride-along passes `None` deliberately: `platform-sync` is shared with the desktop shell and does
+not depend on `kasirmu-hal`, and the Android tablet reports through the bridge lane that can reach
+it.
+
+**The server stores only non-`valid` verdicts** (`build_integrity_reports`), because a `valid`
+report carries no signal and would bury a real violation in routine noise; §2.4's queue entry is a
+derived view over that durable record. `classifyBuildFingerprint` on the server mirrors
+`kasirmu_core::build_fingerprint::classify_build_fingerprint` arm for arm — including that an
+**empty pin set is `unknown`, not `mismatch`** — because the two must agree about the same report.
+
+**A note on what verification does and does not cover.** `cargo ndk -t arm64-v8a check -p
+kasirmu-mobile` compiles the whole tablet app against the Android target, and the desktop build is
+unchanged. The classifier, the store and the fail-open contract are covered by tests. **The JNI call
+itself is not covered by any test**: it needs a real device, and `apps/mobile-tauri/AGENTS.md`
+records that the Android CI job was retired (`23c963303`, 2026-09-02), so nothing in CI exercises
+it. Treat the on-device read as unverified until someone builds and inspects a real APK.
 
 **Verification run:** `cargo test -p kasirmu-core --lib` → **3151 passed, 0 failed** (7 of them in
 `build_fingerprint`). The §2.6 release-profile check is recorded at that section.
@@ -396,9 +439,9 @@ naming the debug short-circuit as the reason the test must not target `verify_li
 
 | Residual | Bound — **as of today, not as designed** |
 |---|---|
-| A2 exceeds local quota gates | **Unbounded today.** §2.4's server-side detection is deferred (Q3), so a patched client that skips a local gate is not caught. The bound arrives with §2.4 |
-| A1/A3 patch out fingerprint reporting | **Unbounded today** for the same reason — §2.2's `unknown` classification only has force once §2.4 reads it |
-| A1/A3 report a fingerprint at all | **Unbounded today, and for a THIRD reason recorded 2026-10-05:** nothing computes the APK certificate or sends it. A grep for `GET_SIGNATURES` / `signingInfo` / `getPackageInfo` over `apps/` returns nothing, so even a perfectly behaved client reports no fingerprint today |
+| A2 exceeds local quota gates | **Still unbounded as of 2026-09-21.** §2.4's response is unbuilt (Q3), so a patched client that skips a local gate is not caught — and this row is untouched by the §2.1 work, which reports builds rather than quota use. The bound arrives with §2.4 |
+| A1/A3 patch out fingerprint reporting | **Visible, not bounded — updated 2026-09-21.** A deleted reporting line now arrives as `unknown` and IS stored as a non-`valid` verdict, so the deception is recorded; but §2.4 is unbuilt, so no human is told and nothing acts on it. The bound still arrives with §2.4 |
+| A1/A3 report a fingerprint at all | **CLOSED 2026-09-21.** The client now computes the APK signing certificate over JNI (`kasirmu-hal/src/transport/apk_signature.rs`) and sends it on the licence-status call; the server classifies and stores every non-`valid` verdict. See the note below for why this closes the *reporting* gap without bounding the row above it |
 | A3 redistributes a working tampered APK | Bounded by the tier's grace window; the forged APK cannot renew (§2.3, and renewal refusal is already enforced — ADR #58 §2.4a.1) |
 | A4 physical access, A5 server compromise, A6 platform exploit | **Out of scope** (§1.3) — no client control addresses these |
 
@@ -425,13 +468,37 @@ saying so is the point of this note:
 escalation fold (`fold_build_integrity`) is likewise a pure function with **no caller and no
 stored counter** — nothing feeds it a report and nothing remembers the consecutive count between
 sync cycles. It fixes *what the trigger will be* (§Q-C: ≥7 `unknown` reports in a rolling 7-day
-window, evaluated per tenant) so the number is not re-derived under pressure. Until the field
-ships, the residual is unchanged: **a patched client that deletes the reporting line is not
-noticed, because there is no reporting line to delete.**
+window, evaluated per tenant) so the number is not re-derived under pressure. The field has since
+shipped (see the next note), so the reporting line now exists; what the fold still lacks is any
+caller — nothing feeds it a report and nothing stores the count between sync cycles.
+
+#### What the 2026-09-21 §2.1 work changed — and the one row it does not move
+
+**The reporting line now exists, so the third reason on the "report a fingerprint at all" row is
+closed: something DOES compute and send the fingerprint**
+(`kasirmu-hal/src/transport/apk_signature.rs` → the licence-status call), and the server DOES
+classify it (`apps/license-server/build_integrity.go`), storing every non-`valid` verdict
+durably. That is a real change to the shipped state and the rows must not keep the old wording.
+
+**But it moves neither unbounded row, and the distinction matters more than the change does.** The
+server now *records* a `mismatch`; nothing *reads it*. There is no notification and no queue entry
+(§2.4 is unbuilt — the field and the alert were to land as one unit, and only the field has). A
+recorded verdict that no human is told about is not a control; it is a log. So:
+
+| Residual | Bound — **as of 2026-09-21** |
+|---|---|
+| A2 exceeds local quota gates | **Still unbounded.** §2.4 is unbuilt: the verdict is stored, not surfaced |
+| A1/A3 patch out fingerprint reporting | **Now *visible*, not yet *bounded*.** A deleted reporting line arrives as `unknown` and is stored as a non-`valid` verdict — but with no reader, nobody acts on it |
+| A1/A3 report a fingerprint at all | **CLOSED as a capability.** The APK certificate is computed natively and sent; a re-signed APK now produces a stored `mismatch` |
+
+**The honest summary: detection is built, response is not.** An operator who queries
+`build_integrity_reports` today would see violations; nothing pushes them. That is strictly better
+than a week ago and still not protection — which is why §3.3's answer to "are we protected?" remains
+**no**, and why §2.4 stays unbuilt until the notification exists.
 
 **The table is the authority on the shipped state. The IMPLEMENTED notes in §2 are the authority on
 what exists. Where they disagree about severity, this table wins** — it is the one a reader consults
-when asking "are we protected?", and the answer today is no.
+when asking "are we protected?", and the answer today is still no.
 
 ## 4. Explicitly Rejected
 
@@ -763,11 +830,11 @@ exists, and because the record's own vocabulary is already channel-based.**
 > `feature_grants.go` does, and `TestReleasePins_StoresAndReadsBackTheSet` plus
 > `TestReleasePins_NormalisesKeytoolSpelling` both fail against the old code.
 >
-> **What this does NOT close.** §2.1 remains unbuilt: nothing computes or reports an APK signing
-> certificate, so `accepted_pins` has no reporter yet and the classification still has no live
-> input. §3.3's first three rows are unchanged. What changed is that the *store* §2.1 compares
-> against now exists and is admin-writable — and an unpinned channel reads as `Unknown`, never
-> `Mismatch`, so this cannot refuse renewal for anyone today.
+> **What this closed at the time.** When this store landed, §2.1's client leg was still unbuilt, so
+> `accepted_pins` had no reporter. It has one now: the Android computation and its reporting shipped
+> in the same session, and `apps/license-server/build_integrity.go` classifies reports against this
+> set. An unpinned channel still reads as `Unknown`, never `Mismatch`, so a deployment that has set
+> no pins cannot refuse renewal for anyone.
 
 ### Q-C — Are the 7 "consecutive" `unknown` reports sync cycles, or calendar days? `[deferrable]` — DECIDED
 
