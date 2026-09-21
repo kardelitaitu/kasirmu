@@ -283,8 +283,17 @@ What is held now:
   (… earn_multiplier …)`, a column a later migration drops — and shows the classifier matching
   neither `already exists` nor `duplicate column name`, so the statement-by-statement attempt was
   never entered. The copy kept its 60 applied rows and the drifted checksum, so every boot would
-  have failed identically. At HEAD the same input returns `Ok`, applies the 61st row and restores
-  the registry's checksum. This supersedes §2.2's "not a second end-to-end run" clause.
+  have failed identically.
+- **Closed — and this runner also fails the re-apply on real bytes, when the seed is genuinely
+  gone.** Same copies, seed rows varied, checksum forced back to the pre-ADR-56 value: all four
+  rows present → `Ok`, the 61st migration recorded, the registry's checksum restored. One row
+  deleted (`tier-gold`) → **refused**, the same error surfaced, the checksum still drifted and the
+  ledger still at 60. All four deleted → refused identically. So the fix does not paper over a
+  database whose seed is genuinely absent: it still refuses to boot, and the refusal commits
+  nothing. A *non-key* value changed on a row that is still present → `Ok` with the changed value
+  left exactly as found, which is the `OR IGNORE` no-op the proof claims to have proven — the
+  presence half matches the seed's primary key, so a differing column is not drift to repair. This
+  bullet supersedes §2.2's "not a second end-to-end run" clause.
 - **The second production caller is untested.** `apps/cloud-server/src/db.rs:134,143` calls the
   runner too and has never seen drifted bytes.
 - **The app path is proven by proxy.** No test drives the setup hook, and the replays connect
