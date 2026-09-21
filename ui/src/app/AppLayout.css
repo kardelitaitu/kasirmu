@@ -562,3 +562,69 @@
     padding: 0 var(--space-2);
   }
 }
+
+/* ── T1: portrait — the sidebar becomes an overlay ──────────────────────
+ * ADR-0001 Slice 3 / T1. Orientation is the SHELL's decision, and this sheet is
+ * one of the two sheets licensed to declare it (the other is
+ * ui/src/app/tablet/tablet.css) — see the fence in
+ * ui/src/__tests__/orientationAdaptiveWalker.test.ts and the reference branch at
+ * ui/src/features/setup/SetupWizard.css:625, which this block mirrors in shape.
+ *
+ * What it does: portrait gives width to the nav that landscape gives to the
+ * content, so below 1024px the sidebar stops being a lane and becomes an
+ * overlay pane. The gate is deliberately the SAME `max-width: 1023px` the
+ * width block above uses, so at every width there is exactly one shell
+ * geometry — a second, competing threshold written in `rem` would let a
+ * 1023.5px viewport take the overlay branch while the icon-rail rules above
+ * stayed inert. The `orientation` half of the query exists because the ADR
+ * asks for orientation to be a declared input, not because it changes the
+ * outcome at a touch-screen aspect ratio.
+ *
+ * The 64px rail is PRESERVED, not replaced: the same 220px/60px collapsed
+ * widths and 220px overlay width. Collapsed = persistent rail, expanded =
+ * overlay over the content (position: absolute; z-index above .app-content,
+ * under the topbar). Overflow comes from the box, not from a rule: `.app-sidebar`
+ * carries `min-width: 220px` and flex items are `min-width: auto`, so an
+ * absolutely-positioned 220px pane overflows `.app-layout-body` (both are
+ * already `overflow`-default and `position`-default here).
+ *
+ * The horizontal rail from the width block above still applies at 1024px+ in
+ * portrait, unchanged: it keys on width, this keys on width AND portrait.
+ *
+ * Desktop stays resizable: this only claims widths below 1024px, and on a
+ * resizable desktop window `orientation` follows the window's own box, so
+ * dragging the window narrow in portrait rotates the shell the same way a
+ * device does.
+ * ──────────────────────────────────────────────────────────────────── */
+@media (orientation: portrait) and (max-width: 1023px) {
+  .app-sidebar {
+    flex: 0 0 auto;
+    height: 100%;
+    overflow-y: auto;
+  }
+
+  /* Collapsed: the icon rail stays in flow, so the content keeps its lane. */
+  .app-sidebar.collapsed {
+    position: relative;
+  }
+
+  /* Expanded: the pane leaves the flow and floats over the content. */
+  .app-sidebar:not(.collapsed) {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 220px;
+    min-width: 220px;
+    flex-direction: column;
+    z-index: var(--z-sticky);
+  }
+
+  /* The overlay needs a scrim's worth of separation from the page beneath. */
+  .app-sidebar:not(.collapsed) .app-sidebar-section-header,
+  .app-sidebar:not(.collapsed) .app-nav-item {
+    justify-content: flex-start;
+    padding: var(--space-2) var(--space-3);
+  }
+}
+

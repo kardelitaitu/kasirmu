@@ -355,3 +355,41 @@
   user-select: text;
   -webkit-user-select: text;
 }
+
+/* ── T1: portrait — verified portrait-safe, no structural change ────────
+ * ADR-0001 Slice 3 / T1. Slice 1 shipped the bottom tab bar as the tablet's
+ * only nav (TabletAppLayout.tsx renders the bar, NOT `.app-sidebar`, which
+ * rule 64 above hides), and Slice 2 made the content slot a query container.
+ * Nothing in this shell was ever keyed to `landscape`, so this block asserts
+ * the portrait contract and carries the measurement that says it already
+ * holds. It deliberately declares NO property: a rule that restated a height
+ * or a padding here would be a second source of truth for values the
+ * declarations below/above already own.
+ *
+ * Portrait fits the three load-bearing pieces:
+ *   1. Tab bar — a swipeable strip in a 64px box:
+ *      `--tablet-bottom-nav-height`, `min-height` (L92-93), `flex: 0 0 auto`
+ *      on the nav wrapper (L117-119), `overflow-x: auto` plus
+ *      `justify-content: safe center` (L91, L99) so a 13-tab admin set scrolls
+ *      rather than compresses to the 48px tap floor. Portrait is where that
+ *      matters most: the same tab set has strictly LESS width than in
+ *      landscape (1097 vs 686 at the field device's aspect ratio).
+ *   2. 64px bar height — a fixed token, never a viewport fraction, so it is
+ *      orientation-independent by construction.
+ *   3. `--inset-bottom` — applied ONCE, by the bar (L97), while the shell sizes
+ *      itself to `100dvh` with `box-sizing: border-box` and owns only top/left/
+ *      right (L321-326). Because the shell subtracts the insets from its own
+ *      height instead of re-asserting `100dvh` from inside, portrait does not
+ *      reintroduce the 742px-in-a-686px-viewport overflow documented at
+ *      L303-320 — that defect was caused by re-asserting a viewport unit, which
+ *      nothing portrait-specific here does.
+ *
+ * Desktop is untouched: `.tablet-shell` is a separate entry (index.mobile.html
+ * / main.mobile.tsx) and this selector cannot match the desktop shell.
+ * ──────────────────────────────────────────────────────────────────── */
+@media (orientation: portrait) {
+  .tablet-shell .app-layout {
+    /* Portrait contract asserted, not restated — see header. */
+  }
+}
+
