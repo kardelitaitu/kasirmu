@@ -140,7 +140,6 @@ export function createSettingsApiMock(overrides: SettingsApiOverrides = {}) {
       { printerConnection: 'auto', printerDevicePath: '', printerPaperSize: '80',
         scannerDeviceId: '', scannerInputMode: 'auto' },
     )),
-      completeSetup: vi.fn(),
     getFirstRunState: vi.fn(() =>
       Promise.resolve({
         state: 'provisioned' as const,

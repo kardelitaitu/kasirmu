@@ -82,7 +82,6 @@ vi.mock('@/api/staff', () => ({
 
 vi.mock('@/api/settings', () => ({
   getFirstRunState: () => mockGetFirstRunState(),
-  completeSetup: vi.fn(() => Promise.resolve()),
   provisionDevice: vi.fn(() => Promise.resolve()),
   getEnabledFeatures: vi.fn(() => Promise.resolve({ features: [] })),
   getStoreSettings: vi.fn(() =>

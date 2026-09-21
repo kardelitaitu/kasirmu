@@ -55,7 +55,6 @@ vi.mock('@/api/license', () => ({
 
 vi.mock('@/api/settings', () => ({
   getFirstRunState: vi.fn(() => Promise.resolve({ state: 'provisioned', location_id: 'loc-1', owner_user_id: 'user-1', mode: 'local', home_region: 'global', tenant_id: null })),
-  completeSetup: vi.fn(() => Promise.resolve()),
   provisionDevice: vi.fn(() => Promise.resolve()),
   getEnabledFeatures: vi.fn(() => Promise.resolve({ features: [] })),
   getStoreSettings: vi.fn(() =>

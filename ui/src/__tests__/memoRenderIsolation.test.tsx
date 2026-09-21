@@ -111,7 +111,6 @@ vi.mock('@/hooks/useFeatures', () => ({
 
 vi.mock('@/api/settings', () => ({
   getFirstRunState: vi.fn(() => Promise.resolve({ state: 'provisioned', location_id: 'loc-1', owner_user_id: 'user-1', mode: 'local', home_region: 'global', tenant_id: null })),
-  completeSetup: vi.fn(),
   provisionDevice: vi.fn(),
 }));
 

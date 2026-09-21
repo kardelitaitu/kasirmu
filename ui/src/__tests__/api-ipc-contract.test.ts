@@ -377,7 +377,6 @@ import {
   getHardwareSettings,
   setHardwareSettingsScoped,
   getEnabledFeatures,
-  completeSetup,
   getFirstRunState,
   provisionDevice,
 } from '@/api/settings';
@@ -440,13 +439,6 @@ describe('settings.ts IPC contract', () => {
     mockInvoke.mockResolvedValue({ features: {} });
     await getEnabledFeatures();
     expect(mockInvoke).toHaveBeenCalledWith('get_enabled_features', undefined);
-  });
-
-  it('completeSetup invokes "complete_setup" with args', async () => {
-    mockInvoke.mockResolvedValue(undefined);
-    const args = { preset: 'retail', features: ['cloud_sync'], default_currency: 'USD' };
-    await completeSetup(args);
-    expect(mockInvoke).toHaveBeenCalledWith('complete_setup', { args });
   });
 
   it('getFirstRunState invokes "get_first_run_state" with the terminal id', async () => {
