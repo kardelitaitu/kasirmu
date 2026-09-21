@@ -7,9 +7,14 @@ import MemoBanner from '@/features/memo/MemoBanner';
 import { useMemos } from '@/features/memo/useMemos';
 import type { ActiveMemo } from '@/api/memos';
 
-const { mockAcknowledge, mockDismiss } = vi.hoisted(() => ({
+const { mockAcknowledge, mockDismiss, exitState } = vi.hoisted(() => ({
   mockAcknowledge: vi.fn(),
   mockDismiss: vi.fn(),
+  // Mutable seam for the exiting-row test below: the mock factory runs
+  // once at module load, so per-test control needs a box it can read at
+  // call time. Default false keeps every other test's synchronous
+  // requestClose behaviour unchanged.
+  exitState: { exiting: false },
 }));
 
 vi.mock('@/features/memo/useMemos', () => ({
@@ -21,7 +26,7 @@ vi.mock('@/features/memo/useMemos', () => ({
 vi.mock('@/hooks/useExitAnimation', () => ({
   useExitAnimation: (open: boolean, onClose: () => void) => ({
     shouldRender: open,
-    exiting: false,
+    exiting: exitState.exiting,
     requestClose: () => onClose(),
   }),
 }));
@@ -81,6 +86,7 @@ beforeEach(() => {
   vi.mocked(useMemos).mockReset();
   mockAcknowledge.mockReset();
   mockDismiss.mockReset();
+  exitState.exiting = false;
   mockMemos([activeMemo('m1', [])]);
 });
 
@@ -100,6 +106,25 @@ describe('MemoBanner', () => {
     renderWithL10n(<MemoBanner />);
     expect(screen.getByText('Title m1')).toBeInTheDocument();
     expect(screen.getByText('Body m1')).toBeInTheDocument();
+  });
+
+  it('an exiting row carries is-exiting while the open button stays enabled', () => {
+    // The discard hazard this documents (MemoBanner.css pins the CSS half
+    // in memoStackClearance.test.ts): during the 450ms exit the bubble is
+    // already invisible (opacity 0) but the open button is NOT disabled —
+    // only the close chip is — so the row's clickability rests entirely on
+    // the .memo-stack-item.is-exiting * pointer-events rule. The DOM half
+    // of that contract: is-exiting present, open enabled, close disabled.
+    exitState.exiting = true;
+    renderWithL10n(<MemoBanner />);
+
+    const row = document.querySelector('.memo-stack-item');
+    expect(row).toBeTruthy();
+    expect(row).toHaveClass('is-exiting');
+    // NOT disabled — this is exactly why the CSS descendant rule exists.
+    expect(screen.getByTestId('memo-banner-open')).toBeEnabled();
+    // The close chip alone is disabled during exit.
+    expect(screen.getByTestId('memo-banner-acknowledge')).toBeDisabled();
   });
 
   it('does not render the scope type', () => {
