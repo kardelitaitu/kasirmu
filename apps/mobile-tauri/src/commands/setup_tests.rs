@@ -36,8 +36,8 @@ fn unprovisioned_wire_is_the_ui_tag_and_nothing_else() {
     // branch the UI takes on a fresh install.
     let keys = wire_keys(&kasirmu_bridge::setup::FirstRunStateDto::unprovisioned());
     assert_eq!(keys, vec!["state".to_string()]);
-    let json = serde_json::to_value(kasirmu_bridge::setup::FirstRunStateDto::unprovisioned())
-        .unwrap();
+    let json =
+        serde_json::to_value(kasirmu_bridge::setup::FirstRunStateDto::unprovisioned()).unwrap();
     assert_eq!(json["state"], "unprovisioned");
 }
 
@@ -109,7 +109,10 @@ fn provision_device_args_deserialize_from_the_ui_payload() {
     let args: kasirmu_bridge::setup::ProvisionDeviceArgs =
         serde_json::from_value(payload).expect("the UI payload must deserialize");
     assert_eq!(args.terminal_id, "dev-1");
-    assert_eq!(args.mode, kasirmu_core::db::provisioning::ProvisioningMode::Local);
+    assert_eq!(
+        args.mode,
+        kasirmu_core::db::provisioning::ProvisioningMode::Local
+    );
     assert_eq!(
         args.location_kind,
         kasirmu_core::db::provisioning::LocationKind::Restaurant
@@ -136,8 +139,7 @@ fn a_linked_provision_payload_carries_its_tenant_and_credential() {
         "tenant_id": "tenant-abc",
         "device_credential_id": "cred-1"
     });
-    let args: kasirmu_bridge::setup::ProvisionDeviceArgs =
-        serde_json::from_value(payload).unwrap();
+    let args: kasirmu_bridge::setup::ProvisionDeviceArgs = serde_json::from_value(payload).unwrap();
     assert_eq!(args.tenant_id.as_deref(), Some("tenant-abc"));
     assert_eq!(args.device_credential_id.as_deref(), Some("cred-1"));
 }
