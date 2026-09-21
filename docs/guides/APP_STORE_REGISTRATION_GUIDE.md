@@ -89,14 +89,20 @@ Only two GitHub Actions workflows are live, and **neither produces a mobile arti
   `release-build` and `release-publish`. It was restored desktop-only by `3b10ea3a2` on 2026-09-04
   after `23c963303` had retired it; mobile was never part of the restoration — the file's own header
   says so at `.github/workflows/release.yml:24`.
-- **Android Automated Build — RETIRED: nothing builds an APK or AAB for you.** The Android workflow
-  is inert (`.github/workflows/attic/android.yml.bak` — renamed to `.bak` by `23c963303` on 2026-09-02,
-  then moved into `attic/` by `54f64de83` on 2026-09-18; GitHub never executes a `.bak` file either
-  way. **Path corrected 2026-09-22: this cited `.github/workflows/android.yml.bak`, which no longer
-  exists.**), so a `v*` tag push yields desktop installers only. Build it locally instead
+- **Android Automated Build — RESTORED 2026-09-22.** `.github/workflows/android.yml#android-build`
+  builds the aarch64 APK on a `v*` tag or on `workflow_dispatch`, and uploads it as a workflow
+  artifact. (History, because it explains the shape: the workflow was retired to `.bak` by
+  `23c963303` on 2026-09-02 and the backups were moved to `.github/workflows/attic/` by
+  `54f64de83` on 2026-09-18 — this bullet cited the old `.github/workflows/android.yml.bak` path
+  until 2026-09-22.)
+  **Two limits matter for a store submission.** First, the job does NOT attach the APK to the GitHub
+  Release — the retired copy's release-upload step was deliberately not restored yet — so download
+  it from the workflow run's artifacts. Second, **a signed APK still needs the keystore secrets**
+  (`ANDROID_KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`); without them the build is unsigned
+  and will not install, so for a store build either set those secrets or build locally
   (`cargo tauri android build --apk|--aab`, see `apps/mobile-tauri/AGENTS.md`) and upload through
-  Partner Center. iOS is in the identical state (`ios.yml.bak`, also retired, and the `gen/apple/`
-  scaffold it needs has never been committed).
+  Partner Center. iOS is still in the retired state (`ios.yml.bak`, and the `gen/apple/` scaffold it
+  needs has never been committed).
 - **Dev CI — LIVE but not a release path, AND it fires on a push to `main`.** Corrected
   2026-09-22: this said *"There is no push trigger, so pushing a branch — including `main` — runs
   nothing."* **That is the opposite of the truth** and it is the dangerous direction to be wrong in.

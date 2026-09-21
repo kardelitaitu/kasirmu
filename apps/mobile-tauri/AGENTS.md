@@ -201,27 +201,28 @@ keyAlias=<alias>
 storeFile=/abs/path/to/oz-pos.keystore
 ```
 
-**Nothing does this in CI any more.** It used to be done by the `android.yml`
-and `nightly.yml` workflows, which `23c963303` renamed on 2026-09-02 to
-`.github/workflows/*.bak` — GitHub never executes a `.bak` file, so no pipeline
-decodes the base64 keystore secret or writes this file today. Those backups were
-then moved out of the live directory by `54f64de83` (`chore(ci): move retired
-workflow backups into attic/`, 2026-09-18), which left `.github/workflows/` holding
-only the two workflows GitHub actually runs. **The paths below were corrected
-2026-09-22 — they had pointed at `.github/workflows/android.yml.bak`, which no
-longer exists, so a reader following them found nothing.**
+**A workflow does this again — on tags and on demand only.** The history first,
+because it explains the shape: `23c963303` renamed `android.yml` and `nightly.yml`
+to `.bak` on 2026-09-02 (GitHub never executes a `.bak`, so nothing decoded the
+keystore then), and `54f64de83` moved those backups into
+`.github/workflows/attic/` on 2026-09-18. **The restored
+`.github/workflows/android.yml` (2026-09-22) decodes this file again**, on a `v*`
+tag or `workflow_dispatch` — deliberately **no PR trigger**, so a workflow nobody
+can exercise locally cannot block a merge. Restoring it was not a rename: the
+retired copy pointed at `apps/tablet-client` (renamed to `apps/mobile-tauri` by
+P11), pinned JDK 17 where this file pins 21, never installed the NDK, and called
+`tauri android init` for a scaffold that is now committed.
 
-The decode logic is readable in the attic copy
+The decode logic matches the retired copy
 (`.github/workflows/attic/android.yml.bak:119-129` — corrected from `:119-132`,
 which over-ran the block: base64 -d into `oz-pos-release.keystore` at `:126`, then
 `keyAlias`/`password`/`storeFile` appended to `keystore.properties` at `:127-129`,
-from the `ANDROID_KEYSTORE_BASE64` / `KEY_ALIAS` / `KEYSTORE_PASSWORD` secrets). The only live workflows are `dev-ci.yml` (PR to
-`main`, a push to `main` and `workflow_dispatch`, three events re-read from
-`dev-ci.yml:3-8`) and `release.yml` (`v*` tags), and `release.yml` is
-desktop-only by design — its own header at `.github/workflows/release.yml:24`
-lists "Mobile (`android.yml.bak` / `ios.yml.bak`). Never part of this file." So
-restoring an Android release build means writing a workflow again; until then,
-signing is local: create `gen/android/keystore.properties` yourself.
+from the `ANDROID_KEYSTORE_BASE64` / `KEY_ALIAS` / `KEYSTORE_PASSWORD` secrets).
+
+**With no keystore secret configured, the CI build is UNSIGNED** — which still
+proves the Android target compiles, and that is the job's actual assertion. For an
+installable signed build, create `gen/android/keystore.properties` yourself as above;
+`release.yml` remains desktop-only by design (`release.yml:24`).
 
 ---
 
@@ -328,13 +329,15 @@ and opens the Tauri dev server for hot-reload.
 
 ## CI notes (GitHub Actions)
 
-**There is no Android CI job.** No live workflow builds an APK: the job that did
-lives in the inert `.github/workflows/attic/android.yml.bak` (retired by
-`23c963303` on 2026-09-02, then moved into `attic/` by `54f64de83`; the old
-`.github/workflows/android.yml.bak` path cited here until 2026-09-22 no longer
-exists), and `dev-ci.yml#static-gates` has no Android or NDK step. So the list
-below is the recipe for whoever restores the workflow, not a description of
-today's CI. For PRs targeting `main`, a CI job should:
+**There IS an Android CI job again — `.github/workflows/android.yml#android-build`**,
+restored 2026-09-22 from `attic/` and corrected (see the Signing section above for
+what needed fixing beyond the paths). It runs on a `v*` tag or
+`workflow_dispatch` **only** — deliberately no PR trigger, so a workflow that cannot
+be exercised locally cannot block a merge — and it fails if the build produces no
+APK, which is its real assertion. `dev-ci.yml#static-gates` still has no Android or
+NDK step, so nothing checks the Android build on a PR today.
+
+What that job does, which is also the manual recipe:
 
 1. Install JDK 21, Android SDK 36, NDK 30
 2. `rustup target add aarch64-linux-android`
