@@ -2,16 +2,39 @@
 num: 56
 area: topology
 title: "ADR #56: First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the multi-boolean boot gate"
-status: Proposed (2026-10-04) — the provisioning table, transaction, seed removal and IPC gate are IMPLEMENTED; the identity step is not
+status: Partially implemented (2026-10-04; status re-audited 2026-09-22) — §2.1, §2.2, §2.6 and the `local` tier of §2.3/§2.4 are IMPLEMENTED; §2.3's `identify` leg, §2.5 pairing and §5 Q2's tablet licence gate are NOT
 ---
 
 # ADR #56: First-Run Provisioning
 
-**Status:** Proposed (2026-10-04). **Updated 2026-10-05: §2.1, §2.2 and §2.6 are now
-IMPLEMENTED**, and §2.3's critical path is replaced — the `local` tier provisions a working
-terminal end to end. **Not implemented: the `linked` tier's identity step (§2.3's `identify`
-leg, §2.5 pairing), which still has no UI.** The implemented halves were each verified by running
-tests, and the evidence is recorded per section rather than claimed here. Section 1 is measurement
+**Status: Partially implemented** (2026-10-04; status re-audited 2026-09-22). **Updated
+2026-10-05: §2.1, §2.2 and §2.6 are now IMPLEMENTED**, and §2.3's critical path is replaced — the
+`local` tier provisions a working terminal end to end.
+
+**Not implemented — the complete list, and it is THREE, where an earlier revision of this block
+named only the first two:**
+
+1. **§2.3's `identify` leg.** The `linked` tier's identity step has no UI on either shell;
+   `ProvisioningMode = 'local' | 'linked'` exists (`ui/src/api/settings.ts:151`) and only
+   `'local'` is ever sent (`ui/src/features/setup/ProvisioningFlow.tsx:104`).
+2. **§2.5 pairing** — §5 Q1's *chosen* answer. The claim code and poll endpoint do not exist in
+   `apps/license-server`.
+3. **§5 Q2's convergence of both shells on the desktop boot order.** Its accepted cost was "the
+   tablet gains a licence-activation gate it has never had"; the tablet still has no such gate
+   (`ui/src/app/AppShell.tsx:230` and `:827` are the only consumers of `get_license_status`
+   and `LicenseActivationScreen`, both desktop).
+
+Three, not two, matters because item 3 was a `[was blocking]` decision: a tablet that cannot
+activate a licence also cannot link (§1.6), so it cannot reach a sync credential either. That is
+the same unfinished leg, and a status block that names two thirds of it invites the reading that
+the tablet is one UI screen away from the linked tier.
+
+*Clock note: the `last audited` stamp at the foot of this record carries the host clock's date,
+2026-09-22, which trails this record's own 2026-10-05 revision notes. The stamp is the machine's
+date and not a claim about the order the work landed in.*
+
+The implemented halves were each verified by running tests, and the evidence is recorded per
+section rather than claimed here. Section 1 is measurement
 against the tree as it stood when the decision was taken; §2 is the decision; §3 is the consequence
 list and §4 the non-goals.
 **Date:** 2026-10-04 (implementation recorded 2026-10-05)
@@ -225,6 +248,19 @@ The project is in early development and no install base exists. The cost of this
 therefore bounded by the code it deletes, not by a migration of live data — which is the only
 window in which "replace the gate" is cheaper than "repair the gate".
 
+**Window status, re-measured 2026-09-22: it has started to close, and the evidence is a migration
+this record did not originally name.**
+`crates/kasirmu-core/migrations/20261008_provisioning_legacy_backfill.sql` backfills a
+`provisioning` row for every device the PRE-#56 wizard had already set up, because
+`20261007_provisioning.sql` created the table with no backfill and such a device otherwise reads
+`Unprovisioned` and is sent to onboarding on every boot. That is a migration over live data — the
+exact cost this section said did not exist — and it is the correct mechanism for the population
+§2.6's option C cannot reach: C edits `init.sql`, which fixes fresh installs and only fresh
+installs, because the re-applied statements are `INSERT OR IGNORE` and removing one leaves the
+rows an existing database already holds. §2.6's decision stands unchanged; what changes is that
+the window it relied on is no longer open-ended, so this paragraph is added rather than the
+section left to read as still-wide.
+
 ## 2. Decision
 
 ### 2.1 First-run state is one derived value, not three booleans
@@ -331,6 +367,7 @@ The table, the record and the derived state are real, and the gate is wired on b
 | 3 | The bridge read + wire shape | `kasirmu_bridge::setup::get_first_run_state` → `FirstRunStateDto`, a tagged enum whose two states are mutually exclusive at the type level |
 | 4 | The IPC command on both shells | `commands::setup::get_first_run_state`, registered in both `lib.rs` handler lists |
 | 5 | Both boot gates read the row | `ui/src/app/AppShell.tsx` and `ui/src/app/tablet/TabletAppShell.tsx` — `state === 'provisioned'` replaces `completed` |
+| 6 | The legacy backfill, added after this record and not named in its first revision | `crates/kasirmu-core/migrations/20261008_provisioning_legacy_backfill.sql` — see §1.7: it backfills a row for devices the pre-#56 wizard already set up, so an already-set-up install is not re-routed into onboarding on every boot |
 
 **The three booleans are gone.** `get_setup_status` and `dismiss_setup_wizard` were removed from
 the bridge and both shells (§2.2's deletion), and `SHOW_SETUP_WIZARD` / `SETUP_COMPLETE` are no
@@ -854,6 +891,13 @@ absence of this gate is the bug, not a design.
 *Revision note:* this reverses §1.1's framing that the two ADR-cited orders were equally arguable.
 They were not; one of them cannot work.
 
+**Not implemented (re-audited 2026-09-22).** The tablet still has no licence-activation gate, so
+this decision stands decided-and-unbuilt. `get_license_status` has exactly one caller
+(`ui/src/app/AppShell.tsx:230`) and `LicenseActivationScreen` exactly one render site
+(`:827`), both desktop, and `ui/src/app/tablet/TabletAppShell.tsx:269-274` still says in its own
+words that "licence activation remains desktop-only". Recorded as a status note here so the
+decision cannot be misread as shipped from §2 having moved forward.
+
 ### Q3 — Does `local` mode ship in the first cut? `[was blocking]` — DECIDED
 
 | Option | Pros | Cons |
@@ -914,3 +958,5 @@ question, so `terminal_id` must be resolvable **before** the gate renders — i.
 `MACHINE_ID`/`SYNC_TERMINAL_ID` settings already classified as non-exportable device keys
 (ADR #54 §1.4). If it is not resolvable, the shell must fall to `Unprovisioned` rather than guess,
 matching §2.1's fail-closed direction.
+
+> last audited 22-09-26 by docs-auditor
