@@ -955,6 +955,35 @@ rejected at review. Note this is the *opposite* of §2.4a.2's device check, whic
 safe to ship — the difference is that the device check removes a capability nobody was promised,
 while the session lock removes one §2.6 explicitly grants.
 
+#### IMPLEMENTED 2026-10-05 — the twin half shipped, ahead of §2.5 by this section's own rule
+
+`export_data_without_session` exists and is registered, in exactly the order §4a Q-A requires:
+**the twin is in place, and §2.5's enforcement is not.** That is the CORRECT direction of the
+constraint above — the forbidden sequence is "enforce revocation, then add the twin", not the
+reverse. §2.5 remains unbuilt, so no merchant is locked out of anything today, and the moment it
+lands the promise will already have a mechanism behind it.
+
+| # | What | Where |
+|---|---|---|
+| 1 | The ungated twin, sharing one body with the gated command | `kasirmu_bridge::data::export_data_without_session` beside `export_data`, both delegating to a private `export_data_direct` |
+| 2 | The IPC command | `commands::data::export_data_without_session`, registered in the desktop handler list |
+| 3 | The ledger row | `("data::export_data_without_session", "no_session_resolution")`, regenerated rather than hand-added |
+
+**The precedent is followed rather than re-invented.** `create_backup` already ships as an
+unauthenticated twin beside its gated sibling, sharing a `_direct` body and emitting a warning that
+the permission was not checked. This command copies that shape exactly, including the `warn!` event
+(`export_ungated_no_session`), so an operator reading the logs sees the same signal the backup path
+has always produced.
+
+**What makes it safe is asserted, not assumed.** Two tests pin the READ-ONLY half of the ADR's
+binding: one drives the twin with NO token and requires a readable package, and one asserts the
+module contains no `import_data_without_session` / `import_preview_without_session`. A refactor that
+routed an import through the ungated body would turn a data-hostage remedy into a write primitive,
+so the absence is pinned rather than commented.
+
+**Verification run:** `cargo test -p kasirmu-bridge --lib` → **1344 passed, 0 failed**;
+the desktop registration ratchet → **14/14**.
+
 ### Q-B — Does the background Settings poll survive §2.3, and who gates it? `[blocking]` — DECIDED
 
 **The conflict this closes:** §2.3 asserts no licence call is made outside the window, but
