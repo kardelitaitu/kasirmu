@@ -6,6 +6,26 @@ Playwright-based end-to-end tests for OZ-POS. Tests run against the Vite
 dev server with mocked Tauri IPC (`dev-mock/tauri-api.ts`) — no Rust backend
 required.
 
+## Dev-server port: the suite owns its own (1421), never 1420
+
+An E2E run starts its **own** Vite on `E2E_PORT` (default **1421**) and kills only
+the PID it spawned. It never probes for or adopts a server it did not start, and
+never kills by port.
+
+Why this matters in a shared checkout: port **1420** is the Tauri desktop `devUrl`
+contract (`apps/desktop-tauri/tauri.conf.json`) used by the human-facing
+`npm run dev`. When the suite shared that port it would adopt another session's
+dev server and then tear it down mid-run, producing
+`page.goto: Could not connect to server` on every test after the first batch —
+and an E2E cleanup could kill a sibling session's server outright.
+
+- Running the suite while something already holds 1421 now fails **loudly** with
+exit 3 (`Port 1421 is already in use … refusing to adopt`) — 0 tests executed,
+never a silent attach.
+- To run two E2E passes concurrently, give one its own port:
+  `E2E_PORT=1431 npm run e2e:ui`.
+- `npm run dev` and `cargo tauri dev` are unaffected: they stay on 1420.
+
 ## Quick Start
 
 ```bash
@@ -74,8 +94,20 @@ CSS contract is documented in each spec file's header comment.
 Each test file is fully isolated:
 - `page.goto('/')` resets the dev-mock state
 - No shared mutable state between tests
-- `storageState` in `fixtures.ts` provides per-worker auth caching
 - `workers: 4` (local) or `workers: 2` (CI) runs tests in parallel
+
+⚠️ **Auth caching has NOT been per-worker, and this claim was wrong.** This line
+used to read “`storageState` in `fixtures.ts` provides per-worker auth caching”.
+It does not: `fixtures.ts` used ONE shared path (`.e2e-auth.json`) that every
+worker read at context creation and wrote after logging in. With 4 workers those
+reads and writes interleave, so a worker can read a half-written session, fail
+its “already logged in?” probe, log in again and clobber the file. That is the
+mechanism behind the flake where the same code produced 0 failures in one full
+run and 32 in the next.
+
+Fixing it means giving each worker its own auth path (keyed on `workerIndex`,
+and on the project, since desktop and tablet share a worker pool). Verify with
+TWO consecutive full runs — a single green run is weak evidence for a flake fix.
 
 ### CI Pipeline — retired; nothing runs E2E in CI
 
@@ -145,6 +177,18 @@ npm run e2e -- e2e/auth.spec.ts
 The runner detects Docker availability gracefully — if Docker is not
 installed or the daemon isn't running, it skips the Docker services
 and runs only the Playwright tests against the Vite dev server.
+
+### `--ui-only` derives its spec list from disk
+
+`npm run e2e:ui` used to carry a hand-maintained array of 10 spec paths. The
+directory held 29, so **17 specs silently never ran** and a green run said
+nothing about the gap. It now reads the directory and excludes only
+`api.spec.ts`, so adding a spec file is enough to make it run.
+
+The table under “Spec Files” below is a partial, dated snapshot from 2026-09-09
+and was already incomplete when written — treat the directory as the authority:
+`ls ui/e2e/*.spec.ts`. The reason to prefer the directory is the bug above: a
+curated list cannot notice what it omits.
 
 ## Writing New Tests
 
