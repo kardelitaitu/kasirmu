@@ -429,16 +429,17 @@ function RoleAuthoringPanel({ active, handleRef }: RoleAuthoringPanelProps) {
                   </Localized>
                 </p>
                 <div className="role-holders">
-                  <button
-                    type="button"
+                  <Button
+                    unstyled
                     className="role-holders-toggle"
                     aria-expanded={holdersOpen}
                     onClick={() => void toggleHolders(role)}
-                    aria-label={l10n.getString('role-holders-aria', { name: role.name })}>
+                    aria-label={l10n.getString('role-holders-aria', { name: role.name })}
+                    data-testid={`staff-role-holders-${role.id}`}>
                     <Localized id="role-holders-toggle">
                       <span>Holders</span>
                     </Localized>
-                  </button>
+                  </Button>
                   {/* Only ever the authoritative total from a completed read.
                       role.reference_count is a different number on purpose
                       (it spans four FK tables and answers deletion, not
@@ -520,14 +521,15 @@ function RoleAuthoringPanel({ active, handleRef }: RoleAuthoringPanelProps) {
                       them, so an accepted edit would be silently reverted. */}
                   {!role.is_builtin && (
                     <>
-                      <Button variant="ghost" onClick={() => openEditor(role)} aria-label={l10n.getString('role-edit-aria', { name: role.name })}>
+                      <Button variant="ghost" onClick={() => openEditor(role)} aria-label={l10n.getString('role-edit-aria', { name: role.name })} data-testid={`staff-role-edit-${role.id}`}>
                         <Localized id="role-edit">Edit</Localized>
                       </Button>
                       <Button
                         variant="ghost"
                         disabled={role.reference_count > 0}
                         onClick={() => setPendingDelete(role)}
-                        aria-label={l10n.getString('role-delete-aria', { name: role.name })}>
+                        aria-label={l10n.getString('role-delete-aria', { name: role.name })}
+                        data-testid={`staff-role-delete-${role.id}`}>
                         <Localized id="role-delete">Delete</Localized>
                       </Button>
                       {/* Three cases, because these are two different kinds

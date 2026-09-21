@@ -591,7 +591,7 @@ export function StaffDetailDrawer({ open, member, roles, onClose, onSaved }: Sta
       {quotaUpgrade && (
         <div className="staff-mgmt-quota-banner" role="alert">
           <span>{l10n.getString('staff-error-quota-limit')}</span>
-          <Button variant="primary" size="sm" onClick={openUpgradePricing}>
+          <Button variant="primary" size="sm" onClick={openUpgradePricing} data-testid="staff-drawer-upgrade-btn">
             {l10n.getString('staff-upgrade-cta')}
           </Button>
         </div>

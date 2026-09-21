@@ -18,6 +18,8 @@ export interface EmptyStateProps {
   action?: {
     label: string;
     onClick: () => void;
+    /** `data-testid` for the button, for a consumer's own tests. */
+    testId?: string;
   };
   /**
    * Layout region — applies the matching tokenized spacing variant
@@ -60,7 +62,7 @@ export function EmptyState({
       {description && <p className="empty-state__desc">{description}</p>}
       {action && (
         <div className="empty-state__action">
-          <Button variant="primary" onClick={action.onClick}>
+          <Button variant="primary" onClick={action.onClick} data-testid={action.testId}>
             {action.label}
           </Button>
         </div>

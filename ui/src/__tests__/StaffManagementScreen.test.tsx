@@ -67,9 +67,11 @@ const SAMPLE_PROFILE = {
   is_complete: true,
 };
 
-const { invokeMock } = vi.hoisted(() => ({
+const { invokeMock, setActiveWorkspaceMock } = vi.hoisted(() => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   invokeMock: vi.fn() as any,
+  /** The back control's destination setter, from the mocked WorkspaceContext. */
+  setActiveWorkspaceMock: vi.fn(),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -78,7 +80,19 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
-    session: { user_id: 'test', display_name: 'Test', role_name: 'owner', role_id: 'role-1' },
+    // Granted keys, for the two controls this surface gates: the row's
+    // Impersonate action (`operator:impersonate`) and the Roles tab
+    // (`staff:manage_roles`). Both keys are needed, and that is `passesGate`'s
+    // rule rather than a convenience: once a session carries ANY granted key,
+    // `requiredPermission` is authoritative and the role fallback no longer
+    // applies — so listing one key and not the other hides the Roles tab.
+    session: {
+      user_id: 'test',
+      display_name: 'Test',
+      role_name: 'owner',
+      role_id: 'role-1',
+      permissions: ['operator:impersonate', 'staff:manage_roles'],
+    },
     loading: false,
     error: null,
     login: vi.fn(),
@@ -90,11 +104,15 @@ vi.mock('@/contexts/AuthContext', () => ({
 }));
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
-  useWorkspace: () => ({ sessionToken: 'session-1' }),
+  // `setActiveWorkspace` is what the back control calls through useWorkspaceNav;
+  // without it a click on the only route off this page throws instead of
+  // navigating.
+  useWorkspace: () => ({ sessionToken: 'session-1', setActiveWorkspace: setActiveWorkspaceMock }),
 }));
 
 beforeEach(() => {
   invokeMock.mockClear();
+  setActiveWorkspaceMock.mockClear();
   resetUnmatchedInvokes();
   // The tab is reflected in the route hash, so a case that switched tabs
   // would otherwise leave the next render mounting on the Roles tab.
@@ -106,6 +124,9 @@ beforeEach(() => {
     if (cmd === 'create_staff_scoped') return Promise.resolve({ ...SAMPLE_STAFF[0], username: 'newuser' });
     if (cmd === 'update_staff_scoped') return Promise.resolve(SAMPLE_STAFF[0]);
     if (cmd === 'get_staff_profile_scoped') return Promise.resolve(SAMPLE_PROFILE);
+    if (cmd === 'impersonate_user_scoped') {
+      return Promise.resolve({ session_token: 'imp-token', user_id: 'staff-1', display_name: 'Jane Smith', expires_at: '' });
+    }
     if (cmd === 'list_all_workspaces_scoped') return Promise.resolve([
       { key: 'restaurant', name: 'Restaurant', description: 'Dine-in service', icon: 'restaurant' },
       { key: 'store', name: 'Retail Store', description: 'Retail counter', icon: 'store' },
@@ -174,7 +195,9 @@ describe('StaffManagementScreen', () => {
     // One action slot: the create affordance belongs to the tab on screen.
     expect(screen.getByRole('tab', { name: 'Roles' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByRole('button', { name: /add staff/i })).not.toBeInTheDocument();
-    const addRole = screen.getByRole('button', { name: 'Add New Role' });
+    // Located by testid, and still named for a screen reader.
+    const addRole = screen.getByTestId('staff-add-role-btn');
+    expect(addRole).toHaveAccessibleName('Add New Role');
     // The panel mounts on first visit; the handle the button reaches through
     // only exists once it has.
     await waitFor(() => expect(document.querySelector('.role-authoring')).not.toBeNull());
@@ -189,7 +212,7 @@ describe('StaffManagementScreen', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Roles' }));
     await waitFor(() => expect(document.querySelector('.role-authoring')).not.toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: 'Add New Role' }));
+    fireEvent.click(screen.getByTestId('staff-add-role-btn'));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 
     // Reached the way it really happens: the popup is a portal, so its overlay
@@ -233,7 +256,13 @@ describe('StaffManagementScreen', () => {
     await waitFor(() => {
       expect(screen.getByText(/no staff members yet/i)).toBeInTheDocument();
     }, FAST_WAIT);
-    expect(screen.getByRole('button', { name: /add your first staff member/i })).toBeInTheDocument();
+    // The empty state's CTA is the shared Button `EmptyState` renders, tagged by
+    // this screen — so it is locatable without matching the English label.
+    const emptyCta = screen.getByTestId('staff-empty-cta');
+    expect(emptyCta).toHaveTextContent(/add your first staff member/i);
+    expect(emptyCta.className).toMatch(/\bbtn(--|$)/);
+    fireEvent.click(emptyCta);
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
   it('shows loading skeleton initially', async () => {
@@ -298,8 +327,10 @@ describe('StaffManagementScreen', () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
-    // Find the Deactivate button for Jane (active)
-    const deactivateBtn = screen.getByRole('button', { name: /deactivate.*jane smith/i });
+    // The row action, located by testid; the accessible name still carries the
+    // member, which is what a screen reader announces.
+    const deactivateBtn = screen.getByTestId('staff-toggle-active-staff-1');
+    expect(deactivateBtn).toHaveAccessibleName(/deactivate.*jane smith/i);
     fireEvent.click(deactivateBtn);
 
     // The confirmation dialog must appear before any request is sent.
@@ -309,8 +340,8 @@ describe('StaffManagementScreen', () => {
       args: expect.objectContaining({ id: 'staff-1', is_active: false }),
     }));
 
-    // Confirm the deactivation.
-    fireEvent.click(within(dialog).getByRole('button', { name: /deactivate/i }));
+    // Confirm the deactivation through the shared dialog's own control.
+    fireEvent.click(within(dialog).getByTestId('confirm-dialog-confirm'));
 
     // update_staff_scoped should be called with is_active: false
     await waitFor(() => {
@@ -526,7 +557,7 @@ describe('StaffManagementScreen', () => {
     await waitFor(() => {
       expect(screen.getByText(/your plan allows a limited number of staff/i)).toBeInTheDocument();
     }, FAST_WAIT);
-    expect(within(dialog).getByRole('button', { name: /upgrade plan/i })).toBeInTheDocument();
+    expect(within(dialog).getByTestId('staff-drawer-upgrade-btn')).toHaveTextContent(/upgrade plan/i);
   });
 
   it('renders the workspace column from the DTO assignment (spec 0048)', async () => {
@@ -705,7 +736,7 @@ describe('StaffManagementScreen', () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
     expect(screen.getByText(/nearing the Pro plan's 20-staff limit/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /upgrade to premium/i })).toBeInTheDocument();
+    expect(screen.getByTestId('staff-quota-upgrade-btn')).toHaveTextContent(/upgrade to premium/i);
   });
 
   it('hides the approaching-limit banner on Premium below its 50-staff cap (C2.2)', async () => {
@@ -809,7 +840,8 @@ describe('StaffManagementScreen', () => {
     // The pay field is not on the edit form at all — a payroll surface owns it.
     expect(within(dialog).queryByLabelText('Monthly Take-Home Pay *')).not.toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole('button', { name: /update/i }));
+    // Saved through the shared popup's tagged control.
+    fireEvent.click(within(dialog).getByTestId('settings-popup-save'));
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('update_staff_scoped', expect.objectContaining({
         sessionToken: 'session-1',
@@ -836,12 +868,125 @@ describe('StaffManagementScreen', () => {
     fireEvent.change(within(dialog).getByRole('combobox', { name: /^role/i }), { target: { value: 'role-staff' } });
     await fillRequiredProfile(dialog);
 
-    fireEvent.click(within(dialog).getByRole('button', { name: /create/i }));
+    fireEvent.click(within(dialog).getByTestId('settings-popup-save'));
     await waitFor(() => {
       const call = invokeMock.mock.calls.find((c: unknown[]) => c[0] === 'create_staff_scoped');
       const profile = (call?.[1] as { args: { profile: Record<string, unknown> } }).args.profile;
       expect(profile).toHaveProperty('monthly_take_home_minor');
       expect(profile['monthly_take_home_minor'] as number).toBeGreaterThan(0);
+    }, FAST_WAIT);
+  });
+
+  // ── Button conformance (structural) ──────────────────────────────
+  //
+  // The standing brief for this surface: every action renders through the shared
+  // Button and carries a stable kebab-case data-testid, so no test or e2e
+  // locator has to match an English label a translation can change. These cases
+  // are the evidence — a bare <button> shows up here as a missing `btn` class,
+  // and an untagged control as a failed lookup.
+
+  /** Shared Button renders `btn …`, or `btn--unstyled` where a screen keeps its
+   *  own look. An unclothed <button> matches neither. */
+  const expectSharedButton = (el: HTMLElement) =>
+    expect(el.className).toMatch(/\bbtn(--|$)/);
+
+  it('renders every staff action through the shared Button, tagged with a testid', async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    expectSharedButton(screen.getByTestId('staff-back-btn'));
+    expectSharedButton(screen.getByTestId('staff-add-btn'));
+    expectSharedButton(screen.getByTestId('staff-edit-staff-1'));
+    expectSharedButton(screen.getByTestId('staff-toggle-active-staff-1'));
+    // Restore is the SAME control in its other state, so its testid must not
+    // move with the label — that is the whole point of tagging it here.
+    expectSharedButton(screen.getByTestId('staff-toggle-active-staff-2'));
+    expectSharedButton(screen.getByTestId('staff-impersonate-staff-1'));
+
+    // The tab strip is a shared control too, tagged per section.
+    expect(screen.getByTestId('staff-tab-account')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('staff-tab-roles')).toBeInTheDocument();
+
+    // The back control is the only route off this sidebar-less page, so a tagged
+    // element that does not navigate would be worse than no testid at all.
+    fireEvent.click(screen.getByTestId('staff-back-btn'));
+    expect(setActiveWorkspaceMock).toHaveBeenCalledWith(null);
+  });
+
+  it('opens and dismisses the drawer through the popup controls it renders', async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.click(screen.getByTestId('staff-edit-staff-1'));
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText('Date of Birth *')).toHaveValue('1990-05-14');
+    }, FAST_WAIT);
+
+    // Cancel closes the drawer without writing anything.
+    fireEvent.click(within(dialog).getByTestId('settings-popup-cancel'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), FAST_WAIT);
+    expect(invokeMock).not.toHaveBeenCalledWith('update_staff_scoped', expect.anything());
+
+    // The close control is the same tagged surface, reached twice so the drawer
+    // is mounted fresh rather than reused.
+    fireEvent.click(screen.getByTestId('staff-edit-staff-1'));
+    const reopened = await screen.findByRole('dialog');
+    fireEvent.click(within(reopened).getByTestId('settings-popup-close'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), FAST_WAIT);
+  });
+
+  it('cancels a deactivation from the confirm dialog without writing', async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.click(screen.getByTestId('staff-toggle-active-staff-1'));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByTestId('confirm-dialog-cancel'));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), FAST_WAIT);
+    expect(invokeMock).not.toHaveBeenCalledWith('update_staff_scoped', expect.anything());
+  });
+
+  it('retries a failed load through the retry testid', async () => {
+    let failedOnce = false;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_staff_scoped') {
+        if (!failedOnce) {
+          failedOnce = true;
+          return Promise.reject(new Error('database is locked'));
+        }
+        return Promise.resolve(SAMPLE_STAFF);
+      }
+      if (cmd === 'list_roles_scoped') return Promise.resolve(SAMPLE_ROLES);
+      if (cmd === 'list_all_workspaces_scoped') return Promise.resolve([]);
+      if (cmd === 'get_brand_settings' || cmd === 'get_brand_settings_scoped') {
+        return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
+      }
+      return Promise.resolve([]);
+    });
+
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+
+    const retry = await screen.findByTestId('staff-retry-btn');
+    expectSharedButton(retry);
+    fireEvent.click(retry);
+
+    await waitForTable();
+    expect(screen.getByText('Jane Smith')).toBeInTheDocument();
+  });
+
+  it('starts impersonation through the row testid', async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.click(screen.getByTestId('staff-impersonate-staff-1'));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('impersonate_user_scoped', {
+        sessionToken: 'session-1',
+        targetUserId: 'staff-1',
+      });
     }, FAST_WAIT);
   });
 });

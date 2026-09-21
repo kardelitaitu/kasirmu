@@ -314,17 +314,18 @@ export default function StaffManagementScreen() {
               button is the only in-page route to the workspace picker, and it
               sits outside every load branch below so a failed or slow staff
               load can never strand the operator on a sidebar-less page. */}
-          <button
-            type="button"
+          <Button
+            unstyled
             className="staff-mgmt-back-btn"
             onClick={goToWorkspacePicker}
             aria-label={l10n.getString('staff-back-aria')}
+            data-testid="staff-back-btn"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
               <line x1="19" y1="12" x2="5" y2="12" />
               <polyline points="12 19 5 12 12 5" />
             </svg>
-          </button>
+          </Button>
         </div>
 
         {/* Centre column, KDS-header style. No h1: the tab names the view, and
@@ -338,11 +339,11 @@ export default function StaffManagementScreen() {
               its route, so a staff-only manager never sees the button. */}
           {activeTab === 'roles' && canManageRoles ? (
             <Localized id="role-create">
-              <Button onClick={() => rolesPanelRef.current?.openCreate()}>Add New Role</Button>
+              <Button onClick={() => rolesPanelRef.current?.openCreate()} data-testid="staff-add-role-btn">Add New Role</Button>
             </Localized>
           ) : (
             <Localized id="staff-add-button">
-              <Button onClick={openCreate}>Add Staff</Button>
+              <Button onClick={openCreate} data-testid="staff-add-btn">Add Staff</Button>
             </Localized>
           )}
         </div>
@@ -367,7 +368,7 @@ export default function StaffManagementScreen() {
           {atProStaffCap && (
             <div className="staff-mgmt-approaching-banner" role="note">
               <span>{l10n.getString('staff-limit-approaching-premium')}</span>
-              <Button variant="primary" size="sm" onClick={() => openUpgradePricingPage(locale, 'premium')}>
+              <Button variant="primary" size="sm" onClick={() => openUpgradePricingPage(locale, 'premium')} data-testid="staff-quota-upgrade-btn">
                 {l10n.getString('staff-limit-approaching-premium-cta')}
               </Button>
             </div>
@@ -377,7 +378,7 @@ export default function StaffManagementScreen() {
             <Card shadow="sm">
               <div className="staff-mgmt-load-error" role="alert">
                 <p className="staff-mgmt-load-error-message">{loadError}</p>
-                <Button onClick={() => load()} variant="secondary">
+                <Button onClick={() => load()} variant="secondary" data-testid="staff-retry-btn">
                   <Localized id="staff-retry"><span>Retry</span></Localized>
                 </Button>
               </div>
@@ -416,7 +417,7 @@ export default function StaffManagementScreen() {
                 <EmptyState
                   icon={<NoStaffIcon />}
                   title={requiredLocalized(l10n, 'staff-empty')}
-                  action={{ label: requiredLocalized(l10n, 'staff-empty-cta'), onClick: openCreate }}
+                  action={{ label: requiredLocalized(l10n, 'staff-empty-cta'), onClick: openCreate, testId: 'staff-empty-cta' }}
                 />
               </div>
             </Card>

@@ -213,12 +213,23 @@ describe('RoleAuthoringPanel', () => {
     await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument());
     expect(screen.getByLabelText('Edit the Night Manager role')).toBeEnabled();
     expect(screen.getByLabelText('Delete the Night Manager role')).toBeEnabled();
+
+    // Same two controls, located the way a test has to when the label is a
+    // translation: by the testid, which is what the row actions are tagged with.
+    // Both render through the shared Button (a bare <button> carries no `btn`).
+    const edit = screen.getByTestId('staff-role-edit-role-night-manager');
+    const del = screen.getByTestId('staff-role-delete-role-night-manager');
+    expect(edit.className).toMatch(/\bbtn(--|$)/);
+    expect(del.className).toMatch(/\bbtn(--|$)/);
+    expect(edit).toHaveAccessibleName('Edit the Night Manager role');
   });
 
   it('disables Delete and says why while a role is referenced', async () => {
     renderScreen();
     await waitFor(() => expect(screen.getByText('Warehouse Lead')).toBeInTheDocument());
     expect(screen.getByLabelText('Delete the Warehouse Lead role')).toBeDisabled();
+    // Disabled-by-reference, read through the testid this time.
+    expect(screen.getByTestId('staff-role-delete-role-warehouse')).toBeDisabled();
     // The whole reason for the split, in one row: reference_count is 2, only
     // ONE of those rows is a person, and the label now says so — 1 account
     // and 1 workspace grant, never "2 accounts". Delete stays gated on
@@ -484,8 +495,13 @@ describe('RoleAuthoringPanel', () => {
     // extra calls to answer a question about one of them.
     expect(calls['list_role_holders_scoped']).toBeUndefined();
 
-    fireEvent.click(screen.getByLabelText('Show the accounts holding the Night Manager role'));
+    // The expander is the shared Button, tagged by role id.
+    const toggle = screen.getByTestId('staff-role-holders-role-night-manager');
+    expect(toggle.className).toMatch(/\bbtn(--|$)/);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(toggle);
     await waitFor(() => expect(screen.getByText('Ana')).toBeInTheDocument());
+    expect(screen.getByTestId('staff-role-holders-role-night-manager')).toHaveAttribute('aria-expanded', 'true');
     expect(calls['list_role_holders_scoped']).toHaveLength(1);
     expect(calls['list_role_holders_scoped']?.[0]?.[0]).toEqual({
       sessionToken: HARNESS_SESSION_TOKEN,
@@ -502,7 +518,9 @@ describe('RoleAuthoringPanel', () => {
     renderScreen();
     await waitFor(() => expect(screen.getByText('Owner')).toBeInTheDocument());
     expect(screen.queryByLabelText('Edit the Owner role')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText('Show the accounts holding the Owner role'));
+    // A preset carries no edit/delete tag but still carries the holders one.
+    expect(screen.queryByTestId('staff-role-edit-role-owner')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('staff-role-holders-role-owner'));
     await waitFor(() => expect(calls['list_role_holders_scoped']).toHaveLength(1));
   });
 

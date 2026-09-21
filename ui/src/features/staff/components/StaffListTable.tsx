@@ -22,6 +22,7 @@
 import { Localized, useLocalization } from '@fluent/react';
 import type { StaffMemberDto } from '@/api/staff';
 import { Badge } from '@/components/Badge';
+import { Button } from '@/components/Button';
 import { RoleIcon } from '@/components/RoleIcon';
 
 interface StaffListTableProps {
@@ -149,36 +150,37 @@ export function StaffListTable({
               <td>
                 <div className="staff-mgmt-cell-actions">
                 <Localized id="staff-edit-aria" attrs={{ "aria-label": true }} vars={{ name: member.display_name }}>
-                  <button
-                    type="button"
+                  <Button
+                    unstyled
                     className="staff-mgmt-action-btn"
                     onClick={() => onEdit(member)}
-
+                    data-testid={`staff-edit-${member.id}`}
                   >
                     <Localized id="staff-edit"><span>Edit</span></Localized>
-                  </button>
+                  </Button>
                 </Localized>
                 <Localized id={member.is_active ? 'staff-deactivate-aria' : 'staff-restore-aria'} attrs={{ "aria-label": true }} vars={{ name: member.display_name }}>
-                  <button
-                    type="button"
+                  <Button
+                    unstyled
                     className={`staff-mgmt-action-btn ${member.is_active ? 'staff-mgmt-action-btn--warn' : 'staff-mgmt-action-btn--restore'}`}
                     onClick={() => onToggleActive(member)}
-
+                    data-testid={`staff-toggle-active-${member.id}`}
                   >
                     <Localized id={member.is_active ? 'staff-deactivate' : 'staff-restore'}>
                       <span>{member.is_active ? 'Deactivate' : 'Restore'}</span>
                     </Localized>
-                  </button>
+                  </Button>
                 </Localized>
                 {canImpersonate && (
                   <Localized id="staff-impersonate-aria" attrs={{ "aria-label": true }} vars={{ name: member.display_name }}>
-                    <button
-                      type="button"
+                    <Button
+                      unstyled
                       className="staff-mgmt-action-btn"
                       onClick={() => onImpersonate(member)}
+                      data-testid={`staff-impersonate-${member.id}`}
                     >
                       <Localized id="staff-impersonate-action"><span>Impersonate</span></Localized>
-                    </button>
+                    </Button>
                   </Localized>
                 )}
                 </div>
