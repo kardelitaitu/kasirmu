@@ -220,6 +220,31 @@ func handleAdminUpdateTenant(app core.App) func(e *core.RequestEvent) error {
 	}
 }
 
+// adminActor names who performed an admin action, for the audit trail.
+//
+// There are two ways to satisfy adminAuth and they are not equivalent, so the
+// audit row must not blur them: the shared admin key is server-to-server (a
+// script or the cloud server), while a web session belongs to a named admin
+// tenant. Recording "admin" for both would lose the one distinction an
+// incident review actually asks about — a human, or automation.
+//
+// Never fails: an unresolvable case records the mechanism, not empty, because
+// an audit row that cannot say who is still better than one that says nobody.
+func adminActor(e *core.RequestEvent) string {
+	if adminKeyOK(e) {
+		return "admin-key"
+	}
+	token, err := extractBearerToken(e)
+	if err != nil {
+		return "admin-session"
+	}
+	tenantID := webOtpStore.getSession(hashWebToken(token))
+	if tenantID == "" {
+		return "admin-session"
+	}
+	return "admin-session:" + tenantID
+}
+
 // ── POST /api/v1/admin/tenants/{id}/region ────────────────────────
 
 // regionUpdateRequest is the body for the admin region change.
@@ -300,9 +325,16 @@ func handleAdminSetRegion(app core.App) func(e *core.RequestEvent) error {
 		}
 
 		// Order matters and is decided by ADR #59 §2.1a: the pointer must never
-		// lead the data. With one region the earlier steps are no-ops; when a
-		// second exists, the row migration, the terminal home_region rewrite
-		// and the token re-issue all precede this write.
+		// lead the data, and the REASON must be recorded before the pointer
+		// moves. With one region the earlier orchestration steps are no-ops;
+		// when a second exists, the row migration, the terminal home_region
+		// rewrite and the token re-issue all precede this write.
+		//
+		// The audit row is written first so a crash between the two leaves an
+		// event for a move that did not complete — recoverable and visible —
+		// rather than a completed move nobody can explain. It is best-effort;
+		// see recordRegionChange for why that direction is the safe one.
+		recordRegionChange(app, tenant.Id, adminActor(e), from, target, req.Reason)
 		tenant.Set("region", target)
 		if err := app.Save(tenant); err != nil {
 			log.Printf("/admin/tenants/%s/region: save failed: %v", tenant.Id, err)

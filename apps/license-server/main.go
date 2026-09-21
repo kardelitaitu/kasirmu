@@ -270,6 +270,12 @@ func main() {
 		if err := ensureEnterpriseApprovals(app); err != nil {
 			return err
 		}
+		// ADR #59 §2.1a step 3: the durable audit collection for residency
+		// moves. Created programmatically because the region route writes to it
+		// and a missing collection would drop the audit trail of a real move.
+		if err := ensureTenantRegionEvents(app); err != nil {
+			return err
+		}
 		// C4.3: add-on marketplace field on license_keys
 		if err := ensureAddonsField(app); err != nil {
 			return err
@@ -995,6 +1001,93 @@ func ensureEnterpriseApprovals(app core.App) error {
 	}
 	log.Println("migrated: created enterprise_approvals collection (enterprise self-serve trial)")
 	return nil
+}
+
+// ensureTenantRegionEvents creates the durable audit collection for residency
+// moves (ADR #59 §2.1a step 3).
+//
+// Why a row and not just the log line handleAdminUpdateTenant emits: a region
+// change moves where a tenant's DATA lives, so "why did this tenant's data
+// move" is precisely the question an incident review asks — and a log line is
+// rotated away while the answer must outlive the deploy that produced it. The
+// row records actor, from-region, to-region and the reason.
+//
+// Superuser-only (LSE-5): the rules are nil, NOT the empty string. An empty
+// string is PUBLIC in PocketBase, which is exactly the repair
+// ensureSuperuserOnlyRules exists to apply to older collections — so a new
+// collection must never be born with one.
+func ensureTenantRegionEvents(app core.App) error {
+	if existing, err := app.FindCollectionByNameOrId(tenantRegionEventsCollection); err == nil {
+		return ensureSuperuserOnlyRules(app, existing)
+	}
+	tenantsColl, err := app.FindCollectionByNameOrId("tenants")
+	if err != nil {
+		return fmt.Errorf("tenants collection not found (required before creating %s): %w", tenantRegionEventsCollection, err)
+	}
+	coll := core.NewBaseCollection(tenantRegionEventsCollection)
+	coll.Fields.Add(&core.RelationField{Name: "tenant_id", Required: true, CollectionId: tenantsColl.Id, MaxSelect: 1})
+	// The actor is whoever held the admin credential when the move ran. Stored
+	// as the resolved agent string rather than a user id, because admin auth is
+	// a shared key or an admin-tenant session and neither is a stable user row.
+	coll.Fields.Add(&core.TextField{Name: "actor", Required: true, Max: 256})
+	coll.Fields.Add(&core.TextField{Name: "from_region", Max: 64})
+	coll.Fields.Add(&core.TextField{Name: "to_region", Required: true, Max: 64})
+	coll.Fields.Add(&core.TextField{Name: "reason", Required: true, Max: 1024})
+	// created/updated are NOT implicit on a programmatically-built collection —
+	// unlike the JSON schema import, NewBaseCollection starts with only the id.
+	// The index below references created, so the fields must be added first;
+	// omitting them is what made the first version of this migration fail with
+	// "no such column: created".
+	coll.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
+	coll.Fields.Add(&core.AutodateField{Name: "updated", OnCreate: true, OnUpdate: true})
+	coll.ListRule = nil
+	coll.ViewRule = nil
+	coll.CreateRule = nil
+	coll.UpdateRule = nil
+	coll.DeleteRule = nil
+	// Append-only by convention: no endpoint exposes an update or delete. The
+	// index makes "what happened to this tenant" a cheap query, which is the
+	// only read the collection is for.
+	coll.Indexes = append(coll.Indexes,
+		"CREATE INDEX idx_tenant_region_events_tenant ON tenant_region_events (tenant_id, created)")
+	if err := app.Save(coll); err != nil {
+		return fmt.Errorf("failed to create %s collection: %w", tenantRegionEventsCollection, err)
+	}
+	log.Printf("migrated: created %s collection (ADR #59 region-change audit trail)", tenantRegionEventsCollection)
+	return nil
+}
+
+// tenantRegionEventsCollection is the audit collection name, named once so the
+// writer, the migration and the tests cannot drift apart.
+const tenantRegionEventsCollection = "tenant_region_events"
+
+// recordRegionChange appends one durable audit row for a residency move.
+//
+// Best-effort by design, and the direction matters: the field write has already
+// committed by the time this runs, so failing the request here would report an
+// error for a change that DID happen — the operator would retry and see an
+// idempotent no-op, which is a worse lie than a missing audit line. The loss is
+// logged instead, so it is visible rather than silent.
+//
+// The same reasoning ADR #59 §2.1a uses for the ordering applies: record the
+// reason before flipping the pointer, never after.
+func recordRegionChange(app core.App, tenantID, actor, from, to, reason string) {
+	coll, err := app.FindCollectionByNameOrId(tenantRegionEventsCollection)
+	if err != nil {
+		log.Printf("region audit: collection %s unavailable, event dropped (tenant=%s %s→%s reason=%q): %v",
+			tenantRegionEventsCollection, tenantID, from, to, reason, err)
+		return
+	}
+	rec := core.NewRecord(coll)
+	rec.Set("tenant_id", tenantID)
+	rec.Set("actor", actor)
+	rec.Set("from_region", from)
+	rec.Set("to_region", to)
+	rec.Set("reason", reason)
+	if err := app.Save(rec); err != nil {
+		log.Printf("region audit: failed to record tenant=%s %s→%s (reason=%q): %v",
+			tenantID, from, to, reason, err)
+	}
 }
 
 func ensureTrialClaims(app core.App) error {

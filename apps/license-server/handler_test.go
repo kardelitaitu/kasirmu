@@ -262,6 +262,11 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		if err := ensureRegionField(app); err != nil {
 			return err
 		}
+		// Mirror production boot: the region-change audit collection
+		// (ADR #59 §2.1a step 3).
+		if err := ensureTenantRegionEvents(app); err != nil {
+			return err
+		}
 		// Mirror production boot: add the license_keys.is_trial bool
 		// (segmented trials, C2.1) via the same idempotent migration path
 		// the deployed server uses.
