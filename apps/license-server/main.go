@@ -377,6 +377,7 @@ func main() {
 		se.Router.GET("/api/v1/admin/tenants", handleAdminListTenants(app))
 		se.Router.GET("/api/v1/admin/tenants/{id}", handleAdminGetTenant(app))
 		se.Router.PATCH("/api/v1/admin/tenants/{id}", handleAdminUpdateTenant(app))
+		se.Router.POST("/api/v1/admin/tenants/{id}/region", handleAdminSetRegion(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/activate", handleAdminActivate(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/renew", handleAdminRenew(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/revoke", handleAdminRevoke(app))

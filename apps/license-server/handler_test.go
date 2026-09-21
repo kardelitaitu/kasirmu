@@ -255,6 +255,13 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		if err := ensurePasswordResetAtField(app); err != nil {
 			return err
 		}
+		// Mirror production boot: add the tenants.region residency field
+		// (ADR #59 §2.1a step 1). createTestCollections omits it on purpose,
+		// so this exercises the same idempotent migration + backfill the
+		// deployed server runs rather than a hand-built schema.
+		if err := ensureRegionField(app); err != nil {
+			return err
+		}
 		// Mirror production boot: add the license_keys.is_trial bool
 		// (segmented trials, C2.1) via the same idempotent migration path
 		// the deployed server uses.
@@ -352,6 +359,8 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		se.Router.GET("/api/v1/admin/tenants", handleAdminListTenants(app))
 		se.Router.GET("/api/v1/admin/tenants/{id}", handleAdminGetTenant(app))
 		se.Router.PATCH("/api/v1/admin/tenants/{id}", handleAdminUpdateTenant(app))
+		// ADR #59 §2.1a step 2: admin-only residency move.
+		se.Router.POST("/api/v1/admin/tenants/{id}/region", handleAdminSetRegion(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/activate", handleAdminActivate(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/renew", handleAdminRenew(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/revoke", handleAdminRevoke(app))

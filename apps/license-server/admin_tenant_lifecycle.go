@@ -220,6 +220,129 @@ func handleAdminUpdateTenant(app core.App) func(e *core.RequestEvent) error {
 	}
 }
 
+// ── POST /api/v1/admin/tenants/{id}/region ────────────────────────
+
+// regionUpdateRequest is the body for the admin region change.
+type regionUpdateRequest struct {
+	// Target residency region; must be a member of the closed set.
+	Region string `json:"region"`
+	// Reason for the move (required — this is the audit trail).
+	Reason string `json:"reason"`
+}
+
+// handleAdminSetRegion moves a tenant's RESIDENCY region.
+//
+// ADR #59 §2.1a: region is an administrator action, never tenant self-service,
+// because the only thing that would make self-service safe is knowing whether
+// the tenant has business data yet — a check that spans the cloud's rows and
+// every local SQLite database that has not synced, so it is expensive, racy,
+// and worse than the feature it would guard. A human is the guard.
+//
+// The MARKET anchor is untouched: that is legal_entities.country_code on the
+// tenant's own database and stays an ordinary settings edit. This endpoint
+// moves data residency, which is why it is admin-only (ADR #59 §2.2).
+//
+// Idempotent: a tenant already in the requested region is a no-op returning
+// 200, not an error — the model is handleAdminRevokeDevice's idempotency, so a
+// retried or double-clicked request cannot fail for being already-true.
+//
+// NOT the migration orchestration. ADR #59 §2.1a step 4: with one region the
+// data move, terminal home_region rewrite and token re-issue are all no-ops,
+// so building them now would be untestable code. This handler performs the
+// one step that IS real — the field write, last, after a reason is recorded —
+// and the orchestration is added when the second region exists.
+func handleAdminSetRegion(app core.App) func(e *core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		if !adminAuth(app, e) {
+			return nil
+		}
+		tenant, err := app.FindRecordById("tenants", e.Request.PathValue("id"))
+		if err != nil {
+			return e.JSON(http.StatusNotFound, map[string]any{"error": "tenant not found"})
+		}
+		if e.Request.Body == nil {
+			return e.JSON(http.StatusBadRequest, map[string]any{"error": "JSON body required"})
+		}
+		var req regionUpdateRequest
+		if err := json.NewDecoder(e.Request.Body).Decode(&req); err != nil {
+			return e.JSON(http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+		}
+
+		// Validate against the closed set up front so an unknown region is bad
+		// input (400), not a schema failure surfacing as a 500. The set is
+		// closed by ADR #59 §Q2: an unvalidated string must never silently open
+		// a second spelling of one region, which would be a routing bug that
+		// looks like a data bug.
+		target := strings.ToLower(strings.TrimSpace(req.Region))
+		if !isKnownRegion(target) {
+			return e.JSON(http.StatusBadRequest, map[string]any{
+				"error": "unknown region — must be one of " + strings.Join(knownRegions(), ", "),
+			})
+		}
+		if strings.TrimSpace(req.Reason) == "" {
+			return e.JSON(http.StatusBadRequest, map[string]any{"error": "reason is required (audit trail)"})
+		}
+
+		// An EMPTY stored region is "not yet set", not "already global". Those
+		// are different states and merging them would make the write
+		// unreachable for exactly the rows that need it: a tenant that
+		// predates the field (or whose backfill has not run) would report
+		// "unchanged" while still carrying no region at all. So the no-op test
+		// is on the stored value, and an empty one always writes.
+		from := tenant.GetString("region")
+		// Idempotent no-op: already there is success, not an error.
+		if from != "" && from == target {
+			return e.JSON(http.StatusOK, map[string]any{
+				"status": "unchanged",
+				"region": target,
+				"from":   from,
+			})
+		}
+
+		// Order matters and is decided by ADR #59 §2.1a: the pointer must never
+		// lead the data. With one region the earlier steps are no-ops; when a
+		// second exists, the row migration, the terminal home_region rewrite
+		// and the token re-issue all precede this write.
+		tenant.Set("region", target)
+		if err := app.Save(tenant); err != nil {
+			log.Printf("/admin/tenants/%s/region: save failed: %v", tenant.Id, err)
+			return e.JSON(http.StatusInternalServerError, map[string]any{"error": "region update failed"})
+		}
+
+		displayFrom := from
+		if displayFrom == "" {
+			displayFrom = "(unset)"
+		}
+		log.Printf("/admin/tenants/%s/region: tenant %q moved %s → %s (reason: %q)",
+			tenant.Id, tenant.GetString("email"), displayFrom, target, req.Reason)
+		return e.JSON(http.StatusOK, map[string]any{
+			"status": "updated",
+			"region": target,
+			"from":   from,
+		})
+	}
+}
+
+// knownRegions returns the closed residency set, in presentation order.
+//
+// Mirrors RegionCode::ALL in crates/kasirmu-core/src/regional.rs and the
+// values list on the tenants.region select. Three spellings of one region is
+// the failure this vocabulary exists to prevent, so the set is named once per
+// language and the two are kept in step by the migration test.
+func knownRegions() []string { return []string{regionGlobal} }
+
+// isKnownRegion reports whether raw is a member of the closed residency set.
+// Case-insensitive: region codes are canonicalised to lowercase (RegionCode's
+// serde form), so a caller sending "Global" names the same region.
+func isKnownRegion(raw string) bool {
+	for _, r := range knownRegions() {
+		if r == raw {
+			return true
+		}
+	}
+	return false
+}
+
 // ── POST /api/v1/admin/tenants/{id}/devices/{deviceId}/revoke ─────
 
 // handleAdminRevokeDevice revokes one POS device. Mirrors the tenant's own
