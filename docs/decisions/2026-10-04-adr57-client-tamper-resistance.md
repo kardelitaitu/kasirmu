@@ -2,7 +2,7 @@
 num: 57
 area: security
 title: "ADR #57: Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection"
-status: Proposed (2026-10-04) — §2.1 (client reporting + server classification, verified on a real device), §2.2's verdict rule, §2.3's grace ceiling, §2.5's per-device renewal refusal, §2.6's sentinel guard, §Q4's escalation fold, §Q-B's pin store and §2.4's operator notification are all implemented
+status: Proposed (2026-10-04) — §2.1 (client reporting + server classification, verified on a real device), §2.2's verdict rule, §2.3's grace ceiling, §2.5's per-device renewal refusal, §2.6's sentinel guard, §Q4's escalation fold, §Q-B's pin store and §2.4's notification for the fingerprint + device-quota signals are implemented; §2.4's product/staff/location signals are not
 ---
 
 # ADR #57: Client Tamper Resistance Without Play Integrity
@@ -222,11 +222,26 @@ the one this record asks to be held to.
 
 ### 2.4 Server-side detection, because effects are observable and claims are not
 
-**PART IMPLEMENTED 2026-09-21 — the fingerprint signal only.** The §2.1/§2.2 signal now reaches
-this section's notifier: `apps/license-server/build_integrity_alerts.go` classifies and stores
-every non-`valid` report and emails the operator daily (a single `mismatch`, or repeated `unknown`
-per §Q4/§Q-C). **Still to build: the quota-effect signals below**, which are the other half of this
-section and the reason the A2 row in §3.3 stays unbounded.
+**PART IMPLEMENTED 2026-09-22 — two of the four signals.** The §2.1/§2.2 fingerprint signal and the
+POS-instance quota signal both reach this section's notifier
+(`apps/license-server/build_integrity_alerts.go`): it emails the operator daily on a single
+`mismatch`, on repeated `unknown` per §Q4/§Q-C, and on a tenant running more active terminals than
+their tier allows (`findTenantsOverPosQuota`, `apps/license-server/quota_effect.go`).
+
+**Why only two of the four, stated rather than implied.** The signal table below lists four; the two
+that ship are the ones computable from data the LICENCE server itself holds —
+`tenant_machines` for the device axis, and the subscription's `max_pos_instances` for the cap.
+The product/staff/location counts the table also names are **not** held here: they live in the
+tenant's local SQLite and reach only the CLOUD server, and only for products and users. Building a
+detector that silently covered one axis while the table implied four would be exactly the overclaim
+§3.3 exists to prevent, so the remaining two are named as unbuilt.
+
+**The quota signal carries an important limit, and the alert says so.** An over-cap count is a
+*correlation*, not a verdict: a tier change mid-sync, a restore from a larger plan, or a hand-edited
+limit all produce it, which is why this section's response policy is "flag and notify, never
+auto-terminate". The alert body lists those innocent explanations explicitly and states that only a
+person can tell them apart — an alert that reads as an accusation is one an operator learns to
+ignore.
 
 Quota enforcement is local — **6 bridge call sites** invoke the core quota gates
 (`bridge/products.rs:701` `enforce_product_quota`, `staff.rs:1084` `enforce_staff_quota`,
@@ -526,7 +541,7 @@ naming the debug short-circuit as the reason the test must not target `verify_li
 
 | Residual | Bound — **as of today, not as designed** |
 |---|---|
-| A2 exceeds local quota gates | **Still unbounded as of 2026-09-21.** The build-integrity controls report BUILDS, not quota use, so a patched client that skips a local gate is untouched by them. Bounding this needs a separate control; nothing in §2.4 addresses it |
+| A2 exceeds local quota gates | **Detected on the DEVICE axis, still unbounded on the others — updated 2026-09-22.** §2.4's device signal now ships: a tenant with more active terminals than their tier allows is detected from server-held data and emailed to an operator (`findTenantsOverPosQuota`). The product/staff/location axes the section also names are NOT covered, because those counts never reach the licence server |
 | A1/A3 patch out fingerprint reporting | **Detected and reported — updated 2026-09-21.** A deleted reporting line arrives as `unknown`; repetition inside the window escalates (§Q4/§Q-C) and the daily scanner now ALERTS the operator. What remains unbounded is the response: §Q4 routes to a human and never to an automatic refusal, which is deliberate |
 | A1/A3 report a fingerprint at all | **CLOSED 2026-09-21.** The client now computes the APK signing certificate over JNI (`kasirmu-hal/src/transport/apk_signature.rs`) and sends it on the licence-status call; the server classifies and stores every non-`valid` verdict. See the note below for why this closes the *reporting* gap without bounding the row above it |
 | A3 redistributes a working tampered APK | Bounded by the tier's grace window; the forged APK cannot renew (§2.3, and renewal refusal is already enforced — ADR #58 §2.4a.1) |
