@@ -295,8 +295,25 @@ What is held now:
   left exactly as found, which is the `OR IGNORE` no-op the proof claims to have proven — the
   presence half matches the seed's primary key, so a differing column is not drift to repair. This
   bullet supersedes §2.2's "not a second end-to-end run" clause.
-- **The second production caller is untested.** `apps/cloud-server/src/db.rs:134,143` calls the
-  runner too and has never seen drifted bytes.
+- **Closed — the server's own boot ran, on both copies.** The caller is
+  `main` → `DbPool::from_config` → `connect_sqlite` (`apps/cloud-server/src/db.rs:134`), so the
+  cloud server migrates at boot exactly as the desktop app does — but under a **different path
+  rule**: `OZ_DB_PATH`, defaulting to the *relative* `"kasir.db"`, so a deployment without that
+  variable migrates whatever file sits in its working directory, where the desktop app resolves
+  `<app_data_dir>/kasir.db`. The second call site, `db.rs:143`, is `connect_sqlite_in_memory()`,
+  reached by the PostgreSQL boot path and by tests: a fresh in-memory database every boot, where
+  drift cannot exist; the bricking this record is about is a SQLite-deployment shape. With the
+  drift forced and the seed intact it came up and served `GET /health` → `200
+  {"status":"ok","db":"sqlite","db_connected":true}`, ledger 61, the registry's checksum written
+  back, `journal_mode=wal` in the file header. With the seed rows deleted it refused, exited 1 and
+  bound nothing, reporting through its own type: `Error: "failed to initialise database: Core
+  error: platform error: database error: table loyalty_tiers has no column named earn_multiplier"`
+  — `DbError::Core` rendered by its own `main` — after logging the drift warning and "per-statement
+  drift re-apply did not recover". Nothing was stubbed: no credentials are required with
+  `OZ_PRODUCTION` unset, and Redis was absent by design, falling back in-process. What is
+  unobserved: the graceful-shutdown path, since MSYS `kill -TERM` cannot deliver a POSIX signal to
+  a native Windows process (the process exited 143 with no shutdown log line) — irrelevant to the
+  migration question, and reachable only by a real container stop.
 - **Closed — the app's own startup function ran, on both copies.** A throwaway example binary
   built the app from a mock context whose *identifier* was the probe's own, so `AppState::new`'s
   own `resolve_db_path` resolved into `…/mu.kasir.app.migration-drift-probe` and the installed
