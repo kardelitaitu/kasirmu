@@ -60,7 +60,7 @@ re-applying 20260813_init.sql against a fully migrated database failed: database
 
 `test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 3140 filtered out`
 
-### 2.2 The real-database replay — measured, and it does not prove what it looks like
+### 2.2 The real-database replay: vacuous as captured, meaningful once forced
 
 Two captures of a temporary probe (`crates/kasirmu-core/tests/tmp_real_db_replay.rs`, which
 still sits untracked in the tree, self-labelled "TEMPORARY probe — deleted before commit")
@@ -88,6 +88,26 @@ that the runner is a no-op against a fully-migrated real database, i.e. that the
 nothing. It does **not** exercise the drift re-apply against real bytes, which was the thing
 under repair. The copy also holds 60 `schema_migrations` rows, fewer than the registry, so it
 predates at least `20261008_provisioning_legacy_backfill.sql`.
+
+**The archived copy was then run twice, as a control and as the experiment.** Both halves ran
+against the same archived bytes, from two copies, so the archive itself was never opened:
+
+| Run | Stored checksum at start | Migrations applied | `loyalty_tiers` | Stored checksum at end |
+| --- | --- | --- | --- | --- |
+| as captured | `e6f3504e…` — matches the file | 60 → 61 | 4 → 4 | `e6f3504e…` |
+| drift forced | `f86bbbe0…` | 60 → 61 | 4 → 4 | `e6f3504e…` |
+
+The control *is* what the archived `REPLAY-OK` was, and the runner's own condition shows why
+it is worth nothing as evidence: the drift branch is `if *stored != current`
+(`platform/core/src/database/migrations.rs:75`), and `stored` already equalled `current`, so
+`reapply_for_drift` could not be reached and the failing seed statement was never executed.
+The name of the test did not matter — the branch it named was unreachable from those bytes.
+
+The forced run is the one that reaches it, and it ends with the registry's checksum written
+and the four rows intact — the same result the live-database copy gives in the next
+paragraph, from an independent snapshot. (The 60 → 61 in both rows is
+`20261008_provisioning_legacy_backfill.sql`, which this older snapshot lacked either way, so
+it is not evidence of anything.)
 
 Consequently, as first archived, the drift path rested on **construction alone** — the unit
 test in §4 rewrites the stored checksum to the pre-ADR-56 value to force it.
