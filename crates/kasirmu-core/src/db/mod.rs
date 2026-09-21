@@ -157,6 +157,8 @@ pub mod stock_transfers;
 pub mod suppliers;
 /// CRUD for restaurant tables (floor plan, status management).
 pub mod tables;
+/// First-run provisioning records (ADR #56 §2.1).
+pub mod provisioning;
 /// Tax rate CRUD.
 pub mod tax;
 /// Terminal override CRUD.

@@ -38,10 +38,13 @@ CREATE TABLE IF NOT EXISTS provisioning (
     -- are different namespaces (ADR #56 §2.1) and comparing them is the bug
     -- that section exists to prevent.
     tenant_id      TEXT,
-    -- The locations row this terminal belongs to. ADR #56 §2.6 removes the
+    -- The locations row this terminal belongs to. NOTE the target is
+    -- `locations`, not `store_profiles`: 20260906_rename_store_to_location.sql:14
+    -- renames that table, and this migration runs after it, so a reference to
+    -- the old name is a table that no longer exists. ADR #56 §2.6 removes the
     -- seeded 'Default Store' placeholder, so on a fresh install this is a row
     -- provision_device created rather than one the migration shipped.
-    location_id    TEXT REFERENCES store_profiles(id),
+    location_id    TEXT REFERENCES locations(id),
     owner_user_id  TEXT REFERENCES users(id),
     -- TerminalCredential.terminal_id: the credential this device authenticates
     -- to sync with.
