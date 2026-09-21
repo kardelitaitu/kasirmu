@@ -377,6 +377,33 @@
   }
 }
 
+/* ── Memo stack bottom clearance (settings route) ─────────── */
+/* Settings registers as a FULLSCREEN page (register.tsx), so the shell
+   renders it in the registry-fullscreen branch with NO layout ancestor:
+   .memo-stack (MemoBanner, position:fixed) and .settings-page are SIBLINGS
+   under #root — verified by measurement, the stack's ancestor chain is
+   #root > body > html. A custom property declared on .settings-page could
+   never reach the stack (properties inherit DOWN the DOM tree only), so the
+   override is declared on body — the nearest ancestor the stack actually
+   has — gated by :has(.settings-footer), which is true exactly when this
+   route is showing (the footer exists nowhere else).
+
+   Per the --memo-bottom-inset contract: "the shell's own bottom chrome
+   height + --space-6". The settings route's bottom chrome IS this footer,
+   whose height is set by its tallest child — the theme toggle above
+   (2.75rem under pointer:coarse, 2rem otherwise) plus a 1px border-top.
+   2.75rem dominates, so the inset uses it; the border and the fine-pointer
+   case are covered by the --space-6 clearance (68px inset vs 45px footer,
+   measured). :root's default (tokens.css, flat --space-6) left the stack
+   24px INTO the footer — covering the theme toggle 37x23px.
+
+   Real tablet build unaffected: there settings renders INSIDE
+   .tablet-shell, which declares its own (nearer) --memo-bottom-inset, and
+   a nearer ancestor's declaration wins over an inherited body value. */
+body:has(.settings-footer) {
+  --memo-bottom-inset: calc(2.75rem + var(--space-6));
+}
+
 .settings-footer-theme-toggle:hover {
   background: var(--color-bg-surface);
   color: var(--color-fg);
