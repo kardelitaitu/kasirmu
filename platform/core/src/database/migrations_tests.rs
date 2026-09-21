@@ -1,16 +1,19 @@
 //! Tests for the migration runner's ledger and drift policy.
 //!
 //! These subjects are the ledger, the checksums and the drift decision; the
-//! statement layer's own tests live beside it in `statements_tests.rs`. The file
+//! statement layer's and the proofs' own tests live beside them in
+//! `statements_tests.rs` and `proofs_tests.rs`. The file
 //! was moved out of `migrations.rs` unchanged, so the production file is the size
 //! of its responsibility.
 //!
-//! Two pins here are load-bearing beyond their names:
+//! Three pins here are load-bearing beyond their names:
 //! `checksum_hex_matches_independently_computed_digests` holds the stored digest
 //! to literals computed outside this crate — every other checksum assertion
-//! compares the function with its own output — and
+//! compares the function with its own output —
 //! `the_statement_fallback_is_entered_only_for_a_classified_failure` holds the
-//! drift fallback to the failures it is allowed to excuse.
+//! drift fallback to the failures it is allowed to excuse, and
+//! `the_classifier_excuses_exactly_its_four_texts` holds the classifier's
+//! membership to SQLite's own wordings, from both sides.
 
 use super::*;
 
@@ -212,7 +215,7 @@ fn the_statement_fallback_is_entered_only_for_a_classified_failure() {
         .unwrap()
     };
 
-    // U — `CHECK constraint failed` is not one of the five texts the
+    // U — `CHECK constraint failed` is not one of the four texts the
     // classifier knows, so no statement of this script may be excused.
     let base = &[Migration {
         id: "001_shape.sql",
@@ -279,6 +282,48 @@ fn the_statement_fallback_is_entered_only_for_a_classified_failure() {
         .query_row("SELECT COUNT(*) FROM shape2", [], |row| row.get(0))
         .unwrap();
     assert_eq!(shape2_rows, 0, "the failed attempt must roll back");
+}
+
+#[test]
+fn the_classifier_excuses_exactly_its_four_texts() {
+    // The four texts the drift fallback may be entered for, as SQLite words
+    // them. A near-miss that slips into this list is a failure the proofs
+    // cannot excuse being retried statement by statement before it is
+    // reported — the mirror image of the gatekeeper test above, so the list
+    // is pinned from both sides.
+    let classified = [
+        "table t already exists",
+        "duplicate column name: c",
+        "table t has no column named c",
+        "no such column: c",
+    ];
+    for message in classified {
+        assert!(
+            is_skip_candidate_error(message),
+            "the fallback must be entered for {message:?}"
+        );
+    }
+
+    // Near-misses SQLite really raises, each naming a failure no proof can
+    // satisfy. `no such table` was removed from the list on 22-09-26: a
+    // statement naming an absent table has no `pragma_table_info` row, no
+    // primary key and no `sqlite_master` row to compare, so every arm of
+    // `already_satisfied` refuses at its first gate and admitting the text
+    // only ever widened the retry. `no such table: main.t` is what a CREATE
+    // INDEX or CREATE TRIGGER against a dropped table raises.
+    let fatal = [
+        "no such table: main.t",
+        "no such table: t",
+        "no such index: i",
+        "no such module: fts5",
+        "no such function: f",
+    ];
+    for message in fatal {
+        assert!(
+            !is_skip_candidate_error(message),
+            "{message:?} must stay fatal: no proof can satisfy it"
+        );
+    }
 }
 
 #[test]

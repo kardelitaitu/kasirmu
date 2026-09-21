@@ -369,9 +369,24 @@ What is held now:
   `sqlite_sequence` digest; the only table the re-apply then touches is the ledger's own row.
   Still unmeasured, and honestly so: **0 sales rows**, and no inventory movement — the data
   exercised here is configuration, memo and account data, not transactions.
-- **A classifier observation, not a finding.** `no such table` admits a class a
-  dropped-and-replaced table shares with a genuinely absent one; the proof refuses to skip
-  either, so the arm is worth a look for `CREATE`/`ALTER` statements rather than known-broken.
+- **The `no such table` class, resolved as a real refusal gap and closed on 22-09-26.** The
+  investigation had three legs. (a) *Structurally, no proof arm can ever answer it*: the ADD
+  COLUMN arm demands the error name a `duplicate column name`, the CREATE arm `already
+  exists`, and the seed arm requires a `pragma_table_info` row and a whole primary key — none
+  of which an absent table has — so admitting the text only ever widened the retry, and the
+  clause was removed from `is_skip_candidate_error` (four texts remain). (b) *Reachability*:
+  `20260906_rename_store_to_location.sql` opens with `ALTER TABLE store_profiles RENAME TO
+  locations`, so on a full-registry database its drifted re-apply raises `no such table` as
+  attempt 1's first error — the class stays exercised even though its refusal is now certain,
+  and the registry-wide cosmetic sweep still holds the migration in the NOT_REAPPLIABLE set.
+  (c) *Membership pinned both ways* by `the_classifier_excuses_exactly_its_four_texts`: the
+  four texts must classify, and near-misses SQLite really raises (`no such table: main.t`,
+  `no such index`, `no such module`, `no such function`) must stay fatal. The pin was written
+  before the clause came out and demonstrably failed then ("no such table: main.t must stay
+  fatal"); after removal both suites are green — `platform-core --lib` **405 passed**,
+  `kasirmu-core --lib migrations::` **38 passed**. `no such index` — a `DROP INDEX` of an
+  already-dropped index — was never in the classifier, so even the one statement shape a
+  dropped object could make legitimately skippable was never excused.
 
 ## 6. WHAT THIS RECORD DOES NOT COVER
 
@@ -383,6 +398,18 @@ What is held now:
   **left in place** — the former's evidence is not in `docs/records/2026-09-20-audit-android-shell.md`,
   the latter is another lane's fixture, still byte-unchanged (2,207,744 bytes, mtime
   2026-09-21 14:25:47) and the row that makes §2.2 readable.
+- The live dev database this record's later evidence runs against carries state the registry
+  cannot produce: `store_profiles` and `user_store_access` still exist beside their renamed
+  successors (`locations`, `user_location_access`), empty, though the rename migration's
+  ledger row is present and no later migration re-creates the old names (checked across the
+  whole registry — the only mentions after the rename are comments and an FK reference, and
+  nothing in the tree creates those tables). The origin is therefore outside this record's
+  captures — an older build's startup or a restore. Measured consequence: on those bytes the
+  rename migration's drifted re-apply dies on
+  `there is already another table or index with this name: locations` — unclassified and
+  fatal — rather than on the `no such table` a registry-only database would raise there; the
+  attribution control in the same probe (registry minus the rename migration) applies
+  cleanly, ledger 60 → 61.
 - `crates/kasirmu-core/tests/tmp_real_db_replay.rs` is still untracked in the tree, its own
   header claiming it is deleted before commit.
 

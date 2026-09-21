@@ -516,10 +516,13 @@ fn apply_statement_by_statement(
 ///   the statement's effect is present, and `proofs::already_satisfied` is
 ///   asked to prove exactly that.
 /// * **an object a later migration removed** (`has no column named …`, `no such
-///   column: …`, `no such table: …`) — the statement cannot run in the schema
-///   this registry has since built, and `proofs::already_satisfied` is
-///   asked whether its effect is nevertheless already there (a seed whose rows
-///   are still in the table, for instance).
+///   column: …`) — the statement cannot run in the schema this registry has
+///   since built, and `proofs::already_satisfied` is asked whether its effect is
+///   nevertheless already there (a seed whose rows are still in the table, for
+///   instance). `no such table` is deliberately **not** in this list: a
+///   statement naming an absent table has no `pragma_table_info` row, no primary
+///   key and no `sqlite_master` row to compare, so every proof arm refuses it at
+///   its first gate and admitting the text would only widen the retry.
 ///
 /// The second family used to be fatal, which bricked startup for a *whole-script*
 /// failure it produced: attempt 1 stops at the first bad statement, and if that
@@ -536,7 +539,6 @@ fn is_skip_candidate_error(message: &str) -> bool {
         || message.contains("duplicate column name")
         || message.contains("has no column named")
         || message.contains("no such column")
-        || message.contains("no such table")
 }
 
 fn apply_one(conn: &mut Connection, mig: &Migration) -> Result<(), PlatformError> {
