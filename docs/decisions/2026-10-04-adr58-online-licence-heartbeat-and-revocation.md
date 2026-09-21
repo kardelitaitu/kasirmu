@@ -11,7 +11,7 @@ status: Proposed (2026-10-04) — mechanism largely implemented, one state to ad
 implemented and tested**; the decision is about *one* new lifecycle state and *one* new
 timestamp, plus the policy that surrounds them. IMPLEMENTED and TO BUILD are marked per item.
 **Date:** 2026-10-04
-**Recorded against:** branch `0.0.39` @ `2c30e735c`
+**Recorded against:** branch `0.0.39` @ `2c30e735c` (anchors and the poll interval re-measured at `e26bd3733` in audit pass 2 — see §1.3a and §2.3)
 **Supersedes (in part):** ADR #41 §2.1 "State B: Registered / Enrolled Device" — specifically its
 "**Offline-First (Zero Internet Required)**" clause. See §1.5.
 **Related:** ADR #57 (client tamper resistance — shares the fail-open policy and the
@@ -66,42 +66,49 @@ The ban path is substantially built. Each row is evidence.
 | Revocation record | `tenant_machines.revoked_at` (`:249`) | IMPLEMENTED |
 | Admin auth on the endpoint | `adminAuth(app, e)` (`:231`) | IMPLEMENTED |
 | Server returns `revoked` | `:246,255`; tested `dashboard_api_test.go:203,682-728` | IMPLEMENTED |
-| Per-tier grace set server-side | `grace_until` — `admin_tenant_lifecycle.go:368`, `activate.go:983`, `admin_dashboard.go:309` | IMPLEMENTED |
+| Per-tier grace set server-side | `grace_until` — `admin_tenant_lifecycle.go:402`, `activate.go:983`, `admin_dashboard.go:309` | IMPLEMENTED |
 | Grace surfaced to needs-attention | `admin_stats.go:576-605` | IMPLEMENTED |
-| Client pulls authoritative status | `license.rs:515` → `check_license_status()`, then `:525` `refresh_subscription_status_from_server` | IMPLEMENTED |
-| Status written to the local row | `license_verification.rs:690` (`UPDATE ... SET status = ?1`) | IMPLEMENTED |
-| Session creation re-reads and gates | `auth.rs:610-630` — clock-rollback `:612`, signature `:617`, entitlement `:620` | IMPLEMENTED |
-| Live sessions are in-memory | `auth.rs:251-257` (LRU + lazy prune) | IMPLEMENTED |
-| Fail-open when the server is unreachable | **UI layer** — `LicenseSettings.tsx:157-166` catches the error, increments `pollFailures`, and only surfaces the "offline" string after `MAX_POLL_FAILURES = 3` (`:73`); it never locks. `license.rs:531` is NOT this — see §1.3a | IMPLEMENTED |
+| Client pulls authoritative status | `license.rs:497` `check_license_status()` → `:519` transport call, then `:529` `refresh_subscription_status_from_server` | IMPLEMENTED |
+| Status written to the local row | `license_verification.rs:719-720` (`UPDATE tenant_subscription SET status = ?1`) | IMPLEMENTED |
+| Session creation re-reads and gates | `auth.rs:612-632` — clock-rollback `:614`, signature `:619`, entitlement `:622` | IMPLEMENTED |
+| Live sessions are in-memory | `auth.rs:225-272` (lazy prune `:259`, `MAX_SESSIONS = 256` `:272`) | IMPLEMENTED |
+| Fail-open when the server is unreachable | **UI layer** — `LicenseSettings.tsx:162-171` catches the error, increments `pollFailures`, and only surfaces the "offline" string after `MAX_POLL_FAILURES = 3` (`:78`); it never locks. The bridge's cache-write `warn` (`license.rs:535`) is NOT this — see §1.3a | IMPLEMENTED |
 | Per-tier offline grace values | `subscription.rs:338`; Free 7 / Plus 14 / Pro 14 / Premium 30 / Enterprise 60 | IMPLEMENTED |
 
-#### 1.3a The fail-open is in the UI, not in `license.rs:531` — corrected 2026-10-04
+#### 1.3a The fail-open is in the UI, not in the bridge's status cache write — corrected 2026-10-04
 
-An earlier revision cited `license.rs:531` for *"fail-open when the server is unreachable."*
-**The citation points at the wrong layer.** Read in sequence,
-`crates/kasirmu-bridge/src/license.rs:515-533`:
+An earlier revision cited the bridge's subscription-cache `tracing::warn` for *"fail-open when the
+server is unreachable."* **The citation points at the wrong layer.** Read in sequence,
+`crates/kasirmu-bridge/src/license.rs:519-536`:
 
 ```rust
-let resp = core_check_license_status(&api_key)
+let resp = core_check_license_status(&api_key, &machine_id)
     .await
-    .map_err(|e| BridgeError::Internal(e.to_string()))?;   // :515-517  transport failure → Err
+    .map_err(|e| BridgeError::Internal(e.to_string()))?;   // :519-521  transport failure → Err
 // ...
-if let Err(e) = refresh_subscription_status_from_server(  // :525
+if let Err(e) = refresh_subscription_status_from_server(  // :529
     &conn, "default", &resp.status, resp.expires_at.as_deref(),
 ) {
-    tracing::warn!("failed to refresh subscription status cache: {e}");  // :531
+    tracing::warn!("failed to refresh subscription status cache: {e}");  // :535
 }
 ```
 
-`:531` is a `tracing::warn` for a **local SQLite write failure** inside
+That `tracing::warn` at `:535` is a **local SQLite write failure** inside
 `refresh_subscription_status_from_server` — reached only **after** a successful server response
-(`resp` already exists at `:528-529`). Transport failure is not swallowed there: `:515-517` maps it
+(`resp` already exists at `:519`). Transport failure is not swallowed there: `:519-521` maps it
 to `Err(BridgeError::Internal)`. So at this layer the behaviour is the *opposite* of fail-open — an
 unreachable server is an error returned to the caller.
 
-**The real fail-open is one layer up, in the UI.** `ui/src/features/settings/LicenseSettings.tsx:150`
-calls `checkLicenseStatus()` and `:157-166` catches every rejection: it increments
-`pollFailures` and, only once `next >= MAX_POLL_FAILURES` (`:73`, the value `3`), sets the
+**Anchor re-measured 2026-10-04 (audit pass 2).** An earlier revision of this record cited the
+transport call as `:515` and the warn as `:531`, and typed the first argument list as
+`core_check_license_status(&api_key)` — a single argument. **All three readings are stale:** the
+device-revocation work this record itself specified (§2.4a.2) added `machine_id` as a second
+argument, which shifted the call to `:519-521` and the warn to `:535`. The *argument* below is
+unaffected; only the anchors moved, and they moved because this ADR was implemented.
+
+**The real fail-open is one layer up, in the UI.** `ui/src/features/settings/LicenseSettings.tsx:153`
+calls `checkLicenseStatus()` and `:162-171` catches every rejection: it increments
+`pollFailures` and, only once `next >= MAX_POLL_FAILURES` (`:78`, the value `3`), sets the
 "offline" indicator string. There is **no lock path anywhere in that handler** — a device that can
 never reach the licence server keeps operating, which is the fail-open §2.4 wants.
 
@@ -230,14 +237,25 @@ defeats the mechanism.
 
 ### 2.3 Re-authentication is required only in the last 3 days before expiry
 
-**TO BUILD — and corrected 2026-10-04: there is no NEW heartbeat, but there IS a 30-second poll
+**TO BUILD — and corrected 2026-10-04: there is no NEW heartbeat, but a background poll ships
 today.** An earlier revision read *"There is no periodic heartbeat … the device makes no licence call
-at all."* **That is false against the tree.** `ui/src/features/settings/LicenseSettings.tsx:69-70`
-defines `POLL_INTERVAL_MS = 30_000` and `:205-219` starts it with
-`setInterval(pollTick, POLL_INTERVAL_MS)` once a payload is loaded; each tick (`:150`) calls
-`checkLicenseStatus()`, whose bridge path is `crates/kasirmu-bridge/src/license.rs:515` →
-`POST /api/v1/license/status`. **A 30-second licence call ships today, whenever the Settings screen
-is open.**
+at all."* **That is false against the tree.** `ui/src/features/settings/LicenseSettings.tsx:69-75`
+defines `POLL_INTERVAL_MS` and `:210-224` starts it with
+`setInterval(pollTick, POLL_INTERVAL_MS)` once a payload is loaded; each tick (`:153`) calls
+`checkLicenseStatus()`, whose bridge path is `crates/kasirmu-bridge/src/license.rs:497` →
+`POST /api/v1/license/status`. **A licence call ships today, on a timer, whenever the Settings
+screen is open.**
+
+**Interval re-measured 2026-10-04 (audit pass 2).** This record's first revision read the constant
+as `30_000` and reasoned from it. Commit `e26bd3733` (`fix(ui): poll the licence status every five
+minutes instead of every thirty seconds`) changed it to `300_000` — **five minutes**, not thirty
+seconds. The *shape* of every argument below is unaffected, and one of them is materially
+reinforced: the constant's own doc comment now gives the reason as *"the licence server meters a
+shared credential lane (~5 requests/hour) and licence state simply does not change that fast, so a
+30-second poll spent ~120 requests/hour to learn nothing."* That is §2.3's load argument and §4a
+Q-B's option-B rationale, arrived at independently in code. Read `30_000`/`30s`/§2.3's load
+sentences below accordingly: the figure is now five minutes, and the argument for gating the poll
+to the window survives *because* the interval was reduced for the same reason.
 
 What this record adds is therefore a *re-authentication obligation* — the rule below — not a
 transport. The decision that remains is what happens to that existing poll; it is taken explicitly
@@ -294,7 +312,7 @@ background timer. **The expiry-window rule supersedes it**, for four reasons:
 
 | | Fixed heartbeat | 3-day expiry window |
 |---|---|---|
-| Licence calls from a healthy tenant | Every interval, forever | **None owed.** (One 30s poll already ships while the Settings screen is open — `LicenseSettings.tsx:70` — and §4a Q-B decides its fate; this column is about the *obligation*, which is zero.) |
+| Licence calls from a healthy tenant | Every interval, forever | **None owed.** (One background poll already ships while the Settings screen is open — `LicenseSettings.tsx:75`, now 5 min after `e26bd3733` — and §4a Q-B decides its fate; this column is about the *obligation*, which is zero.) |
 | Server load | Scales with fleet size × interval, unbounded by lifecycle | Scales with tenants *near renewal* — a small fraction. The surviving poll in Q-B option A re-introduces fleet-wide load, which is why Q-B recommends B |
 | New state required | New timestamp column, new timer, migration | **None** — `expires_at` already exists |
 | Interacts with grace | Two clocks to reconcile | One clock: `expires_at` |
@@ -340,10 +358,10 @@ records.
 ### 2.4 Fail-open on transport, fail-closed on an explicit verdict
 
 **IMPLEMENTED for transport — but by the UI, not by a guard, and only incidentally
-(corrected 2026-10-04; see §1.3a).** The old citation `license.rs:531` was a local-database write
-warning after a *successful* response; the Rust path returns `Err` on transport failure
-(`license.rs:515-517`). What actually keeps a till open is `LicenseSettings.tsx:157-166` having no
-lock branch. **Treatment as a pinned, tested rule is TO BUILD** — the distinction is behavioural and
+(corrected 2026-10-04; see §1.3a; anchors re-measured 2026-10-04, audit pass 2).** The old citation
+of a bridge cache-write warn pointed at a local-database write after a *successful* response; the
+Rust path returns `Err` on transport failure (`license.rs:519-521`). What actually keeps a till
+open is `LicenseSettings.tsx:162-171` having no lock branch. **Treatment as a pinned, tested rule is TO BUILD** — the distinction is behavioural and
 must be tested, not merely inherited from an error handler's omission:
 
 | Server response | Client behaviour |
@@ -416,8 +434,12 @@ deferred** — it specified a change that is not needed.
 route `main.go:362`) sets `tenant_machines.revoked_at` for one device. It does not touch
 `tenants.status`.
 
-**End one — the client never asks.** `check_license_status` (`license_verification.rs:564-572`)
-POSTs with `.bearer_auth(api_key)` and **no request body**:
+> **The three "end" subsections below describe the state as found on 2026-10-04, before the fix.**
+> They are the evidence for the decision, not a current description — the shipped implementation is
+> recorded under **IMPLEMENTED 2026-10-04** at the end of this section. Read them in the past tense.
+
+**End one — the client never asked.** `check_license_status` (`license_verification.rs:564-572`)
+POSTed with `.bearer_auth(api_key)` and **no request body**:
 
 ```rust
 let resp = client
@@ -427,35 +449,38 @@ let resp = client
     .send()
 ```
 
-**End two — the server therefore cannot answer.** `status.go:94` populates its device fields only
-from a decoded body:
+**End two — the server therefore could not answer.** `status.go:94` populated its device fields
+only from a decoded body:
 
 ```go
 if err := json.NewDecoder(e.Request.Body).Decode(&statusReq); err == nil && statusReq.MachineID != "" {
 ```
 
-With no body the decode errors, `MachineID` stays empty, the `tenant_machines` lookup at `:95-104`
-never runs, and `deviceRevoked` (`:88`, `:107`) remains `false` on every response. `status.go`
-still *returns* `"device_revoked"` (`:151`, `:175`) — always `false`.
+With no body the decode errored, `MachineID` stayed empty, the `tenant_machines` lookup at
+`:95-104` never ran, and `deviceRevoked` (`:88`, `:107`) remained `false` on every response.
+`status.go` still *returned* `"device_revoked"` (`:151`, `:175`) — always `false`.
 
-**End three — nothing could read it anyway.** `LicenseStatusResponse`
-(`license_verification.rs:264-293`) has no `device_revoked` field, and no consumer of the value
-exists anywhere: a repo-wide search for `device_revoked`/deviceRevoked` returns **zero** matches in
-`crates/` and in `apps/cloud-server/`. Serde would drop the key even if the server ever set it.
+**End three — nothing could read it anyway.** `LicenseStatusResponse` (`license_verification.rs:264-293`)
+had no `device_revoked` field, and no consumer of the value existed anywhere: a repo-wide search for
+`device_revoked`/`deviceRevoked` returned **zero** matches in `crates/` and in
+`apps/cloud-server/`. Serde would have dropped the key even if the server had set it.
 
-**Net effect, traced through the gate this record specifies:**
+**Net effect as found, traced through the gate this record specifies:**
 
 1. Admin revokes a device → `tenant_machines.revoked_at` is set.
-2. `tenants.status` stays `"active"`; the client sends no `machine_id`.
-3. `create_session` (`auth.rs:610-630`) reads the *tenant* subscription, sees `active`.
-4. **The session is granted. The app keeps working.**
+2. `tenants.status` stayed `"active"`; the client sent no `machine_id`.
+3. `create_session` (`auth.rs:612-632`) read the *tenant* subscription, saw `active`.
+4. **The session was granted. The app kept working.**
 
-**The intent is documented in three places, none of which the code honours.** `pb_schema.json:859`
-describes `tenant_machines.revoked_at` as *"When set, the machine has been revoked by the tenant
-admin and **should not be allowed to activate**."* `status.go:83-87` calls the mechanism
-*"P8-2: Machine-level revocation — checked and performed via the status endpoint."* And the revoke
-route is registered and admin-authenticated (`main.go:362`). **This is a capability that was
-designed, built at both endpoints, and never joined up.**
+All four steps now behave as the design intended; step 3 gained the device gate at `auth.rs:644-659`.
+
+**The intent is documented in three places, none of which the code honoured** (until this record's
+fix landed — see the IMPLEMENTED block below). `pb_schema.json:859` describes
+`tenant_machines.revoked_at` as *"When set, the machine has been revoked by the tenant admin and
+**should not be allowed to activate**."* `status.go:83-87` calls the mechanism *"P8-2:
+Machine-level revocation — checked and performed via the status endpoint."* And the revoke route is
+registered and admin-authenticated (`main.go:362`). **It was a capability designed, built at both
+endpoints, and never joined up.**
 
 **Decision: the fix is a three-part protocol completion, not a field addition.** Recorded as a
 decision with options because the smallest patch would leave the path half-dead again:
@@ -479,10 +504,10 @@ business — the asymmetry §4 Q2 resolves in favour of the smaller radius.
 receives `args.terminal_id`** (`auth.rs:636`), so the gate itself needs no new plumbing:
 
 ```
-create_session → load subscription → verify_signature()   [existing :617]
+create_session → load subscription → verify_signature()   [existing :619]
               → cached device verdict set?  → refuse      [new]
               → check Revoked (§2.1)                     [new]
-              → check allows_workspace_type()            [existing :620]
+              → check allows_workspace_type()            [existing :622]
 ```
 
 **Where the verdict is cached is §4a Q-D's decision** — it rules for a local cache beside
@@ -524,7 +549,7 @@ option A (a per-device un-revoke endpoint) remains unbuilt and covers the case t
 a tenant that is already active with one revoked device.
 
 **Also required:** a live session on a revoked device must be invalidated, not merely refused on
-next login. The session store is in-memory (`auth.rs:251-257`) and already prunes expired entries.
+next login. The session store is in-memory (`auth.rs:225-272`) and already prunes expired entries.
 
 **Related, and separately enforced:** the *tenant*-level revoke route (`main.go:357`,
 `handleAdminRevoke` at `admin_dashboard.go:347`) does set `tenants.status = "revoked"`
@@ -606,7 +631,7 @@ existing guard and needs no change.
 ### 2.5 "Locked" means: no session, therefore no app
 
 **TO BUILD**, using machinery that exists. Enforcement is at `create_session`
-(`auth.rs:610-630`), beside the existing entitlement check:
+(`auth.rs:612-632`), beside the existing entitlement check:
 
 ```
 create_session → load subscription → verify_signature()      [existing :617]
@@ -626,7 +651,7 @@ Two consequences worth stating:
 - **New sessions are refused**, so the device cannot get back in after its current session expires
   or is invalidated. Login is the chokepoint, and it is already the chokepoint.
 - **Live sessions must be invalidated on revocation.** The session store is in-memory
-  (`auth.rs:251-257`) and already prunes expired entries; revocation invalidation is a small
+  (`auth.rs:225-272`) and already prunes expired entries; revocation invalidation is a small
   extension of that path, so a ban lands without waiting for a TTL.
 - **Every session-gated command becomes unreachable, export included** — `export_data`
   (`data.rs:374-375`) and its scoped twins resolve a session and require `SETTINGS_EDIT` like any
@@ -802,8 +827,8 @@ other carries options and a binding decision.
 
 > **Repair pass (2026-10-04).** A second audit round found seven defects in this record and put
 > four further questions to it. All are resolved in place: §1.3a (fail-open is UI-layer, not
-> `license.rs:531`), §2.1 (the compiler does not flag `entitlements.rs`/`availability.rs`), §2.3
-> (a 30s poll ships today; the `NULL` expiry arm; the clock-rollback reasoning), §2.4 (the
+> the bridge's cache-write `warn`), §2.1 (the compiler does not flag `entitlements.rs`/`availability.rs`), §2.3
+> (a background poll ships today; the `NULL` expiry arm; the clock-rollback reasoning), §2.4 (the
 > fail-open marker), §2.5/§2.6 (export is session-gated — the path is decided at §4a Q-A), §3.1 (the
 > superseded "one timestamp"). The four new questions are decided at **§4a**. Sections §2.4a.1-.3
 > were re-verified as true and are unchanged.
@@ -930,19 +955,20 @@ rejected at review. Note this is the *opposite* of §2.4a.2's device check, whic
 safe to ship — the difference is that the device check removes a capability nobody was promised,
 while the session lock removes one §2.6 explicitly grants.
 
-### Q-B — Does the 30-second Settings poll survive §2.3, and who removes it? `[blocking]` — DECIDED
+### Q-B — Does the background Settings poll survive §2.3, and who gates it? `[blocking]` — DECIDED
 
 **The conflict this closes:** §2.3 asserts no licence call is made outside the window, but
-`LicenseSettings.tsx:69-70` defines `POLL_INTERVAL_MS = 30_000` and `:205-219` runs it while the
-Settings screen is open, calling `checkLicenseStatus()` (`:150`) each tick. The two cannot both
-stand as written. **The poll is also the only path by which a CONNECTED device learns it is
-revoked today** — §2.3 option C rebuilds that, so removing the poll before C ships would *remove*
-the only working revocation signal.
+`LicenseSettings.tsx:69-75` defines `POLL_INTERVAL_MS` (5 min since `e26bd3733`; it read `30_000`
+when this question was first written) and `:210-224` runs it while the Settings screen is open,
+calling `checkLicenseStatus()` (`:153`) each tick. The two cannot both stand as written. **The
+poll is also the only path by which a CONNECTED device learns it is revoked today** — §2.3 option C
+rebuilds that, so removing the poll before C ships would *remove* the only working revocation
+signal.
 
 | Option | What changes | Trade-off |
 |---|---|---|
 | **A. Keep the poll; re-describe §2.3 as "no NEW heartbeat"** | §2.3 text is corrected (done above); nothing in the UI changes. | **Zero code, zero risk**, and it preserves the only live revocation signal. But it keeps fleet-scale load that scales with *screens left open* rather than tenant lifecycle, which is the exact cost §2.3 argues against — and it leaves the poll's fate undocumented in code. |
-| **B. Gate the poll to the 3-day window** (recommended) | The interval runs only when `now_ledger >= expires_at - 3 days`; outside it, the initial load stands and no timer is armed. | **Matches the rule exactly** — load then scales with tenants near renewal, as §2.3 claims. Cost: it is a real UI change, it must read `expires_at` from the payload already in scope (`LicenseSettings.tsx:174-192`), and **it must not ship before §2.3 option C** or a connected device loses its only revocation signal in the window's absence. |
+| **B. Gate the poll to the 3-day window** (recommended) | The interval runs only when `now_ledger >= expires_at - 3 days`; outside it, the initial load stands and no timer is armed. | **Matches the rule exactly** — load then scales with tenants near renewal, as §2.3 claims. Cost: it is a real UI change, it must read `expires_at` from the payload already in scope (`LicenseSettings.tsx:174-192`), and **it must not ship before §2.3 option C** or a connected device loses its only revocation signal in the window's absence. Note the interval was already *reduced* to 5 min in `e26bd3733` for the same load reason; B is the structural version of that fix, not a reversal of it. |
 | **C. Remove the poll entirely** | Delete `POLL_INTERVAL_MS` and the effect. | Simplest code, and cheapest server. But it **deletes the only current revocation-notice path for connected devices** and must not be done until §2.3 option C's "ride any authenticated call" lands — otherwise a ban stops reaching any device until its window opens, silently widening §3.3's first residual. |
 
 **Decision: B — gate the poll to the 3-day window.**
@@ -962,12 +988,14 @@ flip is deliberate behaviour, not a defect. That does not remove this question �
 because the flip is now the *only* tenant-level un-revoke path, and it is the one an operator will
 actually use.
 
-**The gap, restated:** if §2.4a.2's per-device check ships, `tenant_machines.revoked_at` becomes
-enforcing for the first time — and **nothing clears that row.** The grant flip
-(`admin_tenant_lifecycle.go:382-388`) sets `tenants.status = "active"` and does not touch
-`tenant_machines`. So the ordinary un-revoke path — *a tenant pays, an admin grants* — leaves every
-device still revoked at step §2.4a.2: **the tenant is active but its tills refuse sessions.** A ban
-that outlives its own reversal, produced by the record's own recommended flow.
+**The gap, restated — as it stood when this question was written:** if §2.4a.2's per-device check
+ships, `tenant_machines.revoked_at` becomes enforcing for the first time — and **nothing cleared
+that row.** The grant flip (`admin_tenant_lifecycle.go:425-434`) set `tenants.status = "active"`
+and did not touch `tenant_machines`. So the ordinary un-revoke path — *a tenant pays, an admin
+grants* — left every device still revoked at step §2.4a.2: **the tenant is active but its tills
+refuse sessions.** A ban that outlives its own reversal, produced by the record's own recommended
+flow. (The past tense is deliberate: option B below has since shipped — see the IMPLEMENTED note
+that follows.)
 
 **This is the interaction §2.4a.2's fix creates**, and it is the reason the two cannot be shipped
 independently: adding the device check without a clearing path converts a working un-revoke into a
@@ -989,14 +1017,14 @@ untouched row is not disturbed.
 
 **Residual, and it is option A's job.** The clear runs only on the re-activation branch, so a tenant
 that is **already active** with a revoked device cannot use this path — `grant-subscription` refuses
-to stack on an active subscription (`admin_tenant_lifecycle.go:328`). Clearing that case needs the
+to stack on an active subscription (`admin_tenant_lifecycle.go:362`). Clearing that case needs the
 per-device un-revoke endpoint (option A), which remains additive and unbuilt. Recorded here so the
 limit is known rather than discovered.
 
 | Option | How it works | Trade-off |
 |---|---|---|
 | **A. A matching per-device un-revoke endpoint** | Admin clears one `tenant_machines.revoked_at`. | **Symmetric and precise** — mirrors `handleAdminRevokeDevice` exactly, so the two device actions pair. Cost: the un-revoke of a tenant then does not un-revoke its devices, so an operator must issue N calls and can miss one, leaving the tenant half-locked with no signal that anything is wrong. |
-| **B. Tenant un-revoke clears all device rows** (recommended) | The grant flip (`admin_tenant_lifecycle.go:382-388`) also clears `revoked_at` on every `tenant_machines` row for the tenant. | **Matches operator intent** — "un-revoke this tenant" plainly means the whole account, and it cannot leave a half-locked tenant. Cost: it broadens a per-device action's reach, so a *deliberately* device-revoked tablet (a stolen one) is un-revoked with the tenant unless option A also exists to re-flag it. |
+| **B. Tenant un-revoke clears all device rows** (recommended) | The grant flip (`admin_tenant_lifecycle.go:425-434`) also clears `revoked_at` on every `tenant_machines` row for the tenant (`clearTenantDeviceRevocations` `:269`). | **Matches operator intent** — "un-revoke this tenant" plainly means the whole account, and it cannot leave a half-locked tenant. Cost: it broadens a per-device action's reach, so a *deliberately* device-revoked tablet (a stolen one) is un-revoked with the tenant unless option A also exists to re-flag it. |
 | **C. State that device revocation is permanent** | No clearing path; a revoked device stays revoked. | **Simplest** — no new code, no ambiguity. But it makes a false-positive device revocation **unrecoverable in the field**, which contradicts §2.6's own concession (a mistaken ban must be reconstructable and correctable) and is not a policy a support desk can operate. |
 
 **Decision: B — tenant un-revoke clears all device rows, with A offered later.**

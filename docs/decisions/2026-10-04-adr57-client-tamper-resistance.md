@@ -181,12 +181,20 @@ the one this record asks to be held to.
 
 ### 2.4 Server-side detection, because effects are observable and claims are not
 
-**TO BUILD.** Quota enforcement is local — **7 bridge call sites** invoke the core quota gates
-(`bridge/products.rs:701`, `staff.rs:1084`, `locations.rs:259`, `terminals.rs:455`, `workspaces.rs:324`,
-`inventory.rs:127`; the gate definitions are in `kasirmu-core/src/db/*.rs`, and named siblings such as
-`bridge/subscription.rs:598` are doc-comments, not call sites). A patched
-binary skips them. Detection therefore cannot rely on the client *claim* — it must read the
-*effect* from data the client already syncs.
+**TO BUILD.** Quota enforcement is local — **6 bridge call sites** invoke the core quota gates
+(`bridge/products.rs:701` `enforce_product_quota`, `staff.rs:1084` `enforce_staff_quota`,
+`locations.rs:259` `enforce_location_quota`, `terminals.rs:455` `enforce_terminal_quota`,
+`workspaces.rs:324` `enforce_instance_quota`, `inventory.rs:127` `enforce_warehouse_quota`; the gate
+definitions are in `kasirmu-core/src/db/*.rs`, and named siblings such as
+`bridge/subscription.rs:598` are doc-comments, not call sites). A patched binary skips them.
+
+> **Corrected 2026-10-04 (audit pass 2): the count is 6, not 7.** The list beneath the original
+> sentence named **six** paths, so the number and its own evidence disagreed. Every one of the six
+> was re-grepped and confirmed as an enforcing call; no seventh call site exists. If a seventh gate
+> is added later, this number is the thing to update — not the list.
+
+Detection therefore cannot rely on the client *claim* — it must read the *effect* from data the
+client already syncs.
 
 | Signal | Meaning |
 |---|---|

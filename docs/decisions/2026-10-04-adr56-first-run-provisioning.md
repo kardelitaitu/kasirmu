@@ -81,10 +81,15 @@ Three measurements against the tree:
    `20260813_init.sql:1513-1514` with tier `free` and the sentinel signature
    `'BOOTSTRAP_FREE'`.
 
-That last sentinel is not inert. `crates/kasirmu-bridge/src/auth.rs:617` verifies the subscription
-signature before trusting the tier, and the tests are explicit that the migration seed never
-verified (`auth_tests.rs:892`: "migration-seeded BOOTSTRAP_FREE signature never verified"). So a
-fresh install ships a subscription row whose signature is known-invalid by design.
+That last sentinel is not inert. `crates/kasirmu-bridge/src/auth.rs:614` verifies the subscription
+signature before trusting the tier (via `TenantSubscription::validate_clock_rollback`), and the
+tests are explicit that the migration seed never verified (`auth_tests.rs:958`:
+"migration-seeded BOOTSTRAP_FREE signature never verified"). So a fresh install ships a subscription
+row whose signature is known-invalid by design.
+
+> **Anchors re-measured 2026-10-04 (audit pass 2).** Both citations above originally read
+> `auth.rs:617` and `auth_tests.rs:892`; the lines moved as later work landed. The claim is
+> unchanged and both new anchors were read directly.
 
 **The referenced store, unlike the tenant, is real.** The migration seeds one row for it:
 `INSERT OR IGNORE INTO store_profiles (id, name, is_primary) VALUES ('default', 'Default Store', 0);`
