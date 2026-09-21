@@ -48,11 +48,22 @@ test.describe('Tablet Viewport (1024×1366)', () => {
       expect(Math.round(inputBox.height)).toBeGreaterThanOrEqual(44);
     }
 
-    // Submit button.
+    // The 44px touch-target rule is scoped to coarse pointers:
+    // StaffLoginScreen.css:379 ups the submit button from 40px to 44px inside
+    // @media (pointer: coarse). This spec runs in BOTH projects, so the
+    // requirement must be keyed off the ACTUAL pointer, not the project name —
+    // asserting 44px under a fine pointer would grade a rule the CSS never
+    // claims for that input device. Each branch is a hard assertion.
     const submitBtn = page.locator('.staff-login-submit-btn');
     const btnBox = await submitBtn.boundingBox();
-    if (btnBox) {
-      expect(Math.round(btnBox.height)).toBeGreaterThanOrEqual(44);
+    expect(btnBox).not.toBeNull();
+    const coarse = await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches);
+    if (coarse) {
+      expect(Math.round(btnBox!.height)).toBeGreaterThanOrEqual(44);
+    } else {
+      // Fine pointer: the documented floor is 40px (the base rule). Still a
+      // hard assertion, so a collapsed button fails either way.
+      expect(Math.round(btnBox!.height)).toBeGreaterThanOrEqual(40);
     }
   });
 

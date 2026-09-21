@@ -47,10 +47,19 @@ test.describe('Tablet Shell Entry (index.mobile.html)', () => {
       expect(Math.round(inputBox.height)).toBeGreaterThanOrEqual(44);
     }
 
+    // The 44px touch-target rule is scoped to coarse pointers
+    // (StaffLoginScreen.css:379). This spec runs in BOTH projects, so key the
+    // requirement off the ACTUAL pointer rather than the project name; each
+    // branch is a hard assertion.
     const submitBtn = page.locator('.staff-login-submit-btn');
     const btnBox = await submitBtn.boundingBox();
-    if (btnBox) {
-      expect(Math.round(btnBox.height)).toBeGreaterThanOrEqual(44);
+    expect(btnBox).not.toBeNull();
+    const coarse = await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches);
+    if (coarse) {
+      expect(Math.round(btnBox!.height)).toBeGreaterThanOrEqual(44);
+    } else {
+      // Fine pointer: the documented floor is the 40px base rule.
+      expect(Math.round(btnBox!.height)).toBeGreaterThanOrEqual(40);
     }
   });
 

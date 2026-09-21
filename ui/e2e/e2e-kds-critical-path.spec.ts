@@ -9,11 +9,12 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
  * filtering, and per-item status advance.
  *
  * CSS contract (current component):
- *   .kds                          — KDS container
+ *   .kds                          — KDS container (role="region", name
+ *                                   "Kitchen Display System")
  *   .kds-header                   — header bar
- *   .kds-title                    — "Kitchen Display" heading
- *   .kds-order-count              — order count badge
- *   .kds-header-right             — header right area
+ *   .kds-header-left              — back button + filter control
+ *   .kds-tabs / .kds-tab-count    — Open/Completed tablist + order count
+ *   .kds-header-right             — shift + device area
  *   .kds-columns                  — Kanban three-column grid
  *   .kds-column                   — individual status column
  *   .kds-column--pending          — pending column
@@ -22,9 +23,15 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
  *   .kds-ticket                   — clickable ticket card (button)
  *   .order-no                     — display number (e.g. "#101")
  *   .kds-ticket-time              — SLA time indicator
- *   .kds-shortcuts-btn            — keyboard shortcuts button
- *   .kds-shortcuts-popover        — keyboard shortcuts popover
+ *   .kds-ticket--selected         — the keyboard-selected ticket
  *   .kds-zone-chips               — kitchen zone filter chips
+ *
+ * RETARGETED: the standalone title/order-count block and the
+ * keyboard-shortcuts popover were both removed from the header
+ * (KdsScreen.css:2069 records the popover removal). The shortcuts
+ * themselves are still live — useKdsShortcuts binds 1-9 / arrows / Space /
+ * Escape to document — so that test now drives the real bindings and
+ * asserts the .kds-ticket--selected marker instead of the dead popover.
  *   .kds-item-row--actionable     — clickable per-item row
  *   .kds-ticket-item-status-dot   — item status indicator
  */
@@ -39,12 +46,14 @@ test.describe('Critical Path: KDS Full Lifecycle', () => {
 
   // ── Step 1: Verify initial state ──────────────────────────────────
   test('KDS loads with title, columns, and order count', async ({ page }) => {
-    await expect(page.locator('.kds')).toBeVisible({ timeout: TIMEOUT });
-    await expect(page.locator('.kds-title')).toContainText('Kitchen', { timeout: 5_000 });
+    // The screen name is the container's accessible name; the counts live
+    // on the Open/Completed tabs.
+    await expect(page.getByRole('region', { name: 'Kitchen Display System' }))
+      .toBeVisible({ timeout: TIMEOUT });
     await expect(page.locator('.kds-header')).toBeVisible({ timeout: 5_000 });
 
-    // Order count must show at least 1 order (dev-mock returns 3).
-    const countText = await page.locator('.kds-order-count').textContent();
+    // Order count must show at least 1 order.
+    const countText = await page.locator('.kds-tab-count').first().textContent();
     expect(countText).toBeTruthy();
     const countMatch = countText!.match(/\d+/);
     expect(countMatch).not.toBeNull();
@@ -120,28 +129,29 @@ test.describe('Critical Path: KDS Full Lifecycle', () => {
     await expect(page.locator('[class*="error-boundary"]')).toHaveCount(0, { timeout: 3_000 });
   });
 
-  // ── Step 3: Keyboard shortcuts popover ─────────────────────────────
-  test('keyboard shortcuts popover opens and closes with Escape', async ({ page }) => {
+  // ── Step 3: Keyboard shortcuts ─────────────────────────────────────
+  //
+  // The shortcuts POPOVER was removed from the header, but the shortcuts
+  // themselves are live: useKdsShortcuts binds 1-9 (select the nth ticket),
+  // ArrowUp/ArrowDown (move the selection), Space (advance the selected
+  // ticket) and Escape (deselect) to document. This drives those real
+  // bindings — the same behaviour the popover used to advertise.
+
+  test('number key selects a ticket and Escape deselects it', async ({ page }) => {
     await expect(page.locator('.kds-columns')).toBeVisible({ timeout: TIMEOUT });
+    // The board must have a ticket for the number key to select.
+    await expect(page.locator('.kds-ticket').first()).toBeVisible({ timeout: TIMEOUT });
 
-    // Find the shortcuts button.
-    const shortcutsBtn = page.locator('.kds-shortcuts-btn');
-    await expect(shortcutsBtn).toBeVisible({ timeout: 5_000 });
+    // Nothing is selected before the key press.
+    await expect(page.locator('.kds-ticket--selected')).toHaveCount(0);
 
-    // Open shortcuts popover.
-    await shortcutsBtn.click();
+    // "1" selects the first filtered ticket.
+    await page.keyboard.press('1');
+    await expect(page.locator('.kds-ticket--selected')).toHaveCount(1, { timeout: 3_000 });
 
-    const popover = page.locator('.kds-shortcuts-popover');
-    await expect(popover).toBeVisible({ timeout: 3_000 });
-
-    // Popover must contain shortcut rows with <kbd> elements.
-    const shortcutRows = page.locator('.kds-shortcut-row');
-    const rowCount = await shortcutRows.count();
-    expect(rowCount).toBeGreaterThanOrEqual(2);
-
-    // Close with Escape key.
+    // Escape clears the selection.
     await page.keyboard.press('Escape');
-    await expect(popover).not.toBeVisible({ timeout: 3_000 });
+    await expect(page.locator('.kds-ticket--selected')).toHaveCount(0, { timeout: 3_000 });
 
     // No crash.
     await expect(page.locator('[class*="error-boundary"]')).toHaveCount(0, { timeout: 3_000 });
