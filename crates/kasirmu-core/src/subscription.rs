@@ -515,6 +515,22 @@ impl TenantSubscription {
     /// payload under `debug_assertions`, which is what keeps the
     /// sentinel-with-paid-tier fixtures in the test suites passing there.
     pub fn verify_signature(&self) -> Result<(), CoreError> {
+        // INVARIANT, not a convenience (ADR #57 §2.6): the sentinel is accepted
+        // WITHOUT cryptography, so the `tier_key() == "free"` half is the only
+        // thing keeping it from being a downgrade-to-anything oracle. Any edit
+        // that lets a NON-free tier reach this return is a full licence bypass —
+        // a forged row could then claim Premium by writing 14 bytes.
+        //
+        // The invariant is pinned by `bootstrap_free_sentinel_never_verifies_a_
+        // paid_tier`, and it must be tested HERE rather than against
+        // `verify_license_signature`: that function carries a
+        // `#[cfg(debug_assertions)]` short-circuit accepting the sentinel for
+        // ANY payload, so a test written there would assert something the debug
+        // build violates by design.
+        //
+        // The Free half is harmless rather than generous: a Free row confers
+        // Free entitlements, which the caller already has, so accepting it
+        // grants nothing.
         if self.signature == BOOTSTRAP_FREE_SIGNATURE && self.tier.tier_key() == "free" {
             return Ok(());
         }

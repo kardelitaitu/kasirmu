@@ -34,6 +34,8 @@ pub mod audit;
 pub mod auth;
 /// Feature-availability verdicts — *why* a feature is unavailable.
 pub mod availability;
+/// Deployed-build fingerprint verdict (ADR #57 §2.1/§2.2).
+pub mod build_fingerprint;
 /// In-memory and Redis-backed caching.
 pub mod cache;
 /// Open cart and checkout session.
