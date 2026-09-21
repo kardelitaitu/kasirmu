@@ -21,8 +21,10 @@ named only the first two:**
    `apps/license-server`.
 3. **§5 Q2's convergence of both shells on the desktop boot order.** Its accepted cost was "the
    tablet gains a licence-activation gate it has never had"; the tablet still has no such gate
-   (`ui/src/app/AppShell.tsx:230` and `:827` are the only consumers of `get_license_status`
-   and `LicenseActivationScreen`, both desktop).
+   (`ui/src/app/AppShell.tsx` is the only caller of `get_license_status` and the only renderer of
+   `LicenseActivationScreen`, both desktop; the tablet shell renders neither). Cited by symbol
+   rather than by line, because a concurrent edit to that file moved these anchors during this
+   audit.
 
 Three, not two, matters because item 3 was a `[was blocking]` decision: a tablet that cannot
 activate a licence also cannot link (§1.6), so it cannot reach a sync credential either. That is
@@ -892,10 +894,10 @@ absence of this gate is the bug, not a design.
 They were not; one of them cannot work.
 
 **Not implemented (re-audited 2026-09-22).** The tablet still has no licence-activation gate, so
-this decision stands decided-and-unbuilt. `get_license_status` has exactly one caller
-(`ui/src/app/AppShell.tsx:230`) and `LicenseActivationScreen` exactly one render site
-(`:827`), both desktop, and `ui/src/app/tablet/TabletAppShell.tsx:269-274` still says in its own
-words that "licence activation remains desktop-only". Recorded as a status note here so the
+this decision stands decided-and-unbuilt. `get_license_status` has exactly one caller and
+`LicenseActivationScreen` exactly one render site, both in `ui/src/app/AppShell.tsx` (desktop),
+and `ui/src/app/tablet/TabletAppShell.tsx:269-274` still says in its own words that "licence
+activation remains desktop-only". Recorded as a status note here so the
 decision cannot be misread as shipped from §2 having moved forward.
 
 ### Q3 — Does `local` mode ship in the first cut? `[was blocking]` — DECIDED
