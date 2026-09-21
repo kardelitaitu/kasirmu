@@ -93,7 +93,7 @@ What do you want to do?
 | Create a new pull request with branch-prefixed title and comprehensive description derived from 50–100 commits | **`pr-create-pull-request`** |
 | Explore code structurally instead of grepping — find symbols, trace callers and callees, map a change's blast radius, audit dead code or hot paths, query the knowledge graph | **`codebase-memory`** |
 | Prove what a stylesheet actually does when jsdom cannot compute layout — which edge a fixed bar lands on, whether a strip overflows, whether a label is clipped or wrapped; or when a CSS-contract test passes but the UI looks wrong | **`css-layout-verification`** |
-| Drive, inspect or screenshot the RUNNING Android tablet app over CDP - address elements by data-testid, read the WebView console, capture a frame while the tablet is locked, tap an element, or hit 'no devtools socket (release build)' | **`android-ui-automation`** |
+| Drive, inspect or screenshot the RUNNING Android tablet app over CDP - address elements by data-testid, read the WebView console, capture a frame while the renderer is live (a locked or panel-off tablet is NOT a CDP capture case - use android-screen.mjs), tap an element, or hit 'no devtools socket (release build)' | **`android-ui-automation`** |
 | Deploy or re-deploy the backend (the unified auth + sync container) to Northflank, trigger or poll a build, change the service's environment or Dockerfile, or verify that a live deploy actually landed | **`deploy-northflank`** |
 | Deploy or verify the kasir.mu website Worker on Cloudflare, change the runtime licence-server URL or a Worker secret, or rotate the Cloudflare API token | **`deploy-cloudflare`** |
 
