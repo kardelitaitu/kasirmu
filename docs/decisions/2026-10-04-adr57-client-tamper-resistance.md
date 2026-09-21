@@ -49,6 +49,14 @@ means some of a section's signals ship and the rest are named as unbuilt; **STIL
 none of it ships. No control is claimed that this record does not either cite or name as work, and
 each marker's remainder is spelled out rather than left to the count.
 
+**⚠️ This record's dates are NOT monotonic, and that is not a defect to fix.** It was updated in
+place across several sessions, so a `2026-09-21` note can postdate a `2026-10-05` one (the
+2026-10-05 entries describe an EARLIER state — they were written to the future-dated plan dates this
+ADR was drafted against). **Read precedence as: this status block is authoritative; in-body section
+markers second; dated history blocks third.** Where a dated block contradicts a marker, the marker
+wins. The dated blocks are kept verbatim because a record of what was believed when is the only way
+to audit how a claim aged.
+
 **Superseded reading, kept as history (2026-09-21).** An earlier note here recorded that §Q4's
 escalation fold had *no non-test caller*, and that a `grep` for
 `build_fingerprint|build_integrity|accepted_pins|release_channels` across `apps/` returned
@@ -148,7 +156,7 @@ Each row is evidence, not intent. Verified against the tree on the date above.
 | Clock-rollback detection, ledger-based | `subscription.rs:572`, `:534`; tolerance 30s (`:28`) | IMPLEMENTED |
 | Read-only lock, failing closed on an unreadable ledger | `subscription.rs:991-995` (`Err(_) => true`) | IMPLEMENTED |
 | Per-tier bounded offline grace | `subscription.rs:338`; Free 7 / Plus 14 / Pro 14 / Premium 30 / Enterprise 60 (`subscription_tests.rs:1168-1175`) | IMPLEMENTED |
-| Quota gates on every capped dimension | **7 bridge call sites**, e.g. `bridge/products.rs:701`, `staff.rs:1084`, `locations.rs:259`, `terminals.rs:455`, `workspaces.rs:324`, plus `inventory.rs:127`. The gate *definitions* live in `kasirmu-core/src/db/*.rs` (`enforce_product_quota`, `enforce_staff_quota`, …); what this row counts is the bridge call sites that invoke them | IMPLEMENTED |
+| Quota gates on every capped dimension | **6 bridge call sites** (corrected 2026-09-22 — this row said 7 while listing six, and §2.4's own note below had already recorded the correction): `bridge/products.rs:701`, `staff.rs:1094`, `locations.rs:259`, `terminals.rs:455`, `workspaces.rs:324`, `inventory.rs:127`. The gate *definitions* live in `kasirmu-core/src/db/*.rs` (`enforce_product_quota`, `enforce_staff_quota`, …); what this row counts is the bridge call sites that invoke them | IMPLEMENTED |
 | Secrets/device keys denied in settings and export | `platform/core/src/settings/keys.rs:265,295`, gate-pinned at `:263` | IMPLEMENTED |
 | API key sealed to machine identity | Encrypt: `license.rs:141` (`encrypt_api_key(&resp.api_key, &machine_id_for_encryption)`). Decrypt: `license.rs:188` (`sealed_api_key` → `decrypt_api_key` at `:191`). Both halves are `crates/kasirmu-bridge/src/license.rs` | IMPLEMENTED |
 | Server-origin attestation, no debug shortcut | `attestation.rs:12-14,205-260`; echo-nonce check `:255` | IMPLEMENTED |
@@ -252,7 +260,7 @@ person can tell them apart — an alert that reads as an accusation is one an op
 ignore.
 
 Quota enforcement is local — **6 bridge call sites** invoke the core quota gates
-(`bridge/products.rs:701` `enforce_product_quota`, `staff.rs:1084` `enforce_staff_quota`,
+(`bridge/products.rs:701` `enforce_product_quota`, `staff.rs:1094` `enforce_staff_quota`,
 `locations.rs:259` `enforce_location_quota`, `terminals.rs:455` `enforce_terminal_quota`,
 `workspaces.rs:324` `enforce_instance_quota`, `inventory.rs:127` `enforce_warehouse_quota`; the gate
 definitions are in `kasirmu-core/src/db/*.rs`, and named siblings such as
@@ -415,8 +423,10 @@ colon-separated; Android's `PackageManager` returns it lowercase and bare. A fin
 the admin surface in the first form must not mismatch a build that is perfectly correct, so both
 spellings are folded before comparison.
 
-**All three pieces now ship — IMPLEMENTED 2026-09-21.** This paragraph previously listed three
-absent items; the third was the report itself. The full path is now built:
+**Every piece now ships — IMPLEMENTED 2026-09-21 (the count corrected 2026-09-22).** This
+paragraph previously listed three absent items, the third being the report itself; the table has
+**four** rows because the pin store §Q-B decided is a fourth thing the path needs and the original
+list folded in with the classification. The full path is now built:
 
 | Piece | Where |
 |---|---|
@@ -468,12 +478,15 @@ was retired (`23c963303`, 2026-09-02), so no automated leg exercises this path �
 manual device run. A regression would therefore be caught by a person, not by a pipeline, until that
 job is restored.
 
-**Verification run:** `cargo test -p kasirmu-core --lib` → **3151 passed, 0 failed** (7 of them in
-`build_fingerprint`). The §2.6 release-profile check is recorded at that section.
+**Verification run:** `cargo test -p kasirmu-core --lib` → **3151 passed, 0 failed** (13 of them in
+`build_fingerprint` — corrected 2026-09-22; this read "7", which matched neither
+`build_fingerprint_tests.rs`'s own `#[test]` count nor §Q4's verification line below). The §2.6
+release-profile check is recorded at that section.
 
 ### 2.6 `BOOTSTRAP_FREE` is constrained to Free, permanently
 
-**IMPLEMENTED, and the test §2.6 asked for ALREADY EXISTED — verified 2026-10-05.** `subscription.rs:518`:
+**IMPLEMENTED, and the test §2.6 asked for ALREADY EXISTED — verified 2026-10-05 (`subscription.rs:534`;
+corrected 2026-09-22 from `:518`, which is `verify_signature`, the next thing this section discusses):**
 
 ```rust
 if self.signature == BOOTSTRAP_FREE_SIGNATURE && self.tier.tier_key() == "free" {
@@ -487,7 +500,7 @@ the risk is not the current branch but a future one: any edit that lets a non-Fr
 return is a full bypass.
 
 **THE TEST ALREADY EXISTS — this item is DONE, verified by running it rather than by reading it.**
-`sentinel_does_not_carry_a_paid_tier` (`subscription_tests.rs:196`) already asserts exactly what this
+`sentinel_does_not_carry_a_paid_tier` (`subscription_tests.rs:197`) already asserts exactly what this
 section asks for, and it is **stronger** than the section specifies: it writes an `Enterprise` tier
 onto a sentinel-signed row and asserts rejection in release / the legacy permissive arm in debug, so
 a future widening of the guard shows up rather than passing silently.
@@ -547,6 +560,16 @@ naming the debug short-circuit as the reason the test must not target `verify_li
 
 ### 3.3 Residual risk, stated
 
+> **How to read this section, because it carries four successive residual statements.** The table
+> **immediately below is CURRENT**; everything after it is **dated history**, kept because a record
+> of what was believed when is the only way to audit how a claim aged. Where a historical block and
+> the table disagree, **the table wins** — it is the one a reader consults when asking "are we
+> protected?".
+>
+> **The record's dates are non-monotonic** (a 2026-09-21 note may postdate a 2026-10-05 one) because
+> it was updated in place across sessions. Precedence: the **status block** at the top of the record
+> is authoritative, in-body markers second, these dated notes third.
+
 | Residual | Bound — **as of today, not as designed** |
 |---|---|
 | A2 exceeds local quota gates | **Detected on the DEVICE axis, still unbounded on the others — updated 2026-09-22.** §2.4's device signal now ships: a tenant with more active terminals than their tier allows is detected from server-held data and emailed to an operator (`findTenantsOverPosQuota`). The product/staff/location axes the section also names are NOT covered, because those counts never reach the licence server |
@@ -570,13 +593,11 @@ naming the debug short-circuit as the reason the test must not target `verify_li
   permissive — but it would surface as the persistent-unknown alert rather than as a mismatch, so
   the two alerts must still be read differently.
 
-#### What the 2026-10-05 work did and did not change in this table
+#### HISTORY — snapshot of 2026-10-05, when only the verdict rule existed
 
-> **SUPERSEDED 2026-09-21 — read the note below this one instead.** Every "no caller / unbuilt"
-> statement in the 2026-10-05 and Q4 notes was true on their dates and is FALSE now: the classifier
-> has callers on both sides (the client computes and sends; the server classifies and stores), and
-> the scanner reads the result. They are kept verbatim because a record of what was believed when is
-> the only way to audit how a claim aged — not because any of it describes the current tree.
+> Every "no caller / unbuilt" statement below was true on 2026-10-05 and is **false now**: the
+> classifier has callers on both sides (the client computes and sends; the server classifies and
+> stores), and the scanner reads the result. Kept verbatim as history, not as description.
 
 The verdict classification (§2.2) is implemented and tested, but **it moved no row above**, and
 saying so is the point of this note:
@@ -596,7 +617,7 @@ window, evaluated per tenant) so the number is not re-derived under pressure. Th
 shipped (see the next note), so the reporting line now exists; what the fold still lacks is any
 caller — nothing feeds it a report and nothing stores the count between sync cycles.
 
-#### What the 2026-09-21 §2.1 work changed — and the one row it does not move
+#### HISTORY — snapshot of 2026-09-21, after the client leg but before the notification and the refusal
 
 **The reporting line now exists, so the third reason on the "report a fingerprint at all" row is
 closed: something DOES compute and send the fingerprint**
@@ -609,7 +630,7 @@ did:** the server *recorded* a `mismatch` while nothing *read it*. A recorded ve
 told about is not a control; it is a log. This paragraph is kept because it states the reason the
 notification was built next rather than treated as optional.
 
-#### What the 2026-09-21 §2.4 notification closed
+#### HISTORY — snapshot of 2026-09-21, when the notification closed the reader gap
 
 **The reader now exists.** `apps/license-server/build_integrity_alerts.go` scans daily at 08:00 UTC
 and emails the operator (`OZ_ADMIN_EMAIL`) on two conditions, distinguished deliberately per §Q4:
@@ -641,8 +662,10 @@ attacker is now *seen*, and a false positive costs a support email rather than a
    device and a persistent unknown on another gets both, and a standing condition keeps re-reporting
    rather than going quiet — which is the failure mode of a bare "alert once" flag.
 
-**The table is the authority on the shipped state. The IMPLEMENTED notes in §2 are the authority on
-what exists. Where they disagree about severity, this table wins** — it is the one a reader consults
+**The CURRENT table at the top of this section is the authority on the shipped state** (see the
+currency note there); the blocks between it and here are dated history. The IMPLEMENTED notes in §2
+are the authority on what exists. Where a historical block disagrees with the current table about
+severity, **the current table wins** — it is the one a reader consults
 when asking "are we protected?". As of 2026-09-22 the answer is **partly, and by design**:
 
 - **A re-signed APK is detected, recorded, emailed AND refused a renewal** (§2.1/§2.4/§2.5). The
@@ -722,7 +745,7 @@ learns only what it must act on, and the reason lives in logs and admin surfaces
 remains visible to the merchant as a failed renewal, which is enough for them to open a support
 conversation.
 
-### Q3 — Who owns the server-side violation queue, and what is the SLA? `[was policy]` — DECIDED (build deferred)
+### Q3 — Who owns the server-side violation queue, and what is the SLA? `[was policy]` — DECIDED, and NOW BUILT (see the note below)
 
 **Decision: the queue is the existing admin "needs attention" surface. §2.4's detection work is
 DEFERRED until two prerequisites hold, and the deferral is deliberate rather than an omission.**
@@ -733,13 +756,14 @@ The destination is settled, because the infrastructure already exists and is pro
 new UI, the signal lands where an operator is already looking, and §2.4's response policy (flag,
 never auto-terminate) is a human reading a queue.
 
-**Why the build is deferred rather than scheduled.** Two prerequisites must both hold first, and
-neither does today:
+**Why the build WAS deferred rather than scheduled** — written on the date below, and both
+prerequisites have since been met (see "BOTH CONDITIONS NOW HOLD" further down). Kept verbatim as
+the record of why the deferral was deliberate:
 
-| Prerequisite | State | Why it gates the build |
+| Prerequisite | State **at the time** | Why it gated the build |
 |---|---|---|
-| The fingerprint field actually shipping (Q5) | **Not built** | Detection has nothing to detect until the field exists on an authenticated payload |
-| A violation **notification**, not a named reader | **Not built** | Nothing prompts an operator to open a surface they already have open |
+| The fingerprint field actually shipping (Q5) | **Not built** *then; ships now* | Detection has nothing to detect until the field exists on an authenticated payload |
+| A violation **notification**, not a named reader | **Not built** *then; ships now* | Nothing prompts an operator to open a surface they already have open |
 
 **Gate (a) was rewritten 2026-09-21, from "a named person" to "a notification".** The original
 criterion assumed `NeedsAttention` had no reader, and reading the read path showed that is no
@@ -863,9 +887,30 @@ residual stands unchanged, and the test fails loudly if a future change makes th
 which is the signal that the rule had been strengthened into something that cannot tell an
 intermittent fault from a careful attacker.
 
-**What is NOT wired: the queue.** `BuildIntegritySignal` has no consumer yet — nothing stores the
-consecutive count, nothing folds a report, and nothing reaches `NeedsAttention`. That is the same
-prerequisite Q3 names (a named reader), so the escalation lands in the same deferred block as §2.4.
+**The escalation SHIPS — but in Go, and that split is now a recorded decision (2026-09-22).**
+
+This Rust module still has **no production caller**: `BuildIntegritySignal` is not constructed
+anywhere outside its own tests, nothing folds a report in Rust, and nothing stores a consecutive
+count. What actually fires is the scanner
+(`apps/license-server/build_integrity_alerts.go`), which re-states the same rule `N=7` /
+7-day-window in Go and evaluates it against the stored `unknown` reports.
+
+**Decision: keep the Rust state machine as the SPECIFICATION the Go scanner mirrors; do not delete
+it as dead code.** The Rust side carries reasoning the Go constants cannot — specifically *why* a
+usable report RESETS the run rather than decaying it (a decay re-opens option A's bypass), and why
+`Mismatch` needs no repetition. A future change to the threshold that reads only the Go integer
+would lose that argument.
+
+**The risk this creates is silent drift, and it is pinned rather than trusted:** both sides now carry
+a test asserting the same literals — `escalation_rule_matches_the_go_scanner` (Rust) and
+`TestEscalationRuleMatchesTheRustSpecification` (Go) — so changing one without the other fails a
+build. The Go test also pins that the alert cooldown equals the window, since a longer cooldown would
+let a standing condition go unreported.
+
+**What remains genuinely unbuilt here: the `NeedsAttention` rows.** §2.4's notifier reaches the
+operator by EMAIL, not through that panel (`admin_stats.go`), so the dashboard list is still
+untouched. That is now an additive display change rather than a blocked prerequisite — nothing about
+detection or response depends on it.
 
 **Verification run:** `cargo test -p kasirmu-core --lib -- build_fingerprint` → **13 passed, 0 failed**.
 
@@ -1075,9 +1120,18 @@ right end state once Q3's queue exists, and is recorded here so it is not re-der
 > is the security property Q2 asks for. C remains the better *diagnostic* end state and remains
 > unbuilt, now purely as a UI improvement rather than a blocked dependency.
 
-**Implementation note:** because the guard at `renew.go:76-81` is keyed on `status`, serving A
-requires only that §2.4's detection mark the tenant rather than add a new response path — the
-refusal then arrives through the existing generic branch with no new wire surface.
+**Implementation note — corrected 2026-09-22, because the original sent an implementer the wrong
+way.** It said serving A "requires only that §2.4's detection **mark the tenant**". That is not what
+was built and not what §2.5 decided: the refusal is **per DEVICE**
+(`renew.go` → `deviceHasFingerprintMismatch(app, req.MachineID)`, with `MachineID` carried on
+`RenewRequest`). Someone following the old note would have written a tenant-level flag and
+reintroduced the fleet lockout §2.5 rejected.
+
+What the note got RIGHT is the property that matters here, and it survives: the refusal reuses the
+**existing generic message** rather than adding a response path, so a fingerprint refusal is
+indistinguishable from an ordinary lapse on the wire. That is Q-D's whole content, and the
+implementation satisfies it by returning the same string from the same endpoint — the tenant-status
+guard is just above it, and the device check sits beside it rather than replacing it.
 
 ## 6. Non-Goals
 
