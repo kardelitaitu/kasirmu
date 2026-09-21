@@ -33,11 +33,25 @@
  * drifts the thumb off the active segment — SegmentedTabs.css carries the detail.
  * `role="tablist"` stays on the track, which is the box that holds the tabs.
  *
+ * KEYBOARD, the WAI-ARIA tabs pattern with automatic activation, the same
+ * contract the tablet shell's bottom bar implements (TabletAppLayout.tsx,
+ * A11Y-03/05): a roving tabindex keeps only the active segment in the tab order
+ * — the first segment when the active value is gated out of `items` — and
+ * ArrowLeft/ArrowRight move focus AND select, wrapping at the ends; Home and End
+ * jump to the first and last. Selection on focus movement is what the pattern
+ * calls automatic activation, and it matters doubly here: the thumb follows the
+ * selection, and the handler scrolls the newly focused segment into view itself
+ * — MEASURED, not assumed: Chromium does not scroll an `overflow-x` viewport on
+ * programmatic focus (focus() moved focus to a segment 78px outside the box and
+ * left scrollLeft at 0), so relying on the browser leaves the segment clipped.
+ * No state, no refs, no effects — the handler reads `document.activeElement` at
+ * event time, exactly as the tablet bar does.
+ *
  * Callers own their strings. Each label arrives already localized (`Localized`
  * or a Fluent node) and the accessible name for the strip is passed in, so no
  * message id or English literal lives here.
  */
-import { type CSSProperties, type ReactNode } from 'react';
+import { type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import './SegmentedTabs.css';
 
 export interface SegmentedTabItem<T extends string> {
@@ -83,6 +97,43 @@ export function SegmentedTabs<T extends string>({
   // -1 when the active value is not rendered (a gated tab): the thumb parks on
   // the first column rather than translating one column the wrong way.
   const index = Math.max(0, items.findIndex((item) => item.value === activeValue));
+  // The roving tabindex needs a segment IN the tab order even when the active
+  // value is gated out of `items` — otherwise the strip is unreachable by Tab.
+  // The first segment takes the stop in that case.
+  const activeRendered = items.some((item) => item.value === activeValue);
+
+  // ── WAI-ARIA tabs keyboard pattern (automatic activation) ────────────
+  // Mirrors TabletAppLayout's bottom bar: arrows move focus and select with
+  // wrap-around, Home/End jump to the ends, everything else is ignored. Focus
+  // position — not the selection — is what the arrows move from, because a
+  // caller may have changed the selection while focus sat elsewhere.
+  const handleTrackKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End') {
+      return;
+    }
+    const tabs = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+    if (tabs.length === 0) return;
+    const currentIdx = tabs.findIndex((t) => t === document.activeElement);
+    if (currentIdx < 0) return;
+    e.preventDefault();
+    let nextIdx = currentIdx;
+    if (e.key === 'ArrowRight') nextIdx = (currentIdx + 1) % tabs.length;
+    else if (e.key === 'ArrowLeft') nextIdx = (currentIdx - 1 + tabs.length) % tabs.length;
+    else if (e.key === 'Home') nextIdx = 0;
+    else nextIdx = tabs.length - 1;
+    const nextItem = items[nextIdx];
+    if (!nextItem) return;
+    // Chromium does not scroll an overflow viewport for programmatic focus
+    // (measured: focus() landed on a segment 78px outside the box with
+    // scrollLeft still 0), so the handler owns the scroll-into-view: focus the
+    // segment, then scroll it into the viewport. Nearest, horizontal only —
+    // never vertical, so the strip cannot yank the page. jsdom has no
+    // scrollIntoView; the optional-call is the repo's established guard
+    // (StoreSwitcher.tsx:96).
+    tabs[nextIdx]?.focus();
+    tabs[nextIdx]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    onSelect(nextItem.value);
+  };
 
   return (
     // The scroll viewport. Its own box is the control's; the track inside it
@@ -90,7 +141,15 @@ export function SegmentedTabs<T extends string>({
     <div
       className={className ? `segmented-tabs-scroll ${className}` : 'segmented-tabs-scroll'}
     >
-      <div className="segmented-tabs" role="tablist" aria-label={ariaLabel}>
+      {/* The tablist itself carries tabIndex={-1}: programmatic focus only, as
+          the tablet bar does — the roving tabindex lives on the segments. */}
+      <div
+        className="segmented-tabs"
+        role="tablist"
+        aria-label={ariaLabel}
+        tabIndex={-1}
+        onKeyDown={handleTrackKeyDown}
+      >
         {/* Decorative: no text, no pointer events, so it stays out of the
             accessibility tree while the tabs announce selection via
             aria-selected. The transform is LTR-only, like every other sheet in
@@ -110,6 +169,7 @@ export function SegmentedTabs<T extends string>({
               key={item.value}
               type="button"
               role="tab"
+              tabIndex={active || (!activeRendered && item === items[0]) ? 0 : -1}
               id={item.tabId}
               aria-selected={active}
               aria-controls={item.controls}

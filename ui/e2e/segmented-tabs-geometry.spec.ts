@@ -145,4 +145,61 @@ test.describe('Segmented tabs geometry', () => {
       );
     }
   });
+
+  test('arrow keys reach a segment the scroll viewport pushed off-screen', async ({ page }) => {
+    await loginAs(page, 'owner', '1234');
+    await selectWorkspace(page, WORKSPACES.INVENTORY);
+    await navigateTo(page, 'stock-transfers');
+    await page.waitForSelector('.stock-transfers-filters', { timeout: 15_000 });
+
+    // 768px: the strip needs 786, the container has 704 — the sixth segment
+    // ("Dibatalkan") starts past the box's right edge and is not visible.
+    await page.setViewportSize({ width: 768, height: 1366 });
+    await page.waitForTimeout(300);
+
+    const offscreen = await page.evaluate(() => {
+      const box = document.querySelector('.stock-transfers-filters') as HTMLElement;
+      const tabs = Array.from(box.querySelectorAll<HTMLElement>('[role="tab"]'));
+      const last = tabs[tabs.length - 1]!;
+      const r = last.getBoundingClientRect();
+      return {
+        lastLabel: (last.textContent ?? '').trim(),
+        boxClientRight: box.getBoundingClientRect().left + box.clientWidth,
+        lastRight: r.right,
+      };
+    });
+    expect(offscreen.lastLabel).toBe('Dibatalkan');
+    expect(offscreen.lastRight).toBeGreaterThan(offscreen.boxClientRight + 1);
+
+    // The strip's only tab stop is the active segment ("Semua"). One Left
+    // arrow wraps to the LAST segment — the one off-screen — which must move
+    // focus there (scrolling it into view) and select it (sliding the thumb).
+    await page.locator('[role="tab"][aria-selected="true"]').focus();
+    await page.keyboard.press('ArrowLeft');
+
+    const after = await page.evaluate(() => {
+      const box = document.querySelector('.stock-transfers-filters') as HTMLElement;
+      const track = box.querySelector('[role="tablist"]') as HTMLElement;
+      const thumb = box.querySelector('.segmented-tab-indicator') as HTMLElement;
+      const active = box.querySelector('[role="tab"][aria-selected="true"]') as HTMLElement;
+      const focused = document.activeElement as HTMLElement;
+      const r = active.getBoundingClientRect();
+      const trackLeft = track.getBoundingClientRect().left;
+      const thumbOffset = thumb.getBoundingClientRect().left - trackLeft;
+      const activeOffset = active.getBoundingClientRect().left - trackLeft;
+      return {
+        selectedLabel: (active.textContent ?? '').trim(),
+        focusedIsSelected: focused === active,
+        scrollLeft: box.scrollLeft,
+        fullyVisible: r.left >= box.getBoundingClientRect().left - 0.5 && r.right <= box.getBoundingClientRect().left + box.clientWidth + 0.5,
+        thumbVsActive: Math.round((thumbOffset - activeOffset) * 100) / 100,
+      };
+    });
+
+    expect(after.selectedLabel).toBe('Dibatalkan');
+    expect(after.focusedIsSelected, 'focus did not land on the selected segment').toBe(true);
+    expect(after.scrollLeft, 'the viewport did not scroll the segment into view').toBeGreaterThan(0);
+    expect(after.fullyVisible, 'the selected segment is still not fully visible').toBe(true);
+    expect(after.thumbVsActive, 'the thumb is not on the newly selected segment').toBeLessThanOrEqual(0.5);
+  });
 });
