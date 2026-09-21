@@ -1,7 +1,14 @@
 import { useCallback, useState } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { provisionDevice, type LocationKind } from '@/api/settings';
+import { provisionDevice, type LocationKind, type ProvisioningMode } from '@/api/settings';
 import { getDeviceId } from '@/api/system';
+import {
+  consumeDeviceLinkCode,
+  linkDeviceGoogle,
+  requestDeviceLinkCode,
+  type LinkedAccountDto,
+} from '@/api/license';
+import { isTabletShell } from '@/utils/shellKind';
 import { useToast } from '@/components/Toast';
 import { Button } from '@/components/Button';
 import { l10nErrorMessage } from '@/utils/app-error';
@@ -9,28 +16,28 @@ import type { Preset } from './SetupWizard';
 import './ProvisioningFlow.css';
 
 /**
- * First-run provisioning (ADR #56 §2.3).
+ * First-run provisioning (ADR #56 §2.3 / User Decision Mode 2: linked + Free subscription).
  *
- * The flow is ordered by DEPENDENCY, not by topic: store type, then the owner,
- * then one transaction that creates everything. §2.3's principle is that
- * onboarding must end at a WORKING terminal, not a configured one — so the
- * nine-step wizard's later stages (Payments, Products, Hardware, Business
- * Rules) are in-app settings on a terminal the merchant has already used,
- * rather than gates in front of one they have not.
- *
- * Two things this deliberately does NOT ask:
- *
- * - A currency or timezone field. Both come from the preset, and §2.3's
- *   "preset is evaluated, not interrogated" rule means the merchant answers a
- *   business question (what kind of shop is this) rather than a technical one.
- * - An account link. ADR #54's Account step is unnecessary because a `local`
- *   install is the default and linking is an action on a WORKING terminal
- *   (§2.4), not a step that can be skipped out of a linear gate.
+ * Requirements:
+ * 1. Requires connecting to an account (Google on desktop, Email OTP on tablet)
+ *    to obtain a tenant_id and link the device.
+ * 2. Hard blocks first run if offline with a clear connection message.
+ * 3. Sends mode: 'linked' with tenant_id to provisionDevice.
  */
 export interface ProvisioningFlowProps {
   /** Called once the terminal is provisioned, so the shell can route on. */
   onProvisioned: () => void;
 }
+
+/** The Google control's state. */
+type LinkState =
+  | { kind: 'idle' }
+  | { kind: 'linking' }
+  | { kind: 'linked'; account: LinkedAccountDto }
+  | { kind: 'failed' };
+
+/** The emailed-code path's state for tablet. */
+type EmailState = 'idle' | 'sending' | 'sent' | 'verifying' | 'verified' | 'failed';
 
 /** The store types offered, with the preset each maps to. */
 const STORE_TYPES: { value: Preset; kind: LocationKind; emoji: string; label: string; blurb: string }[] = [
@@ -67,7 +74,65 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Account linking state
+  const [linkedAccount, setLinkedAccount] = useState<LinkedAccountDto | null>(null);
+  const [link, setLink] = useState<LinkState>({ kind: 'idle' });
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [emailState, setEmailState] = useState<EmailState>('idle');
+  const [codeSent, setCodeSent] = useState(false);
+
+  const linkingBusy =
+    link.kind === 'linking' || emailState === 'sending' || emailState === 'verifying';
+
+  const linkWithGoogle = async () => {
+    setLink({ kind: 'linking' });
+    setErrorMsg(null);
+    try {
+      const account = await linkDeviceGoogle();
+      setLink({ kind: 'linked', account });
+      setLinkedAccount(account);
+    } catch {
+      setLink({ kind: 'failed' });
+      setErrorMsg(l10n.getString('setup-account-failed'));
+    }
+  };
+
+  const sendCode = async () => {
+    setEmailState('sending');
+    setErrorMsg(null);
+    try {
+      await requestDeviceLinkCode(email);
+      setCodeSent(true);
+      setEmailState('sent');
+    } catch {
+      setEmailState('failed');
+      setErrorMsg(l10n.getString('setup-account-failed'));
+    }
+  };
+
+  const verifyCode = async () => {
+    setEmailState('verifying');
+    setErrorMsg(null);
+    try {
+      const account = await consumeDeviceLinkCode(code);
+      const linked: LinkedAccountDto = {
+        tenantId: account.tenantId,
+        provider: 'email',
+        email: account.email,
+      };
+      setLinkedAccount(linked);
+      setEmailState('verified');
+    } catch {
+      setEmailState('failed');
+      setErrorMsg(l10n.getString('setup-account-failed'));
+    }
+  };
+
+  const isLinked = linkedAccount !== null;
+
   const canSubmit =
+    isLinked &&
     storeType !== null &&
     locationName.trim() !== '' &&
     ownerName.trim() !== '' &&
@@ -79,16 +144,19 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
     async (e: React.FormEvent) => {
       e.preventDefault();
       setErrorMsg(null);
+      if (!isLinked) {
+        setErrorMsg(l10n.getString('setup-provision-account-required'));
+        return;
+      }
       if (!canSubmit || !storeType) return;
 
       setBusy(true);
       try {
         const terminalId = await getDeviceId();
+        const mode: ProvisioningMode = 'linked';
         const result = await provisionDevice({
           terminal_id: terminalId,
           location_name: locationName.trim(),
-          // Currency and timezone come from the preset rather than a field:
-          // §2.3 keeps the merchant answering business questions.
           currency: 'IDR',
           timezone: 'Asia/Jakarta',
           owner_username: ownerUsername.trim(),
@@ -97,18 +165,13 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
           preset: storeType,
           features: [],
           location_kind: kindForPreset(storeType),
-          // `local` is the DEFAULT, not a fallback (§2.4): the target
-          // deployment includes merchants with unreliable connectivity, and a
-          // first run that demands the network fails the merchant who most
-          // needs the product.
-          mode: 'local',
+          mode,
+          tenant_id: linkedAccount?.tenantId ?? null,
         });
         addToast({
           type: 'success',
           message: l10n.getString('setup-provision-success'),
         });
-        // `created` is false on a replay, which is a success too: the row
-        // already existed, so the terminal is provisioned either way.
         void result;
         onProvisioned();
       } catch (err: unknown) {
@@ -120,8 +183,9 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
     [
       addToast,
       canSubmit,
-      confirmPin,
+      isLinked,
       l10n,
+      linkedAccount,
       locationName,
       onProvisioned,
       ownerName,
@@ -139,7 +203,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             <h1>Set up this terminal</h1>
           </Localized>
           <Localized id="setup-provision-desc">
-            <p>Three things, then you can start selling.</p>
+            <p>Sign in to link your free kasir.mu account, then you can start selling.</p>
           </Localized>
         </header>
 
@@ -148,6 +212,117 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             {errorMsg}
           </div>
         )}
+
+        {/* Step 1: Link Account (Required: User Decision Mode 2) */}
+        <section className="provisioning-account-box" aria-labelledby="provision-account-heading">
+          <h2 id="provision-account-heading" className="provisioning-legend" style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)', margin: 0 }}>
+            <Localized id="setup-provision-account-section">kasir.mu Account</Localized>
+          </h2>
+          <p className="provisioning-account-hint">
+            <Localized id="setup-provision-account-hint">
+              Connect your device to your free account to enable automatic sync and license protection.
+            </Localized>
+          </p>
+
+          {isLinked ? (
+            <div className="provisioning-account-linked" role="status">
+              <span aria-hidden="true">✓</span>
+              <span>
+                <Localized id="setup-account-linked" vars={{ email: linkedAccount?.email ?? '' }}>
+                  {'Linked to { $email }.'}
+                </Localized>
+              </span>
+            </div>
+          ) : isTabletShell() ? (
+            <div className="provisioning-account-input-group">
+              <p className="provisioning-note">
+                <Localized id="setup-account-tablet">
+                  Use the code sent to your account email to link this device.
+                </Localized>
+              </p>
+              <div className="provisioning-account-input-row">
+                <input
+                  type="email"
+                  placeholder={l10n.getString('setup-account-email')}
+                  value={email}
+                  disabled={linkingBusy || emailState === 'verified'}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (emailState === 'failed' || emailState === 'sent') setEmailState('idle');
+                  }}
+                  autoComplete="email"
+                />
+                <Button
+                  variant="primary"
+                  type="button"
+                  onClick={() => void sendCode()}
+                  disabled={linkingBusy || email.trim() === '' || emailState === 'verified'}
+                >
+                  <Localized id="setup-account-send">Email me a code</Localized>
+                </Button>
+              </div>
+
+              {(emailState === 'sent' || (emailState === 'failed' && codeSent)) && (
+                <div className="provisioning-account-input-row" style={{ marginTop: 'var(--space-2)' }}>
+                  <input
+                    inputMode="numeric"
+                    placeholder={l10n.getString('setup-account-code')}
+                    value={code}
+                    disabled={linkingBusy}
+                    onChange={(e) => {
+                      setCode(e.target.value);
+                      if (emailState === 'failed') setEmailState('sent');
+                    }}
+                    autoComplete="one-time-code"
+                  />
+                  <Button
+                    variant="primary"
+                    type="button"
+                    onClick={() => void verifyCode()}
+                    disabled={linkingBusy || code.trim() === ''}
+                  >
+                    <Localized id="setup-account-verify">Verify</Localized>
+                  </Button>
+                </div>
+              )}
+
+              {emailState === 'sending' && (
+                <p className="provisioning-note" role="status">
+                  <Localized id="setup-account-sending">Sending the code…</Localized>
+                </p>
+              )}
+              {emailState === 'verifying' && (
+                <p className="provisioning-note" role="status">
+                  <Localized id="setup-account-verifying">Checking the code…</Localized>
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="provisioning-account-input-group">
+              <Button
+                variant="primary"
+                type="button"
+                onClick={() => void linkWithGoogle()}
+                disabled={link.kind === 'linking'}
+              >
+                <Localized id="setup-account-google">Continue with Google</Localized>
+              </Button>
+              {link.kind === 'linking' && (
+                <p className="provisioning-note" role="status">
+                  <Localized id="setup-account-waiting">Waiting for your browser…</Localized>
+                </p>
+              )}
+            </div>
+          )}
+
+          {!isLinked && (
+            <p className="provisioning-status-warn">
+              <Localized id="setup-provision-offline-warn">
+                Internet connection is required to create or link your account.
+              </Localized>
+            </p>
+          )}
+        </section>
 
         <fieldset className="provisioning-fieldset">
           <legend>

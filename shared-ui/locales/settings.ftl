@@ -50,7 +50,10 @@ setup-tagline = Point of Sale — Simplified
 ### provisions; the nine-step wizard's later stages became in-app settings on
 ### an already-working terminal.
 setup-provision-title = Set up this terminal
-setup-provision-desc = Three things, then you can start selling.
+setup-provision-desc = Sign in to link your free kasir.mu account, then you can start selling.
+setup-provision-account-section = kasir.mu Account
+setup-provision-account-hint = Connect your device to your free account to enable automatic sync and license protection.
+setup-provision-offline-warn = Internet connection is required to create or link your account.
 setup-provision-store-type = What kind of shop is this?
 setup-provision-location-label = Shop name
 setup-provision-owner-name-label = Your name
@@ -60,6 +63,7 @@ setup-provision-pin-confirm-label = Confirm PIN
 setup-provision-submit = Finish setup
 setup-provision-success = This terminal is ready.
 setup-provision-error = Could not finish setting up this terminal. Please try again.
+setup-provision-account-required = Please link your kasir.mu account before finishing setup.
 setup-step-store-type = Store Type
 setup-step-payments = Payments
 setup-step-products = Products

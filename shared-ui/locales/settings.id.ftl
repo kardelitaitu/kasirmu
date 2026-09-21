@@ -129,7 +129,10 @@ setup-tagline = Point of Sale — Sederhana
 
 ### First-run provisioning (ADR #56 §2.3).
 setup-provision-title = Siapkan terminal ini
-setup-provision-desc = Tiga hal saja, lalu Anda bisa mulai berjualan.
+setup-provision-desc = Masuk untuk menautkan akun kasir.mu gratis Anda, lalu Anda bisa mulai berjualan.
+setup-provision-account-section = Akun kasir.mu
+setup-provision-account-hint = Hubungkan perangkat Anda ke akun gratis untuk mengaktifkan sinkronisasi otomatis dan perlindungan lisensi.
+setup-provision-offline-warn = Koneksi internet diperlukan untuk membuat atau menautkan akun Anda.
 setup-provision-store-type = Jenis usaha apa ini?
 setup-provision-location-label = Nama toko
 setup-provision-owner-name-label = Nama Anda
@@ -139,6 +142,7 @@ setup-provision-pin-confirm-label = Konfirmasi PIN
 setup-provision-submit = Selesaikan penyiapan
 setup-provision-success = Terminal ini siap.
 setup-provision-error = Tidak dapat menyelesaikan penyiapan terminal ini. Silakan coba lagi.
+setup-provision-account-required = Harap tautkan akun kasir.mu Anda sebelum menyelesaikan penyiapan.
 setup-step-store-type = Tipe Toko
 setup-step-payments = Pembayaran
 setup-step-products = Produk
