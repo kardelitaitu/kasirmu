@@ -22,6 +22,11 @@ item below quotes its own anchor text, so re-locate by that, not by the number.*
 - **§3.3's A2 row** is now *"Detected on the DEVICE axis, still unbounded on the others"*. That
   supersedes the version I had prepared.
 
+**Also resolved since this note was written** (verified absent from the 1145-line revision, so
+skip these three in §2): **A1** — §1.5 no longer says "7 bridge call sites"; **A3** — "All three
+pieces now ship" is gone; **A2** — the §Q-D note now carries its own correction keeping the
+"mark the tenant" phrase as quoted text rather than as instruction.
+
 ## 2. Still live — mechanical, each one verified against the tree today
 
 | # | Anchor (quote) | Doc says | Tree says |
@@ -92,8 +97,9 @@ so line citations into it are moving — cite that file by symbol, not by line, 
 
 Swept against revision `EB91922B` (**1145 lines**, mtime 03:34) — i.e. after your latest edits, so
 §2's numbers above (a 1091-line revision) are also now stale. **Anchor by quoted text, not by
-number.** Re-check both majors below against your current text before acting; one may already be
-gone.
+number.** Both majors below were **re-checked against the 1145-line revision and both are still
+live** — neither has been fixed. (M2's sentence wraps across two source lines, so a single-line
+grep for its phrase misses it; search for the distinctive half.)
 
 **Two majors beyond §2.**
 
