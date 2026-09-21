@@ -17,6 +17,7 @@
 //!   proves the licence, location and owner were all written.
 
 use rusqlite::{Connection, OptionalExtension, params};
+use serde::{Deserialize, Serialize};
 
 use crate::error::CoreError;
 
@@ -28,7 +29,8 @@ use super::Store;
 /// merchants with unreliable connectivity, and a first run that demands the
 /// network fails the merchant who most needs the product. `linked` adds the
 /// identity step and is the only route to server-side enforcement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ProvisioningMode {
     /// No network: a working OS and a sellable terminal.
     Local,
@@ -66,7 +68,8 @@ impl ProvisioningMode {
 /// restaurant needs a kitchen display and a shop does not. Two variants rather
 /// than the UI's six presets: the presets differ in *features* (which the
 /// wizard owns) while only these two differ in *workspace topology*.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum LocationKind {
     /// A shop: store POS, warehouse, admin.
     Retail,

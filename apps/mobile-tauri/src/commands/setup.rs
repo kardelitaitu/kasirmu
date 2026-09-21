@@ -196,39 +196,54 @@ pub async fn complete_setup(
     Ok(())
 }
 
-/// Dismiss the setup wizard without enabling any features.
+/// The first-run state for one terminal (ADR #56 §2.1).
 ///
-/// Called when the user clicks "Skip setup". Only writes the
-/// `show_setup_wizard = false` flag — no preset or features are saved.
-///
-/// # ADR #49 — ported 2026-09-16
-///
-/// Delegates to [`kasirmu_bridge::setup::dismiss_setup_wizard`]; the bodies were
-/// statement-identical. Resolves no session, so the move is ledger-neutral.
+/// Replaces [`get_setup_status`]'s boolean. The shell calls this on mount and
+/// renders the provisioning flow when `state` is `unprovisioned`.
 #[command]
-pub async fn dismiss_setup_wizard(state: State<'_, AppState>) -> Result<(), AppError> {
+pub async fn get_first_run_state(
+    state: State<'_, AppState>,
+    terminal_id: String,
+) -> Result<kasirmu_bridge::setup::FirstRunStateDto, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::setup::dismiss_setup_wizard(&ctx)
+    kasirmu_bridge::setup::get_first_run_state(&ctx, &terminal_id)
         .await
         .map_err(Into::into)
 }
 
-/// Returns whether the setup wizard has been completed.
+/// Provision this terminal in one idempotent transaction (ADR #56 §2.2).
 ///
-/// The front-end calls this on mount to decide whether to render
-/// the wizard or the main application.
-///
-/// # ADR #49 — ported 2026-09-16
-///
-/// Delegates to [`kasirmu_bridge::setup::get_setup_status`]; the bodies were
-/// statement-identical. Resolves no session, so the move is ledger-neutral.
+/// The replacement for the wizard's completion path: it creates the location,
+/// the workspaces, the owner, the features and the marker together, or none of
+/// them. A retry returns the existing row and creates nothing.
 #[command]
-pub async fn get_setup_status(state: State<'_, AppState>) -> Result<SetupStatus, AppError> {
+pub async fn provision_device(
+    state: State<'_, AppState>,
+    args: kasirmu_bridge::setup::ProvisionDeviceArgs,
+) -> Result<kasirmu_bridge::setup::ProvisionDeviceResultDto, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::setup::get_setup_status(&ctx)
+    kasirmu_bridge::setup::provision_device(&ctx, args)
         .await
         .map_err(Into::into)
 }
+
+// ── Retired by ADR #56 §2.2 ──────────────────────────────────────────
+//
+// `dismiss_setup_wizard` and `get_setup_status` were REMOVED here. Both
+// existed to serve the three booleans §2.1 retires:
+//
+// - `dismiss_setup_wizard` wrote `show_setup_wizard = false`, the "Skip
+//   setup" escape hatch. §1.5 records that Skip is a trapdoor, not an exit:
+//   it marked setup complete while provisioning nothing, which is the state
+//   §2.1 makes unrepresentable — there is no row to write without an owner,
+//   a location and a workspace to point at.
+// - `get_setup_status` derived `completed` from that same key. A failed read
+//   could forge the answer in either direction, which is why the shells
+//   carried a boot-retry workaround for a lost IPC response (§1.4).
+//
+// Their replacement is `get_first_run_state` above, which reads the
+// provisioning row: an unreadable database yields no row, and no row means
+// unprovisioned, so a retry is an ordinary idempotent re-read.
 
 #[cfg(test)]
 #[path = "setup_tests.rs"]
