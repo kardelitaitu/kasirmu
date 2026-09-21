@@ -664,7 +664,7 @@ there by default would re-introduce the fiction this section removes.
 
 **Three assertions were INVERTED rather than deleted**, because the guarantee is worth more than the
 row: `seed_data_bootstraps_essential_rows` now asserts the locations table is EMPTY and that no
-sentinel subscription exists, and the lease-rename test asserts zero FK violations with no seeded
+sentinel subscription exists, and the store→location rename test asserts zero FK violations with no seeded
 rows left to hide behind. A deleted assertion would have let the fiction creep back silently; an
 inverted one fails if it does.
 
