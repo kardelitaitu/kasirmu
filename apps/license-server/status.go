@@ -93,8 +93,17 @@ func handleStatus(app core.App) func(e *core.RequestEvent) error {
 		var statusReq struct {
 			MachineID string `json:"machine_id,omitempty"`
 			Revoke    bool   `json:"revoke,omitempty"`
+			// ADR #57 §2.1: the APK signing-certificate fingerprint the client
+			// computed. Absent on every platform that cannot produce one (desktop,
+			// or an unpinnable install), which is why this is a plain string and
+			// NOT required — absence is classified as `unknown`, never `mismatch`.
+			BuildFingerprint string `json:"build_fingerprint,omitempty"`
 		}
-		if err := json.NewDecoder(e.Request.Body).Decode(&statusReq); err == nil && statusReq.MachineID != "" {
+		var statusBodyParsed bool
+		if err := json.NewDecoder(e.Request.Body).Decode(&statusReq); err == nil {
+			statusBodyParsed = true
+		}
+		if statusBodyParsed && statusReq.MachineID != "" {
 			machines, err := app.FindRecordsByFilter(
 				"tenant_machines",
 				"machine_id = {:machine_id} && tenant_id = {:tenant_id}",
@@ -121,6 +130,22 @@ func handleStatus(app core.App) func(e *core.RequestEvent) error {
 					}
 				}
 			}
+		}
+
+		// ── ADR #57 §2.1/§2.2: classify the reported build fingerprint ──
+		//
+		// The comparison runs SERVER-side, which is the whole point of §2.1: the
+		// client reports and does not decide, so patching the comparison out of a
+		// client changes nothing here. An absent or malformed report classifies as
+		// `unknown` (never `valid`), so deleting the reporting line is itself
+		// visible rather than silent.
+		//
+		// The verdict is recorded for the operator queue; it deliberately does NOT
+		// alter this response. §Q4: escalation never becomes an automatic lockout,
+		// because a serialization bug or a partially-rolled-out client would
+		// otherwise dark every affected till.
+		if statusBodyParsed {
+			recordBuildIntegrity(app, tenantID, statusReq.MachineID, statusReq.BuildFingerprint)
 		}
 
 		// ── Find latest ACTIVE subscription ─────────────────────

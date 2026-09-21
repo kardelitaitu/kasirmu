@@ -283,6 +283,11 @@ func main() {
 		if err := ensureReleaseChannels(app); err != nil {
 			return err
 		}
+		// ADR #57 §2.4: the durable build-integrity report store the status
+		// endpoint writes and the operator queue reads.
+		if err := ensureBuildIntegrityReports(app); err != nil {
+			return err
+		}
 		// C4.3: add-on marketplace field on license_keys
 		if err := ensureAddonsField(app); err != nil {
 			return err
