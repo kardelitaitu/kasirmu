@@ -36,10 +36,17 @@ export default defineConfig({
   // Run all tests in parallel (up to 4 workers).
   workers: process.env['CI'] ? 2 : 4,
 
-  // Each test gets 30 seconds to finish locally, 90 seconds on CI
-  // where Docker + Vite + Playwright compete for CPU on shared runners.
-  // The login flow alone (loginAs) can take 15-25s on slow CI runners.
-  timeout: process.env['CI'] ? 90_000 : 30_000,
+  // Per-test timeout. loginAs() (helpers.ts) is a SEQUENTIAL chain of
+  // condition-based waits that can consume up to 60s on a cold Vite dev
+  // server (30s first render + 5s input + 10s PIN pad + 15s workspace
+  // home), before a spec body runs a single step. The old local value
+  // (30s) was SMALLER than the helper's own budget, so the test could be
+  // killed mid-login — the inversion that produced the observed
+  // "[tablet] sale.spec.ts:83 timed out in loginAs" flake, with
+  // retries: 0 locally to hide it. One value for local and CI: 90s
+  // dominates that 60s budget with 30s of headroom. This raises local
+  // only; CI already ran 90s, so CI is unchanged (not narrowed).
+  timeout: 90_000,
 
   // Reporters: list output in terminal, produce JSON + HTML on CI.
   // Paths are resolved against this config's directory (ui/e2e/), NOT the

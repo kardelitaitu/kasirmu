@@ -38,8 +38,13 @@ export async function loginAs(
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
 
-  // Wait for the login screen using data-testid.
-  await page.getByTestId('staff-login-screen').waitFor({ timeout: 15_000 });
+  // Wait for the login screen using data-testid. 30s, not 15s: on a cold
+  // Vite dev server the first navigation triggers on-demand transform of
+  // the whole module graph, and with 4 parallel workers that first paint
+  // is what expired here (condition-based wait, so this is budget, not a
+  // sleep). The waits below stay as-is — once the app has painted they
+  // are local state transitions, not cold-start work.
+  await page.getByTestId('staff-login-screen').waitFor({ timeout: 30_000 });
 
   // Enter username into the input with class `staff-login-input`.
   const usernameInput = page.locator('.staff-login-input').first();
