@@ -5,12 +5,32 @@
  * the provisioning transaction), so it must read as the same surface rather
  * than a new one. Tokens only — no raw colours. */
 
+/* The container is its own scroll container on purpose. The tablet shell's
+ * html/body/#root (index.mobile.html) are height: 100% + overflow: hidden, so
+ * the page NEVER scrolls: without the two height lines below, a card taller
+ * than the viewport was clipped with no scroll distance anywhere.
+ *
+ * height: 100% resolves against #root's definite viewport height on the
+ * tablet, which is what makes overflow-y: auto actually engage (an auto-height
+ * container grows with its content and never overflows itself, so its
+ * scrollbar never appears and the clipping just moved up to #root). On the
+ * desktop shell #root has min-height only — no definite height — so the
+ * percentage resolves to auto there and the body keeps scrolling as before;
+ * min-height: 100dvh keeps the full-viewport gradient on both.
+ *
+ * The card takes margin: auto instead of justify-content: center on this
+ * container: main-axis centering on a scroll container pushes the top of the
+ * overflow ABOVE the scroll origin, where no scroll distance can reach it
+ * (the classic flex-centering trap). margin: auto is the widely-supported
+ * equivalent of `safe center` — centred when the card fits, top-aligned and
+ * fully scrollable when it does not. */
 .provisioning-container {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  height: 100%;
   min-height: 100dvh;
+  overflow-y: auto;
   background: radial-gradient(circle at 50% -20%, var(--neutral-200) 0%, var(--neutral-50) 100%);
   color: var(--color-fg-primary);
   font-family: var(--font-sans);
@@ -18,6 +38,7 @@
 }
 
 .provisioning-card {
+  margin: auto;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-3xl);
