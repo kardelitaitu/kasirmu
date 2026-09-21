@@ -20,6 +20,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("branding::pick_logo_file", "no_session_resolution"),
     ("data::get_backup_status", "no_session_resolution"),
     ("data::create_backup", "no_session_resolution"),
+    ("data::export_data_without_session", "no_session_resolution"),
     ("email::get_report_schedule", "no_session_resolution"),
     ("edc::edc_terminal_status", "no_session_resolution"),
     ("staff::bootstrap_owner", "no_session_resolution"),
@@ -85,7 +86,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ),
     ("settings::set_setting", "no_session_resolution"),
     ("setup::get_enabled_features", "no_session_resolution"),
-    ("setup::complete_setup", "no_session_resolution"),
     ("setup::get_first_run_state", "no_session_resolution"),
     ("setup::provision_device", "no_session_resolution"),
     (
