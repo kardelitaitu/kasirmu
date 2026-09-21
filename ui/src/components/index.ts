@@ -32,3 +32,5 @@ export { useContextMenu } from './useContextMenu';
 export type { ContextMenuState } from './useContextMenu';
 export { ContextMenu } from './ContextMenu';
 import './ContextMenu.css';
+export { SegmentedTabs } from './SegmentedTabs';
+export type { SegmentedTabItem, SegmentedTabsProps } from './SegmentedTabs';

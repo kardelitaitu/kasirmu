@@ -19,7 +19,7 @@ import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
-import { requiredLocalized, type RequiredLocalizedL10n } from '@/components';
+import { SegmentedTabs, requiredLocalized, type RequiredLocalizedL10n } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './StockTransfersScreen.css';
 
@@ -342,23 +342,21 @@ export default function StockTransfersScreen() {
         </Localized>
       </div>
 
-      <div className="stock-transfers-filters" role="tablist" aria-label={l10n.getString('stock-transfers-filter-aria')}>
-        {STATUS_FILTERS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            role="tab"
-            aria-selected={statusFilter === s}
-            aria-label={l10n.getString(`stock-transfers-status-${s}`)}
-            className={`stock-transfers-filter-btn${statusFilter === s ? ' active' : ''}`}
-            onClick={() => setStatusFilter(s)}
-          >
+      <SegmentedTabs
+        className="stock-transfers-filters"
+        ariaLabel={l10n.getString('stock-transfers-filter-aria')}
+        items={STATUS_FILTERS.map((s) => ({
+          value: s,
+          label: (
             <Localized id={`stock-transfers-status-${s}`}>
               <span>{statusLabel(s)}</span>
             </Localized>
-          </button>
-        ))}
-      </div>
+          ),
+          ariaLabel: l10n.getString(`stock-transfers-status-${s}`),
+        }))}
+        activeValue={statusFilter}
+        onSelect={setStatusFilter}
+      />
 
       {loading ? (
         <div className="stock-transfers-loading-skeleton" aria-hidden="true">

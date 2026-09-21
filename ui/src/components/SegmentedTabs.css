@@ -1,0 +1,93 @@
+/* ============================================================
+ * SegmentedTabs — a single-select tab strip whose active segment is one
+ * sliding thumb (SegmentedTabs.tsx).
+ *
+ * The fill, box and type are the design system's primary button
+ * (.btn--primary.btn--md in theme/components.css), so a segmented control
+ * reads as the same control family as the buttons beside it. Sizes are
+ * repeated here as literals rather than borrowed from .btn: a thumb is not a
+ * <button> and cannot carry those classes, and min-height states the 32px
+ * instead of rebuilding it from a `line-height: 1` — the shape .kds-tab uses
+ * one screen over, which also leaves this sheet out of the repo's frozen
+ * line-height population.
+ *
+ * LAYOUT, and why it is a grid: the thumb is one column wide and moves by
+ * whole columns, so every segment must BE the same width. An equal-column grid
+ * at `width: max-content` sizes 1fr tracks to the widest label and the thumb
+ * lands within 0.03px of the active tab over two and over four uneven labels;
+ * a hug-width flex track with `flex: 1 1 0` does NOT equalize (2px off at two
+ * labels, 40px at four). `width: max-content` also keeps the track hugging its
+ * segments wherever it is mounted — block flow, flex or grid — leaving margins
+ * and placement to the caller's own className hook.
+ * ============================================================ */
+
+.segmented-tabs {
+  position: relative;
+  display: grid;
+  width: max-content;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: center;
+  padding: 3px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+/* The thumb: .btn--primary's fill, .btn--md's box, one column wide, inset by the
+   track's 3px padding. `translateX` percentages resolve against the thumb's OWN
+   width, so `value index * 100%` lands exactly on segment `index`; the width
+   subtracts the two insets because the 100% it divides is the track's PADDING
+   box. The index and count arrive as custom properties from the component, which
+   keeps it free of refs, measure effects and resize listeners. */
+.segmented-tab-indicator {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / var(--segmented-tab-count, 1));
+  border-radius: var(--radius-lg);
+  background: var(--color-accent);
+  transform: translateX(calc(var(--segmented-tab-index, 0) * 100%));
+  transition: transform var(--duration-300) var(--ease-out);
+  pointer-events: none;
+}
+
+.segmented-tab {
+  /* Paints the label above the thumb it sits in. */
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 32px;
+  padding: 0 var(--space-4);
+  border: none;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--color-fg-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--duration-150) var(--ease-out);
+}
+
+/* Inactive only: the active tab's text sits on the accent-filled thumb, and a
+   hover fill there would paint a grey box over it. */
+.segmented-tab:not(.segmented-tab--active):hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
+}
+
+/* .btn--primary's foreground, on the thumb's fill. */
+.segmented-tab--active {
+  color: var(--color-accent-fg);
+}
+
+.segmented-tab:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}

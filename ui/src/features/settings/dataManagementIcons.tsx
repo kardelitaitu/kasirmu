@@ -15,7 +15,7 @@
  *
  * NO CSS CLASS MOVED WITH THIS FILE. The builders emit bare <svg> elements with no
  * className (measured: 0 occurrences of className / class= in the moved range), and
- * the classes that style them — .data-mgmt-tab-icon (DataManagementScreen.css :81)
+ * the classes that style them — .data-mgmt-tab-icon (DataManagementScreen.css :28)
  * and .data-mgmt-progress-done (:258, :270) — sit on the CALL SITES, which stayed
  * in the screen. Both are element-descendant selectors, so they still match: the
  * svg lands in the same DOM position as before. That is why

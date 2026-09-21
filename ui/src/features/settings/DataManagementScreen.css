@@ -15,60 +15,16 @@
 
 /* ── Tabs ────────────────────────────────────────────────────────── */
 
+/* The strip itself is the shared segmented control (components/
+   SegmentedTabs.css). This sheet keeps where the tab bar sits in the page —
+   the underline-and-::after treatment it used to own is gone with the markup
+   that carried it. */
 .data-mgmt-tabs {
-  display: flex;
-  gap: var(--space-1);
   margin-bottom: var(--space-8);
-  border-bottom: 1px solid var(--color-border, rgba(128, 128, 128, 0.15));
-  padding-bottom: var(--space-1);
 }
 
-.data-mgmt-tab {
-  position: relative;
-  padding: var(--space-2) var(--space-6);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--color-fg-secondary);
-  background: none;
-  border: none;
-  cursor: pointer;
-  transition: color var(--duration-150) var(--ease-out), background var(--duration-150) var(--ease-out);
-}
-
-.data-mgmt-tab:hover {
-  color: var(--color-fg-primary);
-  background: var(--color-bg-hover);
-}
-
-.data-mgmt-tab::after {
-  content: '';
-  position: absolute;
-  bottom: -0.0625rem; /* -1px offset — sub-token exempt */
-  left: 50%;
-  width: 0;
-  height: 2px;
-  background: var(--color-accent);
-  border-radius: var(--radius-sm);
-  transition: width var(--duration-200) var(--ease-out),
-              left var(--duration-200) var(--ease-out);
-}
-
-.data-mgmt-tab--active {
-  color: var(--color-accent);
-  font-weight: 600;
-}
-
-.data-mgmt-tab--active::after {
-  width: 80%;
-  left: 10%;
-}
-
-.data-mgmt-tab:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: -2px;
-  border-radius: var(--radius-md);
-}
-
+/* The only part of a segment this screen still styles: its icon. The old tab's
+   focus ring went with the old markup — the shared control carries its own. */
 .data-mgmt-tab-icon {
   display: inline-flex;
   align-items: center;

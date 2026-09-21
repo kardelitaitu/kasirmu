@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { SegmentedTabs } from '@/components';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import AdminLockedFeature from '@/components/AdminLockedFeature';
 import { useAdminGate } from '@/contexts/SubscriptionContext';
@@ -100,24 +101,27 @@ function DataManagementScreenContent() {
       </div>
 
       {/* ── Tab bar ────────────────────────────────── */}
-      <div className="data-mgmt-tabs" role="tablist" aria-label={l10n.getString('data-mgmt-tabs-aria')}>
-        {(['export', 'import', 'backup'] as const).map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === tab}
-            className={`data-mgmt-tab ${activeTab === tab ? 'data-mgmt-tab--active' : ''}`}
-            onClick={() => setActiveTab(tab)}
-          >
-            <span className="data-mgmt-tab-icon" aria-hidden="true">{tabIcon(tab)}</span>
-            {' '}
-            <Localized id={`data-mgmt-tab-${tab}`}>
-              <span>{tab.charAt(0).toUpperCase() + tab.slice(1)}</span>
-            </Localized>
-          </button>
-        ))}
-      </div>
+      {/* The underline strip this used to draw (`.data-mgmt-tab::after`, an
+          accent rule that widened under the active tab) is replaced by the
+          shared segmented control, so all three segments are one sliding thumb.
+          The icons ride inside the segment, spaced by the control's own gap. */}
+      <SegmentedTabs
+        className="data-mgmt-tabs"
+        ariaLabel={l10n.getString('data-mgmt-tabs-aria')}
+        items={(['export', 'import', 'backup'] as const).map((tab) => ({
+          value: tab,
+          label: (
+            <>
+              <span className="data-mgmt-tab-icon" aria-hidden="true">{tabIcon(tab)}</span>
+              <Localized id={`data-mgmt-tab-${tab}`}>
+                <span>{tab.charAt(0).toUpperCase() + tab.slice(1)}</span>
+              </Localized>
+            </>
+          ),
+        }))}
+        activeValue={activeTab}
+        onSelect={setActiveTab}
+      />
 
       {/* ── Export tab ─────────────────────────────── */}
       {activeTab === 'export' && (

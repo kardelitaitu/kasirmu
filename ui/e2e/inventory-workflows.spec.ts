@@ -224,8 +224,10 @@ test.describe('Inventory Workflows — Full', () => {
     await expect(page.locator('.stock-transfers')).toBeVisible({ timeout: WF_TIMEOUT });
     await expect(page.locator('.stock-transfers-title')).toContainText('Stock Transfer');
 
-    // Filter buttons must be present.
-    const filterBtns = page.locator('.stock-transfers-filter-btn');
+    // Filter segments must be present. Located by role inside the strip: the
+    // per-button class this used to name belongs to the old markup, and the
+    // shared segmented control keeps only the track's hook class.
+    const filterBtns = page.locator('.stock-transfers-filters').getByRole('tab');
     const filterCount = await filterBtns.count();
     expect(filterCount).toBeGreaterThanOrEqual(2);
 
