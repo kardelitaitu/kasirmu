@@ -10,6 +10,27 @@
   -webkit-backdrop-filter: blur(10px);
   will-change: backdrop-filter;
   transform: translateZ(0);
+  /* The overlay's own query container (ADR-0001 T2 / Slice 5). UNNAMED on
+     purpose, the same choice RetailPosScreen.css, KdsScreen.css, PosScreen.css
+     and SalesHistoryScreen.css each record and for the same reason: the shell's
+     content slot carries the name app-content, but a named query would find no
+     container in any mount that does not go through the shell (tests, e2e
+     harness, the modal rendered standalone).
+
+     WHY THE OVERLAY AND NOT THE SHELL SLOT. This modal is not a page body: it
+     renders as position: fixed; inset: 0, so the box it is given IS the
+     viewport — the shell's content slot is not its containing block and a tier
+     keyed on it would measure the wrong box. Declaring the container here is
+     therefore not a viewport query in disguise; it is the same measurement this
+     modal has always had, made explicit and reachable from the rest of the
+     sheet. Desktop landscape renders exactly as before.
+
+     The COST, recorded rather than hidden: .payment-overlay also contains
+     .payment-customer-search-overlay, itself position: fixed. A fixed
+     descendant does not re-root a container query — the query still resolves
+     against this ancestor — so the tiers below reach the search modal too.
+     That is intended, and is why the search panel is styled in them. */
+  container-type: inline-size;
 }
 
 /* ── Entrance/exit animations ────────────────────────── */
@@ -54,7 +75,12 @@
 .payment-modal {
   position: relative;
   width: 26.25rem;
-  max-width: 92vw;
+  /* max-width: 100%, not 92vw: the panel's containing block is .payment-overlay
+     (position: fixed; inset: 0), which IS the viewport for this modal, so this
+     states against the box what the old 92vw stated against the window — and the
+     two are the same number at every width below 456px (see the tier note at the
+     end of this sheet). */
+  max-width: 100%;
   background: var(--color-pos-modal-bg);
   border: 1px solid var(--color-pos-modal-border);
   border-radius: var(--radius-xl);
@@ -1231,4 +1257,52 @@
   margin: var(--space-2) 0 0;
   font-size: var(--text-sm);
   color: var(--color-fg-muted);
+}
+
+/* ── Narrow-container tier (ADR-0001 T2 / Slice 5) ──────────────────
+   The one viewport assumption this sheet carried on the checkout path was
+   .payment-modal's old max-width: 92vw — a guess at the window made from inside
+   a dialog that is never as wide as the window it sits in. It is gone: the panel
+   is now width: 26.25rem with max-width: 100%, which is what it always meant.
+   92vw only ever applied below ~456px of viewport, where 26.25rem = 420px
+   already fits inside 92vw — at 375px the old rule produced 345px against the
+   345px this one produces. The two agree at every width; the new form just says
+   it against the box the panel is actually laid out in.
+
+   Measured against .payment-overlay's own inline-size (declared at the top of
+   this sheet), NOT the window's — and for this sheet those are the same
+   measurement (the overlay is position: fixed; inset: 0), which is exactly why
+   the tier is honest rather than a media query in costume. Desktop landscape —
+   a window at or above 480px — matches nothing here and renders exactly as
+   before. */
+@container (max-width: 480px) {
+  /* The tender rows. .payment-split-row is a flex ROW carrying a fixed-px
+     budget: a 56px amount input + a 44px remove target (min-width AND
+     min-height --space-11) + the currency code + the method radio group, before
+     the label has claimed anything. Hand that row a 375px panel minus its own
+     --space-5 gutters and the label wraps to one character per line while the
+     controls stay put. Below 480px the row stacks instead, and the ACTIONS keep
+     their own line — align-self does that, so the amount group does not stretch
+     across the full width.
+
+     This is the same "shed a fixed-px lane" shape RetailPosScreen.css uses at
+     880px; it simply has less to shed, because the rest of this sheet is either
+     width: 100% (the inputs), flex-wrap: wrap (the quick-cash row) or
+     min-width: 0 (the split method group) already. */
+  .payment-split-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .payment-split-row .payment-split-amount-group {
+    align-self: flex-end;
+  }
+
+  /* The customer-search panel is a fixed 23.75rem (380px) column with no
+     max-width of its own — inside the same 375px box it would overflow its
+     scrim by 5px and take the search input's right edge with it. Scoped to the
+     panel; the overlay around it is untouched. */
+  .payment-customer-search-modal {
+    width: 100%;
+  }
 }
