@@ -1144,3 +1144,110 @@ func TestEnsureEmailVerifiedField_MigratesExistingCollection(t *testing.T) {
 		t.Fatalf("second ensureEmailVerifiedField should be a no-op: %v", err)
 	}
 }
+// TestEnsureRegionField_MigratesAndBackfills simulates a deployment that
+// predates ADR #59's residency field: the tenants collection exists WITHOUT
+// region, and a tenant row already exists. The migration must add the field,
+// backfill the existing row to `global` (PocketBase does not apply a
+// select default to existing rows), and be idempotent on a second run.
+func TestEnsureRegionField_MigratesAndBackfills(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("failed to create test app: %v", err)
+	}
+	defer app.Cleanup()
+
+	tenants := core.NewBaseCollection("tenants")
+	tenants.Fields.Add(
+		&core.EmailField{Name: "email", Required: true},
+		&core.SelectField{Name: "status", Required: true, Values: []string{"active", "suspended", "revoked"}},
+	)
+	if err := app.Save(tenants); err != nil {
+		t.Fatalf("failed to create tenants collection: %v", err)
+	}
+	if tenants.Fields.GetByName("region") != nil {
+		t.Fatal("precondition failed: tenants should not have region yet")
+	}
+
+	// A tenant that predates the field. Its region must end up global: no
+	// other region has ever existed, so that is the honest value rather than
+	// a guess.
+	pre := core.NewRecord(tenants)
+	pre.Set("email", "pre-region@example.com")
+	pre.Set("status", "active")
+	if err := app.Save(pre); err != nil {
+		t.Fatalf("failed to seed pre-migration tenant: %v", err)
+	}
+
+	if err := ensureRegionField(app); err != nil {
+		t.Fatalf("ensureRegionField failed: %v", err)
+	}
+	after, err := app.FindCollectionByNameOrId("tenants")
+	if err != nil {
+		t.Fatalf("find tenants after migration: %v", err)
+	}
+	field := after.Fields.GetByName("region")
+	if field == nil {
+		t.Fatal("expected region field to be added by the migration")
+	}
+	if field.Type() != core.FieldTypeSelect {
+		t.Errorf("expected a select field, got %q", field.Type())
+	}
+
+	// The backfill is the half that matters: an added-but-empty column would
+	// leave existing tenants with no region at all.
+	backfilled, err := app.FindRecordById("tenants", pre.Id)
+	if err != nil {
+		t.Fatalf("find backfilled tenant: %v", err)
+	}
+	if got := backfilled.GetString("region"); got != regionGlobal {
+		t.Errorf("region after backfill = %q, want %q", got, regionGlobal)
+	}
+
+	// Idempotent: a second run must not error and must not change the value.
+	if err := ensureRegionField(app); err != nil {
+		t.Fatalf("second ensureRegionField should be a no-op: %v", err)
+	}
+	again, err := app.FindRecordById("tenants", pre.Id)
+	if err != nil {
+		t.Fatalf("find tenant after second migration: %v", err)
+	}
+	if got := again.GetString("region"); got != regionGlobal {
+		t.Errorf("region after second run = %q, want %q", got, regionGlobal)
+	}
+}
+
+// TestEnsureRegionField_RejectsAnUnknownRegion pins the field's closed set:
+// the schema must not accept a region the core vocabulary does not know.
+// ADR #59 §Q2 chose a closed, code-checked set precisely so a second spelling
+// of one region cannot exist — a select that accepted anything would undo it.
+func TestEnsureRegionField_RejectsAnUnknownRegion(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("failed to create test app: %v", err)
+	}
+	defer app.Cleanup()
+
+	tenants := core.NewBaseCollection("tenants")
+	tenants.Fields.Add(
+		&core.EmailField{Name: "email", Required: true},
+		&core.SelectField{Name: "status", Required: true, Values: []string{"active", "suspended", "revoked"}},
+	)
+	if err := app.Save(tenants); err != nil {
+		t.Fatalf("failed to create tenants collection: %v", err)
+	}
+	if err := ensureRegionField(app); err != nil {
+		t.Fatalf("ensureRegionField failed: %v", err)
+	}
+	after, err := app.FindCollectionByNameOrId("tenants")
+	if err != nil {
+		t.Fatalf("find tenants after migration: %v", err)
+	}
+
+	rec := core.NewRecord(after)
+	rec.Set("email", "bad-region@example.com")
+	rec.Set("status", "active")
+	rec.Set("region", "eu")
+	if err := app.Save(rec); err == nil {
+		t.Fatal("expected the region select to reject a value outside the closed set")
+	}
+}

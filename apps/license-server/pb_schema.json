@@ -438,6 +438,20 @@
         "type": "date"
       },
       {
+        "help": "Residency (which deployment holds this tenant's data), NOT the market anchor — that is legal_entities.country_code. Closed set, admin-only (ADR #59 §2.2/§Q2).",
+        "hidden": false,
+        "id": "select1618033992",
+        "name": "region",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "select",
+        "maxSelect": 1,
+        "values": [
+          "global"
+        ]
+      },
+      {
         "hidden": false,
         "id": "autodate3976882600",
         "name": "created",

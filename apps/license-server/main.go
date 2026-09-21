@@ -175,6 +175,15 @@ func main() {
 			return err
 		}
 		// Idempotent in-place upgrade for deployments that predate the
+		// tenants.region residency field (ADR #59 §2.1a sequencing step 1):
+		// fresh boots get it from the embedded pb_schema.json; existing
+		// pb_data volumes get it added and their rows backfilled to "global",
+		// which is the launch region and the correct semantics for every
+		// tenant that predates the field.
+		if err := ensureRegionField(app); err != nil {
+			return err
+		}
+		// Idempotent in-place upgrade for deployments that predate the
 		// email_verified field (added with the register-first dashboard):
 		// fresh boots get it from the embedded pb_schema.json; existing
 		// pb_data volumes get it added without reimporting the schema.
@@ -533,6 +542,86 @@ func ensureAPIKeyLookupField(app core.App) error {
 	log.Println("migrated tenants collection: added api_key_lookup field + unique partial index")
 	return nil
 }
+
+// ensureRegionField adds the tenants.region select field to existing
+// deployments that predate it (fresh boots get it from the embedded
+// pb_schema.json). Idempotent: no-op once the field exists.
+//
+// ADR #59 §2.1a sequencing step 1: the tenants collection had NO region field
+// at all. The value is the RESIDENCY axis (a deployment selector from the
+// closed RegionCode set in kasirmu-core/src/regional.rs) and is deliberately
+// not an ISO-3166 market code — the market anchor lives on the tenant's own
+// database as legal_entities.country_code.
+//
+// Existing records are backfilled to `global`, which is the launch
+// region and means "no residency commitment yet" (ADR #59 §Q6) — the correct
+// semantics for every tenant that predates the field, since no other region
+// has ever existed. PocketBase does not apply a select field's default to
+// existing rows, so the backfill is explicit.
+func ensureRegionField(app core.App) error {
+	collection, err := app.FindCollectionByNameOrId("tenants")
+	if err != nil {
+		return fmt.Errorf("tenants collection not found: %w", err)
+	}
+	if collection.Fields.GetByName("region") == nil {
+		collection.Fields.Add(&core.SelectField{
+			Name:      "region",
+			MaxSelect: 1,
+			Values:    []string{regionGlobal},
+			Help:      regionFieldHelp,
+		})
+		if err := app.Save(collection); err != nil {
+			return fmt.Errorf("failed to add region field: %w", err)
+		}
+		log.Println("migrated tenants collection: added region field")
+	}
+	return backfillTenantRegions(app)
+}
+
+// backfillTenantRegions sets region = `global` on any tenants row that has
+// no region yet. Separate from ensureRegionField so it also repairs rows a
+// partial migration left blank, and so it is idempotent on its own.
+//
+// Records are read and saved one at a time rather than by raw SQL: PocketBase
+// owns this schema, and going around it with an UPDATE would bypass whatever
+// record validation the collection carries.
+func backfillTenantRegions(app core.App) error {
+	records, err := app.FindAllRecords("tenants")
+	if err != nil {
+		return fmt.Errorf("failed to list tenants for region backfill: %w", err)
+	}
+	backfilled := 0
+	for _, rec := range records {
+		if strings.TrimSpace(rec.GetString("region")) != "" {
+			continue
+		}
+		rec.Set("region", regionGlobal)
+		if err := app.Save(rec); err != nil {
+			return fmt.Errorf("failed to backfill region for tenant %s: %w", rec.Id, err)
+		}
+		backfilled++
+	}
+	if backfilled > 0 {
+		log.Printf("migrated tenants collection: backfilled region=%s on %d tenant(s)", regionGlobal, backfilled)
+	}
+	return nil
+}
+
+// regionGlobal is the only residency region at launch (ADR #59 §Q6). It mirrors
+// RegionCode::Global in kasirmu-core/src/regional.rs and the values list in the
+// embedded pb_schema.json; three spellings of one region would be a routing bug
+// that looks like a data bug, so the literal is named once per process.
+const regionGlobal = "global"
+
+// regionFieldHelp documents the residency axis on the schema itself, so the
+// distinction from the market anchor survives a reader who never opens ADR #59.
+//
+// Deliberately short: PocketBase caps a field's help string at 300 characters,
+// and that cap is load-bearing here — expanding this text is what broke the
+// migration the first time it ran. The full ruling is in ADR #59 §2.2/§Q2; this
+// is the pointer, not a copy of it.
+const regionFieldHelp = "Residency (which deployment holds this tenant's data), NOT the market anchor " +
+	"— that is legal_entities.country_code. Closed set, admin-only (ADR #59 §2.2/§Q2)."
 
 // ensureEmailVerifiedField adds the tenants.email_verified bool to existing
 // deployments that predate it (fresh boots get it from the embedded
