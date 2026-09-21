@@ -420,7 +420,132 @@ pub(super) async fn run_tick(
         pulled = 0;
     }
 
+    // Phase 5: licence ride-along (ADR #58 option C, "ride any authenticated
+    // call"). Independent of the data sync above and deliberately so: it runs
+    // whenever this terminal is *configured at all*, even when there is
+    // nothing to push or pull, because a ban must reach an idle till too.
+    //
+    // Before this phase the only caller of `check_license_status` was the
+    // Settings screen's poll (`LicenseSettings.tsx`, armed on mount and torn
+    // down on unmount), so a device that never opened Settings never learned
+    // it had been revoked. This is that notice, on the daemon's cadence.
+    //
+    // Never touches `sync_error`: a licence-server outage must not be
+    // reported as a sync failure, or it would drive the sync daemon's backoff
+    // and eventually stop data replication over an unrelated service.
+    run_license_ride_along(db).await;
+
     update_daemon_status(db, daemon_status, pushed, pulled, &sync_error, &read_error).await;
+}
+
+/// The licence ride-along tick: ask the licence server for this tenant's
+/// verdict and apply it locally (ADR #58 option C).
+///
+/// **Why "ride any authenticated call" is implemented here and not on the
+/// sync snapshot.** The obvious carrier looks like the snapshot envelope, but
+/// that response is built and cached by the CLOUD server
+/// (`apps/cloud-server/src/sync_api.rs`), which serialises the bytes once and
+/// serves them from a Redis-backed cache keyed by an ETag version. A licence
+/// verdict placed there would be served stale for the cache's whole lifetime,
+/// or would have to bust the ETag on every heartbeat and turn a bulk data
+/// cache into a per-request recompute. The cloud server also holds no licence
+/// knowledge at all — its only subscription references are Stripe *plan*
+/// updates in `webhooks.rs` — so it cannot author the verdict regardless.
+///
+/// The licence server already answers exactly this question, and
+/// `LicenseStatusResponse` already carries `status`, `device_revoked` and
+/// `expires_at`. Nothing is added to the wire: this phase simply makes the
+/// call the Settings screen was the only thing making.
+///
+/// **Fail-open, and silent on failure.** An unreachable licence server, a
+/// missing api key, or an undecryptable one all return without touching any
+/// local state — the cached verdict stands and the till keeps working (§2.4).
+/// Failures are logged at debug/warn, never surfaced as sync errors, so an
+/// outage on this endpoint cannot back off data replication.
+///
+/// **Sessions are swept when the tenant verdict is `revoked`.** The bridge
+/// owns the session store, so this cannot call
+/// `invalidate_all_sessions` directly; it records the verdict and lets the
+/// session gate enforce it on the next `create_session` (§2.7's "enforcement
+/// never depends on the local DB refusing to open"). §2.5's at-once sweep for
+/// the already-open session happens on the paths that have the bridge in
+/// scope — which is why the cache write is the load-bearing half here.
+async fn run_license_ride_along(db: &DbConnection) {
+    // Read the credentials this needs. The api key is stored encrypted
+    // (machine-bound); a decrypt failure falls back to the legacy plaintext
+    // form exactly as the bridge lane does, so a pre-encryption install is
+    // not silently denied its revocation notice.
+    let creds = {
+        let db_clone = db.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = db_clone.blocking_lock();
+            let api_key_enc = kasirmu_core::settings::Settings::get(&conn, "license.api_key")
+                .ok()
+                .flatten()
+                .filter(|s| !s.is_empty())?;
+            let machine_id =
+                kasirmu_core::settings::Settings::get(&conn, kasirmu_core::settings::keys::MACHINE_ID)
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default();
+            Some((api_key_enc, machine_id))
+        })
+        .await
+        .unwrap_or(None)
+    };
+
+    let Some((api_key_enc, machine_id)) = creds else {
+        // No licence activated on this terminal — nothing to ask about.
+        // This is the common path for a free/local install, so it is debug.
+        tracing::debug!("licence ride-along skipped: no stored api key");
+        return;
+    };
+
+    let api_key = match kasirmu_core::crypto::decrypt_api_key(&api_key_enc, &machine_id) {
+        Ok(k) => k,
+        Err(e) => {
+            tracing::debug!("licence ride-along: api key decryption failed, treating as legacy plaintext: {e}");
+            api_key_enc
+        }
+    };
+
+    let resp = match kasirmu_core::license_verification::check_license_status(
+        &api_key,
+        &machine_id,
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            // Fail open: keep the cached verdict and keep selling. Logged at
+            // warn (not error) because an unreachable licence server is an
+            // expected condition on an offline-first till, not a fault.
+            tracing::warn!("licence ride-along: status check failed, keeping cached verdict: {e}");
+            return;
+        }
+    };
+
+    // Read the device verdict before the response is moved into the blocking
+    // closure below — it is needed for the log line, not for the cache write.
+    let device_revoked = resp.device_revoked;
+
+    let tenant_revoked = {
+        let db_clone = db.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = db_clone.blocking_lock();
+            kasirmu_core::license_verification::apply_license_verdict_to_cache(&conn, &resp)
+        })
+        .await
+        .unwrap_or(false)
+    };
+
+    if tenant_revoked || device_revoked {
+        tracing::warn!(
+            tenant_revoked,
+            device_revoked,
+            "licence ride-along recorded a revocation verdict (ADR #58 §2.4a.2/§2.5)"
+        );
+    }
 }
 
 /// Finalize a tick: read the pending count, write the daemon status, and log

@@ -26,8 +26,9 @@ use kasirmu_core::Settings;
 use kasirmu_core::crypto::{decrypt_api_key, encrypt_api_key};
 use kasirmu_core::license_verification::{
     ActivateLicenseRequest, RenewLicenseRequest, SignedSubscriptionPayload,
-    activate_license as core_activate_license, check_license_status as core_check_license_status,
-    pause_subscription as core_pause_subscription, refresh_subscription_status_from_server,
+    activate_license as core_activate_license, apply_license_verdict_to_cache,
+    check_license_status as core_check_license_status,
+    pause_subscription as core_pause_subscription,
     renew_license as core_renew_license, resume_subscription as core_resume_subscription,
     store_subscription, verify_license_signature,
 };
@@ -520,37 +521,17 @@ pub async fn check_license_status(
         .await
         .map_err(|e| BridgeError::Internal(e.to_string()))?;
 
-    // Refresh local capability cache upon successful license-server response.
-    // The server-authoritative status and expiry are persisted to the local
-    // tenant_subscription row so subsequent get_subscription_capabilities
-    // calls reflect current lifecycle state without waiting for re-activation.
-    {
+    // Refresh local capability cache upon successful license-server response,
+    // and learn whether the tenant verdict is a revocation.
+    //
+    // The three local effects live in ONE core function so the daemon's
+    // ride-along (ADR #58 option C) and this screen-driven path cannot drift
+    // apart. The write-then-sweep ordering §2.5 depends on is that function's
+    // contract, not this call site's.
+    let tenant_revoked = {
         let conn = ctx.lock_global().await;
-        if let Err(e) = refresh_subscription_status_from_server(
-            &conn,
-            "default",
-            &resp.status,
-            resp.expires_at.as_deref(),
-        ) {
-            tracing::warn!("failed to refresh subscription status cache: {e}");
-        }
-        // ADR #58 §2.4a.2/§4a Q-D: cache the device verdict locally, so the
-        // session gate can enforce it without a network call inside
-        // `create_session` (which §2.7 forbids from being able to brick a
-        // register). Server-authored only — never written from user input.
-        //
-        // A failed write is logged and does not fail the command: the verdict
-        // is a *restriction*, and losing it fails open (the device keeps
-        // working), which is the direction §2.4 requires for anything that
-        // could otherwise lock a till.
-        if let Err(e) = Settings::set(
-            &conn,
-            keys::DEVICE_REVOKED,
-            if resp.device_revoked { "true" } else { "false" },
-        ) {
-            tracing::warn!("failed to persist device_revoked cache: {e}");
-        }
-    }
+        apply_license_verdict_to_cache(&conn, &resp)
+    };
 
     // §2.4a.2's per-device verdict drops live sessions too, for the same reason
     // the tenant sweep exists: refusing the NEXT session does not stop the one
@@ -574,7 +555,7 @@ pub async fn check_license_status(
     // session created in the window between the two reads fails closed on the
     // cached verdict rather than slipping through. Sweeping first would leave a
     // gap where the row said `active` and the store was already empty.
-    if resp.status.eq_ignore_ascii_case("revoked") {
+    if tenant_revoked {
         let dropped = crate::auth::invalidate_all_sessions(ctx);
         tracing::warn!(
             dropped,

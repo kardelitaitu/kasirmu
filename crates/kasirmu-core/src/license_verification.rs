@@ -622,6 +622,72 @@ pub async fn check_license_status(
     })
 }
 
+/// Apply a server licence verdict to the local cache, and report whether the
+/// tenant is now revoked.
+///
+/// This is the shared body of ADR #58 option C ("ride any authenticated
+/// call"): the same three local effects must happen wherever a server verdict
+/// arrives, and duplicating them per call site is how a revocation path
+/// silently drifts from its sibling.
+///
+/// The effects, in this order and deliberately:
+///
+/// 1. Refresh the local `tenant_subscription` row's server-authoritative
+///    `status`/`expires_at` (`refresh_subscription_status_from_server`).
+/// 2. Cache the per-device verdict in `keys::DEVICE_REVOKED`, so the session
+///    gate can enforce it without a network call (ADR #58 §2.4a.2, §2.7).
+/// 3. Return whether the **tenant** verdict is `revoked`, so the caller can
+///    drop live sessions.
+///
+/// **Why the cache write precedes the return.** The caller sweeps live
+/// sessions on a `revoked` answer. If the sweep ran before the write, a
+/// session created in that window would read the stale `active` row and slip
+/// through; writing first means such a session fails closed on the cached
+/// verdict instead. §2.5 names this ordering explicitly.
+///
+/// **Fail-open on any write failure.** Both writes are logged and swallowed:
+/// the verdict is a *restriction*, and losing it must leave the device
+/// working rather than lock a till (§2.4). A `None` `tenant_id` row is a
+/// no-op, not an error — the caller has already handled the
+/// no-license-activated path before any network call.
+///
+/// # Arguments
+/// * `conn` — global identity database connection.
+/// * `resp` — a signature-unverified status response; this only caches
+///   server-authored *lifecycle* fields, never quota, so no signature is
+///   trusted here (quota still comes from the signed payload).
+///
+/// # Returns
+/// `true` when the tenant-level status is `revoked` — the caller must then
+/// drop every live session. `false` for every other status, including the
+/// device-level verdict, which the caller reads from the cache instead.
+pub fn apply_license_verdict_to_cache(
+    conn: &rusqlite::Connection,
+    resp: &LicenseStatusResponse,
+) -> bool {
+    if let Err(e) = refresh_subscription_status_from_server(
+        conn,
+        "default",
+        &resp.status,
+        resp.expires_at.as_deref(),
+    ) {
+        tracing::warn!("failed to refresh subscription status cache: {e}");
+    }
+
+    // Server-authored only — never written from user input. A failed write
+    // fails open (the device keeps working), which is the direction §2.4
+    // requires for anything that could otherwise lock a till.
+    if let Err(e) = crate::settings::Settings::set(
+        conn,
+        crate::settings::keys::DEVICE_REVOKED,
+        if resp.device_revoked { "true" } else { "false" },
+    ) {
+        tracing::warn!("failed to persist device_revoked cache: {e}");
+    }
+
+    resp.status.eq_ignore_ascii_case("revoked")
+}
+
 /// Store a signed subscription payload in the local `tenant_subscription`
 /// table after an activation or a renewal.
 ///

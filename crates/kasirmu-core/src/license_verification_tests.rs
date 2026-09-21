@@ -483,6 +483,125 @@ fn test_trial_activation_vertical_all_segments() {
     }
 }
 
+// ── apply_license_verdict_to_cache (ADR #58 option C) ──────────
+
+/// Build a minimal status response for the verdict tests.
+fn status_response(status: &str, device_revoked: bool, expires_at: Option<&str>) -> LicenseStatusResponse {
+    LicenseStatusResponse {
+        tenant_id: "test-tenant".into(),
+        status: status.into(),
+        tier: "pro".into(),
+        active: status.eq_ignore_ascii_case("active"),
+        device_revoked,
+        expires_at: expires_at.map(str::to_string),
+        grace_until: None,
+        max_locations: None,
+        max_stores: None,
+    }
+}
+
+/// Seed the `default` subscription row the cache write targets.
+fn seed_subscription_row(conn: &rusqlite::Connection, status: &str, expires_at: Option<&str>) {
+    conn.execute(
+        "INSERT OR REPLACE INTO tenant_subscription
+         (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances,
+          allowed_types_json, signature, signed_payload,
+          updated_at)
+         VALUES ('default', 'pro', ?1, ?2, 2, 1, '[]', 'SIG', '{}',
+                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+        rusqlite::params![status, expires_at],
+    )
+    .expect("seed subscription row");
+}
+
+/// The function reports the TENANT verdict as its return value, which is what
+/// the caller keys the live-session sweep on. A device-level revocation must
+/// NOT be reported through this return value — the session gate reads that
+/// from the cache instead (ADR #58 §2.4a.2), and conflating them would sweep
+/// every session on a per-device verdict.
+#[test]
+fn verdict_return_is_the_tenant_status_not_the_device_flag() {
+    use crate::migrations;
+    let conn = migrations::fresh_db();
+    seed_subscription_row(&conn, "active", Some("2027-01-01T00:00:00Z"));
+
+    let device_only = apply_license_verdict_to_cache(
+        &conn,
+        &status_response("active", true, Some("2027-01-01T00:00:00Z")),
+    );
+    assert!(
+        !device_only,
+        "a device revocation is not a tenant revocation"
+    );
+
+    let tenant = apply_license_verdict_to_cache(
+        &conn,
+        &status_response("revoked", false, None),
+    );
+    assert!(tenant, "the revoked tenant status must be reported");
+}
+
+/// The device verdict is cached under `device.revoked`, and the write is
+/// unconditional — a later `false` must CLEAR an earlier `true`, or an
+/// un-revoke could never take effect on a device that had been locked out.
+#[test]
+fn verdict_caches_and_clears_the_device_flag() {
+    use crate::migrations;
+    use crate::settings::{Settings, keys};
+
+    let conn = migrations::fresh_db();
+    seed_subscription_row(&conn, "active", Some("2027-01-01T00:00:00Z"));
+
+    apply_license_verdict_to_cache(&conn, &status_response("active", true, None));
+    assert_eq!(
+        Settings::get(&conn, keys::DEVICE_REVOKED).unwrap().as_deref(),
+        Some("true"),
+        "a revoked device must be cached as true"
+    );
+
+    apply_license_verdict_to_cache(&conn, &status_response("active", false, None));
+    assert_eq!(
+        Settings::get(&conn, keys::DEVICE_REVOKED).unwrap().as_deref(),
+        Some("false"),
+        "an un-revoke must clear the cached verdict, not leave it stuck"
+    );
+}
+
+/// The subscription row's server-authoritative fields are refreshed, so the
+/// next capability read reflects the new lifecycle without re-activation.
+#[test]
+fn verdict_refreshes_the_subscription_row() {
+    use crate::migrations;
+
+    let conn = migrations::fresh_db();
+    seed_subscription_row(&conn, "active", Some("2027-01-01T00:00:00Z"));
+
+    apply_license_verdict_to_cache(
+        &conn,
+        &status_response("canceled", false, Some("2026-06-01T00:00:00Z")),
+    );
+
+    let stored = TenantSubscription::load(&conn, "default")
+        .expect("load")
+        .expect("row must exist");
+    assert_eq!(stored.status, "canceled");
+    assert_eq!(stored.expires_at.as_deref(), Some("2026-06-01T00:00:00Z"));
+}
+
+/// A missing row is a no-op, not an error, and still reports the verdict: this
+/// is the no-license-activated path a free/local install takes.
+#[test]
+fn verdict_on_a_missing_row_still_reports_and_does_not_panic() {
+    use crate::migrations;
+    let conn = migrations::fresh_db();
+
+    let revoked = apply_license_verdict_to_cache(&conn, &status_response("revoked", false, None));
+    assert!(
+        revoked,
+        "the verdict is the server's answer, independent of local rows"
+    );
+}
+
 // ── bundle_id serialization (C3.2) ─────────────────────────────
 
 #[test]
