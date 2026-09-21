@@ -248,6 +248,18 @@ pub struct RenewLicenseRequest {
     pub api_key: String,
     /// The new license key.
     pub key: String,
+    /// This installation’s machine fingerprint (ADR #57 §2.5).
+    ///
+    /// Sent so the server can refuse a renewal to a DEVICE whose build
+    /// failed its fingerprint check, rather than refusing the whole
+    /// TENANT — the distinction §2.5 turns on: a merchant with one
+    /// tampered till must not lose the others.
+    ///
+    /// `#[serde(default)]` so an older client (which sends none) still
+    /// parses server-side and is judged exactly as before — this field can
+    /// only ever ADD a refusal, never remove one.
+    #[serde(default)]
+    pub machine_id: String,
 }
 
 /// Response from `POST /api/v1/license/renew`.

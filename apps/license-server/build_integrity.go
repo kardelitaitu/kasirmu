@@ -168,3 +168,40 @@ func pinnedFingerprintsForChannel(app core.App, channel string) []string {
 	}
 	return acceptedPinsFromRecord(rec)
 }
+
+// deviceHasFingerprintMismatch reports whether THIS device has a stored
+// `mismatch` verdict (ADR #57 §2.5).
+//
+// **Keyed on the DEVICE, not the tenant, and that is the whole point of §2.5.**
+// A tenant-level refusal would take a merchant’s honest tills offline because
+// one terminal at another location was tampered — the fleet-lockout failure
+// §Q4 rejected. The renewal is refused to the device that failed the check;
+// every other terminal the tenant owns renews normally.
+//
+// **Only `mismatch` refuses.** A persistent `unknown` is deliberately NOT a
+// refusal here: §2.2 makes absence a verdict, but a serialization bug or a
+// partially-rolled-out client produces it from legitimate devices, and §Q4
+// routes that case to the operator queue instead. Refusing on `unknown` would
+// let our own bug stop merchants renewing.
+//
+// **Fails open on every uncertainty** — empty machine_id, lookup error, or no
+// rows — because a refusal is a restriction and a storage problem must not
+// deny a legitimate renewal.
+func deviceHasFingerprintMismatch(app core.App, machineID string) bool {
+	if strings.TrimSpace(machineID) == "" {
+		// A pre-#57 client asserts no identity, so no device-level decision is
+		// possible. Fail open, exactly as the status endpoint does for an empty
+		// machine_id.
+		return false
+	}
+	_, err := app.FindFirstRecordByFilter(buildIntegrityCollection,
+		"machine_id = {:m} && verdict = {:v}",
+		map[string]any{"m": machineID, "v": buildVerdictMismatch})
+	if err != nil {
+		// Includes the not-found case, which is the ordinary one. A genuine
+		// query failure is also a refusal-free path on purpose: an unavailable
+		// store must not deny a renewal.
+		return false
+	}
+	return true
+}

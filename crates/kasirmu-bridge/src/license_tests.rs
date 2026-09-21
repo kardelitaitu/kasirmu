@@ -260,6 +260,7 @@ fn renew_license_request_serializes_snake_case() {
         tenant_id: "test-tenant".into(),
         api_key: "oz_test_key".into(),
         key: "OZ-PRO-NEW-KEY".into(),
+        machine_id: "abc123def456ghi".into(),
     };
     let json = serde_json::to_string(&req).unwrap();
     assert!(json.contains("\"tenant_id\""));
@@ -281,6 +282,37 @@ fn renew_license_request_deserializes() {
     assert_eq!(req.tenant_id, "t1");
     assert_eq!(req.api_key, "k1");
     assert_eq!(req.key, "OZ-KEY");
+}
+
+/// ADR #57 §2.5: the device fingerprint rides the renewal so the server can
+/// refuse a renewal to ONE tampered terminal instead of the whole tenant.
+#[test]
+fn renew_license_request_carries_the_machine_id() {
+    let req = RenewLicenseRequest {
+        tenant_id: "t1".into(),
+        api_key: "k".into(),
+        key: "OZ-KEY".into(),
+        machine_id: "abc123def456ghi".into(),
+    };
+    let json = serde_json::to_string(&req).unwrap();
+    assert!(
+        json.contains("\"machine_id\":\"abc123def456ghi\""),
+        "machine_id must ride the renewal body, got: {json}"
+    );
+}
+
+/// An OLDER client sends no `machine_id`. It must still parse, and land as an
+/// empty string — which the server reads as "cannot decide", never as a
+/// refusal. This is the fail-open half of §2.5: adding the field may only
+/// ever ADD a refusal.
+#[test]
+fn renew_license_request_without_machine_id_parses_as_empty() {
+    let json = r#"{"tenant_id":"t1","key":"OZ-KEY"}"#;
+    let req: RenewLicenseRequest = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        req.machine_id, "",
+        "a pre-#57 client must parse, with no device identity asserted"
+    );
 }
 
 #[test]

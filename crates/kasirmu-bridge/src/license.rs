@@ -300,6 +300,10 @@ pub async fn renew_license(ctx: &BridgeCtx<'_>, new_key: String) -> Result<bool,
         tenant_id,
         api_key: api_key.clone(),
         key: new_key,
+        // ADR #57 §2.5: already loaded above (it is the api-key KDF factor), so
+        // sending it costs nothing and lets the server refuse the renewal to
+        // THIS device rather than to every terminal the tenant owns.
+        machine_id,
     };
 
     let resp = core_renew_license(&req)
