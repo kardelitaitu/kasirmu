@@ -756,6 +756,11 @@ pub fn run() {
                 commands::legal_entities::get_legal_entity_scoped,
                 commands::legal_entities::create_legal_entity_scoped,
                 commands::legal_entities::update_legal_entity_scoped,
+                // Read-only licence surface (the settings hub's License
+                // Subscription screen renders on this shell too). Activation
+                // and billing management stay desktop-only.
+                commands::license::get_license_status,
+                commands::license::check_license_status,
                 // Regional configuration read model (slice 2, saas-2 design).
                 commands::regional::get_regional_config_scoped,
                 // Regional configuration write path (slice 3, saas-2 design).
