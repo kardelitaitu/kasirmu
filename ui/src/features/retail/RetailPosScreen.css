@@ -3628,7 +3628,7 @@
 /* ── Customer search panel (RetailModals.tsx:545-583) ──────────────────
  * Nine class names the customer-search markup has always carried and that
  * no sheet in ui/src defined -- verified by walking extractUsedClassNames
- * over features/retail/*.tsx against extractClassSelectors over every .css
+ * over features/retail (tsx files) against extractClassSelectors over every .css
  * under ui/src (41 names came back undefined tree-wide; these are the 11 in
  * this family). Insertions only: nothing above this line was touched, and
  * every rule lands at end-of-file so each base sits BEFORE its own modifier
