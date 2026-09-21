@@ -251,7 +251,14 @@ func handleAdminStats(app core.App) func(e *core.RequestEvent) error {
 		}
 
 		// Active devices (tenant_machines without revoked_at).
-		activeDevices := countRecordsByFilter(app, "tenant_machines", "revoked_at IS NULL")
+		//
+		// Corrected 2026-09-22: this read `revoked_at IS NULL`, which is SQL but
+		// NOT PocketBase filter syntax — the parser rejects it with "expected a
+		// sign operator, got IS". countRecordsByFilter swallows the error and
+		// returns 0, so this statistic reported ZERO active devices on every
+		// dashboard load, silently, and no test had seeded a machine to notice.
+		// `= null` is the correct spelling.
+		activeDevices := countRecordsByFilter(app, "tenant_machines", "revoked_at = null")
 
 		// Trial → paid rate (approximate: trial tenant → active subscription).
 		// Query subscriptions that were once trials (is_trial = true) and
