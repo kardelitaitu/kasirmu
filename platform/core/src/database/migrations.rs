@@ -39,6 +39,7 @@ use std::collections::HashMap;
 #[cfg(test)]
 use std::collections::HashSet;
 
+use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sha2::{Digest, Sha256};
 
@@ -387,24 +388,26 @@ fn reapply_for_drift(conn: &mut Connection, mig: &Migration) -> Result<(), Platf
 /// Attempt 1 runs the script as a unit — the historical behaviour, which
 /// succeeds whenever the script is idempotent or the drift is cosmetic and
 /// every statement is already a no-op. Attempt 2 is reached only when
-/// attempt 1 failed with a duplicate-object error; it runs the script one
-/// statement at a time and skips the statements whose effect is already
-/// present *and provably identical* (see [`already_satisfied`]).
+/// attempt 1 failed with an error [`is_skip_candidate_error`] can classify
+/// (a duplicate object, or a reference to an object a later migration
+/// removed); it runs the script one statement at a time and skips the
+/// statements whose effect is already present *and provably identical* (see
+/// [`already_satisfied`]).
 ///
 /// When attempt 2 does not recover either, the caller receives **attempt 2's**
 /// error, because that is the one that names the statement which actually
 /// blocked the re-apply — attempt 1 can only ever report the *first*
-/// duplicate-object error, which is usually the benign one. The script-level
+/// classifiable error, which is usually the benign one. The script-level
 /// error is logged alongside it. Attempt 1 stays the gatekeeper: attempt 2 is
-/// never entered unless attempt 1 failed with a duplicate-object error, so a
-/// script that fails for any other reason still reports exactly what it
-/// reported before this fallback existed.
+/// never entered for an error it cannot classify, so a script that fails for
+/// any other reason still reports exactly what it reported before this
+/// fallback existed.
 fn reapply_script(conn: &mut Connection, mig: &Migration) -> Result<(), PlatformError> {
     let whole_script_error = match apply_whole_script(conn, mig) {
         Ok(()) => return Ok(()),
         Err(err) => err,
     };
-    if !is_duplicate_object_error(&whole_script_error) {
+    if !is_skip_candidate_error(&whole_script_error) {
         return Err(whole_script_error.into());
     }
     match apply_statement_by_statement(conn, mig) {
@@ -452,7 +455,7 @@ fn apply_statement_by_statement(
             continue; // whitespace or a trailing comment
         }
         if let Err(err) = tx.execute_batch(statement) {
-            if !is_duplicate_object_error(&err) || !already_satisfied(&tx, statement, &err)? {
+            if !is_skip_candidate_error(&err) || !already_satisfied(&tx, statement, &err)? {
                 return Err(err.into());
             }
             tracing::info!(
@@ -465,11 +468,36 @@ fn apply_statement_by_statement(
     Ok(())
 }
 
-/// Whether a SQLite error reports that the object a statement declares
-/// already exists.
-fn is_duplicate_object_error(err: &rusqlite::Error) -> bool {
+/// Whether a SQLite error is one the statement-level fallback can classify — and
+/// therefore retry statement by statement.
+///
+/// Two families qualify:
+///
+/// * **the object already exists** (`already exists`, `duplicate column name`) —
+///   the statement's effect is present, and [`already_satisfied`] is asked to
+///   prove exactly that.
+/// * **an object a later migration removed** (`has no column named …`, `no such
+///   column: …`, `no such table: …`) — the statement cannot run in the schema
+///   this registry has since built, and [`already_satisfied`] is asked whether
+///   its effect is nevertheless already there (a seed whose rows are still in
+///   the table, for instance).
+///
+/// The second family used to be fatal, which bricked startup for a *whole-script*
+/// failure it produced: attempt 1 stops at the first bad statement, and if that
+/// statement names a dropped column the error is not a duplicate-object one, so
+/// the fallback was never entered and the failure was reported verbatim —
+/// `20260813_init.sql` re-applied after `20260831_loyalty_multiplier_fixedpoint.sql`
+/// dropped the column its loyalty seed names died on exactly that path.
+///
+/// Anything else stays fatal exactly as before: the fallback must not become a
+/// place where a script's genuine failure is retried and then reported twice.
+fn is_skip_candidate_error(err: &rusqlite::Error) -> bool {
     let message = err.to_string().to_ascii_lowercase();
-    message.contains("already exists") || message.contains("duplicate column name")
+    message.contains("already exists")
+        || message.contains("duplicate column name")
+        || message.contains("has no column named")
+        || message.contains("no such column")
+        || message.contains("no such table")
 }
 
 /// Whether a statement's effect is already present *and provably identical*,
@@ -491,6 +519,10 @@ fn is_duplicate_object_error(err: &rusqlite::Error) -> bool {
 ///   rebuild migrations create `*_new` scratch tables that they then drop
 ///   and rename. Migrations whose only non-idempotent statements are
 ///   `CREATE TABLE` therefore still fail loudly, as they always have.
+/// * `INSERT OR IGNORE … VALUES …` — a seed whose rows are still in the table
+///   but whose column list names a column a *later* migration replaced. See
+///   [`seed_rows_already_present`], which requires the whole primary key to be
+///   named and every row to be found before anything is skipped.
 fn already_satisfied(
     conn: &Connection,
     statement: &str,
@@ -527,7 +559,251 @@ fn already_satisfied(
         return Ok(stored.is_some_and(|stored| canonical_ddl(&stored) == canonical_ddl(statement)));
     }
 
+    if tokens.first().is_some_and(|token| is_word(token, "INSERT")) {
+        return seed_rows_already_present(conn, &tokens, &message);
+    }
+
     Ok(false)
+}
+
+/// Whether an `INSERT OR IGNORE … VALUES (…), (…)` seed is already fully
+/// present, so its refusal to re-run can be ignored.
+///
+/// This is the shape the other proofs cannot reach, and the reason drift in
+/// `20260813_init.sql` bricked startup: the script seeds the loyalty tiers
+/// through `earn_multiplier`, and `20260831_loyalty_multiplier_fixedpoint.sql`
+/// later converts that column to `earn_multiplier_millionths` and drops it. On a
+/// database with the whole registry applied the statement can neither run nor be
+/// a no-op SQLite reports, so it has to be *proved* satisfied. Both halves of the
+/// proof are required:
+///
+/// 1. **The statement cannot run here.** At least one column it names is absent
+///    from the existing table (`pragma_table_info`), at least one other named
+///    column is present — so this is a stale reference, not a reference to a
+///    table that was dropped or renamed — and the error actually names one of the
+///    absent columns, so the failure is explained by the absence rather than
+///    merely coinciding with it.
+/// 2. **Its effect is already present.** The statement names the table's whole
+///    primary key (`pk` ordinals), and every `VALUES` row's key literals identify
+///    a row already in the table. `OR IGNORE` is required, because that clause is
+///    what makes "every row already there" a proof of a **no-op** rather than an
+///    observation that the statement would have failed on the unique key.
+///
+/// Anything short of both halves returns `Ok(false)` and the caller reports the
+/// error, which is the point: skipping happens only for a statement whose
+/// intended change is demonstrably already in the database.
+fn seed_rows_already_present(
+    conn: &Connection,
+    tokens: &[Token<'_>],
+    message: &str,
+) -> Result<bool, PlatformError> {
+    // INSERT OR IGNORE INTO <table> ( <columns> ) VALUES ( … ), ( … )
+    let mut cursor = 1usize;
+    if !(tokens.get(cursor).is_some_and(|token| is_word(token, "OR"))
+        && tokens.get(cursor + 1).is_some_and(|token| is_word(token, "IGNORE")))
+    {
+        return Ok(false);
+    }
+    cursor += 2;
+    if !tokens.get(cursor).is_some_and(|token| is_word(token, "INTO")) {
+        return Ok(false);
+    }
+    cursor += 1;
+    let Some(table) = tokens.get(cursor).and_then(identifier) else {
+        return Ok(false);
+    };
+    cursor += 1;
+
+    let Some((first, last)) = paren_group(tokens, cursor) else {
+        return Ok(false);
+    };
+    let mut columns: Vec<String> = Vec::new();
+    for (start, end) in split_top_level(tokens, first, last) {
+        if end != start + 1 {
+            return Ok(false); // an expression in the column list: not a plain seed
+        }
+        match identifier(&tokens[start]) {
+            Some(name) => columns.push(name),
+            None => return Ok(false),
+        }
+    }
+    if columns.is_empty() {
+        return Ok(false);
+    }
+    cursor = last + 1;
+
+    // The key the seed is identified by, and the absence half of the proof.
+    let keys = primary_key_columns(conn, &table)?;
+    if keys.is_empty() {
+        return Ok(false); // no such table, or a table without a primary key
+    }
+    let mut absent: Vec<String> = Vec::new();
+    let mut present = 0usize;
+    for name in &columns {
+        if column_info(conn, &table, name)?.is_some() {
+            present += 1;
+        } else {
+            absent.push(name.clone());
+        }
+    }
+    if absent.is_empty() || present == 0 {
+        return Ok(false);
+    }
+    if !absent.iter().any(|name| message.contains(name.as_str())) {
+        return Ok(false);
+    }
+
+    let mut key_positions: Vec<(String, usize)> = Vec::new();
+    for key in &keys {
+        match columns.iter().position(|name| name.eq_ignore_ascii_case(key)) {
+            Some(position) => key_positions.push((key.clone(), position)),
+            None => return Ok(false), // the seed does not name the whole key
+        }
+    }
+
+    if !tokens.get(cursor).is_some_and(|token| is_word(token, "VALUES")) {
+        return Ok(false);
+    }
+    cursor += 1;
+
+    let mut rows = 0usize;
+    while cursor < tokens.len() {
+        let Some((row_first, row_last)) = paren_group(tokens, cursor) else {
+            return Ok(false);
+        };
+        let values = split_top_level(tokens, row_first, row_last);
+        if values.len() != columns.len() {
+            return Ok(false);
+        }
+        let mut predicate = String::new();
+        let mut binds: Vec<Value> = Vec::new();
+        for (index, (key, position)) in key_positions.iter().enumerate() {
+            let (start, end) = values[*position];
+            let Some(literal) = seed_literal(tokens, start, end) else {
+                return Ok(false); // a computed key value is not a proof
+            };
+            if index > 0 {
+                predicate.push_str(" AND ");
+            }
+            predicate.push_str(&format!("{} = ?{}", quote_ident(key), index + 1));
+            binds.push(literal);
+        }
+        let probe = format!("SELECT 1 FROM {} WHERE {}", quote_ident(&table), predicate);
+        let found: Option<i64> = conn
+            .query_row(&probe, rusqlite::params_from_iter(binds), |row| row.get(0))
+            .optional()?;
+        if found.is_none() {
+            return Ok(false); // a row the seed asks for is missing: never skipped
+        }
+        rows += 1;
+        cursor = row_last + 1;
+        if tokens
+            .get(cursor)
+            .is_some_and(|token| token.kind == TokenKind::Punct && token.value == ",")
+        {
+            cursor += 1;
+            continue;
+        }
+        break;
+    }
+    Ok(rows > 0)
+}
+
+/// The token range inside the parenthesised group that opens at `start`.
+///
+/// Returns `(first, last)` — the range **between** the parentheses — or `None`
+/// when `start` is not an opening parenthesis or the group is never closed.
+fn paren_group(tokens: &[Token<'_>], start: usize) -> Option<(usize, usize)> {
+    if !tokens
+        .get(start)
+        .is_some_and(|token| token.kind == TokenKind::Punct && token.value == "(")
+    {
+        return None;
+    }
+    let mut depth = 0i32;
+    let mut cursor = start;
+    while cursor < tokens.len() {
+        let token = &tokens[cursor];
+        if token.kind == TokenKind::Punct {
+            if token.value == "(" {
+                depth += 1;
+            } else if token.value == ")" {
+                depth -= 1;
+                if depth == 0 {
+                    return Some((start + 1, cursor));
+                }
+            }
+        }
+        cursor += 1;
+    }
+    None
+}
+
+/// Split the token range `[start, end)` on its top-level commas.
+fn split_top_level(tokens: &[Token<'_>], start: usize, end: usize) -> Vec<(usize, usize)> {
+    let mut parts = Vec::new();
+    let mut part_start = start;
+    let mut depth = 0i32;
+    let mut cursor = start;
+    while cursor < end {
+        let token = &tokens[cursor];
+        if token.kind == TokenKind::Punct {
+            if token.value == "(" {
+                depth += 1;
+            } else if token.value == ")" {
+                depth -= 1;
+            } else if token.value == "," && depth == 0 {
+                parts.push((part_start, cursor));
+                part_start = cursor + 1;
+            }
+        }
+        cursor += 1;
+    }
+    parts.push((part_start, end));
+    parts
+}
+
+/// The value of a one-token literal in a `VALUES` entry, or `None` when the entry
+/// is an expression whose value cannot be read without evaluating it (a function
+/// call, a concatenation, a `strftime(…)` timestamp). An unprovable key value is
+/// never guessed at: the caller does not skip.
+fn seed_literal(tokens: &[Token<'_>], start: usize, end: usize) -> Option<Value> {
+    match end - start {
+        1 => {
+            let token = tokens.get(start)?;
+            match token.kind {
+                TokenKind::Str => Some(Value::Text(token.value.to_string())),
+                TokenKind::Word => token.value.parse::<i64>().ok().map(Value::Integer),
+                TokenKind::Quoted | TokenKind::Punct => None,
+            }
+        }
+        2 if tokens[start].kind == TokenKind::Punct && tokens[start].value == "-" => tokens[end - 1]
+            .value
+            .parse::<i64>()
+            .ok()
+            .map(|value| Value::Integer(-value)),
+        _ => None,
+    }
+}
+
+/// The primary-key columns of a table, in key order. Empty when the table does
+/// not exist or declares no primary key.
+fn primary_key_columns(conn: &Connection, table: &str) -> Result<Vec<String>, PlatformError> {
+    let mut statement =
+        conn.prepare("SELECT name FROM pragma_table_info(?1) WHERE pk > 0 ORDER BY pk")?;
+    let mut rows = statement.query(params![table])?;
+    let mut keys = Vec::new();
+    while let Some(row) = rows.next()? {
+        keys.push(row.get::<_, String>(0)?);
+    }
+    Ok(keys)
+}
+
+/// Quote an identifier for interpolation into a probe query. Values are always
+/// bound; identifiers cannot be, so the quoting is done here — with the doubled
+/// `""` escape — instead of assuming a name needs no quoting.
+fn quote_ident(name: &str) -> String {
+    format!("\"{}\"", name.replace('"', "\"\""))
 }
 
 // ── Statement splitting ──────────────────────────────────────────
