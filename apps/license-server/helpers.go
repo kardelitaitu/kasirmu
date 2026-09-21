@@ -184,7 +184,7 @@ const (
 // "xff" (fail-safe, never to "off") so a misconfiguration cannot collapse every
 // client onto the loopback budget.
 func resolveClientIPMode() clientIPMode {
-switch strings.ToLower(strings.TrimSpace(os.Getenv("LICENSE_CLIENTIP_MODE"))) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LICENSE_CLIENTIP_MODE"))) {
 	case "off":
 		return clientIPModeOff
 	case "cf":
@@ -234,13 +234,33 @@ func resolveTrustedHops() int {
 //   - clientIPModeXFF (default): reads the LAST X-Forwarded-For header value
 //     (the one the nearest trusted proxy appended), splits on ",", trims each
 //     entry, keeps only entries that parse with netip.ParseAddr, and returns
-//     the entry at index len(ips)-hops.
+//     the entry at index len(valid)-hops, CLAMPED to 0.
 //
-// If hops <= 0, hops > len(valid), or the X-Forwarded-For header is absent,
-// normalizeClientIP returns remoteIP unchanged. Garbage and empty entries in
-// the chain are skipped WITHOUT counting toward hops, so a forged prepended
+// The clamp is the whole point. A chain SHORTER than the configured hop count
+// means the edge passed the client value through UNAPPENDED (the measured
+// production shape: both hops forward a single-entry XFF holding the true
+// client). The oldest available entry is then the client; returning remoteIP
+// — the proxy's own peer address — instead is what collapsed every client
+// onto one rate-limit bucket, because main.go writes the returned value back
+// and e.RealIP() keys the limiter on it. A chain LONGER than or equal to hops
+// keeps the exact right-end offset model, so a genuinely appending edge still
+// resolves correctly.
+//
+// normalizeClientIP returns remoteIP ONLY when there is no usable entry at
+// all: the X-Forwarded-For header is absent or empty, or no entry in the
+// chain parses as an IP. hops <= 0 still returns remoteIP. Garbage and empty
+// entries are skipped WITHOUT counting toward hops, so a forged prepended
 // entry can never shift which real entry is returned — only a genuine proxy
 // append (always at the right end) changes the resolved IP.
+//
+// SECURITY ASSUMPTION: the selected entry is trustworthy only because the
+// edge is assumed to sanitise (overwrite) or produce the X-Forwarded-For /
+// CF-Connecting-IP header. The clamp makes the oldest available entry the
+// answer when the chain is short, so an edge that merely PASSES THROUGH a
+// client-supplied header hands that client its own choice of rate-limit key.
+// This is not spoof-resistance; it is correctness for a pass-through edge.
+// Deployments behind such an edge must rely on the edge overwriting the
+// header (which is what the seed's trusted-proxy config encodes).
 func normalizeClientIP(header http.Header, remoteIP string, hops int) string {
 	mode := resolveClientIPMode()
 	if mode == clientIPModeOff {
@@ -277,10 +297,18 @@ func normalizeClientIP(header http.Header, remoteIP string, hops int) string {
 		valid = append(valid, trimmed)
 	}
 
-	if hops <= 0 || hops > len(valid) {
+	// No usable entry at all → the only case that may fall back to the peer.
+	if len(valid) == 0 || hops <= 0 {
 		return remoteIP
 	}
-	return valid[len(valid)-hops]
+	// Walk hops back from the right end, clamped to the oldest entry: a
+	// shorter-than-hops chain means the edge forwarded the client value
+	// unappended, so the oldest entry IS the client (see the doc comment).
+	idx := len(valid) - hops
+	if idx < 0 {
+		idx = 0
+	}
+	return valid[idx]
 }
 
 // stripPort returns host without its optional ":port" suffix, mirroring the

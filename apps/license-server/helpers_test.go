@@ -221,16 +221,86 @@ func TestNormalizeClientIP_TwoHopChain(t *testing.T) {
 	}
 }
 
-func TestNormalizeClientIP_OneHopReturnsRemoteIP(t *testing.T) {
-	// A single-entry XFF chain ("1 hop" from the edge) with no appended
-	// client means the lone entry is the proxy's own IP, not a relayed
-	// client. With the production hops=2 that is out of range, so the
-	// legacy remoteIP is returned unchanged (matching the pre-fix behaviour
-	// for a direct connection).
+func TestNormalizeClientIP_SingleEntryChainReturnsThatEntry(t *testing.T) {
+	// REGRESSION (the outage): the measured production shape is a
+	// SINGLE-ENTRY X-Forwarded-For holding the TRUE CLIENT IP — both proxy
+	// hops pass the value through instead of appending a second entry, so
+	// len(valid)==1 while hops defaults to 2. The old guard
+	// ";hops > len(valid) => return remoteIP;" fired on every request and
+	// returned the proxy's peer address, collapsing every client onto one
+	// rate-limit bucket. A chain shorter than hops means the edge forwarded
+	// the client unappended, so the oldest (here: only) entry IS the client.
 	h := http.Header{}
-	h.Set("X-Forwarded-For", "203.0.113.7")
-	if got := normalizeClientIP(h, "127.0.0.1", 2); got != "127.0.0.1" {
-		t.Errorf("1-hop chain must return remoteIP, got %q", got)
+	h.Set("X-Forwarded-For", "203.0.113.10")
+	if got := normalizeClientIP(h, "172.30.0.5", 2); got != "203.0.113.10" {
+		t.Errorf("single-entry chain must resolve the client; got %q, want 203.0.113.10 (remoteIP is the proxy, not the client)", got)
+	}
+}
+
+func TestNormalizeClientIP_SingleEntryChainClampsAtEveryHopCount(t *testing.T) {
+	// There is NO hop count at which the pass-through shape may collapse
+	// onto remoteIP: hops equal to, below, and above the chain length must
+	// all resolve the same single entry (index clamped to 0).
+	h := http.Header{}
+	h.Set("X-Forwarded-For", "203.0.113.10")
+	for _, hops := range []int{1, 2, 3, 9} {
+		if got := normalizeClientIP(h, "172.30.0.5", hops); got != "203.0.113.10" {
+			t.Errorf("hops=%d on a single-entry chain = %q, want 203.0.113.10", hops, got)
+		}
+	}
+}
+
+func TestNormalizeClientIP_DistinctClientsGetDistinctKeys(t *testing.T) {
+	// The outage in one assertion: two different single-entry clients must
+	// key the limiter into two different buckets. Old code returned the
+	// shared remoteIP for both, so client B was rate-limited by client A's
+	// traffic (429 on its first request).
+	const proxyPeer = "172.30.0.5"
+	hA := http.Header{}
+	hA.Set("X-Forwarded-For", "203.0.113.10")
+	hB := http.Header{}
+	hB.Set("X-Forwarded-For", "198.51.100.77")
+
+	hops := 2
+	keyA := normalizeClientIP(hA, proxyPeer, hops)
+	keyB := normalizeClientIP(hB, proxyPeer, hops)
+	if keyA == keyB {
+		t.Fatalf("both clients collapsed onto key %q — the one-bucket outage", keyA)
+	}
+	if keyA != "203.0.113.10" || keyB != "198.51.100.77" {
+		t.Errorf("keys = (%q, %q), want (203.0.113.10, 198.51.100.77)", keyA, keyB)
+	}
+}
+
+func TestNormalizeClientIP_NoUsableEntryReturnsRemoteIP(t *testing.T) {
+	// remoteIP is returned ONLY when there is no usable entry at all.
+	cases := []struct {
+		name   string
+		header string
+	}{
+		{"absent header", ""},
+		{"empty header", "   "},
+		{"only commas", ",,,"},
+		{"only garbage", "not-an-ip, still-not-an-ip"},
+	}
+	for _, tc := range cases {
+		h := http.Header{}
+		if tc.header != "" {
+			h.Set("X-Forwarded-For", tc.header)
+		}
+		if got := normalizeClientIP(h, "172.30.0.5", 2); got != "172.30.0.5" {
+			t.Errorf("%s: got %q, want remoteIP 172.30.0.5", tc.name, got)
+		}
+	}
+}
+
+func TestNormalizeClientIP_GarbagePrefixedChainClampsToOldestValid(t *testing.T) {
+	// Garbage still does not count toward hops; with a short chain the
+	// oldest VALID entry is the answer, not remoteIP.
+	h := http.Header{}
+	h.Set("X-Forwarded-For", "garbage, 203.0.113.10")
+	if got := normalizeClientIP(h, "172.30.0.5", 2); got != "203.0.113.10" {
+		t.Errorf("garbage-prefixed single-valid chain = %q, want 203.0.113.10", got)
 	}
 }
 
@@ -270,15 +340,25 @@ func TestNormalizeClientIP_MissingHeaderReturnsRemoteIP(t *testing.T) {
 	}
 }
 
-func TestNormalizeClientIP_HopsOutOfRangeReturnsRemoteIP(t *testing.T) {
-	// hops beyond the chain length → ambiguous → fall back to remoteIP.
+func TestNormalizeClientIP_HopsBeyondChainClampsToOldest(t *testing.T) {
+	// hops beyond the chain length no longer returns remoteIP: it clamps to
+	// the oldest available entry (see the clamp rationale in helpers.go).
 	h := http.Header{}
 	h.Set("X-Forwarded-For", "203.0.113.7, 10.0.0.2")
-	if got := normalizeClientIP(h, "127.0.0.1", 5); got != "127.0.0.1" {
-		t.Errorf("hops out of range must return remoteIP, got %q", got)
+	if got := normalizeClientIP(h, "127.0.0.1", 5); got != "203.0.113.7" {
+		t.Errorf("hops beyond chain must clamp to the oldest entry; got %q, want 203.0.113.7", got)
 	}
-	if got := normalizeClientIP(h, "127.0.0.1", 0); got != "127.0.0.1" {
-		t.Errorf("hops<=0 must return remoteIP, got %q", got)
+}
+
+func TestNormalizeClientIP_NonPositiveHopsReturnsRemoteIP(t *testing.T) {
+	// hops <= 0 stays a hard "give up" — resolveTrustedHops clamps to >= 1,
+	// so this only fires on a direct call with a nonsensical hop count.
+	h := http.Header{}
+	h.Set("X-Forwarded-For", "203.0.113.7, 10.0.0.2")
+	for _, hops := range []int{0, -1} {
+		if got := normalizeClientIP(h, "127.0.0.1", hops); got != "127.0.0.1" {
+			t.Errorf("hops=%d must return remoteIP, got %q", hops, got)
+		}
 	}
 }
 
