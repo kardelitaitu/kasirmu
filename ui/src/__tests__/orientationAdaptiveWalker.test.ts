@@ -32,6 +32,26 @@
  * shell is NOT a violation. That is the difference between an assertion that happens
  * to be red on today's input and an assertion that is known to be able to go red.
  *
+ * THE SECOND HALF, AND WHY IT IS A SEPARATE WALK. Slice 4's sentence has a second
+ * clause — "a declared layout no call site consumes fails" — and it grades a different
+ * artifact: the `layout` field of a `PageRegistration`, which
+ * `ui/src/features/<feature>/register.tsx` may set and the two shells consume
+ * (`ui/src/app/AppShell.tsx`, `ui/src/app/tablet/TabletAppShell.tsx`, both via the
+ * `renderPageLayout` helper). No CSS walk can see it, so it is graded by
+ * `layoutDeclarationsIn` + `unconsumedLayouts` below: every distinct value a
+ * registration declares must be consumed by a call site in BOTH shells, or the
+ * registration is structural intent nobody implements.
+ *
+ * TODAY IT REPORTS ZERO. No page sets `layout` at this commit, so the population is
+ * empty — the exact shape that lets a scan read green without ever having opened a
+ * file. The harvest therefore proves it did the work (`registryFiles` and
+ * `pagesDeclared` are asserted non-zero, and both shell helpers must be located) and
+ * prints its denominator, so "0 declarations" reads as "N registerPage calls, none of
+ * them declaring a layout" rather than as silence. The plant feeds the same pure
+ * checker a declared value no shell consumes and proves it fires; the negative control
+ * feeds it the three contract values against the real shells and proves it does not
+ * fire on everything.
+ *
  * READ LIKE ITS SIBLINGS: node `fs` over the working tree, no channel to any
  * revision, block comments blanked length-preservingly before any regex runs (the
  * reference rule's own header at SetupWizard.css:604-624 names the literal in prose,
@@ -353,5 +373,316 @@ describe('orientation-adaptive layout compliance (ADR-0001 Slice 4 / T4)', () =>
     expect(stats.exemptedMatches).toBeGreaterThan(0);
     expect(stats.graded).toBeGreaterThan(0);
     expect(findings.length).toBe(0);
+  });
+});
+
+/* ── Slice 4, second clause: a declared layout no call site consumes ─────────
+ *
+ * The registry field is reviewable DATA (ADR-0001 T3): a page says what it
+ * structurally needs, and the shell is the one place that reads it. That only
+ * holds if both ends exist, so this half asserts the two ends meet — every
+ * distinct value a registration declares must be consumed by a call site in BOTH
+ * shells. A registration naming a layout nothing implements is structural intent
+ * with no implementer, which is what the clause forbids.
+ *
+ * WHY THE HARVEST IS TEXT, NOT AN IMPORT. Importing `ui/src/features/<feature>/register.tsx`
+ * would execute every feature module's side effects to read a literal field, and
+ * the file this suite reads for its other half is CSS — so the walk stays on
+ * `fs`+regex like its siblings. The consequence is deliberate: the plant below
+ * proves the parser fires on a registration, and the negative control proves the
+ * consumer scan finds the real shells, so a green cannot come from a regex that
+ * matches nothing.
+ */
+
+/** The three values the registry's `layout` field accepts (page-registry/index.ts). */
+const CONTRACT_LAYOUTS: readonly string[] = ['fluid', 'landscape-locked', 'custom'];
+
+/**
+ * The two shells that consume a registration's declared layout, each with the
+ * marker its own `renderPageLayout` renders. Both must consume every declared
+ * value: one shell implementing a value and the other silently ignoring it is the
+ * same defect, one surface wide. The markers are what the shell's CSS keys off, so
+ * they are the observable proof the branch is wired to something.
+ */
+const LAYOUT_CONSUMER_SHELLS: readonly {
+  path: string;
+  /** Literal marker strings this shell must render for a consumed layout. */
+  markers: readonly string[];
+}[] = [
+  { path: 'ui/src/app/AppShell.tsx', markers: ['data-layout="landscape-locked"', 'data-layout="custom"'] },
+  {
+    path: 'ui/src/app/tablet/TabletAppShell.tsx',
+    markers: ['data-layout="landscape-locked"', 'data-layout="custom"'],
+  },
+];
+
+/** Repo-relative paths of the registry files the layout half grades. */
+const REGISTER_GLOB_DIR = normalize(join(UI_SRC, 'features'));
+
+/** Every `register.tsx` under `ui/src/features`, repo-relative POSIX. */
+function findRegisterFiles(dir: string, results: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === '__tests__') continue;
+      findRegisterFiles(fullPath, results);
+    } else if (entry.name === 'register.tsx') {
+      results.push(fullPath);
+    }
+  }
+  return results;
+}
+
+/** A layout declared by one registration, as found in a registry file. */
+export interface LayoutDeclaration {
+  /** Repo-relative, forward-slashed — how a violation is printed. */
+  path: string;
+  line: number;
+  /** The route the registration names, when the text names one. */
+  route: string;
+  layout: string;
+}
+
+/**
+ * Pure: every `registerPage({ … layout: '<value>' … })` in one registry file's
+ * text. The regex is anchored on the `layout:` KEY so a bare `'custom'` elsewhere
+ * in the file is not a declaration, and it is bounded to a literal string so an
+ * expression (`layout: someVar`) is reported as the value it literally writes
+ * rather than silently skipped — an unparseable declaration must be visible, not
+ * absent. Block comments are blanked first, so the header prose in this very suite
+ * and in the registry cannot be read as a declaration.
+ */
+function layoutDeclarationsIn(src: string, relPath: string): LayoutDeclaration[] {
+  const text = stripBlockComments(src);
+  const out: LayoutDeclaration[] = [];
+  const decl = /layout\s*:\s*(['`])([^'`]+)\1/g;
+  let match: RegExpExecArray | null;
+  while ((match = decl.exec(text)) !== null) {
+    const before = text.slice(0, match.index);
+    // The route is the nearest `route: '…'` BEFORE this declaration — the same
+    // registration object, since each registerPage( block carries its own route.
+    const routeAt = before.lastIndexOf("route: '");
+    const route =
+      routeAt >= 0 ? (before.slice(routeAt).match(/^route: '([^']+)'/) ?? [])[1] ?? '?' : '?';
+    out.push({ path: relPath, line: lineOf(text, match.index), route, layout: match[2]! });
+  }
+  return out;
+}
+
+/** One shell's consumption of one layout value, or the reason it is missing. */
+interface ConsumptionCheck {
+  shell: string;
+  layout: string;
+  consumed: boolean;
+  detail: string;
+}
+
+/**
+ * Pure: is `layout` consumed by the shell at `shellPath`? Consumed means the
+ * shell's `renderPageLayout` branches on that exact literal AND renders that
+ * branch's marker, so the declared value reaches the DOM the shell's CSS keys off
+ * instead of being read and dropped. `'fluid'` is the default the registry
+ * documents as the ABSENCE of the field, so it is consumed by the fall-through
+ * branch: every consumer must still have one (a helper with no return path would
+ * drop the page entirely).
+ */
+function consumptionOf(shellText: string, shellPath: string, layout: string): ConsumptionCheck {
+  const branches = new RegExp(`layout\\s*===\\s*'${layout}'`).test(shellText);
+  const markers = LAYOUT_CONSUMER_SHELLS.find((s) => s.path === shellPath)?.markers ?? [];
+  const hasMarker = markers.some((m) => shellText.includes(m));
+  const hasFallthrough = /return page;/.test(shellText);
+
+  if (layout === 'fluid') {
+    return {
+      shell: shellPath,
+      layout,
+      consumed: hasFallthrough,
+      detail: hasFallthrough
+        ? `${shellPath} — 'fluid' is the fall-through branch ('return page'), so a fluid page renders as-is`
+        : `${shellPath} has no 'return page' fall-through, so a 'fluid' page would not render`,
+    };
+  }
+  const consumed = branches && hasMarker;
+  return {
+    shell: shellPath,
+    layout,
+    consumed,
+    detail: consumed
+      ? `${shellPath} branches on '${layout}' and renders ${markers.join(' / ')}`
+      : `${shellPath} does not consume '${layout}' ` +
+        `(branch: ${branches ? 'present' : 'MISSING'}, marker: ${hasMarker ? 'present' : 'MISSING'})`,
+  };
+}
+
+/** Every (shell × declared layout) pair that is not consumed. */
+function unconsumedLayouts(
+  shells: { path: string; text: string }[],
+  declared: readonly string[],
+): ConsumptionCheck[] {
+  const out: ConsumptionCheck[] = [];
+  for (const layout of declared) {
+    for (const shell of shells) {
+      const check = consumptionOf(shell.text, shell.path, layout);
+      if (!check.consumed) out.push(check);
+    }
+  }
+  return out;
+}
+
+/** Read the shells once; a missing shell is a violation, not a skip. */
+function readConsumerShells(): { path: string; text: string }[] {
+  return LAYOUT_CONSUMER_SHELLS.map((s) => ({
+    path: s.path,
+    text: readFileSync(join(REPO_ROOT, s.path), 'utf-8'),
+  }));
+}
+
+const registryFiles = findRegisterFiles(REGISTER_GLOB_DIR)
+  .map((p) => relPosix(REPO_ROOT, p))
+  .sort();
+
+/** Every registerPage call in the registry files — the harvest's own denominator. */
+const pagesDeclared = registryFiles.reduce((n, rel) => {
+  const text = stripBlockComments(readFileSync(join(REPO_ROOT, rel), 'utf-8'));
+  return n + (text.match(/registerPage\s*\(/g) ?? []).length;
+}, 0);
+
+/** Every layout declaration, across the registry files. */
+const layoutDeclarations: LayoutDeclaration[] = registryFiles.flatMap((rel) =>
+  layoutDeclarationsIn(readFileSync(join(REPO_ROOT, rel), 'utf-8'), rel),
+);
+
+/** The distinct declared values — the population the consumer scan grades. */
+const declaredLayouts = [...new Set(layoutDeclarations.map((d) => d.layout))].sort();
+
+/** Declared values that are not in the registry's own contract union. */
+const unknownLayouts = declaredLayouts.filter((v) => !CONTRACT_LAYOUTS.includes(v));
+
+const consumerShells = readConsumerShells();
+const unconsumed = unconsumedLayouts(consumerShells, declaredLayouts);
+
+console.log(
+  `orientationAdaptiveWalker layout harvest: ${registryFiles.length} registry files scanned, ${pagesDeclared} registerPage calls, ` +
+    `${layoutDeclarations.length} declaring a layout (${declaredLayouts.length ? declaredLayouts.join(', ') : 'none'}); ` +
+    `${consumerShells.length} consumer shells checked against ${CONTRACT_LAYOUTS.length} contract values; ` +
+    `${unconsumed.length + unknownLayouts.length} violations` +
+    `${unconsumed.length ? ' (' + unconsumed.map((c) => `${c.shell}<${c.layout}>`).join(', ') + ')' : ''}` +
+    `${unknownLayouts.length ? ' (unknown values: ' + unknownLayouts.join(', ') + ')' : ''}.`,
+);
+
+describe('declared layout is consumed (ADR-0001 Slice 4 / T4, second half)', () => {
+  it('fails on a planted violation: a registration declaring a layout no call site consumes', () => {
+    // The plant. This registry text does not exist — it is handed to the same pure
+    // parser + checker the real harvest uses, which is why nothing is written.
+    const plantedRegistry = [
+      "import { registerPage } from '@/registries/page-registry';",
+      'registerPage({',
+      "  route: 'register',",
+      '  component: PosScreen,',
+      "  label: 'POS Terminal',",
+      "  layout: 'landscape-locked',",
+      '});',
+      'registerPage({',
+      "  route: 'expo',",
+      '  component: ExpoScreen,',
+      "  label: 'Expo',",
+      "  layout: 'custom',",
+      '});',
+      'registerPage({',
+      "  route: 'reports',",
+      '  component: ReportsScreen,',
+      "  label: 'Reports',",
+      "  layout: 'side-by-side',",
+      '});',
+      '',
+    ].join('\n');
+
+    const parsed = layoutDeclarationsIn(plantedRegistry, 'ui/src/features/x/register.tsx');
+    expect(
+      parsed.map((d) => `${d.route}=${d.layout}@${d.line}`),
+      'the harvest no longer reads a layout out of a registration',
+    ).toEqual([
+      'register=landscape-locked@6',
+      'expo=custom@12',
+      'reports=side-by-side@18',
+    ]);
+
+    // END TO END: the plant's OWN parsed values, graded against the REAL shells.
+    // 'landscape-locked' and 'custom' are both consumed, 'side-by-side' is not — so
+    // the full chain (registry text → parser → consumer scan → violation) is proven
+    // here, not just its two halves in isolation.
+    const shells = readConsumerShells();
+    const declaredByPlant = [...new Set(parsed.map((d) => d.layout))].sort();
+    const planted = unconsumedLayouts(shells, declaredByPlant);
+    expect(
+      planted.map((c) => `${c.shell}<${c.layout}>`),
+      'the consumer scan did not fire on the one layout value no shell consumes',
+    ).toEqual(['ui/src/app/AppShell.tsx<side-by-side>', 'ui/src/app/tablet/TabletAppShell.tsx<side-by-side>']);
+    expect(planted[0]!.detail).toContain('MISSING');
+
+    // Negative control: a value BOTH shells consume is not a violation — otherwise
+    // the check above would be firing on every declaration.
+    expect(
+      unconsumedLayouts(shells, ['landscape-locked', 'custom']),
+      'the consumer scan fired on a declared layout both shells consume',
+    ).toEqual([]);
+
+    // And 'fluid', the registry's documented default (the ABSENCE of the field), is
+    // consumed by the shells' fall-through branch rather than by a marker.
+    expect(unconsumedLayouts(shells, ['fluid'])).toEqual([]);
+    expect(consumptionOf('function renderPageLayout() { return null; }', 'ui/src/app/AppShell.tsx', 'fluid').consumed).toBe(
+      false,
+    );
+
+    // And a shell stripped of its branch must fail for a value it used to consume,
+    // which is the whole point: deleting the consumer is the defect, not the value.
+    const gutted = [{ path: 'ui/src/app/AppShell.tsx', text: 'function renderPageLayout() { return page; }' }];
+    expect(
+      unconsumedLayouts(gutted, ['custom']).map((c) => `${c.shell}<${c.layout}>`),
+      'the consumer scan passed a shell whose marker branch was deleted',
+    ).toEqual(['ui/src/app/AppShell.tsx<custom>']);
+
+    // Prose is not a declaration: this suite's own header and the registry's doc
+    // comment describe `layout: 'custom'` in words.
+    expect(
+      layoutDeclarationsIn("/* a page may declare layout: 'custom' */\nconst x = 1;\n", 'ui/src/features/x/register.tsx'),
+    ).toEqual([]);
+  });
+
+  it('every declared layout is consumed by both shells', () => {
+    const msg =
+      `Found ${unconsumed.length + unknownLayouts.length} unconsumed-layout violations.\n` +
+      'Expected:\n' +
+      `  A: every declared value is one of ${CONTRACT_LAYOUTS.join(' | ')} (page-registry/index.ts)\n` +
+      `  B: both shells consume it — ${LAYOUT_CONSUMER_SHELLS.map((s) => s.path).join(' and ')} — ` +
+      'so a page behaves the same on either surface\n' +
+      '\nViolations:\n' +
+      [...unconsumed.map((c) => c.detail), ...unknownLayouts.map((v) => `unknown layout value '${v}'`)].join('\n');
+    expect([...unconsumed, ...unknownLayouts], msg).toEqual([]);
+  });
+
+  it(`prints its own denominator: ${registryFiles.length} registry files scanned, ${pagesDeclared} registerPage calls, ${layoutDeclarations.length} declaring a layout` +
+    ` (${declaredLayouts.length ? declaredLayouts.join(', ') : 'none'}); ${consumerShells.length} consumer shells x ${CONTRACT_LAYOUTS.length} contract values checked; ` +
+    `${unconsumed.length + unknownLayouts.length} violations`, () => {
+    // THE EMPTY POPULATION MUST NOT BE VACUOUS. Today zero pages declare a layout,
+    // so every assertion above passes on an empty list — the exact shape that lets a
+    // scan read green without opening a file. These four prove the walk did the work:
+    // it found the registry files, it parsed their registrations, and it read both
+    // shells. Remove any one of them and this suite can go green on nothing.
+    expect(registryFiles.length, 'the registry walk found no register.tsx files').toBeGreaterThan(0);
+    expect(registryFiles.every((p) => p.endsWith('/register.tsx'))).toBe(true);
+    expect(pagesDeclared, 'no registerPage call was parsed — the harvest read nothing').toBeGreaterThan(0);
+    expect(consumerShells.length).toBe(LAYOUT_CONSUMER_SHELLS.length);
+    // Both shells really carry the helper, so the consumer scan is not reading an
+    // empty string and calling it consumption.
+    for (const shell of consumerShells) {
+      expect(shell.text, `${shell.path} has no renderPageLayout helper`).toContain('renderPageLayout');
+    }
+    // The denominator is printed even when it is zero — that is the difference
+    // between "no page declares a layout" and "the harvest did not run". A declared
+    // value is counted ONCE in the population the consumer scan grades.
+    expect(new Set(declaredLayouts).size).toBe(declaredLayouts.length);
+    expect(unconsumed).toEqual([]);
+    expect(unknownLayouts).toEqual([]);
   });
 });
