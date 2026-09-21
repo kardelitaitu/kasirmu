@@ -141,9 +141,10 @@ Three things are established, and the third is the one that matters:
 Independently, the failure is real on those bytes and not a fixture artefact: the init
 script's seed statement, run verbatim against the same copy, raises
 `OperationalError: table loyalty_tiers has no column named earn_multiplier` — the message in
-§2.1 — and leaves all four tier rows untouched. The pre-fix counterfactual is §5's, not a
-second end-to-end run, which would have meant reverting a committed file in a shared
-checkout.
+§2.1 — and leaves all four tier rows untouched. The pre-fix counterfactual was later **run**
+rather than argued — the runner at `61d3abdbe^` in a throwaway worktree, and this runner on the
+same bytes with the seed's rows varied, both recorded in §5 — so no part of this account now
+rests on a replay that a shared checkout made too risky to perform.
 
 ### 2.3 The control runs
 
@@ -296,8 +297,23 @@ What is held now:
   bullet supersedes §2.2's "not a second end-to-end run" clause.
 - **The second production caller is untested.** `apps/cloud-server/src/db.rs:134,143` calls the
   runner too and has never seen drifted bytes.
-- **The app path is proven by proxy.** No test drives the setup hook, and the replays connect
-  with SQLite's defaults rather than the app's `foreign_keys=ON` + `journal_mode=WAL`.
+- **Closed — the app's own startup function ran, on both copies.** A throwaway example binary
+  built the app from a mock context whose *identifier* was the probe's own, so `AppState::new`'s
+  own `resolve_db_path` resolved into `…/mu.kasir.app.migration-drift-probe` and the installed
+  app's data directory was never opened; the mapping under test was the app's, not a probe's
+  composition. With the drift forced and the four tier rows intact, `AppState::new` returned
+  `Ok`, leaving the ledger at 61, the registry's checksum, and `journal_mode=wal` persisted in
+  the file header — the app's own `PRAGMA journal_mode=WAL`, three lines above the mapping,
+  having run on that connection. With the tier rows gone it returned the app's own
+  `AppError::Internal("running migrations: platform error: database error: table loyalty_tiers has
+  no column named earn_multiplier")`, displayed as `internal error: running migrations: …`, and
+  committed nothing: ledger still 60, checksum still drifted. Still unobserved, and unneeded for
+  this question: window creation, plugin registration and the event loop — the setup closure's
+  `?` turns the `Err` into Tauri's panic, which is Tauri's code, not the app's. `foreign_keys=ON`
+  is per-connection and cannot be read off the file afterwards; it sits two lines above that same
+  pragma, in the same function. Reproducing this needs `lib.rs`'s `.drectve` Common-Controls
+  directive, which bin and `#[cfg(test)]` targets get but example targets do not — without it the
+  probe exe dies with `STATUS_ENTRYPOINT_NOT_FOUND` before any of this runs.
 - **The snapshot carries no data** — 0 sales rows — so this exercises schema drift, not
   data-bearing tables.
 - **A classifier observation, not a finding.** `no such table` admits a class a
