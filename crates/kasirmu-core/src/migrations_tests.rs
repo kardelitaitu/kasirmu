@@ -456,12 +456,15 @@ fn seed_data_bootstraps_essential_rows() {
         );
     }
 
-    // Default store profile — the FK target for store-scoped rows and the
-    // canonical `workspace_instances` store.
+    // ADR #56 §2.6: the 'Default Store' location is NO LONGER seeded, and this
+    // assertion was inverted to keep the guarantee rather than the row. A
+    // store with no merchant should have no location, so the baseline now
+    // ships an EMPTY locations table and provision_device creates the row.
+    // The assertion is what stops the fiction creeping back.
     assert_eq!(
-        row_count(&conn, "SELECT COUNT(*) FROM locations WHERE id = 'default'",),
-        1,
-        "missing default store profile"
+        row_count(&conn, "SELECT COUNT(*) FROM locations",),
+        0,
+        "the baseline must not seed a location for a merchant who does not exist"
     );
 
     // Loyalty tiers.
@@ -491,7 +494,11 @@ fn seed_data_bootstraps_essential_rows() {
         );
     }
 
-    // Workspace types and the canonical default instances.
+    // Workspace types — the lookup rows genuine fixtures need (`workspaces`
+    // keys stay pinned in the loop above). The five default *instances* are
+    // NOT asserted: ADR #56 §2.6 removed them, and the empty-locations
+    // assertion above is what stops the fiction creeping back. A store with
+    // no merchant should have no workspaces; provision_device creates them.
     assert_eq!(
         row_count(&conn, "SELECT COUNT(*) FROM workspace_types"),
         6,
@@ -499,8 +506,8 @@ fn seed_data_bootstraps_essential_rows() {
     );
     assert_eq!(
         row_count(&conn, "SELECT COUNT(*) FROM workspace_instances"),
-        5,
-        "default workspace instance seeds must survive"
+        0,
+        "the baseline must not seed workspace instances for a merchant who does not exist"
     );
 
     // Navigation screens (workspace + type).
@@ -515,14 +522,17 @@ fn seed_data_bootstraps_essential_rows() {
         "workspace type screen seeds must survive"
     );
 
-    // Tenant subscription and inventory locations.
+    // ADR #56 §2.6: the BOOTSTRAP_FREE subscription row is NO LONGER seeded.
+    // A provisioned terminal gets a real signed subscription; an unprovisioned
+    // one has no subscription row to verify. An INVERTED assertion keeps the
+    // guarantee (no fiction ships) rather than the row.
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM tenant_subscription WHERE tenant_id = 'default'",
         ),
-        1,
-        "missing default tenant subscription"
+        0,
+        "the baseline must not seed a sentinel subscription the verifier rejects"
     );
     assert_eq!(
         row_count(&conn, "SELECT COUNT(*) FROM inventory_locations"),
@@ -893,7 +903,10 @@ fn store_to_location_rename_preserves_rows_and_foreign_keys() {
         ),
         0
     );
-    assert_eq!(row_count(&conn, "SELECT COUNT(*) FROM locations"), 2);
+    // ADR #56 §2.6: the baseline no longer seeds a 'Default Store' row, so the
+    // only location here is the one THIS test inserts before the rename.
+    // (Previously 2 = 1 seeded + 1 inserted.)
+    assert_eq!(row_count(&conn, "SELECT COUNT(*) FROM locations"), 1);
     assert_eq!(
         row_count(
             &conn,
@@ -901,19 +914,23 @@ fn store_to_location_rename_preserves_rows_and_foreign_keys() {
         ),
         1
     );
+    // ADR #56 §2.6: the BOOTSTRAP_FREE subscription row and the five
+    // default workspace instances are no longer seeded, so there is nothing
+    // to rename here — `provision_device` creates both per location. What the
+    // FIXTURE asserts now is the harder half of the rename: zero foreign-key
+    // violations with no seeded rows to hide behind.
     assert_eq!(
         row_count(
             &conn,
-            "SELECT max_locations FROM tenant_subscription WHERE tenant_id = 'default'",
+            "SELECT COUNT(*) FROM tenant_subscription WHERE tenant_id = 'default'",
         ),
-        1
+        0,
+        "no sentinel subscription may survive the baseline"
     );
     assert_eq!(
-        row_count(
-            &conn,
-            "SELECT COUNT(*) FROM workspace_instances WHERE location_id = 'default'",
-        ),
-        5
+        row_count(&conn, "SELECT COUNT(*) FROM workspace_instances"),
+        0,
+        "no seeded workspace instances may survive the baseline"
     );
     assert_eq!(
         row_count(
@@ -956,7 +973,11 @@ fn location_tables_carry_tenant_id_after_migration() {
         );
     }
 
-    // At least one row resolves to the single-tenant 'default' sentinel.
+    // ADR #56 §2.6 removed the seeded 'Default Store' row, so nothing resolves
+    // to the 'default' sentinel until a location is CREATED — which is the
+    // point of the removal: a store with no merchant has no location. The
+    // guarantee this now pins is the column DEFAULT, exercised by the insert
+    // immediately below rather than by a row the migration happened to ship.
     let default_rows: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM locations WHERE tenant_id = 'default'",
@@ -964,9 +985,9 @@ fn location_tables_carry_tenant_id_after_migration() {
             |r| r.get(0),
         )
         .unwrap();
-    assert!(
-        default_rows >= 1,
-        "at least one location must belong to the default tenant"
+    assert_eq!(
+        default_rows, 0,
+        "the baseline must not seed a location for the default tenant"
     );
 
     // An insert without an explicit tenant takes the 'default' sentinel.
@@ -1141,20 +1162,18 @@ fn legal_entity_migration_creates_defaults_and_moves_locations() {
         .map(|row| row.unwrap())
         .collect();
 
+    // ADR #56 §2.6: the baseline no longer seeds a 'Default Store' location,
+    // so there is no `default`-tenant location for the LE migration to give a
+    // default legal entity to. Only the location THIS test inserts gets one.
+    // That is the correct post-removal behaviour, not a regression: a tenant
+    // with no location has no legal entity until provisioning creates both.
     assert_eq!(
         entities,
-        vec![
-            (
-                "default:default-legal-entity".to_string(),
-                "default".to_string(),
-                "Default Legal Entity".to_string(),
-            ),
-            (
-                "tenant-2:default-legal-entity".to_string(),
-                "tenant-2".to_string(),
-                "Default Legal Entity".to_string(),
-            ),
-        ]
+        vec![(
+            "tenant-2:default-legal-entity".to_string(),
+            "tenant-2".to_string(),
+            "Default Legal Entity".to_string(),
+        )]
     );
 
     let location_entities: Vec<(String, String)> = conn
@@ -1167,18 +1186,14 @@ fn legal_entity_migration_creates_defaults_and_moves_locations() {
         .unwrap()
         .map(|row| row.unwrap())
         .collect();
+    // Same consequence as above: no seeded 'default' location means no
+    // 'default' row to link. ADR #56 §2.6.
     assert_eq!(
         location_entities,
-        vec![
-            (
-                "default".to_string(),
-                "default:default-legal-entity".to_string(),
-            ),
-            (
-                "tenant-2-location".to_string(),
-                "tenant-2:default-legal-entity".to_string(),
-            ),
-        ]
+        vec![(
+            "tenant-2-location".to_string(),
+            "tenant-2:default-legal-entity".to_string(),
+        )]
     );
 
     assert_eq!(
