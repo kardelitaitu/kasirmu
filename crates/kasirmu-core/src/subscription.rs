@@ -632,8 +632,18 @@ impl TenantSubscription {
 
     /// Check if the subscription is within grace evaluated at a specific UTC datetime.
     pub fn is_within_grace_period_at(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
-        // Canceled subscriptions are never within grace.
-        if self.status == "canceled" {
+        // Canceled AND revoked are never within grace, for different reasons:
+        //
+        // - `canceled` is a billing outcome, and grace exists to keep a
+        //   lapsed-but-paying merchant trading while they settle up. A canceled
+        //   subscription has already been given its answer about the tier.
+        // - `revoked` is an ABUSE verdict (ADR #58 §2.1). Grace would keep a
+        //   banned register operating for the tier's whole offline window,
+        //   which is precisely the sale the ban exists to stop.
+        //
+        // Both were one arm before ADR #58, and neither is a grace case — but
+        // they are separate arms because the STATES they feed differ.
+        if self.status == "canceled" || self.status == "revoked" {
             return false;
         }
 
@@ -931,7 +941,17 @@ impl TenantSubscription {
         now: chrono::DateTime<chrono::Utc>,
     ) -> SubscriptionLifecycleState {
         match self.status.as_str() {
-            "canceled" | "revoked" => return SubscriptionLifecycleState::Canceled,
+            // ADR #58 §2.1 splits this arm. They are different verdicts and must
+            // not share a state:
+            //
+            // - `canceled` is a BILLING outcome. The tenant who stops paying
+            //   keeps a register and can still sell; the tier degrades to Free.
+            // - `revoked` is an ABUSE verdict. The register is LOCKED — no new
+            //   sessions, and live ones are invalidated (§2.5). Downgrading a
+            //   revoked tenant to Free would let a ban be escaped by simply
+            //   continuing to sell, which defeats the mechanism entirely.
+            "canceled" => return SubscriptionLifecycleState::Canceled,
+            "revoked" => return SubscriptionLifecycleState::Revoked,
             "paused" => return SubscriptionLifecycleState::Paused,
             "expired" => return SubscriptionLifecycleState::Expired,
             "grace_period" => return SubscriptionLifecycleState::Grace,
@@ -1051,6 +1071,12 @@ pub enum SubscriptionLifecycleState {
     Expired,
     /// Canceled or revoked server-side — never within grace.
     Canceled,
+    /// Revoked by an administrator — an abuse verdict, not a billing outcome.
+    ///
+    /// Never within grace, never downgraded: the register is LOCKED. Separate
+    /// from [`Self::Canceled`] because a canceled tenant still trades (degraded
+    /// to Free) while a revoked one does not trade at all. See ADR #58 §2.1.
+    Revoked,
     /// Paused by the server (pause window / billing hold).
     Paused,
     /// Missing, tampered, or unrecognized subscription data — fail closed
@@ -1066,6 +1092,7 @@ impl SubscriptionLifecycleState {
             Self::Grace => "grace",
             Self::Expired => "expired",
             Self::Canceled => "canceled",
+            Self::Revoked => "revoked",
             Self::Paused => "paused",
             Self::Unavailable => "unavailable",
         }

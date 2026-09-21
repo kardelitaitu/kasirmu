@@ -631,6 +631,28 @@ pub async fn create_session(
         )));
     }
 
+    // ADR #58 §2.5: a REVOKED tenant gets no new session, therefore no app.
+    //
+    // This is the tenant-level arm, distinct from §2.4a.2's per-DEVICE check
+    // above: revoking one tablet must not end a multi-terminal business, and
+    // revoking the TENANT must end every one of them.
+    //
+    // Only this arm locks. §2.3's pre-expiry window deliberately does NOT
+    // refuse on a failed check — it continues into §2.2 grace, because
+    // refusing there would let our own outage lock every till approaching
+    // renewal (§2.4). The window's job is to make the check happen, so a
+    // `revoked` verdict reaches the device at all; the verdict is what locks.
+    if sub.lifecycle_state() == kasirmu_core::subscription::SubscriptionLifecycleState::Revoked {
+        tracing::warn!(
+            user_id = %args.user_id,
+            terminal_id = %args.terminal_id,
+            "session creation denied — this tenant has been revoked by an administrator"
+        );
+        return Err(BridgeError::Invalid(
+            "This account has been revoked. Contact your administrator.".into(),
+        ));
+    }
+
     // ADR #58 §2.4a.2: refuse a session on a device a tenant admin revoked.
     //
     // The verdict is the *cached* server answer (written by
@@ -844,6 +866,31 @@ pub struct SessionKeepaliveResult {
     /// Refreshed unix expiry (seconds). None when sessions have no
     /// TTL (development mode) — the frontend can stop pinging then.
     pub expires_at: Option<i64>,
+}
+
+/// Remove EVERY live session. Returns how many were dropped.
+///
+/// ADR #58 §2.5: "Live sessions must be invalidated on revocation." A ban that
+/// only refused NEW sessions would leave the revoked tenant trading until their
+/// current session's TTL expired — up to 24 hours of selling after an abuse
+/// verdict, which is not what a revocation is for.
+///
+/// The session store is in-memory and process-wide, so this is the whole fleet
+/// for this terminal's shell. It does NOT fail a command on a poisoned lock: the
+/// caller is reporting a verdict, and a lock-poison warn is the same posture
+/// `invalidate_session` already takes.
+#[must_use]
+pub fn invalidate_all_sessions(ctx: &BridgeCtx<'_>) -> usize {
+    let mut store = match ctx.sessions.write() {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("session store lock poisoned during revocation sweep: {e}");
+            return 0;
+        }
+    };
+    let dropped = store.len();
+    store.clear();
+    dropped
 }
 
 /// Remove one token from the shell's shared session map.

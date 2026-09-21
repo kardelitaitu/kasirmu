@@ -274,6 +274,40 @@ fn lifecycle_outranks_tier_even_though_expiry_also_downgrades_the_tier() {
 }
 
 #[test]
+fn revoked_denies_availability_exactly_like_canceled_does() {
+    // ADR #58 §2.1's required audit at this site. `explain_availability`
+    // computes `lifecycle_denies = !matches!(state, Active | Grace)` — an
+    // ALLOW-LIST, so the new `Revoked` variant falls into the denying branch
+    // with NO compile error, no warning and no other test failure. That silence
+    // is what this case exists to break: it pins the answer the ADR requires
+    // rather than letting the variant inherit it unobserved.
+    //
+    // The answer is intended, not incidental: a revoked tenant must not be
+    // `available` for any feature, and grouping it with `Canceled` here is
+    // correct because both are lifecycle denials — the difference between them
+    // is what they do to the TIER and the SESSION (ADR #58 §2.2), not whether
+    // they pass this predicate.
+    let case = case_for(AvailabilityFeature::Analytics);
+    for state in [
+        SubscriptionLifecycleState::Revoked,
+        SubscriptionLifecycleState::Canceled,
+    ] {
+        let mut facts = facts_with(&case, &[AvailabilityReason::Lifecycle]);
+        facts.state = state.clone();
+        let verdict = explain_availability(&facts);
+        assert!(
+            !verdict.available,
+            "{state:?} must deny availability at the lifecycle arm"
+        );
+        assert_eq!(
+            verdict.reason,
+            Some(AvailabilityReason::Lifecycle),
+            "{state:?} must deny for the LIFECYCLE reason, not a lower-precedence one"
+        );
+    }
+}
+
+#[test]
 fn server_grant_suppresses_only_the_tier_check() {
     let case = case_for(AvailabilityFeature::Analytics);
     // An add-on grant answers "your plan lacks it" — the analytics-on-Plus

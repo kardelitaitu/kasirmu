@@ -445,6 +445,121 @@ async fn create_session_denies_a_revoked_device() {
     }
 }
 
+// ── ADR #58 §2.5: the tenant-level lock ─────────────────────────────
+
+/// Mark the tenant's subscription `revoked` server-side.
+///
+/// The row's signature covers `signed_payload` only, never `status`, so
+/// rewriting this column keeps the row loadable and changes only the lifecycle
+/// state — which is what makes these tests about the GATE rather than about
+/// signature verification.
+fn set_subscription_status(conn: &rusqlite::Connection, status: &str) {
+    conn.execute(
+        "UPDATE tenant_subscription SET status = ?1 WHERE tenant_id = 'default'",
+        [status],
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn create_session_denies_a_revoked_tenant() {
+    // ADR #58 §2.5: "Locked" means no session, therefore no app. This is the
+    // tenant-level arm and it is deliberately separate from §2.4a.2's
+    // per-device check: revoking ONE tablet must not end a multi-terminal
+    // business, and revoking the TENANT must end all of them.
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    set_subscription_status(&conn, "revoked");
+    let app = test_app(conn);
+
+    let result = create_session(
+        &app.ctx(),
+        &CreateSessionArgs {
+            user_id: "user-owner".into(),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-store-pos".into(),
+            type_key: "store-pos".into(),
+            terminal_id: "terminal-1".into(),
+            picker_ticket: test_picker_ticket("user-owner"),
+            org_id: None,
+        },
+    )
+    .await;
+
+    match result.expect_err("a revoked tenant must not open a session") {
+        BridgeError::Invalid(msg) => assert!(
+            msg.contains("revoked"),
+            "error must name the revocation, got: {msg}"
+        ),
+        other => panic!("expected BridgeError::Invalid, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn create_session_allows_a_canceled_tenant() {
+    // The counterpart, and the reason §2.1 split the arm: a CANCELED tenant
+    // keeps trading on the degraded (Free) tier. If revocation and cancellation
+    // shared a state, either a ban would be escapable by not paying or a
+    // lapsed customer would be locked out — both wrong, and this test is what
+    // stops the two from being re-merged by a later refactor.
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    set_subscription_status(&conn, "canceled");
+    let app = test_app(conn);
+
+    create_session(
+        &app.ctx(),
+        &CreateSessionArgs {
+            user_id: "user-owner".into(),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-store-pos".into(),
+            type_key: "store-pos".into(),
+            terminal_id: "terminal-1".into(),
+            picker_ticket: test_picker_ticket("user-owner"),
+            org_id: None,
+        },
+    )
+    .await
+    .expect("a canceled tenant must still be able to sell");
+}
+
+#[tokio::test]
+async fn invalidate_all_sessions_drops_every_live_session() {
+    // ADR #58 §2.5: "Live sessions must be invalidated on revocation." Refusing
+    // only NEW sessions would leave a banned tenant selling for up to the
+    // session TTL after the verdict arrived.
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let app = test_app(conn);
+
+    // Three live sessions, as a multi-terminal store would have.
+    for user in ["user-a", "user-b", "user-c"] {
+        app.sessions().write().unwrap().insert(
+            user.to_string(),
+            kasirmu_core::session::SessionContext::new(
+                user.into(),
+                "role-owner".into(),
+                "terminal-1".into(),
+                "default".into(),
+                "default-store-pos".into(),
+                "store-pos".into(),
+                None,
+                0,
+            ),
+        );
+    }
+    assert_eq!(app.sessions().read().unwrap().len(), 3);
+
+    let dropped = invalidate_all_sessions(&app.ctx());
+    assert_eq!(dropped, 3, "every live session must be dropped");
+    assert!(
+        app.sessions().read().unwrap().is_empty(),
+        "the store must be empty after a revocation sweep"
+    );
+}
+
 #[tokio::test]
 async fn create_session_allows_a_device_when_the_verdict_is_absent() {
     // The fail-open direction §2.4 requires: an absent cache (a server that

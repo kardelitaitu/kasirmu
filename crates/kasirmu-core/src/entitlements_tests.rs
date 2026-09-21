@@ -276,7 +276,11 @@ fn the_analytics_addon_flows_in_grace_and_stops_in_every_other_terminal_state() 
             false,
             "a canceled subscription has no grant to flow",
         ),
-        ("revoked", false, "revoked maps to Canceled"),
+        (
+            "revoked",
+            false,
+            "ADR #58 §2.1 audit: `new` now maps to its own Revoked variant, NOT Canceled — and the answer is still false because addon_grant_flows matches an Active|Grace ALLOW-LIST, so the new arm falls to the false branch with no compile error. That is the whole reason this row is pinned rather than left to the compiler",
+        ),
         ("paused", false, "paused keeps the downgraded answer"),
         (
             "who-knows",

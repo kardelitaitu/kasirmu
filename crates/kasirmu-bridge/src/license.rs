@@ -552,6 +552,36 @@ pub async fn check_license_status(
         }
     }
 
+    // §2.4a.2's per-device verdict drops live sessions too, for the same reason
+    // the tenant sweep exists: refusing the NEXT session does not stop the one
+    // already open on a stolen tablet.
+    if resp.device_revoked {
+        let dropped = crate::auth::invalidate_all_sessions(ctx);
+        tracing::warn!(
+            dropped,
+            "device revoked — invalidated every live session (ADR #58 §2.4a.2)"
+        );
+    }
+
+    // ADR #58 §2.5: a REVOKED verdict invalidates every live session AT ONCE.
+    //
+    // Refusing only NEW sessions would leave the tenant selling until the
+    // current session's TTL expired — up to 24 hours after an abuse verdict.
+    // This is the chokepoint where the server's answer actually arrives, so it
+    // is where the lock has to land.
+    //
+    // Order matters and is deliberate: the cache is written BEFORE this, so a
+    // session created in the window between the two reads fails closed on the
+    // cached verdict rather than slipping through. Sweeping first would leave a
+    // gap where the row said `active` and the store was already empty.
+    if resp.status.eq_ignore_ascii_case("revoked") {
+        let dropped = crate::auth::invalidate_all_sessions(ctx);
+        tracing::warn!(
+            dropped,
+            "tenant revoked — invalidated every live session (ADR #58 §2.5)"
+        );
+    }
+
     let max_locations = resp.effective_max_locations();
 
     Ok(ServerLicenseStatusDto {
