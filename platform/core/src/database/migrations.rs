@@ -60,9 +60,8 @@ use rusqlite::OptionalExtension;
 use rusqlite::{Connection, Transaction, params};
 use sha2::{Digest, Sha256};
 
-use super::statements::{
-    already_satisfied, insert_would_insert_nothing, is_significant, split_statements,
-};
+use super::proofs::{already_satisfied, insert_would_insert_nothing};
+use super::statements::{is_significant, split_statements};
 use crate::error::PlatformError;
 
 /// One embedded migration.
@@ -412,7 +411,7 @@ fn reapply_for_drift(conn: &mut Connection, mig: &Migration) -> Result<(), Platf
 /// (a duplicate object, or a reference to an object a later migration
 /// removed); it runs the script one statement at a time and skips the
 /// statements whose effect is already present *and provably identical* (see
-/// `statements::already_satisfied`, where that proof lives).
+/// `proofs::already_satisfied`, where that proof lives).
 ///
 /// When attempt 2 does not recover either, the caller receives **attempt 2's**
 /// error, because that is the one that names the statement which actually
@@ -514,11 +513,11 @@ fn apply_statement_by_statement(
 /// Two families qualify:
 ///
 /// * **the object already exists** (`already exists`, `duplicate column name`) —
-///   the statement's effect is present, and `statements::already_satisfied` is
+///   the statement's effect is present, and `proofs::already_satisfied` is
 ///   asked to prove exactly that.
 /// * **an object a later migration removed** (`has no column named …`, `no such
 ///   column: …`, `no such table: …`) — the statement cannot run in the schema
-///   this registry has since built, and `statements::already_satisfied` is
+///   this registry has since built, and `proofs::already_satisfied` is
 ///   asked whether its effect is nevertheless already there (a seed whose rows
 ///   are still in the table, for instance).
 ///

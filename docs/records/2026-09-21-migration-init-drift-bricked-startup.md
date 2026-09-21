@@ -260,7 +260,7 @@ The pre-fix classifier that let the failure through is on record at `61d3abdbe^`
 
 What is held now:
 
-- **The proof's refusal paths, directly.** `statements_tests.rs` carries 19 tests, 17 written
+- **The proof's refusal paths, directly.** `proofs_tests.rs` carries 19 tests, 17 written
   for this campaign, every negative asserted beside the control showing the same statement
   *is* provable when the proof's conditions hold — including
   `a_seed_with_a_missing_row_is_never_skipped`, the property that most needed pinning, and six
@@ -394,20 +394,23 @@ in four files:
 
 | File | Owns | Lines |
 | --- | --- | --- |
-| `platform/core/src/database/statements.rs` | Reading SQL: splitting a script into statements, tokens and canonical forms, the parsers, the significance predicate, the two skip proofs | 1124 |
-| `platform/core/src/database/statements_tests.rs` | That layer's 19 tests, including the refusal paths | 428 |
+| `platform/core/src/database/proofs.rs` | The two skip proofs and the seed parsing they share, plus the catalogue reads (`pragma_table_info`, `sqlite_master`, `pragma_index_list`) | 799 |
+| `platform/core/src/database/proofs_tests.rs` | Those proofs' 16 tests, moved verbatim from the statement layer's file | 357 |
+| `platform/core/src/database/statements.rs` | Reading SQL: splitting a script into statements, tokens and canonical forms, the significance predicate | 350 |
+| `platform/core/src/database/statements_tests.rs` | That layer's 3 tests | 83 |
 | `platform/core/src/database/migrations.rs` | The ledger and the policy: registry, checksums, the drift decision, orchestration | 577 (573 code, 3-line test wiring) |
 | `platform/core/src/database/migrations_tests.rs` | The runner's 33 tests, moved out of the production file | 980 |
 
-Dependencies run one way — `migrations` → `statements`, `mod statements` private. Four calls
-cross the boundary and all four are semantic: `split_statements`, `is_significant` (does this
-fragment have any effect?), `insert_would_insert_nothing` (would running it insert nothing?) and
-`already_satisfied` (does the error it just raised mean its effect is already there?).
-`canonical_ddl` appears zero times in the runner, which used to call it for exactly that
-decision. Nothing there inspects a token, and nothing in the statement layer knows a
-`Migration`, a `schema_migrations` row or a checksum. Adding the pre-execution arm grew
-`statements.rs` past the repo's 1000-line production rule (955 → 1124), which the layer's own
-split is the natural next move for.
+Dependencies run one way — `migrations` → {`statements`, `proofs`}, both modules private to
+the tree; `proofs` imports the text layer's tokenizer and parsers, never the reverse. Four
+calls cross to the runner and all four are semantic: `split_statements`, `is_significant` (does
+this fragment have any effect?), `insert_would_insert_nothing` (would running it insert
+nothing?) and `already_satisfied` (does the error it just raised mean its effect is already
+there?). `canonical_ddl` appears zero times in the runner, which used to call it for exactly
+that decision. Nothing in either module knows a `Migration`, a `schema_migrations` row or a
+checksum; the split moved the text layer (tokens, canonical forms, the DDL parsers) apart from
+the catalogue reads. The pre-execution arm had grown the layer past the repo's 1000-line rule
+(955 → 1124); this split is that debt paid.
 
 One interface change came with the extraction: the proof takes SQLite's error **message**
 (`&str`) rather than a `rusqlite::Error`. That it narrowed nothing was verified rather than
@@ -419,4 +422,8 @@ Behaviour was checked, not assumed: `platform-core` lib **397 passed** and `kasi
 migrations::` **37 passed**, with the forced-drift replay of §2.2 unchanged after the move.
 After the pre-execution arm was added it is **404 passed** (`database::migrations` 33,
 `database::statements` 19) and `kasirmu-core --lib migrations::` still **37 passed** — the seven
-new tests are the arm's own contract plus one runner pin on the AUTOINCREMENT counter.
+new tests are the arm's own contract plus one runner pin on the AUTOINCREMENT counter. After the
+proof/test split the `platform-core` totals are unchanged — **404 passed** (`database::migrations`
+33, `database::statements` 3, `database::proofs` 16) — every test moved by name, none rewritten;
+`kasirmu-core --lib migrations::` reads **38 passed**, the one-test rise being `789f21134`'s
+re-apply pin, not this split's.
