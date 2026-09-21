@@ -352,7 +352,8 @@
         c.appendChild(tableCard(t('table.expiringSoon'), [t('th.email'),t('th.tier'),t('th.expires'),t('th.daysLeft')], m.expiringSoon.map(d => [d.email, d.tier, d.expiresAt, String(d.daysLeft)])));
       }
       // Needs attention (#4): surfaced ABOVE the revenue hero so the
-      // operator sees action items before the numbers. Grace-period
+      // operator sees action items before the numbers. Build-integrity
+      // violations and over-quota devices (ADR #57 §2.4), then grace-period
       // subscriptions, expired-but-active keys, and recent refunds.
       if (m.needsAttention && m.needsAttention.length > 0) {
         const attCard = el('div', 'card alert-card');
@@ -360,7 +361,13 @@
         const attList = el('ul', 'alert-list');
         m.needsAttention.forEach(item => {
           const li = el('li', 'alert-item alert-item--' + item.type);
-          const cls = item.type === 'refund' ? 'alert-badge alert-badge--bad' : (item.type === 'expired_active' ? 'alert-badge alert-badge--warn' : 'alert-badge alert-badge--warn');
+          // Severity, not decoration. A tampered build (ADR #57 §2.1) and a
+          // refund are both BAD — act now; everything else is a warning to
+          // triage. The old nested ternary sent every unrecognised type to
+          // --warn, which would have rendered a re-signed APK as a mere
+          // warning: the one finding on this panel with a security cause.
+          const BAD_TYPES = ['refund', 'integrity_mismatch'];
+          const cls = 'alert-badge alert-badge--' + (BAD_TYPES.includes(item.type) ? 'bad' : 'warn');
           li.appendChild(el('span', cls, t('alert.' + item.type)));
           li.appendChild(el('span', 'alert-email', item.email || '—'));
           li.appendChild(el('span', 'alert-detail', item.detail || ''));

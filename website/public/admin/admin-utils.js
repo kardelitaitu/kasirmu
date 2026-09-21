@@ -1422,6 +1422,12 @@
     'alert.grace_period': 'Grace period',
     'alert.expired_active': 'Expired key active',
     'alert.refund': 'Refund',
+    // ADR #57 §2.4. Deliberately distinguishable: a mismatch is positive
+    // evidence of a re-signed APK, while a persistent unknown is unreadable
+    // reporting that may equally be our own bug (§Q4).
+    'alert.integrity_mismatch': 'Build tampered',
+    'alert.integrity_unknown_persistent': 'Build unreadable',
+    'alert.pos_over_quota': 'Over device quota',
     'table.tenants': 'Tenants',
     'table.noData': 'No data.',
     'table.noTenantsMatch': 'No tenants match.',
