@@ -2,15 +2,19 @@
 num: 58
 area: licensing
 title: "ADR #58: Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State"
-status: Proposed (2026-10-04) — mechanism largely implemented, one state to add
+status: Proposed (2026-10-04) — the Revoked state, the session lock and the export twin are IMPLEMENTED; the pre-expiry window is not
 ---
 
 # ADR #58: Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State
 
-**Status:** Proposed (2026-10-04). The great majority of the pipeline below is **already
-implemented and tested**; the decision is about *one* new lifecycle state and *one* new
-timestamp, plus the policy that surrounds them. IMPLEMENTED and TO BUILD are marked per item.
-**Date:** 2026-10-04
+**Status:** Proposed (2026-10-04). **Updated 2026-10-05: §2.1 (`Revoked`), §2.4a.2 (the device
+verdict) and §2.5 (the session lock) are IMPLEMENTED**, as is §4a Q-A's export twin. The
+great majority of the pipeline below is **already
+implemented and tested**; the decision was about *one* new lifecycle state and *one* new
+timestamp, plus the policy that surrounds them. **The timestamp half is NOT built**: §2.3's
+pre-expiry window has no enforcement point yet, and §2.2's `Revoked` row in the state table is now
+true while its window row is not. IMPLEMENTED and TO BUILD are marked per item.
+**Date:** 2026-10-04 (implementation recorded 2026-10-05)
 **Recorded against:** branch `0.0.39` @ `2c30e735c` (anchors and the poll interval re-measured at `e26bd3733` in audit pass 2 — see §1.3a and §2.3)
 **Supersedes (in part):** ADR #41 §2.1 "State B: Registered / Enrolled Device" — specifically its
 "**Offline-First (Zero Internet Required)**" clause. See §1.5.
@@ -217,6 +221,46 @@ this change, recording the answer to *"does a revoked tenant flow the add-on ana
 pass the lifecycle arm of the availability verdict?"* — and a test at each. The remaining ten sites
 in `subscription.rs` and the two test files are ordinary compile-error work, because they do name
 the variant.
+
+#### IMPLEMENTED 2026-10-05 — §2.1 and §2.5 shipped together
+
+The variant and the enforcement landed in one change, because either alone is inert: a `Revoked`
+state nothing consumes changes no behaviour, and an enforcement point with no distinct state cannot
+tell a ban from a billing lapse.
+
+| # | What | Where |
+|---|---|---|
+| 1 | `SubscriptionLifecycleState::Revoked`, split from `Canceled` | `crates/kasirmu-core/src/subscription.rs` — the `"canceled" | "revoked"` arm is now two arms |
+| 2 | The tenant arm: no new session on `Revoked` | `create_session`, beside §2.4a.2's device check |
+| 3 | Live sessions invalidated on the verdict | `invalidate_all_sessions`, called from `check_license_status` when `status == "revoked"` OR `device_revoked` |
+
+**The required audit was performed, and it found one thing the ADR did not name.** §2.1 told this
+change to audit `entitlements.rs:115-120` and `availability.rs:383-386` because both use
+`matches!` allow-lists that swallow a new variant silently. Both answers are correct — a revoked
+tenant flows neither the add-on grant nor the availability gate — and each now has an explicit test
+so the answer is PINNED rather than inherited.
+
+**The finding: `is_within_grace_period_at` short-circuited only on `"canceled"`.** A `revoked` row
+therefore reported `is_within_grace_period() == true` for the whole offline window, which directly
+contradicts §2.1's *"Never within grace, never downgraded"*. Grace exists to keep a paying-but-lapsed
+merchant trading while they settle up; applying it to an abuse verdict would keep a banned register
+operating for up to 60 days. Fixed, with `a_revoked_row_is_never_within_grace` as the regression
+test. **This was not in the ADR's audit list** — it was found by asking what the new state's
+documented properties actually require, rather than by reading the sites the record names.
+
+**Why the session sweep sits where it does.** `create_session` refusing NEW sessions is not enough:
+a ban that only gates the next login leaves the revoked tenant selling for up to the session TTL
+(24 hours). The sweep therefore runs in `check_license_status` — the chokepoint where the server's
+verdict actually arrives — and it runs AFTER the cache write, so a session created in the window
+between the two reads fails closed on the cached verdict instead of slipping through.
+
+**Verification run:** `cargo test -p kasirmu-core --lib` → **3143 passed, 0 failed**;
+`cargo test -p kasirmu-bridge --lib` → **1345 passed, 0 failed**; the `ui` licence-settings suite →
+**119 passed**. New tests: `create_session_denies_a_revoked_tenant`,
+`create_session_allows_a_canceled_tenant` (the counterpart that stops the two states being
+re-merged), `invalidate_all_sessions_drops_every_live_session`,
+`a_revoked_row_is_never_within_grace`, `the_revoked_state_round_trips_its_wire_name`, and the two
+audit cases above.
 
 ### 2.2 The two mechanisms, made explicit
 
@@ -657,6 +701,23 @@ Two consequences worth stating:
   (`data.rs:374-375`) and its scoped twins resolve a session and require `SETTINGS_EDIT` like any
   other. §2.6's export promise is therefore satisfied only by the read-only local twin §4a Q-A
   option 3 adds; it is **not** satisfied by the existing command.
+
+#### IMPLEMENTED 2026-10-05 — all three consequences hold
+
+| Consequence | Status |
+|---|---|
+| New sessions refused | `create_session` returns `Invalid` on a `Revoked` subscription, tested by `create_session_denies_a_revoked_tenant` |
+| Live sessions invalidated | `invalidate_all_sessions` sweeps the store from `check_license_status`; tested by `invalidate_all_sessions_drops_every_live_session` |
+| Every session-gated command becomes unreachable, export included | True, and it is WHY the twin exists — `export_data_without_session` is the only export that survives this section (see §4a Q-A above) |
+
+**The two arms are one chokepoint, not two.** A revoked TENANT and a revoked DEVICE both deny at
+`create_session`, and both now sweep live sessions from the same command. They stay separate
+checks because their blast radius differs and §2.4a.2 chose the smaller one deliberately: revoking
+one tablet must not end a multi-terminal business.
+
+**What this section does NOT do, and §2.7 is why:** it does not stop the app launching, opening its
+database, or reading local data. Enforcement is at session creation. A false-positive revocation is
+therefore recoverable and diagnosable rather than destructive, which is the constraint §2.7 states.
 
 ### 2.6 Locked tenants retain view and export
 
