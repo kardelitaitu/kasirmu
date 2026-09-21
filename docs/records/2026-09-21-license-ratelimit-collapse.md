@@ -24,6 +24,10 @@ real 429 with a real body from the licence server's own limiter, but the client 
 the HTTP status into a generic `CoreError` and the status pill reported a connection
 problem, so the whole failure read as "cannot connect to the server".
 
+One suspected contributing cause is **withdrawn**: no licence-status poll ships on any device
+today, so no UI amplified the rate-limit pressure. See §2.5 — the loopback-keyed global bucket
+is the sole demonstrated cause.
+
 ## 2. EVIDENCE
 
 ### 2.1 The key was the proxy's own address
@@ -65,7 +69,43 @@ spent a second token from the same bucket. The status was discarded into a gener
 and 5xx; `AttestError` (`attestation.rs:55-84`) carries `status: u16`, and every rung
 logs origin, status, rung and whether it advances (`attestation.rs:371-386`).
 
-### 2.5 The local two-proxy harness, and why the first fix was not enough
+### 2.5 A suspected cause that is now withdrawn: no shipped licence-status poll
+
+**Correction (2026-09-21, later measurement).** An earlier working note on this incident held
+that the Settings screen polls `POST /api/v1/license/status` on a timer, so an open Settings
+screen could drain a client's hourly budget in minutes and amplify the shared bucket. **That
+is false: the component that polls does not ship.** Three independent measurements:
+
+1. `ui/src/features/settings/LicenseSettings.tsx` is **not imported by any non-test module.**
+   A content grep for `LicenseSettings` across `ui/src` matches only its own file
+   (`LicenseSettings.tsx:10`, `:81`), its stylesheet, its tests, four compliance tests, and
+   **two comments** — `FeatureToggleScreen.tsx:101` ("Mirrors LicenseSettings.") and
+   `hooks/useFlashRows.ts:9` ("not shared: LicenseSettings.tsx:108 holds its own
+   `(key: string)` copy"). There is no `import` statement naming it anywhere outside tests.
+2. `ui/src/features/settings/register.tsx` registers **exactly three** screens — `SettingsPage`
+   (route `settings`, `:5`/`:10`), `FeatureToggleScreen` (`features`, `:6`/`:21`) and
+   `DataManagementScreen` (`data-management`, `:7`/`:31`) — each via `lazy(() => import(...))`.
+   `LicenseSettings` is not among them and appears nowhere in that file.
+3. The component's own classNames — `settings-license-skeleton-row`,
+   `settings-license-empty-icon` — appear **0 times** in the built mobile bundle
+   `ui/dist-mobile`. A component that ships carries its JSX string literals into the bundle.
+
+**Why it looked alive.** The licence Fluent keys DO appear in the mobile bundle, but they come
+from `shared-ui/locales/settings.ftl`, which ships whole on both surfaces
+(e.g. `settings-license-poll-offline` at `settings.ftl:511` → `dist-mobile/.../index.mobile-*.js`),
+so a key-grep misleads. Separately, the route that *is* registered —
+`ui/src/features/settings/screens/registry.ts:29` maps `license-subscription` to
+`LicenseSubscriptionScreen` — points at a self-described "blank Settings screen scaffold"
+(`LicenseSubscriptionScreen.tsx:1`); its `:4` comment says content will *move there* from
+`LicenseSettings.tsx`, a migration that has not happened, and it does not import
+`LicenseSettings`.
+
+**What this changes in the analysis.** It **removes a suspected contributing cause**: no
+licence-status poll ran on any device during this outage, so no shipped UI amplified the
+rate-limit pressure. The loopback-keyed global bucket of §2.1-§2.2 remains the **sole
+demonstrated cause** of the 429s measured from the tablet.
+
+### 2.6 The local two-proxy harness, and why the first fix was not enough
 
 With the middleware in place but before the clamp, two distinct clients still shared a
 bucket. The `X-Forwarded-For` header arriving at PocketBase is a **single entry** — the
@@ -156,6 +196,10 @@ Staged, because the fix changes how a live server keys its buckets:
   saying how.
 - Setting `CARGO_BUILD_JOBS=""` makes cargo **fail**; empty is not the same as unset. Remove
   the variable (`apps/mobile-tauri/AGENTS.md:239-244`), do not blank it.
+- `ui/src/features/settings/LicenseSettings.tsx` is **dead code** — unreferenced by any
+  non-test module, unregistered in `register.tsx`, and absent from `ui/dist-mobile` (§2.5).
+  Its licence surface is the blank scaffold at `screens/LicenseSubscriptionScreen.tsx:1`, and
+  ADR #58 §2.3 still reasons from the dead file's `POLL_INTERVAL_MS`. Delete or wire it up.
 
 ## 8. TIMELINE
 
