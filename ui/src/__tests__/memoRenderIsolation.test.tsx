@@ -83,8 +83,8 @@ function mockSession() {
 
 // ── Lazy screens AppShell imports (stubbed — not the subject) ─────
 
-vi.mock('@/features/setup/SetupWizard', () => ({
-  default: () => <div data-testid="setup-wizard">Setup Wizard</div>,
+vi.mock('@/features/setup/ProvisioningFlow', () => ({
+  default: () => <div data-testid="provisioning-flow">Provisioning Flow</div>,
 }));
 vi.mock('@/features/auth/StaffLoginScreen', () => ({
   default: () => <div data-testid="staff-login-screen">Login</div>,

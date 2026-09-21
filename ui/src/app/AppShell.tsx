@@ -11,7 +11,7 @@ import { useOrientation } from '@/hooks/useOrientation';
 import { isAnyAriaModalOpen, consumeShortcut } from '@/utils/modal-guard';
 import { isCommandModifier } from '@/utils/keyboard-modifier';
 import AppLayout, { type AppRoute } from './AppLayout';
-import { completeSetup, getFirstRunState } from '@/api/settings';
+import { getFirstRunState } from '@/api/settings';
 import { getDeviceId } from '@/api/system';
 import { useFeatures } from '@/hooks/useFeatures';
 import { useTerminalProfile } from '@/hooks/useTerminalProfile';
@@ -21,7 +21,6 @@ import PermissionDenied from '@/components/PermissionDenied';
 import { ErrorState } from '@/components/ErrorState';
 import { LazyBoundary } from '@/components/LazyBoundary';
 import { AppBootSplash } from '@/components/AppBootSplash';
-import type { WizardState } from '@/features/setup/SetupWizard';
 import { toWorkspaceType, type WorkspaceType } from '@/features/settings/workspaceType';
 import { getLicenseStatus } from '@/api/license';
 import { hasUsers } from '@/api/staff';
@@ -34,7 +33,7 @@ import { Badge, type BadgeVariant } from '@/components/Badge';
 // ── PERF-01: workspace/flow screens load on demand ────────────────
 // These screens are only reachable after login, so each is code-split
 // into its own chunk (Suspense boundary: LazyBoundary at render sites).
-const SetupWizard = lazy(() => import('@/features/setup/SetupWizard'));
+const ProvisioningFlow = lazy(() => import('@/features/setup/ProvisioningFlow'));
 const StaffLoginScreen = lazy(() => import('@/features/auth/StaffLoginScreen'));
 const WorkspaceHome = lazy(() => import('@/features/workspaces/WorkspaceHome'));
 const RetailPosScreen = lazy(() => import('@/features/retail/RetailPosScreen'));
@@ -368,17 +367,6 @@ export default function AppShell() {
     return () => window.removeEventListener('hashchange', syncFromHash);
   }, []);
 
-  const handleComplete = useCallback(async (state: WizardState) => {
-    await completeSetup({
-      preset: state.preset ?? 'custom',
-      features: Object.keys(state.features).filter(
-        (k) => state.features[k],
-      ),
-      default_currency: state.default_currency,
-    });
-    setSetupKnownComplete(true);
-  }, []);
-
   /**
    * Called when the activation flow finishes (license activated + owner
    * account created). The activation flow has already written the owner and
@@ -568,7 +556,7 @@ export default function AppShell() {
       <>
         {bootBadges}
         <LazyBoundary>
-          <SetupWizard onComplete={handleComplete} onSkip={() => setSetupKnownComplete(false)} onLaunch={() => setSetupKnownComplete(true)} />
+          <ProvisioningFlow onProvisioned={() => setSetupKnownComplete(true)} />
         </LazyBoundary>
       </>
     );

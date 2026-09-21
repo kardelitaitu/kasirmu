@@ -45,6 +45,21 @@ settings-license-quota-remedy-suspended = { $count } surplus register(s) suspend
 settings-license-quota-remedy-recovered = { $count } suspended register(s) restored.
 settings-license-quota-remedy-none = Nothing to change — no register of this store is over the limit or suspended.
 setup-tagline = Point of Sale — Simplified
+
+### First-run provisioning (ADR #56 §2.3). The flow asks three things and then
+### provisions; the nine-step wizard's later stages became in-app settings on
+### an already-working terminal.
+setup-provision-title = Set up this terminal
+setup-provision-desc = Three things, then you can start selling.
+setup-provision-store-type = What kind of shop is this?
+setup-provision-location-label = Shop name
+setup-provision-owner-name-label = Your name
+setup-provision-owner-username-label = Login name
+setup-provision-pin-label = PIN (at least 4 digits)
+setup-provision-pin-confirm-label = Confirm PIN
+setup-provision-submit = Finish setup
+setup-provision-success = This terminal is ready.
+setup-provision-error = Could not finish setting up this terminal. Please try again.
 setup-step-store-type = Store Type
 setup-step-payments = Payments
 setup-step-products = Products

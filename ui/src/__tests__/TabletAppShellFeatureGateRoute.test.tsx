@@ -62,7 +62,7 @@ vi.mock('@/hooks/useFeatures', () => ({
   FEATURES: { KITCHEN_DISPLAY: 'kitchen-display' } as const,
 }));
 
-vi.mock('@/features/setup/SetupWizard', () => ({ default: () => <div data-testid="setup-wizard" /> }));
+vi.mock('@/features/setup/ProvisioningFlow', () => ({ default: () => <div data-testid="provisioning-flow" /> }));
 vi.mock('@/features/auth/StaffLoginScreen', () => ({ default: () => <div data-testid="staff-login-screen" /> }));
 vi.mock('@/features/workspaces/WorkspaceHome', () => ({ default: () => <div data-testid="workspace-home" /> }));
 vi.mock('@/features/retail/RetailPosScreen', () => ({ default: () => <div data-testid="retail-pos-screen" /> }));

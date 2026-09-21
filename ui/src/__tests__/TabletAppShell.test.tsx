@@ -23,8 +23,8 @@ import sharedFtl from '@/locales/shared.ftl?raw';
 
 // ── Mock lazy screens (TabletAppShell lazy-imports these) ────────
 
-vi.mock('@/features/setup/SetupWizard', () => ({
-  default: () => <div data-testid="setup-wizard">Setup Wizard</div>,
+vi.mock('@/features/setup/ProvisioningFlow', () => ({
+  default: () => <div data-testid="provisioning-flow">Provisioning Flow</div>,
 }));
 
 vi.mock('@/features/auth/StaffLoginScreen', () => ({
@@ -300,7 +300,7 @@ describe('TabletAppShell — routing', () => {
       await renderWithProviders(<TabletAppShell />, sharedFtl);
 
       await waitFor(() => {
-        expect(screen.getByTestId('setup-wizard')).toBeInTheDocument();
+        expect(screen.getByTestId('provisioning-flow')).toBeInTheDocument();
       });
     });
 
@@ -310,7 +310,7 @@ describe('TabletAppShell — routing', () => {
       await renderWithProviders(<TabletAppShell />, sharedFtl);
 
       await waitFor(() => {
-        expect(screen.getByTestId('setup-wizard')).toBeInTheDocument();
+        expect(screen.getByTestId('provisioning-flow')).toBeInTheDocument();
       });
     });
 
@@ -326,7 +326,7 @@ describe('TabletAppShell — routing', () => {
       await renderWithProviders(<TabletAppShell />, sharedFtl);
 
       await waitFor(() => {
-        expect(screen.getByTestId('setup-wizard')).toBeInTheDocument();
+        expect(screen.getByTestId('provisioning-flow')).toBeInTheDocument();
       });
       expect(screen.queryByTestId('staff-login-screen')).not.toBeInTheDocument();
     });
@@ -344,7 +344,7 @@ describe('TabletAppShell — routing', () => {
       await renderWithProviders(<TabletAppShell />, sharedFtl);
 
       await waitFor(() => {
-        expect(screen.getByTestId('setup-wizard')).toBeInTheDocument();
+        expect(screen.getByTestId('provisioning-flow')).toBeInTheDocument();
       });
       expect(screen.queryByTestId('staff-login-screen')).not.toBeInTheDocument();
     });

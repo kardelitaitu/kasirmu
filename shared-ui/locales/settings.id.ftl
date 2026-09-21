@@ -126,6 +126,19 @@ appearance-preview-badge-label = Aktif
 # ── Product Lookup ──
 setup-logo = kasir.mu
 setup-tagline = Point of Sale — Sederhana
+
+### First-run provisioning (ADR #56 §2.3).
+setup-provision-title = Siapkan terminal ini
+setup-provision-desc = Tiga hal saja, lalu Anda bisa mulai berjualan.
+setup-provision-store-type = Jenis usaha apa ini?
+setup-provision-location-label = Nama toko
+setup-provision-owner-name-label = Nama Anda
+setup-provision-owner-username-label = Nama masuk
+setup-provision-pin-label = PIN (minimal 4 angka)
+setup-provision-pin-confirm-label = Konfirmasi PIN
+setup-provision-submit = Selesaikan penyiapan
+setup-provision-success = Terminal ini siap.
+setup-provision-error = Tidak dapat menyelesaikan penyiapan terminal ini. Silakan coba lagi.
 setup-step-store-type = Tipe Toko
 setup-step-payments = Pembayaran
 setup-step-products = Produk

@@ -3,7 +3,6 @@ import { Localized } from '@fluent/react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import TabletAppLayout from './TabletAppLayout';
-import { completeSetup } from '@/api/settings';
 import { readBootGate } from '@/utils/boot-retry';
 import { useFeatures } from '@/hooks/useFeatures';
 import { getPage, isPageAccessible, type PageRegistration } from '@/registries/page-registry';
@@ -11,13 +10,12 @@ import PermissionDenied from '@/components/PermissionDenied';
 import { LazyBoundary } from '@/components/LazyBoundary';
 import { AppBootSplash } from '@/components/AppBootSplash';
 import MemoBanner from '@/features/memo/MemoBanner';
-import type { WizardState } from '@/features/setup/SetupWizard';
 import { isAnyAriaModalOpen, consumeShortcut } from '@/utils/modal-guard';
 import { useOrientation } from '@/hooks/useOrientation';
 import { toWorkspaceType, type WorkspaceType } from '@/features/settings/workspaceType';
 
 // ── PERF-01: workspace/flow screens load on demand ────────────────
-const SetupWizard = lazy(() => import('@/features/setup/SetupWizard'));
+const ProvisioningFlow = lazy(() => import('@/features/setup/ProvisioningFlow'));
 const StaffLoginScreen = lazy(() => import('@/features/auth/StaffLoginScreen'));
 const CreatePinScreen = lazy(() => import('@/features/auth/CreatePinScreen'));
 const SessionLockScreen = lazy(() => import('@/features/auth/SessionLockScreen'));
@@ -226,26 +224,6 @@ export default function TabletAppShell() {
     setCurrentRoute(route);
   }, [userRole, userPermissions]);
 
-  const handleComplete = useCallback(async (state: WizardState) => {
-    await completeSetup({
-      preset: state.preset ?? 'custom',
-      features: Object.keys(state.features).filter(
-        (k) => state.features[k],
-      ),
-      default_currency: state.default_currency,
-    });
-    setHasCompletedSetup(true);
-  }, []);
-
-  const handleSkip = useCallback(() => {
-    // ADR #56 §1.5/§2.2: Skip was a TRAPDOOR, not an exit — it marked setup
-    // complete while provisioning nothing, producing the "setup done but no
-    // users" state `onSkip` reaches below. The dismissal write is gone with
-    // `dismiss_setup_wizard`; a terminal is set up when its provisioning row
-    // exists, which only `provision_device` writes.
-    setHasCompletedSetup(false);
-  }, []);
-
   // ── Session lock: the shell owns the lock screen; screens only ask for it ──
   // Same `app:lock` contract as AppShell.tsx (the restaurant sidebar's "Lock
   // Terminal" and DevToolbar fire it). With no listener here a tablet lock
@@ -277,59 +255,57 @@ export default function TabletAppShell() {
     return <AppBootSplash />;
   }
 
-  // ── First-run setup runs BEFORE the login gate (ADR #41 §2.1) ─────
-  // The ADR is explicit. "State A: New / Uninitialized Device" — no local
-  // config yet — says "the application boots directly into the Setup Wizard
-  // (/setup)", and authentication happens *inside* onboarding (create a
-  // tenant, or connect an existing one). Only "State B: Registered /
-  // Enrolled Device" "boots directly to the Staff Login / Lock Screen".
-  // Testing `!session` first inverted that: every fresh device landed on
-  // StaffLoginScreen with the terminal unconfigured.
+  // ── First-run provisioning runs BEFORE the login gate (ADR #41 §2.1, ADR #56 §2.3) ──
+  // ADR #41 §2.1's "State A: New / Uninitialized Device" says the application
+  // boots directly into onboarding and authentication happens *inside* it.
+  // ADR #56 §2.3 keeps that ordering and narrows what it asks: the flow is
+  // store type -> owner -> one transaction, because onboarding must end at a
+  // WORKING terminal rather than a configured one.
   //
-  // Safe pre-login: the wizard's three commands are UNAUTHENTICATED by design
-  // (`kasirmu-bridge/src/setup.rs` — `get_setup_status`, `complete_setup` and
-  // `dismiss_setup_wizard` each take only `&BridgeCtx` and write the GLOBAL db
-  // via `lock_global()`; contrast `seed_default_roles_scoped` in the same file,
-  // which takes a session token and checks a permission). The wizard reads no
-  // auth/workspace context, and `onSkip` reaches login even if
-  // `dismissSetupWizard` fails, so this cannot trap the terminal.
+  // Safe pre-login: provisioning runs before any session exists BY DESIGN. A
+  // `local` install creates its own owner (§2.4), so the command that writes
+  // it cannot require a session — the same property the wizard's commands had.
   //
-  // The desktop AppShell keeps the wizard after `!session`, and must: it runs two
+  // The desktop AppShell keeps this after `!session`, and must: it runs two
   // earlier pre-login gates the tablet historically could not — `!bootAllowed`
   // (licence activation) and `hasUsers === false` (owner bootstrap). Licence
-  // activation remains desktop-only. Owner bootstrap now exists here too: the
-  // tablet registers `has_users` (bridge twin of the desktop door) and gates
-  // CreatePinScreen below — without it a completed wizard with zero users
-  // dead-ended on a login that could never succeed, because nothing on the
-  // tablet called `bootstrap_owner` (the one command that seeds roles).
+  // activation remains desktop-only; owner bootstrap is now part of
+  // provisioning on BOTH shells (§2.2), which is what removes the
+  // "completed wizard with zero users" dead end this comment used to record.
   //
-  // Known consequence of moving this branch, recorded so it is not rediscovered as
-  // a bug: the mount read's catch sets `hasCompletedSetup = false`, so a FAILED
-  // `get_setup_status` now reaches the wizard BEFORE login rather than after it.
-  // Both failure directions are recoverable and this one is the safer of the two —
-  // `onSkip` sets the flag regardless of whether `dismissSetupWizard` resolves, and
-  // on a genuinely fresh device the wizard is the only route forward, whereas login
-  // would be a dead end. The desktop instead treats an unknown read as "not
-  // first-run" (see the `has_users: unknown is not "no users"` note in AppShell.tsx)
-  // and falls through to login. The tablet's catch is pinned by two tests in
-  // TabletAppShell.test.tsx — a rejecting read with a session and a rejecting
-  // read without one — so changing it is a decision, not a cleanup.
+  // Known consequence, recorded so it is not rediscovered as a bug: the mount
+  // read's catch sets `hasCompletedSetup = false`, so a FAILED first-run read
+  // reaches the provisioning flow BEFORE login rather than after it. On a
+  // genuinely fresh device that flow is the only route forward, whereas login
+  // would be a dead end; and because the answer is a ROW rather than a flag,
+  // an unreadable database cannot forge "already provisioned" either. The
+  // tablet's catch is pinned by two tests in TabletAppShell.test.tsx — a
+  // rejecting read with a session and a rejecting read without one — so
+  // changing it is a decision, not a cleanup.
   if (!hasCompletedSetup) {
     return (
       <LazyBoundary>
-        <SetupWizard onComplete={handleComplete} onSkip={handleSkip} onLaunch={() => setHasCompletedSetup(true)} />
+        <ProvisioningFlow onProvisioned={() => setHasCompletedSetup(true)} />
       </LazyBoundary>
     );
   }
 
   if (!session) {
-    // Owner bootstrap (mirrors the desktop AppShell's hasUsers === false
-    // branch): the wizard configures the store but deliberately does not
-    // seed roles or users — that is `bootstrap_owner`'s job, and nothing on
-    // the tablet reached it before this branch existed. The result was a
-    // first-run dead end: a login screen with zero users, unrecoverable
-    // without adb. `null` (read failed / command absent) stays on login —
-    // unknown is not "no users".
+    // Owner bootstrap (mirrors the desktop AppShell's hasUsers === false branch).
+    //
+    // ADR #56 §2.2 made the owner part of the provisioning transaction, so on a
+    // provisioned terminal this branch should be UNREACHABLE — the flow above
+    // cannot set `hasCompletedSetup` without also creating the owner. It is kept
+    // deliberately:
+    //
+    // - it is the recoverable path for a terminal provisioned by an older
+    //   build, whose owner was created by this screen rather than by
+    //   `provision_device`, and
+    // - `hasAnyUsers === false` is an ANSWERED read, so reaching here means the
+    //   store really has no users and a login could never succeed.
+    //
+    // `null` (read failed / command absent) stays on login — unknown is not
+    // "no users".
     if (hasAnyUsers === false) {
       return (
         <LazyBoundary>

@@ -110,8 +110,8 @@ vi.mock('@/features/auth/CreatePinScreen', () => ({
 vi.mock('@/features/auth/StaffLoginScreen', () => ({
   default: () => <div data-testid="staff-login-screen" />,
 }));
-vi.mock('@/features/setup/SetupWizard', () => ({
-  default: () => <div data-testid="setup-wizard" />,
+vi.mock('@/features/setup/ProvisioningFlow', () => ({
+  default: () => <div data-testid="provisioning-flow" />,
 }));
 vi.mock('@/features/workspaces/WorkspaceHome', () => ({
   default: () => <div data-testid="workspace-home" />,
@@ -249,7 +249,7 @@ describe('AppShell boot gate — unknown is not a licence', () => {
     expect(screen.queryByTestId('staff-login-screen')).not.toBeInTheDocument();
     expect(screen.queryByTestId('create-pin-screen')).not.toBeInTheDocument();
     expect(screen.queryByTestId('workspace-home')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('setup-wizard')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('provisioning-flow')).not.toBeInTheDocument();
   });
 
   it('setup read succeeds as fresh + licence read throws → still gated, wizard not forged', async () => {
@@ -373,7 +373,7 @@ describe('AppShell boot gate — unknown is not a licence', () => {
     });
     expect(screen.queryByTestId('boot-status-badges')).not.toBeInTheDocument();
     expect(screen.queryByTestId('license-activation-screen')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('setup-wizard')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('provisioning-flow')).not.toBeInTheDocument();
   });
 
   it('happy path: active licence + completed setup, nobody signed in → login, no badge', async () => {
@@ -415,7 +415,7 @@ describe('AppShell boot gate — unknown is not a licence', () => {
     await boot();
 
     await waitFor(() => {
-      expect(screen.getByTestId('setup-wizard')).toBeInTheDocument();
+      expect(screen.getByTestId('provisioning-flow')).toBeInTheDocument();
     });
   });
 

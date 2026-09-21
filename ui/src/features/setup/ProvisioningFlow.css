@@ -1,0 +1,133 @@
+/* First-run provisioning (ADR #56 §2.3).
+ *
+ * Mirrors CreatePinScreen.css's tokens and card geometry deliberately: this
+ * flow REPLACES that screen on a fresh install (§2.2 makes the owner part of
+ * the provisioning transaction), so it must read as the same surface rather
+ * than a new one. Tokens only — no raw colours. */
+
+.provisioning-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  background: radial-gradient(circle at 50% -20%, var(--neutral-200) 0%, var(--neutral-50) 100%);
+  color: var(--color-fg-primary);
+  font-family: var(--font-sans);
+  padding: var(--space-8);
+}
+
+.provisioning-card {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-3xl);
+  padding: var(--space-12);
+  width: 100%;
+  max-width: 31.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .provisioning-card {
+    opacity: 0;
+    animation: fade-up var(--duration-600) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+}
+
+.provisioning-header {
+  text-align: center;
+}
+
+.provisioning-header h1 {
+  font-size: var(--text-3xl);
+  font-weight: var(--font-weight-semibold);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.provisioning-header p {
+  margin: 0;
+  color: var(--color-fg-secondary);
+}
+
+.provisioning-error {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger-fg);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+}
+
+.provisioning-fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.provisioning-fieldset legend {
+  font-weight: var(--font-weight-medium);
+  margin-bottom: var(--space-3);
+  padding: 0;
+}
+
+.provisioning-store-types {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.provisioning-store-type {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+
+.provisioning-store-type:hover {
+  border-color: var(--color-accent-hover);
+}
+
+/* The selected state must not rely on colour alone (WCAG 1.4.1): `aria-pressed`
+ * carries the state to assistive tech, and the border weight carries it visually
+ * for anyone who cannot distinguish the accent hue. */
+.provisioning-store-type.is-selected {
+  border-color: var(--color-accent);
+  border-width: 2px;
+  background: var(--color-accent-subtle);
+}
+
+.provisioning-store-type small {
+  color: var(--color-fg-secondary);
+}
+
+.provisioning-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.provisioning-field label {
+  font-weight: var(--font-weight-medium);
+}
+
+.provisioning-field input {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  color: var(--color-fg-primary);
+  font: inherit;
+}
+
+.provisioning-field input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

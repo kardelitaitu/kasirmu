@@ -83,7 +83,7 @@ vi.mock('@/hooks/useOrientation', () => ({
 }));
 
 // ── Lazy / flow screens: stubs, so each branch settles in one tick ────
-vi.mock('@/features/setup/SetupWizard', () => ({ default: stub('setup-wizard') }));
+vi.mock('@/features/setup/ProvisioningFlow', () => ({ default: stub('provisioning-flow') }));
 vi.mock('@/features/auth/StaffLoginScreen', () => ({ default: stub('staff-login-screen') }));
 vi.mock('@/features/auth/CreatePinScreen', () => ({ default: stub('create-pin-screen') }));
 vi.mock('@/features/auth/SessionLockScreen', () => ({ default: stub('session-lock-screen') }));

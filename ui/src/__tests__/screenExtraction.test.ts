@@ -287,6 +287,15 @@ const SCREENS: ScreenEntry[] = [
 
   // ── Setup ─────────────────────────────────────────────
   {
+    // First-run provisioning (ADR #56 §2.3). Its own sheet rather than a reuse
+    // of SetupWizard.css: the flow replaces the wizard on the unprovisioned
+    // path, and the two have different geometry (the wizard is a multi-step
+    // frame, this is one card).
+    name: 'ProvisioningFlow',
+    tsx: 'setup/ProvisioningFlow.tsx',
+    css: ['setup/ProvisioningFlow.css'],
+  },
+  {
     name: 'SetupWizard',
     tsx: 'setup/SetupWizard.tsx',
     // `StepAccount.tsx` shares this sheet, so the used-class walk has to read it.
