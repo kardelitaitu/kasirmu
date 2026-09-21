@@ -772,6 +772,50 @@
   }
 }
 
+/* ── Narrow-shell tier (ADR-0001 Slice 5) ──────────────────────────
+   The shell hands this page slots down to 640px (narrow-shell case),
+   which the 880px tier above does not reach: between 640px and 880px
+   the sheet had NO rule of its own, so the receipt lane (nowrap, mono),
+   the items/payment lanes and the filter bar's fixed-min-width inputs
+   overflowed the box. Everything here is NEW at 640px — the 880px tier
+   already applies at this width (a 640px box also matches max-width:
+   880px), so nothing it declares is repeated. */
+@container (max-width: 640px) {
+  /* The statutory receipt code cannot wrap; it lives in the detail modal
+     (full-bleed since 880px), so the lane leaves the list rows. */
+  .sales-history-table .sales-history-cell-receipt {
+    display: none;
+  }
+
+  /* Items and payment are glanceable detail, not the line of the row:
+     date, total, status and the actions stay. */
+  .sales-history-table th:nth-child(5),
+  .sales-history-table td:nth-child(5),
+  .sales-history-table th:nth-child(7),
+  .sales-history-table td:nth-child(7) {
+    display: none;
+  }
+
+  /* The search input's 12.5rem floor and the select's 8.75rem floor
+     cannot both sit beside the date pair in a 640px box: each control
+     takes the full row it already wraps onto. */
+  .sales-history-filter-input,
+  .sales-history-filter-select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .sales-history-filter-group {
+    flex: 1 1 100%;
+  }
+
+  /* The free-tier teaser's two-column squeeze folds under its own CTA. */
+  .sales-history-cap-teaser-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 /* ── C1.2 history-cap teaser (Free tier 30-day window) ───────── */
 
 .sales-history-cap-teaser {

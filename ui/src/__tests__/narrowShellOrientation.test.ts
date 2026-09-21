@@ -319,7 +319,7 @@ interface MigratedSheet {
 const MIGRATED: readonly MigratedSheet[] = [
   { sheet: RETAIL_CSS, containerSelector: '.retail-pos', tiers: [880], narrowShellPx: 640 },
   { sheet: KDS_CSS, containerSelector: '.kds', tiers: [900, 640], narrowShellPx: 640 },
-  { sheet: SALES_HISTORY_CSS, containerSelector: '.sales-history', tiers: [880], narrowShellPx: 640 },
+  { sheet: SALES_HISTORY_CSS, containerSelector: '.sales-history', tiers: [880, 640], narrowShellPx: 640 },
   { sheet: PAYMENT_MODAL_CSS, containerSelector: '.payment-overlay', tiers: [480], narrowShellPx: 640 },
   { sheet: POS_SCREEN_CSS, containerSelector: '.pos-screen', tiers: [720, 480], narrowShellPx: 640 },
   { sheet: EOD_REPORT_CSS, containerSelector: '.eod-report', tiers: [800, 600], narrowShellPx: 640 },
@@ -1002,8 +1002,6 @@ describe('narrow-shell / extreme-aspect verification (ADR-0001 Slice 7)', () => 
         stats.coverage.join('\n'),
     ).toEqual([
       RETAIL_CSS +
-        ' matches nothing below 880px, and a box narrower than 640px gets the wide layout with no rule of its own — this is the coverage ADR-0001 Slice 7 measures, not a claim that the sheet is wrong',
-      SALES_HISTORY_CSS +
         ' matches nothing below 880px, and a box narrower than 640px gets the wide layout with no rule of its own — this is the coverage ADR-0001 Slice 7 measures, not a claim that the sheet is wrong',
     ]);
   });
