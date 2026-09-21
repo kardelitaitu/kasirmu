@@ -367,6 +367,59 @@ func TestAdminGrantSubscription_CreatesSignedSub(t *testing.T) {
 	}
 }
 
+func TestAdminGrantSubscription_ClearsDeviceRevocations(t *testing.T) {
+	// ADR #58 §4a Q-C option B: un-revoking a tenant must release its devices,
+	// because the client-side per-device check (§2.4a.2) refuses sessions on a
+	// device whose revoked_at is set. Without this, "the tenant paid" leaves an
+	// active account with locked tills.
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	tenant := seedLifecycleTenant(t, app, "grantclear@test.com", "revoked")
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+
+	machCol, err := app.FindCollectionByNameOrId("tenant_machines")
+	if err != nil {
+		t.Fatalf("tenant_machines collection: %v", err)
+	}
+	// One revoked device and one that was never revoked, so the test proves
+	// the clear is selective and does not blanket-write every row.
+	revoked := core.NewRecord(machCol)
+	revoked.Set("tenant_id", tenant.Id)
+	revoked.Set("machine_id", "grantclear-revoked")
+	revoked.Set("revoked_at", "2026-09-01T00:00:00Z")
+	if err := app.Save(revoked); err != nil {
+		t.Fatalf("save revoked machine: %v", err)
+	}
+	untouched := core.NewRecord(machCol)
+	untouched.Set("tenant_id", tenant.Id)
+	untouched.Set("machine_id", "grantclear-live")
+	untouched.Set("last_seen_at", "2026-09-10T00:00:00Z")
+	if err := app.Save(untouched); err != nil {
+		t.Fatalf("save live machine: %v", err)
+	}
+
+	rec := doJSON(mux, http.MethodPost, "/api/v1/admin/tenants/"+tenant.Id+"/grant-subscription", lifecycleAdminKey,
+		`{"tier_key":"pro","months":6,"reason":"customer paid the arrears"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	after, err := app.FindRecordById("tenant_machines", revoked.Id)
+	if err != nil {
+		t.Fatalf("reload revoked machine: %v", err)
+	}
+	if got := formatDateField(after, "revoked_at"); got != "" {
+		t.Errorf("revoked_at = %q, want cleared by the tenant un-revoke", got)
+	}
+	live, err := app.FindRecordById("tenant_machines", untouched.Id)
+	if err != nil {
+		t.Fatalf("reload live machine: %v", err)
+	}
+	if got := formatDateField(live, "last_seen_at"); got == "" {
+		t.Error("the clear must not disturb rows it did not revoke")
+	}
+}
+
 func TestAdminGrantSubscription_ExpiresAt(t *testing.T) {
 	app, mux := dashboardMux(t)
 	defer app.Cleanup()

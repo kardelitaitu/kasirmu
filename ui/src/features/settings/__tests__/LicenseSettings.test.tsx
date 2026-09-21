@@ -136,6 +136,8 @@ const SERVER_STATUS = {
   status: 'active',
   tier: 'pro',
   active: true,
+  // ADR #58 §2.4a.2: the device verdict rides the status payload.
+  deviceRevoked: false,
   expiresAt: '2026-01-01T00:00:00Z',
   graceUntil: '2026-02-01T00:00:00Z',
   maxLocations: 5,

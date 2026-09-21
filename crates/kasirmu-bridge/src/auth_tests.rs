@@ -410,6 +410,72 @@ async fn create_session_denies_tier_disallowed_workspace_type() {
 }
 
 #[tokio::test]
+async fn create_session_denies_a_revoked_device() {
+    // ADR #58 §2.4a.2: a device a tenant admin revoked must not open a
+    // session. The verdict is the cached server answer in
+    // `keys::DEVICE_REVOKED`, written only by `check_license_status` from a
+    // server response.
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    kasirmu_core::Settings::set(&conn, platform_core::settings::keys::DEVICE_REVOKED, "true")
+        .expect("seed the cached revocation verdict");
+    let app = test_app(conn);
+
+    let result = create_session(
+        &app.ctx(),
+        &CreateSessionArgs {
+            user_id: "user-owner".into(),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-store-pos".into(),
+            type_key: "store-pos".into(),
+            terminal_id: "terminal-1".into(),
+            picker_ticket: test_picker_ticket("user-owner"),
+            org_id: None,
+        },
+    )
+    .await;
+
+    match result.expect_err("a revoked device must not open a session") {
+        BridgeError::Invalid(msg) => assert!(
+            msg.contains("revoked"),
+            "error must name the revocation, got: {msg}"
+        ),
+        other => panic!("expected BridgeError::Invalid, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn create_session_allows_a_device_when_the_verdict_is_absent() {
+    // The fail-open direction §2.4 requires: an absent cache (a server that
+    // predates the field, or a failed write) must NOT lock the till. This is
+    // the test that stops the gate from becoming a lockout on missing data.
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let app = test_app(conn);
+
+    let settled = create_session(
+        &app.ctx(),
+        &CreateSessionArgs {
+            user_id: "user-owner".into(),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-store-pos".into(),
+            type_key: "store-pos".into(),
+            terminal_id: "terminal-1".into(),
+            picker_ticket: test_picker_ticket("user-owner"),
+            org_id: None,
+        },
+    )
+    .await;
+
+    assert!(
+        settled.is_ok(),
+        "an absent device verdict must fail open, got {settled:?}"
+    );
+}
+
+#[tokio::test]
 async fn create_session_rejects_tampered_subscription_signature() {
     // Parity with create_staff_scoped (and every other subscription-
     // trusting command): the tenant_subscription row's RSA signature must

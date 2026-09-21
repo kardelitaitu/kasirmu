@@ -470,6 +470,10 @@ pub struct ServerLicenseStatusDto {
     pub tier: String,
     /// Whether the subscription is active.
     pub active: bool,
+    /// Whether **this device** has been revoked by a tenant admin
+    /// (ADR #58 §2.4a.2). Server-authored; the session gate refuses when the
+    /// cached verdict is set.
+    pub device_revoked: bool,
     /// When the subscription expires (RFC 3339).
     pub expires_at: Option<String>,
     /// When the grace period ends (RFC 3339).
@@ -512,7 +516,7 @@ pub async fn check_license_status(
         }
     };
 
-    let resp = core_check_license_status(&api_key)
+    let resp = core_check_license_status(&api_key, &machine_id)
         .await
         .map_err(|e| BridgeError::Internal(e.to_string()))?;
 
@@ -530,6 +534,22 @@ pub async fn check_license_status(
         ) {
             tracing::warn!("failed to refresh subscription status cache: {e}");
         }
+        // ADR #58 §2.4a.2/§4a Q-D: cache the device verdict locally, so the
+        // session gate can enforce it without a network call inside
+        // `create_session` (which §2.7 forbids from being able to brick a
+        // register). Server-authored only — never written from user input.
+        //
+        // A failed write is logged and does not fail the command: the verdict
+        // is a *restriction*, and losing it fails open (the device keeps
+        // working), which is the direction §2.4 requires for anything that
+        // could otherwise lock a till.
+        if let Err(e) = Settings::set(
+            &conn,
+            keys::DEVICE_REVOKED,
+            if resp.device_revoked { "true" } else { "false" },
+        ) {
+            tracing::warn!("failed to persist device_revoked cache: {e}");
+        }
     }
 
     let max_locations = resp.effective_max_locations();
@@ -539,6 +559,7 @@ pub async fn check_license_status(
         status: resp.status,
         tier: resp.tier,
         active: resp.active,
+        device_revoked: resp.device_revoked,
         expires_at: resp.expires_at,
         grace_until: resp.grace_until,
         max_locations,
