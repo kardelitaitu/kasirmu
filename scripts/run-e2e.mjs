@@ -39,10 +39,30 @@ const UI_DIR = resolve(ROOT, 'ui');
 
 // Parse args
 const args = process.argv.slice(2);
+
+/**
+ * True when the caller asked to skip Docker — from our own argv, or from
+ * npm's swallowed form of the same flag.
+ *
+ * The form without a separator (npm run e2e:ui --no-docker) is consumed by
+ * npm as one of its OWN config flags: it never reaches this script's argv,
+ * and npm instead exports npm_config_docker (empty for --no-docker, 'true'
+ * for --docker). The runner then read NO_DOCKER as false, took the Docker
+ * path and died in the image freshness guard — aborting a run that had
+ * explicitly asked for no Docker at all. Honour npm's signal too, so both
+ * spellings behave identically. The documented form
+ * (npm run e2e:ui -- --no-docker) still arrives through argv, unchanged.
+ */
+function noDockerRequested() {
+  if (args.includes('--no-docker')) return true;
+  const npmFlag = process.env.npm_config_docker;
+  return npmFlag !== undefined && npmFlag !== 'true';
+}
+
 const HEADED = args.includes('--headed');
 const API_ONLY = args.includes('--api-only');
 const UI_ONLY = args.includes('--ui-only');
-const NO_DOCKER = args.includes('--no-docker');
+const NO_DOCKER = noDockerRequested();
 const CHANGED_ONLY = args.includes('--changed-only');
 // Rebuild the locally-built E2E images that the freshness guard judges stale,
 // instead of aborting. See assertImagesFresh() for the staleness rule.
@@ -280,6 +300,15 @@ function buildServices(services) {
  * there — and it must never become a new way to fail a green pipeline.
  */
 function assertImagesFresh() {
+  // The guard protects against testing stale Docker BINARIES. A --no-docker
+  // run starts no containers and consumes none of these images (the UI specs
+  // run against the Vite dev server + dev-mock on :1420), so there is nothing
+  // to protect and nothing to refuse. Skip it explicitly rather than relying
+  // on startDocker() never being called on this path.
+  if (NO_DOCKER) {
+    log('Docker', 'Freshness guard skipped (--no-docker).');
+    return;
+  }
   if (process.env.CI) {
     log('Docker', 'CI detected — trusting the images built by the workflow.');
     return;
@@ -657,7 +686,9 @@ async function main() {
         log('Docker', `${YELLOW}Not available — skipping.${NC}`);
       }
     } else {
-      log('Docker', 'Skipped (--no-docker).');
+      // (a) --no-docker consumes no Docker binaries, so the image freshness
+      // guard is not applicable and must not abort the run.
+      log('Docker', 'Freshness guard skipped (--no-docker).');
     }
 
     // ── Step 2: Start Vite dev server ─────────────────────────────
