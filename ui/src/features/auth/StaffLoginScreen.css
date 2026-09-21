@@ -45,36 +45,77 @@
   width: min(90vw, 26.25rem);
   min-height: 33.75rem;
 
-  /* Corporate elevated card — clean surface, subtle border */
+  /* ADR-0001 Slice 6 - the keyboard trap. The 33.75rem floor above is a FLOOR, and
+     under an open on-screen keyboard the visual viewport is far shorter than it: a
+     568px-tall landscape view is 300-odd px once the numeric pad is up. Nothing inside
+     this card may clip in that state, so the fixed-height bands become content-sized
+     (flex: 0 0 auto) - a flex-basis: 0 band cannot honour a min-height anyway, so that
+     pairing is what actually releases the floor - and anything that still overflows
+     scrolls HERE, on the card, keeping the PIN pad and the submit button reachable from
+     the focused field.
+     This is the scroll half of the fix; the height ladder at the end of this file is the
+     other half, and both are needed: the ladder is keyed to the max-height media feature,
+     which in the Tauri/WebView this app ships is the LAYOUT viewport. An open keyboard
+     changes the VISUAL viewport and does not necessarily change that feature, so a ladder
+     alone can leave the trap armed - which is why the sibling pair on this screen
+     (SessionLockScreen.css, same logic, no scroll container) needs its own slice.
+
+     overflow-y: auto replaces the overflow: hidden that used to live here. That hidden was
+     clipping the card-corner close button (.staff-login-close-btn, absolutely positioned at
+     this card corner, PIN step only); the button stays inside the padding box, and auto
+     gives the same clipping plus a scrollbar, because overflow-x is never visible alongside
+     a non-visible overflow-y. NOTHING IS CENTRED ON THIS CARD, so the classic flex-scroll
+     trap does not apply: .staff-login-screen centres the CARD in the viewport, but every
+     band inside the card applies align-items on the cross axis and justify-content on the
+     MAIN axis only, so an overflowing column grows downward and stays scrollable. Any
+     future justify-content: center or margin: auto added HERE would re-create the trap:
+     it makes the first lines unreachable and no scroll distance fixes it. Clip decorations
+     (.staff-login-logo-img, .staff-login-pin-dot--filled, .staff-login-pad-key:active) by
+     keeping them inside the card, never by resurrecting a clip on the card itself. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+
+  /* Corporate elevated card - clean surface, subtle border */
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-md);
-  overflow: hidden;
 }
 
 /* ── Card: 3 vertical sections ──────────────────────────────────── */
 /* Default (username step): 70% logo / 20% input / 10% step-dots    */
 /* PIN step override:       15% dots  / 75% keypad / 10% step-dots  */
+/*
+ * ADR-0001 Slice 6: these bands keep their PROPORTIONS (so the 70/20/10 and
+ * 15/75/10 silhouettes above are unchanged on a roomy viewport) but lose the
+ * zero flex-basis, which becomes a fixed `flex: 0 0 auto` basis under a short
+ * viewport in the ladder at the end of this file. A `flex-basis: 0` box cannot
+ * honour a min-height, so it is that pairing - not the min-height itself - that
+ * used to hold the card at 540px while the visual viewport was 300-odd px tall.
+ * Keeping the proportions here and shrinking only the floor there means the
+ * desktop and tablet layouts this screen was measured at (see the 1024x768 and
+ * 428x600 readings beside .staff-login-top-bar) are untouched.
+ */
 
 .staff-login-card--pin .staff-login-top-bar {
-  flex: 1.5 0 0;
+  flex: 1.5 0 auto;
   justify-content: center;
   padding-bottom: 0;
 }
 
 .staff-login-card--pin .staff-login-main-area {
-  flex: 7.5 0 0;
+  flex: 7.5 0 auto;
   justify-content: center;
   padding-top: 0;
 }
 
 .staff-login-card--pin .staff-login-bottom-bar {
-  flex: 1 0 0;
+  flex: 1 0 auto;
 }
 
 .staff-login-top-bar {
-  flex: 7 0 0;
+  flex: 7 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -112,7 +153,7 @@
 }
 
 .staff-login-main-area {
-  flex: 2 0 0;
+  flex: 2 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -121,7 +162,7 @@
 }
 
 .staff-login-bottom-bar {
-  flex: 1 0 0;
+  flex: 1 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -682,11 +723,76 @@
 .connection-latency {
   font-family: var(--font-mono);
   color: var(--color-fg-secondary);
-  margin-left: var(--space-1);
-}
-
 @keyframes cs-pulse {
   0% { opacity: 0.5; }
   50% { opacity: 1; }
   100% { opacity: 0.5; }
+}
+
+/* ── Short viewports: the card releases its fixed 540px floor ───────
+ * ADR-0001 Slice 6. Ported from this screen's sibling, SessionLockScreen.css,
+ * which adapts with the same two stops (@media (max-height: 760px) at :147 and
+ * @media (max-height: 640px) at :162) - the two cards share a silhouette
+ * (width: min(90vw, 26.25rem); min-height: 33.75rem; overflow: hidden) and only
+ * this one had no short-viewport rules at all. Keeping the ladder scored
+ * identically to the sibling is the point: the app already solves short
+ * viewports this way, and a second mechanism would be one more thing to keep in
+ * step.
+ *
+ * What the ladder does here that the sibling's does not: the sibling only tightens
+ * its header, because a 540px card cannot honour a 540px min-height inside a 568px
+ * viewport without running past it. Here the floor itself shrinks, and the bands
+ * switch to content sizing, so the card fits the room it actually has and any
+ * remainder scrolls on the card (see .staff-login-card above). The padding scales
+ * with vh so the release is continuous, not a second fixed number.
+ *
+ * Read with the caveat stated on .staff-login-card: these stops key off the
+ * max-height media feature, which tracks the LAYOUT viewport. An open keyboard
+ * moves the VISUAL viewport, so the ladder is the graceful-degradation half and
+ * the card's own overflow-y is the half that survives the keyboard itself.
+ */
+@media (max-height: 760px) {
+  .staff-login-card {
+    min-height: min(33.75rem, calc(100dvh - 4rem));
+  }
+
+  .staff-login-footer-copyright {
+    display: none;
+  }
+}
+
+@media (max-height: 640px) {
+  /* Below the sibling's second stop the bands stop reserving space at all: each
+     sizes to its content and the card scrolls whatever will not fit, which is the
+     state the close button, the PIN pad and the submit button all have to survive. */
+  .staff-login-card,
+  .staff-login-card--pin {
+    min-height: min(28rem, calc(100dvh - 2rem));
+  }
+
+  .staff-login-top-bar,
+  .staff-login-main-area,
+  .staff-login-bottom-bar,
+  .staff-login-card--pin .staff-login-top-bar,
+  .staff-login-card--pin .staff-login-main-area,
+  .staff-login-card--pin .staff-login-bottom-bar {
+    flex: 0 0 auto;
+    padding-top: var(--space-2);
+    padding-bottom: var(--space-2);
+  }
+
+  .staff-login-logo-img {
+    width: clamp(64px, 14vh, 120px);
+    height: clamp(64px, 14vh, 120px);
+  }
+
+  .staff-login-logo--small .staff-login-logo-img {
+    width: clamp(40px, 10vh, 64px);
+    height: clamp(40px, 10vh, 64px);
+  }
+
+  .staff-login-pad-key {
+    max-width: clamp(48px, 12vh, 72px);
+    max-height: clamp(48px, 12vh, 72px);
+  }
 }

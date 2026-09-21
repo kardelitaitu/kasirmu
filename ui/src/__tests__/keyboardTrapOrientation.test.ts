@@ -59,13 +59,17 @@ function source(rel: string): string {
 /**
  * 1-based line numbers where pattern matches, with the matched line trimmed. The pattern is
  * tested against the WHOLE text, not line by line: two of the rules below (`onClick={complete}`
- * before its testid; `onSubmit={...handleSave`) span a newline, and a per-line test silently
- * finds nothing. `[^\n]*` keeps each reported line short, and any lazy gap `[\s\S]{0,n}`
- * must stay under that: past one line the printed text stops addressing the match.
+ * before its testid; `onSubmit={handleUsernameSubmit}` before `type="submit"`) cross a line
+ * break, and a per-line test silently finds nothing. The reported line is the line the match
+ * STARTS on, printed trimmed and whole.
  */
 function hits(text: string, pattern: RegExp): { line: number; text: string }[] {
   const out: { line: number; text: string }[] = [];
-  const scan = new RegExp(pattern.source, 'g');
+  // The source regex MUST carry over its flags. Without them a rule written with `\S` (an
+  // upper-case class escape) silently becomes a class of `S` plus a literal backslash, so a
+  // rule that matches the raw file reports nothing here - which is how the StaffLoginScreen
+  // submit read as a gap it does not have.
+  const scan = new RegExp(pattern.source, 'g' + pattern.flags.replace('g', ''));
   let match: RegExpExecArray | null;
   while ((match = scan.exec(text)) !== null) {
     // A zero-length match would spin forever; every rule here consumes at least one char.
@@ -87,6 +91,12 @@ interface FormScreen {
   refRule: RegExp;
   /** The submit control, and the handler that makes it the save action. */
   submitRule: RegExp;
+  /**
+   * A known, unresolved gap in this screen, named only so its violation is auditable. It is
+   * NOT an exemption: the rule above still grades the screen and the gap still fails the
+   * suite. Documenting it here keeps a real red from reading as a checker defect.
+   */
+  knownGap?: string;
 }
 
 const FORM_SCREENS: readonly FormScreen[] = [
@@ -106,6 +116,29 @@ const FORM_SCREENS: readonly FormScreen[] = [
     // before its testid, in that order. The modal has no form element, so the wired handler
     // plus the testid is the honest identification, not a tag that happens to exist.
     submitRule: /onClick=\{complete\}[\s\S]{0,80}data-testid="settle-button"/,
+  },
+  {
+    // Brief: the THIRD production consumer of useKeyboardAvoidance - StaffLoginScreen.tsx
+    // imports it at :2 and calls it at :134. All three are declared here; the ADR asks for
+    // "one runnable check per migrated form-bearing screen", so a consumer left out is a
+    // screen nobody checks.
+    name: 'auth/StaffLoginScreen',
+    css: 'features/auth/StaffLoginScreen.css',
+    tsx: 'features/auth/StaffLoginScreen.tsx',
+    // KNOWN GAP - measured 2026-09-21, and this screen is RED for it. No sheet under
+    // ui/src/features/auth/ declares a single `overflow`/`overflow-y` scroll value
+    // (a repo grep for `overflow-y` plain in ui/src/features/auth returns nothing),
+    // while `.staff-login-card` both pins `min-height: 33.75rem` (a FIXED 540px) at :46 and
+    // clips with `overflow: hidden` at :53. In one 568px-tall landscape view that is more
+    // than the whole visual viewport, and nothing inside it can scroll, so the PIN pad and
+    // the submit button are unreachable - which is exactly Slice 6's stated trap.
+    scrollRule: /overflow-y:\s*auto/,
+    // Attached, unlike a plain ref={...}: the screen hands the ref to the card's PARENT, the
+    // full-viewport `.staff-login-screen` overlay (StaffLoginScreen.tsx:484-486).
+    refRule: /keyboardAvoidRef as React\.MutableRefObject<HTMLDivElement \| null>\)\.current\s*=/,
+    // `<form onSubmit={handleUsernameSubmit}>` (:515) with `<button type="submit">` (:539)
+    // inside it - the strongest submit shape of the three screens.
+    submitRule: /onSubmit=\{handleUsernameSubmit\}[\s\S]{0,2000}type="submit"/,
   },
   {
     name: 'settings/SettingsPage',
