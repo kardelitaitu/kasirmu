@@ -29,6 +29,25 @@ The target architecture, defined in `ARCHITECTURE.md`, requires:
 
 A proof-of-concept trait definition already exists in `foundation/src/contracts.rs`.
 
+### Measured state of the first requirement (added 2026-10-04)
+
+The first requirement above is the **target**. This is where the tree actually stands, because a
+reader who takes the sentence as a description will form the wrong picture (recorded by ADR #59
+§Q1 drift, which required this note):
+
+**Fourteen crates are registered** (`platform/startup/src/lib.rs:94-115`). **Ten own their
+vertical slice** — `inventory`, `crm`, `tax`, `settings`, `staff`, `sales`, `reporting`,
+`terminal`, `currency`, `loyalty`. **Four are lifecycle-only placeholders** — `purchasing`,
+`promotions`, `giftcards`, `kitchen` — which own their manifest, id and dependency edges while
+their hooks only log (`platform/startup/src/lib.rs:107-111`, and the same fact is stamped at
+`modules/README.md:3`).
+
+**They are not dead code.** All fourteen are registered, dependency-checked and lifecycle-driven,
+which is what makes the manifest/declaration parity test meaningful; "lifecycle-only placeholder" is
+the measured description, and calling them unimplemented would be a different inaccuracy. Domain
+logic for the four lives in `kasirmu-core` today, and extraction is deferred — ADR #59 §Q1 drift
+decides to amend this record rather than port working code to make a sentence true.
+
 ---
 
 ## Decision

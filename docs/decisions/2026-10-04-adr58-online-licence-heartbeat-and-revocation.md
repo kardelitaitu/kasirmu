@@ -361,13 +361,20 @@ register stays open.
 
 ### 2.4a Renewal, revocation and un-revocation — corrected against the server
 
-> **Correction (2026-10-04, found on review of `apps/license-server/`).** An earlier revision of
-> this section asserted that there is no `revoked` check in the renew path and that "the ban would
-> be undone by the act of paying". **That was wrong.** The renew path does refuse a non-active
-> tenant (§2.4a.1 below), so the laundering risk described does not exist. Reviewing the server to
-> prove it surfaced **two different defects that the original text missed** (§2.4a.2 and §2.4a.3),
-> both more consequential than the one it claimed. The text is replaced rather than annotated,
-> because the section's conclusion was inverted.
+> **Corrections (2026-10-04).** This section has been wrong twice, in opposite directions, and both
+> errors are recorded rather than erased.
+>
+> 1. The original text asserted there is no `revoked` check in the renew path and that "the ban
+>    would be undone by the act of paying". **Wrong** — `renew.go:76-81` refuses a non-active tenant
+>    (§2.4a.1).
+> 2. The repair pass then claimed two further defects (§2.4a.2, §2.4a.3). **One of those was also
+>    wrong**: §2.4a.3 described the grant flip as a bug when it is documented, tested intent
+>    (withdrawn there). §2.4a.2's *conclusion* survived but its *diagnosis* did not — the device path
+>    is dead at both ends, not merely unread at one.
+>
+> **The lesson, recorded because it caused both errors:** a defect claim about *intent* needs the
+> doc comment, the test, and the git history checked — not just the line. Checking only the line is
+> how a working feature gets reported as a bug.
 
 #### 2.4a.1 Renewal already refuses a non-active tenant — IMPLEMENTED
 
@@ -396,135 +403,162 @@ depend on that distinction (it does not — both are non-active and both mean no
 serviceable and needs no server work. The requirement table that stood here is **deleted, not
 deferred** — it specified a change that is not needed.
 
-#### 2.4a.2 Device revocation has no enforcement — TO BUILD, and this is the real gap
+#### 2.4a.2 Device revocation is dead at BOTH ends — corrected 2026-10-04
 
-`handleAdminRevokeDevice` (`admin_tenant_lifecycle.go:225-257`) sets `tenant_machines.revoked_at`
-for **one device**. It does **not** touch `tenants.status`.
+> **CORRECTED.** An earlier revision of this section said the server *"already emits the verdict"*
+> and the client *"discards it"*, implying the fix was to add one field to `LicenseStatusResponse`.
+> **That was wrong, and the error was mine.** The verdict is never *produced* either: the client
+> sends no `machine_id`, so the server's device lookup never runs and `deviceRevoked` is
+> **always false**. The path is dead at both ends, not one. The corrected finding is larger and is
+> recorded below.
 
-Consequence, traced through the gate this record specifies:
+**What the admin action writes.** `handleAdminRevokeDevice` (`admin_tenant_lifecycle.go:229-257`,
+route `main.go:362`) sets `tenant_machines.revoked_at` for one device. It does not touch
+`tenants.status`.
+
+**End one — the client never asks.** `check_license_status` (`license_verification.rs:564-572`)
+POSTs with `.bearer_auth(api_key)` and **no request body**:
+
+```rust
+let resp = client
+    .post(&url)
+    .bearer_auth(api_key)
+    .timeout(std::time::Duration::from_secs(15))
+    .send()
+```
+
+**End two — the server therefore cannot answer.** `status.go:94` populates its device fields only
+from a decoded body:
+
+```go
+if err := json.NewDecoder(e.Request.Body).Decode(&statusReq); err == nil && statusReq.MachineID != "" {
+```
+
+With no body the decode errors, `MachineID` stays empty, the `tenant_machines` lookup at `:95-104`
+never runs, and `deviceRevoked` (`:88`, `:107`) remains `false` on every response. `status.go`
+still *returns* `"device_revoked"` (`:151`, `:175`) — always `false`.
+
+**End three — nothing could read it anyway.** `LicenseStatusResponse`
+(`license_verification.rs:264-293`) has no `device_revoked` field, and no consumer of the value
+exists anywhere: a repo-wide search for `device_revoked`/deviceRevoked` returns **zero** matches in
+`crates/` and in `apps/cloud-server/`. Serde would drop the key even if the server ever set it.
+
+**Net effect, traced through the gate this record specifies:**
 
 1. Admin revokes a device → `tenant_machines.revoked_at` is set.
-2. `tenants.status` remains `"active"`.
+2. `tenants.status` stays `"active"`; the client sends no `machine_id`.
 3. `create_session` (`auth.rs:610-630`) reads the *tenant* subscription, sees `active`.
 4. **The session is granted. The app keeps working.**
 
-The revoked device is never consulted, because nothing reads `tenant_machines.revoked_at` on the
-session path. **The admin action appears to succeed and changes nothing observable on the device.**
+**The intent is documented in three places, none of which the code honours.** `pb_schema.json:859`
+describes `tenant_machines.revoked_at` as *"When set, the machine has been revoked by the tenant
+admin and **should not be allowed to activate**."* `status.go:83-87` calls the mechanism
+*"P8-2: Machine-level revocation — checked and performed via the status endpoint."* And the revoke
+route is registered and admin-authenticated (`main.go:362`). **This is a capability that was
+designed, built at both endpoints, and never joined up.**
 
-This is the same *class* of defect §1.4 describes — a state written but not honoured — though the
-cause is different from §1.4's (there, two meanings shared one enum variant; here, the enforcement
-point reads a different table from the one the action writes).
+**Decision: the fix is a three-part protocol completion, not a field addition.** Recorded as a
+decision with options because the smallest patch would leave the path half-dead again:
 
-**The server already emits the verdict — the client discards it (found 2026-10-04).** This makes
-the fix smaller than the shape below first suggested, and it also explains *why* the gap survived:
+| Option | What it takes | Trade-off |
+|---|---|---|
+| **A. Complete the protocol** (recommended) | (1) `check_license_status` sends `{"machine_id": …}`; (2) `LicenseStatusResponse` gains `device_revoked: bool` (default false); (3) `create_session` refuses when the cached verdict is set | Three coupled changes, and (1) means the client now depends on `MACHINE_ID` being resolvable before the call |
+| **B. Delete the dead path** | Remove `status.go:83-119`, the `device_revoked` response keys, the `tenant_machines.revoked_at` field and the revoke route | Honest and smaller, but removes an admin capability the schema documents; a stolen tablet could then only be stopped by revoking the whole tenant |
+| **C. Leave it dead and document it** | No code change; record the capability as non-functional | Cheapest, but ships a route that appears to work and silently does nothing — the exact failure §1.4 describes |
 
-- `apps/license-server/status.go:107,151,175` computes `deviceRevoked` and returns it as
-  `"device_revoked"` on `POST /api/v1/license/status`.
-- `crates/kasirmu-core/src/license_verification.rs:264-293` — `LicenseStatusResponse` has **no
-  `device_revoked` field**. Serde ignores the unknown key, so the server's answer is parsed and
-  **thrown away**. The verdict is already on the wire; nothing reads it.
+**Recommendation: A.** Option B removes a real capability (the per-device blast radius §4 Q2
+deliberately chose over tenant-wide), and option C preserves a lie in the admin surface. A is the
+only option that makes the documented behaviour true.
 
-**The device row also documents the intent the code does not implement.** `pb_schema.json:859`
-describes `tenant_machines.revoked_at` as: *"When set, the machine has been revoked by the tenant
-admin and **should not be allowed to activate**."* That is the behaviour §2.4a.2 asks for, written
-in the schema before it was written here.
+**Why per-device and not "revoking a device sets the tenant's status":** the admin action is
+labelled *revoke this device* (`admin_tenant_lifecycle.go:225`), and its blast radius should match
+its label. Flipping `tenants.status` would make a stolen-tablet action end an entire multi-terminal
+business — the asymmetry §4 Q2 resolves in favour of the smaller radius.
 
-**Decision: enforce at `create_session`, per device**, with the check placed beside the existing
-entitlement gate. `create_session` **already receives `args.terminal_id`** (`auth.rs:636`), so no
-new plumbing is needed:
+**Enforcement point, if A is taken:** `create_session` beside the existing entitlement gate.
+It **already receives `args.terminal_id`** (`auth.rs:636`), so the gate itself needs no new
+plumbing:
 
 ```
 create_session → load subscription → verify_signature()   [existing :617]
-              → tenant_machines[terminal_id].revoked_at?  → refuse   [new]
+              → cached device verdict set?  → refuse      [new]
               → check Revoked (§2.1)                     [new]
               → check allows_workspace_type()            [existing :620]
 ```
 
-**Two ways to feed it, and the choice is ADR #59's to make.** The verdict can be read from the local
-`tenant_machines` row (already present) or carried on the status response the client already
-receives. §4a Q-D already decides the *shape* — cache it alongside `tenant_subscription` rather
-than a network call inside `create_session`, which §2.7 forbids from being able to brick a
-register. Whichever source, the check is a local lookup at the gate.
-
-**Why per-device and not "revoking a device sets the tenant's status":** the admin UI action is
-labelled *revoke this device* (`admin_tenant_lifecycle.go:225`), and its blast radius should match
-its label. Flipping `tenants.status` would make a stolen-tablet action end an entire multi-terminal
-business — the exact asymmetry §4 Q2 resolves in favour of the smaller radius.
+**Where the verdict is cached is §4a Q-D's decision** — it already rules for a local cache beside
+`tenant_subscription` rather than a network call inside `create_session`, which §2.7 forbids from
+being able to brick a register.
 
 **Also required:** a live session on a revoked device must be invalidated, not merely refused on
-next login. The session store is in-memory (`auth.rs:251-257`) and already prunes expired entries,
-so revocation invalidation extends an existing path.
+next login. The session store is in-memory (`auth.rs:251-257`) and already prunes expired entries.
 
-**Sequencing, stated because two records depend on it:** the client-side `device_revoked` field is
-a wire change (`LicenseStatusResponse` gains a field) and the server half already exists. Adding
-the field is therefore additive and backward-compatible — an older server that omits it parses as
-`false`, which is the pre-existing behaviour, not a new lockout.
+**Related, and separately enforced:** the *tenant*-level revoke route (`main.go:357`,
+`handleAdminRevoke` at `admin_dashboard.go:347`) does set `tenants.status = "revoked"`
+(`admin_dashboard.go:356`), and renewal already refuses a non-active tenant (§2.4a.1). What is
+missing there is the session-side lock, which §2.1 supplies. So the two revoke scopes fail
+differently: tenant-level is enforced at renewal but not at session creation; device-level is
+enforced nowhere.
 
-#### 2.4a.3 A manual grant silently un-revokes — TO BUILD, a guard
+#### 2.4a.3 The grant flip re-activates a revoked tenant — DELIBERATE, not a defect
 
-`admin_tenant_lifecycle.go:382-388`:
+> **WITHDRAWN 2026-10-04.** An earlier revision of this section called the grant flip a defect
+> ("a manual grant silently un-revokes") and proposed guarding it so only `suspended` was cleared.
+> **That recommendation was wrong and must not be implemented.** Verification against the tree found
+> the flip is **documented intent with a test that asserts it**; the proposed guard would have
+> **broken a passing test** to fix behaviour that is working as designed. The section is retained,
+> inverted, because the next reader will otherwise re-derive the same wrong conclusion.
+
+**What the code actually says.** `handleAdminGrantSubscription` (`admin_tenant_lifecycle.go:276`)
+carries this doc comment (`:271-275`):
+
+> creates a fully signed subscription record … Refuses to stack on an active subscription (use
+> renew/tier-override instead) **and re-activates a revoked/suspended tenant.**
+
+and the flip itself is commented (`:382`): *"A tenant that just paid must not stay
+revoked/suspended."*
+
+**What the tests assert.** `admin_lifecycle_test.go:327` seeds a tenant with status **`"revoked"`**,
+grants a subscription, and `:363-367` asserts:
 
 ```go
-// A tenant that just paid must not stay revoked/suspended.
-if tenant.GetString("status") != "active" {
-    tenant.Set("status", "active")
-    ...
+// Revoked tenant flipped to active.
+if updated.GetString("status") != "active" {
+    t.Errorf("tenant status = %q, want active after grant", updated.GetString("status"))
 }
 ```
 
-The comment states the intent — a tenant who paid should not remain locked out — and the intent is
-right. The implementation is **unconditional**: any `grant-subscription` call clears *any*
-non-active status, including a revocation whose reason was abuse.
+**What the history says.** `git log -L` over both the comment and the flip resolves to a single
+commit — `0f6881663 feat(licensing): tenant lifecycle admin endpoints` — so the comment and the
+behaviour were written together. This is not drift between a doc and code.
 
-**The failure this produces:** an operator issues a goodwill credit, extends a subscription as a
-support fix, or corrects a billing mistake — and a previously revoked tenant silently becomes
-active again. Nothing in the response or the log distinguishes "this grant also lifted a ban" from
-"this grant extended a subscription". The revocation is undone by an action taken for an unrelated
-reason.
+**Why the "silent un-revoke" scenario does not hold.** The earlier text argued that "an operator
+issues a goodwill credit … and a previously revoked tenant silently becomes active again". But a
+`grant-subscription` call is an **explicit admin action against one tenant, requiring a mandatory
+`reason`** (`admin_tenant_lifecycle.go:292-294` rejects an empty one). The operator issuing it is
+the same actor who can revoke — so there is no privilege escalation and no accidental path. The
+"silently" framing was the error: the action is deliberate, authenticated, and audited by reason.
 
-**The two statuses are ALREADY distinct — corrected 2026-10-04.** An earlier revision of this
-section proposed adding a `revocation_reason` field so the flip could "clear `suspended` but not
-`revoked`". That field is **not needed**: the production schema already carries both values on one
-select field.
-
-`apps/license-server/pb_schema.json:399-400` (the `tenants` collection):
-
-```json
-"values": ["active", "suspended", "revoked"]
-```
-
-So the distinction this section asks for exists; what is missing is only that the **flip ignores
-it**. The fix is a guard, not a schema change:
-
-```go
-// admin_tenant_lifecycle.go:383 — currently flips ANY non-active status
-if tenant.GetString("status") == "suspended" {   // was: != "active"
-    tenant.Set("status", "active")
-}
-```
+**The residual that IS real, stated narrowly.** The flip is **unconditional**, so it clears
+`revoked` and `suspended` alike, and the log line (`:389-390`) records the grant and its reason
+but does not say *"this also lifted a revocation"*. An incident review reconstructing "why is this
+tenant active again" therefore has the reason but not the classification. That is an **audit
+clarity** gap, not an enforcement hole.
 
 | Option | Pros | Cons |
 |---|---|---|
-| **A. A one-line guard** (chosen) | No schema change, no migration, no new field; the enum already means what it should | A future third status must be considered at this line |
-| **B. A `revocation_reason` field** as well | Records *why* a tenant was revoked, for audit | Not the fix — the enum already separates the two; adds a field and a write path for an audit nicety |
-| **C. A separate un-revoke endpoint for `revoked`** | Makes un-revoke a deliberate act (§1.1 rule 2) rather than a side effect | More surface; can follow later |
+| **A. Leave as-is** (chosen) | Behaviour is intended, documented and tested; no code change; no test broken | The audit log does not distinguish "granted" from "granted, and a ban was lifted" |
+| **B. A `revocation_reason` field for audit only** | Answers "why was this tenant revoked?" independently of the grant log | A field and a write path for a question the mandatory `reason` already answers |
+| **C. Guard the flip so only `suspended` clears** | — | **Rejected: breaks `admin_lifecycle_test.go:363-367` and contradicts the handler's own doc comment. This is the withdrawn recommendation.** |
 
-**Decision: A now, with C as the end state.** A closes the hole with one line and no migration.
-**B is demoted from "the fix" to "an optional audit improvement"** — worth having for the incident
-question "why was this tenant revoked?", but it does not change the behaviour and must not be
-described as the guard. C is the right destination once un-revoke needs its own operator action,
-because today `revoked` has no un-revoke route at all (only the grant flip, which is the bug).
+**Decision: A — no change.** The withdrawn option C is recorded so it is not re-proposed. If the
+audit-clarity gap is judged worth closing, B is the additive form, and it must be introduced as a
+*new* field on the revoke path (`handleAdminRevokeDevice`) rather than as a guard on the grant
+path, so the existing behaviour and its test are untouched.
 
-**A regression test is required, not optional.** This is the one change in the record whose failure
-is **silent** — the ban is lifted with no error, no log line distinguishing it from a normal grant,
-and no user-visible symptom until the abuse recurs. The test must drive `grant-subscription`
-against a `revoked` tenant and assert the status **stays** `revoked`, and separately against a
-`suspended` tenant and assert it becomes `active`.
-
-**Both changes are audited:** the refusal (2.4a.2) and the un-revoke (2.4a.3) must record actor and
-reason like `handleAdminRevokeDevice` already does (`:254`). §2.5 requires it for the region
-equivalent, and the same argument applies here — "why is this tenant active again" is the question
-an incident review asks.
+**Lesson carried into this record's other sections:** a defect claim about *intent* needs the doc
+comment, the test and the history checked, not just the line. §2.4a.2 below was re-verified the same
+way, and its conclusion changed as a result.
 
 #### 2.4a.4 What remains true from the original text
 
@@ -632,9 +666,11 @@ unrecoverable offline. Session refusal is reversible, diagnosable, and loses not
   session gate and the in-memory session store are all already there (§1.3). The new client-side
   code is **one enum variant** (`Revoked`, §2.1) and the enforcement points that consume it; **no new
   timestamp is needed**, because `expires_at` already exists and is already refreshed from the server
-  (§2.3, `license_verification.rs:692`). Add the two server-side gaps §2.4a.2/§2.4a.3 close — the
-  per-device `revoked_at` check, and a one-line guard on the grant flip so it clears only
-  `suspended` — plus the §2.6 export path §4a Q-A decides, and §2.7's constraint on all of them.
+  (§2.3, `license_verification.rs:692`). Add the one server-side gap §2.4a.2 identifies — the
+  `device_revoked` protocol completed at all three points (client sends `machine_id`, response
+  carries the flag, `create_session` honours it) — plus the §2.6 export path §4a Q-A decides, and
+  §2.7's constraint on all of them. **§2.4a.3 adds nothing**: its recommended guard was withdrawn
+  as wrong, and the grant flip stays as designed.
   An earlier revision said *"one enum variant, one timestamp"*: the timestamp was a leftover from
   the superseded fixed-heartbeat design, which §2.3 replaced. A later revision described §2.4a.3 as
   adding a `revocation_reason` field; the schema already separates `suspended` from `revoked`
@@ -659,12 +695,11 @@ unrecoverable offline. Session refusal is reversible, diagnosable, and loses not
   against `Active | Grace` without naming `Canceled`, so they stay exhaustively-typed while
   silently deciding `Revoked`. Both need an explicit audit and a test; the ten named sites in
   `subscription.rs` and the two test files are ordinary compile-error work.
-- **Two enforcement gaps are open, both server-side** (§2.4a.2, §2.4a.3). Renewal refusal already
-  works (§2.4a.1), so the sequencing warning that stood here is withdrawn. What remains:
-  **device revocation is not enforced** (`create_session` never reads
-  `tenant_machines.revoked_at`), and **a manual grant silently clears a revocation**
-  (`admin_tenant_lifecycle.go:382-388`). Until the first is fixed, the admin "revoke device" action
-  changes nothing on the device.
+- **One enforcement gap is open, and it is larger than first recorded** (§2.4a.2). Renewal refusal
+  works (§2.4a.1). The grant flip is **not** a defect (§2.4a.3, withdrawn). What remains is that
+  **device revocation is dead at both ends** — the client sends no `machine_id`, so the server's
+  verdict is always `false`, and nothing parses it anyway. Until the protocol is completed, the
+  admin "revoke device" action changes nothing on the device.
 - **The §2.1 client gate and §2.4a.2's device check are independent** and can ship in either order:
   §2.1 handles a tenant-level `revoked` status, §2.4a.2 handles a device-level one. Neither depends
   on the other, which is why the earlier sequencing constraint was wrong.
@@ -888,16 +923,27 @@ which is true of the poll as it stands.
 
 ### Q-C — Does an existing `revoked_at` on a DEVICE outlive a tenant un-revoke? `[deferrable]` — DECIDED
 
-**The gap:** §2.4a.2 adds a per-device check (`tenant_machines[terminal_id].revoked_at` → refuse) and
-§2.4a.3 un-revokes at the **tenant** level (`admin_tenant_lifecycle.go:382-388` flips
-`tenants.status`). **Nothing clears a device row.** So un-revoking a tenant leaves every device
-revoked at step §2.4a.2, and the tenant is active but the tills still refuse sessions — a ban that
-outlives its own reversal.
+**The gap — re-scoped 2026-10-04, because §2.4a.3's premise changed.** The original text said
+§2.4a.3 "un-revokes at the tenant level". §2.4a.3 has since been **withdrawn as wrong**: the grant
+flip is deliberate behaviour, not a defect. That does not remove this question — it sharpens it,
+because the flip is now the *only* tenant-level un-revoke path, and it is the one an operator will
+actually use.
+
+**The gap, restated:** if §2.4a.2's per-device check ships, `tenant_machines.revoked_at` becomes
+enforcing for the first time — and **nothing clears that row.** The grant flip
+(`admin_tenant_lifecycle.go:382-388`) sets `tenants.status = "active"` and does not touch
+`tenant_machines`. So the ordinary un-revoke path — *a tenant pays, an admin grants* — leaves every
+device still revoked at step §2.4a.2: **the tenant is active but its tills refuse sessions.** A ban
+that outlives its own reversal, produced by the record's own recommended flow.
+
+**This is the interaction §2.4a.2's fix creates**, and it is the reason the two cannot be shipped
+independently: adding the device check without a clearing path converts a working un-revoke into a
+half-locked account.
 
 | Option | How it works | Trade-off |
 |---|---|---|
 | **A. A matching per-device un-revoke endpoint** | Admin clears one `tenant_machines.revoked_at`. | **Symmetric and precise** — mirrors `handleAdminRevokeDevice` exactly, so the two device actions pair. Cost: the un-revoke of a tenant then does not un-revoke its devices, so an operator must issue N calls and can miss one, leaving the tenant half-locked with no signal that anything is wrong. |
-| **B. Tenant un-revoke clears all device rows** (recommended) | The §2.4a.3 un-revoke path also clears `revoked_at` on every `tenant_machines` row for the tenant. | **Matches operator intent** — "un-revoke this tenant" plainly means the whole account, and it cannot leave a half-locked tenant. Cost: it broadens a per-device action's reach, so a *deliberately* device-revoked tablet (a stolen one) is un-revoked with the tenant unless option A also exists to re-flag it. |
+| **B. Tenant un-revoke clears all device rows** (recommended) | The grant flip (`admin_tenant_lifecycle.go:382-388`) also clears `revoked_at` on every `tenant_machines` row for the tenant. | **Matches operator intent** — "un-revoke this tenant" plainly means the whole account, and it cannot leave a half-locked tenant. Cost: it broadens a per-device action's reach, so a *deliberately* device-revoked tablet (a stolen one) is un-revoked with the tenant unless option A also exists to re-flag it. |
 | **C. State that device revocation is permanent** | No clearing path; a revoked device stays revoked. | **Simplest** — no new code, no ambiguity. But it makes a false-positive device revocation **unrecoverable in the field**, which contradicts §2.6's own concession (a mistaken ban must be reconstructable and correctable) and is not a policy a support desk can operate. |
 
 **Decision: B — tenant un-revoke clears all device rows, with A offered later.**
@@ -907,7 +953,7 @@ additive** when it is wanted (re-revoking a stolen tablet after an un-revoke is 
 the endpoint §2.4a.2 already requires). C is rejected outright: a permanent, field-unrecoverable
 device ban is a worse failure than the abuse it deters.
 
-**Audit binding, consistent with Q2 and §2.4a.3:** the clearing path writes actor, reason and the
+**Audit binding, consistent with Q2:** the clearing path writes actor, reason and the
 **count of device rows cleared** to `audit_log`. A tenant un-revoke that silently released five
 revoked terminals is exactly the class of change that must be reconstructable.
 

@@ -788,6 +788,12 @@ measured description.
 deliverable; then the corresponding stub is extracted as ordinary product work, with a customer
 rather than a documentation motive.
 
+**Status: the amendment LANDED 2026-10-04.** `docs/decisions/2026-01-15-module-system-design.md`
+now carries a "Measured state of the first requirement" subsection under its Context, naming the ten
+owning modules and the four lifecycle-only ones with the `platform/startup/src/lib.rs:94-115` and
+`modules/README.md:3` citations. **§3.4's blocking edge is therefore cleared**: the first
+`modules/fiscal-*` crate may be built without inheriting a misdescribed ADR #1.
+
 ### Q2 vocabulary — What is the canonical region-code vocabulary, what type carries it, and how does a build target select modules? `[deferrable]` — DECIDED
 
 Q6 names one value, `global`, and says nothing about the set it belongs to. Two different facts need
