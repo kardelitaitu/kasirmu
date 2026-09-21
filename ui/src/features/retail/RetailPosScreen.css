@@ -283,6 +283,17 @@
   min-height: 0;
 }
 
+/* The page's own query container (ADR-0001 T2 / Slice 5), measured on the box
+   the shell grants this screen — not the viewport. It is an extra, unnamed
+   container nested INSIDE the shell's named app-content one, so the rules below
+   keep working when .retail-pos is mounted outside the app shell (transparent
+   wrapper, no measurement lost). A named app-content query would not match in
+   the harness/e2e/standalone mounts, because the only thing between .retail-pos
+   and app-content is a display:contents wrapper. */
+.retail-pos {
+  container-type: inline-size;
+}
+
 /* ── Left panel: product grid ──────────────────────────────── */
 
 .retail-products {
@@ -2961,6 +2972,39 @@
 .retail-cart-th-price { width: 72px; }
 .retail-cart-th-subtotal { width: 80px; }
 .retail-cart-th-actions { width: 24px; }
+
+/* ── Narrow-container tier (ADR-0001 T2 / Slice 5) ────────────────
+   Replaces the viewport-width assumption this page's layout used to carry
+   implicitly. The product table gives its columns fixed px widths (see the
+   block above) on the promise that the pane never gets narrower than they
+   need — a promise no rule enforced. Measured against .retail-pos's own
+   inline-size (declared at the top of this sheet), 880px is where the grid
+   pane left over by a minimum-width cart can still hold those columns.
+   Below it the two columns that are a nicety rather than the line fold
+   away: the leading SKU cell and the trailing total. The cart's own width
+   is unchanged — it is set inline from JS (RetailCartPanel) and is out of
+   this sheet's reach.
+
+   Why not `container-name: app-content`: the shell's .app-content-inner
+   does carry that name (ui/src/app/AppLayout.css), but the only wrapper
+   between it and .retail-pos renders with display:contents, so in every
+   mount that does not go through the shell (tests, e2e harness, the screen
+   rendered standalone) a named query would find no container and match
+   nothing. An unnamed query against the nearest container — .retail-pos —
+   is the same measurement inside the shell and stays correct outside it.
+   Desktop landscape (a content slot >= 880px) renders exactly as before. */
+@container (max-width: 880px) {
+  .retail-cart-table-inner th:nth-child(2),
+  .retail-cart-table-inner td:nth-child(2),
+  .retail-cart-table-inner th:nth-child(5),
+  .retail-cart-table-inner td:nth-child(5) {
+    display: none;
+  }
+
+  .retail-col-sku {
+    display: none;
+  }
+}
 
 /* Cart line name row (product name + course chip + modifier badge) */
 .retail-cart-line-name {
