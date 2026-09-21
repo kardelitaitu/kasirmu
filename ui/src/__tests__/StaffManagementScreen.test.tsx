@@ -730,4 +730,118 @@ describe('StaffManagementScreen', () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
     expect(screen.queryByText(/nearing the Pro plan's 20-staff limit/i)).not.toBeInTheDocument();
-  });});
+  });
+
+  // ── ADR #35 D6: withheld identity + payroll off the edit form ─────
+  //
+  // The backend withholds national_id/tax_id from a caller without
+  // `staff:read_identity`, so an empty field means "not yours to see", not
+  // "nothing on file". Treating the two alike left an editor no way to save
+  // except by typing a value for a document they could not read — which then
+  // replaced the stored one. These cases pin the fix.
+
+  it('saves an edit whose identity was withheld, without demanding or sending it', async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_staff_scoped') return Promise.resolve(SAMPLE_STAFF);
+      if (cmd === 'list_roles_scoped') return Promise.resolve(SAMPLE_ROLES);
+      if (cmd === 'update_staff_scoped') return Promise.resolve(SAMPLE_STAFF[0]);
+      // What a caller WITHOUT staff:read_identity actually receives.
+      if (cmd === 'get_staff_profile_scoped') {
+        return Promise.resolve({
+          ...SAMPLE_PROFILE,
+          national_id: null,
+          tax_id: null,
+          identity_withheld: true,
+        });
+      }
+      if (cmd === 'list_all_workspaces_scoped') return Promise.resolve([]);
+      if (cmd === 'list_locations_scoped') return Promise.resolve([]);
+      if (cmd === 'list_legal_entities_scoped') return Promise.resolve([]);
+      if (cmd === 'get_brand_settings' || cmd === 'get_brand_settings_scoped') {
+        return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
+      }
+      recordUnmatchedInvoke(cmd);
+      return Promise.reject(new Error(`Unknown command: ${cmd}`));
+    });
+
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+    fireEvent.click(screen.getByRole('button', { name: /edit.*jane smith/i }));
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText('Date of Birth *')).toHaveValue('1990-05-14');
+    }, FAST_WAIT);
+
+    // The field stops reading as required and explains itself instead.
+    const nationalId = within(dialog).getByLabelText('National ID (hidden)');
+    expect(nationalId).toBeDisabled();
+    expect(
+      within(dialog).getByText(/do not have permission to view this member/i),
+    ).toBeInTheDocument();
+
+    // Saving needs no identity value typed in.
+    fireEvent.click(within(dialog).getByRole('button', { name: /update/i }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('update_staff_scoped', expect.objectContaining({
+        sessionToken: 'session-1',
+        args: expect.objectContaining({ id: 'staff-1' }),
+      }));
+    }, FAST_WAIT);
+    expect(within(dialog).queryByText(/national id is required/i)).not.toBeInTheDocument();
+
+    // ... and the payload OMITS the withheld fields, so the backend preserves
+    // the stored document rather than having it blanked.
+    const call = invokeMock.mock.calls.find((c: unknown[]) => c[0] === 'update_staff_scoped');
+    const profile = (call?.[1] as { args: { profile: Record<string, unknown> } }).args.profile;
+    expect(profile).not.toHaveProperty('national_id');
+    expect(profile).not.toHaveProperty('tax_id');
+  });
+
+  it('does not send payroll when editing, even though the profile carried an amount', async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+    fireEvent.click(screen.getByRole('button', { name: /edit.*jane smith/i }));
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText('Date of Birth *')).toHaveValue('1990-05-14');
+    }, FAST_WAIT);
+
+    // The pay field is not on the edit form at all — a payroll surface owns it.
+    expect(within(dialog).queryByLabelText('Monthly Take-Home Pay *')).not.toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /update/i }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('update_staff_scoped', expect.objectContaining({
+        sessionToken: 'session-1',
+      }));
+    }, FAST_WAIT);
+
+    // SAMPLE_PROFILE carries 5_000_000: an edit must not echo a stale amount
+    // back, or it would clobber a newer payroll change made in between.
+    const call = invokeMock.mock.calls.find((c: unknown[]) => c[0] === 'update_staff_scoped');
+    const profile = (call?.[1] as { args: { profile: Record<string, unknown> } }).args.profile;
+    expect(profile).not.toHaveProperty('monthly_take_home_minor');
+  });
+
+  it('still collects payroll at creation', async () => {
+    // The other half of the move: pay is collected once, when the member is
+    // created, so the create form must still require and send it.
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+    fireEvent.click(screen.getByRole('button', { name: /add staff/i }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /username/i }), { target: { value: 'newuser' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /display name/i }), { target: { value: 'New User' } });
+    fireEvent.change(within(dialog).getByPlaceholderText(/enter pin/i), { target: { value: '1234' } });
+    fireEvent.change(within(dialog).getByRole('combobox', { name: /^role/i }), { target: { value: 'role-staff' } });
+    await fillRequiredProfile(dialog);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /create/i }));
+    await waitFor(() => {
+      const call = invokeMock.mock.calls.find((c: unknown[]) => c[0] === 'create_staff_scoped');
+      const profile = (call?.[1] as { args: { profile: Record<string, unknown> } }).args.profile;
+      expect(profile).toHaveProperty('monthly_take_home_minor');
+      expect(profile['monthly_take_home_minor'] as number).toBeGreaterThan(0);
+    }, FAST_WAIT);
+  });
+});

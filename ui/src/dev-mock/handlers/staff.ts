@@ -553,6 +553,12 @@ export const staffHandlers: Record<string, MockHandler> = {
     national_id_type: 'nik',
     national_id: null,
     national_id_masked: '****-****-****-1234',
+    // A mask with no raw value behind it is the withheld state, not an empty
+    // one — the dev server has no ciphertext to hand out. Reporting it keeps
+    // the mock DTO self-consistent (`identity_withheld: false` with a null
+    // national id would claim a member has no document while showing its
+    // last four digits) and lets the withheld branch be seen in the dev app.
+    identity_withheld: true,
     email: 'owner@example.com',
     monthly_take_home_minor: 5000000,
     emergency_contact_name: 'Spouse',

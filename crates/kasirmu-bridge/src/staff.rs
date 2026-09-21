@@ -30,7 +30,7 @@ use kasirmu_core::db::audit_security::{
     SECURITY_ACTION_USER_CREATE, SECURITY_ACTION_USER_UPDATE, SECURITY_REASON_ACCOUNT_CREATED,
     SECURITY_REASON_PIN_ROTATED, SECURITY_REASON_PROFILE_CHANGED, SecurityEvent,
 };
-use kasirmu_core::db::profile::{UserProfile, mask_last4};
+use kasirmu_core::db::profile::{SensitiveWritePolicy, UserProfile, mask_last4};
 use kasirmu_core::entitlements::Entitlements;
 use kasirmu_core::permissions;
 use kasirmu_core::subscription::TenantSubscription;
@@ -238,6 +238,15 @@ pub struct ProfileViewDto {
     pub hire_date: Option<String>,
     /// Whether all 8 required profile fields are present.
     pub is_complete: bool,
+    /// True when `national_id` and `tax_id` are absent because the caller does
+    /// NOT hold `staff:read_identity` — withheld, rather than unset.
+    ///
+    /// The edit form needs this to tell "no document on file" from "a document
+    /// you may not see": it must not demand the field (which forces the editor
+    /// to invent a value for something they cannot read) and must not offer an
+    /// empty box that would blank the stored one. Consumers that only display
+    /// the profile can ignore it.
+    pub identity_withheld: bool,
 }
 
 impl From<kasirmu_core::db::profile::ProfileView> for ProfileViewDto {
@@ -265,6 +274,7 @@ impl From<kasirmu_core::db::profile::ProfileView> for ProfileViewDto {
             emergency_contact_relationship: view.emergency_contact_relationship,
             hire_date: view.hire_date,
             is_complete: view.is_complete,
+            identity_withheld: view.identity_withheld,
         }
     }
 }
@@ -1202,8 +1212,25 @@ pub async fn update_staff_scoped(
         // ADR #35 D6: the profile columns (validated, encrypted at rest by
         // kasirmu-core) follow the same atomic update. Single-statement write,
         // safe inside this transaction.
+        //
+        // The write is caller-aware, and both halves of the policy matter:
+        //
+        // * an editor WITHOUT `staff:read_identity` was shown an empty national
+        //   id and tax id because the read withheld them, not because they are
+        //   unset. The write must therefore keep the stored ones: requiring
+        //   them leaves no way to save except inventing a value for a document
+        //   the editor cannot see, and clearing them destroys the real one.
+        // * this screen does not manage payroll — the pay field belongs to its
+        //   own surface — so an update from here never moves the stored amount.
+        //   `keep_pay` is what makes that true; without it, omitting the field
+        //   would clear it, and requiring it would force a blank edit.
         if let Some(profile) = &args.profile {
-            store.write_user_profile(&args.id, &profile.clone().into_profile())?;
+            let policy = SensitiveWritePolicy {
+                keep_identity_record: !store
+                    .holds_permission(&session.user_id, permissions::STAFF_READ_IDENTITY)?,
+                keep_pay: true,
+            };
+            store.write_user_profile_with(policy, &args.id, &profile.clone().into_profile())?;
         }
 
         // ADR #35 D5 (spec 0048): the assignment scope rides the same

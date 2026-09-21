@@ -12,6 +12,7 @@ use tauri::{State, command};
 
 use kasirmu_core::auth::hash_pin;
 use kasirmu_core::db::Store;
+use kasirmu_core::db::profile::SensitiveWritePolicy;
 use kasirmu_core::db::audit_security::{
     SECURITY_ACTION_USER_UPDATE, SECURITY_REASON_PIN_ROTATED, SECURITY_REASON_PROFILE_CHANGED,
     SecurityEvent,
@@ -334,8 +335,30 @@ pub async fn update_staff_scoped(
         )?;
         // ADR #35 D6: the profile columns (validated, encrypted at rest by
         // kasirmu-core) follow the same atomic update.
+        //
+        // The write is caller-aware, and both halves of the policy matter:
+        //
+        // * an editor WITHOUT `staff:read_identity` was shown an empty national
+        //   id and tax id because the read withheld them, not because they are
+        //   unset. The write must therefore keep the stored ones: requiring
+        //   them leaves no way to save except inventing a value for a document
+        //   the editor cannot see, and clearing them destroys the real one.
+        // * this screen does not manage payroll — the pay field belongs to its
+        //   own surface — so an update from here never moves the stored amount.
+        //   `keep_pay` is what makes that true; without it, omitting the field
+        //   would clear it, and requiring it would force a blank edit.
+        //
+        // This block is deliberately the same policy the desktop reaches through
+        // `kasirmu_bridge::staff::update_staff_scoped` (see the ADR #49 §4 note
+        // on that function's doc for why this door is not delegated): the two
+        // must move together, because the tablet and desktop edit the same rows.
         if let Some(profile) = &args.profile {
-            store.write_user_profile(&args.id, &profile.clone().into_profile())?;
+            let policy = SensitiveWritePolicy {
+                keep_identity_record: !store
+                    .holds_permission(&session.user_id, permissions::STAFF_READ_IDENTITY)?,
+                keep_pay: true,
+            };
+            store.write_user_profile_with(policy, &args.id, &profile.clone().into_profile())?;
         }
 
         // ADR #35 D5 (spec 0048): the assignment scope rides the same

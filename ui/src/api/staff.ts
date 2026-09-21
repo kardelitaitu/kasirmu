@@ -199,6 +199,19 @@ export interface ProfileViewDto extends ProfileArgs {
   display_name: string;
   national_id_masked: string;
   is_complete: boolean;
+  /**
+   * True when `national_id` and `tax_id` are absent because the caller does
+   * NOT hold `staff:read_identity` — withheld, rather than unset.
+   *
+   * Read this before treating an empty identity field as "nothing on file".
+   * The two states need opposite handling, and conflating them is how an
+   * editor ends up inventing a value for a document they cannot see:
+   *
+   * - **withheld** → don't require it, don't send it (the backend preserves the
+   *   stored value), and say so in the form;
+   * - **absent** → a genuinely missing document that this editor may add.
+   */
+  identity_withheld: boolean;
 }
 
 /** A role definition with display name, description, and granted keys. */

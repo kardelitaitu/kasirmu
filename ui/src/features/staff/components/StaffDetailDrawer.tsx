@@ -5,8 +5,8 @@
  * Renders the add/edit `SettingsPopup`: identity fields (username, display
  * name, PIN rotation — STAFF-03), the five-role taxonomy selector with its
  * read-only granted-permission chips (0046), the ADR #35 D6 profile fieldset
- * (wage, contact, documents), and — edit mode only — the Assignment Access
- * editor (ADR #35 D5 / #47, spec 0048).
+ * (identity, contact and document fields; take-home pay on CREATE only), and —
+ * edit mode only — the Assignment Access editor (ADR #35 D5 / #47, spec 0048).
  *
  * Key props:
  * - `member` — the row being edited, or `null` for create mode. Opening the
@@ -21,6 +21,13 @@
  *   a new one was entered; profile + assignment are ONE atomic IPC call.
  * - Management-role and assignment controls are disabled while the edited
  *   member's profile is incomplete (ADR #35 D6).
+ * - Payroll is collected at creation only. An edit neither shows nor sends
+ *   `monthly_take_home_minor`, so it cannot move an amount it never displayed —
+ *   the payroll surface owns that field once the member exists.
+ * - A WITHHELD identity record (no `staff:read_identity`) is disabled rather
+ *   than required, and omitted from the save so the backend keeps the stored
+ *   document. Conflating it with a genuinely missing one is what used to leave
+ *   an editor no way to save except by inventing an identity value.
  * - A tier staff-limit rejection swaps the generic error line for the
  *   upgrade banner (C1.1); errors go through `l10nErrorMessage`.
  * - Styles come from `StaffManagementScreen.css` (global classes imported by
@@ -187,13 +194,24 @@ function baseFormFor(member: StaffMemberDto | null): FormData {
   };
 }
 
-/** Build the IPC `ProfileArgs` from the form, skipping empty optionals. */
-function profileArgsFromForm(form: FormData): ProfileArgs {
+/**
+ * Build the IPC `ProfileArgs` from the form, skipping empty optionals.
+ *
+ * `includePayroll` is false on edits, and that is load-bearing rather than a
+ * tidy-up: pay is collected at creation and owned by its own surface
+ * afterwards, so an edit must send NO `monthly_take_home_minor`. Sending the
+ * amount this form happened to read would be a lost update the moment the
+ * payroll surface changes it between this form opening and its Save — the
+ * backend preserves an omitted pay precisely so a screen that does not own the
+ * field leaves it alone.
+ */
+function profileArgsFromForm(form: FormData, includePayroll: boolean): ProfileArgs {
   // MONEY-02: exact decimal parse; garbage input is treated as absent
   // (the old parseFloat path stored NaN).
-  const payMinor = form.monthlyTakeHome.trim()
-    ? parseMinorUnits(form.monthlyTakeHome, 2) ?? undefined
-    : undefined;
+  const payMinor =
+    includePayroll && form.monthlyTakeHome.trim()
+      ? parseMinorUnits(form.monthlyTakeHome, 2) ?? undefined
+      : undefined;
   const profile: ProfileArgs = {};
   const set = (key: keyof ProfileArgs, value: string | number | undefined) => {
     if (value !== undefined && String(value).trim() !== '') {
@@ -226,7 +244,12 @@ function profileArgsFromForm(form: FormData): ProfileArgs {
  * the 9 mandatory fields (username + full name included) plus shape checks
  * for email / phone / national id / pay. Empty object means valid.
  */
-function validateProfileForm(form: FormData, l10n: ReturnType<typeof useLocalization>['l10n'], isEditing: boolean): Record<string, string> {
+function validateProfileForm(
+  form: FormData,
+  l10n: ReturnType<typeof useLocalization>['l10n'],
+  isEditing: boolean,
+  identityWithheld: boolean,
+): Record<string, string> {
   const errors: Record<string, string> = {};
   const required = (field: keyof FormData, key: string) => {
     if (!String(form[field]).trim()) {
@@ -235,14 +258,24 @@ function validateProfileForm(form: FormData, l10n: ReturnType<typeof useLocaliza
   };
   if (!isEditing) {
     required('username', 'staff-error-username-required');
+    // Payroll is collected at creation only. The edit form does not show the
+    // field at all — a separate surface owns it — so requiring it here would
+    // block every edit on a field the editor cannot see or supply.
+    required('monthlyTakeHome', 'staff-error-pay-required');
   }
   required('displayName', 'staff-error-display-name-required');
   required('dateOfBirth', 'staff-error-dob-required');
   required('phone', 'staff-error-phone-required');
   required('nationalIdType', 'staff-error-national-id-type-required');
-  required('nationalId', 'staff-error-national-id-required');
+  // ADR #35 D6: a WITHHELD national id is not a missing one. Requiring it left
+  // a caller without `staff:read_identity` no way to save except by typing a
+  // value for a document they are not allowed to read — which then replaced
+  // the stored one. The backend preserves the stored value when the field is
+  // omitted, so the honest thing is to not demand it.
+  if (!identityWithheld) {
+    required('nationalId', 'staff-error-national-id-required');
+  }
   required('email', 'staff-error-email-required');
-  required('monthlyTakeHome', 'staff-error-pay-required');
   required('emergencyContactName', 'staff-error-emergency-name-required');
   required('emergencyContactPhone', 'staff-error-emergency-phone-required');
 
@@ -301,6 +334,13 @@ export function StaffDetailDrawer({ open, member, roles, onClose, onSaved }: Sta
   const [error, setError] = useState<string | null>(null);
   /** C1.1: the last save was rejected by the tier's staff-user limit. */
   const [quotaUpgrade, setQuotaUpgrade] = useState(false);
+  /**
+   * ADR #35 D6: the profile read withheld the identity fields (this caller has
+   * no `staff:read_identity`). The identity inputs are disabled and no longer
+   * required, and the save omits them — the backend keeps the stored values.
+   * Reset on every open, because a create form has nothing withheld.
+   */
+  const [identityWithheld, setIdentityWithheld] = useState(false);
   const [allWorkspaces, setAllWorkspaces] = useState<WorkspaceTypeDto[]>([]);
   /** Branch picker source — `store_profiles` rows are the branch ids the
    * assignment model scopes on (ADR #35 D5). */
@@ -326,6 +366,10 @@ export function StaffDetailDrawer({ open, member, roles, onClose, onSaved }: Sta
       setFieldErrors({});
       setError(null);
       setQuotaUpgrade(false);
+      // Nothing is withheld until a profile read says so: this reset is what
+      // stops a withheld edit from leaving the next create form's identity
+      // inputs disabled.
+      setIdentityWithheld(false);
     }
   }
 
@@ -355,6 +399,7 @@ export function StaffDetailDrawer({ open, member, roles, onClose, onSaved }: Sta
           listLocationsScoped(sessionToken),
           listLegalEntitiesScoped(sessionToken),
         ]);
+        setIdentityWithheld(profile.identity_withheld ?? false);
         setForm((prev) => ({
           ...prev,
           dateOfBirth: profile.date_of_birth ?? '',
@@ -362,9 +407,9 @@ export function StaffDetailDrawer({ open, member, roles, onClose, onSaved }: Sta
           nationalIdType: profile.national_id_type ?? '',
           nationalId: profile.national_id ?? '',
           email: profile.email ?? '',
-          monthlyTakeHome: profile.monthly_take_home_minor != null
-            ? String(profile.monthly_take_home_minor / 100)
-            : '',
+          // Deliberately NOT seeded: this is an edit, and the edit form does
+          // not manage pay. Seeding it would put the amount into the save
+          // payload and let a stale read overwrite a newer payroll change.
           emergencyContactName: profile.emergency_contact_name ?? '',
           emergencyContactPhone: profile.emergency_contact_phone ?? '',
           jobTitle: profile.job_title ?? '',
@@ -423,7 +468,7 @@ export function StaffDetailDrawer({ open, member, roles, onClose, onSaved }: Sta
     // ADR #35 D6: field-level, localized validation of the 9 mandatory
     // fields + shapes. The form cannot submit with any required field
     // missing.
-    const errors = validateProfileForm(form, l10n, isEditing);
+    const errors = validateProfileForm(form, l10n, isEditing, identityWithheld);
     if (!form.roleId) {
       errors['roleId'] = l10n.getString('staff-error-role-required');
     }
@@ -446,7 +491,8 @@ export function StaffDetailDrawer({ open, member, roles, onClose, onSaved }: Sta
         setError(l10n.getString('staff-error-save-failed'));
         return;
       }
-      const profile = profileArgsFromForm(form);
+      // Payroll rides creation only — see profileArgsFromForm.
+      const profile = profileArgsFromForm(form, !isEditing);
       if (member) {
         const trimmedPin = form.pin.trim();
         // STAFF-05: profile + workspace assignment are now ONE IPC call —
@@ -702,6 +748,10 @@ export function StaffDetailDrawer({ open, member, roles, onClose, onSaved }: Sta
           <span className="staff-mgmt-field-error" role="alert">{fieldErrors['phone']}</span>
         )}
 
+        {/* ADR #35 D6: the identity record is read-only to a caller who cannot
+            read it. The type labels the national id, so the pair is disabled
+            together — otherwise this editor could re-label a document they
+            cannot see, leaving the type and the stored id disagreeing. */}
         <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-national-id-type" aria-label={l10n.getString('staff-field-national-id-type-aria')}>
           <Localized id="staff-field-national-id-type-label">
             <span className="staff-mgmt-label">National ID Type *</span>
@@ -710,6 +760,7 @@ export function StaffDetailDrawer({ open, member, roles, onClose, onSaved }: Sta
             className="staff-mgmt-input"
             id="staff-field-national-id-type"
             value={form.nationalIdType}
+            disabled={identityWithheld}
             onChange={(e) => setForm((prev) => ({ ...prev, nationalIdType: e.target.value }))}
           >
             <option value="">{l10n.getString('staff-national-id-type-select')}</option>
@@ -722,21 +773,37 @@ export function StaffDetailDrawer({ open, member, roles, onClose, onSaved }: Sta
         )}
 
         <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-national-id" aria-label={l10n.getString('staff-field-national-id-aria')}>
-          <Localized id="staff-field-national-id-label">
-            <span className="staff-mgmt-label">National ID *</span>
+          <Localized
+            id={identityWithheld ? 'staff-field-national-id-label-hidden' : 'staff-field-national-id-label'}
+          >
+            <span className="staff-mgmt-label">
+              {identityWithheld ? 'National ID (hidden)' : 'National ID *'}
+            </span>
           </Localized>
           <input
             className="staff-mgmt-input"
             type="text"
             id="staff-field-national-id"
             value={form.nationalId}
+            disabled={identityWithheld}
             onChange={(e) => setForm((prev) => ({ ...prev, nationalId: e.target.value }))}
             inputMode="numeric"
             autoComplete="off"
+            aria-describedby={identityWithheld ? 'staff-identity-withheld-hint' : undefined}
           />
         </label>
         {fieldErrors['nationalId'] && (
           <span className="staff-mgmt-field-error" role="alert">{fieldErrors['nationalId']}</span>
+        )}
+        {identityWithheld && (
+          <p className="staff-mgmt-field-hint" id="staff-identity-withheld-hint" role="note">
+            <Localized id="staff-identity-withheld-hint">
+              <span>
+                You do not have permission to view this member&apos;s identity
+                documents. They are left unchanged when you save.
+              </span>
+            </Localized>
+          </p>
         )}
 
         <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-email" aria-label={l10n.getString('staff-field-email-aria')}>
@@ -757,22 +824,30 @@ export function StaffDetailDrawer({ open, member, roles, onClose, onSaved }: Sta
           <span className="staff-mgmt-field-error" role="alert">{fieldErrors['email']}</span>
         )}
 
-        <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-pay" aria-label={l10n.getString('staff-field-pay-aria')}>
-          <Localized id="staff-field-pay-label">
-            <span className="staff-mgmt-label">Monthly Take-Home Pay *</span>
-          </Localized>
-          <input
-            className="staff-mgmt-input"
-            type="text"
-            id="staff-field-pay"
-            value={form.monthlyTakeHome}
-            onChange={(e) => setForm((prev) => ({ ...prev, monthlyTakeHome: e.target.value }))}
-            inputMode="decimal"
-            placeholder="5000000"
-          />
-        </label>
-        {fieldErrors['monthlyTakeHome'] && (
-          <span className="staff-mgmt-field-error" role="alert">{fieldErrors['monthlyTakeHome']}</span>
+        {/* Payroll is collected at CREATION only. Editing an amount belongs to
+            the payroll screen, which sees the stored value and can clear it
+            deliberately; this form neither shows nor sends the field, so an
+            edit cannot move a salary it never displayed. */}
+        {!isEditing && (
+          <>
+            <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-pay" aria-label={l10n.getString('staff-field-pay-aria')}>
+              <Localized id="staff-field-pay-label">
+                <span className="staff-mgmt-label">Monthly Take-Home Pay *</span>
+              </Localized>
+              <input
+                className="staff-mgmt-input"
+                type="text"
+                id="staff-field-pay"
+                value={form.monthlyTakeHome}
+                onChange={(e) => setForm((prev) => ({ ...prev, monthlyTakeHome: e.target.value }))}
+                inputMode="decimal"
+                placeholder="5000000"
+              />
+            </label>
+            {fieldErrors['monthlyTakeHome'] && (
+              <span className="staff-mgmt-field-error" role="alert">{fieldErrors['monthlyTakeHome']}</span>
+            )}
+          </>
         )}
 
         <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-emergency-name" aria-label={l10n.getString('staff-field-emergency-name-aria')}>
@@ -847,6 +922,8 @@ export function StaffDetailDrawer({ open, member, roles, onClose, onSaved }: Sta
           />
         </label>
 
+        {/* Withheld with the identity record: the backend preserves the stored
+            tax id for this caller, so the field must not invite a blank write. */}
         <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-tax-id" aria-label={l10n.getString('staff-field-tax-id-aria')}>
           <Localized id="staff-field-tax-id-label">
             <span className="staff-mgmt-label">Tax ID</span>
@@ -856,6 +933,7 @@ export function StaffDetailDrawer({ open, member, roles, onClose, onSaved }: Sta
             type="text"
             id="staff-field-tax-id"
             value={form.taxId}
+            disabled={identityWithheld}
             onChange={(e) => setForm((prev) => ({ ...prev, taxId: e.target.value }))}
           />
         </label>

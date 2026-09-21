@@ -187,6 +187,11 @@ staff-national-id-type-select = Select type
 staff-national-id-type-ssn = SSN (US)
 staff-national-id-type-nik = NIK / KTP (Indonesia)
 staff-field-national-id-label = National ID *
+# ADR #35 D6: shown instead of the required-marker label when the viewer holds
+# no `staff:read_identity`, so the identity record is withheld and left
+# unchanged on save. A field the viewer cannot fill must not read as required.
+staff-field-national-id-label-hidden = National ID (hidden)
+staff-identity-withheld-hint = You do not have permission to view this member's identity documents. They are left unchanged when you save.
 staff-field-national-id-aria = National ID number (required)
 staff-field-email-label = Email *
 staff-field-email-aria = Email address (required)

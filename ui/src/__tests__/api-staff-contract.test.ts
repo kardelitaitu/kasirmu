@@ -256,6 +256,36 @@ describe('staff.ts scoped IPC contract (ADR #35 D6 profile fields)', () => {
     });
   });
 
+  // Payroll and identity are not editable from this page (spec 0049 / ADR #35
+  // D6): the edit payload carries only what the caller supplied, so an omitted
+  // pay or national id is ABSENT from the wire. The backend reads absence as
+  // "leave the stored value alone" — sending a null-ish placeholder instead
+  // would wipe a document or an amount the caller was never shown.
+  it('updateStaffScoped omits withheld payroll and identity instead of blanking them', async () => {
+    mockInvoke.mockResolvedValue(staffMemberDto);
+    await updateStaffScoped('session-1', {
+      id: 'u-1',
+      username: 'alice',
+      display_name: 'Alice',
+      role_id: 'role-staff',
+      is_active: true,
+      profile: {
+        date_of_birth: '1990-05-14',
+        phone: '+14155550123',
+        national_id_type: 'ssn',
+        email: 'alice@example.com',
+        emergency_contact_name: 'Bob',
+        emergency_contact_phone: '+14155550987',
+      },
+    });
+    const call = mockInvoke.mock.calls.find((c: unknown[]) => c[0] === 'update_staff_scoped');
+    const profile = (call?.[1] as { args: { profile: Record<string, unknown> } }).args.profile;
+    expect(profile).not.toHaveProperty('national_id');
+    expect(profile).not.toHaveProperty('tax_id');
+    expect(profile).not.toHaveProperty('monthly_take_home_minor');
+    expect(profile).toHaveProperty('date_of_birth', '1990-05-14');
+  });
+
   it('listStaffScoped resolves a DTO carrying the assignment shape', async () => {
     mockInvoke.mockResolvedValue([staffMemberDto]);
     const staff = await listStaffScoped('session-1');
