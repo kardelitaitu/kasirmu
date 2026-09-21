@@ -39,22 +39,28 @@ import { loginAs, selectWorkspace, navigateTo, WORKSPACES } from './helpers';
  *   3. THE PORTRAIT SIDEBAR OVERLAY (AppLayout.css:679, T1). At 480x800 the
  *      expanded sidebar is `position: absolute` over the content and the scrim
  *      paints viewport-wide; clicking it collapses the rail while the page stays
- *      mounted. At 1366x768 (landscape) the same node is mounted but
- *      `display: none` and the sidebar is an in-flow 220px lane — the base
- *      state, not a fallback.
+ *      mounted, and so does Escape. At 1366x768 (landscape) the same node is
+ *      mounted but `display: none` and the sidebar is an in-flow 220px lane —
+ *      the base state, not a fallback.
  *
- * MEASURED DEFECTS this spec found but does NOT assert (the spec must be green;
- * these are reported in FINDINGS):
- *   - Escape at 480x800 does not collapse the overlay while the workspace stays
- *     mounted. AppShell's workspace-nav handler (AppShell.tsx:50, mounted at
- *     :480) listens on `document` and calls consumeShortcut(), whose
- *     `stopPropagation()` (utils/modal-guard.ts:20-23) keeps the event from
- *     reaching AppLayout's `window` listener (AppLayout.tsx:105-115). Measured:
- *     Escape exits the workspace to the picker, `.app-sidebar` unmounts, and
- *     localStorage['app-sidebar-collapsed'] stays "false" — the scrim's
- *     documented "keyboard twin" never runs. The Escape test asserts only the
- *     invariant that survives both branches (the overlay stops covering the
- *     page), so a regression that left it open still fails.
+ *   4. ESCAPE OWNS THE OVERLAY, NOT THE WORKSPACE. AppLayout binds its
+ *      overlay-Escape listener on `document` in the CAPTURE phase
+ *      (AppLayout.tsx) so it runs before AppShell's workspace-Escape bubble
+ *      handler; AppShell's handler additionally yields while
+ *      `isSidebarOverlayPresented()`. The Escape test pins the two facts that
+ *      distinguish this from the pre-6102537b7 behaviour (where AppShell's
+ *      consumeShortcut() stopPropagation() swallowed the key and Escape exited
+ *      the workspace instead):
+ *        - localStorage['app-sidebar-collapsed'] becomes "true" (the rail
+ *          actually collapsed; the broken branch left it "false");
+ *        - the workspace did NOT exit — the shell page stays mounted and the
+ *          workspace picker stays hidden (the broken branch unmounted the
+ *          page and showed the picker).
+ *      The wider invariant (the overlay stops covering the page) is still
+ *      asserted too, so a regression that left the scrim painted fails there.
+ *
+ * MEASURED DEFECT this spec found but does NOT assert (the spec must be green;
+ * reported in FINDINGS):
  *   - At 360x640 the history table is 416px inside a 332px wrap, i.e. it still
  *     needs a horizontal scroll at the narrowest width. The page root does not
  *     overflow (asserted below); the scroller is the designed escape.
@@ -389,17 +395,36 @@ test.describe('Narrow shell (<=640px content slot)', () => {
         overlayOpen: scrim !== null && getComputedStyle(scrim).display !== 'none',
         sidebarPresent: sidebar !== null,
         sidebarExpanded: sidebar !== null && !sidebar.classList.contains('collapsed'),
+        collapsedFlag: localStorage.getItem('app-sidebar-collapsed'),
+        shellPageMounted: document.querySelector('.sales-history') !== null,
+        pickerMounted: document.querySelector('.workspace-home') !== null,
       };
     });
 
     // The T1 invariant: the overlay no longer covers the page. Both the
     // "sidebar collapsed" and the "workspace exited" branch satisfy it, and a
-    // regression that left the scrim painted fails here. See the header note
-    // for which branch runs today and why.
+    // regression that left the scrim painted fails here. The pins below are
+    // what force the "collapsed" branch rather than the workspace exit.
     expect(after.overlayOpen, 'the overlay still covers the page after Escape').toBe(false);
     expect(
       after.sidebarPresent && after.sidebarExpanded,
       'sidebar is still present and expanded after Escape',
     ).toBe(false);
+
+    // FIXED-behaviour pins (commit 6102537b7): Escape collapses the overlay
+    // instead of exiting the workspace. Before the fix, AppShell's workspace
+    // Escape handler swallowed the key, `app-sidebar-collapsed` stayed
+    // "false", and the workspace picker replaced the page.
+    expect(
+      after.collapsedFlag,
+      'Escape did not collapse the sidebar (localStorage "app-sidebar-collapsed" not "true")',
+    ).toBe('true');
+    expect(
+      after.shellPageMounted,
+      'the workspace exited on Escape instead of collapsing the overlay',
+    ).toBe(true);
+    expect(after.pickerMounted, 'the workspace picker appeared on Escape').toBe(false);
+    await expect(page.getByTestId('workspace-home')).toBeHidden();
+    await expect(page.locator('.sales-history')).toBeVisible();
   });
 });
