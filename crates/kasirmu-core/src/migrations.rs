@@ -12,7 +12,10 @@ next: reword COR-6 comments | perf: N/A
 //! runner in `platform-core`. The array order is canonical — not
 //! lexicographic filename order — and the registry↔filesystem parity test
 //! `migration_registry_matches_filesystem` ensures every `.sql` file has
-//! exactly one registry entry.
+//! exactly one registry entry. That test proves the two sides **agree**; it
+//! cannot see an id that was removed from both at once. The ids that must never
+//! disappear are pinned absolutely by `MUST_STAY_REGISTERED` in the test module:
+//! adding a migration needs no edit there, dropping one does.
 //!
 //! # Forward-only contract
 //!

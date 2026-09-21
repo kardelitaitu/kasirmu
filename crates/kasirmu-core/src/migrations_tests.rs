@@ -821,7 +821,10 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
     // each, and a literal list made every new migration fail this test for a
     // reason that has nothing to do with the upgrade path
     // (`20261008_provisioning_legacy_backfill.sql` did precisely that). Which
-    // migrations *exist* stays pinned by `migration_registry_matches_filesystem`.
+    // migrations *exist* is pinned absolutely by
+    // `no_registered_migration_ever_disappears` and the list it owns — NOT by
+    // `migration_registry_matches_filesystem`, which cannot see a migration that
+    // was deleted from the registry and the filesystem together.
     let mut expected: Vec<String> = ALL.iter().map(|mig| mig.id.to_string()).collect();
     expected.push(LEGACY_ROW.to_string());
     // `ORDER BY id` and `Vec<String>` both order by UTF-8 bytes, so the two
@@ -1957,6 +1960,109 @@ fn pg_init_declares_same_table_surface_as_sqlite() {
             "Postgres DDL still contains SQLite dialect: {leftover:?}"
         );
     }
+}
+
+/// Every migration the registry has ever shipped must still be registered: the
+/// registry may grow, never shrink.
+///
+/// This is a **subset** check, so adding a migration never fails it and needs no
+/// edit here — but deleting a migration file *together with* its registry entry
+/// does fail. On exactly that mutation (registry entry deleted, `.sql` deleted)
+/// both assertions that look like coverage stayed **green**:
+///
+/// * `migration_registry_matches_filesystem` asserts file→registry parity and
+///   equal counts; both sides lose the same id, so it still holds.
+/// * `existing_db_with_legacy_rows_upgrades_idempotently` derives its expected
+///   list from `ALL`, so its expectation shrinks along with the deletion.
+///
+/// A migration that some feature test looks up by id in `ALL` has a second net
+/// (the two tests below that split on `20261008` do, via `expect`), but one
+/// without such a test would disappear silently. Every id is therefore pinned
+/// absolutely here, which covers the classes nothing else reaches — including
+/// migrations that change no table count and so leave the `127`-table assertion
+/// untouched: `20261008_provisioning_legacy_backfill.sql` is DML only and is
+/// exactly that shape. New migrations belong in the registry, not in this list —
+/// it is a record of what must not vanish, not of what exists.
+const MUST_STAY_REGISTERED: &[&str] = &[
+    "20260813_init.sql",
+    "20260814_tenant_uniqueness.sql",
+    "20260815_tenant_unique_indexes.sql",
+    "20260814_offline_queue_index.sql",
+    "20260814_sale_lines_tenant.sql",
+    "20260814_sales_tenant.sql",
+    "20260814_sent_reports.sql",
+    "20260814_sent_reports_tenant.sql",
+    "20260814_analytics_index.sql",
+    "20260820_kds_devices.sql",
+    "20260821_tender_currency.sql",
+    "20260822_sale_charges.sql",
+    "20260822_kds_counter_store.sql",
+    "20260823_po_receive_state.sql",
+    "20260824_media_edc.sql",
+    "20260825_payment_infra.sql",
+    "20260826_sale_line_snapshots.sql",
+    "20260827_refunds_tenant.sql",
+    "20260831_loyalty_multiplier_fixedpoint.sql",
+    "20260831_per_tenant_unique_rebuild.sql",
+    "20260901_gift_card_redeem_idempotency.sql",
+    "20260901_image_refs.sql",
+    "20260901_product_images.sql",
+    "20260902_outbox.sql",
+    "20260902_snapshot_versions.sql",
+    "20260903_webhook_endpoints.sql",
+    "20260904_kds_indexes.sql",
+    "20260906_rename_store_to_location.sql",
+    "20260907_add_location_tenant_id.sql",
+    "20260908_legal_entities.sql",
+    "20260909_memos.sql",
+    "20260910_memo_child_tenant_id.sql",
+    "20260911_memo_fk_restrict.sql",
+    "20260912_terminals_tenant.sql",
+    "20260913_memo_locations.sql",
+    "20260914_memo_retention.sql",
+    "20260915_topology_revisions.sql",
+    "20260916_role_assignment_scopes.sql",
+    "20260917_assignment_backfill_org_wide.sql",
+    "20260918_payables.sql",
+    "20260919_regional_configuration.sql",
+    "20260920_audit_retention.sql",
+    "20260921_tax_rate_scoping.sql",
+    "20260922_over_quota_markers.sql",
+    "20260923_fiscal_numbering.sql",
+    "20260924_local_payment_methods.sql",
+    "20260925_receipt_formats.sql",
+    "20260926_tax_rate_scoped_authoring.sql",
+    "20260926_location_ticket_prefix.sql",
+    "20260927_kds_ticket_prefix_stamp.sql",
+    "20260928_document_kind_check.sql",
+    "20260929_tax_rate_rounding_mode.sql",
+    "20260930_sales_tax_estimate_note.sql",
+    "20261001_sale_idempotency.sql",
+    "20261002_sync_conflicts.sql",
+    "20261003_sync_entity_vectors.sql",
+    "20261004_midtrans_transactions.sql",
+    "20261005_kds_routing_rules.sql",
+    "20261006_receipt_hierarchy_code.sql",
+    "20261007_provisioning.sql",
+    "20261008_provisioning_legacy_backfill.sql",
+];
+
+/// A migration that disappears is a schema change nobody reviewed.
+#[test]
+fn no_registered_migration_ever_disappears() {
+    let registered: std::collections::HashSet<&str> = ALL.iter().map(|mig| mig.id).collect();
+    let missing: Vec<&str> = MUST_STAY_REGISTERED
+        .iter()
+        .copied()
+        .filter(|id| !registered.contains(id))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "these migrations were registered and no longer are: {missing:#?}. A registry may grow, \
+         never shrink — a migration that disappears changes what a fresh install produces and can \
+         never be re-applied to an existing database. If the removal is deliberate, land it with \
+         MUST_STAY_REGISTERED edited in the same commit."
+    );
 }
 
 #[test]
