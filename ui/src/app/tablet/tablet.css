@@ -366,7 +366,16 @@
  * .page-rotate-prompt — the portrait fallback for a page registering
  * layout="landscape-locked". An overlay, never a gate: the page underneath
  * stays mounted and usable. Fixed so it survives the page scrolling, and the
- * extra bottom padding keeps the panel clear of this shell's bottom tab bar. */
+ * extra bottom padding keeps the panel clear of this shell's bottom tab bar.
+ *
+ * That clearance is the bar's ACTUAL occupied height, and the bar's height is
+ * a COMPOSITION of two tokens: `--tablet-bottom-nav-height` (L92-93) plus the
+ * `--inset-bottom` the bar adds as its own padding (L97). This rule used to
+ * pad by `--tablet-tap-target` (48px) instead, which was wrong twice over:
+ * the tap target sizes a CONTROL, not chrome — the bar is 64px before any
+ * inset — and it omitted the inset entirely. So on a notched device with a
+ * system tab bar the panel overlapped the bar by
+ * (nav-height - tap-target) + inset-bottom. */
 .tablet-shell .page-rotate-prompt {
   position: fixed;
   inset: 0;
@@ -374,7 +383,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-4);
-  padding-bottom: calc(var(--space-4) + var(--tablet-tap-target, var(--space-12)));
+  padding-bottom: calc(var(--space-4) + var(--tablet-bottom-nav-height) + var(--inset-bottom));
   background: color-mix(in srgb, var(--color-bg-overlay) 70%, transparent);
   z-index: var(--z-overlay);
   pointer-events: none;
