@@ -2,7 +2,7 @@
 num: 57
 area: security
 title: "ADR #57: Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection"
-status: Proposed (2026-10-04) — the grace ceiling, the sentinel guard, the fingerprint verdict, the Q4 escalation fold, the release-channel pin store and the whole of §2.1 (client reporting + server classification) are implemented; §2.4's operator notification is not
+status: Proposed (2026-10-04) — §2.1 (client reporting + server classification), §2.2's verdict rule, §2.3's grace ceiling, §2.6's sentinel guard, §Q4's escalation fold, §Q-B's pin store and §2.4's operator notification are all implemented
 ---
 
 # ADR #57: Client Tamper Resistance Without Play Integrity
@@ -14,9 +14,11 @@ reader already exists in code, so the old criterion would have deferred §2.4 in
 changing anyone's behaviour. **§2.1 now ships end to end** — the Android
 computation (`kasirmu-hal/src/transport/apk_signature.rs`), its reporting on the licence-status
 call, the `release_channels` pin store §Q-B decided, and the server-side classification
-(`apps/license-server/build_integrity.go`). **The one thing still to build is §2.4's operator
-notification**, which is now the sole gate on that section: the field ships, but nothing yet alerts
-an operator, so §2.4's queue remains unbuilt and §3.3 still carries it.
+(`apps/license-server/build_integrity.go`). **§2.4's operator notification now ships too**
+(`apps/license-server/build_integrity_alerts.go`), which was the last gate on that section: a
+daily scanner alerts the operator on a pinned-set `mismatch`, and on repeated `unknown` per
+§Q4/§Q-C. §3.3's rows below have been re-stated against the new shipped state — detection AND a
+reader now exist, though neither is on-device verified (see the boundary note).
 
 **Verification boundary, stated rather than implied:** `cargo ndk -t arm64-v8a check -p
 kasirmu-mobile` proves the tablet app **compiles** for Android and the desktop build is untouched;
@@ -132,9 +134,10 @@ Each row is evidence, not intent. Verified against the tree on the date above.
 
 ### 2.1 The deployed-build fingerprint is pinned, and verified server-side
 
-**TO BUILD.** The APK signing-certificate fingerprint is computed at runtime and reported to
-the licence/sync server, which compares it against the fingerprint(s) *it* holds for that tenant
-release channel.
+**IMPLEMENTED 2026-09-21.** The APK signing-certificate fingerprint is computed at runtime and
+reported to the licence/sync server, which compares it against the fingerprint(s) *it* holds for that
+tenant release channel. See the implementation note at the end of this section for what ships, how
+the Android read is reached, and — importantly — what is still unverified.
 
 The signing key already exists and is controlled: `gen/android/app/build.gradle.kts:40-46` reads
 `keyAlias`/`password`/`storeFile` from the gitignored `gen/android/keystore.properties`, and the
@@ -154,8 +157,8 @@ reports a valid fingerprint (§2.2).
 
 ### 2.2 Absence of a verdict is treated as a verdict
 
-**TO BUILD.** A missing, malformed, or unparseable fingerprint is classified `unknown` and is
-**never** treated as `valid`. This mirrors the discipline the repo already applies to boot reads
+**IMPLEMENTED 2026-09-21, on both sides.** A missing, malformed, or unparseable fingerprint is
+classified `unknown` and is **never** treated as `valid`. This mirrors the discipline the repo already applies to boot reads
 (`AppShell.tsx:235-240`: "unknown is not no users") and to attestation (`attestation.rs:12-14`:
 no debug shortcut where a credential departure is decided).
 
@@ -202,7 +205,13 @@ the one this record asks to be held to.
 
 ### 2.4 Server-side detection, because effects are observable and claims are not
 
-**TO BUILD.** Quota enforcement is local — **6 bridge call sites** invoke the core quota gates
+**PART IMPLEMENTED 2026-09-21 — the fingerprint signal only.** The §2.1/§2.2 signal now reaches
+this section's notifier: `apps/license-server/build_integrity_alerts.go` classifies and stores
+every non-`valid` report and emails the operator daily (a single `mismatch`, or repeated `unknown`
+per §Q4/§Q-C). **Still to build: the quota-effect signals below**, which are the other half of this
+section and the reason the A2 row in §3.3 stays unbounded.
+
+Quota enforcement is local — **6 bridge call sites** invoke the core quota gates
 (`bridge/products.rs:701` `enforce_product_quota`, `staff.rs:1084` `enforce_staff_quota`,
 `locations.rs:259` `enforce_location_quota`, `terminals.rs:455` `enforce_terminal_quota`,
 `workspaces.rs:324` `enforce_instance_quota`, `inventory.rs:127` `enforce_warehouse_quota`; the gate
@@ -236,7 +245,13 @@ revenue it protects. Termination stays a human decision; the system job is to ma
 
 ### 2.5 A quarantine state exists for the fingerprint mismatch
 
-**TO BUILD.** Response is graded rather than binary, and the grades already exist as states:
+**STILL TO BUILD — and the marker is worth reading carefully, because §2.4 shipped and this did not.**
+The *detection* half now works: a mismatch is classified, stored and emailed to an operator. What is
+absent is the graded *automatic* response — specifically, renewal refusal for a mismatched build.
+Today a flagged device is seen and can still renew, so the response is a human acting rather than the
+system. Detection without a response was §3.3's finding, and it is now the residue here.
+
+The grades the eventual response will use already exist as states:
 
 | Verdict | Response |
 |---|---|
@@ -439,20 +454,32 @@ naming the debug short-circuit as the reason the test must not target `verify_li
 
 | Residual | Bound — **as of today, not as designed** |
 |---|---|
-| A2 exceeds local quota gates | **Still unbounded as of 2026-09-21.** §2.4's response is unbuilt (Q3), so a patched client that skips a local gate is not caught — and this row is untouched by the §2.1 work, which reports builds rather than quota use. The bound arrives with §2.4 |
-| A1/A3 patch out fingerprint reporting | **Visible, not bounded — updated 2026-09-21.** A deleted reporting line now arrives as `unknown` and IS stored as a non-`valid` verdict, so the deception is recorded; but §2.4 is unbuilt, so no human is told and nothing acts on it. The bound still arrives with §2.4 |
+| A2 exceeds local quota gates | **Still unbounded as of 2026-09-21.** The build-integrity controls report BUILDS, not quota use, so a patched client that skips a local gate is untouched by them. Bounding this needs a separate control; nothing in §2.4 addresses it |
+| A1/A3 patch out fingerprint reporting | **Detected and reported — updated 2026-09-21.** A deleted reporting line arrives as `unknown`; repetition inside the window escalates (§Q4/§Q-C) and the daily scanner now ALERTS the operator. What remains unbounded is the response: §Q4 routes to a human and never to an automatic refusal, which is deliberate |
 | A1/A3 report a fingerprint at all | **CLOSED 2026-09-21.** The client now computes the APK signing certificate over JNI (`kasirmu-hal/src/transport/apk_signature.rs`) and sends it on the licence-status call; the server classifies and stores every non-`valid` verdict. See the note below for why this closes the *reporting* gap without bounding the row above it |
 | A3 redistributes a working tampered APK | Bounded by the tier's grace window; the forged APK cannot renew (§2.3, and renewal refusal is already enforced — ADR #58 §2.4a.1) |
 | A4 physical access, A5 server compromise, A6 platform exploit | **Out of scope** (§1.3) — no client control addresses these |
 
 - **No control in this record makes client-side modification impossible, and none is claimed to.**
-- **The two "detected server-side" rows are the ones that will be misread.** They describe the design,
-  not the shipped state: §2.4 is deferred on Q3's prerequisites. Until it is built, the honest
-  position is that **tampering is not detected at all**, and the only bound in force is §2.3's grace
-  window for a paid tier. Recording this here because a residual table that describes intent rather
-  than reality is the failure mode this whole record exists to avoid.
+- **The "detected server-side" rows are the ones that will be misread, in BOTH directions.** They
+  used to describe the design rather than the shipped state; as of 2026-09-21 detection and a reader
+  both ship, so the older warning that "tampering is not detected at all" is no longer true either.
+  What is true is narrower and still not protection: **tampering is detected, recorded and emailed to
+  an operator — and then nothing happens automatically.** The response is a human reading a message,
+  which §Q4 chose over an automatic refusal because a false positive must never dark a shop. The only
+  AUTOMATIC bound remains §2.3's grace window for a paid tier.
+- **The reporting path is unverified on a real device.** Every claim above rests on the Android JNI
+  read, which no test exercises (see the status note). A fault there degrades to `unknown` — visible,
+  not silently permissive — but it would show up as the persistent-unknown alert rather than as a
+  mismatch, so the two alerts must be read differently until the on-device read is confirmed.
 
 #### What the 2026-10-05 work did and did not change in this table
+
+> **SUPERSEDED 2026-09-21 — read the note below this one instead.** Every "no caller / unbuilt"
+> statement in the 2026-10-05 and Q4 notes was true on their dates and is FALSE now: the classifier
+> has callers on both sides (the client computes and sends; the server classifies and stores), and
+> the scanner reads the result. They are kept verbatim because a record of what was believed when is
+> the only way to audit how a claim aged — not because any of it describes the current tree.
 
 The verdict classification (§2.2) is implemented and tested, but **it moved no row above**, and
 saying so is the point of this note:
@@ -480,25 +507,50 @@ closed: something DOES compute and send the fingerprint**
 classify it (`apps/license-server/build_integrity.go`), storing every non-`valid` verdict
 durably. That is a real change to the shipped state and the rows must not keep the old wording.
 
-**But it moves neither unbounded row, and the distinction matters more than the change does.** The
-server now *records* a `mismatch`; nothing *reads it*. There is no notification and no queue entry
-(§2.4 is unbuilt — the field and the alert were to land as one unit, and only the field has). A
-recorded verdict that no human is told about is not a control; it is a log. So:
+**At that point it moved neither unbounded row, and the distinction mattered more than the change
+did:** the server *recorded* a `mismatch` while nothing *read it*. A recorded verdict no human is
+told about is not a control; it is a log. This paragraph is kept because it states the reason the
+notification was built next rather than treated as optional.
+
+#### What the 2026-09-21 §2.4 notification closed
+
+**The reader now exists.** `apps/license-server/build_integrity_alerts.go` scans daily at 08:00 UTC
+and emails the operator (`OZ_ADMIN_EMAIL`) on two conditions, distinguished deliberately per §Q4:
+
+| Condition | Trigger | Why that trigger |
+|---|---|---|
+| `mismatch` | A SINGLE well-formed, unpinned fingerprint | §2.1 maps a re-sign to a different certificate, so one report is positive evidence; demanding repetition would only add delay to the clear case |
+| `unknown_persistent` | Seven or more unseen reports inside a rolling 7-day window | §2.2 makes absence a verdict, but ONE absence is also what a serialization bug produces — §Q4 chose repetition so our own bug cannot read as an attack |
 
 | Residual | Bound — **as of 2026-09-21** |
 |---|---|
-| A2 exceeds local quota gates | **Still unbounded.** §2.4 is unbuilt: the verdict is stored, not surfaced |
-| A1/A3 patch out fingerprint reporting | **Now *visible*, not yet *bounded*.** A deleted reporting line arrives as `unknown` and is stored as a non-`valid` verdict — but with no reader, nobody acts on it |
-| A1/A3 report a fingerprint at all | **CLOSED as a capability.** The APK certificate is computed natively and sent; a re-signed APK now produces a stored `mismatch` |
+| A2 exceeds local quota gates | **Still unbounded.** Untouched by this work: the alert reports builds, not quota use |
+| A1/A3 patch out fingerprint reporting | **Detected and alerted.** The deletion surfaces as repeated `unknown` and now reaches a human within a week |
+| A1/A3 report a fingerprint at all | **CLOSED as a capability.** The APK certificate is computed natively and sent; a re-signed APK produces a stored `mismatch` AND an alert |
 
-**The honest summary: detection is built, response is not.** An operator who queries
-`build_integrity_reports` today would see violations; nothing pushes them. That is strictly better
-than a week ago and still not protection — which is why §3.3's answer to "are we protected?" remains
-**no**, and why §2.4 stays unbuilt until the notification exists.
+**What the notification deliberately does NOT do.** It never refuses a session, never revokes a
+device, never locks an account. §Q4 is explicit that escalation routes to a human because a
+serialization bug, a field rename or a partially-rolled-out client each produce `unknown` from
+legitimate devices — and darking every affected till would be worse than the abuse it prevents. So
+the residual that remains is **response latency and human judgement**, not blindness: a determined
+attacker is now *seen*, and a false positive costs a support email rather than a shop.
+
+**Two honesty notes on the alerting path itself.**
+
+1. **With no SMTP configured the finding is LOGGED, not emailed, and no cooldown is started.** The
+   scan still runs — a missing relay must not silently skip the scan and widen the residual — but an
+   alert that was never delivered must not then suppress the next one for a week.
+2. **Alerts re-fire at most weekly, keyed on tenant AND condition.** A tenant with a mismatch on one
+   device and a persistent unknown on another gets both, and a standing condition keeps re-reporting
+   rather than going quiet — which is the failure mode of a bare "alert once" flag.
 
 **The table is the authority on the shipped state. The IMPLEMENTED notes in §2 are the authority on
 what exists. Where they disagree about severity, this table wins** — it is the one a reader consults
-when asking "are we protected?", and the answer today is still no.
+when asking "are we protected?". As of 2026-09-21 the answer is **partly, and by design**: tampering
+is detected, recorded and emailed to an operator, and the response to it is a human decision rather
+than an automatic lockout. Two caveats belong in the same breath — the on-device read is not covered
+by any test, and a deployment with no `OZ_SMTP_HOST` receives these findings in the server log
+rather than by email.
 
 ## 4. Explicitly Rejected
 
@@ -624,6 +676,19 @@ rides a shipped authenticated payload, **and** (b) a violation notification exis
 the family above that alerts the operator when a fingerprint first fails or persists as unknown.
 Until both hold, the honest statement is that the server does not detect tampering — §3.3 carries
 that as a residual rather than this section implying otherwise.
+
+> **BOTH CONDITIONS NOW HOLD as of 2026-09-21, and the notification ships.** The field rides the
+> licence-status call (`kasirmu-hal/src/transport/apk_signature.rs`), and the scanner exists
+> (`apps/license-server/build_integrity_alerts.go`): daily at 08:00 UTC, alerting on a single
+> `mismatch` and on repeated `unknown` per §Q4/§Q-C, with a weekly per-tenant-per-condition
+> cooldown. The two were indeed one unit of work, as this section argued.
+>
+> **What did NOT happen is the `attentionItem` rows.** §2.4's destination was originally the
+> `NeedsAttention` panel on the admin dashboard. The scanner delivers the same information through
+> email instead, which is the channel §3.3's residual actually needed: the panel is only read by an
+> operator who has opened the dashboard, whereas an alert reaches them. Adding panel rows remains
+> open as a display improvement — it is now an additive UI change, not a prerequisite, because
+> nothing about the detection or the response depends on it.
 
 > **Consequence found while checking, 2026-09-21: the queue types cannot be built ahead of the
 > field.** A plan to add `integrity_mismatch`/`integrity_unknown_persistent` rows to
@@ -892,8 +957,15 @@ text names the cost — a client "cannot distinguish \"you are banned\" from \"y
 Q2 reached the identical conclusion from the integrity side. Reusing the string makes the two records
 agree on the wire rather than merely in prose, and it means a fingerprint refusal is
 **indistinguishable from an ordinary lapse** — which is the property Q2 asks for. Option C is the
-right end state once Q3's queue exists, and is recorded here so it is not re-derived later; it is not
-adopted now because its prerequisite (server detection) is explicitly deferred.
+right end state once Q3's queue exists, and is recorded here so it is not re-derived later.
+
+> **Re-read 2026-09-21: option C's prerequisite now exists, and A is still the decision.** Server-side
+> detection ships (`build_integrity.go`) and the alert reaches an operator
+> (`build_integrity_alerts.go`), so the original reason for deferring C — no detection to join a
+> refusal to — no longer applies. **The decision does not change, because the reason for A was never
+> the prerequisite**: A reuses ADR #58's single generic message on the wire, and that indistinguishability
+> is the security property Q2 asks for. C remains the better *diagnostic* end state and remains
+> unbuilt, now purely as a UI improvement rather than a blocked dependency.
 
 **Implementation note:** because the guard at `renew.go:76-81` is keyed on `status`, serving A
 requires only that §2.4's detection mark the tenant rather than add a new response path — the
