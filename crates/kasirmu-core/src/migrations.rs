@@ -343,6 +343,17 @@ pub const ALL: &[Migration] = &[
         id: "20261007_provisioning.sql",
         sql: include_str!("../migrations/20261007_provisioning.sql"),
     },
+    // ADR #56 §2.1 backfill: 20261007 created `provisioning` with no rows, so
+    // every terminal set up by the PRE-#56 wizard reads as Unprovisioned and is
+    // re-routed into onboarding on every boot. This one writes the missing row
+    // from the legacy-only `store.show_setup_wizard = 'false'` signal, keyed on
+    // `terminals.device_id` — the only SQL-readable spelling of the hostname the
+    // shell gates on. Date 20261008 sorts last and only INSERTs rows, so it
+    // re-applies cleanly under the statement-level drift fallback.
+    Migration {
+        id: "20261008_provisioning_legacy_backfill.sql",
+        sql: include_str!("../migrations/20261008_provisioning_legacy_backfill.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

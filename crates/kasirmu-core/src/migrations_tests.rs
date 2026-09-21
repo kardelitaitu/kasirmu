@@ -316,6 +316,70 @@ fn earlier_migration_re_applies_after_later_ones_move_the_schema() {
     );
 }
 
+/// The frozen init script must stay re-appliable after a later migration has
+/// replaced a column it seeds.
+///
+/// `20260813_init.sql` seeds the four loyalty tiers with `INSERT OR IGNORE INTO
+/// loyalty_tiers (…, earn_multiplier, …)`, and
+/// `20260831_loyalty_multiplier_fixedpoint.sql` later converts that column to
+/// `earn_multiplier_millionths` and **drops** it. Re-applying the init script
+/// against a database that has the whole registry applied therefore fails with
+/// `table loyalty_tiers has no column named earn_multiplier` — and because that
+/// is not a *duplicate-object* error, DB-02's statement-level fallback never
+/// engaged, so the failure was fatal: `kasirmu-app` panicked in its setup hook
+/// (`Failed to setup app: … running migrations: … has no column named
+/// earn_multiplier`) and could not start.
+///
+/// Reproduced the way it actually happens rather than by editing a file: the
+/// database keeps the checksum of the init script it was *installed* with,
+/// while the registry carries today's content. An in-place edit to the init
+/// file is what puts every existing database on this path — ADR #56 §2.6
+/// option C removed the seeded store, workspaces and subscription, so the drift
+/// is real rather than cosmetic.
+#[test]
+fn init_script_re_applies_after_a_later_migration_replaces_its_seed_column() {
+    /// The checksum every database created before the ADR #56 §2.6 in-place
+    /// edit carries for the init script. Measured from the repository, not
+    /// guessed: it is the blob at `11a6d27cd`, the last revision that changed
+    /// the file before §2.6.
+    const PRE_ADR56_INIT_CHECKSUM: &str =
+        "f86bbbe00608dbd6f6a3cb40a82ee01be69d730763a51349adad92cffc78c013";
+    const INIT: &str = "20260813_init.sql";
+
+    let mut conn = fresh();
+    run(&mut conn).unwrap_or_else(|err| panic!("applying the full registry failed: {err}"));
+
+    // Precondition, asserted rather than assumed: the drift must be real, or
+    // this test proves nothing. If the init script is ever restored to the
+    // pre-ADR-56 bytes, fail here instead of passing vacuously.
+    let installed = stored_checksum(&conn, INIT);
+    assert_ne!(
+        installed, PRE_ADR56_INIT_CHECKSUM,
+        "the init script is back to the pre-ADR-56 bytes, so this test no longer \
+         exercises the drift path — retire it or pick a new subject"
+    );
+
+    // Every later migration keeps the checksum its own apply stored, so the
+    // init script is the only entry on the drift path.
+    conn.execute(
+        "UPDATE schema_migrations SET checksum = ?1 WHERE id = ?2",
+        rusqlite::params![PRE_ADR56_INIT_CHECKSUM, INIT],
+    )
+    .unwrap();
+
+    platform_core::database::run(&mut conn, ALL).unwrap_or_else(|err| {
+        panic!(
+            "re-applying {INIT} against a fully migrated database failed: {err}. An existing \
+             database must survive drift in the init script, not panic in the setup hook."
+        )
+    });
+    assert_eq!(
+        stored_checksum(&conn, INIT),
+        installed,
+        "the drift re-apply did not patch the stored checksum"
+    );
+}
+
 #[test]
 fn migrations_create_expected_tables() {
     let mut conn = fresh();
@@ -723,14 +787,17 @@ fn analytics_query_uses_status_created_date_index() {
 /// registry migration exactly once.
 #[test]
 fn existing_db_with_legacy_rows_upgrades_idempotently() {
+    /// A pre-reset DB carries this tracking row for a migration the registry no
+    /// longer lists — the runner must ignore it, not error. Named once because
+    /// it seeds the expectation below as well.
+    const LEGACY_ROW: &str = "001_sales.sql";
+
     let mut conn = fresh();
     run(&mut conn).unwrap();
 
-    // A pre-reset DB would have a legacy tracking row the new registry no
-    // longer lists — the runner must ignore it, not error.
     conn.execute(
-        "INSERT INTO schema_migrations (id, checksum) VALUES ('001_sales.sql', NULL)",
-        [],
+        "INSERT INTO schema_migrations (id, checksum) VALUES (?1, NULL)",
+        [LEGACY_ROW],
     )
     .unwrap();
 
@@ -747,8 +814,19 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
     // Boot the new code against the existing DB.
     run(&mut conn).unwrap();
 
-    // The legacy row is ignored (still present) and the init is recorded
-    // exactly once — the two rows coexist.
+    // The legacy row is ignored (still present) and the registry is recorded
+    // exactly once — the two coexist. The expectation is **derived from the
+    // registry** rather than spelled out: the property under test is that the
+    // runner recorded exactly the registry plus that one unrecognised row, once
+    // each, and a literal list made every new migration fail this test for a
+    // reason that has nothing to do with the upgrade path
+    // (`20261008_provisioning_legacy_backfill.sql` did precisely that). Which
+    // migrations *exist* stays pinned by `migration_registry_matches_filesystem`.
+    let mut expected: Vec<String> = ALL.iter().map(|mig| mig.id.to_string()).collect();
+    expected.push(LEGACY_ROW.to_string());
+    // `ORDER BY id` and `Vec<String>` both order by UTF-8 bytes, so the two
+    // sequences are comparable without a second pass.
+    expected.sort();
     let ids: Vec<String> = conn
         .prepare("SELECT id FROM schema_migrations ORDER BY id")
         .unwrap()
@@ -757,70 +835,9 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
         .map(|r| r.unwrap())
         .collect();
     assert_eq!(
-        ids,
-        vec![
-            "001_sales.sql".to_string(),
-            "20260813_init.sql".to_string(),
-            "20260814_analytics_index.sql".to_string(),
-            "20260814_offline_queue_index.sql".to_string(),
-            "20260814_sale_lines_tenant.sql".to_string(),
-            "20260814_sales_tenant.sql".to_string(),
-            "20260814_sent_reports.sql".to_string(),
-            "20260814_sent_reports_tenant.sql".to_string(),
-            "20260814_tenant_uniqueness.sql".to_string(),
-            "20260815_tenant_unique_indexes.sql".to_string(),
-            "20260820_kds_devices.sql".to_string(),
-            "20260821_tender_currency.sql".to_string(),
-            "20260822_kds_counter_store.sql".to_string(),
-            "20260822_sale_charges.sql".to_string(),
-            "20260823_po_receive_state.sql".to_string(),
-            "20260824_media_edc.sql".to_string(),
-            "20260825_payment_infra.sql".to_string(),
-            "20260826_sale_line_snapshots.sql".to_string(),
-            "20260827_refunds_tenant.sql".to_string(),
-            "20260831_loyalty_multiplier_fixedpoint.sql".to_string(),
-            "20260831_per_tenant_unique_rebuild.sql".to_string(),
-            "20260901_gift_card_redeem_idempotency.sql".to_string(),
-            "20260901_image_refs.sql".to_string(),
-            "20260901_product_images.sql".to_string(),
-            "20260902_outbox.sql".to_string(),
-            "20260902_snapshot_versions.sql".to_string(),
-            "20260903_webhook_endpoints.sql".to_string(),
-            "20260904_kds_indexes.sql".to_string(),
-            "20260906_rename_store_to_location.sql".to_string(),
-            "20260907_add_location_tenant_id.sql".to_string(),
-            "20260908_legal_entities.sql".to_string(),
-            "20260909_memos.sql".to_string(),
-            "20260910_memo_child_tenant_id.sql".to_string(),
-            "20260911_memo_fk_restrict.sql".to_string(),
-            "20260912_terminals_tenant.sql".to_string(),
-            "20260913_memo_locations.sql".to_string(),
-            "20260914_memo_retention.sql".to_string(),
-            "20260915_topology_revisions.sql".to_string(),
-            "20260916_role_assignment_scopes.sql".to_string(),
-            "20260917_assignment_backfill_org_wide.sql".to_string(),
-            "20260918_payables.sql".to_string(),
-            "20260919_regional_configuration.sql".to_string(),
-            "20260920_audit_retention.sql".to_string(),
-            "20260921_tax_rate_scoping.sql".to_string(),
-            "20260922_over_quota_markers.sql".to_string(),
-            "20260923_fiscal_numbering.sql".to_string(),
-            "20260924_local_payment_methods.sql".to_string(),
-            "20260925_receipt_formats.sql".to_string(),
-            "20260926_location_ticket_prefix.sql".to_string(),
-            "20260926_tax_rate_scoped_authoring.sql".to_string(),
-            "20260927_kds_ticket_prefix_stamp.sql".to_string(),
-            "20260928_document_kind_check.sql".to_string(),
-            "20260929_tax_rate_rounding_mode.sql".to_string(),
-            "20260930_sales_tax_estimate_note.sql".to_string(),
-            "20261001_sale_idempotency.sql".to_string(),
-            "20261002_sync_conflicts.sql".to_string(),
-            "20261003_sync_entity_vectors.sql".to_string(),
-            "20261004_midtrans_transactions.sql".to_string(),
-            "20261005_kds_routing_rules.sql".to_string(),
-            "20261006_receipt_hierarchy_code.sql".to_string(),
-            "20261007_provisioning.sql".to_string(),
-        ]
+        ids, expected,
+        "the runner recorded something other than the registry plus the legacy row, \
+         or recorded a migration more than once"
     );
 
     // INSERT OR IGNORE means the re-run did not duplicate seed rows.
@@ -2567,4 +2584,182 @@ fn sales_tax_estimate_note_column_pins_the_audit_stamp_shape() {
         )
         .unwrap();
     assert!(omitted.is_none());
+}
+
+/// ADR #56 §2.1: a terminal the PRE-#56 wizard set up must read as provisioned
+/// after 20261008, and a fresh install must stay unprovisioned.
+///
+/// Two independent defects are pinned here, and they are the two halves of the
+/// same bug. 20261007 created `provisioning` with no backfill, so a legacy
+/// device has no row and `get_first_run_state` answers `Unprovisioned`
+/// (kasirmu-bridge/src/setup.rs:238-249) — an already-set-up device re-enters
+/// onboarding on every boot. And the flow it lands in was invisible, because
+/// `ProvisioningFlow.css` animated `fade-up` without defining the keyframes:
+/// `opacity: 0` plus a never-running `forwards` animation. The CSS half is a
+/// stylesheet and no Rust test can see it; the SQL half is what this asserts.
+///
+/// The signal is `store.show_setup_wizard = 'false'`, written by exactly the two
+/// retired commands (`complete_setup` step 7, `dismiss_setup_wizard`) and by
+/// nothing else — no migration seeds a `settings` row, and `provision_device`
+/// deliberately does not write it. Each leg below therefore fails if the backfill
+/// is widened to a predicate that cannot prove the legacy scheme ran.
+#[test]
+fn legacy_setup_backfills_a_provisioning_row_only_for_terminals_the_wizard_set_up() {
+    // Apply everything UP TO the migration under test, plant the legacy state the
+    // wizard left behind, then let the runner apply this migration exactly once —
+    // the real upgrade sequence, rather than a re-apply of an already-applied
+    // script. Indexed by id, not by `ALL.len() - 1` (the convention
+    // `legal_entity_migration_creates_defaults_and_moves_locations` records).
+    let split = ALL
+        .iter()
+        .position(|m| m.id == "20261008_provisioning_legacy_backfill.sql")
+        .expect("the legacy backfill migration is present in the registry");
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
+
+    // A registered terminal, as the legacy auto-register wrote it
+    // (`terminals.device_id` IS the hostname the shell gates on).
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id) VALUES ('t-legacy', 'Legacy POS', 'legacy-host')",
+        [],
+    )
+    .unwrap();
+    // A second terminal on the SAME install, to prove the backfill is keyed per
+    // terminal rather than writing one row for the whole database.
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id) VALUES ('t-fresh', 'Other POS', 'fresh-host')",
+        [],
+    )
+    .unwrap();
+
+    // The legacy-only signal the retired `complete_setup` / `dismiss_setup_wizard`
+    // pair wrote. Nothing else in the tree writes this key.
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES ('store.show_setup_wizard', 'false')",
+        [],
+    )
+    .unwrap();
+
+    // The runner applies 20261008 now, once, against the legacy state above.
+    platform_core::database::run(&mut conn, ALL).unwrap();
+
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM provisioning", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        rows, 2,
+        "one row per REGISTERED terminal — the backfill is keyed per terminal, not per install"
+    );
+
+    let (mode, region, tenant, owner, device, location): (
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) = conn
+        .query_row(
+            "SELECT mode, home_region, tenant_id, owner_user_id, device_id, location_id
+             FROM provisioning WHERE terminal_id = 'legacy-host'",
+            [],
+            |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        mode, "local",
+        "the legacy install had no licence-server tenant; 'local' is §2.4's default"
+    );
+    assert_eq!(region, "global", "§Q6: 'no residency commitment yet'");
+    assert!(
+        tenant.is_none(),
+        "§2.1: the local 'default' literal is a DIFFERENT namespace and must not be written here"
+    );
+    assert!(
+        owner.is_none(),
+        "the legacy owner is not identifiable from SQL; claiming one would be a guess"
+    );
+    assert!(
+        device.is_none(),
+        "device_id is a credential id the legacy install never had"
+    );
+    assert!(
+        location.is_none(),
+        "the terminal was unbound, so the correlated subquery yields NULL rather than a dangling id"
+    );
+
+    // The gate the shell actually reads: a row for this terminal.
+    assert!(
+        crate::Store::new(&conn)
+            .is_provisioned("legacy-host")
+            .unwrap(),
+        "ADR #56 §2.1: this is the fact that stops a set-up device re-entering onboarding"
+    );
+}
+
+/// The counter-example that makes the test above worth having: a device with NO
+/// legacy signal must get NO row, however many terminals it has registered.
+///
+/// A wrong backfill that marks a genuinely-new device as provisioned is strictly
+/// worse than the bug it fixes, so this leg is the one that fails first if the
+/// predicate is ever widened (dropping the `settings` EXISTS, defaulting the
+/// value comparison, or seeding the key from a migration).
+#[test]
+fn a_terminal_without_the_legacy_signal_is_never_backfilled() {
+    let split = ALL
+        .iter()
+        .position(|m| m.id == "20261008_provisioning_legacy_backfill.sql")
+        .expect("the legacy backfill migration is present in the registry");
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
+
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id) VALUES ('t-new', 'New POS', 'new-host')",
+        [],
+    )
+    .unwrap();
+
+    // On a fresh install the key is simply ABSENT, which is the state this leg
+    // pins: no row, so the flow still runs.
+    platform_core::database::run(&mut conn, ALL).unwrap();
+
+    assert!(
+        !crate::Store::new(&conn).is_provisioned("new-host").unwrap(),
+        "a terminal with no legacy signal must stay Unprovisioned — a forged row is the worse failure"
+    );
+
+    // Same conclusion from the other direction: a present-but-not-'false' value
+    // is the wizard's "show me" state, not a completion.
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES ('store.show_setup_wizard', 'true')",
+        [],
+    )
+    .unwrap();
+    platform_core::database::run(&mut conn, ALL).unwrap();
+    assert!(
+        !crate::Store::new(&conn).is_provisioned("new-host").unwrap(),
+        "only 'false' is the dismissal the retired commands wrote; 'true' must not backfill"
+    );
+
+    // And the `store.setup_complete` key the CLI writes is a DIFFERENT key — it
+    // must not be mistaken for the legacy dismissal either.
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES ('store.setup_complete', 'true')",
+        [],
+    )
+    .unwrap();
+    platform_core::database::run(&mut conn, ALL).unwrap();
+    assert!(
+        !crate::Store::new(&conn).is_provisioned("new-host").unwrap(),
+        "store.setup_complete is not the legacy dismissal key and must not backfill"
+    );
 }
