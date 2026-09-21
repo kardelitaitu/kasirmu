@@ -415,8 +415,23 @@ This is the same *class* of defect §1.4 describes — a state written but not h
 cause is different from §1.4's (there, two meanings shared one enum variant; here, the enforcement
 point reads a different table from the one the action writes).
 
-**Decision: enforce at `create_session`, per device.** The session gate already resolves the calling
-device, so the check is one lookup beside the existing entitlement check:
+**The server already emits the verdict — the client discards it (found 2026-10-04).** This makes
+the fix smaller than the shape below first suggested, and it also explains *why* the gap survived:
+
+- `apps/license-server/status.go:107,151,175` computes `deviceRevoked` and returns it as
+  `"device_revoked"` on `POST /api/v1/license/status`.
+- `crates/kasirmu-core/src/license_verification.rs:264-293` — `LicenseStatusResponse` has **no
+  `device_revoked` field**. Serde ignores the unknown key, so the server's answer is parsed and
+  **thrown away**. The verdict is already on the wire; nothing reads it.
+
+**The device row also documents the intent the code does not implement.** `pb_schema.json:859`
+describes `tenant_machines.revoked_at` as: *"When set, the machine has been revoked by the tenant
+admin and **should not be allowed to activate**."* That is the behaviour §2.4a.2 asks for, written
+in the schema before it was written here.
+
+**Decision: enforce at `create_session`, per device**, with the check placed beside the existing
+entitlement gate. `create_session` **already receives `args.terminal_id`** (`auth.rs:636`), so no
+new plumbing is needed:
 
 ```
 create_session → load subscription → verify_signature()   [existing :617]
@@ -424,6 +439,12 @@ create_session → load subscription → verify_signature()   [existing :617]
               → check Revoked (§2.1)                     [new]
               → check allows_workspace_type()            [existing :620]
 ```
+
+**Two ways to feed it, and the choice is ADR #59's to make.** The verdict can be read from the local
+`tenant_machines` row (already present) or carried on the status response the client already
+receives. §4a Q-D already decides the *shape* — cache it alongside `tenant_subscription` rather
+than a network call inside `create_session`, which §2.7 forbids from being able to brick a
+register. Whichever source, the check is a local lookup at the gate.
 
 **Why per-device and not "revoking a device sets the tenant's status":** the admin UI action is
 labelled *revoke this device* (`admin_tenant_lifecycle.go:225`), and its blast radius should match
@@ -433,6 +454,11 @@ business — the exact asymmetry §4 Q2 resolves in favour of the smaller radius
 **Also required:** a live session on a revoked device must be invalidated, not merely refused on
 next login. The session store is in-memory (`auth.rs:251-257`) and already prunes expired entries,
 so revocation invalidation extends an existing path.
+
+**Sequencing, stated because two records depend on it:** the client-side `device_revoked` field is
+a wire change (`LicenseStatusResponse` gains a field) and the server half already exists. Adding
+the field is therefore additive and backward-compatible — an older server that omits it parses as
+`false`, which is the pre-existing behaviour, not a new lockout.
 
 #### 2.4a.3 A manual grant silently un-revokes — TO BUILD, a guard
 
@@ -456,21 +482,44 @@ active again. Nothing in the response or the log distinguishes "this grant also 
 "this grant extended a subscription". The revocation is undone by an action taken for an unrelated
 reason.
 
-**Decision: separate the two statuses rather than guard the flip.** The flip is correct for
-`suspended` (a payment hold, which payment legitimately clears) and wrong for `revoked` (an abuse
-verdict, which payment must not clear). Concretely, either:
+**The two statuses are ALREADY distinct — corrected 2026-10-04.** An earlier revision of this
+section proposed adding a `revocation_reason` field so the flip could "clear `suspended` but not
+`revoked`". That field is **not needed**: the production schema already carries both values on one
+select field.
+
+`apps/license-server/pb_schema.json:399-400` (the `tenants` collection):
+
+```json
+"values": ["active", "suspended", "revoked"]
+```
+
+So the distinction this section asks for exists; what is missing is only that the **flip ignores
+it**. The fix is a guard, not a schema change:
+
+```go
+// admin_tenant_lifecycle.go:383 — currently flips ANY non-active status
+if tenant.GetString("status") == "suspended" {   // was: != "active"
+    tenant.Set("status", "active")
+}
+```
 
 | Option | Pros | Cons |
 |---|---|---|
-| **A. A `revocation_reason` field**; the flip clears `suspended` but not `revoked` | Matches §1.1 rule 2 (un-revoke is a manual act); one field | The status enum keeps two values that mean different things |
-| **B. `revoked` becomes its own status distinct from `suspended`**, with its own un-revoke route | Unambiguous; each status has one meaning | Touches every status check in the server |
+| **A. A one-line guard** (chosen) | No schema change, no migration, no new field; the enum already means what it should | A future third status must be considered at this line |
+| **B. A `revocation_reason` field** as well | Records *why* a tenant was revoked, for audit | Not the fix — the enum already separates the two; adds a field and a write path for an audit nicety |
+| **C. A separate un-revoke endpoint for `revoked`** | Makes un-revoke a deliberate act (§1.1 rule 2) rather than a side effect | More surface; can follow later |
 
-**Decision: A — a `revocation_reason` field; the flip clears `suspended` but not `revoked`.**
+**Decision: A now, with C as the end state.** A closes the hole with one line and no migration.
+**B is demoted from "the fix" to "an optional audit improvement"** — worth having for the incident
+question "why was this tenant revoked?", but it does not change the behaviour and must not be
+described as the guard. C is the right destination once un-revoke needs its own operator action,
+because today `revoked` has no un-revoke route at all (only the grant flip, which is the bug).
 
-For the same reason §2.1 exists: the smallest correct change that makes the two meanings
-distinguishable. `suspended` is a payment hold that payment legitimately clears; `revoked` is an
-abuse verdict that payment must not. Option B is the cleaner end state — one status, one meaning —
-and can follow later; A closes the hole now without touching every status check in the server.
+**A regression test is required, not optional.** This is the one change in the record whose failure
+is **silent** — the ban is lifted with no error, no log line distinguishing it from a normal grant,
+and no user-visible symptom until the abuse recurs. The test must drive `grant-subscription`
+against a `revoked` tenant and assert the status **stays** `revoked`, and separately against a
+`suspended` tenant and assert it becomes `active`.
 
 **Both changes are audited:** the refusal (2.4a.2) and the un-revoke (2.4a.3) must record actor and
 reason like `handleAdminRevokeDevice` already does (`:254`). §2.5 requires it for the region
@@ -583,10 +632,14 @@ unrecoverable offline. Session refusal is reversible, diagnosable, and loses not
   session gate and the in-memory session store are all already there (§1.3). The new client-side
   code is **one enum variant** (`Revoked`, §2.1) and the enforcement points that consume it; **no new
   timestamp is needed**, because `expires_at` already exists and is already refreshed from the server
-  (§2.3, `license_verification.rs:692`). Add the two server-side gaps §2.4a.2/§2.4a.3 close — a
-  per-device check and a `revocation_reason` field — plus the §2.6 export path §4a Q-A decides, and
-  §2.7's constraint on all of them. An earlier revision said *"one enum variant, one timestamp"*: the
-  timestamp was a leftover from the superseded fixed-heartbeat design, which §2.3 replaced.
+  (§2.3, `license_verification.rs:692`). Add the two server-side gaps §2.4a.2/§2.4a.3 close — the
+  per-device `revoked_at` check, and a one-line guard on the grant flip so it clears only
+  `suspended` — plus the §2.6 export path §4a Q-A decides, and §2.7's constraint on all of them.
+  An earlier revision said *"one enum variant, one timestamp"*: the timestamp was a leftover from
+  the superseded fixed-heartbeat design, which §2.3 replaced. A later revision described §2.4a.3 as
+  adding a `revocation_reason` field; the schema already separates `suspended` from `revoked`
+  (`pb_schema.json:399-400`), so the fix is a guard, and the field is demoted to an optional audit
+  improvement rather than part of the change.
 - **Merchant data stays retrievable** (§2.6), so a ban is not a data hostage situation.
 
 ### 3.2 Negative
@@ -792,6 +845,22 @@ sell; it can only read.
   intact (no network path can gate opening the app).
 - The twin is a new row in `registration_gate_debt.generated.rs`, and its gate-debt ceiling is a
   decision to record, not to slip in.
+
+**Sequencing — the twin ships WITH the session lock, never after it.** This is not a deferral, it is
+an ordering constraint, and it is the one thing in this section that can produce a merchant-visible
+incident:
+
+| Order | What ships | State of the product |
+|---|---|---|
+| Today | Export is reachable through the ordinary session path | §2.6's promise is *accidentally* kept |
+| **Wrong order** — §2.5 first, twin later | Sessions refused and invalidated, no twin | **A revoked merchant cannot retrieve their own data.** The promise breaks, and §2.6's whole rationale (data is theirs; withholding it is legal exposure) is inverted |
+| **Correct order** — twin and §2.5 together | Both land in one change | The promise holds by construction |
+
+**Therefore:** the export twin is a **prerequisite of §2.5's enforcement**, not a follow-up to it.
+Any plan that sequences "enforce revocation" before "add the export twin" is wrong and should be
+rejected at review. Note this is the *opposite* of §2.4a.2's device check, which is independently
+safe to ship — the difference is that the device check removes a capability nobody was promised,
+while the session lock removes one §2.6 explicitly grants.
 
 ### Q-B — Does the 30-second Settings poll survive §2.3, and who removes it? `[blocking]` — DECIDED
 

@@ -756,6 +756,34 @@ certified — building it on an ADR that misdescribes four of fourteen crates pr
 misdescription into the certified artifact. It does **not** block any part of §2.3's already-built
 data layer, and it does not block Q2/Q6.
 
+#### The amendment text, so the edit is mechanical rather than interpretive
+
+ADR #1's Context (line 24) currently reads:
+
+> - Each module owns its entire vertical slice (backend + frontend + locale + migrations).
+
+That sentence is the whole defect. The amendment replaces it with a statement of the measured
+state, and adds a status note under it:
+
+> - Each module owns its vertical slice (backend + frontend + locale + migrations). **Measured
+>   2026-10-04:** fourteen crates are registered in `platform/startup/src/lib.rs:94-115`. **Ten own
+>   their slice** — `inventory`, `currency`, `sales`, `staff`, `loyalty`, `tax`, `terminal`,
+>   `crm`, `settings`, `reporting`. **Four are lifecycle-only placeholders** —
+>   `purchasing`, `promotions`, `giftcards`, `kitchen` — which declare their manifest, id and
+>   dependency edges while their hooks only log (`modules/README.md:3`). The kernel's dependency
+>   graph is exercised by all fourteen; domain logic lives in the ten plus `kasirmu-core`.
+
+**Why this wording and not a status banner:** the sentence being replaced is a *requirement* in
+ADR #1's "The target architecture requires:" list, so a reader treats it as a rule rather than a
+description. Amending only a footnote would leave the rule standing. The replacement keeps the
+requirement as the target and records the measured delta beside it, which is the honest form and
+the one a future reader can act on.
+
+**One detail the amendment must not overstate:** the four stubs are not *dead* code — they are
+registered, dependency-checked and lifecycle-driven, which is why the parity test passes. Calling
+them "unimplemented" would replace one inaccuracy with another. "Lifecycle-only placeholder" is the
+measured description.
+
 **Revisit only if** a market actually asks for purchasing, promotions, gift cards or kitchen as a
 deliverable; then the corresponding stub is extracted as ordinary product work, with a customer
 rather than a documentation motive.
