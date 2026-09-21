@@ -8,6 +8,17 @@
 
 .cat-mgmt {
   padding: var(--space-4);
+  /* The page's own query container (ADR-0001 T2 / Slice 5), measured on the box
+     the shell grants this screen — not the viewport. UNNAMED on purpose, the same
+     choice RetailPosScreen.css, KdsScreen.css, PosScreen.css, SalesHistoryScreen.css,
+     PaymentModal.css, EodReportScreen.css, ExpoScreen.css and TransitAuditScreen.css
+     each record and for the same reason: the shell's slot carries the name
+     'app-content', but the only thing between it and .cat-mgmt is a display:contents
+     wrapper, so a named query would find no container in every mount that does not go
+     through the shell (tests, e2e harness, the screen rendered standalone). An unnamed
+     query against the nearest container is the same measurement inside the shell and
+     stays correct outside it. */
+  container-type: inline-size;
 }
 
 .cat-mgmt-header {
@@ -349,4 +360,90 @@
   color: var(--color-fg-secondary);
   line-height: var(--leading-relaxed);
   margin: 0;
+}
+
+/* ── Narrow content slot (ADR-0001 T2 / Slice 5, container queries) ─────
+
+   Measured against .cat-mgmt's own inline-size (declared at the top of this
+   sheet), not the window's: inside the shell this page is the content slot minus
+   the sidebar, so a query written against the window would hold a desktop card
+   grid in a box that cannot fit it. Outside the shell (tests, e2e harness, the
+   screen rendered standalone) .cat-mgmt fills a block-level box and the two
+   agree. Desktop landscape — a content slot at or above the shell's own 1024px
+   base case — matches nothing here and renders exactly as before: every rule
+   below is additive and lives inside this one max-width block.
+
+   WHY 480px, AND WHY ONE TIER. Three independent floors bite in the same narrow
+   band, all of them below 480px of slot, so one tier covers them and a second
+   number would fold a band in which nothing is broken:
+
+   1. THE CARD'S DATA COLUMN — the binding one, and the reason this sheet cannot
+      simply say "nothing to fold". Inside a grid track the card spends 240px of
+      fixed chrome before the name/id/colour column starts: the Card wrapper's own
+      padding-md (2×20px), .cat-mgmt-card's padding (2×16px), the card's three
+      12px flex gaps, the 44px icon badge and the two 44px action buttons. The
+      column is therefore track − 240px, and the id it holds is a `cat-<slug>`
+      token — unbreakable, and unlike .cat-mgmt-card-name it carries no ellipsis —
+      so a 12-character slug (~86px in --text-xs mono) loses its tail to .card's
+      own `overflow: hidden` once the track drops under ~326px, i.e. once the slot
+      drops under ~358px (the root's 2×16px padding). The two rules in the tier
+      below answer exactly that: shedding the decorative badge returns 56px of
+      chrome (its 44px plus the 12px gap it was spending), and letting the id wrap
+      keeps every character instead of the first half of it.
+
+   2. THE GRID'S TRACK FLOOR — .cat-mgmt-grid is
+      `repeat(auto-fill, minmax(240px, 1fr))`, and a grid track never shrinks
+      below its minmax() minimum, so below 240px + the root's 2×16px padding =
+      a 272px slot the grid overflows its own box and .app-content's
+      `overflow-x: hidden` clips it. `1fr` in the tier drops the floor to the
+      card's own min-content.
+
+   3. THE HEADER — a nowrap flex row of two items that cannot break: the h1's
+      min-content ("Categories" / "Kategori" at --text-2xl) and the primary
+      Button, which carries `white-space: nowrap` from the shared .btn. Their two
+      intrinsic widths together are roughly 240px of content box at the shipped
+      en/id strings — an estimate, not a render — so a slot below ~275px has the
+      row overflow, and what leaves the box is the ADD button, the screen's
+      primary action. Wrapping the row moves it to its own line instead.
+
+   The narrowest slot the shell hands this page is 288px (a 320px tablet viewport
+   minus tablet.css's 2×16px), so all three are reachable there. The "narrow
+   shell" of ADR-0001 Slice 7 — 640px — matches no tier here, because at 640px the
+   two-up card grid still fits and there is nothing to fold: that is the reading,
+   not an omitted rule. */
+@container (max-width: 480px) {
+  /* The nowrap primary action moves to its own line instead of off the page.
+     row-gap only: a row that does not wrap is unaffected by it, so nothing above
+     this tier changes. */
+  .cat-mgmt-header {
+    flex-wrap: wrap;
+    row-gap: var(--space-3);
+  }
+
+  /* Decoration, not data: the badge is aria-hidden and the icon is also shown in
+     the edit popup and the icon picker, while its 44px + the 12px gap is 56px of
+     the card's fixed chrome. The 44px edit/delete buttons are deliberately NOT
+     touched — CAT-06's touch target is not this slice's to trade. */
+  .cat-mgmt-icon-badge {
+    display: none;
+  }
+
+  /* The id and the colour hex are mono tokens with no break opportunity, and
+     .card clips its overflow. Let them wrap rather than lose the tail of an
+     identifier the user has no other place to read. */
+  .cat-mgmt-card-id,
+  .cat-mgmt-card-colour {
+    overflow-wrap: break-word;
+  }
+
+  /* Drops the 240px track floor, so the grid stops overflowing its own box
+     below a 272px slot and instead sizes to the card's min-content. */
+  .cat-mgmt-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* 2×16px of page padding is chrome a box this narrow cannot spare. */
+  .cat-mgmt {
+    padding: var(--space-3);
+  }
 }
