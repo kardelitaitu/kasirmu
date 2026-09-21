@@ -85,3 +85,68 @@ gets *more* pressing with your third signal.
 `crates/kasirmu-hal/src/transport/apk_signature.rs` is **dirty in the working tree** while you work,
 so line citations into it are moving — cite that file by symbol, not by line, as I did for
 `AppShell.tsx` in the ADR #56 pass.
+
+---
+
+## 7. Citation sweep, added 2026-09-22 — two more majors, and every line anchor has drifted
+
+Swept against revision `EB91922B` (**1145 lines**, mtime 03:34) — i.e. after your latest edits, so
+§2's numbers above (a 1091-line revision) are also now stale. **Anchor by quoted text, not by
+number.** Re-check both majors below against your current text before acting; one may already be
+gone.
+
+**Two majors beyond §2.**
+
+1. **The §2.5 block heading is stale:** *"IMPLEMENTED 2026-10-05 — §2.2's verdict is real;
+   **§2.1's client half is not**"*. §2.1's client half **is** built —
+   `kasirmu-hal/src/transport/apk_signature.rs` (`apk_signing_fingerprint`), the bridge attach at
+   `crates/kasirmu-bridge/src/build_integrity.rs:34` + `license.rs:528`,
+   `apps/mobile-tauri/src/commands/health.rs:76` `get_build_fingerprint` registered at
+   `lib.rs:620` — and both the status block and §2.1's own table say so. Same defect class as the
+   `DECIDED (build deferred)` heading: a heading that negates the shipped state.
+2. **A §3.3 dated-history bullet says nothing automatic happens** — *"the only AUTOMATIC bound
+   remains §2.3's grace window for a paid tier"* — which the **current table 40 lines above it**
+   contradicts (*"detected, recorded, emailed AND refused a renewal"*), as does
+   `renew.go:111` → `deviceHasFingerprintMismatch` (`build_integrity.go:190`). The history header
+   is the only thing stopping a mid-section reader from taking the pre-fix answer.
+
+**Every `file:line` anchor in this record has drifted.** The named symbols are correct; the lines
+are not. Rather than trust any of them, re-derive: two whole anchor sets moved by a constant offset.
+
+| Cited | Actual in HEAD |
+|---|---|
+| `license_verification.rs` :393, :501, :544 | :417, :525, :568 |
+| `license_verification.rs` :408-411, :573-582 | :432-435, :591-594 |
+| `subscription.rs` :534, :572, :641, :665, :673 | :550, :588, :667, :691, :699 |
+| `subscription.rs` :640-643, :942-943, :991-995, :1011, :517-527 | :666-669, :977-979, :1027-1031, :1047, :518-533 |
+| `subscription_tests.rs` :1168-1175 | :1199-1207 |
+| `settings/keys.rs` :263, :265, :295 | :282 (`SECRET_KEY_DENY_LIST`), :312 (`NON_EXPORTABLE_DEVICE_KEYS`); :295 is `LICENSE_TENANT_ID` |
+| `attestation.rs` :205-260, :255 | :203-257, :251 |
+| `AppShell.tsx` :235-240 | :253 (the "unknown is not no users" comment) |
+| `admin_stats.go` :574-668, :790, :604/:635/:662, :599-603 | :581-675, :797, :611/:642/:669, :606-610 |
+| `renew.go` :76-81 | :82-87 |
+| `main.go` :434, :451 — cited as boot goroutines | :457, :474 — and **wrong at the recorded-against commit too** |
+| ADR58 :289-293, :440-447 | ADR58 :467-471, :775 |
+| internal refs (:281-282), (:340-342), (:413-415), (:344-361) | ~:308, ~:725-727, ~:859-861, ~:729-746 |
+| `apps/mobile-tauri/AGENTS.md` :40-46 | the Signing section is **:176+**; :40-46 is the Gradle/JDK block |
+
+**Two claims wrong as claims, not as anchors** (both §Q-A):
+
+- *"Membership is checked in constant time"* — it is not: `build_fingerprint.rs:108-111` is
+  `accepted.iter().any(|e| …)`, which short-circuits, and `build_integrity.go:100-104` loops the
+  same way. No practical impact at four pins; wrong as written.
+- The set is *"capped … **and ordered**"* — capped is true (`maxAcceptedPins = 4`,
+  `release_pins.go:47`, enforced :202); **no ordering rule exists in code**.
+
+**§3.2's "both shells" claim is half false.** Only
+`apps/mobile-tauri/src/commands/registration_gate_debt.generated.rs:59` moved; the desktop ledger
+has **no** entry and `scripts/ipc-parity-allowlist.json` has none either.
+
+**Corroborated by the sweep (§5 above stands):** the classifier/verdict/fold behaviour, the 13
+`build_fingerprint` tests, the **6** quota call sites, the sentinel guard and its test, the renew
+guard's fail-open shape and its 6 tests, the daily scanner's three conditions and weekly cooldown,
+`quota_effect.go`, the pin store and both of its tests, and the ride-along's deliberate `None`.
+
+**Also confirmed for the ADR #58 pass:** that record cites ADR #57 §2.5's precedence table, and
+ADR #57 cites ADR #58 `:440-447` for §2.7's text — which actually lives at **ADR58:775**. Both
+records' cross-references need re-deriving, not just their internal ones.
