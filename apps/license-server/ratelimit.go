@@ -69,6 +69,28 @@ var attestLimiter = &rateLimiter{
 	maxPerHr: attestMaxPerHr,
 }
 
+// statusMaxPerHr is the /status poll's own per-IP budget. It is 48x the
+// credential budget because the shipped Settings screen polls /status twice a
+// minute (ui/src/features/settings/LicenseSettings.tsx: POLL_INTERVAL_MS =
+// 30_000), i.e. 120 calls/hour from a single continuously-open screen. At 240
+// that one screen cannot starve itself and several screens still fit.
+const statusMaxPerHr = 240
+
+// statusLimiter is the SEPARATE per-IP budget for POST /api/v1/license/status
+// (see status.go). It exists because /status is an authenticated, UI-driven
+// poll: leaving a Settings screen open is not an abuse signal, and it must not
+// drain the brute-force budget of the unauthenticated credential lanes.
+//
+// It stays in-memory only (like attestLimiter/contactRateLimiter): the
+// persisted rate_limit_ip_buckets table is keyed by IP alone, so a second
+// persisted limiter would clobber ipRateLimiter's tokens for the same IP. A
+// restart resetting a poll budget is harmless — the credential limiter keeps
+// its restart-survival guarantee.
+var statusLimiter = &rateLimiter{
+	buckets:  make(map[string]*tokenBucket),
+	maxPerHr: statusMaxPerHr,
+}
+
 // startCleanup launches a background goroutine that periodically sweeps
 // expired buckets to prevent unbounded memory growth. Call stopCleanup
 // to shut it down (e.g. in tests). Idempotent; no-op if already running.
@@ -682,6 +704,7 @@ func init() {
 	keyFailTracker.startCleanup()
 	contactRateLimiter.startCleanup()
 	attestLimiter.startCleanup()
+	statusLimiter.startCleanup()
 
 	// Web OTP store + windowed limiters (web_otp.go) sweep on the same
 	// 30-min cadence so expired codes/sessions and old windows don't
