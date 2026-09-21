@@ -281,3 +281,35 @@ look for `CREATE`/`ALTER` statements.
 - This record was written by a session that neither authored nor committed the runner fix.
   The raw stderr captures it replaces are gone; the measurements above were taken from the
   working tree and from the archived database copy before deletion.
+
+## 7. STRUCTURE AFTER THE ARCHITECTURE PASS
+
+The proof had been written into a 2,257-line runner that also held the ledger, the
+checksums and the drift policy — a SQL parser and a proof engine inside a migration
+runner, with no module boundary and no test of its own. The statement layer now stands
+apart:
+
+| File | Owns | Size at the pass |
+| --- | --- | --- |
+| `platform/core/src/database/statements.rs` | Reading SQL: splitting a script into statements, tokens and canonical forms, the parsers, and the already-satisfied proof | 940 |
+| `platform/core/src/database/statements_tests.rs` | That layer's tests, including the refusal paths | 247 |
+| `platform/core/src/database/migrations.rs` | The ledger and the policy: registry, checksums, the drift decision, orchestration | 535 production, 773 inline tests |
+
+Dependencies run one way — `migrations` → `statements`. Nothing in the runner inspects a
+token; nothing in `statements` knows a `Migration`, a `schema_migrations` row or a checksum.
+The two meet at three calls: `split_statements`, `canonical_ddl` and `already_satisfied`.
+
+One interface change came with the move: the proof takes SQLite's error **message** (`&str`)
+rather than a `rusqlite::Error`, which is all it ever read, and which is what makes it
+testable without constructing an error value. The runner converts once, at the call site.
+
+`statements_tests.rs` also carries ten tests that did not exist before: the refusal paths
+named as the top gap in the audit of this work. Each negative case is asserted beside the
+control that shows the same statement *is* provable when the proof's conditions hold, so a
+proof that simply refused everything could not pass them.
+
+Behaviour was checked, not assumed. `platform-core` lib: 394 passed. `kasirmu-core
+--lib migrations::`: 36 passed, including the seed-drift and cosmetic-edit cases that run the
+proof through the real registry. And the forced-drift replay of §2.2 re-run against the same
+archived bytes after the move: 60 → 61 applied, the stored checksum restored to the
+registry's, four tier rows intact.
