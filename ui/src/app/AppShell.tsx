@@ -27,8 +27,10 @@ import { hasUsers } from '@/api/staff';
 import LicenseActivationScreen from '@/features/auth/LicenseActivationScreen';
 import CreatePinScreen from '@/features/auth/CreatePinScreen';
 import SessionLockScreen from '@/features/auth/SessionLockScreen';
+import RevokedScreen from '@/features/auth/RevokedScreen';
 import MemoBanner from '@/features/memo/MemoBanner';
 import { Badge, type BadgeVariant } from '@/components/Badge';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 
 // ── PERF-01: workspace/flow screens load on demand ────────────────
 // These screens are only reachable after login, so each is code-split
@@ -136,6 +138,10 @@ export default function AppShell() {
   const { goToWorkspacePicker } = useWorkspaceNav();
   const { isKdsKiosk } = useTerminalProfile(sessionToken ?? undefined);
   const { addToast } = useToast();
+  // ADR #58 §2.6: subscription state needed to gate the revoked screen before
+  // the boot-allowed check. `revoked` lands here when the ride-along daemon
+  // has written and cached a revocation verdict from the licence server.
+  const { state: subscriptionState } = useSubscription();
   // Stable ref so the mount effect below can call addToast without
   // listing it as a dependency (which would cause the effect to re-run
   // whenever the toast context re-creates its callback reference, resetting
@@ -527,6 +533,15 @@ export default function AppShell() {
   }
 
   if (!bootAllowed) {
+    // ADR #58 §2.6: if the subscription is revoked, show the data-export screen
+    // rather than the re-activation screen. The merchant cannot log in but CAN
+    // export their data via the no-session twin (export_data_without_session).
+    // This check runs inside !bootAllowed so the revoked screen is only shown
+    // when the licence itself has blocked the boot — not for an existing active
+    // install whose ride-along verdict arrives while the operator is logged in.
+    if (subscriptionState === 'revoked') {
+      return <RevokedScreen />;
+    }
     return (
       <ActivationFlow
         initialError={licenseError}

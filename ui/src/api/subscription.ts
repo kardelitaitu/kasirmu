@@ -15,6 +15,7 @@ export type SubscriptionLifecycleState =
   | 'expired'
   | 'canceled'
   | 'paused'
+  | 'revoked'
   | 'unavailable';
 
 /**

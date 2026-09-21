@@ -138,7 +138,7 @@ mod debt;
 /// exists (the same property `get_device_id` and `get_local_ip` beside it have).
 /// It exists so the fingerprint read is observable on a fresh install, where the
 /// licence-status call — its only other caller — returns before reaching the JNI.
-const REGISTERED_FLOOR: usize = 336;
+const REGISTERED_FLOOR: usize = 337;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.

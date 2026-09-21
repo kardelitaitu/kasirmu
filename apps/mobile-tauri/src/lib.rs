@@ -590,6 +590,11 @@ pub fn run() {
                 // the UI bridged from the save dialog's content:// URI. The desktop
                 // pair (create_backup / get_backup_status) is intentionally untouched.
                 commands::data::create_backup_to,
+                // Export without session (ADR #58 §4a Q-A option 3): read-only twin
+                // for revoked tenants. Registered alongside the gated command so the
+                // revoked screen can call it on tablet. Ledger row added to
+                // registration_gate_debt.generated.rs below.
+                commands::data::export_data_without_session,
                 commands::exchange_rates::list_exchange_rates_scoped,
                 commands::exchange_rates::list_latest_exchange_rates_scoped,
                 commands::exchange_rates::create_exchange_rate_scoped,

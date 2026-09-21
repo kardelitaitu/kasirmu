@@ -485,6 +485,16 @@ auth-copyright = kasir.mu © { $year } All rights reserved.
 auth-clipboard-error = Clipboard error: { $message }
 auth-error-title = Error
 
+## Revoked Account (ADR #58 §2.6)
+auth-revoked-title = Account suspended
+auth-revoked-message = Your kasir.mu account has been suspended. You cannot log in or process new sales. Your existing data is safe and can be exported below.
+auth-revoked-contact = If you believe this is an error, please contact our support team.
+auth-revoked-export-button = Export my data
+auth-revoked-exporting = Exporting…
+auth-revoked-export-aria = Export all local store data to an encrypted package
+auth-revoked-export-success = Data exported successfully!
+auth-revoked-export-error = Export failed: { $message }
+
 ## Create Owner PIN (first-run setup)
 auth-create-pin-title = Create Owner PIN
 auth-create-pin-desc = Set up the first owner account to manage your POS

@@ -293,6 +293,29 @@ export const exportData = async (
   return { ...result, path: pending.destination };
 };
 
+/**
+ * Export data WITHOUT a session token — the read-only local twin (ADR #58 §4a Q-A
+ * option 3). Called from the revoked-tenant screen when sessions are refused and
+ * `export_data` is therefore unreachable. Read-only and local-only by construction:
+ * the Rust twin shares `export_data`'s body and emits `export_ungated_no_session`
+ * to the operator log.
+ */
+export const exportDataWithoutSession = async (
+  args: ExportDataArgs,
+): Promise<ExportDataResult> => {
+  const result = await loggedInvoke<ExportDataResult>('export_data_without_session', {
+    args,
+  });
+
+  const pending = pendingExport;
+  if (!pending || pending.cachePath !== args.outputPath) return result;
+
+  pendingExport = null;
+  await copyCacheToUri(pending.cachePath, pending.destination);
+  return { ...result, path: pending.destination };
+};
+
+
 /** Preview an .kasirpkg import file to see its contents before importing. */
 export const importPreview = (
   sessionToken: string,
