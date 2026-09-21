@@ -203,13 +203,19 @@ storeFile=/abs/path/to/oz-pos.keystore
 
 **Nothing does this in CI any more.** It used to be done by the `android.yml`
 and `nightly.yml` workflows, which `23c963303` renamed on 2026-09-02 to
-`.github/workflows/android.yml.bak` and `.github/workflows/nightly.yml.bak` —
-GitHub never executes a `.bak` file, so no pipeline decodes the base64 keystore
-secret or writes this file today. The decode logic is still readable in that inert
-file (`.github/workflows/android.yml.bak:119-132`: base64 -d into
-`oz-pos-release.keystore`, then `keyAlias`/`password`/`storeFile` written to
-`keystore.properties` from the `ANDROID_KEYSTORE_BASE64` / `KEY_ALIAS` /
-`KEYSTORE_PASSWORD` secrets). The only live workflows are `dev-ci.yml` (PR to
+`.github/workflows/*.bak` — GitHub never executes a `.bak` file, so no pipeline
+decodes the base64 keystore secret or writes this file today. Those backups were
+then moved out of the live directory by `54f64de83` (`chore(ci): move retired
+workflow backups into attic/`, 2026-09-18), which left `.github/workflows/` holding
+only the two workflows GitHub actually runs. **The paths below were corrected
+2026-09-22 — they had pointed at `.github/workflows/android.yml.bak`, which no
+longer exists, so a reader following them found nothing.**
+
+The decode logic is readable in the attic copy
+(`.github/workflows/attic/android.yml.bak:119-129` — corrected from `:119-132`,
+which over-ran the block: base64 -d into `oz-pos-release.keystore` at `:126`, then
+`keyAlias`/`password`/`storeFile` appended to `keystore.properties` at `:127-129`,
+from the `ANDROID_KEYSTORE_BASE64` / `KEY_ALIAS` / `KEYSTORE_PASSWORD` secrets). The only live workflows are `dev-ci.yml` (PR to
 `main`, a push to `main` and `workflow_dispatch`, three events re-read from
 `dev-ci.yml:3-8`) and `release.yml` (`v*` tags), and `release.yml` is
 desktop-only by design — its own header at `.github/workflows/release.yml:24`
@@ -323,8 +329,10 @@ and opens the Tauri dev server for hot-reload.
 ## CI notes (GitHub Actions)
 
 **There is no Android CI job.** No live workflow builds an APK: the job that did
-lives in the inert `.github/workflows/android.yml.bak` (retired by `23c963303`,
-2026-09-02), and `dev-ci.yml#static-gates` has no Android or NDK step. So the list
+lives in the inert `.github/workflows/attic/android.yml.bak` (retired by
+`23c963303` on 2026-09-02, then moved into `attic/` by `54f64de83`; the old
+`.github/workflows/android.yml.bak` path cited here until 2026-09-22 no longer
+exists), and `dev-ci.yml#static-gates` has no Android or NDK step. So the list
 below is the recipe for whoever restores the workflow, not a description of
 today's CI. For PRs targeting `main`, a CI job should:
 
