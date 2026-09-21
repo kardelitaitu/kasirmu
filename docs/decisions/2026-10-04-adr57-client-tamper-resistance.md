@@ -2,7 +2,7 @@
 num: 57
 area: security
 title: "ADR #57: Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection"
-status: Proposed (2026-10-04) — §2.1 (client reporting + server classification, verified on a real device), §2.2's verdict rule, §2.3's grace ceiling, §2.5's per-device renewal refusal, §2.6's sentinel guard, §Q4's escalation fold, §Q-B's pin store and §2.4's notification for the fingerprint + device-quota signals are implemented; §2.4's product/staff/location signals are not
+status: Proposed (2026-10-04) — §2.1 (client reporting + server classification, verified on a real device), §2.2's verdict rule, §2.3's grace ceiling, §2.5's per-device renewal refusal, §2.6's sentinel guard, §Q4's escalation fold, §Q-B's pin store and §2.4's notification AND dashboard rows for the fingerprint + device-quota signals are implemented; §2.4's product/staff/location signals are not
 ---
 
 # ADR #57: Client Tamper Resistance Without Play Integrity
@@ -831,12 +831,19 @@ that as a residual rather than this section implying otherwise.
 > `mismatch` and on repeated `unknown` per §Q4/§Q-C, with a weekly per-tenant-per-condition
 > cooldown. The two were indeed one unit of work, as this section argued.
 >
-> **What did NOT happen is the `attentionItem` rows.** §2.4's destination was originally the
-> `NeedsAttention` panel on the admin dashboard. The scanner delivers the same information through
-> email instead, which is the channel §3.3's residual actually needed: the panel is only read by an
-> operator who has opened the dashboard, whereas an alert reaches them. Adding panel rows remains
-> open as a display improvement — it is now an additive UI change, not a prerequisite, because
-> nothing about the detection or the response depends on it.
+> **At that point the `attentionItem` rows had NOT been added.** §2.4's destination was originally
+> the `NeedsAttention` panel on the admin dashboard; the scanner delivered the same information by
+> email instead, which is the channel §3.3's residual actually needed (an alert reaches an operator
+> who has not opened the dashboard).
+>
+> **The rows have since SHIPPED (2026-09-22).** `admin_stats.go` now emits three ADR #57 types —
+> `integrity_mismatch`, `integrity_unknown_persistent` and `pos_over_quota` — and they are
+> ordered FIRST on the panel because the list is capped at 20: a tamper finding must not be pushed
+> off by a backlog of billing rows. They reuse the scanner's own detection functions
+> (`collectBuildIntegrityFindings`, `findTenantsOverPosQuota`) rather than re-deriving the
+> conditions, so the panel and the daily email cannot disagree about which tenant is violating.
+> `admin.js` renders `integrity_mismatch` with the BAD badge (a re-signed APK is not a warning to
+> triage), and the three labels live in `admin-utils.js`.
 
 > **Consequence found while checking, 2026-09-21: the queue types cannot be built ahead of the
 > field.** A plan to add `integrity_mismatch`/`integrity_unknown_persistent` rows to
@@ -924,10 +931,11 @@ a test asserting the same literals — `escalation_rule_matches_the_go_scanner` 
 build. The Go test also pins that the alert cooldown equals the window, since a longer cooldown would
 let a standing condition go unreported.
 
-**What remains genuinely unbuilt here: the `NeedsAttention` rows.** §2.4's notifier reaches the
-operator by EMAIL, not through that panel (`admin_stats.go`), so the dashboard list is still
-untouched. That is now an additive display change rather than a blocked prerequisite — nothing about
-detection or response depends on it.
+**The `NeedsAttention` rows shipped on 2026-09-22**, closing this remainder: `admin_stats.go`
+emits `integrity_mismatch`, `integrity_unknown_persistent` and `pos_over_quota`, built by calling
+this scanner's own detection functions so the panel and the email agree by construction. It was an
+additive display change rather than a blocked prerequisite — nothing about detection or response
+depends on it — which is why it could land after the scanner.
 
 **Verification run:** `cargo test -p kasirmu-core --lib -- build_fingerprint` → **13 passed, 0 failed**.
 
