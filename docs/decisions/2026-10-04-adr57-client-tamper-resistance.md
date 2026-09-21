@@ -2,7 +2,7 @@
 num: 57
 area: security
 title: "ADR #57: Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection"
-status: Proposed (2026-10-04) — §2.1 (client reporting + server classification, verified on a real device), §2.2's verdict rule, §2.3's grace ceiling, §2.6's sentinel guard, §Q4's escalation fold, §Q-B's pin store and §2.4's operator notification are all implemented
+status: Proposed (2026-10-04) — §2.1 (client reporting + server classification, verified on a real device), §2.2's verdict rule, §2.3's grace ceiling, §2.5's per-device renewal refusal, §2.6's sentinel guard, §Q4's escalation fold, §Q-B's pin store and §2.4's operator notification are all implemented
 ---
 
 # ADR #57: Client Tamper Resistance Without Play Integrity
@@ -262,18 +262,39 @@ revenue it protects. Termination stays a human decision; the system job is to ma
 
 ### 2.5 A quarantine state exists for the fingerprint mismatch
 
-**STILL TO BUILD, and blocked on a DECISION rather than on effort.** The *detection* half works: a
-mismatch is classified, stored and emailed to an operator. What is absent is the graded *automatic*
-response — renewal refusal for a mismatched build. Today a flagged device is seen and can still
-renew, so the response is a human acting rather than the system.
+**IMPLEMENTED 2026-09-22 — option B, the per-device refusal.** A device whose build failed its
+fingerprint check can no longer renew; every other terminal the tenant owns is unaffected.
 
-**The blocker, found by tracing the input rather than assuming it:** the refusal's input does not
-exist at the grain the existing guard reads. §2.4 stores reports per DEVICE, the renew request
-carries no `machine_id`, and no tenant-level integrity flag exists anywhere. Building this
-therefore requires choosing between a tenant-wide refusal (which contradicts this section's own
-severity argument) and a wire change (see the correction below). **No code change is made here on
-purpose:** either option is a decision, and the wrong one silently reintroduces the fleet lockout
-§Q4 rejected.
+**The decision, and why B over A.** Tracing the input showed the refusal could not be built as the
+record first described: §2.4 stores verdicts per DEVICE, the renew request carried no
+`machine_id`, and no tenant-level integrity flag existed anywhere. That left two shapes:
+
+| Option | Verdict |
+|---|---|
+| **A. Flag the TENANT**, refuse its renewal | **Rejected.** It refuses every terminal of that tenant because ONE device was tampered — including honest tills at other locations. That is the fleet-lockout failure this section (:281-282) and §Q4 both chose to avoid, merely moved from the client grain to the tenant grain |
+| **B. Key the refusal per DEVICE** | **Chosen.** Correct severity: the tampered terminal cannot renew, its siblings are untouched |
+
+**B was also the cheaper option, which is what settled it.** The bridge already reads
+`machine_id` during renewal — it is the API-key KDF factor (`license.rs`) — so carrying it into
+the request added no new plumbing, and the server already stores the device id on every report. The
+"wire change" framing made B sound expensive; it was one added field on a request that already
+existed, plus a lookup.
+
+**The three invariants the implementation must hold, each pinned by a test:**
+
+1. **Only a `mismatch` refuses.** A persistent `unknown` does NOT: §2.2 makes absence a verdict,
+   but §Q4 routes it to the operator queue precisely because a serialization bug or a
+   partially-rolled-out client produces it from legitimate devices. Refusing on it would let OUR bug
+   stop merchants renewing.
+2. **Fail open on every uncertainty** — an empty `machine_id` (a pre-#57 client), an unknown device,
+   or a lookup error all answer "no refusal". The field may only ever ADD a refusal.
+3. **Indistinguishable on the wire.** The refusal returns the same generic
+   `"invalid api_key or tenant is not active"` this endpoint already uses, per §Q-D: a distinct
+   message would tell the attacker exactly which control fired.
+
+**Scope, stated plainly: this denies PERSISTENCE, not access.** The device keeps selling on its
+current signed entitlement until that entitlement expires (§2.5). That is the whole reason the
+response is a renewal refusal rather than a lock — a false positive must not dark a till mid-shift.
 
 The grades the eventual response will use already exist as states:
 
@@ -315,12 +336,12 @@ stay so: `enforce_pos_writable` protects revenue collection, the server guard pr
 > | **A. Flag the TENANT on a mismatch**, refuse its renewal | No wire change; small diff | Refuses **every** terminal of that tenant because ONE device was tampered, including honest tills elsewhere — the fleet-lockout failure §2.5 (:281-282) and §Q4 both chose to avoid, reintroduced at the tenant grain instead of the client grain |
 > | **B. Key the refusal per DEVICE** | `machine_id` added to the renew request on BOTH sides — a wire change, plus a fail-open rule for the empty-`machine_id` case (the problem the status call already solved at `license_verification.rs:573-582`) | Correct severity: the tampered terminal cannot renew, the tenant's other tills are unaffected |
 >
-> **Neither is built, and this record does not pick one silently.** Option A contradicts this
-> section's own stated severity, so it is rejected on the record's existing reasoning. Option B is
-> the right end state and needs its own decision, because it moves the client/server wire. Until
-> one is chosen, the shipped state is unchanged: a mismatched build is **detected, stored and
-> emailed**, and can still renew. That is §3.3's residual, and it is now narrower than "no response"
-> but wider than "refused".
+> **RESOLVED 2026-09-22 — option B was chosen and built.** Option A contradicts this section's own
+> severity argument and is rejected on the record's existing reasoning; option B is implemented
+> (see the §2.5 implementation note above): `machine_id` now rides the renew request, and the
+> server refuses a renewal to a device with a stored `mismatch`. The "wire change" framing in the
+> table above made B sound expensive; in practice the bridge already read `machine_id` as the
+> API-key KDF factor, so it was one added field and one lookup.
 
 #### Precedence: `mismatch` (this record) vs the 3-day window (ADR #58 §2.3)
 
@@ -578,8 +599,8 @@ and emails the operator (`OZ_ADMIN_EMAIL`) on two conditions, distinguished deli
 | Residual | Bound — **as of 2026-09-21** |
 |---|---|
 | A2 exceeds local quota gates | **Still unbounded.** Untouched by this work: the alert reports builds, not quota use |
-| A1/A3 patch out fingerprint reporting | **Detected and alerted, not refused.** The deletion surfaces as repeated `unknown` and reaches a human within a week; the device can still renew until §2.5 chooses its refusal grain |
-| A1/A3 report a fingerprint at all | **CLOSED as a capability.** The APK certificate is computed natively and sent; a re-signed APK produces a stored `mismatch` AND an alert |
+| A1/A3 patch out fingerprint reporting | **Detected and alerted** (§2.2/§Q4). The deletion surfaces as repeated `unknown` and reaches a human within a week. It does NOT refuse a renewal — deliberately: `unknown` may be our own bug (§Q4), so only a positive `mismatch` denies persistence |
+| A1/A3 report a fingerprint at all | **CLOSED and now ENFORCED.** The APK certificate is computed natively and sent; a re-signed APK produces a stored `mismatch`, an operator alert, AND a renewal refusal to that device (§2.5) — so a tampered build cannot persist past its current signed entitlement |
 
 **What the notification deliberately does NOT do.** It never refuses a session, never revokes a
 device, never locks an account. §Q4 is explicit that escalation routes to a human because a
