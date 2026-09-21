@@ -126,9 +126,9 @@ async fn a_legacy_setup_device_is_backfilled_and_reads_as_provisioned() {
             assert_eq!(owner_user_id, None);
             assert_eq!(location_id, None);
         }
-        FirstRunStateDto::Unprovisioned => panic!(
-            "a legacy device whose wizard completed must not re-enter onboarding"
-        ),
+        FirstRunStateDto::Unprovisioned => {
+            panic!("a legacy device whose wizard completed must not re-enter onboarding")
+        }
     }
 
     assert_eq!(
@@ -208,7 +208,10 @@ async fn the_legacy_backfill_is_idempotent_and_never_overwrites() {
         )
         .unwrap()
     };
-    assert_eq!(first, again, "the existing row must be replayed, not rewritten");
+    assert_eq!(
+        first, again,
+        "the existing row must be replayed, not rewritten"
+    );
 
     // And the other direction: a terminal a REAL provisioning run already set up
     // keeps its tenant/owner even though the legacy key is also present.

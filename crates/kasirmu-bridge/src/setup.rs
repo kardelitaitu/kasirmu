@@ -296,11 +296,8 @@ fn backfill_legacy_provisioning(
     store: &Store<'_>,
     terminal_id: &str,
 ) -> Result<Option<ProvisioningRecord>, BridgeError> {
-    let completed = Settings::get(
-        store.conn,
-        kasirmu_core::settings::keys::SHOW_SETUP_WIZARD,
-    )?
-    .is_some_and(|v| v == "false");
+    let completed = Settings::get(store.conn, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD)?
+        .is_some_and(|v| v == "false");
     if !completed {
         return Ok(None);
     }

@@ -513,18 +513,28 @@ async fn run_license_ride_along(db: &DbConnection) {
         }
     };
 
-    let resp = match kasirmu_core::license_verification::check_license_status(&api_key, &machine_id)
-        .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            // Fail open: keep the cached verdict and keep selling. Logged at
-            // warn (not error) because an unreachable licence server is an
-            // expected condition on an offline-first till, not a fault.
-            tracing::warn!("licence ride-along: status check failed, keeping cached verdict: {e}");
-            return;
-        }
-    };
+    // No fingerprint is sent from here, deliberately: `platform-sync` is shared
+    // with the desktop shell (which has no APK to fingerprint) and does not
+    // depend on `kasirmu-hal`, where the Android reader lives. Passing `None`
+    // omits the field, which the server classifies as `unknown` — never
+    // `mismatch` — so this path cannot refuse a renewal. The Android tablet
+    // reports its fingerprint through the bridge's licence-status lane
+    // (`kasirmu_bridge::license::check_license_status`), which can reach it.
+    let resp =
+        match kasirmu_core::license_verification::check_license_status(&api_key, &machine_id, None)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                // Fail open: keep the cached verdict and keep selling. Logged at
+                // warn (not error) because an unreachable licence server is an
+                // expected condition on an offline-first till, not a fault.
+                tracing::warn!(
+                    "licence ride-along: status check failed, keeping cached verdict: {e}"
+                );
+                return;
+            }
+        };
 
     // Read the device verdict before the response is moved into the blocking
     // closure below — it is needed for the log line, not for the cache write.

@@ -516,7 +516,14 @@ pub async fn check_license_status(
         }
     };
 
-    let resp = core_check_license_status(&api_key, &machine_id)
+    // ADR #57 §2.1: attach this installation’s APK signing-certificate
+    // fingerprint when the platform can produce one. Android-only; every other
+    // platform, and every failure inside the Android path, yields `None` —
+    // which the server reads as `unknown`, never `mismatch` (§2.2), so a
+    // device that cannot be fingerprinted is never refused a renewal for it.
+    let build_fingerprint = crate::build_integrity::apk_signing_fingerprint();
+
+    let resp = core_check_license_status(&api_key, &machine_id, build_fingerprint.as_deref())
         .await
         .map_err(|e| BridgeError::Internal(e.to_string()))?;
 

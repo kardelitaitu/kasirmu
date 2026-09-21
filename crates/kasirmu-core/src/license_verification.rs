@@ -589,14 +589,28 @@ pub async fn renew_license(req: &RenewLicenseRequest) -> Result<RenewLicenseResp
 pub async fn check_license_status(
     api_key: &str,
     machine_id: &str,
+    build_fingerprint: Option<&str>,
 ) -> Result<LicenseStatusResponse, CoreError> {
     let url = format!("{}/api/v1/license/status", license_server_url());
     let client = reqwest::Client::new();
 
+    // ADR #57 §2.1: the APK signing-certificate fingerprint rides this call.
+    // `None` omits the field entirely rather than sending an empty string, so a
+    // server can distinguish "this platform has no fingerprint" (desktop, or an
+    // unpinnable install) from "a fingerprint existed and was blank".
+    //
+    // Sending it is always fail-open: the server classifies an absent or
+    // malformed value as `unknown`, never `mismatch` (§2.2), so a device that
+    // cannot produce one is never refused a renewal for it.
+    let mut body = serde_json::json!({ "machine_id": machine_id });
+    if let Some(fp) = build_fingerprint {
+        body["build_fingerprint"] = serde_json::Value::String(fp.to_string());
+    }
+
     let resp = client
         .post(&url)
         .bearer_auth(api_key)
-        .json(&serde_json::json!({ "machine_id": machine_id }))
+        .json(&body)
         .timeout(std::time::Duration::from_secs(15))
         .send()
         .await
