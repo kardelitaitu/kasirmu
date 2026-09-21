@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * Playwright configuration for OZ-POS E2E tests.
  *
- * Tests run against the Vite dev server (port 1420) which serves the
+ * Tests run against the Vite dev server (port 1421 by default) which serves the
  * React app with mocked Tauri IPC (`dev-mock/tauri-api.ts`).  No Rust
  * backend is needed for browser-based UI tests.
  *
@@ -23,6 +23,17 @@ import { defineConfig, devices } from '@playwright/test';
  *   # Headed mode (watch the browser):
  *   cd ui && npx playwright test --config e2e/playwright.config.ts --headed
  */
+/**
+ * E2E dev-server port. Deliberately NOT 1420: that port is the Tauri desktop
+ * devUrl contract (apps/desktop-tauri/tauri.conf.json) used by the
+ * human-facing `npm run dev`, so sharing it let a Playwright run attach to a
+ * sibling session's Vite (reuseExistingServer) and then die with
+ * ERR_CONNECTION_REFUSED when that foreign server went away. scripts/run-e2e.mjs
+ * exports E2E_BASE_URL for this same port; E2E_PORT/BASE_URL override either.
+ */
+const PORT = Number(process.env['E2E_PORT'] || 1421);
+const BASE_URL = process.env['E2E_BASE_URL'] ?? `http://localhost:${PORT}`;
+
 export default defineConfig({
   // Look for test files in the e2e directory.
   testDir: '.',
@@ -60,7 +71,7 @@ export default defineConfig({
 
   // Shared base URL — override with BASE_URL env var for custom dev ports.
   use: {
-    baseURL: process.env['BASE_URL'] ?? 'http://localhost:1420',
+    baseURL: BASE_URL,
     // Force English locale so tests can rely on English labels and
     // avoid failures when the dev environment/browser defaults to
     // another language (e.g. Indonesian).
@@ -77,19 +88,42 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
 
-  // Auto-start the Vite dev server (no more manual second terminal).
-  // Reuse existing server if running (e.g. started by run-e2e.mjs runner or dev workflow).
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:1420',
-    reuseExistingServer: true,
-    timeout: 120_000,
-    cwd: '..',
-    // Hide the dev-mode DevToolbar overlay: it floats bottom-right at
-    // tooltip z-index and would otherwise intercept clicks on POS action
-    // buttons (App.tsx reads VITE_DEV_TOOLBAR to disable it).
-    env: { ...process.env, VITE_DEV_TOOLBAR: '0' },
-  },
+  // EXACTLY ONE OWNER for the dev server, chosen by how the run was started.
+  //
+  // (a) Via scripts/run-e2e.mjs (`npm run e2e[:ui]`): the RUNNER owns it. It
+  //     spawns Vite on E2E_PORT, tracks the child, and reaps that PID at
+  //     cleanup. It exports E2E_SERVER_EXTERNAL=1 to say so, and this config
+  //     then declares NO webServer at all.
+  //
+  //     This is the fix for a double-spawn: previously BOTH sides started a
+  //     Vite on the same port, so Playwright found the runner's already-
+  //     listening server, adopted it, and then managed its lifecycle as if it
+  //     had started it — tearing it down mid-run and producing
+  //     `page.goto: Could not connect to server` on every test after the first
+  //     batch. Playwright skips lifecycle management entirely when webServer is
+  //     undefined, which is exactly the ownership split we want.
+  //
+  // (b) Direct (`npx playwright test --config e2e/playwright.config.ts`), e.g.
+  //     the README's quick start and single-spec runs: no runner exists, so
+  //     Playwright starts and stops its own server. That path is unchanged.
+  //
+  // Either way the port is E2E-owned (1421, never the Tauri devUrl 1420), so
+  // reuseExistingServer can never adopt a sibling session's `npm run dev`.
+  // --strictPort turns a collision into a loud failure instead of a silent hop
+  // to another port that url would then wait on until timeout.
+  webServer: process.env['E2E_SERVER_EXTERNAL']
+    ? undefined
+    : {
+        command: `npx vite --port ${PORT} --strictPort`,
+        url: BASE_URL,
+        reuseExistingServer: true,
+        timeout: 120_000,
+        cwd: '..',
+        // Hide the dev-mode DevToolbar overlay: it floats bottom-right at
+        // tooltip z-index and would otherwise intercept clicks on POS action
+        // buttons (App.tsx reads VITE_DEV_TOOLBAR to disable it).
+        env: { ...process.env, VITE_DEV_TOOLBAR: '0' },
+      },
 
   // Configure projects for desktop and tablet viewports.
   projects: [
