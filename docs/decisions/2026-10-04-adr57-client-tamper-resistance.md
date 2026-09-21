@@ -41,15 +41,23 @@ fresh or free-tier install the whole path was unreachable, and therefore untesta
 value is a property of the public APK.
 
 **Still not covered: CI.** The Android build job was retired by `23c963303` (2026-09-02), so nothing
-in CI exercises this path; the evidence above is a manual device run. Some controls below are
-**already implemented and verified** (marked IMPLEMENTED with evidence); the rest are **to build**
-(marked TO BUILD). No control is claimed that this record does not either cite or name as work.
+in CI exercises this path; the evidence above is a manual device run, so a future regression would
+be caught by a person rather than a pipeline.
 
-**Verified against the tree 2026-09-21.** §Q4's escalation fold (`fold_build_integrity`,
-`BuildIntegritySignal`) has **no non-test caller** and no stored consecutive count; and
-`grep` for `build_fingerprint|build_integrity|accepted_pins|release_channels` across `apps/`
-returns **nothing**, so no server-side producer exists for either the field or a queue row. §2.4
-remains honestly unbuilt and §3.3 carries it.
+**Legend for the section markers below:** IMPLEMENTED means built with evidence; **PART IMPLEMENTED**
+means some of a section's signals ship and the rest are named as unbuilt; **STILL TO BUILD** means
+none of it ships. No control is claimed that this record does not either cite or name as work, and
+each marker's remainder is spelled out rather than left to the count.
+
+**Superseded reading, kept as history (2026-09-21).** An earlier note here recorded that §Q4's
+escalation fold had *no non-test caller*, and that a `grep` for
+`build_fingerprint|build_integrity|accepted_pins|release_channels` across `apps/` returned
+*nothing*. **Both were true on that date and are false now:** the field ships
+(`kasirmu-hal/src/transport/apk_signature.rs` → the licence-status call), the server classifies and
+stores every non-`valid` verdict (`build_integrity.go`), §2.4's notifier and its device-quota signal
+ship (`build_integrity_alerts.go`, `quota_effect.go`), and §2.5 refuses a renewal to a device with a
+stored `mismatch`. The note is retained because a record of what was believed when is the only way
+to audit how a claim aged.
 **Date:** 2026-10-04
 **Recorded against:** branch `0.0.39` @ `2c30e735c`
 **Related:** ADR #50 (sync auth hardening), ADR #55 (server origin model), ADR #56 (first-run
@@ -635,11 +643,22 @@ attacker is now *seen*, and a false positive costs a support email rather than a
 
 **The table is the authority on the shipped state. The IMPLEMENTED notes in §2 are the authority on
 what exists. Where they disagree about severity, this table wins** — it is the one a reader consults
-when asking "are we protected?". As of 2026-09-21 the answer is **partly, and by design**: tampering
-is detected, recorded and emailed to an operator, and the response to it is a human decision rather
-than an automatic lockout. Two caveats belong in the same breath — the on-device read is not covered
-by any test, and a deployment with no `OZ_SMTP_HOST` receives these findings in the server log
-rather than by email.
+when asking "are we protected?". As of 2026-09-22 the answer is **partly, and by design**:
+
+- **A re-signed APK is detected, recorded, emailed AND refused a renewal** (§2.1/§2.4/§2.5). The
+  tampered device cannot persist past its current signed entitlement; the tenant's honest terminals
+  are untouched.
+- **A deleted reporting line is detected and emailed** but does NOT refuse anything — deliberate,
+  because `unknown` may be our own bug (§Q4).
+- **An over-quota device count is detected and emailed** (§2.4's device axis), but not on the
+  product/staff/location axes, whose counts never reach the licence server.
+- **The response is a human reading a message, never an automatic lockout** — §Q4's routing, and the
+  reason a false positive costs a support email rather than a shop.
+
+Two caveats belong in the same breath: **no CI leg builds the Android APK** (`23c963303` retired it),
+so the on-device fingerprint read — verified manually on 2026-09-22 — would not be caught by a
+pipeline if it regressed; and a deployment with no `OZ_SMTP_HOST` receives these findings in the
+server log rather than by email.
 
 ## 4. Explicitly Rejected
 
