@@ -383,6 +383,7 @@ naming the debug short-circuit as the reason the test must not target `verify_li
 |---|---|
 | A2 exceeds local quota gates | **Unbounded today.** §2.4's server-side detection is deferred (Q3), so a patched client that skips a local gate is not caught. The bound arrives with §2.4 |
 | A1/A3 patch out fingerprint reporting | **Unbounded today** for the same reason — §2.2's `unknown` classification only has force once §2.4 reads it |
+| A1/A3 report a fingerprint at all | **Unbounded today, and for a THIRD reason recorded 2026-10-05:** nothing computes the APK certificate or sends it. A grep for `GET_SIGNATURES` / `signingInfo` / `getPackageInfo` over `apps/` returns nothing, so even a perfectly behaved client reports no fingerprint today |
 | A3 redistributes a working tampered APK | Bounded by the tier's grace window; the forged APK cannot renew (§2.3, and renewal refusal is already enforced — ADR #58 §2.4a.1) |
 | A4 physical access, A5 server compromise, A6 platform exploit | **Out of scope** (§1.3) — no client control addresses these |
 
@@ -392,6 +393,22 @@ naming the debug short-circuit as the reason the test must not target `verify_li
   position is that **tampering is not detected at all**, and the only bound in force is §2.3's grace
   window for a paid tier. Recording this here because a residual table that describes intent rather
   than reality is the failure mode this whole record exists to avoid.
+
+#### What the 2026-10-05 work did and did not change in this table
+
+The verdict classification (§2.2) is implemented and tested, but **it moved no row above**, and
+saying so is the point of this note:
+
+- The classifier is a pure function with **no caller**. A grep for `classify_build_fingerprint`
+  outside its own module returns nothing, so no code path consults it.
+- No code path **produces** a fingerprint either — §2.1's Android leg is unbuilt.
+- Consequently the two unbounded rows stand EXACTLY as they did before. What changed is that the
+  rule they will eventually enforce is now written down and pinned by tests, so the day the client
+  and the queue arrive, the precedence is already decided and cannot be re-derived wrongly.
+
+**The table is the authority on the shipped state. The IMPLEMENTED notes in §2 are the authority on
+what exists. Where they disagree about severity, this table wins** — it is the one a reader consults
+when asking "are we protected?", and the answer today is no.
 
 ## 4. Explicitly Rejected
 
