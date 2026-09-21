@@ -350,9 +350,30 @@ export const systemHandlers: Record<string, MockHandler> = {
     };
   },
 
-  'get_setup_status': () => ({ completed: true, preset: 'retail' }),
+  // ADR #56 §2.1: the mock reports a PROVISIONED terminal so the dev shell
+  // routes to a session rather than the first-run flow. `provision_device`
+  // echoes what it was asked to create, matching the real command's idempotent
+  // read-back shape.
+  'get_first_run_state': () => ({
+    state: 'provisioned',
+    location_id: 'loc-1',
+    owner_user_id: 'user-1',
+    mode: 'local',
+    home_region: 'global',
+    tenant_id: null,
+  }),
+  'provision_device': (a: unknown) => {
+    const args = (a as { args?: Record<string, unknown> })?.args ?? {};
+    return {
+      terminal_id: (args['terminal_id'] as string) ?? 'term-1',
+      location_id: 'loc-1',
+      owner_user_id: 'user-1',
+      created: true,
+      mode: (args['mode'] as string) ?? 'local',
+      home_region: 'global',
+    };
+  },
   'complete_setup': () => null,
-  'dismiss_setup_wizard': () => null,
   'version': () => ({ name: 'oz-pos', version: pkg.version, rustVersion: '1.80', target: 'x86_64' }),
   'version_scoped': () => ({ name: 'oz-pos', version: pkg.version, rustVersion: '1.80', target: 'x86_64' }),
 

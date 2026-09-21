@@ -3,7 +3,7 @@ import { Localized } from '@fluent/react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import TabletAppLayout from './TabletAppLayout';
-import { completeSetup, dismissSetupWizard } from '@/api/settings';
+import { completeSetup } from '@/api/settings';
 import { readBootGate } from '@/utils/boot-retry';
 import { useFeatures } from '@/hooks/useFeatures';
 import { getPage, isPageAccessible, type PageRegistration } from '@/registries/page-registry';
@@ -178,10 +178,12 @@ export default function TabletAppShell() {
     (async () => {
       const [setupRes, usersRes] = await readBootGate();
       if (cancelled) return;
-      // A failed setup read pins to `false` (the wizard) — pinned by
-      // TabletAppShell.test.tsx as the safer failure direction: on a device
-      // whose setup state is unknown, the wizard is the only route forward.
-      setHasCompletedSetup(setupRes.ok ? setupRes.value.completed : false);
+      // A failed first-run read pins to `false` (the provisioning flow) — pinned
+      // by TabletAppShell.test.tsx as the safer failure direction: on a device
+      // whose provisioning state is unknown, the flow is the only route forward.
+      // ADR #56 §2.1: the row replaces the `setup.completed` boolean, so there is
+      // no flag a failed read could forge in the other direction either.
+      setHasCompletedSetup(setupRes.ok ? setupRes.value.state === 'provisioned' : false);
       // Same unknown-is-not-no-users discipline as AppShell: a failed read
       // leaves hasAnyUsers at null, which falls through to staff login.
       // Only an answered `false` opens the owner bootstrap screen.
@@ -236,8 +238,12 @@ export default function TabletAppShell() {
   }, []);
 
   const handleSkip = useCallback(() => {
-    dismissSetupWizard().catch(console.error);
-    setHasCompletedSetup(true);
+    // ADR #56 §1.5/§2.2: Skip was a TRAPDOOR, not an exit — it marked setup
+    // complete while provisioning nothing, producing the "setup done but no
+    // users" state `onSkip` reaches below. The dismissal write is gone with
+    // `dismiss_setup_wizard`; a terminal is set up when its provisioning row
+    // exists, which only `provision_device` writes.
+    setHasCompletedSetup(false);
   }, []);
 
   // ── Session lock: the shell owns the lock screen; screens only ask for it ──

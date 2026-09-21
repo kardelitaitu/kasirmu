@@ -1,5 +1,6 @@
-import { getSetupStatus } from '@/api/settings';
+import { getFirstRunState, type FirstRunState } from '@/api/settings';
 import { hasUsers } from '@/api/staff';
+import { getDeviceId } from '@/api/system';
 
 /**
  * Boot-gate read recovery for lost IPC responses.
@@ -14,8 +15,10 @@ import { hasUsers } from '@/api/staff';
  *
  * The defence is therefore not error handling — there is no error — but a
  * bounded timeout-and-retry around each boot read: if the promise is still
- * silent after `timeoutMs`, re-issue it. Re-issuing is safe: every read the
- * gate makes (`get_setup_status`, `has_users`) is a pure pre-auth query.
+ * silent after `timeoutMs`, re-issue it. Re-issuing is safe in BOTH directions
+ * here: `get_first_run_state` and `has_users` are pure pre-auth queries, and the
+ * first is idempotent by construction (ADR #56 §2.2) so a re-issue cannot mint a
+ * second owner or terminal.
  *
  * `bootRetryConfig` is a mutable object rather than constants so tests can
  * shrink the windows; ESM live bindings would make bare consts unpatchable.
@@ -29,8 +32,8 @@ export type BootReadResult<T> = { ok: true; value: T } | { ok: false };
  * Run one boot read with the lost-response retry above.
  *
  * A rejection also lands on `{ ok: false }` — callers map it to their own
- * failure semantics (the tablet shell pins a failed setup read to "show the
- * wizard", and a failed has_users read to "unknown → login"). Note the
+ * failure semantics (the tablet shell pins a failed first-run read to "show the
+ * provisioning flow", and a failed has_users read to "unknown → login"). Note the
  * losing `fn()` promise is intentionally left running: a late resolution is
  * harmless (the caller has already moved on) and there is no cancellation
  * channel to reach through.
@@ -53,7 +56,13 @@ export async function readWithRetry<T>(fn: () => Promise<T>): Promise<BootReadRe
 /**
  * The two reads the tablet shell's boot gate makes, run in parallel with
  * independent verdicts — one read's failure cannot forge the other's answer.
+ *
+ * The first-run read needs the device id first, and that lookup is INSIDE the
+ * retried thunk so a dropped `get_device_id` response is retried with it rather
+ * than resolving the pair to a terminal id nobody could read.
  */
 export function readBootGate() {
-  return Promise.all([readWithRetry(getSetupStatus), readWithRetry(hasUsers)]);
+  const firstRun = () =>
+    getDeviceId().then((terminalId) => getFirstRunState(terminalId));
+  return Promise.all([readWithRetry<FirstRunState>(firstRun), readWithRetry(hasUsers)]);
 }

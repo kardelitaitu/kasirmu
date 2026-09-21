@@ -17,7 +17,7 @@ import { renderWithProviders } from '@/__tests__/test-utils/render';
 import TabletAppShell from '@/app/tablet/TabletAppShell';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import { registerPage, clearPages } from '@/registries/page-registry';
-import { getSetupStatus, type SetupStatus } from '@/api/settings';
+import { getFirstRunState, type FirstRunState } from '@/api/settings';
 import { bootRetryConfig } from '@/utils/boot-retry';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
@@ -120,9 +120,17 @@ vi.mock('@/hooks/useFeatures', () => ({
 // ── Mock API modules used by TabletAppShell ─────────────────────
 
 vi.mock('@/api/settings', () => ({
-  getSetupStatus: vi.fn(() => Promise.resolve({ completed: true, preset: null })),
+  getFirstRunState: vi.fn(() => Promise.resolve({ state: 'provisioned', location_id: 'loc-1', owner_user_id: 'user-1', mode: 'local', home_region: 'global', tenant_id: null })),
   completeSetup: vi.fn(),
-  dismissSetupWizard: vi.fn(),
+  provisionDevice: vi.fn(),
+}));
+
+// The boot gate resolves the terminal id before reading the first-run state
+// (ADR #56 §2.1: the state is keyed per terminal), so the device id must answer
+// or the gate never settles and every case renders the splash.
+vi.mock('@/api/system', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getDeviceId: vi.fn(() => Promise.resolve('dev-1')),
 }));
 
 // Extend the real module rather than replace it: StaffLoginScreen imports
@@ -243,8 +251,8 @@ function mockNoSession() {
 
 describe('TabletAppShell — routing', () => {
   beforeEach(() => {
-    vi.mocked(getSetupStatus).mockReset();
-    vi.mocked(getSetupStatus).mockResolvedValue({ completed: true, preset: null });
+    vi.mocked(getFirstRunState).mockReset();
+    vi.mocked(getFirstRunState).mockResolvedValue({ state: 'provisioned', location_id: 'loc-1', owner_user_id: 'user-1', mode: 'local', home_region: 'global', tenant_id: null });
     vi.mocked(hasUsers).mockReset();
     vi.mocked(hasUsers).mockResolvedValue({ has_users: true });
     // Shrink the lost-response retry window so the recovery test below
@@ -267,8 +275,8 @@ describe('TabletAppShell — routing', () => {
       // shrunken window would let the timeout exhaust into the wizard branch
       // and make this test flaky).
       bootRetryConfig.timeoutMs = 5000;
-      let resolveStatus!: (v: SetupStatus) => void;
-      vi.mocked(getSetupStatus).mockReturnValue(
+      let resolveStatus!: (v: FirstRunState) => void;
+      vi.mocked(getFirstRunState).mockReturnValue(
         new Promise((resolve) => { resolveStatus = resolve; }),
       );
 
@@ -279,7 +287,7 @@ describe('TabletAppShell — routing', () => {
       // Resolve the pending setup-status promise; the shell transitions
       // from loading to the workspace picker.
       await act(async () => {
-        resolveStatus({ completed: true, preset: null });
+        resolveStatus({ state: 'provisioned', location_id: 'loc-1', owner_user_id: 'user-1', mode: 'local', home_region: 'global', tenant_id: null });
       });
       await waitFor(() => {
         expect(screen.getByTestId('workspace-home')).toBeInTheDocument();
@@ -287,7 +295,7 @@ describe('TabletAppShell — routing', () => {
     });
 
     it('renders the setup wizard when setup is incomplete', async () => {
-      vi.mocked(getSetupStatus).mockResolvedValue({ completed: false, preset: null });
+      vi.mocked(getFirstRunState).mockResolvedValue({ state: 'unprovisioned' as const });
 
       await renderWithProviders(<TabletAppShell />, sharedFtl);
 
@@ -297,7 +305,7 @@ describe('TabletAppShell — routing', () => {
     });
 
     it('falls back to the setup wizard when getSetupStatus rejects', async () => {
-      vi.mocked(getSetupStatus).mockRejectedValue(new Error('boom'));
+      vi.mocked(getFirstRunState).mockRejectedValue(new Error('boom'));
 
       await renderWithProviders(<TabletAppShell />, sharedFtl);
 
@@ -312,7 +320,7 @@ describe('TabletAppShell — routing', () => {
       // to be tested first, so an unconfigured terminal landed on
       // StaffLoginScreen — asking staff to authenticate against a terminal
       // nobody had set up.
-      vi.mocked(getSetupStatus).mockResolvedValue({ completed: false, preset: null });
+      vi.mocked(getFirstRunState).mockResolvedValue({ state: 'unprovisioned' as const });
       mockNoSession();
 
       await renderWithProviders(<TabletAppShell />, sharedFtl);
@@ -330,7 +338,7 @@ describe('TabletAppShell — routing', () => {
       // landed on login; now it reaches the wizard, which is the only route
       // forward on a device whose setup state is unknown. Pinned so that
       // flipping it back is a deliberate decision, not a silent cleanup.
-      vi.mocked(getSetupStatus).mockRejectedValue(new Error('boom'));
+      vi.mocked(getFirstRunState).mockRejectedValue(new Error('boom'));
       mockNoSession();
 
       await renderWithProviders(<TabletAppShell />, sharedFtl);
@@ -377,9 +385,9 @@ describe('TabletAppShell — routing', () => {
       // side resolves but the response never reaches the WebView, and the
       // pending promise neither resolves nor rejects — the shell hung on the
       // splash forever. The gate must re-issue the read and recover.
-      vi.mocked(getSetupStatus)
+      vi.mocked(getFirstRunState)
         .mockImplementationOnce(() => new Promise(() => {})) // first call: never settles
-        .mockResolvedValue({ completed: true, preset: null });
+        .mockResolvedValue({ state: 'provisioned', location_id: 'loc-1', owner_user_id: 'user-1', mode: 'local', home_region: 'global', tenant_id: null });
       mockNoSession();
 
       await renderWithProviders(<TabletAppShell />, sharedFtl);
@@ -392,7 +400,7 @@ describe('TabletAppShell — routing', () => {
         { timeout: 4000 },
       );
       // And it must have got there by re-issuing the swallowed read.
-      expect(vi.mocked(getSetupStatus).mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(vi.mocked(getFirstRunState).mock.calls.length).toBeGreaterThanOrEqual(2);
     });
 
     it('falls through to login when the has_users read fails (unknown is not "no users")', async () => {

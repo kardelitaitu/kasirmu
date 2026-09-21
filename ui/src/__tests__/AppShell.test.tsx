@@ -71,9 +71,9 @@ vi.mock('@/api/license', () => ({
 }));
 
 vi.mock('@/api/settings', () => ({
-  getSetupStatus: vi.fn(() => Promise.resolve({ completed: true })),
+  getFirstRunState: vi.fn(() => Promise.resolve({ state: 'provisioned', location_id: 'loc-1', owner_user_id: 'user-1', mode: 'local', home_region: 'global', tenant_id: null })),
+  provisionDevice: vi.fn(),
   completeSetup: vi.fn(),
-  dismissSetupWizard: vi.fn(),
   getEnabledFeatures: vi.fn(() => Promise.resolve({ features: [] })),
   getStoreSettings: vi.fn(() =>
     Promise.resolve({ name: '', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' }),
@@ -165,7 +165,7 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
 
 // ── page-registry: register the kds route so handleNavigate works ──
 import { getLicenseStatus } from '@/api/license';
-import { getSetupStatus } from '@/api/settings';
+import { getFirstRunState } from '@/api/settings';
 import { registerPage, clearPages } from '@/registries/page-registry';
 import { registerNavItem, clearNavItems } from '@/registries/menu-registry';
 
@@ -625,7 +625,7 @@ describe('AppShell — KDS workspace navigation', () => {
 
       // Dev bypass means no license IPC calls should be made
       expect(vi.mocked(getLicenseStatus)).not.toHaveBeenCalled();
-      expect(vi.mocked(getSetupStatus)).not.toHaveBeenCalled();
+      expect(vi.mocked(getFirstRunState)).not.toHaveBeenCalled();
 
       // Login screen should render (no session, dev bypass skips license check)
       await waitFor(() => {
@@ -644,7 +644,7 @@ describe('AppShell — KDS workspace navigation', () => {
 
       // No license IPC calls
       expect(vi.mocked(getLicenseStatus)).not.toHaveBeenCalled();
-      expect(vi.mocked(getSetupStatus)).not.toHaveBeenCalled();
+      expect(vi.mocked(getFirstRunState)).not.toHaveBeenCalled();
 
       // Workspace picker should render (empty state)
       await waitFor(() => {

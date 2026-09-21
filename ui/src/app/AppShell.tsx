@@ -11,7 +11,8 @@ import { useOrientation } from '@/hooks/useOrientation';
 import { isAnyAriaModalOpen, consumeShortcut } from '@/utils/modal-guard';
 import { isCommandModifier } from '@/utils/keyboard-modifier';
 import AppLayout, { type AppRoute } from './AppLayout';
-import { completeSetup, dismissSetupWizard, getSetupStatus } from '@/api/settings';
+import { completeSetup, getFirstRunState } from '@/api/settings';
+import { getDeviceId } from '@/api/system';
 import { useFeatures } from '@/hooks/useFeatures';
 import { useTerminalProfile } from '@/hooks/useTerminalProfile';
 import { getPage, isPageAccessible, type PageRegistration } from '@/registries/page-registry';
@@ -228,7 +229,10 @@ export default function AppShell() {
       try {
         const [licenseRes, setupRes, usersRes] = await Promise.all([
           settle('get_license_status', getLicenseStatus()),
-          settle('get_setup_status', getSetupStatus()),
+          settle(
+            'get_first_run_state',
+            getDeviceId().then((terminalId) => getFirstRunState(terminalId)),
+          ),
           settle('has_users', hasUsers()),
         ]);
         if (cancelled) return;
@@ -240,8 +244,12 @@ export default function AppShell() {
         // null falls through to StaffLoginScreen (see the !session branch).
         if (usersRes.ok) setHasAnyUsers(usersRes.value.has_users);
 
-        // ── setup: true ONLY from a read that answered `completed` ────
-        const setupCompleted = setupRes.ok && setupRes.value.completed;
+        // ── provisioning: true ONLY from a read that answered `provisioned` ──
+        // ADR #56 §2.1: the row replaces the `setup.completed` boolean. A failed
+        // read leaves the state unprovisioned, which routes to the first-run
+        // flow rather than forging "already set up" — and because the answer is
+        // a row rather than a flag, an unreadable database cannot invent one.
+        const setupCompleted = setupRes.ok && setupRes.value.state === 'provisioned';
         if (setupCompleted) setSetupKnownComplete(true);
 
         // ── the licence verdict (the truth claim) ────────────────────
@@ -371,18 +379,13 @@ export default function AppShell() {
     setSetupKnownComplete(true);
   }, []);
 
-  const handleSkip = useCallback(() => {
-    dismissSetupWizard().catch(console.error);
-    setSetupKnownComplete(true);
-  }, []);
-
   /**
    * Called when the activation flow finishes (license activated + owner
-   * account created). Marks setup as dismissed so the wizard is not
-   * shown — users land directly on the workspace picker.
+   * account created). The activation flow has already written the owner and
+   * the licence, so this only reflects that locally — it no longer writes a
+   * dismissal flag.
    */
   const handleActivationComplete = useCallback(() => {
-    dismissSetupWizard().catch(console.error);
     // Real evidence this time: the activation flow only calls back after
     // activateLicense succeeded, so the licence flag is earned, not assumed.
     setSetupKnownComplete(true);
@@ -565,7 +568,7 @@ export default function AppShell() {
       <>
         {bootBadges}
         <LazyBoundary>
-          <SetupWizard onComplete={handleComplete} onSkip={handleSkip} onLaunch={() => setSetupKnownComplete(true)} />
+          <SetupWizard onComplete={handleComplete} onSkip={() => setSetupKnownComplete(false)} onLaunch={() => setSetupKnownComplete(true)} />
         </LazyBoundary>
       </>
     );

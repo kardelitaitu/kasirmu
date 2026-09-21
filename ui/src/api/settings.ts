@@ -154,23 +154,80 @@ export interface CompleteSetupArgs {
   default_currency?: string;
 }
 
-/** Whether the initial setup wizard has been completed. */
-export interface SetupStatus {
-  completed: boolean;
-  preset: string | null;
+/** Which onboarding tier produced this terminal (ADR #56 §2.4). */
+export type ProvisioningMode = 'local' | 'linked';
+
+/** Whether a location trades as a shop or a restaurant (ADR #56 §2.3). */
+export type LocationKind = 'retail' | 'restaurant';
+
+/**
+ * The first-run state of one terminal (ADR #56 §2.1).
+ *
+ * A tagged union rather than a boolean: the two states are mutually exclusive at the type level, so
+ * a component cannot render both, and there is no third value a partial read could invent. This
+ * replaces `SetupStatus`/`getSetupStatus` — a boolean a failed read could forge, which is why the
+ * shells carried a boot-retry workaround for a lost IPC response.
+ */
+export type FirstRunState =
+  | { state: 'unprovisioned' }
+  | {
+      state: 'provisioned';
+      location_id: string | null;
+      owner_user_id: string | null;
+      mode: ProvisioningMode;
+      home_region: string;
+      tenant_id: string | null;
+    };
+
+/** Arguments for provisioning this terminal (ADR #56 §2.1/§2.2). */
+export interface ProvisionDeviceArgs {
+  terminal_id: string;
+  location_name: string;
+  currency: string;
+  timezone: string;
+  owner_username: string;
+  owner_display_name: string;
+  owner_pin: string;
+  preset: string;
+  features: string[];
+  location_kind: LocationKind;
+  mode: ProvisioningMode;
+  tenant_id?: string | null;
+  device_credential_id?: string | null;
+}
+
+/** What provisioning created, so the shell can route with it. */
+export interface ProvisionDeviceResult {
+  terminal_id: string;
+  location_id: string;
+  owner_user_id: string;
+  /** True on a fresh provision, false when an existing row was replayed. */
+  created: boolean;
+  mode: ProvisioningMode;
+  home_region: string;
 }
 
 /** Complete the initial setup wizard with a preset and enabled features. */
 export const completeSetup = (args: CompleteSetupArgs): Promise<void> =>
   loggedInvoke<void>('complete_setup', { args });
 
-/** Dismiss the setup wizard without completing it. */
-export const dismissSetupWizard = (): Promise<void> =>
-  loggedInvoke<void>('dismiss_setup_wizard');
+/**
+ * Read this terminal's first-run state (ADR #56 §2.1).
+ *
+ * Replaces `getSetupStatus`. The shell renders the provisioning flow on `unprovisioned` and routes
+ * to a session (or the login screen) on `provisioned`.
+ */
+export const getFirstRunState = (terminalId: string): Promise<FirstRunState> =>
+  loggedInvoke<FirstRunState>('get_first_run_state', { terminalId });
 
-/** Get the current setup wizard completion status. */
-export const getSetupStatus = (): Promise<SetupStatus> =>
-  loggedInvoke<SetupStatus>('get_setup_status');
+/**
+ * Provision this terminal in one idempotent transaction (ADR #56 §2.2).
+ *
+ * Creates the location, the workspaces that point at it, the owner, the features and the marker
+ * together, or none of them. A retry returns the existing row and creates nothing.
+ */
+export const provisionDevice = (args: ProvisionDeviceArgs): Promise<ProvisionDeviceResult> =>
+  loggedInvoke<ProvisionDeviceResult>('provision_device', { args });
 
 /** Seed default roles for the store resolved from a session token. Returns the number of roles created. ADR #7. */
 export const seedDefaultRolesScoped = (sessionToken: string): Promise<number> =>

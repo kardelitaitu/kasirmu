@@ -141,8 +141,26 @@ export function createSettingsApiMock(overrides: SettingsApiOverrides = {}) {
         scannerDeviceId: '', scannerInputMode: 'auto' },
     )),
       completeSetup: vi.fn(),
-    dismissSetupWizard: vi.fn(),
-    getSetupStatus: vi.fn(),
+    getFirstRunState: vi.fn(() =>
+      Promise.resolve({
+        state: 'provisioned' as const,
+        location_id: 'loc-1',
+        owner_user_id: 'user-1',
+        mode: 'local' as const,
+        home_region: 'global',
+        tenant_id: null,
+      }),
+    ),
+    provisionDevice: vi.fn(() =>
+      Promise.resolve({
+        terminal_id: 'dev-1',
+        location_id: 'loc-1',
+        owner_user_id: 'user-1',
+        created: true,
+        mode: 'local' as const,
+        home_region: 'global',
+      }),
+    ),
     getEnabledFeatures: vi.fn(),
     // @deprecated kept for backward compat; new callers should use getUserPreferencesScoped
     getUserPreferences: vi.fn(),
