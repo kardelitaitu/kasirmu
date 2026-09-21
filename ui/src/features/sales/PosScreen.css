@@ -26,6 +26,18 @@
      row so the products pane reaches its final width in a single layout pass
      (CartPanel.css), and the clip for that panel's slide-out transform. */
   position: relative;
+  /* The page's own query container (ADR-0001 T2 / Slice 5), measured on the box
+     the shell grants this screen — not the viewport. UNNAMED on purpose, the same
+     choice RetailPosScreen.css and KdsScreen.css record and for the same reason:
+     the shell's slot carries the name `app-content`, but the only thing between
+     it and .pos-screen is a display:contents wrapper, so a named query would
+     find no container in every mount that does not go through the shell (tests,
+     e2e harness, the screen rendered standalone). An unnamed query against the
+     nearest container is the same measurement inside the shell and stays correct
+     outside it. Any other `container-type: inline-size` added inside .pos-screen
+     would silently capture these tiers — a live concern now, where before there
+     was nothing to capture. */
+  container-type: inline-size;
 }
 
 /* ── Left: Product lookup area ────────────────────────── */
@@ -590,6 +602,47 @@
 .pos-close-shift-confirm-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ── Narrow-container tiers (ADR-0001 T2 / Slice 5) ────────────────
+   The viewport assumption this screen used to carry implicitly. It has no
+   media query of its own: the only width rules anywhere in the POS workspace
+   live in CartPanel.css (`@media (max-width: 1023px)` hides the resize handle
+   and turns the cart into a full-width 60vh sheet), which is a SIBLING sheet and
+   therefore outside this one's fence. What is left here is everything that
+   assumed a box wide enough to hold its own fixed-px content, and there is
+   exactly one such surface — the close-shift summary grid.
+
+   Measured against .pos-screen's own inline-size (declared at the top of this
+   sheet), not the window's. The gap between the two matters: inside the shell,
+   .pos-screen is the content slot MINUS the sidebar, so a 1280px desktop window
+   hands this page well under 1280px and a query written against the window would
+   have kept the two-up summary in a box that cannot hold it.
+
+   Desktop landscape — the shell's own base case down to 1024px — matches neither
+   tier and renders exactly as before. */
+@container (max-width: 720px) {
+  /* Two fixed-width readouts (whitespace-nowrap labels such as "Expected cash"
+     or a currency amount) in one grid column of a 360px dialog leave each about
+     160px. The grid is the only thing here whose shape depends on the box rather
+     than on its own content, so below this it goes single-column and the values
+     keep their tabular alignment. Explicit `1fr`, not `auto`: `grid-template-`
+     `columns: auto` would let the widest value set the column instead. */
+  .pos-close-shift-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container (max-width: 480px) {
+  /* The dialog is `width: min(560px, 100%)`, so below 480px of screen it is the
+     BOX, not the value, that sets its width — and `padding: var(--space-5)` plus
+     the overlay's own `var(--space-4)` gutters spend 72px of a 320px display on
+     nothing. The padding comes back to the grid's own gap; the dialog still
+     never overflows (min(560px, 100%) is unchanged), but the row of the grid the
+     user has to read stops fighting the chrome around it. */
+  .pos-close-shift-modal {
+    padding: var(--space-4);
+  }
 }
 
 /* ── Close-shift summary grid ───────────────────────── */
