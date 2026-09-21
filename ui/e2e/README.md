@@ -109,6 +109,10 @@ Fixing it means giving each worker its own auth path (keyed on `workerIndex`,
 and on the project, since desktop and tablet share a worker pool). Verify with
 TWO consecutive full runs — a single green run is weak evidence for a flake fix.
 
+> `fixtures.ts` itself is gone: deleted 2026-09-22 (46fd79d19) as dead code —
+> no spec or config imported it, per-worker auth lives in the specs' own
+> `loginAs` helper (helpers.ts). The history above is kept as-is.
+
 ### CI Pipeline — retired; nothing runs E2E in CI
 
 > ⚠️ **This describes a pipeline that no longer executes.** The `e2e` job lived in
