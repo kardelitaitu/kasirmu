@@ -318,7 +318,7 @@ interface MigratedSheet {
 }
 
 const MIGRATED: readonly MigratedSheet[] = [
-  { sheet: RETAIL_CSS, containerSelector: '.retail-pos', tiers: [880], narrowShellPx: 640 },
+  { sheet: RETAIL_CSS, containerSelector: '.retail-pos', tiers: [880, 640], narrowShellPx: 640 },
   { sheet: KDS_CSS, containerSelector: '.kds', tiers: [900, 640], narrowShellPx: 640 },
   { sheet: SALES_HISTORY_CSS, containerSelector: '.sales-history', tiers: [880, 640], narrowShellPx: 640 },
   { sheet: PAYMENT_MODAL_CSS, containerSelector: '.payment-overlay', tiers: [480], narrowShellPx: 640 },
@@ -1013,10 +1013,7 @@ describe('narrow-shell / extreme-aspect verification (ADR-0001 Slice 7)', () => 
       gaps.map((f) => f.detail),
       'Expected: every migrated sheet either matches the narrow-shell case with a tier, or reports the gap here.\nCoverage:\n' +
         stats.coverage.join('\n'),
-    ).toEqual([
-      RETAIL_CSS +
-        ' matches nothing below 880px, and a box narrower than 640px gets the wide layout with no rule of its own — this is the coverage ADR-0001 Slice 7 measures, not a claim that the sheet is wrong',
-    ]);
+    ).toEqual([]);
   });
 
   it('every folding tier changes the layout, and none of them strips a wrapper', () => {
