@@ -36,6 +36,23 @@
   }
 }
 
+/* The keyframes MUST live in this file. CSS @keyframes do not cross files, so
+ * animation: fade-up ... forwards with no local definition left the card at the
+ * opacity: 0 above for ever: the shell rendered an invisible form, taps landed on
+ * invisible inputs, and no JS error was raised — the blank-screen-with-no-console-
+ * error signature. Byte-identical to CreatePinScreen.css:125 and
+ * LicenseActivationScreen.css:214, the two siblings this flow mirrors. */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(1.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .provisioning-header {
   text-align: center;
 }
