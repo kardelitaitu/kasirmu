@@ -175,6 +175,8 @@
 }
 
 .tablet-shell .app-content-inner {
+  container-type: inline-size;
+  container-name: app-content;
   min-height: 100%;
   padding: var(--tablet-spacing);
 }
