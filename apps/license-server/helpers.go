@@ -38,6 +38,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -353,4 +354,82 @@ func seedClientIPSettings(app core.App) error {
 	s.TrustedProxy.Headers = []string{"X-Forwarded-For"}
 	// Leave UseLeftmostIP at its zero value (false).
 	return app.Save(s)
+}
+
+// clientIPObserveCap is the maximum number of DISTINCT resolved client IPs
+// the process will log at INFO. Once this many distinct values have been seen,
+// the INFO chain line stops entirely, so the observer can never grow unbounded
+// or flood production logs: a hostile client cannot force more than this many
+// INFO lines for the lifetime of the process, because a new distinct IP is the
+// only thing that triggers one and the seen set is hard-capped here.
+const clientIPObserveCap = 50
+
+// clientIPObserver records, at bounded rate, the raw forwarded chain +
+// stripped remote + resolved client IP for the first clientIPObserveCap
+// DISTINCT resolved IPs seen by the process. It exists to answer one
+// production question without probing a rate-limited service: do the real
+// edges (Cloudflare, istio/Envoy) APPEND to X-Forwarded-For or REPLACE it?
+// That single fact decides whether the client-IP fix works in production.
+//
+// The two logging behaviours are deliberately separate:
+//
+//   - LogResolveInfo fires at most once per distinct resolved IP, and stops
+//     entirely after clientIPObserveCap distinct values. It is the discovery
+//     line: it always carries the raw chain, remote, and resolved IP.
+//   - LogResolveMatchesRemote fires once per distinct resolved IP when the
+//     resolved IP equals the remote address — the exact signature of the
+//     defect, since it means the header was unusable and RealIP() will key
+//     the limiter on the proxy again. It carries the raw chain so the single
+//     most diagnostic line we have survives.
+//
+// Both guards are mutex-protected; the seen set is capped at
+// clientIPObserveCap so memory is bounded regardless of request volume.
+type clientIPObserver struct {
+	mu    sync.Mutex
+	seen  map[string]struct{}
+	count int
+}
+
+// newClientIPObserver returns a ready-to-use bounded observer.
+func newClientIPObserver() *clientIPObserver {
+	return &clientIPObserver{seen: make(map[string]struct{})}
+}
+
+// LogResolveInfo emits the raw forwarded chain + remote + resolved client IP
+// at INFO, exactly once for each distinct resolved IP, until
+// clientIPObserveCap distinct values have been seen. After the cap it is a
+// no-op, so there is never per-request logging. It returns true when a line
+// was emitted.
+func (o *clientIPObserver) LogResolveInfo(rawChain, remoteIP, resolvedIP string) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.count >= clientIPObserveCap {
+		return false
+	}
+	if _, ok := o.seen[resolvedIP]; ok {
+		return false
+	}
+	o.seen[resolvedIP] = struct{}{}
+	o.count++
+	log.Printf("[client-ip] raw XFF chain: %q remote: %s resolved: %s", rawChain, remoteIP, resolvedIP)
+	return true
+}
+
+// LogResolveMatchesRemote emits a WARN when the resolved client IP equals the
+// stripped remote address — the defect signature — exactly once per distinct
+// resolved IP. It always carries the raw chain. It returns true when a line
+// was emitted.
+func (o *clientIPObserver) LogResolveMatchesRemote(rawChain, remoteIP, resolvedIP string) bool {
+	if resolvedIP != remoteIP {
+		return false
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if _, ok := o.seen[resolvedIP]; ok {
+		return false
+	}
+	o.seen[resolvedIP] = struct{}{}
+	o.count++
+	log.Printf("[client-ip] WARN resolved client IP equals remote %s (header unusable, limiter keys on proxy); raw XFF chain: %q", remoteIP, rawChain)
+	return true
 }

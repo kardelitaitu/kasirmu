@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -530,5 +531,54 @@ func TestClientIPMiddleware_NoSettingSeedStaysLoopback(t *testing.T) {
 	// resolved without the seed — which is exactly why main.go seeds it.
 	if seen == "203.0.113.7" {
 		t.Fatalf("without setting seed RealIP()=%q, must NOT be the client IP (documents the defect)", seen)
+	}
+}
+
+// ── clientIPObserver (bounded-set observability) ─────────────────────
+
+// TestClientIPObserver_CapsAfterDistinctIPs verifies the bounded-set
+// behaviour: once clientIPObserveCap distinct resolved IPs have triggered an
+// INFO line, no further INFO line is emitted even for a brand-new IP, and the
+// seen-set cannot grow without bound.
+func TestClientIPObserver_CapsAfterDistinctIPs(t *testing.T) {
+	o := newClientIPObserver()
+
+	emitted := 0
+	for i := 0; i < clientIPObserveCap+10; i++ {
+		// A fresh distinct resolved IP each iteration pushes past the cap.
+		ip := strconv.Itoa(i) + ".x.x.x"
+		if o.LogResolveInfo("chain", "10.0.0.1", ip) {
+			emitted++
+		}
+	}
+	if emitted != clientIPObserveCap {
+		t.Fatalf("expected exactly %d INFO lines (capped), got %d", clientIPObserveCap, emitted)
+	}
+	// A never-seen IP after the cap must still not log.
+	if o.LogResolveInfo("chain", "10.0.0.1", "198.51.100.9") {
+		t.Fatalf("INFO line emitted after cap — unbounded growth risk")
+	}
+
+	o2 := newClientIPObserver()
+	// Same resolved IP twice: only one INFO line (dedup by distinct value).
+	if !o2.LogResolveInfo("chain", "10.0.0.1", "203.0.113.7") {
+		t.Fatalf("first occurrence should emit")
+	}
+	if o2.LogResolveInfo("chain", "10.0.0.1", "203.0.113.7") {
+		t.Fatalf("duplicate resolved IP must not emit a second INFO line")
+	}
+}
+
+// TestClientIPObserver_WarnMatchesRemote proves the defect signature: the WARN
+// fires when resolved equals remote and is silent when they differ.
+func TestClientIPObserver_WarnMatchesRemote(t *testing.T) {
+	o := newClientIPObserver()
+	// Defect signature: resolved == remote (header unusable).
+	if !o.LogResolveMatchesRemote("203.0.113.7", "203.0.113.7", "203.0.113.7") {
+		t.Fatalf("WARN should fire when resolved equals remote")
+	}
+	// Distinct from remote: limiter keys on a real client — no WARN.
+	if o.LogResolveMatchesRemote("203.0.113.7, 10.0.0.2", "10.0.0.2", "203.0.113.7") {
+		t.Fatalf("WARN must NOT fire when resolved differs from remote")
 	}
 }

@@ -62,6 +62,12 @@ var requiredCollections = []string{
 // OZ_LICENSE_PRIVATE_KEY environment variable at startup.
 var privateKey *rsa.PrivateKey
 
+// clientIPObs is the process-wide bounded observer that logs the raw
+// X-Forwarded-For chain + resolved client IP for the first
+// clientIPObserveCap distinct IPs. It is a package-level singleton so every
+// request shares one capped seen-set and counter (see helpers.go).
+var clientIPObs = newClientIPObserver()
+
 func main() {
 	app := pocketbase.New()
 
@@ -135,11 +141,21 @@ func main() {
 			log.Printf("[client-ip] TrustedProxy seeded: X-Forwarded-For trusted, %d hop(s) from edge", hops)
 		}
 		se.Router.BindFunc(func(e *core.RequestEvent) error {
+			// Capture the RAW inbound forwarded chain BEFORE the collapse below,
+			// so the bounded observer can report what the edge actually sent.
+			rawXFF := e.Request.Header.Get("X-Forwarded-For")
 			remoteIP := stripPort(e.Request.RemoteAddr)
 			clientIP := normalizeClientIP(e.Request.Header, remoteIP, hops)
 			// Collapse to exactly one value so RealIP() re-parses a single clean
 			// entry regardless of leftmost/rightmost policy.
 			e.Request.Header.Set("X-Forwarded-For", clientIP)
+			// Bounded observability: log the raw chain + remote + resolved IP for
+			// the first clientIPObserveCap distinct resolved IPs only, so we learn
+			// in production whether the edges append or replace X-Forwarded-For
+			// without probing the rate-limited service. No-op after the cap and
+			// never per-request (guarded by the mutex/counter in helpers.go).
+			clientIPObs.LogResolveInfo(rawXFF, remoteIP, clientIP)
+			clientIPObs.LogResolveMatchesRemote(rawXFF, remoteIP, clientIP)
 			return e.Next()
 		})
 
