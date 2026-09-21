@@ -13,6 +13,12 @@ vi.mock('@/api/license', () => ({
   activateLicense: (...args: unknown[]) => mockActivateLicense(...args),
   getHardwareFingerprint: () => mockGetHardwareFingerprint(),
   getMachineId: () => mockGetMachineId(),
+  // StatusBar's auth-pill poll (co-consumer of this module). The live screen
+  // renders StatusBar, so `useAuthConnection` reads this key on mount: a mock
+  // without it throws `No "testAuthConnection" export is defined on the
+  // "@/api/license" mock`, which unmounts the whole tree and fails the file.
+  testAuthConnection: () =>
+    Promise.resolve({ ok: true, status: 'Connected', latencyMs: 10 }),
 }));
 
 vi.mock('@/api/system', () => ({
