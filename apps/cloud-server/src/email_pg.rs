@@ -44,7 +44,7 @@ mod popularity;
 mod queue_worker;
 mod settings_store;
 
-pub use queue_worker::start_report_sender_loop_pg;
+pub use queue_worker::{active_tenants_pg, start_report_sender_loop_pg};
 
 // Everything below exists for `email_pg_tests.rs`, which is wired as a child
 // of this module and resolves its subjects through `use super::*`. They are
@@ -53,7 +53,7 @@ pub use queue_worker::start_report_sender_loop_pg;
 pub(crate) use analytics::{daily_revenue_pg, export_analytics_bundle_pg};
 #[cfg(test)]
 pub(crate) use queue_worker::{
-    AdvisoryLockGuard, active_tenants_pg, claim_period_pg, period_for_schedule, release_period_pg,
+    AdvisoryLockGuard, claim_period_pg, period_for_schedule, release_period_pg,
     try_send_scheduled_for_tenant_pg, try_send_scheduled_tenant_inner_pg,
 };
 #[cfg(test)]

@@ -146,6 +146,25 @@ pub struct CloudServerConfig {
     /// unreachable, the server falls back to the in-process
     /// implementations — single-instance deployments need nothing new.
     pub redis_url: Option<String>,
+
+    /// Admin alert email recipient (`OZ_ADMIN_EMAIL`, default: `adikaradwiatmaja@gmail.com`).
+    pub admin_email: String,
+
+    /// SMTP relay host for system alerts (`OZ_SMTP_HOST`). Unset means email
+    /// delivery is disabled and alerts are logged only.
+    pub smtp_host: Option<String>,
+
+    /// SMTP relay port (`OZ_SMTP_PORT`, default: 587).
+    pub smtp_port: u16,
+
+    /// SMTP relay username (`OZ_SMTP_USER`).
+    pub smtp_user: Option<String>,
+
+    /// SMTP relay password (`OZ_SMTP_PASSWORD`).
+    pub smtp_password: Option<String>,
+
+    /// SMTP sender address (`OZ_SMTP_FROM`, default: `no-reply@kasir.mu`).
+    pub smtp_from: String,
 }
 
 impl CloudServerConfig {
@@ -223,6 +242,32 @@ impl CloudServerConfig {
             parse_qris_acquirer(std::env::var("MIDTRANS_QRIS_ACQUIRER").ok());
         warn_qris_acquirer_pitfalls(production, midtrans_qris_acquirer.as_deref());
 
+        let admin_email = std::env::var("OZ_ADMIN_EMAIL")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "adikaradwiatmaja@gmail.com".to_string());
+        let smtp_host = std::env::var("OZ_SMTP_HOST")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let smtp_port: u16 = std::env::var("OZ_SMTP_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(587);
+        let smtp_user = std::env::var("OZ_SMTP_USER")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let smtp_password = std::env::var("OZ_SMTP_PASSWORD")
+            .ok()
+            .filter(|s| !s.is_empty());
+        let smtp_from = std::env::var("OZ_SMTP_FROM")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "no-reply@kasir.mu".to_string());
+
         Ok(Self {
             db_path,
             database_url,
@@ -246,6 +291,26 @@ impl CloudServerConfig {
             production,
             api_secret,
             redis_url: std::env::var("OZ_REDIS_URL").ok().filter(|s| !s.is_empty()),
+            admin_email,
+            smtp_host,
+            smtp_port,
+            smtp_user,
+            smtp_password,
+            smtp_from,
+        })
+    }
+
+    /// Return an `SmtpConfig` if `smtp_host` is configured.
+    pub fn alert_smtp_config(&self) -> Option<kasirmu_core::export::email_report::SmtpConfig> {
+        self.smtp_host.as_ref().map(|host| {
+            kasirmu_core::export::email_report::SmtpConfig {
+                host: host.clone(),
+                port: self.smtp_port,
+                username: self.smtp_user.clone(),
+                password: self.smtp_password.clone(),
+                from: self.smtp_from.clone(),
+                use_tls: self.smtp_port == 465,
+            }
         })
     }
 }

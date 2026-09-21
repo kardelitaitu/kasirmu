@@ -40,6 +40,7 @@ mod outbound_webhooks;
 mod outbox;
 mod payment_api;
 mod prune;
+mod quota_detector;
 mod rate_limit;
 mod redirect;
 mod redis_backend;
@@ -329,6 +330,10 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 &crate::outbound_webhooks::deliver_outbox_entry_sqlite,
             );
 
+            // ADR #57 §2.4 (Option A): Server-side quota effect detector for
+            // products and staff limits.
+            quota_detector::start_quota_detector_loop_sqlite(conn.clone(), config.clone());
+
             // P8-1: Per-tenant rate limiter state + background cleanup.
             // ADR #43 D4: prefer the shared Redis token bucket when a
             // backend is configured; the in-process shards remain the
@@ -386,6 +391,10 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 pg_pool.clone(),
                 &crate::outbound_webhooks::deliver_outbox_entry_pg,
             );
+
+            // ADR #57 §2.4 (Option A): Server-side quota effect detector for
+            // products and staff limits on PostgreSQL.
+            quota_detector::start_quota_detector_loop_pg(pg_pool.clone(), config.clone());
 
             let app = build_router(state, rate_limiter, &config, Some(pg_pool.clone()));
             serve(app, config).await?;

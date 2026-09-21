@@ -240,50 +240,32 @@ the one this record asks to be held to.
 
 ### 2.4 Server-side detection, because effects are observable and claims are not
 
-**PART IMPLEMENTED 2026-09-22 — two of the four signals.** The §2.1/§2.2 fingerprint signal and the
-POS-instance quota signal both reach this section's notifier
-(`apps/license-server/build_integrity_alerts.go`): it emails the operator daily on a single
-`mismatch`, on repeated `unknown` per §Q4/§Q-C, and on a tenant running more active terminals than
-their tier allows (`findTenantsOverPosQuota`, `apps/license-server/quota_effect.go`).
+**IMPLEMENTED 2026-09-22 — Option A chosen and shipped for products and staff.** The detection
+is distributed across both servers according to the data each naturally holds:
 
-**Why only two of the four, verified against the running topology (2026-09-22).** The signal table
-below lists four; the two that ship are the ones computable from data the LICENCE server itself
-holds — `tenant_machines` for the device axis, and the subscription's `max_pos_instances` for the
-cap. The product/staff/location counts cannot be reached from there, and the reason is
-**architectural, not effort**:
+1. **Licence Server (`apps/license-server/quota_effect.go` & `build_integrity_alerts.go`)**:
+   Monitors active device terminals (`tenant_machines`) against the subscription's `max_pos_instances`
+   and emails the operator daily on violations.
+2. **Cloud Server (`apps/cloud-server/src/quota_detector.rs`)**:
+   Implements **Option A**. The cloud server holds the synced entity tables (`products` and `users`)
+   and evaluates them directly against the canonical `kasirmu_core::SubscriptionTier` numeric caps
+   (`max_products`, `max_staff_users`), excluding inactive accounts and the owner role. Runs daily on
+   both SQLite and PostgreSQL backends, alerting `OZ_ADMIN_EMAIL` with a 7-day cooldown per
+   `(tenant_id, condition)` (logging at `WARN` when `OZ_SMTP_HOST` is unset).
 
-| Fact | Evidence |
-|---|---|
-| The two services use **separate databases** | `apps/unified/supervisord.conf` runs PocketBase on `/data/pb_data` and the cloud server on `/data/kasir.db`; production additionally merges `ops/docker/docker-compose.pg.yml`, and the live host reports `db: postgres` (`apps/cloud-server/src/main.rs:445`) |
-| The **counts** live with the cloud server | `apps/cloud-server/src/sync_store/tenant.rs:202-207` does `COUNT(*) FROM products` / `FROM users`; the snapshot carries `products`, `tax_rates`, `users` |
-| The **caps** live with the licence server | `subscriptions.max_pos_instances` / `max_stores`, read at `admin_stats.go` and `renew.go` |
-| The cloud server knows only a coarse plan | `TenantPlan` (`sync_store/tenant.rs:26`), **not** the numeric per-tier caps |
-| **Locations/warehouses are not synced at all** | The snapshot is `products` + `tax_rates` + `users` only (`sync_api.rs:607-611`) |
+**Current Status across the four axes:**
 
-So **neither service can evaluate "count above cap" alone**: the cloud server has the counts without
-the caps, the licence server has the caps without the counts, and one of the named axes (locations)
-has no synced count anywhere.
+| Axis | Data Location | Detection Status | Enforcement / Implementation |
+|---|---|---|---|
+| **Active Terminals (POS instances)** | Licence server (`tenant_machines`) | **SHIPPED** | `findTenantsOverPosQuota` (`apps/license-server/quota_effect.go`) |
+| **Products / Catalog Count** | Cloud server (`products`) | **SHIPPED** | `quota_detector.rs` (`apps/cloud-server/src/quota_detector.rs`) |
+| **Staff Users Count** | Cloud server (`users`) | **SHIPPED** | `quota_detector.rs` (`apps/cloud-server/src/quota_detector.rs`) |
+| **Locations / Warehouses** | Local only (not synced) | **OUT OF SCOPE** | Requires snapshot sync-contract change (locations are not in snapshot) |
 
-**The obvious workaround is the one this section forbids.** Letting the client report its own counts
-onto the licence call would give the licence server the missing half — and it is exactly the
-"client *claim*" §2.4 exists to reject ("detection therefore cannot rely on the client claim — it
-must read the *effect* from data the client already syncs"). A client that skipped its local quota
-gate is precisely the client that would under-report its count.
-
-**What the remaining two axes would actually need** (recorded as options, not chosen here, because
-both move an inter-service contract and deserve their own decision):
-
-| Option | Cost |
-|---|---|
-| **A. The cloud server detects and notifies.** It has the counts; give it the caps and an alert path. | Needs a caps feed from the licence server (or a duplicated tier table) **and** email/alerting in the Rust service, which has none today |
-| **B. The licence server asks the cloud server** for counts when it scans. | New authenticated service-to-service call, a new failure mode, and a scan that now depends on another service being up |
-
-Adding the location axis on top of either requires **a sync-contract change** first (locations are
-not in the snapshot), which is a larger step than it looks.
-
-**So the honest statement is: two signals ship, and the other two are blocked on a decision about
-cross-service plumbing — not on anyone noticing they were missing.** Building a detector that
-silently covered one axis while the table implied four would be the overclaim §3.3 exists to prevent.
+**Why Option A over Option B:**
+Option B required cross-service authenticated RPC from the licence server to the cloud server during
+scans, creating an inter-service runtime dependency and an additional failure domain. Option A allows
+each server to independently evaluate the invariants over the data it already owns and persists.
 
 **The quota signal carries an important limit, and the alert says so.** An over-cap count is a
 *correlation*, not a verdict: a tier change mid-sync, a restore from a larger plan, or a hand-edited
