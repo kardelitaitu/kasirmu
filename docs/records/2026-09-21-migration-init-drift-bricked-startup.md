@@ -9,7 +9,8 @@ and by a proof that the seed's rows are already present.
 
 Repo state: branch `0.0.39`. The failure was reproduced at HEAD `199ea748e`; the drift test
 landed in `a8b64719e` and the fix in `61d3abdbe` (§3). Every number below was re-verified
-against the tree as committed at `33967835a` rather than carried over from an earlier draft.
+against the tree as committed rather than carried over from an earlier draft, most recently at
+`19b572cac` — the commit that added the pre-execution skip arm.
 
 This record exists because the raw evidence was six throwaway stderr captures at the
 repository root (`.t-repro.err`, `.t2.err`, `.t3.err`, `.p1.err`, `.r1.err`, `.r2.err`,
@@ -198,6 +199,14 @@ lines), 7 new production functions and no tests.
 INDEX`/`TRIGGER`/`VIEW` — a table `CREATE` was refused then as now, because SQLite rewrites
 a table's stored DDL — and `INSERT` is the new arm.
 
+A third mechanism came later, in `19b572cac`, and is why the fix is now trace-free: the proof
+gained a **pre-execution** arm, `insert_would_insert_nothing`, which the runner consults before
+running a statement rather than after refusing one. A seed whose conflict `OR IGNORE` swallows
+*never errors*, so the after-execution arm could not see it — and re-running it is not free,
+because SQLite allocates a rowid per attempted row. So the two arms cover different halves: the
+pre-execution one for statements that would succeed while changing nothing, the post-execution
+one for statements that cannot run at all in this schema. §2.2 carries the measurement.
+
 ## 4. VERIFICATION
 
 Against the tree as committed:
@@ -207,8 +216,9 @@ Against the tree as committed:
   forces the drift by rewriting the stored checksum to the pre-ADR-56 value, and
   `cosmetic_edit_to_any_migration_re_applies_cleanly`, which drives the re-apply across all 61
   registered migrations.
-- `cargo test -p platform-core --lib database::migrations` → **32 passed; 0 failed**; the crate
-  as a whole, `cargo test -p platform-core --lib` → **397 passed; 0 failed**.
+- `cargo test -p platform-core --lib database::migrations` → **33 passed; 0 failed**; the crate
+  as a whole, `cargo test -p platform-core --lib` → **404 passed; 0 failed**. (At the original fix
+  it was 32 and 397; §2.2 and §3 account for the seven tests added since.)
 - Module-level only: the other 3127 tests in `kasirmu-core` were filtered out, and no unfiltered
   workspace run has been made.
 
@@ -225,6 +235,8 @@ Two checks beyond the suite:
   | Weakening | What goes red |
   | --- | --- |
   | the proof skips a seed whose rows are genuinely missing | `a_seed_with_a_missing_row_is_never_skipped` |
+  | the *pre-execution* proof skips a seed a row of which is genuinely missing | `a_seed_whose_rows_are_already_there_would_insert_nothing`, `a_partial_unique_index_is_not_evidence`, `a_seed_that_names_no_unique_column_is_never_skipped`, `a_null_in_a_unique_column_is_not_evidence` (four red) |
+  | the runner stops consulting the pre-execution proof | `drift_re_apply_leaves_the_autoincrement_counter_untouched` (sole red) |
   | the classifier loses `has no column named` | `init_script_re_applies_after_a_later_migration_replaces_its_seed_column` |
   | the checksum stops normalising line endings | `checksum_hex_matches_independently_computed_digests`, `migration_checksums_are_stable_across_line_endings` |
   | a failed per-statement attempt commits what already ran | `the_statement_fallback_is_entered_only_for_a_classified_failure` (sole red) |
@@ -248,12 +260,13 @@ The pre-fix classifier that let the failure through is on record at `61d3abdbe^`
 
 What is held now:
 
-- **The proof's refusal paths, directly.** `statements_tests.rs` carries 13 tests, 11 written
+- **The proof's refusal paths, directly.** `statements_tests.rs` carries 19 tests, 17 written
   for this campaign, every negative asserted beside the control showing the same statement
   *is* provable when the proof's conditions hold — including
-  `a_seed_with_a_missing_row_is_never_skipped`, the property that most needed pinning. The
-  proof's internals are exercised *through* `already_satisfied`; no test names them, which is
-  the point of a proof whose contract is the answer alone.
+  `a_seed_with_a_missing_row_is_never_skipped`, the property that most needed pinning, and six
+  covering the pre-execution arm's contract. The proof's internals are exercised *through*
+  `already_satisfied`; no test names them, which is the point of a proof whose contract is the
+  answer alone.
 - **The stored digest, against independent literals.** A NIST vector and a migration-shaped
   script pinned to digests computed outside the crate, with that script's CRLF spelling pinned
   to the same literal. Every other checksum assertion in the runner compares `checksum_hex`
@@ -337,18 +350,25 @@ What is held now:
   `memo_revisions` 75, `memo_recipients` 59, `workspace_type_screens` 36, `settings` 34,
   `workspace_screens` 31, `roles` 6, `workspaces` 6, `loyalty_tiers` 4, `users` 1 … — so per-table
   row counts and a SHA-256 of every row's canonical content were compared before and after, not
-  just the ledger. Every one of the 131 tables is unchanged. The one skipped statement (the
-  `earn_multiplier` seed) left `loyalty_tiers` at its 4 rows with an identical digest, so the skip
-  inserted nothing and duplicated nothing; the 61st migration added only its own ledger row
-  (485 → 486). The only content that moves is SQLite's internal `sqlite_sequence`: each re-apply
-  advances two AUTOINCREMENT counters by exactly the number of `VALUES` rows in the two
-  `INSERT OR IGNORE` statements it re-executes — `workspace_screens` 60 → 90 → 120 (+30) and
+  just the ledger. Every one of the 131 tables is unchanged. The skipped `earn_multiplier` seed
+  left `loyalty_tiers` at its 4 rows with an identical digest, so the skip inserted nothing and
+  duplicated nothing; the 61st migration added only its own ledger row
+  (485 → 486). The one thing that moved then was SQLite's internal `sqlite_sequence`: each
+  re-apply advanced two AUTOINCREMENT counters by exactly the number of `VALUES` rows in the two
+  `INSERT OR IGNORE` statements it re-executed — `workspace_screens` 60 → 90 → 120 (+30) and
   `workspace_type_screens` 72 → 108 → 144 (+36) — because a conflict that `OR IGNORE` swallows
-  still allocates a rowid. Nothing is inserted or duplicated by it; the effect is gaps in
-  autoincrement ids, and it is inherent to re-executing the script, not to the skip proof, which
-  only ever sees statements that *error*. Still unmeasured, and honestly so: **0 sales rows**, and
-  no inventory movement — the data exercised here is configuration, memo and account data, not
-  transactions.
+  still allocates a rowid, and the skip proof then in place only ever saw statements that
+  *error*, while a swallowed conflict succeeds. **Closed since:** the proof gained a
+  pre-execution arm, which answers *before* running whether every row an `INSERT OR IGNORE` seed
+  offers is already present — and declines when the table carries a trigger an INSERT could fire.
+  Re-measured on a fresh copy of the same live data, on the drift path alone (ledger already
+  complete): all 8 `INSERT OR IGNORE` seeds in the init script are logged as `drift re-apply:
+  statement would insert nothing — skipped before execution`, the counters stay at **60 and 72**,
+  and every one of the 131 tables is byte-identical — `sqlite_sequence` included. The same bytes
+  with only that arm disabled, the old behaviour, return 90 and 108 and a changed
+  `sqlite_sequence` digest; the only table the re-apply then touches is the ledger's own row.
+  Still unmeasured, and honestly so: **0 sales rows**, and no inventory movement — the data
+  exercised here is configuration, memo and account data, not transactions.
 - **A classifier observation, not a finding.** `no such table` admits a class a
   dropped-and-replaced table shares with a genuinely absent one; the proof refuses to skip
   either, so the arm is worth a look for `CREATE`/`ALTER` statements rather than known-broken.
@@ -374,16 +394,20 @@ in four files:
 
 | File | Owns | Lines |
 | --- | --- | --- |
-| `platform/core/src/database/statements.rs` | Reading SQL: splitting a script into statements, tokens and canonical forms, the parsers, the significance predicate, the already-satisfied proof | 955 |
-| `platform/core/src/database/statements_tests.rs` | That layer's tests, including the refusal paths | 263 |
-| `platform/core/src/database/migrations.rs` | The ledger and the policy: registry, checksums, the drift decision, orchestration | 554 (550 code, 3-line test wiring) |
-| `platform/core/src/database/migrations_tests.rs` | The runner's 32 tests, moved out of the production file | 905 |
+| `platform/core/src/database/statements.rs` | Reading SQL: splitting a script into statements, tokens and canonical forms, the parsers, the significance predicate, the two skip proofs | 1124 |
+| `platform/core/src/database/statements_tests.rs` | That layer's 19 tests, including the refusal paths | 428 |
+| `platform/core/src/database/migrations.rs` | The ledger and the policy: registry, checksums, the drift decision, orchestration | 577 (573 code, 3-line test wiring) |
+| `platform/core/src/database/migrations_tests.rs` | The runner's 33 tests, moved out of the production file | 980 |
 
-Dependencies run one way — `migrations` → `statements`, `mod statements` private. Three calls
-cross the boundary and all three are semantic: `split_statements`, `is_significant` (does this
-fragment have any effect?) and `already_satisfied`. `canonical_ddl` appears zero times in the
-runner, which used to call it for exactly that decision. Nothing there inspects a token, and
-nothing in the statement layer knows a `Migration`, a `schema_migrations` row or a checksum.
+Dependencies run one way — `migrations` → `statements`, `mod statements` private. Four calls
+cross the boundary and all four are semantic: `split_statements`, `is_significant` (does this
+fragment have any effect?), `insert_would_insert_nothing` (would running it insert nothing?) and
+`already_satisfied` (does the error it just raised mean its effect is already there?).
+`canonical_ddl` appears zero times in the runner, which used to call it for exactly that
+decision. Nothing there inspects a token, and nothing in the statement layer knows a
+`Migration`, a `schema_migrations` row or a checksum. Adding the pre-execution arm grew
+`statements.rs` past the repo's 1000-line production rule (955 → 1124), which the layer's own
+split is the natural next move for.
 
 One interface change came with the extraction: the proof takes SQLite's error **message**
 (`&str`) rather than a `rusqlite::Error`. That it narrowed nothing was verified rather than
@@ -393,3 +417,6 @@ site reddens two end-to-end tests.
 
 Behaviour was checked, not assumed: `platform-core` lib **397 passed** and `kasirmu-core --lib
 migrations::` **37 passed**, with the forced-drift replay of §2.2 unchanged after the move.
+After the pre-execution arm was added it is **404 passed** (`database::migrations` 33,
+`database::statements` 19) and `kasirmu-core --lib migrations::` still **37 passed** — the seven
+new tests are the arm's own contract plus one runner pin on the AUTOINCREMENT counter.
