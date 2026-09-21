@@ -10,7 +10,7 @@ and by a proof that the seed's rows are already present.
 Repo state at write time: branch `0.0.39`, HEAD `199ea748e` (the drift test itself landed
 in `a8b64719e`). The runner fix is **still uncommitted** — see §5.
 
-This record exists because the raw evidence was five throwaway stderr captures at the
+This record exists because the raw evidence was six throwaway stderr captures at the
 repository root (`.t-repro.err`, `.t2.err`, `.t3.err`, `.p1.err`, `.r1.err`, `.r2.err`,
 plus their `.log` halves). Those files were deleted on 2026-09-21 as part of a scratch
 cleanup; everything they established is below.
@@ -104,7 +104,8 @@ only to close the set.
 
 ### 2.4 Noise, not signal
 
-Every capture's stderr is dominated by:
+Every capture except `.p1.err` — which carries nothing but compile progress and doctest
+output — has its stderr dominated by:
 
 ```
 warning: failed to garbage collect finalized incremental compilation session directory
@@ -180,6 +181,9 @@ A clean checkout of HEAD fails that test; it passes only in a checkout carrying 
 uncommitted runner change. The fix needs a commit before anyone else builds from this
 branch.
 
+Re-checked at this record's landing commit `cb740ab57`: the three greps return the same
+values and `platform/core/src/database/migrations.rs` is still ` M`.
+
 An observation, not a verified finding: widening the classifier to `no such table` admits a
 class that a dropped-and-replaced table shares with a genuinely absent one. The
 `seed_rows_already_present` proof is what keeps that safe for seeds, but the arm is worth a
@@ -189,12 +193,18 @@ look for `CREATE`/`ALTER` statements.
 
 - The full working tree is not clean: `apps/mobile-tauri/src/commands/staff.rs` and the
   runner itself are still modified, and the drift fix is uncommitted (§5).
-- The four unrelated root scratch artefacts found beside these captures — `.tmp-re2.cjs` and
-  `.tmp-re3.cjs` (regex probes against `ui/src/features/auth/StaffLoginScreen.tsx`, another
-  lane), `.tmp-android-audit/` (PNG pixel statistics and a `dumpsys` wakefulness log for the
-  android-shell audit) and `.tmp-dbcheck/kasir.db` (the replay fixture in §2.2) — were left
-  in place, because none of them is this lane's work and the android evidence is not
-  captured in `docs/records/2026-09-20-audit-android-shell.md`.
-- This record was written by a session that did not author the fix and did not commit it. The
-  raw stderr captures it replaces are gone; the measurements above were taken from the
+- The four unrelated root scratch artefacts found beside these captures were handled as
+  follows, none of them being this lane's work. `.tmp-re2.cjs` and `.tmp-re3.cjs` (regex
+  probes against `ui/src/features/auth/StaffLoginScreen.tsx`, another lane) were **deleted**
+  as trivially regenerable. `.tmp-android-audit/` (PNG pixel statistics and a `dumpsys`
+  wakefulness log for the android-shell audit) and `.tmp-dbcheck/kasir.db` (the replay
+  fixture in §2.2) were **left in place**, because the android evidence is not captured in
+  `docs/records/2026-09-20-audit-android-shell.md` and the database copy is the other lane's
+  fixture. A read-only query against that copy left a zero-byte `kasir.db-wal` and a
+  `kasir.db-shm` behind; both were removed and the copy is byte-unchanged.
+- `crates/kasirmu-core/tests/tmp_real_db_replay.rs` is still in the tree, despite its own
+  header claiming it is deleted before commit. It was left in place for the lane that still
+  needs it while the runner fix is uncommitted.
+- This record was written by a session that neither authored nor committed the runner fix.
+  The raw stderr captures it replaces are gone; the measurements above were taken from the
   working tree and from the archived database copy before deletion.
