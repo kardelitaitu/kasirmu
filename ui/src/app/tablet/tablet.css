@@ -325,6 +325,28 @@
   padding-right: var(--inset-right);
 }
 
+/* ── Memo stack bottom clearance ───────────────────── */
+/* The tablet shell's override of the memo stack's bottom offset
+   (MemoBanner.css consumes `bottom: var(--memo-bottom-inset,
+   var(--space-6))`). Deliberately its OWN block, separate from the
+   inset-carrying shell body above: setupWizardLandscape.test.ts pins
+   that body to exactly top/left/right insets and NO --inset-bottom —
+   the bar owns the bottom inset as its own padding (L97) — so this
+   chrome-height sum must not join it.
+
+   The bar is the bottom chrome this shell parks under the stack:
+   nav height + the bar's own --inset-bottom padding + the same
+   --space-6 clearance the chrome-free fallback uses. At a flat
+   --space-6 the stack painted 40px over the bar's tabs (64 + inset vs
+   24). Custom properties inherit downward, so every surface mounted
+   inside this shell — including MemoBanner's fixed stack, which is a
+   DOM descendant — clears the bar instead of covering it. */
+.tablet-shell {
+  --memo-bottom-inset: calc(
+    var(--tablet-bottom-nav-height) + var(--inset-bottom) + var(--space-6)
+  );
+}
+
 /* ── Scrollbar styling for touch ──────────────────── */
 .tablet-shell ::-webkit-scrollbar {
   width: 6px;
