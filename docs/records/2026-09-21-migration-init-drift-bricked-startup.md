@@ -7,8 +7,9 @@ named a column a later migration had already dropped — an error class the stat
 fallback did not classify, so it was fatal. Fixed by widening the runner's drift fallback
 and by a proof that the seed's rows are already present.
 
-Repo state at write time: branch `0.0.39`, HEAD `199ea748e` (the drift test itself landed
-in `a8b64719e`). The runner fix is **still uncommitted** — see §5.
+Repo state: branch `0.0.39`. The failure was reproduced at HEAD `199ea748e`; the drift test
+landed in `a8b64719e` and the fix in `61d3abdbe` (§3). Every number below was re-verified
+against the tree as committed at `33967835a` rather than carried over from an earlier draft.
 
 This record exists because the raw evidence was six throwaway stderr captures at the
 repository root (`.t-repro.err`, `.t2.err`, `.t3.err`, `.p1.err`, `.r1.err`, `.r2.err`,
@@ -40,9 +41,11 @@ so it raised `table loyalty_tiers has no column named earn_multiplier`.
 That message is not a *duplicate-object* error, and the runner's statement-level fallback
 was gated on exactly that class — `is_duplicate_object_error`. The whole-script attempt
 stopped at the first bad statement, the fallback was never entered, and the error was
-reported verbatim and fatally. Per the fix's own test doc comment, the observed symptom on
-a real device was `kasirmu-app` panicking in its setup hook with
-`Failed to setup app: … running migrations: … has no column named earn_multiplier`.
+reported verbatim and fatally. The observed symptom on a real device was `kasirmu-app` panicking in its setup hook with
+`Failed to setup app: … running migrations: … has no column named earn_multiplier`, and
+the code shows why it is a panic rather than a reported error: `AppState::new` maps the
+runner's failure to `running migrations: {e}` (`apps/desktop-tauri/src/state.rs:230`), and
+the Tauri setup hook propagates it with `?` (`apps/desktop-tauri/src/lib.rs:110`).
 
 ## 2. EVIDENCE
 
@@ -74,9 +77,8 @@ test replay_real_db_copy ... ok
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 ```
 
-**That is weaker than it reads, and the claim was checked rather than assumed.** The drift
-branch is entered only when a database's stored checksum for an applied migration differs
-from the file's current bytes. Read directly out of the archived copy:
+**That is weaker than it reads.** The drift branch is entered only when a stored checksum
+differs from the file's current bytes, and read directly out of the archived copy:
 
 ```
 registry, 20260813_init.sql        e6f3504ed6456dc1dda75eda1b1e18a8cfcf94cdea3b75ca7bca3f2a8e147d66
@@ -89,36 +91,32 @@ nothing. It does **not** exercise the drift re-apply against real bytes, which w
 under repair. The copy also holds 60 `schema_migrations` rows, fewer than the registry, so it
 predates at least `20261008_provisioning_legacy_backfill.sql`.
 
-**The archived copy was then run twice, as a control and as the experiment.** Both halves ran
-against the same archived bytes, from two copies, so the archive itself was never opened:
+**It was then run twice — control and experiment — from two copies, so the archive itself was
+never opened:**
 
 | Run | Stored checksum at start | Migrations applied | `loyalty_tiers` | Stored checksum at end |
 | --- | --- | --- | --- | --- |
 | as captured | `e6f3504e…` — matches the file | 60 → 61 | 4 → 4 | `e6f3504e…` |
 | drift forced | `f86bbbe0…` | 60 → 61 | 4 → 4 | `e6f3504e…` |
 
-The control *is* what the archived `REPLAY-OK` was, and the runner's own condition shows why
-it is worth nothing as evidence: the drift branch is `if *stored != current`
-(`platform/core/src/database/migrations.rs:75`), and `stored` already equalled `current`, so
-`reapply_for_drift` could not be reached and the failing seed statement was never executed.
-The name of the test did not matter — the branch it named was unreachable from those bytes.
+The control *is* what the archived `REPLAY-OK` was, and the code shows why that is worth
+nothing: the drift branch is `if *stored != current`
+(`platform/core/src/database/migrations.rs:91`), and `stored` already equalled `current`, so
+`reapply_for_drift` was unreachable and the failing seed statement never executed.
 
 The forced run is the one that reaches it, and it ends with the registry's checksum written
 and the four rows intact — the same result the live-database copy gives in the next
-paragraph, from an independent snapshot. (The 60 → 61 in both rows is
-`20261008_provisioning_legacy_backfill.sql`, which this older snapshot lacked either way, so
-it is not evidence of anything.)
+paragraph, from an independent snapshot.
 
 Consequently, as first archived, the drift path rested on **construction alone** — the unit
 test in §4 rewrites the stored checksum to the pre-ADR-56 value to force it.
 
-**The experiment it was missing has since been run.** Immediately after the fix landed as
-`61d3abdbe`, a fresh copy was taken of the live dev database
-(`%APPDATA%\mu.kasir.app\kasir.db` — the main file *and* its 675,712-byte write-ahead log,
-folding the WAL in first: a bare copy of the main file alone would have silently dropped
-those committed transactions), the copy's stored checksum forced back to `f86bbbe0…`, and
-the shipping runner (`kasirmu_core::migrations::run`, the same path the app's setup hook
-calls) run against it:
+**The experiment it was missing has since been run.** A fresh copy of the live dev database
+was taken (`%APPDATA%\mu.kasir.app\kasir.db` — the main file *and* its 675,712-byte
+write-ahead log, folded in first, since a bare copy of the main file would have silently
+dropped those committed transactions), its stored checksum forced back to `f86bbbe0…`, and
+the shipping runner run against it — `kasirmu_core::migrations::run`, the same path the
+app's setup hook calls:
 
 ```
 forced drift: stored checksum = f86bbbe00608dbd6f6a3cb40a82ee01be69d730763a51349adad92cffc78c013
@@ -131,9 +129,8 @@ REPLAY-OK (drift exercised)
 
 Three things are established, and the third is the one that matters:
 
-- The copy was on the drift path when the run started — asserted, not assumed, because a
-  copy whose checksum already matches proves nothing. That is exactly the mistake behind the
-  earlier replay being read as validation.
+- The copy was on the drift path when the run started, asserted rather than assumed: a copy
+  whose checksum already matches proves nothing, which is the mistake the earlier replay made.
 - 60 → 61 applied migrations is `20261008_provisioning_legacy_backfill.sql`, which this copy
   legitimately lacked.
 - The stored checksum came back as the registry's current hash. Only a *completed* drift
@@ -141,13 +138,12 @@ Three things are established, and the third is the one that matters:
   same property the unit test asserts with "the drift re-apply did not patch the stored
   checksum".
 
-Independently, the failure is real on those bytes and not a fixture artefact: running the
-init script's seed statement verbatim against the same copy raises
-`OperationalError: table loyalty_tiers has no column named earn_multiplier` — the exact
-message in §2.1 — while leaving all four tier rows untouched. The counterfactual for the
-pre-fix *runner* is the one recorded in §5 (the classifier as it stood at `61d3abdbe^`
-matched only `already exists` / `duplicate column name`), not a second end-to-end run: doing
-that would have meant reverting a committed file in a shared checkout.
+Independently, the failure is real on those bytes and not a fixture artefact: the init
+script's seed statement, run verbatim against the same copy, raises
+`OperationalError: table loyalty_tiers has no column named earn_multiplier` — the message in
+§2.1 — and leaves all four tier rows untouched. The pre-fix counterfactual is §5's, not a
+second end-to-end run, which would have meant reverting a committed file in a shared
+checkout.
 
 ### 2.3 The control runs
 
@@ -159,16 +155,10 @@ only to close the set.
 ### 2.4 Noise, not signal
 
 Every capture except `.p1.err` — which carries nothing but compile progress and doctest
-output — has its stderr dominated by:
-
-```
-warning: failed to garbage collect finalized incremental compilation session directory
-  `\\?\C:\dev\ozpos\target\debug\incremental\…`: Access is denied. (os error 5)
-```
-
-That is the target directory being held open during a concurrent build, and one capture also
-shows `Blocking waiting for file lock on build directory`. Neither has any bearing on the
-failure.
+output — has its stderr dominated by `failed to garbage collect finalized incremental
+compilation session directory … Access is denied. (os error 5)`: the target directory held
+open during a concurrent build. One capture also shows `Blocking waiting for file lock on
+build directory`. Neither bears on the failure.
 
 ### 2.5 Capture timeline
 
@@ -181,16 +171,15 @@ failure.
 | 14:25:47 | `.tmp-dbcheck/kasir.db` | last write of the replay fixture |
 | 22:42:42 | all six `.err` files | bulk-restored as one batch |
 
-The `.err` halves were re-written at 22:42:42 — the same instant as
-`platform/core/src/database/migrations.rs` and the probe — so the archived stderr is a copy
-re-materialised hours after the run that produced it, while the `.log` halves retain their
-original 14:19–14:26 mtimes. The run logs and the stderr they describe are therefore a
-matched pair with different mtimes.
+The `.err` halves were re-materialised at 22:42:42 — the same instant as
+`platform/core/src/database/migrations.rs` and the probe — while the `.log` halves kept their
+original 14:19–14:26 mtimes. The two halves of each capture are therefore a matched pair
+with different times.
 
 ## 3. FIX
 
-Uncommitted working-tree change in `platform/core/src/database/migrations.rs` (+302 lines,
-still ` M` at time of writing):
+One file, `platform/core/src/database/migrations.rs`: `61d3abdbe`, +289/−13 (302 changed
+lines), 7 new production functions and no tests.
 
 - `is_duplicate_object_error` generalised to **`is_skip_candidate_error`**, which now also
   classifies `has no column named` / `no such column` / `no such table`. Only a classified
@@ -204,112 +193,136 @@ still ` M` at time of writing):
   row's key literals match a row already in the table). `OR IGNORE` is what makes "every row
   is already there" a proof of a no-op rather than a guess.
 
-`already_satisfied` previously knew only about `CREATE TABLE`/`CREATE INDEX`; `INSERT` is
-the new arm.
+`already_satisfied` previously handled `ALTER TABLE … ADD COLUMN` and `CREATE
+INDEX`/`TRIGGER`/`VIEW` — a table `CREATE` was refused then as now, because SQLite rewrites
+a table's stored DDL — and `INSERT` is the new arm.
 
 ## 4. VERIFICATION
 
-- `cargo test -p kasirmu-core --lib migrations::` → **36 passed; 0 failed**, including
-  `init_script_re_applies_after_a_later_migration_replaces_its_seed_column`.
-- `cargo test -p platform-core --lib database::migrations` → **32 passed; 0 failed**.
-- Module-level only: the remaining ~3123 tests in `kasirmu-core` were filtered out, and no
-  unfiltered workspace run was made.
-- The drift path **now has** real-database evidence — see §2.2. The forced-drift replay
-  against a copy of the live dev database returned `REPLAY-OK`, patched the stored checksum
-  to the registry's hash and left the four seed rows intact.
+Against the tree as committed:
 
-The `earn_multiplier` failure is **not live** in this working tree. It was reproduced above
-only from an archived capture.
+- `cargo test -p kasirmu-core --lib migrations::` → **37 passed; 0 failed** (3127 filtered out),
+  including `init_script_re_applies_after_a_later_migration_replaces_its_seed_column`, which
+  forces the drift by rewriting the stored checksum to the pre-ADR-56 value, and
+  `cosmetic_edit_to_any_migration_re_applies_cleanly`, which drives the re-apply across all 61
+  registered migrations.
+- `cargo test -p platform-core --lib database::migrations` → **32 passed; 0 failed**; the crate
+  as a whole, `cargo test -p platform-core --lib` → **397 passed; 0 failed**.
+- Module-level only: the other 3127 tests in `kasirmu-core` were filtered out, and no unfiltered
+  workspace run has been made.
 
-## 5. THE OPEN RISK, AND HOW IT CLOSED
+The `earn_multiplier` failure is **not live**: that drift test passes.
 
-The commit that added the drift test (`a8b64719e`) did **not** take the runner fix, which
-stayed uncommitted. HEAD therefore contained a test whose subject it could not satisfy:
+Two checks beyond the suite:
 
-| Check | Result |
-| --- | --- |
-| `git show HEAD:platform/core/src/database/migrations.rs \| grep -c is_skip_candidate_error` | `0` — fix absent |
-| `git show HEAD:…/migrations.rs \| grep -c "has no column named"` | `0` — only `is_duplicate_object_error` at `:470` |
-| `git show HEAD:…/migrations_tests.rs \| grep -c init_script_re_applies…` | `1` — test present |
+- **Real bytes.** The forced-drift replay of §2.2 has been re-run against fresh copies of the
+  same archived bytes after each structural change of §7: 60 → 61 applied, the stored
+  checksum restored to the registry's `e6f3504e…`, four tier rows intact.
+- **Mutations, to establish what the suite actually holds.** Each weakening below was reverted
+  byte-identically afterwards:
 
-A clean checkout of HEAD failed that test; it passed only in a checkout carrying the
-uncommitted runner change.
+  | Weakening | What goes red |
+  | --- | --- |
+  | the proof skips a seed whose rows are genuinely missing | `a_seed_with_a_missing_row_is_never_skipped` |
+  | the classifier loses `has no column named` | `init_script_re_applies_after_a_later_migration_replaces_its_seed_column` |
+  | the checksum stops normalising line endings | `checksum_hex_matches_independently_computed_digests`, `migration_checksums_are_stable_across_line_endings` |
+  | a failed per-statement attempt commits what already ran | `the_statement_fallback_is_entered_only_for_a_classified_failure` (sole red) |
+  | a migration deleted from the registry *and* the filesystem | `no_registered_migration_ever_disappears` |
+  | the drift gatekeeper deleted outright | **nothing** — see §5 |
 
-**Resolved the same evening.** The fix landed on its own as `61d3abdbe`
-(`platform/core/src/database/migrations.rs`, +289/−13, its own pathspec commit, no other
-file). The same three greps now read **4 / 2 / 1** where the table above shows 0 / 0 / 1 —
-they count occurrences, so the first two are the ones that moved, from absent to present.
-Verified at that commit:
-`cargo test -p kasirmu-core --lib migrations::` → 36 passed, and
-`cargo test -p platform-core --lib database::migrations` → 32 passed —
-`init_script_re_applies_after_a_later_migration_replaces_its_seed_column` among them, which
-it could not have passed before.
+## 5. WHAT THE SUITE HOLDS, AND WHAT IT DOES NOT
 
-Two things about that commit are worth keeping in view:
+The commit that added the drift test (`a8b64719e`) did not take the runner fix, so HEAD then
+held a test whose subject it could not satisfy: a clean checkout failed it while this checkout
+passed. Re-established at both revisions:
 
-- **It is fix-only and adds no tests.** Its seven new functions are all production code; the
-  drift tests were already on HEAD, which is exactly why HEAD was red.
-- **The proof code has no direct unit coverage.** The inline `mod tests` at
-  `platform/core/src/database/migrations.rs:1425` (predating the sibling-file rule, as
-  `manager.rs:429` acknowledges) never names `seed_rows_already_present`, `split_top_level`,
-  `paren_group`, `primary_key_columns` or `seed_literal`. Its only exercise is the single
-  `kasirmu-core` integration test, from one direction, on one seed shape. The property that
-  most needs pinning — that the proof must **refuse** to skip a seed whose rows are missing —
-  has no test at all.
+| Check | At `a8b64719e` | At HEAD |
+| --- | --- | --- |
+| `grep -c is_skip_candidate_error platform/core/src/database/migrations.rs` | `0` — fix absent | `4` |
+| `grep -c "has no column named" platform/core/src/database/migrations.rs` | `0` | `2` |
+| `grep -c init_script_re_applies crates/kasirmu-core/src/migrations_tests.rs` | `1` — test present | `1` |
 
-An observation, not a verified finding: widening the classifier to `no such table` admits a
-class that a dropped-and-replaced table shares with a genuinely absent one. The
-`seed_rows_already_present` proof is what keeps that safe for seeds, but the arm is worth a
-look for `CREATE`/`ALTER` statements.
+The pre-fix classifier that let the failure through is on record at `61d3abdbe^`:
+`is_duplicate_object_error` matched exactly `already exists` and `duplicate column name`.
+
+What is held now:
+
+- **The proof's refusal paths, directly.** `statements_tests.rs` carries 13 tests, 11 written
+  for this campaign, every negative asserted beside the control showing the same statement
+  *is* provable when the proof's conditions hold — including
+  `a_seed_with_a_missing_row_is_never_skipped`, the property that most needed pinning. The
+  proof's internals are exercised *through* `already_satisfied`; no test names them, which is
+  the point of a proof whose contract is the answer alone.
+- **The stored digest, against independent literals.** A NIST vector and a migration-shaped
+  script pinned to digests computed outside the crate, with that script's CRLF spelling pinned
+  to the same literal. Every other checksum assertion in the runner compares `checksum_hex`
+  with a value `checksum_hex` itself wrote, so this is the only test that would notice a change
+  to *how* it hashes — the property drift detection rests on entirely.
+- **Registry membership, absolutely.** All 61 registered ids are pinned as a subset check, so
+  adding a migration needs no edit while deleting one fails by name.
+  `migration_registry_matches_filesystem` cannot serve this: it asserts file↔registry parity and
+  equal counts, which a same-id removal from both sides satisfies.
+- **The retry boundary, partly.** Which failures earn the statement-by-statement attempt is
+  decided by the classifier, and nothing pins that ordering: **deleting the gatekeeper reddens
+  nothing**. It is a redundant guard rather than a live defect, because every arm of
+  `already_satisfied` requires an error text the classifier already recognises — `duplicate
+  column name` for ADD COLUMN, `already exists` for CREATE, and for the seed arm a message
+  naming an absent column — so the fallback cannot excuse an unrecognised failure even when
+  entered. What the pin does hold is the observable part: an unrecognised failure is fatal,
+  reported verbatim, records no new checksum and commits nothing; a recognised one reaches a
+  later statement only by proving the earlier one satisfied, and rolls back entirely on failure.
+
+**Remaining open limits**
+
+- **No failed drift re-apply on real bytes.** Failure is proven on fixtures; the one real-bytes
+  failure on record (§2.1) predates the fix.
+- **The second production caller is untested.** `apps/cloud-server/src/db.rs:134,143` calls the
+  runner too and has never seen drifted bytes.
+- **The app path is proven by proxy.** No test drives the setup hook, and the replays connect
+  with SQLite's defaults rather than the app's `foreign_keys=ON` + `journal_mode=WAL`.
+- **The snapshot carries no data** — 0 sales rows — so this exercises schema drift, not
+  data-bearing tables.
+- **A classifier observation, not a finding.** `no such table` admits a class a
+  dropped-and-replaced table shares with a genuinely absent one; the proof refuses to skip
+  either, so the arm is worth a look for `CREATE`/`ALTER` statements rather than known-broken.
 
 ## 6. WHAT THIS RECORD DOES NOT COVER
 
-- The full working tree is not clean: `apps/mobile-tauri/src/commands/staff.rs` and the
-  runner itself are still modified, and the drift fix is uncommitted (§5).
-- The four unrelated root scratch artefacts found beside these captures were handled as
-  follows, none of them being this lane's work. `.tmp-re2.cjs` and `.tmp-re3.cjs` (regex
-  probes against `ui/src/features/auth/StaffLoginScreen.tsx`, another lane) were **deleted**
-  as trivially regenerable. `.tmp-android-audit/` (PNG pixel statistics and a `dumpsys`
-  wakefulness log for the android-shell audit) and `.tmp-dbcheck/kasir.db` (the replay
-  fixture in §2.2) were **left in place**, because the android evidence is not captured in
-  `docs/records/2026-09-20-audit-android-shell.md` and the database copy is the other lane's
-  fixture. A read-only query against that copy left a zero-byte `kasir.db-wal` and a
-  `kasir.db-shm` behind; both were removed and the copy is byte-unchanged.
-- `crates/kasirmu-core/tests/tmp_real_db_replay.rs` is still in the tree, despite its own
-  header claiming it is deleted before commit. It was left in place for the lane that still
-  needs it while the runner fix is uncommitted.
-- This record was written by a session that neither authored nor committed the runner fix.
-  The raw stderr captures it replaces are gone; the measurements above were taken from the
-  working tree and from the archived database copy before deletion.
+- **Authorship.** This record was written by a session that did not author the runner fix. The
+  fix was later committed from this side of the campaign, under one git identity, so the commit
+  metadata cannot separate the two.
+- The scratch artefacts beside the captures were not this lane's. `.tmp-re2.cjs`/`.tmp-re3.cjs`
+  were deleted as trivially regenerable; `.tmp-android-audit/` and `.tmp-dbcheck/kasir.db` were
+  **left in place** — the former's evidence is not in `docs/records/2026-09-20-audit-android-shell.md`,
+  the latter is another lane's fixture, still byte-unchanged (2,207,744 bytes, mtime
+  2026-09-21 14:25:47) and the row that makes §2.2 readable.
+- `crates/kasirmu-core/tests/tmp_real_db_replay.rs` is still untracked in the tree, its own
+  header claiming it is deleted before commit.
 
 ## 7. STRUCTURE AFTER THE ARCHITECTURE PASS
 
-The proof had been written into a 2,257-line runner that also held the ledger, the
-checksums and the drift policy — a SQL parser and a proof engine inside a migration
-runner, with no module boundary and no test of its own. The statement layer now stands
-apart:
+The proof had been written into a 2,257-line runner that also held the ledger, the checksums,
+the drift policy *and* its own 894-line test module, with no boundary inside it. It now stands
+in four files:
 
-| File | Owns | Size at the pass |
+| File | Owns | Lines |
 | --- | --- | --- |
-| `platform/core/src/database/statements.rs` | Reading SQL: splitting a script into statements, tokens and canonical forms, the parsers, and the already-satisfied proof | 940 |
-| `platform/core/src/database/statements_tests.rs` | That layer's tests, including the refusal paths | 247 |
-| `platform/core/src/database/migrations.rs` | The ledger and the policy: registry, checksums, the drift decision, orchestration | 535 production, 773 inline tests |
+| `platform/core/src/database/statements.rs` | Reading SQL: splitting a script into statements, tokens and canonical forms, the parsers, the significance predicate, the already-satisfied proof | 955 |
+| `platform/core/src/database/statements_tests.rs` | That layer's tests, including the refusal paths | 263 |
+| `platform/core/src/database/migrations.rs` | The ledger and the policy: registry, checksums, the drift decision, orchestration | 554 (550 code, 3-line test wiring) |
+| `platform/core/src/database/migrations_tests.rs` | The runner's 32 tests, moved out of the production file | 905 |
 
-Dependencies run one way — `migrations` → `statements`. Nothing in the runner inspects a
-token; nothing in `statements` knows a `Migration`, a `schema_migrations` row or a checksum.
-The two meet at three calls: `split_statements`, `canonical_ddl` and `already_satisfied`.
+Dependencies run one way — `migrations` → `statements`, `mod statements` private. Three calls
+cross the boundary and all three are semantic: `split_statements`, `is_significant` (does this
+fragment have any effect?) and `already_satisfied`. `canonical_ddl` appears zero times in the
+runner, which used to call it for exactly that decision. Nothing there inspects a token, and
+nothing in the statement layer knows a `Migration`, a `schema_migrations` row or a checksum.
 
-One interface change came with the move: the proof takes SQLite's error **message** (`&str`)
-rather than a `rusqlite::Error`, which is all it ever read, and which is what makes it
-testable without constructing an error value. The runner converts once, at the call site.
+One interface change came with the extraction: the proof takes SQLite's error **message**
+(`&str`) rather than a `rusqlite::Error`. That it narrowed nothing was verified rather than
+assumed — the old body's only use of the error was `error.to_string()`, every decision reading
+that string — and the text is load-bearing: handing the proof a *different* string at the call
+site reddens two end-to-end tests.
 
-`statements_tests.rs` also carries ten tests that did not exist before: the refusal paths
-named as the top gap in the audit of this work. Each negative case is asserted beside the
-control that shows the same statement *is* provable when the proof's conditions hold, so a
-proof that simply refused everything could not pass them.
-
-Behaviour was checked, not assumed. `platform-core` lib: 394 passed. `kasirmu-core
---lib migrations::`: 36 passed, including the seed-drift and cosmetic-edit cases that run the
-proof through the real registry. And the forced-drift replay of §2.2 re-run against the same
-archived bytes after the move: 60 → 61 applied, the stored checksum restored to the
-registry's, four tier rows intact.
+Behaviour was checked, not assumed: `platform-core` lib **397 passed** and `kasirmu-core --lib
+migrations::` **37 passed**, with the forced-drift replay of §2.2 unchanged after the move.
