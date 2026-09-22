@@ -6,8 +6,9 @@
  *  - **Marketing pages** are curated here. Their value is the colloquial query
  *    a customer actually types ("murah", "qris", "offline", "gratis") which no
  *    single page field carries, so the keyword lists are hand-written.
- *  - **Docs** are built from the content collection, handed in by `Header.astro`
- *    at build time. This module never hardcodes a doc.
+ *  - **Docs** are built from the content collection at build time. The docs
+ *    layer turns its entries into the payload with `toSearchDocs()` and passes
+ *    it down the prop path to the modal. This module never hardcodes a doc.
  *
  * That second rule is the point. This index used to live inside `SearchModal.tsx`
  * as a hand-maintained array that listed 9 of the site's 17 docs — a measured
@@ -95,6 +96,40 @@ function pageItems(locale: string): SearchItem[] {
     { id: 'warung', title: id ? 'Solusi untuk Warung & UMKM' : 'Solutions for Warung & Small Business', category: 'pages', url: `/${locale}/warung`, keywords: 'umkm warung simple affordable fast cash qris kasir murah gratis mudah gampang ringan' },
     { id: 'warehouse', title: id ? 'Solusi Manajemen & Sinkronisasi Gudang' : 'Solutions for Warehouse Sync & Stock Management', category: 'pages', url: `/${locale}/warehouse`, keywords: 'warehouse stock inventory 3pl transfer logistics offline' },
   ];
+}
+
+/**
+ * A docs collection entry, structurally. Declared here rather than importing
+ * `CollectionEntry<'docs'>` so this module stays runtime-free and unit-testable,
+ * like the matching and ranking below.
+ */
+export interface SearchDocSource {
+  id: string;
+  data: { title: string; description?: string; order: number };
+}
+
+/**
+ * The one rule for "a doc entry becomes searchable in this locale": keep this
+ * locale's entries, order them as the sidebar does, and take the three fields
+ * the modal searches.
+ *
+ * This lived inside `Header.astro`, which made a presentational component the
+ * owner of both the collection read and the docs-ness rule (`pathname.includes
+ * ('/docs')`). The docs routes call this instead and pass the result down, so
+ * the rule has one owner and the header renders from props only.
+ */
+export function toSearchDocs(
+  entries: readonly SearchDocSource[],
+  locale: string,
+): SearchDoc[] {
+  return entries
+    .filter((entry) => entry.id.startsWith(`${locale}/`))
+    .sort((a, b) => a.data.order - b.data.order)
+    .map((entry) => ({
+      slug: entry.id.slice(locale.length + 1),
+      title: entry.data.title,
+      description: entry.data.description ?? '',
+    }));
 }
 
 /**

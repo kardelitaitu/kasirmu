@@ -131,7 +131,9 @@ describe('page chrome follows the page locale', () => {
   it('Base passes the locale it resolved to the chrome', () => {
     // The locale-less 404 overrides the locale to `en`; without this the
     // document shipped an English <h1> inside Indonesian nav/footer copy.
-    expect(BASE).toContain('<Header locale={locale} />');
+    // Matched by prefix rather than exact tag so adding a prop to <Header>
+    // (the docs search payload) cannot be mistaken for losing the locale.
+    expect(BASE).toMatch(/<Header locale=\{locale\}[^>]*\/>/);
     expect(BASE).toContain('<Footer locale={locale} />');
   });
 

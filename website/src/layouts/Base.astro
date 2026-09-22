@@ -3,6 +3,7 @@ import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import SiteHead from '../components/SiteHead.astro';
 import { t } from '../i18n';
+import type { SearchDoc } from '../lib/search-index';
 import '../styles/global.css';
 
 interface Props {
@@ -20,9 +21,17 @@ interface Props {
   /** Override the SoftwareApplication Offer price (default Free IDR 0). Pass locale pricing. */
   offerPrice?: string;
   offerCurrency?: string;
+  /**
+   * This locale's docs for the header's quick-search modal. Only the docs hub
+   * passes it — it is a docs page that renders through this layout — and it is
+   * forwarded verbatim, so the header renders from props and this layout owns
+   * no data fetch. Absent everywhere else, which is what keeps non-docs pages
+   * free of the payload.
+   */
+  searchDocs?: SearchDoc[];
 }
 
-const { title, description, noindex, locale: localeOverride, offerPrice = '0', offerCurrency } = Astro.props;
+const { title, description, noindex, locale: localeOverride, offerPrice = '0', offerCurrency, searchDocs } = Astro.props;
 const locale = localeOverride ?? Astro.currentLocale ?? 'en';
 const resolvedCurrency = offerCurrency ?? (locale === 'id' ? 'IDR' : 'USD');
 const desc = description ?? t(locale, 'meta.description');
@@ -87,7 +96,7 @@ const desc = description ?? t(locale, 'meta.description');
     >
       {t(locale, 'nav.skipToContent')}
     </a>
-    <Header locale={locale} />
+    <Header locale={locale} searchDocs={searchDocs} />
     <main id="main" class="flex-1">
       <slot />
     </main>

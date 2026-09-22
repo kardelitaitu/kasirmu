@@ -8,7 +8,9 @@ import {
   docItems,
   filterSearch,
   scoreItem,
+  toSearchDocs,
   type SearchDoc,
+  type SearchDocSource,
 } from '../search-index';
 
 /**
@@ -33,8 +35,32 @@ function readCorpus(locale: string): SearchDoc[] {
     .sort((a, b) => a.slug.localeCompare(b.slug));
 }
 
+/**
+ * The same corpus as collection entries — the shape `toSearchDocs()` consumes,
+ * with the `id` prefix and frontmatter `order` the real collection carries.
+ * Built from disk for the same reason as `readCorpus`: a fixture cannot catch
+ * a doc that stopped being searchable.
+ */
+function readEntries(locale: string): SearchDocSource[] {
+  const dir = join(DOCS_ROOT, locale);
+  return readdirSync(dir)
+    .filter((name) => name.endsWith('.md'))
+    .map((name) => {
+      const body = readFileSync(join(dir, name), 'utf-8');
+      return {
+        id: `${locale}/${name.replace(/\.md$/, '')}`,
+        data: {
+          title: body.match(/^title:\s*"?(.+?)"?\s*$/m)?.[1] ?? name,
+          description: body.match(/^description:\s*"?(.+?)"?\s*$/m)?.[1],
+          order: Number(body.match(/^order:\s*(\d+)/m)?.[1] ?? 0),
+        },
+      };
+    });
+}
+
 const EN_DOCS = readCorpus('en');
 const ID_DOCS = readCorpus('id');
+const ENTRIES: SearchDocSource[] = [...readEntries('en'), ...readEntries('id')];
 
 describe('search index — corpus coverage', () => {
   it('reads the whole docs corpus', () => {
@@ -142,6 +168,58 @@ describe('search index — ranking', () => {
     expect(exact).toBeGreaterThan(substring);
     expect(substring).toBeGreaterThan(keyword);
     expect(keyword).toBeGreaterThan(0);
+  });
+});
+
+describe('search index — toSearchDocs (the one doc→payload rule)', () => {
+  it('keeps only the requested locale and strips its prefix from the slug', () => {
+    const en = toSearchDocs(ENTRIES, 'en');
+    expect(en).toHaveLength(EN_DOCS.length);
+    expect(en.map((doc) => doc.slug).sort()).toEqual(EN_DOCS.map((doc) => doc.slug).sort());
+    // A doc from the other locale must never leak into this payload.
+    expect(en.some((doc) => doc.slug.startsWith('id/'))).toBe(false);
+  });
+
+  it('orders by frontmatter order, as the sidebar does', () => {
+    const entries: SearchDocSource[] = [
+      { id: 'en/second', data: { title: 'Second', order: 2 } },
+      { id: 'en/first', data: { title: 'First', order: 1 } },
+      { id: 'id/other', data: { title: 'Other', order: 0 } },
+    ];
+    expect(toSearchDocs(entries, 'en').map((doc) => doc.slug)).toEqual(['first', 'second']);
+  });
+
+  it('normalizes a missing description to an empty string', () => {
+    expect(toSearchDocs([{ id: 'en/only', data: { title: 'Only', order: 1 } }], 'en')).toEqual([
+      { slug: 'only', title: 'Only', description: '' },
+    ]);
+  });
+
+  it("leaves the caller's array alone while sorting", () => {
+    // The collection read is shared and cached, so ordering it in place would
+    // reorder every other consumer of the same array.
+    const entries: SearchDocSource[] = [
+      { id: 'en/b', data: { title: 'B', order: 2 } },
+      { id: 'en/a', data: { title: 'A', order: 1 } },
+    ];
+    toSearchDocs(entries, 'en');
+    expect(entries.map((entry) => entry.id)).toEqual(['en/b', 'en/a']);
+  });
+
+  it('builds a payload that keeps every corpus doc findable in both locales', () => {
+    for (const locale of ['en', 'id'] as const) {
+      const docs = readCorpus(locale);
+      const index = buildSearchIndex(locale, toSearchDocs(ENTRIES, locale));
+      const missing = docs
+        .filter(
+          (doc) =>
+            !filterSearch(index, doc.slug.replace(/-/g, ' ')).some((item) =>
+              item.url.endsWith(`/docs/${doc.slug}`),
+            ),
+        )
+        .map((doc) => doc.slug);
+      expect(missing).toEqual([]);
+    }
   });
 });
 

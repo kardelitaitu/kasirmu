@@ -4,6 +4,7 @@ import Footer from '../components/Footer.astro';
 import DocSidebar, { type CategoryGroup } from '../components/DocSidebar.astro';
 import SiteHead from '../components/SiteHead.astro';
 import { t } from '../i18n';
+import type { SearchDoc } from '../lib/search-index';
 import '../styles/global.css';
 
 interface Heading {
@@ -20,9 +21,15 @@ interface Props {
   entries: CategoryGroup[];
   currentSlug?: string;
   headings?: Heading[];
+  /**
+   * This locale's docs for the header's quick-search modal, built by the docs
+   * route that renders this layout (`toSearchDocs`). Forwarded verbatim — the
+   * docs-ness rule stays with the routes, so this layout owns no data fetch.
+   */
+  searchDocs?: SearchDoc[];
 }
 
-const { locale, title, description, updated, entries, currentSlug, headings } = Astro.props;
+const { locale, title, description, updated, entries, currentSlug, headings, searchDocs } = Astro.props;
 const toc = (headings ?? []).filter((h) => h.depth >= 2 && h.depth <= 3);
 const docDesc = description ?? t(locale, 'docs.title');
 ---
@@ -70,7 +77,7 @@ const docDesc = description ?? t(locale, 'docs.title');
     >
       {t(locale, 'nav.skipToContent')}
     </a>
-    <Header locale={locale} />
+    <Header locale={locale} searchDocs={searchDocs} />
 
     <!-- Mobile sidebar (collapsible) -->
     <details class="border-b border-ink/5 md:hidden">

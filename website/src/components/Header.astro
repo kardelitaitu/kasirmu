@@ -1,7 +1,7 @@
 ---
-import { getCollection } from 'astro:content';
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import { labelMap, t } from '../i18n';
+import type { SearchDoc } from '../lib/search-index';
 import LocaleSwitcher from './LocaleSwitcher.astro';
 import ThemeToggle from './ThemeToggle.astro';
 import SearchTrigger from './SearchTrigger';
@@ -17,29 +17,24 @@ interface Props {
    * would have derived, so this is a no-op for them.
    */
   locale?: string;
+  /**
+   * This locale's docs, as the quick-search modal searches them. Built by the
+   * docs layer with `toSearchDocs()` (see the docs routes) and passed down
+   * through `DocsLayout` / the docs hub.
+   *
+   * The prop's presence IS the docs-ness signal: omit it — as every non-docs
+   * page does — and the header renders the trigger's empty slot instead, so the
+   * payload only ever ships on docs pages and this component owns no rule about
+   * what a docs page is. It used to read the collection itself, which put that
+   * rule here.
+   */
+  searchDocs?: SearchDoc[];
 }
+const { searchDocs } = Astro.props;
 const locale = Astro.props.locale ?? Astro.currentLocale ?? 'en';
 // The search island's strings travel with the document, so the browser never
 // loads a locale dictionary (see src/i18n/labels.ts).
 const searchLabels = labelMap(locale, SEARCH_LABELS);
-const isDocs = Astro.url.pathname.includes('/docs');
-
-// The quick-search modal's docs come from the content collection — the same
-// source as the sidebar and llms.txt — so a doc is searchable the moment it
-// exists. This was a hardcoded list in SearchModal.tsx that had silently
-// fallen behind (9 of 17 docs, with several stale titles). Only read it on
-// docs pages, which is where the trigger renders; `getCollection` is cached
-// per build, so this costs nothing per page.
-const searchDocs = isDocs
-  ? (await getCollection('docs'))
-      .filter((doc) => doc.id.startsWith(`${locale}/`))
-      .sort((a, b) => a.data.order - b.data.order)
-      .map((doc) => ({
-        slug: doc.id.slice(locale.length + 1),
-        title: doc.data.title,
-        description: doc.data.description ?? '',
-      }))
-  : [];
 const home = getRelativeLocaleUrl(locale, '/');
 const login = getRelativeLocaleUrl(locale, 'login');
 ---
@@ -307,16 +302,23 @@ const login = getRelativeLocaleUrl(locale, 'login');
         <span class="nav-underline absolute -bottom-1 left-0 h-0.5 w-0 bg-primary rounded-full transition-all duration-200 ease-[cubic-bezier(0.2,0,0,1)]"></span>
       </a>
     </nav>
-    <!-- The search trigger only exists on docs pages, but its slot is always
-         rendered: without the spacer the whole cluster (theme toggle, locale
-         switcher, login button) visibly shifts sideways when you navigate
-         between docs and the rest of the site. h-9 w-9 matches the trigger
-         button exactly — and matches ThemeToggle, which is the same box — so
-         the reserved area is the same width as the real thing. SearchModal
-         portals to document.body and returns null while closed, so the
-         trigger's only layout footprint really is that 36px square. -->
+    <!-- The search trigger only exists where a page hands the header a docs
+         payload, but its slot is always rendered: without the spacer the whole
+         cluster (theme toggle, locale switcher, login button) visibly shifts
+         sideways when you navigate between docs and the rest of the site.
+         h-9 w-9 matches the trigger button exactly — and matches ThemeToggle,
+         which is the same box — so the reserved area is the same width as the
+         real thing. SearchModal portals to document.body and returns null while
+         closed, so the trigger's only layout footprint really is that 36px
+         square. -->
     <div class="flex items-center gap-2.5">
-      {isDocs ? <SearchTrigger client:load locale={locale} labels={searchLabels} docs={searchDocs} /> : <span class="h-9 w-9" aria-hidden="true"></span>}
+      {
+        searchDocs ? (
+          <SearchTrigger client:load locale={locale} labels={searchLabels} docs={searchDocs} />
+        ) : (
+          <span class="h-9 w-9" aria-hidden="true" />
+        )
+      }
       <ThemeToggle locale={locale} />
       <LocaleSwitcher locale={locale} />
       <a
