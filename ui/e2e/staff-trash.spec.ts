@@ -23,9 +23,11 @@ import { loginAs, selectWorkspace, WORKSPACES, navigateTo } from './helpers';
  *   3. Restoring brings them back to the roster INACTIVE — the state delete
  *      found them in — which is why the row is deletable again afterwards.
  *
- * The mock's seed carries `staff-5` / `Auditor` inactive ON PURPOSE: delete
- * refuses an active member, so without an inactive row this flow would be
- * unreachable in the browser preview.
+ * The mock's seed carries `staff-5` / "Former Auditor" inactive ON PURPOSE:
+ * delete refuses an active member, so without an inactive row this flow would
+ * be unreachable in the browser preview. It is a dismissed identity rather
+ * than a deactivated role holder, so every role (the auditor included) still
+ * has a loggable account.
  *
  * The ROLE half rides the same tab strip but a different store, and its two
  * rules differ from the staff half in ways a shared assertion would miss:

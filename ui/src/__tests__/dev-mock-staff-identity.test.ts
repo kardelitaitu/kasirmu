@@ -70,9 +70,9 @@ describe('dev-mock staff identity is one source of truth', () => {
   it('refuses an INACTIVE account with the backend uniform error', async () => {
     // The real command answers an inactive account with the same "invalid
     // username or PIN" it gives a wrong PIN (kasirmu-bridge auth.rs:403), so
-    // the client cannot enumerate deactivated accounts. The roster's inactive
-    // auditor is therefore not a usable preview login, and the mock must say so
-    // rather than serve a session the backend would refuse.
+    // the client cannot enumerate deactivated accounts. The dismissed fixture
+    // is therefore not a usable preview login, and the mock must say so rather
+    // than serve a session the backend would refuse.
     const inactive = Object.entries(MOCK_STAFF).find(([, seed]) => !seed.is_active);
     expect(inactive, 'the roster needs one inactive identity for this branch').toBeTruthy();
     const [username, seed] = inactive!;

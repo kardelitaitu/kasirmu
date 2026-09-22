@@ -42,10 +42,12 @@
 //
 // `user_id` is BOTH the `users.id` the session is created with and the
 // roster row id, so it is the join between the two surfaces. `is_active`
-// is read by the roster (it decides whether the delete affordance
-// appears), so the seed states the same fact instead of a second opinion:
-// the auditor is inactive in both, which is what makes the delete/trash
-// flow reachable in a preview.
+// is read by the roster (it decides whether the delete affordance appears)
+// AND by the login gate (an inactive account is refused, as kasirmu-bridge
+// auth.rs:403 does), so the seed states the same fact instead of a second
+// opinion: ONE dismissed identity carries `false` in both, which is what
+// makes the delete/trash flow reachable in a preview without turning a role
+// holder into the fixture. The five role holders all stay loggable.
 
 /** One seeded staff identity, shared by the login seed and the roster. */
 export interface MockStaffIdentity {
@@ -63,15 +65,23 @@ export interface MockStaffIdentity {
   is_active: boolean;
 }
 
-/** The five seeded identities, in role-taxonomy order. */
+/**
+ * The six seeded identities: one loggable holder of each role, plus one
+ * dismissed row that exists so the trash flow is reachable.
+ */
 export const MOCK_STAFF_IDENTITIES: readonly MockStaffIdentity[] = [
   { username: 'owner',   user_id: 'staff-1', pin_hash: '1234', role: 'role-owner',   display_name: 'Owner',   is_active: true },
   { username: 'admin',   user_id: 'staff-2', pin_hash: '9999', role: 'role-admin',   display_name: 'Admin',   is_active: true },
   { username: 'manager', user_id: 'staff-3', pin_hash: '1234', role: 'role-manager', display_name: 'Manager', is_active: true },
   { username: 'staff',   user_id: 'staff-4', pin_hash: '1234', role: 'role-staff',   display_name: 'Staff',   is_active: true },
-  // Inactive on purpose: delete REFUSES an active member, so without one
-  // inactive identity the trash flow is unreachable in browser preview.
-  { username: 'auditor', user_id: 'staff-5', pin_hash: '1234', role: 'role-auditor', display_name: 'Auditor', is_active: false },
+  // The trash fixture. Inactive on purpose: delete REFUSES an active member,
+  // so without one inactive identity the flow is unreachable in a preview.
+  // It keeps id `staff-5` because ui/e2e/staff-trash.spec.ts deletes that id,
+  // and it is a separate PERSON rather than the auditor deactivated: making a
+  // role holder the fixture would leave the preview unable to log in as that
+  // role at all, which is a role of coverage lost to gain a fixture.
+  { username: 'former',  user_id: 'staff-5', pin_hash: '1234', role: 'role-auditor', display_name: 'Former Auditor', is_active: false },
+  { username: 'auditor', user_id: 'staff-6', pin_hash: '1234', role: 'role-auditor', display_name: 'Auditor', is_active: true },
 ];
 
 /**
