@@ -8,6 +8,7 @@ import { useMemo } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { WorkspaceIcon as SharedWorkspaceIcon } from '@/components/WorkspaceIcon';
 import { getNavItems } from '@/registries/menu-registry';
+import { FEATURES, type FeatureKey } from '@/hooks/useFeatures';
 import './LiveSetupPreview.css';
 
 // ── Workspace definitions ───────────────────────────────────────────
@@ -16,8 +17,14 @@ interface WorkspaceDef {
   key: string;
   i18nKey: string;
   colorClass: string;
-  /** Feature keys that unlock this workspace (any match). */
-  features: string[];
+  /**
+   * Feature keys that unlock this workspace (any match).
+   *
+   * Typed as FeatureKey, not string: as a bare string[] a typo compiled and
+   * silently never matched — the workspace would just never light up, with no
+   * type error and no failing test (verified by planting 'inventory-trackin').
+   */
+  features: FeatureKey[];
 }
 
 const WORKSPACES: WorkspaceDef[] = [
@@ -25,25 +32,25 @@ const WORKSPACES: WorkspaceDef[] = [
     key: 'restaurant-pos',
     i18nKey: 'ws-preview-name-restaurant-pos',
     colorClass: 'lsp-ws--restaurant-pos',
-    features: ['restaurant'],
+    features: [FEATURES.RESTAURANT],
   },
   {
     key: 'store-pos',
     i18nKey: 'ws-preview-name-store-pos',
     colorClass: 'lsp-ws--store-pos',
-    features: ['simple-retail'],
+    features: [FEATURES.SIMPLE_RETAIL],
   },
   {
     key: 'kds',
     i18nKey: 'ws-preview-name-kds',
     colorClass: 'lsp-ws--kds',
-    features: ['kitchen-display'],
+    features: [FEATURES.KITCHEN_DISPLAY],
   },
   {
     key: 'warehouse',
     i18nKey: 'ws-preview-name-warehouse',
     colorClass: 'lsp-ws--warehouse',
-    features: ['inventory-tracking'],
+    features: [FEATURES.INVENTORY_TRACKING],
   },
   {
     key: 'admin',
