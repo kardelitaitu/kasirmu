@@ -429,6 +429,41 @@ can look alike (duplicated tables) while one is duplication and the other is dom
 check that separated them was asking *where the authoritative data lives* — and for workspaces,
 nothing does.
 
+### Round 15 — the provisioning E2E blocker is RESOLVED (was: needs a product decision)
+
+Rounds 9-10 concluded this needed a product owner's call because reaching `ProvisioningFlow`
+required changing the dev-mock's deliberate answer. **Re-examining it, there was a narrower way
+that changes no default**: the dev-mock now honours `?unprovisioned=1`.
+
+**Why a flag was enough.** The two blockers were separate:
+
+| Blocker | Resolution |
+|---|---|
+| Desktop bypasses the flow under `import.meta.env.DEV` | Not defeated — and does not need to be. The suite drives the **tablet entry** (`/index.mobile.html`), which has no bypass. |
+| The tablet shell reads `get_first_run_state`, whose mock answer was hardcoded `provisioned` | The flag. |
+
+A query param rather than a localStorage key, deliberately: an explicit per-navigation opt-in that
+cannot persist on a developer's machine, and it adds no key for `storageKeyPins.test.ts` to police.
+**The default is unchanged** — the dev-mock and boot-gate suites (30 tests) confirm it.
+
+**Measured before trusting it.** A throwaway probe showed the flag working only on the tablet entry
+(`FLAG_ON {"provisioning":1}` vs desktop `{"provisioning":0}`), which is why the spec navigates
+there explicitly rather than relying on the Playwright project.
+
+**`ui/e2e/provisioning.spec.ts` — 5 tests, 10 total across both projects:**
+
+- the flow renders on an unprovisioned terminal, offering both store types;
+- an incomplete form cannot be submitted;
+- **an offline setup completes end to end and leaves the flow**;
+- a PIN mismatch is named, with `aria-invalid`, instead of a silently dead button;
+- a too-short PIN is named.
+
+**This is the surface the objective names, verified in a browser for the first time.** The audit's
+central subject now has real end-to-end coverage.
+
+**Commit:** `f331101cf`. **Verification:** `tsc` clean · lint 0 errors · **10/10 E2E pass on
+desktop and tablet** · 30 dev-mock/boot unit tests unchanged.
+
 ### Remaining, and honestly not mine to claim
 
 - **The website auth islands are unaudited by me.** Another agent owns that surface and has
