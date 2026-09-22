@@ -75,12 +75,15 @@ const year = new Date().getFullYear();
 
     <!-- Right: Sitemap + Legal Links -->
     <div class="flex flex-col items-center gap-6 sm:items-end">
-      <nav class="flex flex-wrap items-start justify-center gap-x-10 gap-y-4 text-xs" aria-label="Sitemap">
+      <nav class="flex flex-wrap items-start justify-center gap-x-10 gap-y-4 text-xs sm:justify-end" aria-label="Sitemap">
         <div class="flex flex-col gap-2">
-          <span class="font-semibold text-ink">{t(locale, 'nav.features')}</span>
+          <span class="font-semibold text-ink">{locale === 'id' ? 'Produk' : 'Product'}</span>
           <a href={getRelativeLocaleUrl(locale, 'features')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Fitur</a>
           <a href={getRelativeLocaleUrl(locale, 'pricing')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Harga</a>
           <a href={getRelativeLocaleUrl(locale, 'download')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Unduh</a>
+        </div>
+        <div class="flex flex-col gap-2">
+          <span class="font-semibold text-ink">{locale === 'id' ? 'Solusi Kasir' : 'Solutions'}</span>
           <a href={getRelativeLocaleUrl(locale, 'kasir-gratis')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Kasir Gratis</a>
           <a href={getRelativeLocaleUrl(locale, 'kasir-murah')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Kasir Murah</a>
           <a href={getRelativeLocaleUrl(locale, 'kasir-qris')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Kasir QRIS</a>
