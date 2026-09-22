@@ -1,0 +1,795 @@
+/**
+ * The controls a SCRIPT builds — the half of the accessibility rule that no
+ * build output can show.
+ *
+ * `check-seo` check 13 and the twin in `__tests__/accessibility.test.ts` both
+ * judge markup that EXISTS: dist for composed pages, the source for the HTML
+ * that ships verbatim. Neither sees a control a script creates at runtime, and
+ * that class is not small: `/admin/index.html` is a shell whose `#content`
+ * `admin.js` fills in (39 `innerHTML` sites, one of them a live button), the
+ * dashboard's search field, dialog inputs and range selector are built by the
+ * `el(tag, cls, text)` factory, and `prototypes/app.js` builds two buttons with
+ * `document.createElement`. Nothing in dist carries any of them.
+ *
+ * So this module judges what SOURCE can decide, and declares the rest rather
+ * than passing it silently:
+ *
+ *   • `literals` — control markup written as a string, concatenations joined and
+ *     non-literal operands kept as `{expr}`, so `'<button>' + t('retry') +
+ *     '</button>'` is one element with content, named by its text. Only CODE is
+ *     read: comments are stripped, and in a markup-bearing file (`.astro`,
+ *     `.tsx`, `.html`) only the script regions are read, so a JSX attribute —
+ *     `class="flex"`, which is a quoted string to a naive scanner — cannot be
+ *     mistaken for markup.
+ *   • `constructed` — `document.createElement('button')`, named where the
+ *     element is used (`up.setAttribute('aria-label', …)`), or in the statement
+ *     run when the call's result is not bound to a variable. An icon-only
+ *     `innerHTML` is not a name: `innerHTML = '<svg …>'` is the shape that made
+ *     the prototype's scroll-to-top button unnamed.
+ *   • `factoryControls` — the call sites of a local element factory,
+ *     `function el(tag, cls, text) { document.createElement(tag) … }`, when the
+ *     tag is a literal: `el('button', 'btn', t('search'))` is named by that
+ *     third argument, `el('input', 'input')` needs a name set beside it. This
+ *     one arm reaches 46 of the dashboard's controls, none of which is a
+ *     `createElement` call or a markup string.
+ *   • `NOT_OPERABLE` — controls that are real but deliberately unnamed, such as
+ *     the off-screen textarea `AccountLicense` creates, focuses and removes to
+ *     drive the execCommand clipboard fallback.
+ *   • `UNJUDGEABLE` — files whose controls cannot be enumerated from source at
+ *     all. It is EMPTY, and that is the point of this revision: the dashboard's
+ *     generic factory was the one entry, and following its call sites closed
+ *     the hole, so the list holds only what a future file genuinely cannot
+ *     decide.
+ *
+ * Both lists are ENFORCED, in both directions, by `boundaryIssues()` (via
+ * `coverageGaps()`): a file that builds a control must be judged or declared
+ * with a reason, a declaration whose file no longer needs it is stale and fails,
+ * and a tag this module cannot read is REPORTED as a gap rather than skipped —
+ * an unreadable tag is the case that used to be invisible. The point is that the
+ * coverage limit is written down and checked rather than implied by silence.
+ *
+ * TWO CALLERS, ONE RULE, AND ONE SET OF FILES. `scripts/check-seo.mjs` runs
+ * `boundaryIssues()` and `judgedIssues()` as its check 14 — the gate's arm, and
+ * the only post-build guard these controls have — while
+ * `__tests__/script-controls.test.ts` is the twin, run by `npm test` before the
+ * build. Both read the boundary from `SOURCE_ROOTS`/`SKIPPED_SEGMENTS` through
+ * `collectScriptSources()` and both take their findings from `judgedIssues()`, so
+ * neither can judge a file the other does not. The gate also PRINTS the boundary
+ * (files judged, files declared, what is out of scope) beside its check list: an
+ * `ok accessibility` row that said nothing about runtime-built controls is how
+ * this gap survived a sweep of all 89 built pages.
+ *
+ * What remains uncovered after that is stated in the gate's own output and in
+ * the twin: a tag assembled from variables no extractor can follow, a control
+ * whose markup comes from a runtime data shape, and the DOM `admin.js` builds
+ * behind its own login and API calls — that last one needs a browser, a session
+ * and mocked endpoints, which is a harness too expensive to be the gate.
+ */
+
+// The name rule itself comes from the accessibility module: one owner for "what
+// counts as a name", applied to dist, to templates and to script literals alike.
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { unnamedControls } from './accessibility.ts';
+
+/**
+ * The coverage boundary, in one place because two callers enforce it: the gate
+ * (`scripts/check-seo.mjs`, check 14) and the twin
+ * (`__tests__/script-controls.test.ts`). A root added here is judged by both; a
+ * root missing here is judged by neither, so the limit is a declaration rather
+ * than a silence. `website/public/dev/` is generated by the prebuild copy of
+ * `prototypes/`, so judging it would judge the same markup twice under a name
+ * that does not exist on a clean checkout.
+ */
+export const SOURCE_ROOTS = ['website/src', 'website/public', 'prototypes'];
+
+/** Directories excluded from the walk, matched as path segments. */
+export const SKIPPED_SEGMENTS = ['/__tests__/', '/website/public/dev/'];
+
+/** The source extensions a control can be built from. */
+const SOURCE_FILE = /\.(?:ts|tsx|js|jsx|astro|html?)$/;
+
+/** A literal element tag as a call argument: `'button'`, `"h2"`. */
+const TAG_ARGUMENT = /^(['"])([a-zA-Z][a-zA-Z0-9]*)\1$/;
+
+const CONTROL_TAGS = ['button', 'a', 'input', 'select', 'textarea', 'summary'];
+const CONTROL_OPEN = new RegExp(`<(${CONTROL_TAGS.join('|')})\\b`, 'i');
+
+/** A control element whose closer is in the same fragment (or a void tag). */
+const CONTROL_COMPLETE = /<(button|a|select|textarea|summary)\b[^>]*>[\s\S]*?<\/\1>/i;
+const VOID_COMPLETE = /<(input)\b[^>]*>/i;
+
+/** The DOM APIs a control-bearing string is written through. */
+const DOM_WRITE = /(?:innerHTML|outerHTML|innerText|textContent)\s*[+]?=\s*$|insertAdjacentHTML\(\s*[^,]+,\s*$/;
+
+/** A control's markup written as a string literal, with the line it starts on. */
+export interface ControlLiteral {
+  text: string;
+  line: number;
+}
+
+/** A control built element by element, with the code that follows the constructor. */
+export interface ConstructedControl {
+  tag: string;
+  line: number;
+  /** From the constructor to the end of its statement run — where a name must be set. */
+  block: string;
+  /** Named where the element is used, or in the statement run when it is not bound. */
+  named: boolean;
+}
+
+/** A control built by a local factory call, judged at the call site. */
+export interface FactoryControl {
+  tag: string;
+  line: number;
+  named: boolean;
+}
+
+/** What one source file builds. */
+export interface ControlEvidence {
+  literals: ControlLiteral[];
+  constructed: ConstructedControl[];
+  /** Offsets of `createElement()` calls whose tag is not a literal. */
+  untaggedCreates: number[];
+  /** Control markup whose element is never completed inside its own literal. */
+  partial: ControlLiteral[];
+  /** Controls built through a local `el(tag, …)` factory. */
+  factoryControls: FactoryControl[];
+  /** Lines where such a factory is called with a tag this arm cannot read. */
+  unresolvedCalls: number[];
+}
+
+/** Where a file's controls cannot be enumerated from source at all. */
+export interface Declaration {
+  file: string;
+  reason: string;
+}
+
+export const UNJUDGEABLE: Declaration[] = [];
+
+export const NOT_OPERABLE: Declaration[] = [
+  {
+    file: 'website/src/components/account/AccountLicense.tsx',
+    reason:
+      'a transient textarea for the execCommand clipboard fallback — created off-screen, focused, selected and removed in the same block, so no reader operates it as a control',
+  },
+];
+
+/** A file to classify: its repo-relative path and its source. */
+export interface SourceFile {
+  path: string;
+  source: string;
+}
+
+/** `file.ts` → `file.ts`; the file's own path decides how it is read. */
+const isMarkupFile = (path: string): boolean => /\.(astro|tsx|html?)$/.test(path);
+
+/**
+ * Blank out everything that is not code, keeping every character's offset and
+ * every newline — so a reported line number is the file's real one. Comments
+ * are blanked too: a source comment that NAMES `<button>` is documentation, and
+ * reading it as markup was this extractor's first bug.
+ */
+function codeOnly(source: string, path: string): string {
+  const masked = maskComments(source);
+  if (!isMarkupFile(path)) return masked;
+  // In a markup-bearing file, only the script regions can build DOM. For
+  // `.astro` that is the frontmatter plus client `<script>` bodies; for `.html`
+  // it is the `<script>` bodies; for `.tsx` the whole file is code (its markup
+  // is JSX, which the twin's template arm already judges).
+  if (/\.tsx$/.test(path)) return masked;
+  const regions: [number, number][] = [];
+  if (/\.astro$/.test(path)) {
+    const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(masked);
+    if (frontmatter) regions.push([frontmatter.index, frontmatter.index + frontmatter[0].length]);
+  }
+  // A script tag only opens a region at the start of a line: a `<script>`
+  // mentioned mid-sentence in prose is not markup, and reading one as an
+  // opening tag pulled a whole page template into the region it was judged in.
+  for (const match of masked.matchAll(/^[ \t]*<script\b[^>]*>([\s\S]*?)<\/script>/gim)) {
+    regions.push([match.index + match[0].indexOf('>') + 1, match.index + match[0].length - '</script>'.length]);
+  }
+  return regions.length ? blankOutside(masked, regions) : masked.replace(/[^\n]/g, ' ');
+}
+
+/**
+ * Replace comments with spaces, preserving offsets and newlines.
+ *
+ * Block comments first, quote-agnostically: a `/* … *\/` cannot be entered by
+ * accident. Line comments second, and quote-aware — where quote-awareness means
+ * a `'` or `"` string ENDS AT ITS NEWLINE (as JS requires), which is what keeps
+ * a regex literal such as `/'(x)'|`(y)`/` from opening a "string" that swallows
+ * the rest of the file, comments included.
+ */
+function maskComments(source: string): string {
+  const out = source.split('');
+  const blank = (from: number, to: number): void => {
+    for (let j = from; j < to; j += 1) if (out[j] !== '\n') out[j] = ' ';
+  };
+  for (let i = 0; i < source.length - 1; i += 1) {
+    if (source[i] === '/' && source[i + 1] === '*') {
+      const close = source.indexOf('*/', i + 2);
+      const stop = close === -1 ? source.length : close + 2;
+      blank(i, stop);
+      i = stop - 1;
+    }
+  }
+  let cursor = 0;
+  while (cursor < source.length) {
+    const char = source[cursor];
+    if (char === '/' && source[cursor + 1] === '/') {
+      const end = source.indexOf('\n', cursor);
+      const stop = end === -1 ? source.length : end;
+      blank(cursor, stop);
+      cursor = stop;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      const end = source.indexOf(char, cursor + 1);
+      const lineEnd = source.indexOf('\n', cursor);
+      cursor = end === -1 || (lineEnd !== -1 && end > lineEnd) ? (lineEnd === -1 ? source.length : lineEnd) : end + 1;
+      continue;
+    }
+    cursor += 1;
+  }
+  return out.join('');
+}
+
+/** Blank everything outside the given offsets, keeping newlines. */
+function blankOutside(source: string, regions: [number, number][]): string {
+  const keep = new Array(source.length).fill(false);
+  for (const [start, end] of regions) for (let i = start; i < end; i += 1) keep[i] = true;
+  return source
+    .split('')
+    .map((char, index) => (keep[index] || char === '\n' ? char : ' '))
+    .join('');
+}
+
+interface RawString {
+  text: string;
+  start: number;
+  end: number;
+}
+
+/** The index of the backtick that closes the template literal opened at `start`. */
+function templateEnd(source: string, start: number): number {
+  let depth = 0;
+  for (let i = start + 1; i < source.length; i += 1) {
+    const char = source[i];
+    if (char === '\\') {
+      i += 1;
+      continue;
+    }
+    if (char === '$' && source[i + 1] === '{') {
+      depth += 1;
+      i += 1;
+      continue;
+    }
+    if (char === '}' && depth > 0) {
+      depth -= 1;
+      continue;
+    }
+    // Only a backtick at the template's own level closes it — a nested
+    // template inside `${…}` would otherwise end the outer literal early, and
+    // in `kds-prototype.html` the card markup lives in exactly that shape.
+    if (char === '`' && depth === 0) return i;
+  }
+  return source.length;
+}
+
+/** Every string and template literal, template expressions walked as one piece. */
+function stringsIn(source: string): RawString[] {
+  const found: RawString[] = [];
+  let i = 0;
+  while (i < source.length) {
+    const char = source[i];
+    if (char === "'" || char === '"') {
+      let j = i + 1;
+      while (j < source.length && source[j] !== char && source[j] !== '\n') {
+        if (source[j] === '\\') j += 1;
+        j += 1;
+      }
+      if (j < source.length && source[j] === char) {
+        found.push({ text: source.slice(i + 1, j), start: i, end: j + 1 });
+        i = j + 1;
+        continue;
+      }
+      i += 1;
+      continue;
+    }
+    if (char === '`') {
+      const end = templateEnd(source, i);
+      found.push({ text: source.slice(i + 1, end), start: i, end: end + 1 });
+      i = end + 1;
+      continue;
+    }
+    i += 1;
+  }
+  return found;
+}
+
+const unescapeLiteral = (text: string): string =>
+  text.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\(['"`\\])/g, '$1');
+
+const lineAt = (source: string, index: number): number => source.slice(0, index).split('\n').length;
+
+interface RawLiteral extends ControlLiteral {
+  start: number;
+}
+
+/**
+ * The gap between two concatenated literals. It must START with a `+`, which is
+ * the anchor that keeps unrelated statements from being folded into one
+ * fragment, and it may carry exactly one operand — `+ t('retry') +` — which is
+ * the name of half the controls these scripts build. A `;` or `{}` means a new
+ * statement, so the gap stops being a concatenation; the 200-character bound is
+ * what keeps a runaway match from swallowing a function body.
+ *
+ * A gap that fails is not fatal to the run: the caller looks at the NEXT
+ * literal, because a failed gap is what an operand's own argument looks like
+ * (`+ t('retry') +` holds a quoted string, and that string is a literal too).
+ */
+const OPERAND_ONLY = /^\s*\+\s*(?:[^;{}]{0,200}\s*\+\s*)?$/;
+
+/** Every literal, with the literals concatenated to it folded into one fragment. */
+function concatenationsIn(source: string): RawLiteral[] {
+  const literals = stringsIn(source);
+  const runs: RawLiteral[] = [];
+  let index = 0;
+  while (index < literals.length) {
+    const first = literals[index];
+    let text = unescapeLiteral(first.text);
+    let cursor = first.end;
+    let last = index;
+    for (let k = index + 1; k < literals.length; k += 1) {
+      const gap = source.slice(cursor, literals[k].start);
+      if (gap.length > 220) break;
+      if (!OPERAND_ONLY.test(gap)) continue;
+      text += '{expr}' + unescapeLiteral(literals[k].text);
+      cursor = literals[k].end;
+      last = k;
+    }
+    runs.push({ text, line: lineAt(source, first.start), start: first.start });
+    index = last + 1;
+  }
+  return runs;
+}
+
+/** The markup of one control element, if the file writes one as a string. */
+function controlLiteralsIn(code: string, path: string): { judged: ControlLiteral[]; partial: ControlLiteral[] } {
+  const judged: ControlLiteral[] = [];
+  const partial: ControlLiteral[] = [];
+  for (const run of concatenationsIn(code)) {
+    if (!CONTROL_OPEN.test(run.text)) continue;
+    // In a `.ts`/`.tsx` file a control-bearing string is markup only when it is
+    // written through a DOM property: a JSX attribute is a quoted string too,
+    // and its value is not markup. In a plain script, markup strings are the
+    // norm and there is no JSX to confuse them with.
+    if (/\.(tsx|ts)$/.test(path) && !DOM_WRITE.test(code.slice(Math.max(0, run.start - 80), run.start))) continue;
+    if (!CONTROL_COMPLETE.test(run.text) && !VOID_COMPLETE.test(run.text)) {
+      partial.push({ text: run.text, line: run.line });
+      continue;
+    }
+    judged.push({ text: run.text, line: run.line });
+  }
+  return { judged, partial };
+}
+
+/** `document.createElement('button')` with a literal tag, plus the block after it. */
+function constructedControlsIn(code: string): { constructed: ConstructedControl[]; untaggedCreates: number[] } {
+  const constructed: ConstructedControl[] = [];
+  const untaggedCreates: number[] = [];
+  const flat = blankLiteralContents(code);
+  const CREATE = /document\.createElement\(\s*([^)]*?)\s*\)/g;
+  CREATE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = CREATE.exec(code))) {
+    const literal = TAG_ARGUMENT.exec(match[1].trim());
+    if (!literal) {
+      untaggedCreates.push(match.index);
+      continue;
+    }
+    const tag = literal[2].toLowerCase();
+    if (!CONTROL_TAGS.includes(tag)) continue;
+    const binding = bindingBefore(flat, match.index);
+    // The block a name is set in: to the end of the statement run.
+    const rest = code.slice(match.index + match[0].length);
+    const stop = rest.search(/\n\s*\n/);
+    constructed.push({
+      tag,
+      line: lineAt(code, match.index),
+      block: rest.slice(0, stop === -1 ? 480 : stop),
+      named: namesControl(code, match.index + match[0].length, binding),
+    });
+  }
+  return { constructed, untaggedCreates };
+}
+
+/**
+ * A local element factory: a function in the codebase that hands its own first
+ * parameter to `document.createElement`, which is how `el(tag, cls, text)`
+ * works in `admin-utils.js` and how every admin control is built.
+ */
+export interface LocalFactory {
+  name: string;
+  /** Parameter index whose argument becomes the element's text — a name. */
+  nameParam?: number;
+  line: number;
+  /** Where the factory lives, and the span of its body. */
+  file: string;
+  start: number;
+  end: number;
+}
+
+/** Replace every literal's CONTENT with spaces, keeping quotes and offsets. */
+function blankLiteralContents(code: string): string {
+  const chars = code.split('');
+  for (const literal of stringsIn(code)) {
+    for (let i = literal.start + 1; i < literal.end - 1; i += 1) {
+      if (chars[i] !== '\n') chars[i] = ' ';
+    }
+  }
+  return chars.join('');
+}
+
+/** The index of the `)` matching the `(` at `open`, or -1. */
+function matchParen(code: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < code.length; i += 1) {
+    if (code[i] === '(') depth += 1;
+    else if (code[i] === ')') {
+      depth -= 1;
+      if (!depth) return i;
+    }
+  }
+  return -1;
+}
+
+/** The index of the `}` matching the `{` at `open`, or -1. */
+function matchBrace(code: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < code.length; i += 1) {
+    if (code[i] === '{') depth += 1;
+    else if (code[i] === '}') {
+      depth -= 1;
+      if (!depth) return i;
+    }
+  }
+  return -1;
+}
+
+/** Top-level arguments of a call, given the offsets of its parentheses. */
+function argumentsOf(code: string, from: number, to: number): string[] {
+  const args: string[] = [];
+  let depth = 0;
+  let start = from;
+  for (let i = from; i < to; i += 1) {
+    const char = code[i];
+    if (char === '(' || char === '[' || char === '{') depth += 1;
+    else if (char === ')' || char === ']' || char === '}') depth -= 1;
+    else if (char === ',' && !depth) {
+      args.push(code.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  const last = code.slice(start, to).trim();
+  if (last) args.push(last);
+  return args;
+}
+
+/**
+ * Every factory in one file. `nameParam` is read off the body — the parameter
+ * the factory assigns to `textContent` or `innerHTML` is the one a call site
+ * names its control with.
+ */
+function factoriesIn(file: SourceFile): LocalFactory[] {
+  const code = codeOnly(file.source, file.path);
+  const flat = blankLiteralContents(code);
+  const found: LocalFactory[] = [];
+  const DECL = /(?:function\s+([A-Za-z_$][\w$]*)\s*\(|(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:function\s*)?\()/g;
+  DECL.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = DECL.exec(flat))) {
+    const name = match[1] ?? match[2];
+    const open = flat.indexOf('(', match.index + match[0].length - 1);
+    const close = matchParen(flat, open);
+    if (close === -1) continue;
+    const params = argumentsOf(flat, open + 1, close).filter((p) => /^[A-Za-z_$][\w$]*$/.test(p));
+    if (!params.length) continue;
+    const brace = flat.indexOf('{', close);
+    const end = brace === -1 ? -1 : matchBrace(flat, brace);
+    if (end === -1) continue;
+    const flatBody = flat.slice(brace, end);
+    if (!new RegExp(`createElement\\(\\s*${params[0]}\\s*\\)`).test(flatBody)) continue;
+    const assigns = new RegExp(`\\.(?:textContent|innerHTML)\\s*\\+?=\\s*(${params.join('|')})\\b`).exec(flatBody);
+    found.push({
+      name,
+      nameParam: assigns ? params.indexOf(assigns[1]) : undefined,
+      line: lineAt(code, match.index),
+      file: file.path,
+      start: brace,
+      end,
+    });
+  }
+  return found;
+}
+
+/** The factories across a set of files — one is defined in a shared helper. */
+export function factoryRegistry(files: SourceFile[]): LocalFactory[] {
+  return files.flatMap((file) => factoriesIn(file));
+}
+
+/** The attribute names that name an element, as source spells them. */
+const NAME_ATTRIBUTES = 'aria-label|aria-labelledby|title';
+
+/** The variable a call's result is bound to, when the call is `const x = f(`. */
+function bindingBefore(flat: string, at: number): string | undefined {
+  const before = flat.slice(Math.max(0, at - 160), at);
+  return /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*$/.exec(before)?.[1];
+}
+
+/**
+ * Whether the code names the control built at `at`.
+ *
+ * The subject is the VARIABLE the element is bound to — `const el = …;` then
+ * `el.setAttribute('aria-label', …)` — because "some `.textContent =` assignment
+ * within the next 500 characters" is not the same claim: in `admin.js` the
+ * grant dialog's selects and number fields sit four to a statement run, and a
+ * block-scoped rule read the error line's `textContent` as their own name and
+ * passed all of them. Where a call's result is not bound to a variable the
+ * statement run is all there is, so that is what a name may be found in.
+ */
+function namesControl(source: string, at: number, binding?: string): boolean {
+  const scope = binding ? source.slice(at) : source.slice(at, at + 480);
+  const subject = binding ? `${binding.replace(/\$/g, '\\$')}\\s*\\.\\s*` : '';
+  // Read on the raw scope, NOT on `blankLiteralContents`: the attribute name
+  // this looks for is itself a string literal (`setAttribute('aria-label', …)`),
+  // and blanking literal contents — which the innerHTML arm needs — erased it
+  // and reported every named-by-setAttribute control as unnamed.
+  if (new RegExp(`${subject}setAttribute\\(\\s*['"](?:${NAME_ATTRIBUTES})['"]`).test(scope)) return true;
+  if (new RegExp(`${subject}(?:ariaLabel|ariaLabelledBy|title)\\s*=`).test(scope)) return true;
+  if (new RegExp(`${subject}(?:textContent|innerText)\\s*[+]?=\\s*[^;\\s]`).test(scope)) return true;
+  if (new RegExp(`${subject}htmlFor\\s*=`).test(scope)) return true;
+  // `innerHTML` names the element only when the literal it is given carries
+  // text: `innerHTML = '<svg …>'` is an icon, and an icon-only button is the
+  // classic unnamed control.
+  const literals = stringsIn(scope);
+  for (const write of scope.matchAll(new RegExp(`${subject}innerHTML\\s*[+]?=`, 'g'))) {
+    const next = literals.find((literal) => literal.start > write.index);
+    if (next && visibleText(unescapeLiteral(next.text))) return true;
+  }
+  return false;
+}
+
+/** Whether a literal's markup carries text a reader hears (a name for a control). */
+const visibleText = (literal: string): boolean =>
+  unnamedControls(`<button>${literal}</button>`).length === 0;
+
+/**
+ * The controls a local factory builds, judged at each call site that passes a
+ * literal control tag. This is the arm that reaches the admin dashboard: not
+ * one of its controls is a `createElement` call or a markup string.
+ */
+function factoryControlsIn(
+  code: string,
+  factories: LocalFactory[],
+): { judged: FactoryControl[]; unresolved: number[] } {
+  const flat = blankLiteralContents(code);
+  const judged: FactoryControl[] = [];
+  const unresolved: number[] = [];
+  for (const factory of factories) {
+    const CALL = new RegExp(`(?<![\\w$.])${factory.name}\\s*\\(`, 'g');
+    CALL.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = CALL.exec(flat))) {
+      // The factory's own definition is not one of its call sites.
+      if (/function\s+$/.test(flat.slice(Math.max(0, match.index - 12), match.index))) continue;
+      const open = flat.indexOf('(', match.index + match[0].length - 1);
+      const close = matchParen(flat, open);
+      if (close === -1) continue;
+      const args = argumentsOf(code, open + 1, close);
+      const tag = TAG_ARGUMENT.exec(args[0] ?? '');
+      if (!tag) {
+        // Not decidable — the tag is a variable and this arm cannot follow it.
+        // Recorded rather than skipped, so the limit is a gap it reports and an
+        // author has to declare, instead of a silence nobody can see.
+        unresolved.push(lineAt(code, match.index));
+        continue;
+      }
+      if (!CONTROL_TAGS.includes(tag[2].toLowerCase())) continue;
+      const nameArg = factory.nameParam === undefined ? undefined : args[factory.nameParam];
+      const named =
+        (nameArg !== undefined && !/^['"]{2}$/.test(nameArg) && nameArg !== 'undefined' && nameArg !== 'null') ||
+        namesControl(code, close + 1, bindingBefore(flat, match.index));
+      judged.push({ tag: tag[2].toLowerCase(), line: lineAt(code, match.index), named });
+    }
+  }
+  return { judged, unresolved };
+}
+
+/**
+ * What one file builds, from the code it contains. `factories` is the registry
+ * for the whole codebase by default, because the factory a file calls is
+ * usually defined in another one (`admin-utils.js`).
+ */
+export function controlEvidenceIn(file: SourceFile, factories?: LocalFactory[]): ControlEvidence {
+  const code = codeOnly(file.source, file.path);
+  const { judged, partial } = controlLiteralsIn(code, file.path);
+  const { constructed, untaggedCreates } = constructedControlsIn(code);
+  const { judged: factoryControls, unresolved: unresolvedCalls } = factoryControlsIn(
+    code,
+    factories ?? factoriesIn(file),
+  );
+  return {
+    literals: judged,
+    constructed,
+    untaggedCreates,
+    partial,
+    factoryControls,
+    unresolvedCalls,
+  };
+}
+
+const NAME_GAP =
+  'never names it in the block that follows — no aria-label, title, textContent, text-bearing innerHTML or label it names';
+
+/**
+ * Where a control a script builds has no name. Messages carry the line, so a
+ * failure points at the missing assignment rather than at the file.
+ */
+export function scriptControlIssues(file: SourceFile, factories?: LocalFactory[]): string[] {
+  const evidence = controlEvidenceIn(file, factories);
+  const issues: string[] = [];
+  for (const fragment of evidence.literals) {
+    for (const message of unnamedControls(fragment.text).filter((issue) =>
+      new RegExp(`<(${CONTROL_TAGS.join('|')})\\b`).test(issue),
+    )) {
+      issues.push(`line ${fragment.line}: ${message}`);
+    }
+  }
+  for (const control of evidence.constructed) {
+    if (control.named) continue;
+    issues.push(`line ${control.line}: builds a <${control.tag}> with createElement and ${NAME_GAP}`);
+  }
+  for (const control of evidence.factoryControls) {
+    if (control.named) continue;
+    issues.push(`line ${control.line}: builds a <${control.tag}> through an element factory and ${NAME_GAP}`);
+  }
+  return issues;
+}
+
+const declared = (path: string, list: Declaration[]): Declaration | undefined =>
+  list.find((entry) => entry.file === path);
+
+/**
+ * Every source file the boundary covers, read from disk.
+ *
+ * Paths are repo-relative with forward slashes, so a finding names the file a
+ * reader can open and the two callers agree on a key. One walk, one skip list,
+ * one extension list — a third caller cannot invent its own scope.
+ */
+export function collectScriptSources(repoRoot: string): SourceFile[] {
+  const out: SourceFile[] = [];
+  const walk = (absolute: string, relative: string): void => {
+    for (const name of readdirSync(absolute).sort()) {
+      const path = join(absolute, name);
+      const key = `${relative}/${name}`;
+      if (statSync(path).isDirectory()) {
+        if (!SKIPPED_SEGMENTS.some((segment) => `${key}/`.includes(segment))) walk(path, key);
+      } else if (SOURCE_FILE.test(name) && !SKIPPED_SEGMENTS.some((segment) => `${key}`.includes(segment))) {
+        out.push({ path: key, source: readFileSync(path, 'utf8') });
+      }
+    }
+  };
+  for (const root of SOURCE_ROOTS) walk(join(repoRoot, ...root.split('/')), root);
+  return out;
+}
+
+/** A boundary violation: which file, and why it is not judged or declared. */
+export interface BoundaryIssue {
+  file: string;
+  message: string;
+}
+
+/**
+ * The paths a declaration answers for. A declared file is judged by
+ * `boundaryIssues` (is the declaration still needed?) rather than by the name
+ * arm, so the two callers must agree on which files those are — `AccountLicense`
+ * would otherwise be reported as an unnamed control by the gate and silently
+ * skipped by the twin.
+ */
+export const declaredFiles = (): Set<string> =>
+  new Set([...UNJUDGEABLE, ...NOT_OPERABLE].map((entry) => entry.file));
+
+/**
+ * Every unnamed control the boundary judges, attributed to the file it is in.
+ * The gate's arm and the twin's per-file arm both come through here, so a
+ * finding cannot exist in one and not the other.
+ */
+export function judgedIssues(files: SourceFile[]): BoundaryIssue[] {
+  const exempt = declaredFiles();
+  const factories = factoryRegistry(files);
+  return files
+    .filter((file) => !exempt.has(file.path))
+    .flatMap((file) => scriptControlIssues(file, factories).map((message) => ({ file: file.path, message })));
+}
+
+/**
+ * Every file, judged or declared — as structured verdicts.
+ *
+ * This is the enforcing half, and the reason a limit can be stated honestly: a
+ * control-building file that is neither judged nor declared FAILS (its tag was
+ * assembled from a variable, say), and a declaration the file no longer needs
+ * fails too, so an exemption list cannot quietly become a place to hide.
+ */
+export function boundaryIssues(files: SourceFile[]): BoundaryIssue[] {
+  return coverageGaps(files).map((gap) => {
+    const space = gap.indexOf(' ');
+    return { file: gap.slice(0, space), message: gap.slice(space + 1) };
+  });
+}
+
+/**
+ * The enforced boundary, in both directions. Every file that builds a control
+ * must be judged or declared with a reason, and every declaration must still be
+ * needed — so a new runtime-built control fails until it is judged or declared,
+ * and a declaration that has outlived its reason fails too.
+ */
+export function coverageGaps(files: SourceFile[]): string[] {
+  const gaps: string[] = [];
+  const factories = factoryRegistry(files);
+  const ownBody = (file: string, at: number): boolean =>
+    factories.some((factory) => factory.file === file && at >= factory.start && at <= factory.end);
+  for (const file of files) {
+    const evidence = controlEvidenceIn(file, factories);
+    const issues = scriptControlIssues(file, factories);
+    const unjudgeable = declared(file.path, UNJUDGEABLE);
+    const notOperable = declared(file.path, NOT_OPERABLE);
+    const builds =
+      evidence.literals.length +
+      evidence.constructed.length +
+      evidence.partial.length +
+      evidence.factoryControls.length +
+      evidence.unresolvedCalls.length +
+      evidence.untaggedCreates.length;
+    if (!builds) {
+      if (unjudgeable || notOperable) {
+        gaps.push(`${file.path} is declared in script-controls.ts but no longer builds a control — remove the declaration`);
+      }
+      continue;
+    }
+    if (unjudgeable) {
+      if (!evidence.untaggedCreates.length && !evidence.unresolvedCalls.length) {
+        gaps.push(`${file.path} is declared UNJUDGEABLE but everything it builds is decidable now — remove the declaration`);
+      }
+      continue;
+    }
+    if (notOperable) {
+      if (!issues.length) {
+        gaps.push(`${file.path} is declared NOT_OPERABLE but its controls are all named now — remove the declaration`);
+      }
+      continue;
+    }
+    for (const message of issues) gaps.push(`${file.path} ${message}`);
+    if (evidence.partial.length) {
+      gaps.push(
+        `${file.path} writes control markup its own literal does not complete (line ${evidence.partial[0].line}) — judge it or declare the file in script-controls.ts`,
+      );
+    }
+    // A factory's own `createElement(tag)` takes the tag as a parameter by
+    // design — its call sites are what this rule judges — so it is not a gap.
+    const untagged = evidence.untaggedCreates.filter((at) => !ownBody(file.path, at));
+    if (untagged.length) {
+      const code = codeOnly(file.source, file.path);
+      gaps.push(
+        `${file.path} calls document.createElement with a tag that is not a literal (line ${lineAt(code, untagged[0])}) — declare the file in script-controls.ts`,
+      );
+    }
+    if (evidence.unresolvedCalls.length) {
+      gaps.push(
+        `${file.path} builds a control through an element factory whose tag is not a literal (line ${evidence.unresolvedCalls[0]}) — judge the call or declare the file in script-controls.ts`,
+      );
+    }
+  }
+  return gaps;
+}

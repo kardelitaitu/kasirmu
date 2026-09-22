@@ -411,6 +411,7 @@
       box.appendChild(warn);
     }
     var input = el('input', 'input');
+    input.setAttribute('aria-label', t('tenant.revokeHint'));
     input.placeholder = t('tenant.revokePlaceholder');
     input.autocomplete = 'off';
     input.spellcheck = false;
@@ -1519,6 +1520,7 @@
     'health.notConfigured': '— Not configured',
     'health.version': 'Version',
     'health.time': 'Time',
+    'health.logsLines': 'Log lines to show',
     'health.logsTitle': 'Service Logs — cloud (last 100 lines)',
     'health.logsRefresh': '↻ Refresh',
     'health.logsCaption': 'times in UTC+7 · source: Northflank',
