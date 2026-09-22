@@ -285,6 +285,11 @@ const SCREENS: ScreenEntry[] = [
       // The Trash tab's panel renders staff-mgmt-trash* from the same sheet.
       'staff/components/StaffTrashPanel.tsx',
     ],
+    // The sheet gates ONE rule on the memo stack's presence — see the
+    // EXTERNAL_CLASS_LEDGER entry below for the measurement. The stack is a
+    // SIBLING of this page under #root, so its class can never appear in this
+    // screen's markup.
+    externalClasses: ['memo-stack'],
   },
 
   // ── Setup ─────────────────────────────────────────────

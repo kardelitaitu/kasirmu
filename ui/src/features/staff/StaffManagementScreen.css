@@ -146,6 +146,34 @@
   padding: var(--space-6) var(--space-8);
 }
 
+/*
+ * Clearance for the fixed memo stack.
+ *
+ * The stack (MemoBanner.css) is a SIBLING of this page under #root — the
+ * staff/roles/trash routes are fullscreen, so none of the three scoped
+ * --memo-bottom-inset overrides reaches it and it falls back to the :root
+ * default. This page's last row therefore lands under it, and at tablet
+ * portrait the list does NOT overflow, so there is no scroll position that
+ * escapes: measured at 1024x1366 with a full stack, the role row's Delete
+ * button sat 24 of 48 sampled points inside the stack and the click could
+ * never land.
+ *
+ * Reserving the stack's height inside this, the page's only scrolling region,
+ * is what lets the row scroll clear — the same mechanism that already saves
+ * the shorter desktop viewport, where the scroller does overflow.
+ *
+ * Gated on the stack's presence, so a session with no memos pays no dead band
+ * above the footer. A fourth --memo-bottom-inset override was measured and
+ * REJECTED for this: the inset moves the stack, but the occluder here is a
+ * page row rather than the pinned footer that value is derived from, and the
+ * settings 68px form still left 24 of 64 points intercepted.
+ */
+body:has(.memo-stack) .staff-mgmt-main {
+  /* The --space-6 gutter plus a full stack: MAX_STACK = 3 bubbles in
+     MemoBanner.tsx, measured at 215px at the 1024x1366 tablet profile. */
+  padding-bottom: calc(var(--space-6) + 215px);
+}
+
 /* Both tab panels live inside the one scrolling region above. */
 .staff-mgmt-tabpanel {
   display: flex;
