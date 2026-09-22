@@ -6,7 +6,7 @@ findings: stored-value paths sound (PA-01 atomic conditional UPDATE both directi
 next: none | perf: N+1 txn fetch in list_gift_cards is bounded at 5/card
 */
 
-use rusqlite::params;
+use rusqlite::{Transaction, TransactionBehavior, params};
 
 use crate::error::CoreError;
 use crate::gift_card::{
@@ -50,7 +50,7 @@ impl Store<'_> {
         let issued_to = input.issued_to.unwrap_or_default();
         let amount = input.initial_amount_minor;
 
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
 
         // Create the gift card.
         tx.execute(

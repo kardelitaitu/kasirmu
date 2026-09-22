@@ -11,6 +11,7 @@
 
 use super::*;
 use crate::SaleStatus;
+use rusqlite::{Transaction, TransactionBehavior};
 use std::collections::HashMap;
 
 fn stock_at_locations(
@@ -205,9 +206,13 @@ impl Store<'_> {
         // Once the grace period expires, the register cannot process sales.
         self.enforce_pos_writable()?;
 
-        // ADR-19 §5.2: single transaction prevents two concurrent sales from
-        // racing on the same inventory row. Same pattern as create_sale().
-        let tx = self.conn.unchecked_transaction()?;
+        // ADR-19 §5.2: a single IMMEDIATE transaction prevents two concurrent
+        // sales from racing on the same inventory row. IMMEDIATE (not the
+        // DEFERRED `unchecked_transaction` returns) is what the ADR asks for:
+        // under WAL a deferred read-then-write that loses the race fails with
+        // SQLITE_BUSY_SNAPSHOT, which the busy handler cannot absorb, whereas
+        // IMMEDIATE contends at BEGIN where the 5000 ms busy_timeout applies.
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
 
         // ── Resolve topology route order ──────────────────────────
         let default_location = crate::location_resolver::get_default_location_id();

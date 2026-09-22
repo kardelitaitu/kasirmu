@@ -21,7 +21,7 @@ next: none for the guard path | perf: N/A
 
 use std::collections::HashMap;
 
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 
 use crate::error::CoreError;
 use crate::money::Currency;
@@ -62,8 +62,11 @@ impl Store<'_> {
 
         // COR-25: the guard reads and the refund writes share one
         // transaction, so the check-then-act window is closed against any
-        // other writer on another connection (e.g. sync replay).
-        let tx = self.conn.unchecked_transaction()?;
+        // other writer on another connection (e.g. sync replay). IMMEDIATE,
+        // not DEFERRED: the guard is a read and the refund is a write, so a
+        // deferred BEGIN that loses the race fails with SQLITE_BUSY_SNAPSHOT
+        // instead of waiting out the busy_timeout at BEGIN.
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
 
         // ── 0. Over-refund guard ──────────────────────────────────
         // A sale may be refunded AT MOST its original total. The sale stays

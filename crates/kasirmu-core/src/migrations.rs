@@ -456,6 +456,17 @@ pub fn seed_provisioned_baseline(conn: &rusqlite::Connection) {
 /// snapshot via SQLite's page-level [`rusqlite::backup::Backup`] API —
 /// orders of magnitude faster than re-running `execute_batch` per test.
 ///
+/// The returned connection carries the same per-connection PRAGMAs
+/// [`run`] applies (see there for why each exists), except
+/// `journal_mode = WAL`: an in-memory database cannot use WAL — SQLite
+/// reports it as `memory` and keeps it — so that mode is deliberately
+/// not set here. `synchronous`, `busy_timeout` and `foreign_keys` are
+/// per-connection settings, not stored in the file, so the migrated
+/// snapshot does not carry them into the clone and they must be set on
+/// every returned connection. Without the busy timeout a contended test
+/// connection fails instantly instead of waiting, which is how a
+/// concurrency test can pass without ever exercising the wait.
+///
 /// # Panics
 ///
 /// Panics if the database cannot be created.
@@ -505,6 +516,19 @@ pub fn fresh_db() -> rusqlite::Connection {
             .run_to_completion(100, std::time::Duration::from_millis(0), None)
             .unwrap(); // SAFETY: page copy between two in-memory DBs cannot fail at runtime
     } // drop Backup (releases &mut fresh borrow), then drop MutexGuard
+
+    // Mirror the per-connection PRAGMAs `run` applies. WAL is impossible
+    // for `:memory:` (SQLite pins it to `memory`), so only the three
+    // per-connection settings are reproduced.
+    fresh
+        .pragma_update(None, "busy_timeout", "5000")
+        .expect("busy_timeout on a fresh test DB cannot fail");
+    fresh
+        .pragma_update(None, "synchronous", "NORMAL")
+        .expect("synchronous on a fresh test DB cannot fail");
+    fresh
+        .pragma_update(None, "foreign_keys", "ON")
+        .expect("foreign_keys on a fresh test DB cannot fail");
     fresh
 }
 

@@ -13,6 +13,7 @@
 use super::*;
 use crate::AuditEntry;
 use crate::SaleStatus;
+use rusqlite::{Transaction, TransactionBehavior};
 
 /// LOY-06: award loyalty points at the moment a sale reaches `completed`.
 ///
@@ -83,7 +84,7 @@ fn apply_customer_stats_on_completion(conn: &rusqlite::Connection, sale_id: &str
 impl Store<'_> {
     /// Transition a pending sale's status to `completed` after payment capture is successful.
     pub fn finalize_sale(&self, sale_id: &str) -> Result<(), CoreError> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
         let changed = tx.execute(
             "UPDATE sales SET status = 'completed', updated_at = ?1, version = version + 1 \
              WHERE id = ?2 AND status = 'pending'",
@@ -176,7 +177,7 @@ impl Store<'_> {
         self.enforce_pos_writable()?;
 
         // ── BEGIN IMMEDIATE ───────────────────────────────────────
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
 
         // ── Phase 1: Build deduction list from resolutions ────────
         let mut deductions: Vec<crate::sale_deduction::StockDeduction> = Vec::new();
@@ -603,7 +604,7 @@ impl Store<'_> {
 
     /// Void a pending sale and restore the reserved/dedicated stock back to original locations.
     pub fn void_pending_sale(&self, sale_id: &str) -> Result<(), CoreError> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
 
         // NULL deduction_locations is a legal state: the import/CLI door
         // (create_sale, MONEY-07) never writes the column, so imported
@@ -776,7 +777,7 @@ impl Store<'_> {
         }
 
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
 
         // 1. Update status to Voided with optimistic concurrency (ADR #6).
         // The status predicate makes this a compare-and-set: the

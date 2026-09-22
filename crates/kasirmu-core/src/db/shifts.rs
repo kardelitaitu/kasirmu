@@ -6,7 +6,7 @@ findings: close_shift exemplary — all aggregation reads + final write in one t
 next: partial unique index on shifts(user_id) WHERE status='open' (COR-27) | perf: N/A
 */
 
-use rusqlite::params;
+use rusqlite::{Transaction, TransactionBehavior, params};
 
 use crate::Shift;
 use crate::error::CoreError;
@@ -106,7 +106,7 @@ impl Store<'_> {
     ) -> Result<Shift, CoreError> {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
 
         // Verify the shift exists and is open.
         let shift: Shift = {
