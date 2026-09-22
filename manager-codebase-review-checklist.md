@@ -226,6 +226,7 @@ Fill one row per ticked item. An item is not done until the command and its resu
 | C5b | 2026-09-23 | cargo test -p kasirmu-mobile known_hazard | 2 passed - both pins inverted in place, names unchanged, both now asserting the CORRECTED behaviour | 1eee8e0f |
 | C6b | 2026-09-23 | cargo test -p kasirmu-core provisioning | 25 passed, 0 failed (was 22) - includes an_unsupported_timezone_is_rejected_and_names_the_accepted_values | 1fea7d78 |
 | C1 S1.5 | 2026-09-23 | cargo test -p platform-core | 410 passed, 0 failed (+4 doctests) - five new fail_closed_* tests, five legacy_plaintext_* still passing | 37a3c00b |
+| C18 P1.2 | 2026-09-23 | cargo test -p kasirmu-core cash_payout | 34 passed, 0 failed - includes payout_refused_when_shift_closes_between_read_and_write, which was PROVED to fail against the unfixed SQL before shipping | b0e78e69 |
 | C10 | | | | |
 | C11 | | | | |
 | C12 | | | | |
