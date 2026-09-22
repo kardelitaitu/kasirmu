@@ -3,6 +3,7 @@ import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import DocSidebar, { type CategoryGroup } from '../components/DocSidebar.astro';
 import SiteHead from '../components/SiteHead.astro';
+import { getRelativeLocaleUrl } from 'astro:i18n';
 import { t } from '../i18n';
 import type { SearchDoc } from '../lib/search-index';
 import '../styles/global.css';
@@ -32,6 +33,15 @@ interface Props {
 const { locale, title, description, updated, entries, currentSlug, headings, searchDocs } = Astro.props;
 const toc = (headings ?? []).filter((h) => h.depth >= 2 && h.depth <= 3);
 const docDesc = description ?? t(locale, 'docs.title');
+// Where a reader goes after reading a doc. The docs are the site's most
+// search-aligned content — people arrive from "how do I …" queries — but until
+// this block every article ended with the feedback widget and no route into the
+// product: of the 36 docs pages, 30 linked to no commercial page at all in the
+// body (only the site-wide header and footer did). Both links are locale-relative
+// so an /en/ doc can never send an English reader to the Indonesian download
+// page, and `check:seo` asserts that per page.
+const downloadHref = getRelativeLocaleUrl(locale, 'download');
+const pricingHref = getRelativeLocaleUrl(locale, 'pricing');
 ---
 
 <!doctype html>
@@ -109,11 +119,34 @@ const docDesc = description ?? t(locale, 'docs.title');
             <slot />
           </div>
 
+          <!-- Next step: the two pages that continue the job this article
+               started. Kept inside <article> so it is part of the document
+               body for both a reader and a crawler, and rendered from the
+               dictionary so it is in the page's own language. -->
+          <div class="mt-12 rounded-xl border border-accent/30 bg-surface/60 p-6">
+            <p class="text-sm font-semibold text-ink">{t(locale, 'docs.nextStep.title')}</p>
+            <p class="mt-1 text-xs text-muted">{t(locale, 'docs.nextStep.body')}</p>
+            <div class="mt-4 flex flex-wrap items-center gap-3">
+              <a
+                href={downloadHref}
+                class="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-on-primary transition hover:opacity-90"
+              >
+                {t(locale, 'docs.nextStep.download')}
+              </a>
+              <a
+                href={pricingHref}
+                class="rounded-md border border-ink/15 px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink/5"
+              >
+                {t(locale, 'docs.nextStep.pricing')}
+              </a>
+            </div>
+          </div>
+
           <!-- Doc Page Helpful Feedback Widget -->
           <div class="mt-12 rounded-xl border border-ink/10 bg-surface/50 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
-              <p class="text-sm font-medium text-ink">{locale === 'id' ? 'Apakah halaman ini bermanfaat?' : 'Was this page helpful?'}</p>
-              <p class="text-xs text-muted mt-0.5">{locale === 'id' ? 'Bantu kami menyempurnakan dokumentasi kasir.mu' : 'Help us improve the kasir.mu documentation'}</p>
+              <p class="text-sm font-medium text-ink">{t(locale, 'docs.feedback.question')}</p>
+              <p class="text-xs text-muted mt-0.5">{t(locale, 'docs.feedback.hint')}</p>
             </div>
             <div class="flex items-center gap-2" data-doc-feedback-wrap>
               <button
@@ -121,14 +154,14 @@ const docDesc = description ?? t(locale, 'docs.title');
                 data-doc-feedback-yes
                 class="rounded-md border border-ink/10 bg-surface px-3 py-1.5 text-xs font-medium text-ink transition hover:bg-ink/5"
               >
-                👍 {locale === 'id' ? 'Ya' : 'Yes'}
+                👍 {t(locale, 'docs.feedback.yes')}
               </button>
               <button
                 type="button"
                 data-doc-feedback-no
                 class="rounded-md border border-ink/10 bg-surface px-3 py-1.5 text-xs font-medium text-ink transition hover:bg-ink/5"
               >
-                👎 {locale === 'id' ? 'Belum' : 'No'}
+                👎 {t(locale, 'docs.feedback.no')}
               </button>
             </div>
           </div>

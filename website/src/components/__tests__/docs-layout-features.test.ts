@@ -99,6 +99,60 @@ describe('DocsLayout.astro setupDocsFeatures', () => {
     });
   });
 
+  describe('next step and feedback copy', () => {
+    const enJson = JSON.parse(
+      readFileSync(join(__dirname, '../../i18n/en.json'), 'utf-8'),
+    );
+    const idJson = JSON.parse(
+      readFileSync(join(__dirname, '../../i18n/id.json'), 'utf-8'),
+    );
+
+    it('offers the locale download and pricing pages at the end of every article', () => {
+      // The docs are the site's most search-aligned content; before this block
+      // 30 of 36 articles linked to no commercial page at all in the body.
+      expect(LAYOUT_SRC).toContain("getRelativeLocaleUrl(locale, 'download')");
+      expect(LAYOUT_SRC).toContain("getRelativeLocaleUrl(locale, 'pricing')");
+      expect(LAYOUT_SRC).toContain("t(locale, 'docs.nextStep.download')");
+      expect(LAYOUT_SRC).toContain("t(locale, 'docs.nextStep.pricing')");
+      // Rendered inside <article>, so it belongs to the document body rather
+      // than to the chrome around it.
+      const article = LAYOUT_SRC.slice(LAYOUT_SRC.indexOf('<article'), LAYOUT_SRC.indexOf('</article>'));
+      expect(article).toContain('docs.nextStep.download');
+    });
+
+    it('keeps the feedback widget copy in the dictionaries, not inline ternaries', () => {
+      for (const key of ['question', 'hint', 'yes', 'no']) {
+        expect(LAYOUT_SRC, `${key} key`).toContain(`t(locale, 'docs.feedback.${key}')`);
+      }
+      expect(LAYOUT_SRC).not.toContain("locale === 'id' ?");
+    });
+
+    it('defines every new key in both locales, in each language', () => {
+      const keys = [
+        'nextStep.title',
+        'nextStep.body',
+        'nextStep.download',
+        'nextStep.pricing',
+        'feedback.question',
+        'feedback.hint',
+        'feedback.yes',
+        'feedback.no',
+      ];
+      for (const key of keys) {
+        const [group, name] = key.split('.');
+        expect(enJson.docs[group][name], `en docs.${key}`).toBeTruthy();
+        expect(idJson.docs[group][name], `id docs.${key}`).toBeTruthy();
+      }
+      expect(idJson.docs.nextStep.download).not.toBe(enJson.docs.nextStep.download);
+      expect(idJson.docs.nextStep.pricing).not.toBe(enJson.docs.nextStep.pricing);
+      expect(idJson.docs.feedback.question).not.toBe(enJson.docs.feedback.question);
+      // The feedback labels keep the strings the widget shipped with — moving
+      // them into the dictionary was the change, not the wording.
+      expect(enJson.docs.feedback.question).toBe('Was this page helpful?');
+      expect(idJson.docs.feedback.question).toBe('Apakah halaman ini bermanfaat?');
+    });
+  });
+
   describe('copy code buttons', () => {
     beforeEach(() => {
       document.body.innerHTML = '';

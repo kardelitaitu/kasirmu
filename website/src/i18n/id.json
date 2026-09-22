@@ -113,6 +113,18 @@
     "title": "Dokumentasi",
     "onThisPage": "Di halaman ini",
     "updated": "Diperbarui",
+    "nextStep": {
+      "title": "Siap mulai?",
+      "body": "Unduh aplikasinya gratis, atau lihat paketnya dulu.",
+      "download": "Unduh kasir.mu",
+      "pricing": "Lihat paket & harga"
+    },
+    "feedback": {
+      "question": "Apakah halaman ini bermanfaat?",
+      "hint": "Bantu kami menyempurnakan dokumentasi kasir.mu",
+      "yes": "Ya",
+      "no": "Belum"
+    },
     "categories": {
       "gettingStarted": "Memulai",
       "guides": "Panduan",

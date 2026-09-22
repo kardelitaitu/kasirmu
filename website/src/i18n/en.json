@@ -109,6 +109,18 @@
     "title": "Documentation",
     "onThisPage": "On this page",
     "updated": "Updated",
+    "nextStep": {
+      "title": "Ready to get started?",
+      "body": "Download the free app, or look at the plans first.",
+      "download": "Download kasir.mu",
+      "pricing": "See plans & pricing"
+    },
+    "feedback": {
+      "question": "Was this page helpful?",
+      "hint": "Help us improve the kasir.mu documentation",
+      "yes": "Yes",
+      "no": "No"
+    },
     "categories": {
       "gettingStarted": "Getting Started",
       "guides": "Guides",

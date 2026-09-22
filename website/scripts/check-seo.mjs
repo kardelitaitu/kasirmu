@@ -52,6 +52,13 @@
 //      The collection is what the sidebar, the ⌘K index and this gate's docs
 //      class are all derived from, so a doc that stops building disappears
 //      from the site without any other check being able to see it.
+//   9. docs next step — every docs article's body offers the locale's download
+//      and pricing page, with the dictionary's own label text. The docs are the
+//      site's most search-aligned content, and 30 of the 36 articles used to
+//      link to no commercial page at all in the body: a reader who arrived from
+//      "how do I …" had no route into the product, and no internal-link equity
+//      flowed to the pages that pay for the site. This asserts the block is
+//      rendered, is in the right language, and points at the reader's locale.
 //   8. locale copy — the rendered footer sitemap speaks the page's locale, in
 //      both directions: every label the locale's dictionary defines is present,
 //      and every label rendered is one of them. This is a VISITOR check rather
@@ -255,6 +262,10 @@ function parsePage(file) {
     // Footer markup only, for check 8. Everything before the first `<footer` is
     // the page proper, which has no locale-copy invariant of its own here.
     footer: html.slice(html.indexOf('<footer')),
+    // The docs article proper, for check 9 — the shared docs layout wraps the
+    // rendered markdown in <article>, so this is the reader's body text and not
+    // the sidebar, header or footer that surround it.
+    articleHtml: html.slice(html.indexOf('<article'), html.indexOf('</article>') + 1),
   };
 }
 
@@ -611,7 +622,7 @@ for (const [field, of] of [
 //    Expected string sets come from the page's own dictionary, resolved through
 //    the same key list the component renders (FOOTER_COLUMNS), so a label added
 //    to one locale only is a finding rather than a silent fallback.
-const FOOTER_DICT = {
+const DICTS = {
   en: JSON.parse(readFileSync(new URL('../src/i18n/en.json', import.meta.url), 'utf8')),
   id: JSON.parse(readFileSync(new URL('../src/i18n/id.json', import.meta.url), 'utf8')),
 };
@@ -622,8 +633,8 @@ function resolveKey(dict, key) {
 }
 
 const FOOTER_EXPECTED = Object.fromEntries(
-  Object.keys(FOOTER_DICT).map((locale) => {
-    const dict = FOOTER_DICT[locale];
+  Object.keys(DICTS).map((locale) => {
+    const dict = DICTS[locale];
     return [
       locale,
       {
@@ -664,6 +675,49 @@ for (const page of pages.filter((p) => p.rec && isLocalePage(p.rec))) {
   }
 }
 
+// 9. Docs articles ⇄ the commercial pages: the reader's next step.
+//    Both hrefs must be the page's OWN locale (`/en/docs/x/` → `/en/download/`)
+//    and both labels must be that locale's dictionary strings, so a layout that
+//    renders one language for every locale — the defect the footer had — is a
+//    finding here too.
+const DOCS_NEXT_STEP = [
+  ['download', 'docs.nextStep.download'],
+  ['pricing', 'docs.nextStep.pricing'],
+];
+
+for (const page of pages.filter((p) => p.rec?.kind === 'docs article')) {
+  const locale = page.rec.locale;
+  const links = [...page.articleHtml.matchAll(/<a\b[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)].map((m) => ({
+    href: m[1],
+    text: textOf(m[2]),
+  }));
+  for (const [slug, key] of DOCS_NEXT_STEP) {
+    const href = `${SITE}/${locale}/${slug}/`;
+    // `getRelativeLocaleUrl` emits a root-relative path (`/id/download/`) while
+    // the canonical/alternate arms compare absolute URLs, so both forms are
+    // accepted here — the locale is what this check is about, not the spelling.
+    const link = links.find(
+      (candidate) => candidate.href === href || candidate.href === `/${locale}/${slug}/`,
+    );
+    if (!link) {
+      add(
+        'docs next step',
+        page.url,
+        `has no link to ${href} in its body — a reader who finishes this article has no route into the product`,
+      );
+      continue;
+    }
+    const label = resolveKey(DICTS[locale], key);
+    if (link.text !== label) {
+      add(
+        'docs next step',
+        page.url,
+        `links to ${href} as ${JSON.stringify(link.text)}, but the ${locale} label is ${JSON.stringify(label)}`,
+      );
+    }
+  }
+}
+
 // ── Report ──────────────────────────────────────────────────────────────────
 const byCheck = new Map();
 for (const finding of findings) {
@@ -671,7 +725,17 @@ for (const finding of findings) {
   byCheck.get(finding.check).push(finding);
 }
 
-const checks = ['page classes', 'canonical/og:url', 'hreflang', 'sitemap', 'noindex', 'structured data', 'titles', 'locale copy'];
+const checks = [
+  'page classes',
+  'canonical/og:url',
+  'hreflang',
+  'sitemap',
+  'noindex',
+  'structured data',
+  'titles',
+  'locale copy',
+  'docs next step',
+];
 const classes = {};
 for (const page of pages) {
   const kind = page.rec?.kind ?? 'unclassified';
