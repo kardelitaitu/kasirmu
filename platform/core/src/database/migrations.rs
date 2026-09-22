@@ -31,6 +31,12 @@ next: none | perf: single pass over registered migrations; the splitter runs onl
 //!   foreign_keys` inside a transaction, so rebuild migrations (081/089)
 //!   that toggle it in their own SQL were silently running with
 //!   enforcement ON — risking cascade data loss on populated child tables.
+//! * **Pre-migration snapshot** — a run that has anything to write copies the
+//!   database to `<db>.pre-migration.bak` first, so a failed or destructive
+//!   migration is recoverable. The copy lands under a temporary name and is
+//!   renamed into place only once it succeeded: a failed snapshot leaves the
+//!   previous good one untouched, and a snapshot that cannot be taken at all
+//!   fails the run instead of migrating without one.
 //!
 //! Callers provide their own list of migrations (typically compiled
 //! via `include_str!`).
@@ -52,12 +58,14 @@ next: none | perf: single pass over registered migrations; the splitter runs onl
 use std::collections::HashMap;
 #[cfg(test)]
 use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 // `optional()` is used only by this file's own tests — the production users moved
 // to `database::statements` with the proof.
 #[cfg(test)]
 use rusqlite::OptionalExtension;
-use rusqlite::{Connection, Transaction, params};
+use rusqlite::{Connection, DatabaseName, Transaction, params};
 use sha2::{Digest, Sha256};
 
 use super::proofs::{already_satisfied, insert_would_insert_nothing};
@@ -83,6 +91,12 @@ pub fn run(conn: &mut Connection, migrations: &[Migration]) -> Result<(), Platfo
     // Before anything is applied: a database from a newer build must be refused
     // rather than half-migrated by this one.
     check_not_forward_migrated(&applied, migrations)?;
+    // C11: anything about to be written gets written over a copy of the
+    // database as it stands right now. Taken once, before the first pending
+    // migration, and only when there is migration SQL to run at all.
+    if will_execute_migration_sql(&applied, migrations) {
+        snapshot_before_migration(conn)?;
+    }
     for mig in migrations {
         match applied.get(mig.id) {
             Some(Some(stored)) => {
@@ -133,6 +147,105 @@ pub fn run(conn: &mut Connection, migrations: &[Migration]) -> Result<(), Platfo
             None => apply_one(conn, mig)?,
         }
     }
+    Ok(())
+}
+
+/// Whether this run will execute any migration SQL.
+///
+/// Only two of the ledger's three outcomes write: an unknown id is applied
+/// ([`apply_one`]) and a drifted definition is re-applied
+/// ([`reapply_for_drift`]). A matching checksum and a legacy backfill are both
+/// a single `UPDATE` of the tracking table, which cannot damage user data —
+/// and taking a full copy for those would put a snapshot on every single
+/// startup, which is the kind of cost that gets the whole feature deleted.
+///
+/// Mirrors `run`'s own match arms; the drift arm is deliberately the same
+/// predicate the loop uses so the two cannot disagree about what "drifted"
+/// means.
+fn will_execute_migration_sql(
+    applied: &HashMap<String, Option<String>>,
+    migrations: &[Migration],
+) -> bool {
+    migrations.iter().any(|mig| match applied.get(mig.id) {
+        None => true,
+        Some(None) => false,
+        Some(Some(stored)) => {
+            *stored != checksum_hex(mig.sql) && !has_legacy_checksum(stored, mig.sql)
+        }
+    })
+}
+
+/// Suffix of the pre-migration snapshot, next to the database it copies.
+const SNAPSHOT_SUFFIX: &str = ".pre-migration.bak";
+
+/// Distinguishes concurrent snapshot attempts within one process; the temp
+/// name is never observable once the rename succeeds.
+static SNAPSHOT_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Where the pre-migration snapshot of this database lives.
+///
+/// Deterministic and derived from the database path alone: the file sits
+/// beside its database as `<db>.pre-migration.bak`, so a store's snapshot can
+/// never land in another store's directory. `Connection::path` returns
+/// `Some("")` for a temporary or in-memory database — there is no file to
+/// copy and nothing to lose, so that case has no snapshot path.
+fn snapshot_path_for(conn: &Connection) -> Option<PathBuf> {
+    let path = conn.path()?;
+    if path.is_empty() {
+        return None;
+    }
+    let stem = Path::new(path)
+        .file_stem()
+        .map_or_else(String::new, |s| s.to_string_lossy().into_owned());
+    Some(PathBuf::from(path).with_file_name(format!("{stem}{SNAPSHOT_SUFFIX}")))
+}
+
+/// Copy the database to its pre-migration snapshot (C11).
+///
+/// Taken over the online-backup API: the pinned rusqlite build enables the
+/// `backup` feature for this crate (root `Cargo.toml`:
+/// `rusqlite = { version = "0.31", features = ["bundled", "backup"] }`), so
+/// this is a page-level copy of a live connection rather than a raw file copy
+/// that would race the WAL. A raw copy of a WAL database misses every
+/// committed page still sitting in the `-wal` file, which is exactly the state
+/// a running desktop app is in when it starts up.
+///
+/// The copy is written to a temporary name and renamed into place only after
+/// it completed, so a snapshot that fails midway cannot overwrite the previous
+/// good one — the failure this guards against is precisely the one where the
+/// database is already damaged. A snapshot that cannot be taken at all is an
+/// error, not a warning: migrating without one is what this exists to prevent.
+fn snapshot_before_migration(conn: &Connection) -> Result<(), PlatformError> {
+    let Some(destination) = snapshot_path_for(conn) else {
+        // In-memory or temporary database: no file to protect.
+        return Ok(());
+    };
+    let seq = SNAPSHOT_SEQ.fetch_add(1, Ordering::Relaxed);
+    let temp = PathBuf::from(format!(
+        "{}.{}.{seq}.tmp",
+        destination.display(),
+        std::process::id()
+    ));
+
+    // A leftover temp file from an interrupted run would make the backup API
+    // copy *into* an existing database rather than create a fresh one.
+    let _ = std::fs::remove_file(&temp);
+    if let Err(e) = conn.backup(DatabaseName::Main, &temp, None) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(PlatformError::Internal(format!(
+            "pre-migration snapshot to {temp:?}: {e}"
+        )));
+    }
+    if let Err(e) = std::fs::rename(&temp, &destination) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(PlatformError::Internal(format!(
+            "publishing pre-migration snapshot {destination:?}: {e}"
+        )));
+    }
+    tracing::info!(
+        snapshot = %destination.display(),
+        "pre-migration snapshot taken (C11)"
+    );
     Ok(())
 }
 

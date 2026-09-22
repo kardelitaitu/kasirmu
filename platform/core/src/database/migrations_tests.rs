@@ -388,6 +388,169 @@ fn run_with_empty_list_does_nothing() {
     assert!(applied.is_empty());
 }
 
+// ── C11: pre-migration snapshot ────────────────────────────────
+//
+// The runner is the only thing that touches a live database before the app
+// has a chance to refuse, and two of its paths execute SQL against data that
+// already exists (a genuine checksum mismatch is *repaired* by re-running the
+// migration, and the per-statement drift fallback gives up per-file
+// atomicity). These four pins are the contract that makes that recoverable.
+
+/// A file-backed database in its own temp dir, plus the dir (dropped last).
+///
+/// The file-backed case is the whole point: an in-memory database has no
+/// bytes to protect and no snapshot path, so every pin below needs a real
+/// file beside a real directory.
+fn on_disk(name: &str) -> (Connection, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let conn = Connection::open(dir.path().join(name)).unwrap();
+    (conn, dir)
+}
+
+fn snapshot_of(conn: &Connection) -> PathBuf {
+    snapshot_path_for(conn).expect("a file-backed database must have a snapshot path")
+}
+
+/// Temp files the snapshot leaves behind — must always be empty: a temp name
+/// that survives is a snapshot nobody will ever find.
+fn leftover_temps(dir: &tempfile::TempDir) -> Vec<String> {
+    std::fs::read_dir(dir.path())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.ends_with(".tmp"))
+        .collect()
+}
+
+#[test]
+fn run_snapshots_the_database_before_applying_a_migration() {
+    let (mut conn, dir) = on_disk("kasir.db");
+    let snapshot = snapshot_of(&conn);
+    assert!(
+        !snapshot.exists(),
+        "nothing has run yet, so nothing to snapshot"
+    );
+
+    run(&mut conn, TEST_MIGRATIONS).unwrap();
+
+    assert!(
+        snapshot.exists(),
+        "C11: run applied a migration with no snapshot at {snapshot:?}"
+    );
+    assert_eq!(
+        snapshot.file_name().unwrap().to_string_lossy(),
+        "kasir.pre-migration.bak",
+        "the snapshot must sit next to the database it copies"
+    );
+    assert!(
+        leftover_temps(&dir).is_empty(),
+        "temp name survived the rename"
+    );
+
+    // It is a real database, not a placeholder — and it is the state *before*
+    // the migration, which is the only state worth restoring.
+    let snap = Connection::open(&snapshot).unwrap();
+    assert!(
+        !table_exists(&snap, "test_table"),
+        "the snapshot must predate the migration it protects"
+    );
+    let integrity: String = snap
+        .query_row("PRAGMA integrity_check", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(integrity, "ok", "the snapshot is not a usable database");
+}
+
+#[test]
+fn a_run_with_nothing_to_apply_takes_no_snapshot() {
+    let (mut conn, _dir) = on_disk("kasir.db");
+    let snapshot = snapshot_of(&conn);
+    run(&mut conn, TEST_MIGRATIONS).unwrap();
+    std::fs::remove_file(&snapshot).unwrap();
+
+    // Everything is recorded and every checksum matches: this run only reads.
+    run(&mut conn, TEST_MIGRATIONS).unwrap();
+    assert!(
+        !snapshot.exists(),
+        "a no-op run must not spend a full database copy"
+    );
+
+    run(&mut conn, &[]).unwrap();
+    assert!(!snapshot.exists());
+}
+
+#[test]
+fn a_failing_migration_leaves_the_database_and_the_snapshot_intact() {
+    let (mut conn, dir) = on_disk("kasir.db");
+    let snapshot = snapshot_of(&conn);
+    run(&mut conn, TEST_MIGRATIONS).unwrap();
+    conn.execute("INSERT INTO test_table (id) VALUES (1)", [])
+        .unwrap();
+
+    // 002 applies; 003 collides with it. The run must fail, and everything
+    // that was there before it started must still be there after.
+    let failing = [
+        Migration {
+            id: "002_ok.sql",
+            sql: "CREATE TABLE second_table (id INTEGER PRIMARY KEY)",
+        },
+        Migration {
+            id: "003_collides.sql",
+            sql: "CREATE TABLE second_table (id INTEGER PRIMARY KEY)",
+        },
+    ];
+    assert!(
+        run(&mut conn, &failing).is_err(),
+        "the colliding run must fail"
+    );
+
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM test_table", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(rows, 1, "the failed run destroyed existing data");
+    assert!(leftover_temps(&dir).is_empty());
+
+    // The snapshot is still a usable database holding the pre-run data.
+    let snap = Connection::open(&snapshot).unwrap();
+    let snap_rows: i64 = snap
+        .query_row("SELECT COUNT(*) FROM test_table", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(snap_rows, 1, "the snapshot lost the data it protects");
+    let integrity: String = snap
+        .query_row("PRAGMA integrity_check", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(integrity, "ok");
+}
+
+#[test]
+fn a_snapshot_that_cannot_be_taken_fails_the_run_instead_of_migrating() {
+    let (mut conn, dir) = on_disk("kasir.db");
+    let snapshot = snapshot_of(&conn);
+
+    // Occupy the snapshot's own path with a non-empty directory: the copy can
+    // still be made, but publishing it cannot, which is the failure shape the
+    // rename exists to survive.
+    std::fs::create_dir_all(snapshot.join("keep")).unwrap();
+
+    let err = run(&mut conn, TEST_MIGRATIONS)
+        .expect_err("an unpublishable snapshot must not be silently skipped")
+        .to_string();
+    assert!(
+        err.contains("snapshot"),
+        "the refusal must name the snapshot: {err}"
+    );
+
+    // Fail loudly means fail *before* the SQL: nothing was applied.
+    assert!(
+        !table_exists(&conn, "test_table"),
+        "the run migrated despite having no snapshot"
+    );
+    // And the thing that was already there is untouched.
+    assert!(
+        snapshot.join("keep").exists(),
+        "the existing snapshot was destroyed"
+    );
+    assert!(leftover_temps(&dir).is_empty());
+}
 // ── Rollback tests ─────────────────────────────────────────────
 
 #[test]
