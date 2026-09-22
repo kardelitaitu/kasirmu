@@ -1,6 +1,6 @@
 import { useCallback, useState, useEffect } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { provisionDevice, type LocationKind, type ProvisioningMode } from '@/api/settings';
+import { getPresetFeatures, provisionDevice, type LocationKind, type ProvisioningMode } from '@/api/settings';
 import { getDeviceId } from '@/api/system';
 import {
   consumeDeviceLinkCode,
@@ -247,6 +247,20 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
       setBusy(true);
       try {
         const terminalId = await getDeviceId();
+        // The store type IS the answer to "which features does this terminal
+        // start with" (ADR #56 §2.3: the preset is *evaluated, not
+        // interrogated*). Resolve it here — this flow is the one that asks the
+        // question, which is where `ProvisionDeviceArgs::preset`'s doc places the
+        // derivation. The list comes from core rather than a local copy, so the
+        // two cannot drift.
+        //
+        // An unknown preset resolves to `[]` rather than failing the submit: a
+        // build that does not know a store type must not strand the merchant at
+        // the first-run screen, which is the same degradation
+        // `write_provisioning_settings` applies to an unknown feature key.
+        const features = await getPresetFeatures(storeType)
+          .then((r) => r.features)
+          .catch(() => []);
         const result = await provisionDevice({
           terminal_id: terminalId,
           location_name: locationName.trim(),
@@ -256,7 +270,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
           owner_display_name: ownerName.trim(),
           owner_pin: pin,
           preset: storeType,
-          features: [],
+          features,
           location_kind: kindForPreset(storeType),
           mode: provisionMode,
           tenant_id: provisionMode === 'linked' ? (linkedAccount?.tenantId ?? null) : null,

@@ -1091,6 +1091,7 @@ pub fn run() {
             // registration; see review finding F-004.
             commands::settings::set_setting,
             commands::setup::get_enabled_features,
+            commands::setup::get_preset_features,
             commands::setup::get_first_run_state,
             commands::setup::provision_device,
             commands::products::list_products_scoped,

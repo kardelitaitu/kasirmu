@@ -89,6 +89,24 @@ pub async fn get_enabled_features(
         .map_err(Into::into)
 }
 
+/// Return the feature keys a store-type preset enables.
+///
+/// The first-run flow asks the merchant for a store type and must then send the
+/// resulting feature set to `provision_device`. This reads that set from the one
+/// owner of the fact (`kasirmu_core::features::preset_feature_keys`) so the UI
+/// carries no second copy of the lists — the same reasoning as the shared wire
+/// types above, applied to a value rather than a shape.
+#[command]
+pub async fn get_preset_features(
+    state: State<'_, AppState>,
+    preset: String,
+) -> Result<EnabledFeaturesResult, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::setup::get_preset_features(&ctx, preset)
+        .await
+        .map_err(Into::into)
+}
+
 // ── Retired by ADR #56 §2.2/§2.3 ─────────────────────────────────────
 //
 // `write_setup` and `complete_setup` were REMOVED here. The body wrote the

@@ -377,6 +377,7 @@ import {
   getHardwareSettings,
   setHardwareSettingsScoped,
   getEnabledFeatures,
+  getPresetFeatures,
   getFirstRunState,
   provisionDevice,
 } from '@/api/settings';
@@ -439,6 +440,15 @@ describe('settings.ts IPC contract', () => {
     mockInvoke.mockResolvedValue({ features: {} });
     await getEnabledFeatures();
     expect(mockInvoke).toHaveBeenCalledWith('get_enabled_features', undefined);
+  });
+
+  it('getPresetFeatures invokes "get_preset_features" with the store-type preset', async () => {
+    // The first-run flow's store type must reach the backend, which owns the
+    // preset→features fact. A rename on either side would leave the UI asking a
+    // door that does not exist and silently provisioning an empty feature set.
+    mockInvoke.mockResolvedValue({ features: [] });
+    await getPresetFeatures('restaurant');
+    expect(mockInvoke).toHaveBeenCalledWith('get_preset_features', { preset: 'restaurant' });
   });
 
   it('getFirstRunState invokes "get_first_run_state" with the terminal id', async () => {

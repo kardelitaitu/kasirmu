@@ -676,6 +676,7 @@ pub fn run() {
                 commands::settings::get_deployment_info,
                 commands::settings::set_setting,
                 commands::setup::get_enabled_features,
+                commands::setup::get_preset_features,
                 commands::setup::get_first_run_state,
                 commands::setup::provision_device,
                 commands::desktop_link::link_device_google,

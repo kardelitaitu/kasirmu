@@ -496,6 +496,68 @@ fn custom_preset_is_empty() {
     let reg = FeatureRegistry::custom();
     assert_eq!(reg.count(), 0);
 }
+// ── The preset SLUG lookup (the first-run path's one owner) ──────
+//
+// `preset_feature_keys` is what first-run provisioning reads to turn the
+// merchant's store-type answer into the feature set the terminal starts with.
+// Before it existed the UI sent an empty list, so every fresh install opened
+// with no features enabled.
+
+#[test]
+fn preset_feature_keys_resolves_every_slug_to_its_constructor() {
+    // One assertion per slug, checked against the registry the constructor
+    // builds - so a preset added to `preset_registry` without being wired here,
+    // or a list that drifts from its constructor, fails rather than silently
+    // provisioning a different terminal than the merchant chose.
+    for slug in [
+        "simple-retail",
+        "restaurant",
+        "full-store",
+        "cafe",
+        "franchise",
+        "custom",
+    ] {
+        let keys = preset_feature_keys(slug).expect("known slug must resolve");
+        let mut expected: Vec<String> = preset_registry(slug)
+            .unwrap()
+            .enabled_features()
+            .map(|f| feature_key(f).to_string())
+            .collect();
+        expected.sort();
+        assert_eq!(keys, expected, "slug {slug:?} drifted from its constructor");
+        // The wire value must be stable across calls. `enabled_features` is
+        // documented unordered, so without the sort this would flake.
+        assert_eq!(
+            keys,
+            preset_feature_keys(slug).unwrap(),
+            "slug {slug:?} returned a different order on a second call"
+        );
+        assert!(keys.windows(2).all(|w| w[0] <= w[1]), "slug {slug:?} not sorted");
+    }
+}
+
+#[test]
+fn preset_feature_keys_agrees_with_the_registry_it_wraps() {
+    // The wrapper must not re-derive. A restaurant really does carry the
+    // kitchen display and the table manager, which the pre-#56 TypeScript copy
+    // of this list omitted.
+    let keys = preset_feature_keys("restaurant").unwrap();
+    assert!(keys.contains(&"restaurant".to_string()));
+    assert!(keys.contains(&"kitchen-display".to_string()));
+    assert!(keys.contains(&"table-management".to_string()));
+
+    let retail = preset_feature_keys("simple-retail").unwrap();
+    assert!(retail.contains(&"cash-payment".to_string()));
+    // A shop must NOT get the kitchen display; that is the one difference
+    // `LocationKind` also encodes.
+    assert!(!retail.contains(&"kitchen-display".to_string()));
+}
+
+#[test]
+fn preset_registry_rejects_an_unknown_slug() {
+    assert!(preset_registry("not-a-store-type").is_none());
+    assert!(preset_feature_keys("not-a-store-type").is_none());
+}
 
 #[test]
 fn cafe_preset_has_expected_features() {

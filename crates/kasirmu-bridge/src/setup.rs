@@ -211,6 +211,26 @@ pub async fn get_enabled_features(
     Ok(EnabledFeaturesResult { features })
 }
 
+/// Return the feature keys a store-type preset enables.
+///
+/// First-run provisioning asks the merchant for a store type (`ProvisioningFlow`
+/// step 1) and must send the resulting feature set to `provision_device`. The
+/// preset→features fact lives in `kasirmu_core::features::preset_feature_keys`;
+/// this exposes it so the UI does not carry a second copy of the lists — which
+/// is exactly the drift `ProvisionDeviceArgs::preset`'s own doc warns against.
+///
+/// No session is required: the flow calls this BEFORE any account exists, the
+/// same pre-session position as `get_first_run_state`. The answer is a static
+/// table rather than tenant state, so there is nothing to authorise.
+pub async fn get_preset_features(
+    _ctx: &BridgeCtx<'_>,
+    preset: String,
+) -> Result<EnabledFeaturesResult, BridgeError> {
+    kasirmu_core::features::preset_feature_keys(&preset)
+        .map(|features| EnabledFeaturesResult { features })
+        .ok_or_else(|| BridgeError::Invalid(format!("unknown store preset: {preset}")))
+}
+
 // ── Retired by ADR #56 §2.2 ──────────────────────────────────────────
 //
 // `complete_setup` was REMOVED here. It wrote exactly the two booleans §2.1

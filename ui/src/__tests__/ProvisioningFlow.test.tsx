@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ProvisioningFlow from '../features/setup/ProvisioningFlow';
-import { provisionDevice } from '@/api/settings';
+import { getPresetFeatures, provisionDevice } from '@/api/settings';
 import {
   startDevicePairing,
   pollDevicePairing,
@@ -22,6 +22,7 @@ vi.mock('@/components/Toast', () => ({
 
 vi.mock('@/api/settings', () => ({
   provisionDevice: vi.fn(),
+  getPresetFeatures: vi.fn(),
 }));
 
 vi.mock('@/api/system', () => ({
@@ -95,6 +96,8 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
       home_region: 'id-jkt',
     });
     vi.mocked(isTabletShell).mockReturnValue(false);
+    // Default: the preset lookup answers. Individual tests override it.
+    vi.mocked(getPresetFeatures).mockResolvedValue({ features: [] });
   });
 
   const fillBasicForm = () => {
@@ -133,6 +136,75 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
           owner_display_name: 'Budi Santoso',
           owner_pin: '1234',
         }),
+      );
+      expect(mockOnProvisioned).toHaveBeenCalled();
+    }, FAST_WAIT);
+  });
+
+  // ── The store type must reach the terminal as FEATURES ────────────
+  //
+  // Before this, the flow sent `features: []` unconditionally, so a terminal
+  // provisioned as a Restaurant opened with no features at all - no kitchen
+  // display, no tables, no cash. The store type was collected and then dropped.
+
+  it('sends the chosen store type AS the feature set, not an empty list', async () => {
+    vi.mocked(getPresetFeatures).mockResolvedValueOnce({
+      features: ['restaurant', 'kitchen-display', 'table-management', 'cash-payment'],
+    });
+
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    fireEvent.click(screen.getByTestId('store-type-restaurant'));
+    fireEvent.change(screen.getByLabelText(/Shop name/i), { target: { value: 'Warung Makan' } });
+    fireEvent.change(screen.getByLabelText(/Your name/i), { target: { value: 'Budi Santoso' } });
+    fireEvent.change(screen.getByLabelText(/Login name/i), { target: { value: 'budi' } });
+    fireEvent.change(screen.getByLabelText(/^PIN/i), { target: { value: '1234' } });
+    fireEvent.change(screen.getByLabelText(/Confirm PIN/i), { target: { value: '1234' } });
+    fireEvent.click(screen.getByTestId('provision-submit'));
+
+    await waitFor(() => {
+      // The lookup is asked for the store type the merchant picked...
+      expect(getPresetFeatures).toHaveBeenCalledWith('restaurant');
+      // ...and its answer is what provisioning receives.
+      expect(provisionDevice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          preset: 'restaurant',
+          features: ['restaurant', 'kitchen-display', 'table-management', 'cash-payment'],
+          location_kind: 'restaurant',
+        }),
+      );
+    }, FAST_WAIT);
+  });
+
+  it('a shop does not receive the restaurant feature set', async () => {
+    vi.mocked(getPresetFeatures).mockResolvedValueOnce({
+      features: ['simple-retail', 'cash-payment', 'barcode-scanning'],
+    });
+
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    fillBasicForm();
+    fireEvent.click(screen.getByTestId('provision-submit'));
+
+    await waitFor(() => {
+      expect(getPresetFeatures).toHaveBeenCalledWith('simple-retail');
+      const sent = vi.mocked(provisionDevice).mock.calls[0]![0];
+      expect(sent.features).not.toContain('kitchen-display');
+      expect(sent.location_kind).toBe('retail');
+    }, FAST_WAIT);
+  });
+
+  it('still provisions when the preset lookup fails, rather than stranding the merchant', async () => {
+    // An unknown store type must degrade to an empty set, the same way
+    // `write_provisioning_settings` skips an unknown feature key. Failing the
+    // submit here would leave the merchant stuck at the first-run screen.
+    vi.mocked(getPresetFeatures).mockRejectedValueOnce(new Error('unknown store preset'));
+
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    fillBasicForm();
+    fireEvent.click(screen.getByTestId('provision-submit'));
+
+    await waitFor(() => {
+      expect(provisionDevice).toHaveBeenCalledWith(
+        expect.objectContaining({ features: [] }),
       );
       expect(mockOnProvisioned).toHaveBeenCalled();
     }, FAST_WAIT);

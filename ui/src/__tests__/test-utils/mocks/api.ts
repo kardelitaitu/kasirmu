@@ -106,6 +106,7 @@ export interface SettingsApiOverrides {
   getReceiptSettings?: ReturnType<typeof vi.fn>;
   getCreditSettings?: ReturnType<typeof vi.fn>;
   getEnabledFeatures?: ReturnType<typeof vi.fn>;
+  getPresetFeatures?: ReturnType<typeof vi.fn>;
   getStoreSettingsScoped?: ReturnType<typeof vi.fn>;
   getSettingScoped?: ReturnType<typeof vi.fn>;
   setReceiptSettingsScoped?: ReturnType<typeof vi.fn>;
@@ -140,6 +141,10 @@ export function createSettingsApiMock(overrides: SettingsApiOverrides = {}) {
       { printerConnection: 'auto', printerDevicePath: '', printerPaperSize: '80',
         scannerDeviceId: '', scannerInputMode: 'auto' },
     )),
+    // The preset→features lookup the first-run flow makes before submitting.
+    // Defaults to the empty set, which is the pre-fix behaviour; a test that
+    // cares about the derived set overrides it.
+    getPresetFeatures: vi.fn(() => Promise.resolve({ features: [] })),
     getFirstRunState: vi.fn(() =>
       Promise.resolve({
         state: 'provisioned' as const,

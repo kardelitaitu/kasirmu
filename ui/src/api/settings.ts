@@ -237,6 +237,18 @@ export interface EnabledFeaturesResult {
 export const getEnabledFeatures = (): Promise<EnabledFeaturesResult> =>
   loggedInvoke<EnabledFeaturesResult>('get_enabled_features');
 
+/**
+ * Get the feature keys a store-type preset enables.
+ *
+ * The preset→features fact has exactly one owner
+ * (`kasirmu_core::features::preset_feature_keys`); this reads it rather than
+ * letting the UI keep a second copy of the lists, which is the drift
+ * `ProvisionDeviceArgs.preset`'s own doc warns against. Called by the first-run
+ * flow BEFORE a session exists, so it resolves no session.
+ */
+export const getPresetFeatures = (preset: string): Promise<EnabledFeaturesResult> =>
+  loggedInvoke<EnabledFeaturesResult>('get_preset_features', { preset });
+
 // ── User Preferences ─────────────────────────────────────────
 
 /** A single user preference key-value pair. */
