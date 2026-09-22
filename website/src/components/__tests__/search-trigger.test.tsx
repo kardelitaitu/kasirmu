@@ -6,8 +6,16 @@ import { act } from 'react';
 import SearchTrigger from '../SearchTrigger';
 import { SEARCH_LABELS } from '../SearchModal';
 import { labelMap } from '../../i18n';
+import type { SearchDoc } from '../../lib/search-index';
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+
+// The real corpus coverage lives in lib/__tests__/search-index.test.ts; these
+// tests only need the prop present.
+const DOCS: SearchDoc[] = [
+  { slug: 'cloud-sync', title: 'Cloud Sync', description: 'Sync across stores.' },
+  { slug: 'settings', title: 'Settings & Data', description: 'Branding and receipts.' },
+];
 
 describe('SearchTrigger Component', () => {
   beforeEach(() => {
@@ -25,7 +33,7 @@ describe('SearchTrigger Component', () => {
     const root = createRoot(container);
 
     await act(async () => {
-      root.render(<SearchTrigger locale={locale} labels={labelMap(locale, SEARCH_LABELS)} />);
+      root.render(<SearchTrigger locale={locale} labels={labelMap(locale, SEARCH_LABELS)} docs={DOCS} />);
     });
 
     return {

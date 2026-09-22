@@ -6,8 +6,19 @@ import { act } from 'react';
 import SearchModal, { SEARCH_LABELS } from '../SearchModal';
 import SearchTrigger from '../SearchTrigger';
 import { labelMap } from '../../i18n';
+import type { SearchDoc } from '../../lib/search-index';
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+
+// Docs now arrive as a prop from the content collection. Ranking and real-corpus
+// coverage are tested in lib/__tests__/search-index.test.ts; here a small stand-in
+// is enough to exercise the modal's rendering and keyboard behaviour.
+const DOCS: SearchDoc[] = [
+  { slug: 'welcome', title: 'Welcome to kasir.mu', description: 'What kasir.mu is.' },
+  { slug: 'cloud-sync', title: 'Cloud Sync', description: 'Sync across stores.' },
+  { slug: 'inventory', title: 'Inventory & Warehouses', description: 'Track stock.' },
+  { slug: 'settings', title: 'Settings & Data', description: 'Branding and receipts.' },
+];
 
 describe('SearchModal Component', () => {
   beforeEach(() => {
@@ -31,6 +42,7 @@ describe('SearchModal Component', () => {
           onClose={onClose}
           locale={locale}
           labels={labelMap(locale, SEARCH_LABELS)}
+          docs={DOCS}
         />,
       );
     });
@@ -134,7 +146,7 @@ describe('SearchModal — keyboard navigation', () => {
     const root = createRoot(container);
     await act(async () => {
       root.render(
-        <SearchModal isOpen onClose={vi.fn()} locale={locale} labels={labelMap(locale, SEARCH_LABELS)} />,
+        <SearchModal isOpen onClose={vi.fn()} locale={locale} labels={labelMap(locale, SEARCH_LABELS)} docs={DOCS} />,
       );
     });
     await act(async () => {
@@ -264,7 +276,7 @@ describe('SearchTrigger — toggle', () => {
     document.body.appendChild(container);
     const root = createRoot(container);
     await act(async () => {
-      root.render(<SearchTrigger locale={locale} labels={labelMap(locale, SEARCH_LABELS)} />);
+      root.render(<SearchTrigger locale={locale} labels={labelMap(locale, SEARCH_LABELS)} docs={DOCS} />);
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 10));

@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { t, type Labels } from '../i18n/labels';
+import { buildSearchIndex, filterSearch, type SearchDoc, type SearchItem } from '../lib/search-index';
+
+export type { SearchItem, SearchDoc };
 
 /**
  * Strings this modal reads — the docs header's island root hands it the map.
@@ -16,23 +19,20 @@ export const SEARCH_LABELS = [
   'search.shortcutHint',
 ] as const;
 
-export interface SearchItem {
-  id: string;
-  title: string;
-  category: 'docs' | 'pages';
-  url: string;
-  keywords?: string;
-}
-
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   locale: string;
   /** Strings this modal reads; see `SEARCH_LABELS`. */
   labels: Labels;
+  /**
+   * Every doc in this locale, from the content collection via `Header.astro`.
+   * The searchable docs are never hardcoded here — see `src/lib/search-index.ts`.
+   */
+  docs: SearchDoc[];
 }
 
-export default function SearchModal({ isOpen, onClose, locale, labels }: Props) {
+export default function SearchModal({ isOpen, onClose, locale, labels, docs }: Props) {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -43,53 +43,9 @@ export default function SearchModal({ isOpen, onClose, locale, labels }: Props) 
     setMounted(true);
   }, []);
 
-  const searchItems: SearchItem[] = useMemo(
-    () => [
-      // Core pages
-      { id: 'home', title: locale === 'id' ? 'Beranda' : 'Home', category: 'pages', url: `/${locale}` },
-      { id: 'pricing', title: locale === 'id' ? 'Harga & Paket' : 'Pricing & Plans', category: 'pages', url: `/${locale}/pricing`, keywords: 'plans subscription pro plus free enterprise cost gratis murah harga' },
-      { id: 'download', title: locale === 'id' ? 'Unduh Aplikasi' : 'Download Application', category: 'pages', url: `/${locale}/download`, keywords: 'windows macos linux android ios tablet pos terminal installer hp gampang mudah gratis ringan' },
-      { id: 'features', title: locale === 'id' ? 'Fitur Lengkap' : 'Features & Architecture', category: 'pages', url: `/${locale}/features`, keywords: 'offline kds multi store shifts inventory payments kasir mudah ringan gampang' },
-      { id: 'account', title: locale === 'id' ? 'Dashboard Akun & Lisensi' : 'Account & License Dashboard', category: 'pages', url: `/${locale}/account`, keywords: 'profile subscription license terminals' },
-      { id: 'support', title: locale === 'id' ? 'Bantuan & Kontak' : 'Support & Contact', category: 'pages', url: `/${locale}/support`, keywords: 'faq contact discord email help' },
-      { id: 'cara', title: locale === 'id' ? 'Cara Pakai kasir.mu' : 'How to Use kasir.mu', category: 'pages', url: `/${locale}/cara`, keywords: 'cara pakai install jualan qris stok offline shift how to guide tutorial' },
-      { id: 'perbandingan', title: locale === 'id' ? 'Perbandingan kasir.mu vs Lainnya' : 'kasir.mu vs Others Compared', category: 'pages', url: `/${locale}/perbandingan`, keywords: 'perbandingan vs moka majoo olsera qasir pawoon compare alternatif murah' },
-      
-      // Vertical Solutions
-      { id: 'kasir-gratis', title: locale === 'id' ? 'Kasir Gratis Selamanya' : 'Free POS Forever', category: 'pages', url: `/${locale}/kasir-gratis`, keywords: 'kasir gratis free umkm warung murah mudah ringan offline' },
-      { id: 'kasir-murah', title: locale === 'id' ? 'Kasir Murah Tanpa Biaya Tersembunyi' : 'Cheap POS With No Hidden Fees', category: 'pages', url: `/${locale}/kasir-murah`, keywords: 'kasir murah harga price cheap affordable plus pro gratis' },
-      { id: 'kasir-qris', title: locale === 'id' ? 'Kasir QRIS Statis + Dinamis' : 'Static + Dynamic QRIS POS', category: 'pages', url: `/${locale}/kasir-qris`, keywords: 'kasir qris qr statis dinamis midtrans ewallet dompet digital scan barcode' },
-      { id: 'kasir-android', title: locale === 'id' ? 'Kasir Android & Tablet' : 'Android & Tablet POS', category: 'pages', url: `/${locale}/aplikasi-kasir-android`, keywords: 'kasir android tablet hp ringan mudah offline apk' },
-      { id: 'cafe', title: locale === 'id' ? 'Solusi untuk Kafe & Kedai Kopi' : 'Solutions for Cafes & Coffee Shops', category: 'pages', url: `/${locale}/cafe`, keywords: 'cafe coffee table orders kds modifiers kasir kafe' },
-      { id: 'restaurant', title: locale === 'id' ? 'Solusi untuk Restoran & F&B' : 'Solutions for Restaurants', category: 'pages', url: `/${locale}/restaurant`, keywords: 'restaurant kitchen display split bill service charge kasir restoran' },
-      { id: 'minimarket', title: locale === 'id' ? 'Solusi untuk Minimarket & Ritel' : 'Solutions for Minimarkets & Retail', category: 'pages', url: `/${locale}/minimarket`, keywords: 'barcode scanning sku inventory fast retail kasir toko' },
-      { id: 'warung', title: locale === 'id' ? 'Solusi untuk Warung & UMKM' : 'Solutions for Warung & Small Business', category: 'pages', url: `/${locale}/warung`, keywords: 'umkm warung simple affordable fast cash qris kasir murah gratis mudah gampang ringan' },
-      { id: 'warehouse', title: locale === 'id' ? 'Solusi Manajemen & Sinkronisasi Gudang' : 'Solutions for Warehouse Sync & Stock Management', category: 'pages', url: `/${locale}/warehouse`, keywords: 'warehouse stock inventory 3pl transfer logistics offline' },
+  const searchItems: SearchItem[] = useMemo(() => buildSearchIndex(locale, docs), [locale, docs]);
 
-      // Documentation
-      { id: 'doc-welcome', title: locale === 'id' ? 'Pengenalan kasir.mu' : 'Welcome to kasir.mu', category: 'docs', url: `/${locale}/docs/welcome`, keywords: 'getting started overview architecture introduction' },
-      { id: 'doc-activation', title: locale === 'id' ? 'Aktivasi Lisensi & Terminal' : 'License & Terminal Activation', category: 'docs', url: `/${locale}/docs/activation`, keywords: 'activate license key register terminal offline token' },
-      { id: 'doc-installation', title: locale === 'id' ? 'Panduan Instalasi' : 'Installation Guide', category: 'docs', url: `/${locale}/docs/installation`, keywords: 'install desktop windows linux macos build' },
-      { id: 'doc-first-sale', title: locale === 'id' ? 'Membuat Transaksi Pertama' : 'Processing Your First Sale', category: 'docs', url: `/${locale}/docs/first-sale`, keywords: 'pos checkout cash card barcode print receipt' },
-      { id: 'doc-inventory', title: locale === 'id' ? 'Manajemen Stok & SKU' : 'Inventory & Stock Management', category: 'docs', url: `/${locale}/docs/inventory`, keywords: 'stock items inventory variants low stock alert' },
-      { id: 'doc-payments', title: locale === 'id' ? 'Integrasi Pembayaran & QRIS' : 'Payments & QRIS Integration', category: 'docs', url: `/${locale}/docs/payments`, keywords: 'midtrans paddle qris card edc cash payments' },
-      { id: 'doc-shifts', title: locale === 'id' ? 'Manajemen Shift & Kasir' : 'Shift Management & Cash Drawer', category: 'docs', url: `/${locale}/docs/shifts`, keywords: 'cash in cash out shift end float reconciliation' },
-      { id: 'doc-cloud-sync', title: locale === 'id' ? 'Sinkronisasi Cloud & Offline' : 'Cloud Sync & Offline Mode', category: 'docs', url: `/${locale}/docs/cloud-sync`, keywords: 'offline local first peer to peer sync cloud backup' },
-      { id: 'doc-api-read-tiers', title: locale === 'id' ? 'Tingkat Akses Baca API' : 'API Read Tiers', category: 'docs', url: `/${locale}/docs/api-read-tiers`, keywords: 'jwt permissions read tier terminal dashboard audit scoped token insufficient scope' },
-    ],
-    [locale]
-  );
-
-  const filteredItems = useMemo(() => {
-    if (!query.trim()) return searchItems.slice(0, 8);
-    const q = query.trim().toLowerCase();
-    return searchItems.filter(
-      (item) =>
-        item.title.toLowerCase().includes(q) ||
-        item.url.toLowerCase().includes(q) ||
-        item.keywords?.toLowerCase().includes(q)
-    );
-  }, [query, searchItems]);
+  const filteredItems = useMemo(() => filterSearch(searchItems, query), [query, searchItems]);
 
   useEffect(() => {
     if (isOpen) {
