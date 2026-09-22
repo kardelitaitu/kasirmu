@@ -131,6 +131,15 @@ Three screens, one defect class, found by census then verified individually:
 | `StaffLoginScreen` | A wrong PIN showed a CSS shake (invisible to a screen reader) + a toast. The PIN region itself never became invalid. | `aria-invalid` on the dots row, derived from the same condition the existing toast gate resets on. |
 | `SessionLockScreen` | Same, **plus** its four dot spans had no `aria-hidden` while the login screen's did — so its row was announced and then four unlabelled elements inside it. | `aria-invalid` on the row + `aria-hidden` on the spans. |
 | `CreatePinScreen` | The banner named the RULE ("All fields are required") but never which input broke it; no input was marked. | Validation now records the offending field(s); each bad input carries its own `aria-invalid` and error border, cleared as soon as that field is edited. |
+| `LicenseActivationScreen` (round 4) | **The app's own email validation was DEAD**: no `noValidate` + `type="email"` meant native constraint validation refused to fire submit, so `handleActivate` never ran and `auth-validation-invalid-email` — translated in **both** bundles — was unreachable. The user got the browser's untranslated bubble. | `noValidate` hands validation to the app, whose branch already shows localized copy; plus the offending field is marked. |
+
+**All four app-side auth screens now carry `aria-invalid`** (verified individually — StaffLogin 1, SessionLock 1, CreatePin 5, LicenseActivation 3 occurrences).
+
+### Finding the dead branch was the point of the test
+
+The round-4 test failed with **no banner at all**, which *no branch of the handler can produce* — every path sets a message. That impossibility is what pointed at native constraint validation rather than at my own code. Chasing it instead of weakening the assertion is what surfaced a dead translated string.
+
+**A test that only asserts "the happy path still works" would have shipped that branch dead forever.**
 
 **The mismatch case is deliberately asymmetric with the others**: on a PIN mismatch
 `CreatePinScreen` marks **both** PIN fields, because the screen cannot know which one holds the
@@ -140,7 +149,20 @@ typo. Marking only the confirm field would assert something it does not know.
 `aria-invalid` attribute removed — StaffLogin 2 red, SessionLock 2 red, CreatePin 4 red — then
 restored and re-run green. A test that cannot go red is not coverage.
 
-**Verification:** `tsc --noEmit` clean · `npm run lint` 0 errors · **175 tests pass across 18
-auth suites** · the five CSS walkers pass with the new `[aria-invalid='true']` selector.
+**Verification:** `tsc --noEmit` clean · `npm run lint` 0 errors · the five CSS walkers pass with
+the new `[aria-invalid='true']` selectors · **the FULL UI suite: 603 files, 10,295 tests, 0
+failures.**
 
-Commits: `d8666db1e` (staff login), `eb632399f` (session lock), `b705afed1` (create owner).
+Commits: `d8666db1e` (staff login), `eb632399f` (session lock), `b705afed1` (create owner),
+`f968914a0` (activation + dead branch).
+
+### Remaining, and honestly not mine to claim
+
+- **The website auth islands are unaudited by me.** Another agent owns that surface and has
+  built a substantial gate (landmarks, accessible names, resolving ARIA refs, keyboard order)
+  over 89 built pages. Their gate is **static**: it cannot see the runtime error→field
+  association class of defect this round fixed four times on the app side. That class may well
+  exist in `AuthForm.tsx` / `SignupForm.tsx` and is worth a look — but it is a collision, so it
+  needs a decision about ownership before I start.
+- **No end-to-end run on a real device.** Every fix here is asserted at the DOM level. The visual
+  result of the new error borders is unverified on any real screen.
