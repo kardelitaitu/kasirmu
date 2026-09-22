@@ -240,6 +240,44 @@ whole spec file.
 provided "to exercise this screen" (`AppShell.tsx:163-170`), which `new-flows.spec.ts` already used
 for the success case.
 
+### Round 8 — the unasserted link in the website's i18n chain
+
+I set out to build browser-level verification for the website auth islands. Investigating first
+showed that the wrong investment: the island-label gate already covers key↔list↔locale, and a
+Playwright harness for the website does not exist at all. What I found instead was a **precise
+gap in an existing gate**.
+
+**The chain, and where it was unguarded:**
+
+```
+  component reads t(labels, 'signup.title')
+    → island declares it in SIGNUP_FORM_LABELS        ✅ graded by island-label-coverage
+    → the key resolves in en.json AND id.json         ✅ graded by island-label-coverage
+    → signup.astro imports that list                  ❌ UNGRADED
+    → labelMap(locale, LIST) builds the map           ❌ UNGRADED
+    → <SignupForm labels={thatMap} /> receives it     ❌ UNGRADED
+```
+
+The existing gate **names its cases by page** ("signup (signup.astro)") but never opens the page —
+so the final three links were asserted nowhere. And the failure is silent: `t()` falls back to
+the key itself (`src/i18n/labels.ts:19-21`), so a mis-wired page renders `signup.title` to a real
+visitor while every one of the 234 website tests stays green.
+
+**Fixed:** `c3e35ec15` — `src/__tests__/island-page-wiring.test.ts`, 13 tests over the six
+`[locale]` islands that receive a `labels` prop. Both real failure modes were injected and
+confirmed to fail:
+
+| Injected defect | Result |
+|---|---|
+| `signup.astro` builds its map from `AUTH_FORM_LABELS` | ❌ caught |
+| `signup.astro` builds the map but passes `labels={{}}` | ❌ caught |
+
+Search is excluded (mounted by `Header.astro`, not a `[locale]` page) and the exclusion is
+asserted rather than left implicit, so a new island added to the other suite cannot leave this half
+silently ungraded.
+
+**Verification:** `npx tsc --noEmit` clean · **1,380 website tests pass across 64 files**.
+
 ### Remaining, and honestly not mine to claim
 
 - **The website auth islands are unaudited by me.** Another agent owns that surface and has
