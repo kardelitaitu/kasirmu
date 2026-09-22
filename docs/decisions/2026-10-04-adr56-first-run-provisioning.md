@@ -864,6 +864,12 @@ and only the handoff is new.
 hatch to §2.4's `local` tier so a merchant whose phone is elsewhere is never stranded. The poll
 must be idempotent under §2.2's guard, or a lost response mints a second terminal.
 
+#### IMPLEMENTED 2026-09-22 — Device-Code Pairing Server Surface Shipped
+`apps/license-server/pairing.go` implements:
+- `POST /api/v1/pairing/start`: creates pairing session with 8-character transcription-safe Crockford code (`XXXX-XXXX`), 32-byte hex `poll_token`, 10-minute TTL, and QR link (`https://kasir.mu/pair?code=...`).
+- `POST /api/v1/pairing/claim`: authenticated endpoint for phone operator (`resolveWebSession`) or admin key. Verifies single-use pairing code, registers sync terminal via `terminalPayloadForLink`, and marks session claimed.
+- `POST /api/v1/pairing/poll`: idempotent poll endpoint for tablet. Returns `{"status": "pending"}` while waiting, or `{"status": "claimed", "tenant_id": ..., "email": ..., "terminal": ...}` once paired. Holds session until TTL so network drops can re-poll safely.
+
 ### Q2 — Which shell converges on which order? `[was blocking]` — DECIDED
 
 | Option | Pros | Cons |

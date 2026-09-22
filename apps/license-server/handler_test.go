@@ -368,6 +368,10 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		// The emailed-code alternative (ADR #54 §2.6): no browser, so the tablet can use it.
 		se.Router.POST("/api/v1/desktop/link/email/request", handleDesktopLinkEmailRequest(app))
 		se.Router.POST("/api/v1/desktop/link/email/consume", handleDesktopLinkEmailConsume(app))
+		// Tablet device-code pairing (ADR #56 §2.5 / §5 Q1).
+		se.Router.POST("/api/v1/pairing/start", handlePairingStart(app))
+		se.Router.POST("/api/v1/pairing/claim", handlePairingClaim(app))
+		se.Router.POST("/api/v1/pairing/poll", handlePairingPoll(app))
 		// ADR #42 dashboard endpoints (user + admin).
 		se.Router.GET("/api/v1/web/usage", handleWebUsage(app))
 		se.Router.GET("/api/v1/web/devices", handleWebDevices(app))
