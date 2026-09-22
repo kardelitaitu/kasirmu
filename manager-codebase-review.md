@@ -39,7 +39,7 @@ Ordered by merchant-visible consequence, not by how bad the code looks. The DEFE
 
 ### How to read the rest
 
-Section 3 is a scorecard if you want one screen. Sections 4 through 14 are the evidence, grouped by axis, each ending with what is right as well as what is wrong. Section 15 is the remediation plan with an acceptance check per item. Section 16 lists the decisions that are yours, not the code's. Section 17 states what this review could not determine, and section 14 holds four findings that arrived after the first draft - two of them P0 - together with what they changed., and the appendix records which headline claims were confirmed, refined, or downgraded after independent verification - including one that was over-claimed and corrected.
+Section 3 is a scorecard if you want one screen. Sections 4 through 14 are the evidence, grouped by axis, each ending with what is right as well as what is wrong. A tickable companion - one checkbox per remediation item, with its file fence, its acceptance check and a verification log - is at manager-codebase-review-checklist.md. Section 15 is the remediation plan with an acceptance check per item. Section 16 lists the decisions that are yours, not the code's. Section 17 states what this review could not determine, and section 14 holds four findings that arrived after the first draft - two of them P0 - together with what they changed., and the appendix records which headline claims were confirmed, refined, or downgraded after independent verification - including one that was over-claimed and corrected.
 
 ---
 
