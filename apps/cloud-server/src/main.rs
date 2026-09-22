@@ -349,6 +349,15 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
         db::DbPool::Postgres(pg_pool) => {
             info!("running with PostgreSQL backend");
+            // Tenant isolation: say out loud, once at boot, whether the
+            // connection can bypass row-level security. The generated schema
+            // enables RLS and creates a tenant_isolation policy on 34 tenant
+            // tables, but a superuser - and the table owner, absent FORCE ROW
+            // LEVEL SECURITY - bypasses those policies, which leaves them
+            // inert while looking present. Any verdict other than "enforced"
+            // is therefore an ERROR: on a shared cloud database it means one
+            // tenant can read another's rows.
+            report_rls_posture(pg_pool).await;
             // The kasirmu-api REST handlers dispatch on `state.pg` (Some →
             // Postgres data layer, None → the SQLite `Store` path), so the
             // API layer reads/writes Postgres here. The in-memory SQLite is
@@ -401,6 +410,43 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     }
     Ok(())
+}
+
+/// Report, at boot, whether the PostgreSQL connection can bypass row-level
+/// security.
+///
+/// Advisory, never fatal: the server still starts when the verdict is bad, but
+/// the operator gets an ERROR line naming the role and the reason. Failure to
+/// read the catalog is a warning, not a verdict — "unknown" is not "enforced".
+async fn report_rls_posture(pool: &deadpool_postgres::Pool) {
+    let facts = match pool.get().await {
+        Ok(client) => match crate::db::rls_facts(&client).await {
+            Ok(facts) => facts,
+            Err(e) => {
+                tracing::warn!(error = %e, "tenant-isolation posture unknown: could not read the catalog");
+                return;
+            }
+        },
+        Err(e) => {
+            tracing::warn!(error = %e, "tenant-isolation posture unknown: no connection from the pool");
+            return;
+        }
+    };
+
+    let posture = crate::db::RlsPosture::from_facts(&facts);
+    let message = posture.message(&facts.role);
+    if posture.is_enforced() {
+        info!(rls_posture = posture.as_str(), "{}", message);
+    } else {
+        tracing::error!(
+            rls_posture = posture.as_str(),
+            role = %facts.role,
+            forced_tables = facts.forced_tables,
+            protected_tables = facts.protected_tables,
+            "{}",
+            message
+        );
+    }
 }
 
 /// Start the HTTP server on the configured port with graceful shutdown.
@@ -458,6 +504,17 @@ struct HealthResponse {
     sync_queue_depth: i64,
     /// ISO-8601 timestamp of the most recent sync activity, or null.
     last_sync_at: Option<String>,
+    /// Whether tenant isolation (PostgreSQL row-level security) is actually in
+    /// force on the connection this process uses. One of the
+    /// db::RlsPosture verdict ids ("enforced", "bypassed_by_superuser",
+    /// "bypassed_by_owner_role", "partially_enforced",
+    /// "no_protected_tables"), plus "not_applicable" on SQLite and "unknown"
+    /// when the catalog could not be read.
+    ///
+    /// A report only: the policies are enabled on 34 tenant tables, but a
+    /// superuser or a table owner bypasses them, so their presence is not the
+    /// same claim as their effect.
+    rls_posture: &'static str,
     /// Which portable key derivation THIS process selected: true when the
     /// at-rest credential families derive through the master key, false when
     /// they derive through the legacy static path.
@@ -498,18 +555,21 @@ async fn health_handler(
     // P8-3: all DB queries in a single lock acquisition. On the Postgres
     // branch the queue depth / last-sync are read from the real database
     // (the in-memory SQLite fallback is empty by design).
-    let (db_connected, db_latency_us, sync_queue_depth, last_sync_at, db_kind) = if let Some(pool) =
-        &state.pg
-    {
-        let db_start = std::time::Instant::now();
-        // The health endpoint must fail fast under pool saturation:
-        // the Docker healthcheck has its own --timeout=5s, so waiting
-        // the full 5s builder wait_timeout here would let the
-        // container be marked unhealthy during a burst. Bound the
-        // health-path wait to 2s — a degraded "db_connected: false"
-        // response is better than a container restart.
-        let (connected, last) =
-            match tokio::time::timeout(std::time::Duration::from_secs(2), pool.get()).await {
+    let (db_connected, db_latency_us, sync_queue_depth, last_sync_at, db_kind, rls_posture) =
+        if let Some(pool) = &state.pg {
+            let db_start = std::time::Instant::now();
+            // The health endpoint must fail fast under pool saturation:
+            // the Docker healthcheck has its own --timeout=5s, so waiting
+            // the full 5s builder wait_timeout here would let the
+            // container be marked unhealthy during a burst. Bound the
+            // health-path wait to 2s — a degraded "db_connected: false"
+            // response is better than a container restart.
+            let (connected, last, posture) = match tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                pool.get(),
+            )
+            .await
+            {
                 Ok(Ok(client)) => {
                     let last = client
                         .query_one(
@@ -520,78 +580,92 @@ async fn health_handler(
                         .await
                         .map(|r| r.get::<_, Option<String>>(0))
                         .unwrap_or(None);
-                    (true, last)
+                    // Tenant-isolation posture, read on the SAME client the
+                    // ping just used — one checkout, no extra pool slot. A
+                    // catalog read that fails is reported as "unknown" rather
+                    // than degrading the health status: whether RLS is in
+                    // force and whether the DB answers are separate questions.
+                    let posture = match crate::db::rls_facts(&client).await {
+                        Ok(facts) => crate::db::RlsPosture::from_facts(&facts).as_str(),
+                        Err(e) => {
+                            tracing::warn!(error = %e, "could not read the tenant-isolation posture");
+                            "unknown"
+                        }
+                    };
+                    (true, last, posture)
                 }
                 // Timeout (2s guard) OR deadpool error → degraded health.
-                Ok(Err(_)) => (false, None),
-                Err(_) => (false, None),
+                Ok(Err(_)) => (false, None, "unknown"),
+                Err(_) => (false, None, "unknown"),
             };
-        let latency = db_start.elapsed().as_micros() as u64;
+            let latency = db_start.elapsed().as_micros() as u64;
 
-        // The queue-depth COUNT (indexed scan) is served from a 10s
-        // cache — the healthcheck probes every 5s, so consecutive
-        // probes reuse the same depth instead of re-scanning the
-        // queue. The live DB ping above is what the healthcheck
-        // actually needs; depth is informational.
-        let depth = match state.health_depth_cache.cached().await {
-            Some(d) => d,
-            None => {
-                let fresh = if connected {
-                    match tokio::time::timeout(std::time::Duration::from_secs(2), pool.get()).await
-                    {
-                        Ok(Ok(client)) => client
-                            .query_one(
-                                "SELECT COUNT(*) FROM offline_queue WHERE status = 'pending'",
-                                &[],
-                            )
+            // The queue-depth COUNT (indexed scan) is served from a 10s
+            // cache — the healthcheck probes every 5s, so consecutive
+            // probes reuse the same depth instead of re-scanning the
+            // queue. The live DB ping above is what the healthcheck
+            // actually needs; depth is informational.
+            let depth = match state.health_depth_cache.cached().await {
+                Some(d) => d,
+                None => {
+                    let fresh = if connected {
+                        match tokio::time::timeout(std::time::Duration::from_secs(2), pool.get())
                             .await
-                            .map(|r| r.get::<_, i64>(0))
-                            .unwrap_or(0),
-                        _ => 0,
-                    }
-                } else {
-                    0
-                };
-                state.health_depth_cache.store(fresh).await;
-                fresh
-            }
+                        {
+                            Ok(Ok(client)) => client
+                                .query_one(
+                                    "SELECT COUNT(*) FROM offline_queue WHERE status = 'pending'",
+                                    &[],
+                                )
+                                .await
+                                .map(|r| r.get::<_, i64>(0))
+                                .unwrap_or(0),
+                            _ => 0,
+                        }
+                    } else {
+                        0
+                    };
+                    state.health_depth_cache.store(fresh).await;
+                    fresh
+                }
+            };
+
+            (connected, latency, depth, last, "postgres", posture)
+        } else {
+            let db_start = std::time::Instant::now();
+            let conn = state.db.lock().await;
+
+            let ping_result = conn.query_row("SELECT 1", [], |_| Ok(()));
+            let latency = db_start.elapsed().as_micros() as u64;
+            let connected = ping_result.is_ok();
+
+            // Same 10s depth cache on the SQLite branch.
+            let depth = match state.health_depth_cache.cached().await {
+                Some(d) => d,
+                None => {
+                    let fresh = conn
+                        .query_row(
+                            "SELECT COUNT(*) FROM offline_queue WHERE status = 'pending'",
+                            [],
+                            |row| row.get::<_, i64>(0),
+                        )
+                        .unwrap_or(0);
+                    state.health_depth_cache.store(fresh).await;
+                    fresh
+                }
+            };
+
+            let last = conn
+                .query_row(
+                    "SELECT MAX(synced_at) FROM offline_queue WHERE synced_at IS NOT NULL",
+                    [],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .unwrap_or(None);
+
+            // SQLite has no row-level security, so the question does not arise.
+            (connected, latency, depth, last, "sqlite", "not_applicable")
         };
-
-        (connected, latency, depth, last, "postgres")
-    } else {
-        let db_start = std::time::Instant::now();
-        let conn = state.db.lock().await;
-
-        let ping_result = conn.query_row("SELECT 1", [], |_| Ok(()));
-        let latency = db_start.elapsed().as_micros() as u64;
-        let connected = ping_result.is_ok();
-
-        // Same 10s depth cache on the SQLite branch.
-        let depth = match state.health_depth_cache.cached().await {
-            Some(d) => d,
-            None => {
-                let fresh = conn
-                    .query_row(
-                        "SELECT COUNT(*) FROM offline_queue WHERE status = 'pending'",
-                        [],
-                        |row| row.get::<_, i64>(0),
-                    )
-                    .unwrap_or(0);
-                state.health_depth_cache.store(fresh).await;
-                fresh
-            }
-        };
-
-        let last = conn
-            .query_row(
-                "SELECT MAX(synced_at) FROM offline_queue WHERE synced_at IS NOT NULL",
-                [],
-                |row| row.get::<_, Option<String>>(0),
-            )
-            .unwrap_or(None);
-
-        (connected, latency, depth, last, "sqlite")
-    };
 
     // P8-3: record health check Prometheus metrics.
     crate::metrics::HEALTH_CHECKS_TOTAL.inc();
@@ -609,6 +683,7 @@ async fn health_handler(
         db_latency_us,
         sync_queue_depth,
         last_sync_at,
+        rls_posture,
         // Read per request, never cached: the answer describes the process
         // that is answering, and it costs one env read plus one hex decode.
         portable_derivation_uses_master_key: kasirmu_core::crypto::master_key_derivation_active(),
