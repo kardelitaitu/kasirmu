@@ -17,6 +17,22 @@ function unwrapArgs<T extends Record<string, unknown> = Record<string, unknown>>
   return ((args as Record<string, unknown>)?.['args'] ?? args ?? {}) as T;
 }
 
+/**
+ * True when the page was opened with `?unprovisioned=1`.
+ *
+ * Read at CALL time rather than captured at module load, so a test can navigate
+ * and then assert without importing this module first. Guarded because the
+ * handler also runs under jsdom, where `window.location` exists but search may
+ * be empty — the absent case is the normal one and must not throw.
+ */
+function unprovisionedRequested(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).get('unprovisioned') === '1';
+  } catch {
+    return false;
+  }
+}
+
 
 const MOCK_ROLE_PERMISSIONS: Record<string, string[]> = {
   // Owner — global wildcard.
@@ -454,18 +470,33 @@ export const systemHandlers: Record<string, MockHandler> = {
     };
   },
 
-  // ADR #56 §2.1: the mock reports a PROVISIONED terminal so the dev shell
-  // routes to a session rather than the first-run flow. `provision_device`
+  // ADR #56 §2.1: the mock reports a PROVISIONED terminal by default so the dev
+  // shell routes to a session rather than the first-run flow. `provision_device`
   // echoes what it was asked to create, matching the real command's idempotent
   // read-back shape.
-  'get_first_run_state': () => ({
-    state: 'provisioned',
-    location_id: 'loc-1',
-    owner_user_id: 'user-1',
-    mode: 'local',
-    home_region: 'global',
-    tenant_id: null,
-  }),
+  //
+  // ?unprovisioned=1 opts into the OTHER answer, which is the only way to reach
+  // ProvisioningFlow in a browser: the desktop shell bypasses it entirely under
+  // `import.meta.env.DEV` (AppShell.tsx:214-217), and the tablet shell — which
+  // has no bypass — reads this same handler. So without this flag the setup flow
+  // has NO end-to-end coverage, measured in round 10 of the setup audit.
+  //
+  // A query param rather than a localStorage key, deliberately: it is an explicit
+  // per-navigation opt-in that cannot persist on a developer's machine, and it
+  // adds no key for `storageKeyPins.test.ts` to police. The default is unchanged,
+  // so every existing preview and E2E run behaves exactly as before.
+  'get_first_run_state': () => (
+    unprovisionedRequested()
+      ? { state: 'unprovisioned' }
+      : {
+          state: 'provisioned',
+          location_id: 'loc-1',
+          owner_user_id: 'user-1',
+          mode: 'local',
+          home_region: 'global',
+          tenant_id: null,
+        }
+  ),
   'provision_device': (a: unknown) => {
     const args = (a as { args?: Record<string, unknown> })?.args ?? {};
     return {
