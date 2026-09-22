@@ -6,25 +6,57 @@
  * default branch sends `/api/v1/*` to the RUST one. The licence server is a PocketBase app, so
  * every route it registers needs a carve-out naming it — and a route added without one answers
  * 404 in production while passing every test, because tests talk to the router and never to
- * caddy. That happened: the whole device-link flow (ADR #54 §2.5) sat under an unrouted prefix.
+ * caddy. That happened: the whole device-link flow (ADR #54 \2.5) sat under an unrouted prefix.
  *
- * The rule is mechanical: for each `/api/...` route literal in apps/license-server/main.go, its
- * four-segment prefix must appear as a `handle` in apps/unified/Caddyfile that proxies to the
- * PocketBase port. Nothing here reads caddy semantics beyond that; first-match-wins ordering is
- * not verified, only coverage.
+ * The rule is mechanical: for each route the licence server registers in apps/license-server/main.go,
+ * its four-segment prefix must appear as a `handle` in apps/unified/Caddyfile that proxies to the
+ * PocketBase port. Routes are read from the `se.Router.<METHOD>(...)` registrations, not from
+ * main.go's string literals alone: several are registered by constant (midtransSnapPath,
+ * paddleWebhookPath, midtransWebhookPath, trialPath, …) declared in sibling files, and a
+ * literal-only scan silently missed the whole Midtrans namespace. Nothing here reads caddy
+ * semantics beyond that; first-match-wins ordering is not verified, only coverage.
  */
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const main = readFileSync(join(root, 'apps/license-server/main.go'), 'utf8');
 const caddy = readFileSync(join(root, 'apps/unified/Caddyfile'), 'utf8');
 
+// The whole licence-server package: route constants live in the file that owns the handler.
+const dir = join(root, 'apps/license-server');
+const sources = readdirSync(dir)
+  .filter((f) => f.endsWith('.go') && !f.endsWith('_test.go'))
+  .sort()
+  .map((f) => [f, readFileSync(join(dir, f), 'utf8')]);
+const main = sources.find(([f]) => f === 'main.go')?.[1] ?? '';
+
+// Route constants: `fooPath = "/api/…"`, with or without its own `const` keyword.
+const routeConstants = new Map();
+for (const [, src] of sources) {
+  for (const m of src.matchAll(/^[ \t]*(?:const[ \t]+)?(\w+)[ \t]*=[ \t]*"(\/api\/[^"]*)"/gm)) {
+    routeConstants.set(m[1], m[2]);
+  }
+}
+
+// The routes actually registered: each argument is a literal or one of those constants.
 const prefixes = new Set();
-for (const m of main.matchAll(/"(\/api\/[^"]+)"/g)) {
-  prefixes.add(m[1].split('/').slice(0, 4).join('/'));
+const unresolved = [];
+for (const m of main.matchAll(/se\.Router\.[A-Z]+\([ \t]*([^,]+?)[ \t]*,/g)) {
+  const arg = m[1];
+  const route = arg.startsWith('"') ? arg.slice(1, -1) : routeConstants.get(arg);
+  if (route?.startsWith('/api/')) prefixes.add(route.split('/').slice(0, 4).join('/'));
+  else unresolved.push(arg);
+}
+if (unresolved.length > 0) {
+  console.error(
+    'unified-routes: could not resolve ' +
+      unresolved.length +
+      ' route registration(s) in main.go — the parser drifted: ' +
+      unresolved.join(', '),
+  );
+  process.exit(2);
 }
 if (prefixes.size === 0) {
   console.error('unified-routes: found no /api routes in the licence server — the parser drifted');
