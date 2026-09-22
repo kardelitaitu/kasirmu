@@ -532,7 +532,10 @@ fn preset_feature_keys_resolves_every_slug_to_its_constructor() {
             preset_feature_keys(slug).unwrap(),
             "slug {slug:?} returned a different order on a second call"
         );
-        assert!(keys.windows(2).all(|w| w[0] <= w[1]), "slug {slug:?} not sorted");
+        assert!(
+            keys.windows(2).all(|w| w[0] <= w[1]),
+            "slug {slug:?} not sorted"
+        );
     }
 }
 
