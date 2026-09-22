@@ -170,6 +170,7 @@ Fill one row per ticked item. An item is not done until the command and its resu
 | C8 S1 | 2026-09-23 | cargo test -p kasirmu-core --test backup_restore_integration | 21 passed, 0 failed - the deletion did not break the RUST-03 directory-target pins | 6814222 |
 | C5b | 2026-09-23 | cargo test -p kasirmu-mobile history | 19 passed, 0 failed (EXIT 0) | 1eee8e0f |
 | C5b | 2026-09-23 | cargo test -p kasirmu-mobile known_hazard | 2 passed - both pins inverted in place, names unchanged, both now asserting the CORRECTED behaviour | 1eee8e0f |
+| C6b | 2026-09-23 | cargo test -p kasirmu-core provisioning | 25 passed, 0 failed (was 22) - includes an_unsupported_timezone_is_rejected_and_names_the_accepted_values | 1fea7d78 |
 | C10 | | | | |
 | C11 | | | | |
 | C12 | | | | |
