@@ -115,6 +115,9 @@ export default function OtpInput({
           }}
           id={`${idPrefix}-${idx}`}
           type="text"
+          // The group above names the widget; each box still needs its own
+          // name, or a screen reader announces six unnamed text fields.
+          aria-label={`Digit ${idx + 1} of ${length}`}
           inputMode="numeric"
           pattern="[0-9]*"
           maxLength={length}

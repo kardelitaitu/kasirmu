@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type KeyboardEvent } from 'react';
 import { t, type Labels } from '../i18n/labels';
 import { isStrongPassword, passwordsMatch } from '../lib/passwordPolicy';
 import PasswordField, { PASSWORD_FIELD_LABELS } from './PasswordField';
@@ -243,6 +243,32 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
   const switchMode = (next: Mode) => {
     setMode(next);
     setError('');
+  };
+
+  /**
+   * Arrow keys move between the two tabs, per the WAI-ARIA tabs pattern: Tab
+   * enters and leaves the list once (roving tabindex below) and the arrows move
+   * within it. Selection follows focus, so a keyboard reader gets the same
+   * switch a click would make, through the same `switchMode`.
+   */
+  const onTabKeys = (event: KeyboardEvent<HTMLDivElement>) => {
+    const order: Mode[] = ['otp', 'password'];
+    const index = order.indexOf(mode);
+    const next =
+      event.key === 'ArrowRight' || event.key === 'ArrowDown'
+        ? (index + 1) % order.length
+        : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+          ? (index - 1 + order.length) % order.length
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? order.length - 1
+              : -1;
+    if (next === -1) return;
+    event.preventDefault();
+    const target = order[next];
+    switchMode(target);
+    document.getElementById(`login-tab-${target}`)?.focus();
   };
 
   const openReset = () => {
@@ -622,18 +648,40 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
       <div
         role="tablist"
         aria-label={t(labels, 'login.title')}
+        onKeyDown={onTabKeys}
         className="mb-5 grid grid-cols-2 gap-1 rounded-lg bg-ink/10 p-1"
       >
-        <button type="button" role="tab" aria-selected={mode === 'otp'} onClick={() => switchMode('otp')} className={tabClass(mode === 'otp')}>
+        <button
+          type="button"
+          role="tab"
+          id="login-tab-otp"
+          aria-selected={mode === 'otp'}
+          aria-controls="login-tabpanel"
+          tabIndex={mode === 'otp' ? 0 : -1}
+          onClick={() => switchMode('otp')}
+          className={tabClass(mode === 'otp')}
+        >
           {t(labels, 'login.tabEmailCode')}
         </button>
-        <button type="button" role="tab" aria-selected={mode === 'password'} onClick={() => switchMode('password')} className={tabClass(mode === 'password')}>
+        <button
+          type="button"
+          role="tab"
+          id="login-tab-password"
+          aria-selected={mode === 'password'}
+          aria-controls="login-tabpanel"
+          tabIndex={mode === 'password' ? 0 : -1}
+          onClick={() => switchMode('password')}
+          className={tabClass(mode === 'password')}
+        >
           {t(labels, 'login.tabPassword')}
         </button>
       </div>
 
-      {/* Min-height prevents layout shift when switching tabs (password is taller) */}
-      <div className="min-h-[320px]">
+      {/* One panel, renamed by aria-labelledby as the mode changes: the two
+          tabs render different forms in the same slot, and duplicating the
+          branch into two panels would hide the real state in two places.
+          Min-height prevents layout shift when switching tabs (password is taller) */}
+      <div id="login-tabpanel" role="tabpanel" aria-labelledby={`login-tab-${mode}`} className="min-h-[320px]">
       {mode === 'password' ? (
         <form onSubmit={loginPassword} className="space-y-4" aria-label={t(labels, 'login.tabPassword')}>
           <label className="block">

@@ -52,6 +52,14 @@
   }
   /* light theme: body text colour should match the screen's --text */
   body:has(.kds-screen.light) { color: #1a1a1a; }
+  /* main carries the page landmark (screen readers can skip to it); it also
+     takes over the body's centring so the screen keeps its exact place. */
+  main.kds-shell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+  }
 
   /* ── THEME (dark default, light override via .light class) ── */
   .kds-screen {
@@ -870,6 +878,7 @@
 </style>
 </head>
 <body>
+<main class="kds-shell">
 <!-- This screen is a rendering of the POS at 1280x800, so it has no visible
      page title to promote — but the document still owes one h1. -->
 <h1 class="kds-visually-hidden">KDS v2 — Kitchen Display prototype</h1>
@@ -1014,6 +1023,7 @@
   <!-- Visually-hidden live region: announces order state to screen readers -->
   <div class="kds-visually-hidden" id="screen-announcer" aria-live="polite"></div>
 </div>
+</main>
 
 <script>
   /* Colour system: 8 configurable colours in 3 semantic groups.

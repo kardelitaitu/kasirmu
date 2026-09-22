@@ -155,6 +155,9 @@ export default function SearchModal({ isOpen, onClose, locale, labels, docs }: P
           <input
             ref={inputRef}
             type="search"
+            // A placeholder is not a name: it disappears as soon as the reader
+            // types, so the field carries the dictionary's own label too.
+            aria-label={t(labels, 'search.quickSearch')}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);

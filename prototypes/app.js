@@ -118,6 +118,10 @@
       const isActive = t.dataset.tab === name;
       t.classList.toggle('active', isActive);
       t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      // Roving tabindex per the WAI-ARIA tabs pattern: Tab enters and leaves
+      // the tab list once, and the arrow keys (below) move within it. Without
+      // this, a keyboard reader stops on all ten tabs before reaching a panel.
+      t.tabIndex = isActive ? 0 : -1;
     });
     panels.forEach(p => {
       const isActive = p.id === 'panel-' + name;
@@ -157,7 +161,9 @@
   const tabList = document.querySelector('.tabbar-inner');
   if (tabList) {
     tabList.addEventListener('keydown', (e) => {
-      const idx = tabs.indexOf(document.activeElement);
+      // `tabs` is a NodeList, which has no indexOf — this threw on the first
+      // keypress, so every arrow key in the tab bar was dead. Spread first.
+      const idx = [...tabs].indexOf(document.activeElement);
       if (idx === -1) return;
       let next = -1;
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {

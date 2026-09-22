@@ -18,7 +18,16 @@
  * That is why the two forms are exported separately: `renderedHeadings()` is
  * what the rule runs on, and the difference against `allHeadingsIn()` is how a
  * test detects a heading that exists only in markup that never renders.
+ *
+ * The stripping itself lives in `html-scan.ts`, shared with the accessibility
+ * rule next door — both judge the same rendered pages and must agree on what a
+ * consumer actually receives.
  */
+
+// The explicit `.ts` extension is what lets `scripts/check-seo.mjs` load this
+// module under Node's type stripping, where extensionless specifiers do not
+// resolve; `check-seo` is one of this rule's two callers.
+import { textOf, withoutNonRendered } from './html-scan.ts';
 
 /** One heading element, in document order. */
 export interface Heading {
@@ -28,73 +37,8 @@ export interface Heading {
 
 const HEADING = /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/g;
 
-/** A comment open, and a non-rendered element open, in one pass. */
-const NON_RENDERED_OR_COMMENT = /<!--|<(script|style|noscript|template)\b/gi;
-
-/**
- * Drop the regions a consumer does not receive — comments, and the content of
- * `<script>`, `<style>`, `<noscript>` (not rendered when scripting is on) and
- * `<template>` (not rendered until cloned).
- *
- * A scan rather than a pair of regexes, because a regex that only knew about
- * `</script>` cannot tell which form it is looking at and reads straight past a
- * self-closing one. Both forms are real here: `DocsLayout.astro` and
- * `Base.astro` write their JSON-LD blocks as `<script ... />`, and stripping
- * from the first of those to the file's one true closer swallowed the whole
- * page template, `<h1>{title}</h1>` included — a false "this page has no h1"
- * that only the source-level test ever saw, since Astro writes the explicit
- * closer into dist. Comments are handled in the same pass so that neither shape
- * can hide inside the other.
- */
-function withoutNonRendered(html: string): string {
-  const kept: string[] = [];
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-  NON_RENDERED_OR_COMMENT.lastIndex = 0;
-  while ((match = NON_RENDERED_OR_COMMENT.exec(html))) {
-    const start = match.index;
-    let end: number;
-    if (match[0] === '<!--') {
-      const close = html.indexOf('-->', start + '<!--'.length);
-      end = close === -1 ? html.length : close + '-->'.length;
-    } else {
-      const openEnd = html.indexOf('>', start);
-      if (openEnd === -1) break; // malformed tail: keep it rather than guess
-      if (html[openEnd - 1] === '/') {
-        end = openEnd + 1; // `<script ... />` ends at its own tag
-      } else {
-        const name = match[1].toLowerCase();
-        const close = new RegExp(`</${name}\\s*>`, 'i').exec(html.slice(openEnd + 1));
-        // No closer: treat the element as ending at its own tag and keep the
-        // rest. Dropping the remainder instead would turn a prose mention of
-        // `<noscript>` in a source comment into "this page has no h1" — which is
-        // how this rule first failed on its own component. Astro always writes
-        // the closer into dist, so the malformed shape is a source artifact.
-        end = close ? openEnd + 1 + close.index + close[0].length : openEnd + 1;
-      }
-    }
-    kept.push(html.slice(cursor, start));
-    cursor = end;
-    NON_RENDERED_OR_COMMENT.lastIndex = cursor;
-  }
-  kept.push(html.slice(cursor));
-  return kept.join('');
-}
-
-/** The heading's own text, as a screen reader would announce it. */
-const text = (markup: string): string =>
-  markup
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&#39;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/\s+/g, ' ')
-    .trim();
-
 const headingsOf = (html: string): Heading[] =>
-  [...html.matchAll(HEADING)].map((match) => ({ level: Number(match[1]), text: text(match[2]) }));
+  [...html.matchAll(HEADING)].map((match) => ({ level: Number(match[1]), text: textOf(match[2]) }));
 
 /** Every heading element in the markup, rendered or not. */
 export const allHeadingsIn = headingsOf;
