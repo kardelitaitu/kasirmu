@@ -876,12 +876,16 @@ for (const page of pages) {
   for (const message of outlineIssues(page.headings)) add('headings', page.url, message);
 }
 
-// 13. Accessibility — landmarks, names, references and focus, on RENDERED
-//     markup, for the same reason the heading rule above reads it: a control in
-//     `<noscript>` is a control no reader meets. The rule, the reasoning and
-//     the defects its first run found all live in src/lib/accessibility.ts;
-//     the exemption is read off the page class, not a URL literal, so a tree
-//     that is reclassified cannot stay silently exempt.
+// 13. Accessibility — landmarks, names, references and focus. The rule, the
+//     reasoning and the defects its first run found all live in
+//     src/lib/accessibility.ts; the exemption is read off the page class, not a
+//     URL literal, so a tree that is reclassified cannot stay silently exempt.
+//     Markup that never renders is still excluded (a comment, `<script>`,
+//     `<style>`, `<template>`) — but `<noscript>` is NOT, which is where this
+//     departs from the heading rule: a no-script reader receives its contents
+//     and operates the controls inside, so they are checked like any other,
+//     while a landmark that only lives there is reported in its own right rather
+//     than passing as the page's landmark.
 for (const page of pages) {
   if (page.rec?.kind === 'vendored portal') continue;
   for (const message of accessibilityIssues(page.html)) add('accessibility', page.url, message);

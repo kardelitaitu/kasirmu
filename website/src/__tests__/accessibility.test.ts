@@ -25,8 +25,11 @@ import { elementsIn } from '../lib/html-scan';
  *      are decided entirely in the file. The list is a directory walk, so a new
  *      prototype is covered by the commit that adds it.
  *
- *   3. No CONTROL may live in markup that never renders, and no `role="tab"`
- *      may ship without a `role="tabpanel"` beside it.
+ *   3. No CONTROL may live in markup that never renders — a comment, `<script>`
+ *      or `<template>`. `<noscript>` is deliberately NOT in that list: this rule
+ *      judges the union of both modes, so a control inside it is checked like
+ *      any other while a landmark inside it is reported in its own right.
+ *      And no `role="tab"` may ship without a panel or by sharing one.
  *
  * Composed pages are deliberately NOT approximated here — a name assembled from
  * a sibling, a wrapping label or a composed layout would read as a violation
@@ -134,10 +137,16 @@ describe('the accessibility rule', () => {
     expect(accessibilityIssues(two)).toEqual(['has 1 unnamed <nav> landmark(s) among 2 — with more than one, each must be named']);
   });
 
-  it('rejects a header or footer nested inside main', () => {
-    expect(accessibilityIssues('<main><article><footer><a href="/">Home</a></footer></article></main>')).toEqual([
-      'has a <footer> inside <main> (<footer> "Home") — a region nested there is not a page footer',
-    ]);
+  it.each([
+    ['an article footer inside main', '<main><article><p>Body</p><footer><a href="/">Author</a></footer></article></main>'],
+    ['a section header inside main', '<main><section><header><h2>Cart</h2></header><p>Items</p></section></main>'],
+    ['a header and footer wrapping the page', '<header><a href="/">Home</a></header><main>Body</main><footer><a href="/x">Legal</a></footer>'],
+  ])('leaves ordinary authoring alone: %s', (_what, markup) => {
+    // A `<header>`/`<footer>` inside `<main>` is not a landmark there (its
+    // nearest sectioning ancestor is not `<body>`), so there is nothing wrong
+    // with it. The arm that reported these shipped for a round and would have
+    // failed a legitimate author; this case is what keeps it removed.
+    expect(accessibilityIssues(markup)).toEqual([]);
   });
 
   it('rejects a reference to an id that is not on the page', () => {
@@ -174,6 +183,56 @@ describe('the accessibility rule', () => {
       '<main><div role="tablist"><button type="button" role="tab" aria-controls="p">One</button></div><div id="p" role="tabpanel">Body</div></main>';
     expect(accessibilityIssues(unnamedPanel)).toEqual([
       'has a role="tabpanel" with no name (<div id="p"> "Body") — a panel must name its tab',
+    ]);
+  });
+
+  it('rejects tabs that share one panel, and accepts one panel per tab', () => {
+    // What the login form shipped: both tabs pointed at the one panel, so the
+    // unselected tab announced that it controls a panel showing the other
+    // tab's content.
+    const shared =
+      '<main><div role="tablist">' +
+      '<button type="button" role="tab" id="t1" aria-controls="p">A</button>' +
+      '<button type="button" role="tab" id="t2" aria-controls="p">B</button>' +
+      '</div><div id="p" role="tabpanel" aria-labelledby="t1">Body</div></main>';
+    expect(accessibilityIssues(shared)).toEqual([
+      'has 2 role="tab" controls claiming the same panel "p" (<button type="button" id="t1"> "A", <button type="button" id="t2"> "B") — a tab must control the panel it shows',
+    ]);
+
+    // The shape the login form now uses: one panel, claimed by whichever tab is
+    // selected, with the panel naming that same tab.
+    const perSelection =
+      '<main><div role="tablist">' +
+      '<button type="button" role="tab" id="t1" aria-controls="p">A</button>' +
+      '<button type="button" role="tab" id="t2">B</button>' +
+      '</div><div id="p" role="tabpanel" aria-labelledby="t1">Body</div></main>';
+    expect(accessibilityIssues(perSelection)).toEqual([]);
+
+    // And the textbook shape, which must never be reported.
+    const twoPanels =
+      '<main><div role="tablist">' +
+      '<button type="button" role="tab" id="t1" aria-controls="p1">A</button>' +
+      '<button type="button" role="tab" id="t2" aria-controls="p2">B</button>' +
+      '</div><div id="p1" role="tabpanel" aria-labelledby="t1">One</div>' +
+      '<div id="p2" role="tabpanel" aria-labelledby="t2">Two</div></main>';
+    expect(accessibilityIssues(twoPanels)).toEqual([]);
+  });
+
+  it('judges the controls a reader without scripting operates', () => {
+    // The heading rule strips `<noscript>` because a scripting-on consumer
+    // receives none of it; this rule must not inherit that, because a no-script
+    // reader receives all of it and operates what is inside.
+    expect(accessibilityIssues('<main><button type="button">Okay</button><noscript><button type="button"></button></noscript></main>')).toEqual([
+      'has <button type="button"> with no accessible name — no text, aria-label or aria-labelledby',
+    ]);
+    expect(accessibilityIssues('<main><button type="button">Okay</button><noscript><a href="/x">Plain link</a></noscript></main>')).toEqual([]);
+  });
+
+  it('names a landmark that only a no-script reader receives', () => {
+    // Reported in its own right rather than as "no <main>": the page HAS one,
+    // and the author needs to know it is in the wrong place for the majority.
+    expect(accessibilityIssues('<noscript><main>Body</main></noscript><p>hi</p>')).toEqual([
+      'has its only <main> landmark inside <noscript> — a reader with scripting on does not receive it',
     ]);
   });
 
@@ -238,7 +297,7 @@ describe('templates', () => {
     // and comparing them as content reported the component as a violation of
     // the rule it documents.
     const describeAll = (markup: string, rendered: boolean) =>
-      elementsIn(markup, { rendered })
+      elementsIn(markup, { rendered, keepNoscript: true })
         .filter((element) => ['button', 'a', 'input', 'select', 'textarea', 'summary'].includes(element.tag))
         .map(
           (element) =>
@@ -248,7 +307,7 @@ describe('templates', () => {
     const everywhere = describeAll(template, false);
     expect(
       everywhere.filter((control) => !shown.includes(control)),
-      'a control inside a comment, <script>, <noscript> or <template> is operated by nobody — check-seo check 13 strips those regions',
+      'a control inside a comment, <script> or <template> is operated by nobody — check-seo check 13 strips those regions (<noscript> is kept: a reader without scripting operates what is in it)',
     ).toEqual([]);
   });
 });

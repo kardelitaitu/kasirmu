@@ -656,7 +656,9 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
           role="tab"
           id="login-tab-otp"
           aria-selected={mode === 'otp'}
-          aria-controls="login-tabpanel"
+          // Only the selected tab claims the panel — the tab that is not
+          // showing it must not announce that it controls it.
+          aria-controls={mode === 'otp' ? 'login-tabpanel' : undefined}
           tabIndex={mode === 'otp' ? 0 : -1}
           onClick={() => switchMode('otp')}
           className={tabClass(mode === 'otp')}
@@ -668,7 +670,7 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
           role="tab"
           id="login-tab-password"
           aria-selected={mode === 'password'}
-          aria-controls="login-tabpanel"
+          aria-controls={mode === 'password' ? 'login-tabpanel' : undefined}
           tabIndex={mode === 'password' ? 0 : -1}
           onClick={() => switchMode('password')}
           className={tabClass(mode === 'password')}
@@ -677,9 +679,11 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
         </button>
       </div>
 
-      {/* One panel, renamed by aria-labelledby as the mode changes: the two
-          tabs render different forms in the same slot, and duplicating the
-          branch into two panels would hide the real state in two places.
+      {/* One panel, renamed by aria-labelledby as the mode changes: the two tabs
+          render different forms in the same slot, and duplicating the branch
+          into two panels would hide the real state in two places. The claim on
+          it moves with the selection (see the tabs above), so at every moment
+          exactly one tab points at the panel that is on screen.
           Min-height prevents layout shift when switching tabs (password is taller) */}
       <div id="login-tabpanel" role="tabpanel" aria-labelledby={`login-tab-${mode}`} className="min-h-[320px]">
       {mode === 'password' ? (

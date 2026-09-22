@@ -13,6 +13,12 @@
  * `elementsIn()` walks the same markup and reports each element with its
  * attributes and its descendant text, which is what an accessible-name lookup
  * needs: a `<button>` is named by its own text, an `<input>` is not.
+ *
+ * `<noscript>` is the one region whose policy is not universal, so it is the
+ * caller's choice (`keepNoscript`). A heading inside it is part of no outline a
+ * scripting-on consumer receives, which is why the heading rule strips it — but
+ * a no-script reader DOES receive its contents, so the accessibility rule asks
+ * for them and judges the controls it finds there like any other.
  */
 
 /** One element found in rendered markup, in document order of its open tag. */
@@ -45,7 +51,7 @@ const NON_RENDERED_OR_COMMENT = /<!--|<(script|style|noscript|template)\b/gi;
  * closer into dist. Comments are handled in the same pass so that neither shape
  * can hide inside the other.
  */
-export function withoutNonRendered(html: string): string {
+export function withoutNonRendered(html: string, policy: { keepNoscript?: boolean } = {}): string {
   const kept: string[] = [];
   let cursor = 0;
   let match: RegExpExecArray | null;
@@ -53,6 +59,17 @@ export function withoutNonRendered(html: string): string {
   while ((match = NON_RENDERED_OR_COMMENT.exec(html))) {
     const start = match.index;
     let end: number;
+    if (policy.keepNoscript && match[1]?.toLowerCase() === 'noscript') {
+      // Keep the element and its contents: a reader without scripting sees
+      // them. Only the open tag is skipped over, so the walk continues through
+      // the content and the closer is left as a stray tag for `elementsIn`.
+      const openEnd = html.indexOf('>', start);
+      if (openEnd === -1) break;
+      kept.push(html.slice(cursor, openEnd + 1));
+      cursor = openEnd + 1;
+      NON_RENDERED_OR_COMMENT.lastIndex = cursor;
+      continue;
+    }
     if (match[0] === '<!--') {
       const close = html.indexOf('-->', start + '<!--'.length);
       end = close === -1 ? html.length : close + '-->'.length;
@@ -157,8 +174,14 @@ interface Frame {
  * order is that of each element's *closing* tag; callers that need document
  * order sort by `index`.
  */
-export function elementsIn(html: string, options: { rendered?: boolean } = {}): ScannedElement[] {
-  const source = options.rendered === false ? html : withoutNonRendered(html);
+export function elementsIn(
+  html: string,
+  options: { rendered?: boolean; keepNoscript?: boolean } = {},
+): ScannedElement[] {
+  const source =
+    options.rendered === false
+      ? html
+      : withoutNonRendered(html, { keepNoscript: options.keepNoscript });
   const elements: ScannedElement[] = [];
   const stack: Frame[] = [];
   const append = (chunk: string): void => {

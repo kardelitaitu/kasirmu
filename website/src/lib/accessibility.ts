@@ -12,11 +12,25 @@
  *     violation visible in source fails in `npm test` rather than after a build.
  *
  * Scope decisions, so the rule stays actionable rather than noisy: `<main>` is
- * required and unique, a `<nav>` must be named once there is more than one, and
- * a `<header>`/`<footer>` inside `<main>` is a mis-nested region — but a
- * standalone stub owes no header, footer or nav of its own, and nothing here
- * requires them. A placeholder is not an accessible name: it vanishes as soon
- * as the reader types, and WCAG 3.3.2 asks for a label that persists.
+ * required and unique and a `<nav>` must be named once there is more than one —
+ * but a standalone stub owes no header, footer or nav of its own, and nothing
+ * here requires them. A placeholder is not an accessible name: it vanishes as
+ * soon as the reader types, and WCAG 3.3.2 asks for a label that persists.
+ *
+ * A `<header>` or `<footer>` inside `<main>` is deliberately NOT reported. An
+ * article footer (author, tags) or a section header is ordinary authoring, and
+ * because their nearest sectioning ancestor is not `<body>` neither is a
+ * landmark there — so there is no defect to name, and the arm that flagged them
+ * would have failed a legitimate author for markup that is correct. (It shipped
+ * that way for a round and was removed when it was measured against real
+ * authoring rather than against a rule-shaped example.)
+ *
+ * `<noscript>` is judged rather than ignored, which is where this rule departs
+ * from the heading rule next door. A control inside it is a control a reader
+ * without scripting operates, so names, references and focus are checked on the
+ * union of both modes; a LANDMARK inside it is not counted as the page's, since
+ * a scripting-on reader does not receive it — that shape is reported in its own
+ * right instead of being silently accepted or silently ignored.
  */
 
 // Explicit `.ts` (see heading-outline.ts): this module is loaded by
@@ -95,42 +109,46 @@ const isControl = (element: ScannedElement): boolean => {
  * that both callers report the same wording.
  */
 export function accessibilityIssues(html: string): string[] {
-  const elements = elementsIn(html);
+  // Two views of one document. `rendered` is what a scripting-on reader gets
+  // (the majority, and the only one the landmark counts can be judged against);
+  // `met` is everything a reader of either mode can operate.
+  const rendered = elementsIn(html);
+  const met = elementsIn(html, { keepNoscript: true });
   const issues: string[] = [];
   const ids = new Set<string>();
-  for (const element of elements) {
+  for (const element of met) {
     if (element.attrs.id && !isTemplated(element.attrs.id)) ids.add(element.attrs.id);
   }
-  const labels = labelsByTarget(elements);
+  const labels = labelsByTarget(met);
 
   // --- landmarks -----------------------------------------------------------
-  const mains = elements.filter((element) => element.tag === 'main' || element.attrs.role === 'main');
+  const isMain = (element: ScannedElement) => element.tag === 'main' || element.attrs.role === 'main';
+  const mains = rendered.filter(isMain);
   if (mains.length === 0) {
-    issues.push('has no <main> landmark — a reader cannot skip the repeated header and footer');
+    // Naming the noscript case separately keeps the rule honest about a
+    // fallback: the page HAS a landmark, just not one the scripting-on reader
+    // receives, and the author needs to know which of the two they built.
+    issues.push(
+      met.some(isMain)
+        ? 'has its only <main> landmark inside <noscript> — a reader with scripting on does not receive it'
+        : 'has no <main> landmark — a reader cannot skip the repeated header and footer',
+    );
   } else if (mains.length > 1) {
     issues.push(`has ${mains.length} <main> landmarks — a page has one`);
   }
-  const navs = elements.filter((element) => element.tag === 'nav' || element.attrs.role === 'navigation');
+  const navs = rendered.filter((element) => element.tag === 'nav' || element.attrs.role === 'navigation');
   const unnamedNavs = navs.filter((nav) => !nav.attrs['aria-label'] && !nav.attrs['aria-labelledby']);
   if (navs.length > 1 && unnamedNavs.length) {
     issues.push(
       `has ${unnamedNavs.length} unnamed <nav> landmark(s) among ${navs.length} — with more than one, each must be named`,
     );
   }
-  for (const tag of ['header', 'footer'] as const) {
-    const misplaced = elements.filter((element) => element.tag === tag && element.ancestors.includes('main'));
-    for (const element of misplaced) {
-      issues.push(
-        `has a <${tag}> inside <main> (${describe(element)}) — a region nested there is not a page ${tag}`,
-      );
-    }
-  }
 
   // --- names on interactive controls ---------------------------------------
-  issues.push(...unnamedControls(html, elements, labels));
+  issues.push(...unnamedControls(html, met, labels));
 
   // --- ARIA references, tabindex, hidden focusables -------------------------
-  for (const element of elements) {
+  for (const element of met) {
     for (const attribute of REFERENCE_ATTRIBUTES) {
       const value = element.attrs[attribute];
       if (!value || isTemplated(value)) continue;
@@ -153,8 +171,8 @@ export function accessibilityIssues(html: string): string[] {
   }
 
   // --- tabs and the panels they control ------------------------------------
-  const tabs = elements.filter((element) => element.attrs.role === 'tab');
-  const panels = elements.filter((element) => element.attrs.role === 'tabpanel');
+  const tabs = met.filter((element) => element.attrs.role === 'tab');
+  const panels = met.filter((element) => element.attrs.role === 'tabpanel');
   if (tabs.length && !panels.length) {
     issues.push(
       `has ${tabs.length} role="tab" control(s) but no role="tabpanel" — a tab must name the panel it controls`,
@@ -164,6 +182,22 @@ export function accessibilityIssues(html: string): string[] {
     if (!panel.attrs['aria-labelledby'] && !panel.attrs['aria-label']) {
       issues.push(`has a role="tabpanel" with no name (${describe(panel)}) — a panel must name its tab`);
     }
+  }
+  // One panel per tab. A single panel that every tab claims is what a two-tab
+  // form reaches for (one slot, two contents), and it is wrong in a way a
+  // reader can hear: the tab that is NOT selected still announces that it
+  // controls a panel showing the other tab's content.
+  const claims = new Map<string, ScannedElement[]>();
+  for (const tab of tabs) {
+    const target = tab.attrs['aria-controls'];
+    if (!target || isTemplated(target)) continue;
+    claims.set(target, [...(claims.get(target) ?? []), tab]);
+  }
+  for (const [target, claimants] of claims) {
+    if (claimants.length < 2) continue;
+    issues.push(
+      `has ${claimants.length} role="tab" controls claiming the same panel "${target}" (${claimants.map(describe).join(', ')}) — a tab must control the panel it shows`,
+    );
   }
 
   return issues;
