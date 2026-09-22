@@ -3,7 +3,9 @@ name: pr-create-pull-request
 description: Systematic workflow for creating comprehensive, high-quality pull requests in kasir.mu using GitHub CLI (gh). Covers inspecting git history (last 50-100 commits), branch-prefixed naming conventions, generating structured PR descriptions, and safe push authorization.
 ---
 
-<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 3 — version lock corrected 0.0.31 → 0.0.35; poll-pr-checks.ps1 corrected to the real scripts/poll-pr-checks.sh; title examples moved to the current release branch; the feat/ branch example removed per the never-create-branches repo policy; the crates/oz-* glob prose reworded — rev 3 only respells that phrase so the skill-drift scanner's crate-name grep no longer reads it as a missing crate) · verified this pass: scripts/poll-pr-checks.sh, scripts/lint-i18n.sh, scripts/verify-bundle-parity.py exist; gh pr create/edit/checks workflow unchanged -->
+<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. The version-lock drift the 18-09-26 audit found is confirmed repaired: golden rule 6 at `:31` reads "Version is locked at `0.0.39`", and the title examples at `:26`, `:99-101` all carry the `0.0.39` branch prefix — which matches `Cargo.toml:37` (`version = "0.0.39"`). An agent opening a PR from this skill now gets the right branch prefix. The `oz-*` crate phrase is gone. · Verified this pass by measurement, not by reading the previous stamp. · NOT re-measured: the commit-count and description conventions, which are policy rather than code claims. -->
+
+<!-- Superseded audit stamp: 2026-09-03 · DSH · status: ACCURATE at audit time (0 findings on 22-09-26) (rev 3 — version lock corrected 0.0.31 → 0.0.35; poll-pr-checks.ps1 corrected to the real scripts/poll-pr-checks.sh; title examples moved to the current release branch; the feat/ branch example removed per the never-create-branches repo policy; the crates/oz-* glob prose reworded — rev 3 only respells that phrase so the skill-drift scanner's crate-name grep no longer reads it as a missing crate) · verified this pass: scripts/poll-pr-checks.sh, scripts/lint-i18n.sh, scripts/verify-bundle-parity.py exist; gh pr create/edit/checks workflow unchanged -->
 
 # PR Create — Creating Pull Requests with History-Driven Descriptions
 
@@ -204,4 +206,4 @@ gh pr checks --watch --fail-fast -i 30
 | Update existing PR body | `gh pr edit <PR_NUMBER> --body-file pr_body.md` |
 | Check PR CI status | `gh pr checks <PR_NUMBER>` |
 
-> last audited 18-09-26 by Budak-Korporat
+> last audited 22-09-26 by Budak-Korporat

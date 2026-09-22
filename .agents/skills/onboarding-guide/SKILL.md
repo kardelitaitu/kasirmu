@@ -3,7 +3,9 @@ name: onboarding-guide
 description: Meta-skill that routes tasks to the right kasir.mu skill. Use when starting a new task and unsure which specialized skill applies. Read this first when joining the project or picking up an unfamiliar area.
 ---
 
-<!-- Audit stamp: 2026-09-21 · Buffy · status: PARTIAL — router only. Added two rows to the
+<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: REPAIRED — 1 finding, fixed in place · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. · F1 (MEDIUM, fixed): `northflank-deploy-diagnosis` had **no router row at all** — `grep -c northflank-deploy-diagnosis` over this file returned **0**, while every other skill in `.agents/skills/` except this guide itself appears at least once. The router had 19 rows for 21 skill directories. Per this repo's own authoring rule ("a skill nothing routes to is invisible to the next agent"), the skill was unreachable: an agent hitting a failed Northflank deploy would have found `deploy-northflank` — which is the happy-path skill — and never the diagnosis skill written for that exact failure. Row added, phrased to distinguish the two (`deploy-northflank` = deploy/verify; `northflank-deploy-diagnosis` = a build or deploy already failed). · Verified this pass: all 33 paths this file cites exist, including `.agents/skills/codebase-memory/`, `crates/kasirmu-core/src/db/reports.rs`, the four crate READMEs (`kasirmu-lua`, `kasirmu-payment`, `kasirmu-reporting`, `kasirmu-security`), `platform/sync`, `apps/cloud-server`, `scripts/{test-tdd.sh,run-pre-push.py,setup-dev.ps1}`, `.agents/skills/skill-drift-guard/scripts/detect.sh`, and the tablet trio `ui/src/app/tablet/{tablet.css,TabletAppLayout.tsx}` + `ui/src/__tests__/restaurantCardHeight.test.ts`. The "ask Buffy (the AI agent)" line flagged by the 18-09-26 audit is confirmed repaired — `:178` now reads "ask Budak Korporat (the AI agent)". No `oz-*` crate-reference drift remains in this file. · NOT re-measured: the pre-commit gate count and the `dev-ci.yml#static-gates` fail-closed claim in the setup paragraph (§:46) — both are statements about `AGENTS.md` and the workflow rather than about this file's own claims, and the workflow half was already re-verified during the `project-scaffold` pass. -->
+
+<!-- Superseded audit stamp: 2026-09-21 · Buffy · status: PARTIAL — router only. Added two rows to the
 skill router — `deploy-northflank` and `deploy-cloudflare` — each pointing at
 `.agents/skills/<name>/SKILL.md`. Both skill files exist and declare the matching `name`; every
 path they cite was checked to exist before being written (ops/docker/Dockerfile.unified,
@@ -96,6 +98,7 @@ What do you want to do?
 | Drive, inspect or screenshot the RUNNING Android tablet app over CDP - address elements by data-testid, read the WebView console, capture a frame while the renderer is live (a locked or panel-off tablet is NOT a CDP capture case - use android-screen.mjs), tap an element, or hit 'no devtools socket (release build)' | **`android-ui-automation`** |
 | Deploy or re-deploy the backend (the unified auth + sync container) to Northflank, trigger or poll a build, change the service's environment or Dockerfile, or verify that a live deploy actually landed | **`deploy-northflank`** |
 | Deploy or verify the kasir.mu website Worker on Cloudflare, change the runtime licence-server URL or a Worker secret, or rotate the Cloudflare API token | **`deploy-cloudflare`** |
+| A Northflank build or deploy **failed** — read the build log by phase, tell a failed build from a failed deploy, or prove a fix before spending another deploy cycle | **`northflank-deploy-diagnosis`** |
 
 **Discovery is not a router row — it is a standing rule.** `AGENTS.md` requires the knowledge
 graph *before* reading files or grepping for symbols, so `codebase-memory` applies to every
@@ -202,4 +205,4 @@ If this passes locally, the PR is ready.
 
 ---
 
-> last audited 18-09-26 by Budak-Korporat
+> last audited 22-09-26 by Budak-Korporat

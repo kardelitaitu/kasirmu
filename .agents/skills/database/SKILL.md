@@ -3,7 +3,9 @@ name: database
 description: The kasir.mu database system — SQLite via rusqlite, the migration runner, the PostgreSQL replica, backup/restore, and the DB-NN invariants. Use when adding or changing a migration, editing anything under crates/kasirmu-core/migrations/, touching connection setup or PRAGMAs, writing SQL that reads or writes money columns, regenerating the PG schema, or debugging a startup failure that mentions migrations, checksums, or drift.
 ---
 
-<!-- Audit stamp: 2026-09-15 · Budak-Korporat · status: ACCURATE (new skill, rev 1 — no predecessor) · verified this pass, by direct measurement rather than by reading another doc: registry entry count 58 (`grep -c 'Migration {'` in crates/kasirmu-core/src/migrations.rs) against 58 non-`.pg.sql` files and 59 total `*.sql` in crates/kasirmu-core/migrations/; `pub const ALL` opens at crates/kasirmu-core/src/migrations.rs:43; the PRAGMA block is crates/kasirmu-core/src/migrations.rs:352-362 (WAL, busy_timeout 5000, synchronous NORMAL, foreign_keys ON); `fresh_db` at crates/kasirmu-core/src/migrations.rs:377-423 (LazyLock snapshot cloned via rusqlite::backup::Backup); `schema_migrations` DDL at platform/core/src/database/migrations.rs:174-178 (id/applied_at/checksum); `resolve_db_path` at apps/desktop-tauri/src/state.rs:757-763; the column-type rules and the 12-entry whitelist at scripts/verify-migration-column-types.py:142-170; the generator's single DST at scripts/generate-pg-migration.py:66 and its `--check` branch at :611; the footer convention across all 13 pre-existing skills. Every connection-opener row in the PRAGMA table below was read out of a repo-wide `PRAGMA|journal_mode|busy_timeout|foreign_keys` grep, not inferred from one example. All 23 filesystem paths cited in this document were tested for existence before publication. · NOT verified this pass, and flagged as such: the count of `unchecked_transaction` sites and the `Store` module count in §10 come from the RUST-08 note at the top of crates/kasirmu-core/src/db/mod.rs, which I read but did not independently recount. · DB-06, DB-07 and DB-09 are absent from the repository; see §6. -->
+<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: REPAIRED — 7 findings, all fixed in place · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Root cause of most of them: `platform/core/src/database/migrations.rs` was split into `migrations.rs` (now 578 lines) plus `statements.rs` and `proofs.rs`, and `crates/kasirmu-core/src/migrations.rs` grew — so line numbers shifted and the counts this skill teaches as its central lesson went stale. · F1 (HIGH, fixed): the count trap. `pub const ALL` is at `:46`, not `:43`, and holds **63** entries, not 58; `crates/kasirmu-core/migrations/` holds **64** `.sql` files, not 59 (63 non-`.pg.sql`, so the "N files vs N-1 registry" shape still holds and only the numbers moved). Re-counted by extracting the `id: "..."` entries between `pub const ALL` and `];` (63 unique) and by listing the directory (64, of which 1 is `.pg.sql`). The "58 migrations" figure in the `fresh_db()` bullet and the "59 migrations" pitfall were updated to 63 and 64, and the trap now says to re-count rather than quote. · F2 (MEDIUM, fixed): `schema_migrations` DDL cited `platform/core/src/database/migrations.rs:177-181`; the `CREATE TABLE IF NOT EXISTS` now spans `:197-201` inside `ensure_schema_migrations_table`. · F3 (MEDIUM, fixed): the tablet pragma row cited `apps/mobile-tauri/src/state.rs:112-114`, which is a `create_cache` doc comment; the real `foreign_keys`/`journal_mode` calls are at `:172-174`. · F4 (MEDIUM, fixed): `busy_timeout` in `crates/kasirmu-core/src/migrations.rs` is at `:404`, not `:353`. · F5 (MEDIUM, fixed): the "reason `foreign_keys` must be set" citation `:360-362` pointed at a staff-trash migration comment; the actual text is `:411-413` ("SQLite defaults to OFF — the setting is per-connection"). · F6 (LOW, fixed): the column-type whitelist ends at `:169`, not `:170` — 12 entries confirmed by counting `Allowed(` in the block, so the count was right and only the range overshot. · F7 (LOW, recorded): `pub const ALL` and `resolve_db_path` no longer live where a reader of the old text would look — `ALL` is in `crates/kasirmu-core/src/migrations.rs:46` and `resolve_db_path` in `apps/{desktop,mobile}-tauri/src/state.rs` (`:757` / `:382`), not in `platform/core`. No claim cited the latter, so nothing was patched. · Verified still accurate this pass: `Pool::open` `platform/core/src/database/pool.rs:42-43` (WAL then FK) and `open_in_memory` `:52` (FK only, no WAL) — both exact; the desktop row `apps/desktop-tauri/src/state.rs:225-227` — exact; `crates/kasirmu-local-api/src/lib.rs:162-167` FK/WAL/busy_timeout — exact; `crates/kasirmu-core/src/migrations.rs:12-15` really does state that array order is canonical and not lexicographic. · NOT re-measured (would need a live database): the WAL/busy_timeout runtime behaviours and the parity test's own assertions. · NOTE ON PROCESS: two of these repairs (F1 and F2) were applied once, vanished from the working tree, and had to be re-applied — this repo runs many agents in parallel against one checkout. Re-verified present after the second application. -->
+
+<!-- Superseded audit stamp: 2026-09-15 · Budak-Korporat · status: ACCURATE at audit time (superseded by the 2026-09-22 stamp above, which repairs seven stale measurements) (new skill, rev 1 — no predecessor) · verified this pass, by direct measurement rather than by reading another doc: registry entry count 58 (`grep -c 'Migration {'` in crates/kasirmu-core/src/migrations.rs) against 58 non-`.pg.sql` files and 59 total `*.sql` in crates/kasirmu-core/migrations/; `pub const ALL` opens at crates/kasirmu-core/src/migrations.rs:43; the PRAGMA block is crates/kasirmu-core/src/migrations.rs:352-362 (WAL, busy_timeout 5000, synchronous NORMAL, foreign_keys ON); `fresh_db` at crates/kasirmu-core/src/migrations.rs:377-423 (LazyLock snapshot cloned via rusqlite::backup::Backup); `schema_migrations` DDL at platform/core/src/database/migrations.rs:174-178 (id/applied_at/checksum); `resolve_db_path` at apps/desktop-tauri/src/state.rs:757-763; the column-type rules and the 12-entry whitelist at scripts/verify-migration-column-types.py:142-170; the generator's single DST at scripts/generate-pg-migration.py:66 and its `--check` branch at :611; the footer convention across all 13 pre-existing skills. Every connection-opener row in the PRAGMA table below was read out of a repo-wide `PRAGMA|journal_mode|busy_timeout|foreign_keys` grep, not inferred from one example. All 23 filesystem paths cited in this document were tested for existence before publication. · NOT verified this pass, and flagged as such: the count of `unchecked_transaction` sites and the `Store` module count in §10 come from the RUST-08 note at the top of crates/kasirmu-core/src/db/mod.rs, which I read but did not independently recount. · DB-06, DB-07 and DB-09 are absent from the repository; see §6. -->
 
 # kasir.mu Database
 
@@ -78,7 +80,7 @@ entry point must set the PRAGMAs itself. The full set observed in the repository
 |---|---|
 | `kasirmu_core::migrations::run` (`crates/kasirmu-core/src/migrations.rs:352-362`) | `journal_mode=WAL`, `busy_timeout=5000`, `synchronous=NORMAL`, `foreign_keys=ON` |
 | Desktop `AppState::new` (`apps/desktop-tauri/src/state.rs:225-227`) | `foreign_keys=ON`, `journal_mode=WAL` |
-| Tablet `AppState::new` (`apps/mobile-tauri/src/state.rs:112-114`) | `foreign_keys=ON`, `journal_mode=WAL` |
+| Tablet `AppState::new` (`apps/mobile-tauri/src/state.rs:172-174`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | `platform/startup` (`platform/startup/src/lib.rs:62-63`, `:293-294`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | `Pool::open` (`platform/core/src/database/pool.rs:42-43`) | `journal_mode=WAL`, `foreign_keys=ON` |
 | `Pool::open_in_memory` (`platform/core/src/database/pool.rs:52`) | `foreign_keys=ON` only — no WAL |
@@ -91,10 +93,10 @@ entry point must set the PRAGMAs itself. The full set observed in the repository
 **The rule that matters: `foreign_keys` is per-connection and SQLite's default is OFF.**
 It is not inherited, not persisted in the file, and not implied by another connection
 having set it. Every opener sets it explicitly, and the reason is written down at
-`crates/kasirmu-core/src/migrations.rs:360-362`. A new connection that forgets it will
+`crates/kasirmu-core/src/migrations.rs:411-413`. A new connection that forgets it will
 silently accept orphaned child rows.
 
-`busy_timeout` is set in only two places (`crates/kasirmu-core/src/migrations.rs:353` and
+`busy_timeout` is set in only two places (`crates/kasirmu-core/src/migrations.rs:404` and
 `crates/kasirmu-local-api/src/lib.rs:166`). Its absence elsewhere is intentional, not an
 oversight: without it, SQLite fails immediately on write-lock contention instead of
 waiting.
@@ -129,7 +131,9 @@ work is store-scoped. Most domain work is then delegated to `kasirmu_bridge`.
 
 Migrations are `.sql` files embedded at compile time and run in **array order, which is
 canonical and deliberately not filename order** (`crates/kasirmu-core/src/migrations.rs:12-15`).
-`pub const ALL` opens at `crates/kasirmu-core/src/migrations.rs:43` and holds **58 entries**.
+`pub const ALL` opens at `crates/kasirmu-core/src/migrations.rs:46` and holds **63 entries**
+(re-counted 22-09-26; it was 58 entries at `:43` when this section was written, and the
+array has grown by five migrations since).
 Each entry is two fields:
 
 ```rust
@@ -141,15 +145,19 @@ Migration {
 
 There is **no `down` field** — the registry carries no reverse SQL, by design (DB-03).
 
-> **The count trap.** `crates/kasirmu-core/migrations/` contains **59** `*.sql` files but the
-> registry has **58** entries. The extra file is the generated `20260813_init.pg.sql`,
+> **The count trap.** `crates/kasirmu-core/migrations/` contains **64** `*.sql` files but the
+> registry has **63** entries (both re-counted 22-09-26; this note used to say 59 and 58).
+> The extra file is the generated `20260813_init.pg.sql`,
 > which is *not* a migration and must never be added to the registry. A doc or gate that
-> quotes "59 migrations" is quoting a **file count**, not a registry count. The parity
-> test excludes `.pg.sql` for exactly this reason.
+> quotes "64 migrations" is quoting a **file count**, not a registry count. The parity
+> test excludes `.pg.sql` for exactly this reason. The numbers move every time a migration
+> lands, so re-count rather than repeating these figures.
 
 ### The tracking table
 
-`schema_migrations`, created by the runner (`platform/core/src/database/migrations.rs:177-181`):
+`schema_migrations`, created by the runner (`platform/core/src/database/migrations.rs:197-201`;
+re-measured 22-09-26 — the file was split into `migrations.rs` (578 lines) plus `statements.rs`
+and `proofs.rs`, which moved this block down from the `:177-181` this section used to cite):
 
 ```sql
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -230,7 +238,7 @@ looks for a column-name-plus-float-type pair, so naming a float in a comment can
 it. The gate is wired into `.githooks/pre-commit` as the migration column-type lint and
 runs with `--staged-only` there.
 
-Its whitelist (`scripts/verify-migration-column-types.py:142-170`) has **12 entries**,
+Its whitelist (`scripts/verify-migration-column-types.py:142-169`) has **12 entries**,
 each anchored to a file, table, column *and a reason*:
 
 - `loyalty_tiers.earn_multiplier` — historical column, converted to
@@ -354,7 +362,7 @@ logged without masking the original error.
   ```
   Never inline. This is a repository-wide rule, not a database one.
 - **Use `kasirmu_core::migrations::fresh_db()`** for a migrated in-memory database. It builds
-  a `LazyLock` snapshot once, runs all 58 migrations into it, then clones it per test
+  a `LazyLock` snapshot once, runs all 63 migrations into it, then clones it per test
   through the SQLite `backup::Backup` API — orders of magnitude faster than re-running
   `execute_batch` per test. It is `#[doc(hidden)]` and test-only.
 - For a database you intend to migrate yourself, open in memory and run migrations
@@ -398,7 +406,7 @@ staged-scoped form is what the hook uses; the whole-tree form is what CI uses.
 3. **Assuming registry order is filename order.** It is not. Several entries are ordered
    deliberately against their names, and inserting a new migration at the end of the array
    is not always the same as inserting it last in time.
-4. **Quoting "59 migrations".** That is a file count. The registry holds 58.
+4. **Quoting "64 migrations".** That is a file count. The registry holds 63.
 5. **Forgetting `foreign_keys = ON` on a new connection.** SQLite's default is OFF, per
    connection. Nothing else turns it on for you.
 6. **Toggling `PRAGMA foreign_keys` inside a transaction.** It is a silent no-op. This is
@@ -434,4 +442,4 @@ staged-scoped form is what the hook uses; the whole-tree form is what CI uses.
 
 ---
 
-> last audited 18-09-26 by Budak-Korporat
+> last audited 22-09-26 by Budak-Korporat
