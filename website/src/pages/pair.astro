@@ -1,13 +1,12 @@
 ---
 // Root /pair redirect — detects locale and forwards query string (?code=...)
 //
-// The pairing SCREEN is src/pages/[locale]/pair.astro, which has its own h1;
-// this document only chooses the language and forwards. It has no visible
-// content by design, which used to mean no <body> content at all — so a reader
-// with scripting off got a blank page, and the document had no h1 for any
-// consumer that reads the markup (check-seo check 12). The noscript block below
-// is the same fallback the root locale stub carries.
+// The pairing SCREEN is src/pages/[locale]/pair.astro, which has its own h1.
+// This document only chooses the language, so its own content is the fallback
+// for a reader whose browser will not run the redirect below.
+import LocaleFallback from '../components/LocaleFallback.astro';
 import { LANGUAGE_STORAGE_KEY } from '../lib/language';
+import { t } from '../i18n';
 ---
 <!doctype html>
 <html lang="id">
@@ -23,21 +22,17 @@ import { LANGUAGE_STORAGE_KEY } from '../lib/language';
       const locale = lang.startsWith('id') ? 'id' : 'en';
       window.location.replace(`/${locale}/pair${window.location.search}`);
     </script>
-    <noscript>
-      <meta http-equiv="refresh" content="0; url=/id/pair" />
-    </noscript>
   </head>
   <body>
-    <noscript>
-      <h1>kasir.mu — memasangkan tablet sebagai terminal kasir</h1>
-      <p>
-        Skrip dimatikan di browser ini, jadi kami tidak bisa mengarahkan Anda ke halaman pasangkan
-        tablet yang tepat. Silakan pilih sendiri:
-      </p>
-      <ul>
-        <li><a href="/id/pair">Pasangkan tablet (Bahasa Indonesia)</a></li>
-        <li><a href="/en/pair">Pair a tablet (English)</a></li>
-      </ul>
-    </noscript>
+    <!-- Rendered, not inside `<noscript>`: a noscript heading belongs to no
+         outline a consumer receives. The 0-second meta refresh that used to sit
+         here sent this reader away before they could read it. -->
+    <LocaleFallback
+      title={t('id', 'pair.title')}
+      links={[
+        { href: '/id/pair', label: 'Bahasa Indonesia' },
+        { href: '/en/pair', label: 'English', lang: 'en' },
+      ]}
+    />
   </body>
 </html>

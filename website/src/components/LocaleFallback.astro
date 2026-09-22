@@ -1,0 +1,43 @@
+---
+/**
+ * The page a reader gets when a locale-detect stub cannot run its redirect.
+ *
+ * `/` and `/pair/` sniff the browser language and forward, which needs
+ * JavaScript, so each owes a fallback. It has to be rendered markup rather than
+ * a `<noscript>` block: content inside `<noscript>` belongs to no outline a
+ * reader or crawler receives — with scripting on it is never rendered, and with
+ * scripting off it is raw text — so a `<noscript>` h1 left both documents
+ * headless on every path a consumer actually takes while still looking like a
+ * heading in the markup. This block renders by default; the stub's own head
+ * script replaces the document before it is painted in the ordinary case.
+ *
+ * No classes: these stubs carry no stylesheet, so browser defaults are what the
+ * reader gets either way.
+ *
+ * The link labels are endonyms and so are deliberately not dictionary keys —
+ * "English" is the same word in every locale, and translating it would be wrong.
+ * `lang` marks the one that differs from the document's own language.
+ */
+interface Props {
+  /** The document's heading. These stubs have no other content of their own. */
+  title: string;
+  links: { href: string; label: string; lang?: string }[];
+}
+
+const { title, links } = Astro.props;
+---
+
+<main>
+  <h1>{title}</h1>
+  <ul>
+    {
+      links.map((link) => (
+        <li>
+          <a href={link.href} lang={link.lang}>
+            {link.label}
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+</main>

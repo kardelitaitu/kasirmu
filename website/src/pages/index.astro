@@ -6,6 +6,7 @@
 // astro.config.mjs declares. It is deliberately NOT in the sitemap: it
 // canonicalises to /id/, so listing it would contradict itself.
 // (CF-IPCountry sniffing would require a Cloudflare Function — out of v1.)
+import LocaleFallback from '../components/LocaleFallback.astro';
 import { LANGUAGE_STORAGE_KEY } from '../lib/language';
 
 // Defined once. These two strings were spelled out seven times below — four
@@ -55,35 +56,24 @@ const DESCRIPTION =
     <script is:inline define:vars={{ LANGUAGE_STORAGE_KEY }}>
       // Privacy-friendly: stored user preference first, browser language fallback.
       // The last resort is 'id', not 'en': it only triggers when navigator.language
-      // is empty (essentially never), and 'id' is what the noscript fallback,
+      // is empty (essentially never), and 'id' is what the rendered fallback,
       // canonical, x-default and astro.config defaultLocale all agree on.
       const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
       const lang = (saved || navigator.language || 'id').toLowerCase();
       const target = lang.startsWith('id') ? '/id/' : '/en/';
       window.location.replace(target);
     </script>
-    <noscript>
-      <meta http-equiv="refresh" content="0; url=/id/" />
-    </noscript>
   </head>
   <body>
-    <!-- Language detection needs JavaScript, so the only reader who needs
-         this block is the one for whom nothing else works — no script, and
-         perhaps a browser that ignores the meta refresh above. It used to
-         find an empty <body>: no heading, no links, nothing to read. The
-         heading also gives this document the h1 that every built page owes
-         (`check-seo` check 12), which is why it is real content rather than a
-         screen-reader-only label. -->
-    <noscript>
-      <h1>kasir.mu — aplikasi kasir untuk warung, kafe, dan toko</h1>
-      <p>
-        Skrip dimatikan di browser ini, jadi kami tidak bisa memilih bahasa otomatis. Silakan pilih
-        sendiri:
-      </p>
-      <ul>
-        <li><a href="/id/">Bahasa Indonesia</a></li>
-        <li><a href="/en/">English</a></li>
-      </ul>
-    </noscript>
+    <!-- Rendered, not inside `<noscript>`: a noscript heading belongs to no
+         outline a consumer receives. The 0-second meta refresh that used to sit
+         here sent this reader to /id/ before they could read it. -->
+    <LocaleFallback
+      title="kasir.mu"
+      links={[
+        { href: '/id/', label: 'Bahasa Indonesia' },
+        { href: '/en/', label: 'English', lang: 'en' },
+      ]}
+    />
   </body>
 </html>
