@@ -3289,7 +3289,10 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1.4", "ui/src/features/settings/SettingsPage.css", 3],
   ["1", "ui/src/features/settings/SettingsScopeTag.css", 1],
   ["1", "ui/src/features/setup/components/LiveSetupPreview.css", 2],
-  ["1", "ui/src/features/setup/SetupWizard.css", 2],
+  // The two line-height literals in ui/src/features/setup/SetupWizard.css left with
+  // the sheet (ADR #56 §2.3 retirement, 2026-09-23); its six surviving form atoms
+  // moved to ProvisioningFlow.css, which declares no line-height literal.
+
   ["1.6", "ui/src/features/shifts/ShiftManagementScreen.css", 1],
   ["1", "ui/src/features/staff/StaffManagementScreen.css", 1],
   ["1.3", "ui/src/features/staff/StaffManagementScreen.css", 1],

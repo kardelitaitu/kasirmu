@@ -368,7 +368,9 @@ const CSS_FILES = [
   'features/auth/CreatePinScreen.css',
   'features/inventory/StockCountDetail.css',
   'features/inventory/StockCountForm.css',
-  'features/setup/SetupWizard.css',
+  // 'features/setup/SetupWizard.css' left this list with the retired wizard
+  // (ADR #56 §2.3, 2026-09-23). Its StepAccount atoms moved to the live
+  // ProvisioningFlow.css, which this list already walks.
   'features/workspaces/WorkspaceHome.css',
   'features/reports/DashboardScreen.css',
   'features/reports/SalesReportScreen.css',
@@ -488,7 +490,11 @@ const BOUNDARY_WAIVED_BASELINE: string[] = [
   '.btn--icon-only.btn--md',
   '.btn--icon-only.btn--sm',
   '.btn--success-state .btn__check',
-  '.toggle-switch input',
+  // '.toggle-switch input' left this list on 2026-09-23: the class was defined only
+  // in ui/src/features/setup/SetupWizard.css, which was removed with the retired
+  // wizard (ADR #56 §2.3). With no .toggle-switch rule anywhere, the boundary
+  // waiver has nothing left to waive. Asserted as a SET, so its absence is the
+  // same visible edit its presence was.
 ];
 
   it('all interactive elements have :focus-visible styles with visible indicators', () => {

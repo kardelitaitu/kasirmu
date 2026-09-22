@@ -2,10 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
-/* ── Setup wizard landscape + display-inset contract ─────────────────
- * The wizard is a FULL-SCREEN page (on a fresh device it renders instead of
- * the shell), and it must work in both orientations on a tablet whose
- * landscape viewport is 1097x686 CSS px — width to spare, not enough height.
+/* ── Full-screen surface landscape + display-inset contract ──────────
+ * The fresh-device surface is FULL SCREEN: `ProvisioningFlow` renders instead
+ * of the shell (AppShell renders it before `setupKnownComplete`), so it must
+ * work in both orientations on a tablet whose landscape viewport is
+ * 1097x686 CSS px — width to spare, not enough height.
  *
  * Two mechanisms are pinned here, both invisible in a diff:
  *
@@ -18,13 +19,21 @@ import { resolve } from 'path';
  *     in `tokens.css` and nowhere else; every full-screen surface consumes the
  *     `--inset-*` tokens. A sheet that re-derives them keeps working, which is
  *     why the drift would otherwise go unnoticed.
+ *
+ * This file used to read `SetupWizard.css`, which was retired (ADR #56 §2.3 —
+ * the component was unreachable; its later stages are in-app settings). The
+ * surface it described is now `ProvisioningFlow.css`. The assertions were
+ * REPOINTED rather than deleted with the sheet, because the inset contract is
+ * about the live surface: deleting the test alongside the dead file would have
+ * removed the only evidence that the live screen applies the insets at all —
+ * which is exactly the gap this file then proved (`ProvisioningFlow.css` had a
+ * flat `padding` and applied none).
  * ────────────────────────────────────────────────────────────────── */
 
-const WIZARD_CSS = readFileSync(resolve(__dirname, '../features/setup/SetupWizard.css'), 'utf-8');
+const PROVISIONING_CSS = readFileSync(resolve(__dirname, '../features/setup/ProvisioningFlow.css'), 'utf-8');
 const TABLET_CSS = readFileSync(resolve(__dirname, '../app/tablet/tablet.css'), 'utf-8');
 const TOKENS_CSS = readFileSync(resolve(__dirname, '../theme/tokens.css'), 'utf-8');
 const RESET_CSS = readFileSync(resolve(__dirname, '../theme/reset.css'), 'utf-8');
-const HOOK_TS = readFileSync(resolve(__dirname, '../hooks/useOrientation.ts'), 'utf-8');
 
 /**
  * Extract a top-level rule's declaration body.
@@ -51,75 +60,44 @@ function ruleBodies(css: string, selector: string): string[] {
   return [...css.matchAll(re)].map((m) => m[1]!);
 }
 
-/**
- * Extract a media block's body by matching braces, so a later addition after
- * the block cannot leak into the assertions.
- */
-function mediaBlock(css: string, query: string): string | null {
-  const start = css.indexOf(`@media ${query}`);
-  if (start === -1) return null;
-  const open = css.indexOf('{', start);
-  if (open === -1) return null;
-  let depth = 0;
-  for (let i = open; i < css.length; i += 1) {
-    if (css[i] === '{') depth += 1;
-    else if (css[i] === '}') {
-      depth -= 1;
-      if (depth === 0) return css.slice(open + 1, i);
-    }
-  }
-  return null;
-}
+describe('the live full-screen surface needs no orientation branch', () => {
+  // The retired wizard DID carry one (`@media (orientation: landscape) and
+  // (min-width: 48rem)`, ADR-0001 Slice 0) because it laid presets three-up and
+  // split a two-column step panel. `ProvisioningFlow` does not: it is one
+  // centered card capped at 31.25rem inside a scroll container, so a wide
+  // viewport asks nothing of it that portrait does not already answer.
+  //
+  // That is worth ASSERTING rather than assuming, because the opposite claim
+  // is what the old file implied. It also keeps the two facts the orientation
+  // fence cares about honest: `orientationAdaptiveWalker` grades every sheet in
+  // `features/setup/` EXCEPT the one path it carves out by name, so adding a
+  // landscape branch here would be a violation rather than a fix.
 
-describe('setup wizard landscape layout', () => {
-  it('declares an orientation-landscape block gated on a tablet-class width', () => {
-    const block = mediaBlock(WIZARD_CSS, '(orientation: landscape) and (min-width: 48rem)');
-    expect(block).toBeTruthy();
+  it('declares no orientation literal, which the shell owns', () => {
+    // ADR-0001 Slice 4: the shell owns orientation. This sheet is a feature
+    // sheet, so a branch here is a fence violation, not a layout choice.
+    expect(PROVISIONING_CSS).not.toContain('orientation: landscape');
+    expect(PROVISIONING_CSS).not.toContain('orientation: portrait');
   });
 
-  it('keeps the media query in step with LANDSCAPE_QUERY in useOrientation', () => {
-    // The hook is the structural half of the mechanism; the sheet is the
-    // layout half. They must agree on the word "landscape", or a screen can
-    // be sized for one orientation and laid out for the other.
-    const constant = HOOK_TS.match(/LANDSCAPE_QUERY\s*=\s*'([^']+)'/)?.[1];
-    expect(constant).toBe('(orientation: landscape)');
-    expect(WIZARD_CSS).toContain(`@media ${constant} and (min-width: 48rem)`);
+  it('stays a single centered column at any width, capped for the landscape viewport', () => {
+    // The card is width-constrained, so the 1097px landscape viewport shows the
+    // same single column as portrait rather than a stretched form.
+    const card = ruleBody(PROVISIONING_CSS, '\\.provisioning-card');
+    expect(card).toBeTruthy();
+    expect(card).toMatch(/max-width:\s*31\.25rem/);
+    expect(card).toMatch(/margin:\s*auto/);
   });
 
-  it('widens the container in landscape, because portrait caps it at 40rem', () => {
-    const portrait = ruleBody(WIZARD_CSS, '\\.setup-container');
-    expect(portrait).toMatch(/max-width:\s*40rem/);
-
-    const block = mediaBlock(WIZARD_CSS, '(orientation: landscape) and (min-width: 48rem)')!;
-    const wide = ruleBody(block, '\\.setup-container');
-    expect(wide).toMatch(/max-width:\s*72rem/);
-  });
-
-  it('puts the presets three-up in landscape and two-up in portrait', () => {
-    const portrait = ruleBody(WIZARD_CSS, '\\.setup-presets');
-    expect(portrait).toMatch(/grid-template-columns:\s*1fr 1fr/);
-
-    const block = mediaBlock(WIZARD_CSS, '(orientation: landscape) and (min-width: 48rem)')!;
-    const wide = ruleBody(block, '\\.setup-presets');
-    expect(wide).toMatch(/grid-template-columns:\s*repeat\(3,/);
-  });
-
-  it('splits the step panel into two columns only when the live preview is present', () => {
-    // Without the `:has()` guard the right-hand column is left empty on steps
-    // 1-6, which render feature toggles and no preview.
-    const block = mediaBlock(WIZARD_CSS, '(orientation: landscape) and (min-width: 48rem)')!;
-    const panel = ruleBody(block, '\\.setup-step-panel:has\\(\\.lsp-root\\)');
-    expect(panel).toBeTruthy();
-    expect(panel).toMatch(/display:\s*grid/);
-    expect(panel).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\)/);
-  });
-
-  it('reflows the feature toggles two-up in landscape to halve their height', () => {
-    const block = mediaBlock(WIZARD_CSS, '(orientation: landscape) and (min-width: 48rem)')!;
-    const features = ruleBody(block, '\\.setup-features');
-    expect(features).toMatch(/grid-template-columns:\s*repeat\(2,/);
+  it('stays scrollable, since the form is taller than the landscape height', () => {
+    // The tablet's landscape viewport is 1097x686 CSS px: height is the scarce
+    // axis. The container owns its own scroll area so a field cannot become
+    // unreachable when the card outgrows the viewport.
+    const container = ruleBody(PROVISIONING_CSS, '\\.provisioning-container');
+    expect(container).toMatch(/overflow-y:\s*auto/);
   });
 });
+
 
 describe('display insets are read once and consumed everywhere', () => {
   const INSET_TOKENS = ['--inset-top', '--inset-right', '--inset-bottom', '--inset-left'];
@@ -144,7 +122,7 @@ describe('display insets are read once and consumed everywhere', () => {
     // the drift this test exists to catch — it would keep working while
     // disagreeing.
     expect(TOKENS_CSS).toContain('env(safe-area-inset-top');
-    expect(WIZARD_CSS).not.toContain('env(safe-area-inset-');
+    expect(PROVISIONING_CSS).not.toContain('env(safe-area-inset-');
     expect(TABLET_CSS).not.toContain('env(safe-area-inset-');
     expect(RESET_CSS).not.toContain('env(safe-area-inset-');
   });
@@ -162,17 +140,21 @@ describe('display insets are read once and consumed everywhere', () => {
     }
   });
 
-  it('applies the insets on the full-screen wizard page', () => {
-    // The wizard renders instead of the shell on a fresh device, so it inherits
-    // none of the shell's padding and must apply the insets itself.
-    const page = ruleBody(WIZARD_CSS, '\\.setup-page');
-    expect(page).toBeTruthy();
+  it('applies the insets on the full-screen provisioning surface', () => {
+    // The fresh-device surface renders instead of the shell, so it inherits
+    // none of the shell's padding and must apply the insets itself. This
+    // assertion is why the retirement repointed rather than deleted: measured
+    // 2026-09-23 the live sheet had a flat `padding` and applied NO insets,
+    // while the dead wizard sheet was the only in-tree consumer besides the
+    // shell — so the contract read as covered when it was not.
+    const container = ruleBody(PROVISIONING_CSS, '\\.provisioning-container');
+    expect(container).toBeTruthy();
     for (const token of INSET_TOKENS) {
-      expect(page).toContain(`var(${token})`);
+      expect(container).toContain(`var(${token})`);
     }
-    // The visual gutter stays its own token, so the narrow breakpoint changes
-    // one value instead of restating the whole inset sum.
-    expect(page).toMatch(/--setup-gutter:\s*var\(--space-6\)/);
+    // The visual gutter stays its own token, so a breakpoint changes one value
+    // instead of restating the whole inset sum.
+    expect(container).toMatch(/--provisioning-gutter:\s*var\(--space-8\)/);
   });
 
   it('splits the inset ownership: the shell takes top/left/right, the tab bar takes the bottom', () => {
@@ -196,11 +178,14 @@ describe('display insets are read once and consumed everywhere', () => {
     expect(bar).toContain('padding-bottom: var(--inset-bottom)');
   });
 
-  it('narrows only the gutter at the small breakpoint, not the insets', () => {
-    const narrow = mediaBlock(WIZARD_CSS, '(max-width: 31.25rem)');
-    expect(narrow).toBeTruthy();
-    const page = ruleBody(narrow!, '\\.setup-page');
-    expect(page).toMatch(/--setup-gutter:\s*var\(--space-4\)/);
-    expect(page).not.toContain('env(safe-area-inset-');
+  it('keeps the gutter its own token, so an inset edit cannot touch the spacing', () => {
+    // The retired wizard narrowed its gutter at a small breakpoint and this test
+    // pinned that. The live surface has no such breakpoint, so the property
+    // worth keeping is the one that made the pattern safe: the visual gutter is
+    // a custom property, so a breakpoint changes ONE value instead of restating
+    // the inset sum, and re-deriving `env()` here stays impossible.
+    const container = ruleBody(PROVISIONING_CSS, '\\.provisioning-container');
+    expect(container).toMatch(/--provisioning-gutter:\s*var\(--space-8\)/);
+    expect(container).not.toContain('env(safe-area-inset-');
   });
 });

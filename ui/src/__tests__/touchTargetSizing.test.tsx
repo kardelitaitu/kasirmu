@@ -218,7 +218,9 @@ const CSS_FILES = [
   'features/auth/CreatePinScreen.css',
   'features/inventory/StockCountDetail.css',
   'features/inventory/StockCountForm.css',
-  'features/setup/SetupWizard.css',
+  // 'features/setup/SetupWizard.css' left this list with the retired wizard
+  // (ADR #56 §2.3, 2026-09-23). Its StepAccount atoms moved to the live
+  // ProvisioningFlow.css, which this list already walks.
   'features/workspaces/WorkspaceHome.css',
   'features/reports/DashboardScreen.css',
   'features/reports/SalesReportScreen.css',

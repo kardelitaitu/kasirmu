@@ -154,6 +154,23 @@ export type ProvisioningMode = 'local' | 'linked';
 export type LocationKind = 'retail' | 'restaurant';
 
 /**
+ * A store-type preset the first-run flow can ask for (ADR #56 §2.3).
+ *
+ * Moved here from `features/setup/SetupWizard.tsx` when that component was retired:
+ * `ProvisioningFlow` is the live owner of this union, and the six slugs are the
+ * ones `kasirmu_core::features::preset_registry` resolves. Keeping the type beside
+ * the request shape it travels with means a slug the backend does not know is a
+ * change in one file rather than two.
+ */
+export type Preset =
+  | 'simple-retail'
+  | 'restaurant'
+  | 'full-store'
+  | 'cafe'
+  | 'franchise'
+  | 'custom';
+
+/**
  * The first-run state of one terminal (ADR #56 §2.1).
  *
  * A tagged union rather than a boolean: the two states are mutually exclusive at the type level, so

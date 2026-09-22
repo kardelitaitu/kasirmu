@@ -9,8 +9,8 @@
  * fails. The assertion is a path fence rather than a count, for exactly that
  * reason.
  *
- * WHY IT IS GREEN, AND WHAT THAT GREEN DOES NOT COVER. The tree holds exactly one
- * orientation rule: `ui/src/features/setup/SetupWizard.css:625`,
+ * WHY IT IS GREEN, AND WHAT THAT GREEN DOES NOT COVER. The tree holds NO orientation
+ * rule outside the shell (the one it held, the now-deleted `SetupWizard.css:625`,
  * `@media (orientation: landscape) and (min-width: 48rem)`. That sheet is carved out
  * by name — `SLICE_0_EXEMPT_SHEETS` below — because ADR-0001 **Slice 0** shipped the
  * rule before the fence that forbids it, and because the wizard renders as its own
@@ -103,11 +103,33 @@ const SHELL_FENCE_HUMAN = [...SHELL_ORIENTATION_SHEETS].join(' or ');
  * below plants inside `ui/src/features/` precisely so this entry cannot silently
  * widen into the fence it is carved out of.
  */
-const SLICE_0_EXEMPT_SHEETS: ReadonlySet<string> = new Set([
-  // ADR-0001 Slice 0 (shipped): @media (orientation: landscape) and (min-width: 48rem)
-  // at SetupWizard.css:625, pinned by ui/src/__tests__/setupWizardLandscape.test.ts.
-  'ui/src/features/setup/SetupWizard.css',
-]);
+const SLICE_0_EXEMPT_SHEETS: ReadonlySet<string> = new Set([]);
+
+/* ── The Slice-0 exemption is now EMPTY, and that is the point ──────────────
+ *
+ * ADR-0001 Slice 0 shipped ONE orientation rule outside the shell —
+ * `@media (orientation: landscape) and (min-width: 48rem)` in
+ * `ui/src/features/setup/SetupWizard.css` — because the wizard rendered as its own
+ * full-page surface rather than as shell chrome, so §T1's "only at the shell" had no
+ * shell sheet to move it into. That single path was carved out by name.
+ *
+ * The wizard was then retired (ADR #56 §2.3; unreachable component, its later stages
+ * became in-app settings) and the sheet was deleted. The tree now holds ZERO
+ * orientation rules outside the shell, so the carve-out resolves to nothing.
+ *
+ * Removing it is the correct direction, not a loosening: this file's own denominator
+ * test asserts `exemptSheets === SLICE_0_EXEMPT_SHEETS.size` with the comment "an
+ * exemption that resolves to nothing is a licence nobody can audit". Keeping the
+ * entry would have kept a dead licence AND failed that assertion. The fence's
+ * ability to fire is still proven — by the planted-violation cases below, which feed
+ * synthetic sheets through `violationsIn`, not by the exemption's existence.
+ *
+ * The lesson the exemption carried, kept in prose because the entry is gone: the
+ * carve-out was ONE resolved path matched by whole-string equality, so a second sheet
+ * in `ui/src/features/setup/` was always graded. That is why the live
+ * `ProvisioningFlow.css` declares no orientation literal — it is a single centered
+ * card and needs no landscape branch (pinned by fullScreenSurfaceInset.test.ts).
+ */
 
 /** Recursively collect `.css` files under `dir`. */
 function findCssFiles(dir: string, results: string[] = []): string[] {
@@ -328,19 +350,26 @@ describe('orientation-adaptive layout compliance (ADR-0001 Slice 4 / T4)', () =>
       violationsIn('/* mirrors @media (orientation: landscape) */\n.a { color: red; }\n', 'ui/src/features/x/X.css', false),
     ).toEqual([]);
 
-    // The Slice-0 carve-out is one resolved path, proven in both directions: the
-    // named sheet is exempt, and its neighbour in the SAME directory is not.
-    expect(violationsIn(plantedBranch, 'ui/src/features/setup/SetupWizard.css', false)).toEqual([]);
-    // Same text, different path: the sibling is graded exactly as the fence grades
-    // any feature sheet. Compared on the VERDICT (rule + line), not the whole finding
-    // — the finding's path label is the argument this call supplied, so comparing it
-    // against branchFindings would assert the argument equals itself and prove nothing.
-    expect(
-      violationsIn(plantedBranch, 'ui/src/features/setup/SetupWizardScreen.css', false).map(
-        (f) => `${f.pattern}@${f.line}`,
-      ),
-      'the Slice-0 exemption widened past its single named path',
-    ).toEqual(branchFindings.map((f) => `${f.pattern}@${f.line}`));
+    // NO SHEET IS EXEMPT ANY MORE, and that is asserted rather than assumed:
+    // the former Slice-0 sheet was the wizard's and is deleted, so the fence now
+    // grades every feature sheet alike. The carve-out's own lesson is kept as a
+    // case here — it was ONE resolved path, so a neighbour in the SAME directory
+    // was always graded — but with the set empty both paths must now agree.
+    expect(SLICE_0_EXEMPT_SHEETS.size).toBe(0);
+    // The retired wizard's path and a hypothetical sibling in the same directory
+    // are graded IDENTICALLY. Compared on the VERDICT (rule + line), not the whole
+    // finding — the finding's path label is the argument this call supplied, so
+    // comparing it against branchFindings would assert the argument equals itself
+    // and prove nothing.
+    for (const rel of [
+      'ui/src/features/setup/SetupWizard.css',
+      'ui/src/features/setup/SetupWizardScreen.css',
+    ]) {
+      expect(
+        violationsIn(plantedBranch, rel, false).map((f) => `${f.pattern}@${f.line}`),
+        `a feature sheet was exempted that should have been graded: ${rel}`,
+      ).toEqual(branchFindings.map((f) => `${f.pattern}@${f.line}`));
+    }
   });
 
   it('no sheet outside the shell declares an orientation branch or repeats the orientation literal', () => {
@@ -367,10 +396,14 @@ describe('orientation-adaptive layout compliance (ADR-0001 Slice 4 / T4)', () =>
     // Both licensed sheets were actually reached, so the licence list is not a
     // stale string that matches nothing.
     expect(stats.shellRegistered).toBe(SHELL_ORIENTATION_SHEETS.size);
-    // An exemption that resolves to nothing is a licence nobody can audit: the one
-    // named Slice-0 sheet must exist AND still carry the rule it is exempted for.
+    // The exemption set is EMPTY and the walker must agree: zero exempt sheets and
+    // zero exempted matches. This is the assertion that would catch a re-added licence
+    // for a sheet that no longer exists — the failure mode the old `>` 0 form encoded
+    // when there was exactly one legitimate occupant. A non-zero count here now means
+    // an exemption was introduced, and `exemptSheets` would not match the empty set.
     expect(stats.exemptSheets).toBe(SLICE_0_EXEMPT_SHEETS.size);
-    expect(stats.exemptedMatches).toBeGreaterThan(0);
+    expect(SLICE_0_EXEMPT_SHEETS.size).toBe(0);
+    expect(stats.exemptedMatches).toBe(0);
     expect(stats.graded).toBeGreaterThan(0);
     expect(findings.length).toBe(0);
   });
