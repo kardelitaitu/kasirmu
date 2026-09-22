@@ -10,12 +10,36 @@
 
 use chrono::{DateTime, FixedOffset, Utc};
 
+/// The `locations.timezone` values [`offset_for_zone`] actually maps: its
+/// match arms other than the `_` fallback. A name outside this list resolves
+/// to UTC *through that fallback arm*, so a caller that must tell "this is
+/// UTC" from "this could not be resolved" asks here instead of comparing
+/// offsets.
+///
+/// Kept in step with the arms of [`offset_for_zone`] — the two state the same
+/// decision, twice, because that function's body is contract-frozen.
+const KNOWN_ZONES: &[&str] = &[
+    "utc",
+    "gmt",
+    "asia/jakarta",
+    "asia/pontianak",
+    "asia/makassar",
+    "asia/jayapura",
+];
+
+/// Whether `tz_name` is a value [`offset_for_zone`] resolves rather than
+/// falls back on. Case-insensitive, compared exactly as [`offset_for_zone`]
+/// compares it; an unrecognised *or empty* name is `false`.
+pub(crate) fn is_known_zone(tz_name: &str) -> bool {
+    KNOWN_ZONES.contains(&tz_name.to_ascii_lowercase().as_str())
+}
+
 /// Resolve the fixed UTC offset for a stored IANA zone name.
 ///
 /// Returns UTC for the empty string, `utc`/`gmt`, or any unrecognised name.
 /// Indonesia's three launch zones carry stable offsets (no DST), so a constant
 /// lookup is sufficient; future zones extend this match.
-fn offset_for_zone(tz_name: &str) -> FixedOffset {
+pub(crate) fn offset_for_zone(tz_name: &str) -> FixedOffset {
     match tz_name.to_ascii_lowercase().as_str() {
         "" | "utc" | "gmt" => {
             // SAFETY: 00:00 is a compile-time constant inside chrono's +/-23:59:59 range.

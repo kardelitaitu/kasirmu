@@ -2319,16 +2319,37 @@ fn report_rejects_malformed_date_bounds() {
 }
 
 #[test]
-fn iana_timezone_names_fall_back_to_utc() {
+fn iana_timezone_names_resolve_to_the_store_local_day() {
+    // REVERSES the pre-C6 contract (was:
+    // `iana_timezone_names_fall_back_to_utc`). That assertion — "unparseable
+    // timezone must not shift buckets" — is *why this bug survived*: it pinned
+    // the read path to a behaviour no real store can reach. The only writers of
+    // `locations.timezone` store an IANA name (the setup wizard hardcodes
+    // `Asia/Jakarta`; the bridge accepts only the three Indonesian zones plus
+    // `UTC`), so the value the write path produces was the value this path
+    // rejected, and every WIB store's revenue bucketed in UTC. An explicit
+    // `+07:00` was already honoured — see `daily_revenue_buckets_by_store_timezone`
+    // — so the fix is that the name resolves to that same offset.
+    //
+    // Asia/Jakarta is UTC+7: 2026-07-10T23:30:00Z is 2026-07-11T06:30 WIB and
+    // belongs to the 11th, not the UTC 10th.
     let conn = fresh();
     let s = store(&conn);
     set_primary_store_tz(&conn, "Asia/Jakarta");
     seed_sale_at_full(&conn, "tz-i1", 5000, "USD", "2026-07-10T23:30:00.000Z");
-    let rows = s.daily_revenue("2026-07-10", "2026-07-10").unwrap();
+    let rows = s.daily_revenue("2026-07-11", "2026-07-11").unwrap();
     assert_eq!(
         rows.len(),
         1,
-        "unparseable timezone must not shift buckets — UTC semantics"
+        "an IANA store zone must bucket on its own local day, not UTC"
+    );
+    assert_eq!(rows[0].total_minor, 5000);
+    // And the UTC day it used to be filed under no longer carries it.
+    let utc_rows = s.daily_revenue("2026-07-10", "2026-07-10").unwrap();
+    assert_eq!(
+        utc_rows.iter().map(|r| r.total_minor).sum::<i64>(),
+        0,
+        "the 23:30Z sale must no longer be bucketed on the UTC day"
     );
 }
 
