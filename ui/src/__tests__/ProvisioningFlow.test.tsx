@@ -146,6 +146,36 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
   // "Offline only" stays reachable — a merchant with no connection still has to
   // be able to set the terminal up — but it is now the deliberate exception, so
   // it is selected explicitly here rather than assumed.
+  // ── A failed pairing attempt must not dead-end the tab ─────────────
+  //
+  // The auto-start effect is gated on `!pairingError`, so once a start fails it
+  // never retries. Before this fix the only way back was re-clicking the QR
+  // Pairing tab that already looked selected - an invisible affordance on a
+  // control that appears active.
+
+  it('offers a retry when starting the pairing session fails', async () => {
+    vi.mocked(isTabletShell).mockReturnValue(true);
+    vi.mocked(startDevicePairing)
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce({
+        code: 'ABCD1234',
+        poll_token: 'tok',
+        expires_at: new Date(Date.now() + 60000).toISOString(),
+        qr_url: 'https://kasir.mu/pair?code=ABCD1234',
+      });
+
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+
+    // The failure surfaces, and a control to retry is offered beside it.
+    const retry = await screen.findByRole('button', { name: /Refresh Code/i });
+    fireEvent.click(retry);
+
+    await waitFor(() => {
+      expect(startDevicePairing).toHaveBeenCalledTimes(2);
+    });
+    // The retry actually recovers rather than failing the same way.
+    expect(await screen.findByTestId('pairing-code-badge')).toBeInTheDocument();
+  });
   it('defaults to the linked mode and requires an account before submitting', async () => {
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
 

@@ -35,7 +35,14 @@ function formatCrockford(code: string): string {
  * 1. Requires connecting to an account (Google on desktop, Email OTP on tablet)
  *    to obtain a tenant_id and link the device. The account is what the free
  *    plan attaches to, so `mode` starts at 'linked' — see `provisionMode`.
- * 2. Hard blocks first run if offline with a clear connection message.
+ * 2. Blocks ACCOUNT LINKING while offline, with a clear connection message.
+ *    Corrected 2026-09-23: this used to claim it "hard blocks first run if
+ *    offline", which overstated it. `provision_device` takes a DB lock and
+ *    writes local SQLite rows — no network call exists in its body — so a
+ *    provision itself cannot fail for want of a connection, and the offline-only
+ *    mode must stay open to a merchant with no signal. What offline actually
+ *    blocks is the LINK (the Google control and both tablet routes), and that is
+ *    what `isOffline` gates. The submit button is deliberately NOT gated on it.
  * 3. Sends mode: 'linked' with tenant_id to provisionDevice.
  */
 export interface ProvisioningFlowProps {
@@ -53,21 +60,30 @@ type LinkState =
 /** The emailed-code path's state for tablet. */
 type EmailState = 'idle' | 'sending' | 'sent' | 'verifying' | 'verified' | 'failed';
 
-/** The store types offered, with the preset each maps to. */
-const STORE_TYPES: { value: Preset; kind: LocationKind; emoji: string; label: string; blurb: string }[] = [
+/**
+ * The store types offered, with the preset each maps to.
+ *
+ * \`labelId\`/\`blurbId\` are Fluent ids, not strings: the labels are user-visible
+ * copy on the very first screen a merchant sees, so they must translate. They
+ * used to be TSX literals rendered raw, which no FTL key could ever reach — an
+ * Indonesian merchant read English here while every sibling string on the same
+ * screen was localized. Each is now rendered through <Localized>, matching the
+ * fallback text to the en bundle exactly.
+ */
+const STORE_TYPES: { value: Preset; kind: LocationKind; emoji: string; labelId: string; blurbId: string }[] = [
   {
     value: 'simple-retail',
     kind: 'retail',
     emoji: '🛒',
-    label: 'Shop',
-    blurb: 'Barcode, cash, receipt, inventory, tax',
+    labelId: 'setup-store-type-simple-retail',
+    blurbId: 'setup-store-type-simple-retail-blurb',
   },
   {
     value: 'restaurant',
     kind: 'restaurant',
     emoji: '🍽️',
-    label: 'Restaurant or cafe',
-    blurb: 'Tables, kitchen display, staff login',
+    labelId: 'setup-store-type-restaurant',
+    blurbId: 'setup-store-type-restaurant-blurb',
   },
 ];
 
@@ -75,6 +91,24 @@ const STORE_TYPES: { value: Preset; kind: LocationKind; emoji: string; label: st
 function kindForPreset(preset: Preset): LocationKind {
   return STORE_TYPES.find((t) => t.value === preset)?.kind ?? 'retail';
 }
+/**
+ * Fallback text for each store type, matching the en bundle word for word.
+ *
+ * <Localized> replaces its children with the bundle's string when the id
+ * resolves, so these are what a missing key would leave on screen — readable
+ * copy rather than the raw id. They are the same words the literal version
+ * rendered before these labels became translatable.
+ */
+const STORE_TYPE_FALLBACK: Record<string, { label: string; blurb: string }> = {
+  'simple-retail': {
+    label: 'Shop',
+    blurb: 'Barcode, cash, receipt, inventory, tax',
+  },
+  restaurant: {
+    label: 'Restaurant or cafe',
+    blurb: 'Tables, kitchen display, staff login',
+  },
+};
 
 export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProps) {
   const { l10n } = useLocalization();
@@ -447,7 +481,16 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                   <div className="provisioning-pairing-view">
                     {pairingError && (
                       <div className="provisioning-error" role="alert">
-                        {pairingError}
+                        <p style={{ margin: 0 }}>{pairingError}</p>
+                        {/* Without this the tab DEAD-ENDS: the auto-start effect
+                            above is gated on `!pairingError`, so a single transient
+                            failure never retries, and the only way back was
+                            re-clicking the QR Pairing tab that already looks
+                            selected. The expired branch already offers Refresh;
+                            a failure deserves the same escape. */}
+                        <Button variant="secondary" type="button" onClick={() => void loadPairingSession()}>
+                          <Localized id="auth-pair-refresh">Refresh Code</Localized>
+                        </Button>
                       </div>
                     )}
                     {pairingLoading ? (
@@ -590,8 +633,12 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                 onClick={() => setStoreType(t.value)}
               >
                 <span aria-hidden="true">{t.emoji}</span>
-                <strong>{t.label}</strong>
-                <small>{t.blurb}</small>
+                <Localized id={t.labelId}>
+                  <strong>{STORE_TYPE_FALLBACK[t.value]!.label}</strong>
+                </Localized>
+                <Localized id={t.blurbId}>
+                  <small>{STORE_TYPE_FALLBACK[t.value]!.blurb}</small>
+                </Localized>
               </button>
             ))}
           </div>
