@@ -124,6 +124,31 @@
   --color-link: #2088FF;
 }
 
+/* ── Keyboard focus indicator — ONE owner for the whole site ─────
+   Every interactive control (nav + dropdown triggers, links, buttons, the
+   theme and language switchers, form fields, the docs sidebar, the search
+   dialog) shows this and only this. It lives here so no component has to
+   hand-roll an indicator, and none may quietly remove one — components used
+   to carry `outline-none` with (or without) their own ring, which is how the
+   nav's Solutions trigger ended up with no indicator at all.
+
+   Deliberately OUTSIDE any @layer: Tailwind's utilities ship in a cascade
+   layer, and unlayered rules beat layered ones, so an `outline-none` utility
+   added later cannot silently switch the site's focus indicator off.
+
+   `outline-offset` matters: the ring has to sit clear of the control's own
+   background, otherwise a primary-blue ring would vanish into a primary-blue
+   button (the OTP boxes, the Sign in button) or the active language pill.
+
+   --color-primary is the AA-bearing brand blue and is the same in both
+   themes; measured against every themed surface it is 4.61:1 (light surface),
+   4.23:1 (light page), 3.57:1 (dark surface) and 3.11:1 (dark ghost) — all
+   above the 3:1 WCAG 1.4.11 floor for non-text UI. */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 /* ── Base typography (design language) ────────────────────────── */
 html,
 body {

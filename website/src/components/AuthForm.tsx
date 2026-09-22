@@ -384,7 +384,7 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
   };
 
   const inputClass =
-    'w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-primary/30';
+    'w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-ink transition';
 
   const tabClass = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition ${

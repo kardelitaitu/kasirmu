@@ -19,7 +19,7 @@ import { t, type Labels } from '../i18n/labels';
  * password.* i18n keys or supply form-specific ones.
  */
 const inputClass =
-  'w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-ink outline-none transition focus:border-accent';
+  'w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-ink transition';
 
 /**
  * Keys this field reads. Owned here because this is the component that reads

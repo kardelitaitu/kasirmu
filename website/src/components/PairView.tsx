@@ -215,7 +215,7 @@ export default function PairView({ locale, labels }: Props) {
               value={code}
               onChange={(e) => setCode(formatDisplayCode(e.target.value))}
               placeholder="ABCD-1234"
-              className="w-full text-center font-mono text-2xl tracking-widest uppercase rounded-lg border border-ink/10 bg-surface px-4 py-3 text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-primary/30"
+              className="w-full text-center font-mono text-2xl tracking-widest uppercase rounded-lg border border-ink/10 bg-surface px-4 py-3 text-ink transition"
             />
           </div>
           {!code && (

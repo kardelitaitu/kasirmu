@@ -81,7 +81,7 @@ interface Props {
 type Step = 'form' | 'code';
 
 const INPUT_CLASS =
-  'w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-ink outline-none transition focus:border-accent';
+  'w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-ink transition';
 
 const regionOptions: { value: Region; labelKey: string }[] = [
   { value: 'global', labelKey: 'signup.regionGlobal' },
@@ -335,7 +335,7 @@ export default function SignupForm({ locale, labels }: Props) {
             type="button"
             onClick={() => setRegionOpen(!regionOpen)}
             onBlur={() => setTimeout(() => setRegionOpen(false), 150)}
-            className="w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-left outline-none transition focus:border-accent flex items-center justify-between"
+            className="w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-left transition flex items-center justify-between"
           >
             <span>{t(labels, regionOptions.find((o) => o.value === region)?.labelKey ?? 'signup.regionGlobal')}</span>
             <svg

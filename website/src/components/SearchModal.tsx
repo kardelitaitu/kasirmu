@@ -161,7 +161,7 @@ export default function SearchModal({ isOpen, onClose, locale, labels, docs }: P
               setSelectedIndex(0);
             }}
             placeholder={t(labels, 'search.placeholder')}
-            className="flex-1 min-w-0 bg-transparent text-sm text-ink outline-none placeholder:text-muted pr-2"
+            className="flex-1 min-w-0 bg-transparent text-sm text-ink placeholder:text-muted pr-2"
             autoComplete="off"
             spellCheck="false"
           />

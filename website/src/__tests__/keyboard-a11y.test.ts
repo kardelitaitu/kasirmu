@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
@@ -58,12 +58,63 @@ describe('skip-to-content link', () => {
   });
 });
 
-describe('nav trigger keeps a focus indicator', () => {
-  it('Header does not suppress the focus outline anywhere', () => {
-    // The Solutions dropdown trigger carried `focus:outline-none` with no ring,
-    // so it was the one control on every page that gave a keyboard user no
-    // indication of where focus was.
-    expect(HEADER).not.toContain('focus:outline-none');
+describe('the focus indicator has exactly one owner', () => {
+  const GLOBAL_CSS = read('styles/global.css');
+
+  it('global.css defines the shared :focus-visible indicator from a design token', () => {
+    expect(GLOBAL_CSS).toMatch(/\n:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--color-primary\)/s);
+  });
+
+  it('offsets the outline so it stays visible on same-colour controls', () => {
+    // Without the offset the ring disappears into a primary-blue button (the
+    // OTP boxes, Sign in) and the active language pill.
+    expect(GLOBAL_CSS).toMatch(/\n:focus-visible\s*\{[^}]*outline-offset/s);
+  });
+
+  it('declares the rule at the top level, not inside a cascade layer', () => {
+    // Tailwind's utilities ship in `@layer utilities`, and layered rules lose
+    // to unlayered ones — a top-level rule therefore cannot be switched off by
+    // an `outline-none` utility someone adds later. The pattern requires no
+    // leading whitespace, which is what "not nested in a block" looks like.
+    expect(GLOBAL_CSS).toMatch(/\n:focus-visible/);
+  });
+
+  it('no component suppresses focus or hand-rolls its own indicator', () => {
+    // The defect this replaces: components carried `outline-none` with (or
+    // without) a private ring, and the nav's Solutions trigger ended up with no
+    // indicator at all. One owner means nobody else touches it — so this bans
+    // the whole vocabulary, not just the one spelling that happened to break:
+    // Outline suppression in every Tailwind v4 form, plus per-component focus
+    // rings (`focus:ring-*`), which are the other way a second owner appears.
+    const SUPPRESSES = /outline-none|outline-hidden|outline-\[none\]|outline:\s*none|focus:outline|focus:ring|focus-visible:ring/;
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(join(ROOT, dir), { withFileTypes: true })) {
+        const rel = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) {
+          if (entry.name === '__tests__' || entry.name === 'node_modules') continue;
+          walk(rel);
+        } else if (/\.(astro|tsx|ts|css)$/.test(entry.name)) {
+          const code = read(rel)
+            .replace(/\/\*[\s\S]*?\*\//g, ' ')      // block comments
+            .replace(/(^|[^:])\/\/[^\n]*/g, '$1'); // line comments (keep `https://`)
+          if (SUPPRESSES.test(code)) {
+            offenders.push(rel);
+          }
+        }
+      }
+    };
+    walk('components');
+    walk('layouts');
+    walk('pages');
+    expect(offenders).toEqual([]);
+  });
+
+  it('the shared rule is the only outline declaration outside the stylesheet', () => {
+    // `outline-offset` in global.css is fine; anything else redeclaring an
+    // outline in a component means a second owner has appeared.
+    expect(HEADER).not.toMatch(/outline/);
+    expect(read('components/SearchModal.tsx')).not.toMatch(/outline/);
   });
 });
 

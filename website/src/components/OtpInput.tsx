@@ -125,10 +125,8 @@ export default function OtpInput({
           onKeyDown={(e) => handleKeyDown(idx, e)}
           onPaste={handlePaste}
           onFocus={(e) => e.target.select()}
-          className={`h-12 w-full text-center font-mono text-xl font-bold rounded-lg border bg-primary text-ink outline-none transition-all duration-150 ${
-            error
-              ? 'border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500'
-              : 'border-ink/15 focus:border-accent focus:ring-2 focus:ring-accent/20'
+          className={`h-12 w-full text-center font-mono text-xl font-bold rounded-lg border bg-primary text-ink transition-all duration-150 ${
+            error ? 'border-red-500' : 'border-ink/15'
           } disabled:opacity-50`}
         />
       ))}
