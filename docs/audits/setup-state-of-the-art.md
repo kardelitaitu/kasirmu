@@ -114,5 +114,33 @@ Verify against `git ls-files` / `git log -- <path>` before citing it as a live d
    the merchant answers a business question (what kind of shop is this) rather than a technical
    one. A later slice resolves them from the scope chain."* The hardcoded `'IDR'` / `'Asia/Jakarta'`
    at `ProvisioningFlow.tsx:288-289` is that decision implemented, not drift.
-4. **Review the whole login surface for a11y** — the website auth islands are unaudited for
-   focus order and error announcement.
+4. ~~**Review the whole login surface for a11y**~~ — **IN PROGRESS, round 3.** The app-side auth
+   screens were audited and a consistent defect found and fixed across all three (see §6).
+   The **website** islands (`AuthForm.tsx`, `SignupForm.tsx`) remain unaudited HERE — another
+   agent is working that surface (`website/src/lib/accessibility.ts`, `html-scan.ts`, and
+   commit `a6e3bf49a build a pre-build accessibility gate`), so it is deliberately left to them.
+
+---
+
+## 6. Round 3 — the app-side auth surfaces: a failed input never marked the field
+
+Three screens, one defect class, found by census then verified individually:
+
+| Screen | Defect | Fix |
+|---|---|---|
+| `StaffLoginScreen` | A wrong PIN showed a CSS shake (invisible to a screen reader) + a toast. The PIN region itself never became invalid. | `aria-invalid` on the dots row, derived from the same condition the existing toast gate resets on. |
+| `SessionLockScreen` | Same, **plus** its four dot spans had no `aria-hidden` while the login screen's did — so its row was announced and then four unlabelled elements inside it. | `aria-invalid` on the row + `aria-hidden` on the spans. |
+| `CreatePinScreen` | The banner named the RULE ("All fields are required") but never which input broke it; no input was marked. | Validation now records the offending field(s); each bad input carries its own `aria-invalid` and error border, cleared as soon as that field is edited. |
+
+**The mismatch case is deliberately asymmetric with the others**: on a PIN mismatch
+`CreatePinScreen` marks **both** PIN fields, because the screen cannot know which one holds the
+typo. Marking only the confirm field would assert something it does not know.
+
+**Every fix was proved to fail first.** Each new test was run against the source with the
+`aria-invalid` attribute removed — StaffLogin 2 red, SessionLock 2 red, CreatePin 4 red — then
+restored and re-run green. A test that cannot go red is not coverage.
+
+**Verification:** `tsc --noEmit` clean · `npm run lint` 0 errors · **175 tests pass across 18
+auth suites** · the five CSS walkers pass with the new `[aria-invalid='true']` selector.
+
+Commits: `d8666db1e` (staff login), `eb632399f` (session lock), `b705afed1` (create owner).
