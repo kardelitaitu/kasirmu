@@ -1,6 +1,6 @@
 {
   "meta": {
-    "description": "Aplikasi kasir offline-first yang ringan dan mudah untuk kafe, restoran, dan ritel. Gratis, jalan di Android, tablet, dan Windows walau tanpa internet."
+    "description": "Aplikasi kasir ringan dan mudah untuk kafe, restoran, dan ritel — tetap jalan tanpa internet. Gratis, dan bisa dipakai di Android, tablet, maupun Windows."
   },
   "nav": {
     "home": "Beranda",
@@ -38,7 +38,7 @@
     "skipToContent": "Lewati ke konten"
   },
   "pageDesc": {
-    "features": "Kasir offline-first: penjualan, shift, dan stok yang tetap berjalan tanpa koneksi sama sekali.",
+    "features": "Kasir yang tetap jalan tanpa internet: penjualan, shift, dan stok berjalan penuh walau koneksi mati.",
     "pricing": "Lima paket — Gratis selamanya, Plus, Pro, Premium, dan Enterprise. Tahunan = 2 bulan gratis.",
     "download": "Unduh aplikasi kasir gratis untuk Windows — ringan dan mudah dipasang. Android dan tablet segera hadir.",
     "support": "Dapatkan bantuan kasir.mu — dukungan email dan jawaban untuk pertanyaan paling umum.",
@@ -105,7 +105,7 @@
       },
       {
         "q": "Apakah kasir.mu sama dengan kasirmu atau kasir mu?",
-        "a": "Ya, sama. kasir.mu juga sering ditulis kasirmu atau kasir mu — semuanya aplikasi kasir offline-first ini."
+        "a": "Ya, sama. kasir.mu juga sering ditulis kasirmu atau kasir mu — semuanya nama lain dari aplikasi kasir ini."
       }
     ]
   },
@@ -159,7 +159,7 @@
   "hero": {
     "badge": "Tidak didanai Y Combinator",
     "title": "Aplikasi Kasir yang Ringan, Mudah, dan Gratis",
-    "subtitle": "Sistem POS kelas korporasi yang tetap murah: jalan di Android, tablet, dan PC tua dengan inti offline-first ultra-ringan, tanpa biaya per-fitur tersembunyi.",
+    "subtitle": "Sistem POS kelas korporasi yang tetap murah: jalan di Android, tablet, dan PC tua, ringan, dan tetap jualan tanpa internet — tanpa biaya tambahan yang tersembunyi.",
     "ctaPrimary": "Unduh Gratis",
     "ctaSecondary": "Lihat Harga",
     "carousel": {
@@ -221,7 +221,7 @@
       }
     ],
     "comparisonTitle": "kasir.mu vs POS Cloud Konvensional",
-    "comparisonSubtitle": "Lihat mengapa arsitektur offline-first dan paket all-inclusive membuat kasir.mu unggul jauh.",
+    "comparisonSubtitle": "Lihat mengapa kasir.mu tetap jualan tanpa internet dan semua fiturnya sudah termasuk — bukan dijual terpisah.",
     "comparisonKasirMu": "kasir.mu",
     "comparisonOthers": "POS Lainnya",
     "comparisonHeaderFeature": "Fitur & Kapabilitas",
@@ -234,7 +234,7 @@
       },
       {
         "feature": "Efisiensi Hardware",
-        "kasirMu": "SOTA Rust engine — lancar di hardware termurah & hemat RAM",
+        "kasirMu": "Dibuat dengan Rust — lancar di perangkat termurah & hemat RAM",
         "others": "Aplikasi web berat, butuh hardware mahal",
         "highlight": false
       },
@@ -282,7 +282,7 @@
   },
   "pricingPage": {
     "title": "Harga",
-    "subtitle": "Setiap paket mencakup inti offline-first penuh. Tingkatkan untuk lebih banyak toko, register, dan otomatisasi.",
+    "subtitle": "Setiap paket bisa dipakai penuh tanpa internet. Tingkatkan untuk lebih banyak toko, register, dan otomatisasi.",
     "trust1": "Garansi uang kembali 30 hari",
     "trust2": "Batalkan kapan saja",
     "note": "Lisensi satu kali (perpetual) belum tersedia — lihat peta jalan.",
@@ -589,12 +589,12 @@
       "title": "Aplikasi Kasir Gratis untuk Warung, Kafe, dan Toko",
       "description": "Paket kasir gratis selamanya: satu toko, satu register, riwayat 3 bulan. Ringan, mudah dipakai, jalan offline — tanpa kartu kredit.",
       "h1": "Kasir Gratis, Selamanya",
-      "lede": "Mulai jualan hari ini tanpa bayar sepeser pun. Paket Gratis kasir.mu memberi Anda aplikasi kasir offline-first yang ringan dan mudah — satu toko, satu register, riwayat 3 bulan.",
+      "lede": "Mulai jualan hari ini tanpa bayar sepeser pun. Paket Gratis kasir.mu memberi Anda aplikasi kasir ringan dan mudah yang tetap jualan tanpa internet — satu toko, satu register, riwayat 3 bulan.",
       "points": [
         "Rp0 selamanya — tanpa kartu kredit, tanpa masa trial yang tiba-tiba berakhir",
         "Ringan: berjalan mulus di HP, tablet, dan PC tua",
         "Mudah: kasir bisa jualan dalam 3 langkah tanpa pelatihan",
-        "Offline-first: tetap jualan saat internet mati"
+        "Tanpa internet: tetap jualan saat internet mati"
       ],
       "limitsTitle": "Batas paket Gratis",
       "limits": "Satu toko, satu register, riwayat 3 bulan. Butuh lebih — multi-terminal, gudang, laporan terjadwal? Lihat paket Plus, Pro, dan Premium.",
@@ -619,7 +619,7 @@
       "title": "Aplikasi Kasir Murah: Mulai Rp0, Plus Rp49rb per Bulan",
       "description": "Harga kasir transparan: Gratis Rp0, Plus Rp49rb, Pro Rp99rb per bulan. Tanpa biaya per-fitur tersembunyi — murah untuk warung sampai restoran.",
       "h1": "Kasir Murah Tanpa Biaya Tersembunyi",
-      "lede": "Mulai gratis, naik kelas saat siap. Setiap paket kasir.mu sudah termasuk inti offline-first, QRIS, dan audit trail — yang membedakan hanya kapasitas, bukan fitur yang dikunci.",
+      "lede": "Mulai gratis, naik kelas saat siap. Setiap paket kasir.mu sudah bisa jualan tanpa internet, lengkap dengan QRIS dan jejak audit — yang membedakan hanya kapasitas, bukan fitur yang dikunci.",
       "tiersTitle": "Tiga langkah harga",
       "tiers": [
         "Gratis — Rp0 selamanya: satu toko, satu register",
@@ -640,7 +640,7 @@
         },
         {
           "q": "Apakah ada biaya per-fitur atau per register tersembunyi?",
-          "a": "Tidak. Harga per paket, transparan — fitur inti seperti offline-first, QRIS, dan audit trail ada di semua paket."
+          "a": "Tidak. Harga per paket, transparan — fitur inti seperti jualan tanpa internet, QRIS, dan jejak audit ada di semua paket."
         },
         {
           "q": "Apakah ada diskon tahunan?",
@@ -656,7 +656,7 @@
       "points": [
         "Ringan: dirancang untuk HP dan tablet Android murah dengan RAM kecil",
         "Mudah: tombol besar, alur 3 langkah, tanpa pelatihan khusus",
-        "Offline-first: tetap jualan di gudang atau area tanpa sinyal",
+        "Tanpa internet: tetap jualan di gudang atau area tanpa sinyal",
         "Tablet-optimized: layout responsif dari desktop hingga portrait"
       ],
       "statusTitle": "Status hari ini",
@@ -680,7 +680,7 @@
     }
   },
   "vertical": {
-    "positioning": "kasir.mu — kasir native QRIS dengan keandalan offline-first, harga untuk pasar Indonesia.",
+    "positioning": "kasir.mu — kasir native QRIS yang andal tanpa internet, harga untuk pasar Indonesia.",
     "whyTitle": "Mengapa kasir.mu untuk bisnis Anda?",
     "otherTitle": "Dibuat untuk jenis bisnis Anda",
     "otherSubtitle": "kasir.mu menyesuaikan cara Anda berjualan — pilih industri Anda.",
@@ -708,7 +708,7 @@
           "description": "Hingga 5 register per toko dengan menu dan stok yang sama."
         },
         {
-          "title": "Offline-first",
+          "title": "Tanpa internet",
           "description": "Tetap terima pesanan dan cetak struk meski Wi-Fi bermasalah."
         }
       ],
@@ -738,7 +738,7 @@
           "description": "Kelola stok lintas hingga 3 gudang dalam satu ruang kerja."
         },
         {
-          "title": "Offline-first",
+          "title": "Tanpa internet",
           "description": "Tetap scan dan jualan saat gangguan — data tersinkron saat kembali online."
         }
       ],
@@ -775,7 +775,7 @@
       "benefits": [
         "Cukup sederhana untuk warung — tanpa perlu pelatihan.",
         "Lacak produk yang laris agar stok lebih cerdas.",
-        "Offline-first: jangan pernah kehilangan penjualan saat gangguan."
+        "Tanpa internet: jangan pernah kehilangan penjualan saat gangguan."
       ]
     },
     "restoran": {
@@ -837,7 +837,7 @@
           "description": "Workspace inventaris khusus untuk penyedia logistik yang menyimpan dan memilih stok atas nama klien."
         },
         {
-          "title": "Inti Offline-First",
+          "title": "Inti tanpa internet",
           "description": "Lakukan stok opname, audit, dan penerimaan tanpa internet — tidak ada data hilang saat jaringan mati."
         }
       ],

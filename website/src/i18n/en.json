@@ -38,7 +38,7 @@
     "skipToContent": "Skip to content"
   },
   "pageDesc": {
-    "features": "Offline-first point of sale: sales, shifts, and stock that keep working with zero connectivity.",
+    "features": "Point of sale that keeps working without internet: sales, shifts, and stock stay usable with zero connectivity.",
     "pricing": "Five plans — Free forever, Plus, Pro, Premium, and Enterprise. Yearly = 2 months free.",
     "download": "Download the free POS app for Windows — lightweight and easy to install. Android and tablets are coming soon.",
     "support": "Get help with kasir.mu — email support and answers to the most common questions.",
@@ -155,7 +155,7 @@
   "hero": {
     "badge": "Not backed by Y Combinator",
     "title": "The Lightweight, Easy, Free POS",
-    "subtitle": "Corporate-grade POS that stays cheap: runs on Android, tablets, and old PCs with a blazing-fast offline-first core, with zero hidden per-feature fees.",
+    "subtitle": "Corporate-grade POS that stays cheap: runs on Android, tablets, and old PCs, stays fast, and keeps selling without internet — with no hidden add-on fees.",
     "ctaPrimary": "Download free",
     "ctaSecondary": "See Pricing",
     "carousel": {
@@ -180,7 +180,7 @@
     "subtitle": "Core capabilities engineered for zero-latency operations, uninterrupted offline uptime, and resilient business scale.",
     "items": [
       {
-        "title": "Offline-First",
+        "title": "Works Offline",
         "description": "Sales, checkout, and inventory keep working 100% without internet. Never lose a sale or halt checkout during outages."
       },
       {
@@ -217,7 +217,7 @@
       }
     ],
     "comparisonTitle": "kasir.mu vs Conventional Cloud POS",
-    "comparisonSubtitle": "See why true offline-first architecture and transparent all-inclusive features set kasir.mu apart.",
+    "comparisonSubtitle": "See why kasir.mu keeps selling without internet and includes every feature — instead of selling add-ons.",
     "comparisonKasirMu": "kasir.mu",
     "comparisonOthers": "Other POS",
     "comparisonHeaderFeature": "Features & Capabilities",
@@ -230,7 +230,7 @@
       },
       {
         "feature": "Hardware Efficiency",
-        "kasirMu": "SOTA Rust engine — smooth on budget hardware & lean RAM",
+        "kasirMu": "Built in Rust — smooth on budget hardware with lean RAM",
         "others": "Heavy web app requiring expensive specs",
         "highlight": false
       },
@@ -278,7 +278,7 @@
   },
   "pricingPage": {
     "title": "Pricing",
-    "subtitle": "Every plan includes the full offline-first core. Upgrade for more stores, registers, and automation.",
+    "subtitle": "Every plan works fully without internet. Upgrade for more stores, registers, and automation.",
     "trust1": "30-day money back",
     "trust2": "Cancel anytime",
     "note": "One-time (perpetual) licensing is not available yet — see the roadmap.",
@@ -322,7 +322,7 @@
       },
       {
         "title": "Ready to Sell Offline",
-        "body": "Process sales at 0ms latency with 100% offline-first local storage."
+        "body": "Keep selling instantly — everything is saved on your own device, so a dropped connection never stops a sale."
       }
     ],
     "trialCallout": "You came from a restaurant/cafe page — your trial key unlocks a 14-day Pro trial.",
@@ -585,12 +585,12 @@
       "title": "Free POS App for Warung, Cafes, and Shops",
       "description": "Free-forever POS plan: one store, one register, 3-month history. Lightweight, easy, works offline — no credit card.",
       "h1": "Free POS, Forever",
-      "lede": "Start selling today without paying a cent. The kasir.mu Free plan gives you a lightweight, easy offline-first POS app — one store, one register, 3-month history.",
+      "lede": "Start selling today without paying a cent. The kasir.mu Free plan gives you a lightweight, easy POS app that keeps selling without internet — one store, one register, 3-month history.",
       "points": [
         "Rp0 forever — no credit card, no trial that suddenly ends",
         "Lightweight: runs smoothly on phones, tablets, and old PCs",
         "Easy: cashiers can sell in 3 steps with no training",
-        "Offline-first: keeps selling when the internet dies"
+        "Works offline: keeps selling when the internet dies"
       ],
       "limitsTitle": "Free plan limits",
       "limits": "One store, one register, 3-month history. Need more — multi-terminal, warehouses, scheduled reports? See Plus, Pro, and Premium.",
@@ -615,7 +615,7 @@
       "title": "Cheap POS App: From Rp0, Plus at Rp49k per Month",
       "description": "Transparent POS pricing: Free Rp0, Plus Rp49k, Pro Rp99k per month. No hidden per-feature fees — cheap for warung to restaurants.",
       "h1": "Cheap POS With No Hidden Fees",
-      "lede": "Start free, upgrade when ready. Every kasir.mu plan includes the offline-first core, QRIS, and audit trail — only capacity differs, never locked features.",
+      "lede": "Start free, upgrade when ready. Every kasir.mu plan keeps selling without internet, with QRIS and the audit trail included — only capacity differs, never locked features.",
       "tiersTitle": "Three price steps",
       "tiers": [
         "Free — Rp0 forever: one store, one register",
@@ -636,7 +636,7 @@
         },
         {
           "q": "Are there hidden per-feature or per-register fees?",
-          "a": "No. Pricing is per plan and transparent — core features like offline-first, QRIS, and audit trail are in every plan."
+          "a": "No. Pricing is per plan and transparent — core features like working without internet, QRIS, and the audit trail are in every plan."
         },
         {
           "q": "Is there a yearly discount?",
@@ -652,7 +652,7 @@
       "points": [
         "Lightweight: built for cheap Android phones and tablets with little RAM",
         "Easy: big buttons, 3-step flow, no special training",
-        "Offline-first: keeps selling in warehouses and dead zones",
+        "Works offline: keeps selling in warehouses and dead zones",
         "Tablet-optimized: responsive layout from desktop to portrait"
       ],
       "statusTitle": "Status today",
@@ -676,7 +676,7 @@
     }
   },
   "vertical": {
-    "positioning": "kasir.mu is the QRIS-native POS with offline-first reliability — priced for the Indonesian market.",
+    "positioning": "kasir.mu is the QRIS-native POS you can rely on without internet — priced for the Indonesian market.",
     "whyTitle": "Why kasir.mu for your business?",
     "otherTitle": "Built for your kind of business",
     "otherSubtitle": "kasir.mu adapts to how you sell — pick your industry.",
@@ -704,7 +704,7 @@
           "description": "Up to 5 registers per store with one shared menu and stock."
         },
         {
-          "title": "Offline-first",
+          "title": "Works offline",
           "description": "Keep taking orders and printing receipts even when Wi-Fi drops."
         }
       ],
@@ -734,7 +734,7 @@
           "description": "Route stock across up to 3 warehouses in one workspace."
         },
         {
-          "title": "Offline-first",
+          "title": "Works offline",
           "description": "Keep scanning and selling during outages — data syncs when you're back."
         }
       ],
@@ -771,7 +771,7 @@
       "benefits": [
         "Simple enough for a warung — no training needed.",
         "Track what sells so you stock smarter.",
-        "Offline-first: never lose a sale during an outage."
+        "Works offline: never lose a sale during an outage."
       ]
     },
     "restoran": {
@@ -833,7 +833,7 @@
           "description": "Dedicated stock workspaces for logistics providers storing and picking inventory on behalf of clients."
         },
         {
-          "title": "Offline-First Core",
+          "title": "Works offline",
           "description": "Perform stocktakes, audits, and manifests without internet — zero dropped records during network blackouts."
         }
       ],
