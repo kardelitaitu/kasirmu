@@ -2,8 +2,8 @@
 /*
 last audited 25-07-26 by RSA-Agent (platform-core slice C: settings/typed deep read)
 crate: platform-core | status: SAFE | lint: CLEAN
-findings: clean typed accessors with documented defaults; sync API key, terminal secret, and PG password transparently ENCRYPTED at rest via kasirmu_crypto with legacy-plaintext read fallback (corrects the broader COR-17/30 note: these secrets are not plaintext); decrypt-failure falls back to raw value silently rather than erroring (INFO — corrupted ciphertext yields garbage, no alert); currency default has documented old-key migration fallback
-next: surface decrypt failures | perf: N/A
+findings: clean typed accessors with documented defaults; sync API key, terminal secret, and PG password transparently ENCRYPTED at rest via kasirmu_crypto with legacy-plaintext read fallback (corrects the broader COR-17/30 note: these secrets are not plaintext); decrypt-failure now fails closed when the stored value has ciphertext shape and decrypts under no derivation (C1 slice S1.5) while legacy plaintext still reads back unchanged; currency default has documented old-key migration fallback
+next: none | perf: N/A
 */
 
 use super::{Settings, keys};
@@ -329,9 +329,16 @@ impl Settings {
     }
 
     /// Get the sync API key (transparently decrypted).
+    ///
+    /// Fails closed on a value that has ciphertext shape but decrypts
+    /// under no derivation (see [`decrypt_or_fail_closed`]).
     pub fn get_sync_api_key(conn: &Connection) -> Result<Option<String>, PlatformError> {
         let raw = Self::get(conn, keys::SYNC_API_KEY)?;
-        Ok(raw.map(|v| kasirmu_crypto::decrypt_sync_api_key(&v).unwrap_or(v)))
+        Ok(raw
+            .map(|v| {
+                decrypt_or_fail_closed(keys::SYNC_API_KEY, &v, kasirmu_crypto::decrypt_sync_api_key)
+            })
+            .transpose()?)
     }
 
     /// Set the sync API key (transparently encrypted at rest).
@@ -354,11 +361,20 @@ impl Settings {
 
     /// Get the registered sync terminal device secret (ADR sync-auth-hardening
     /// P3). Transparently decrypted. `None` when not paired yet.
+    ///
+    /// Fails closed on a value that has ciphertext shape but decrypts
+    /// under no derivation (see [`decrypt_or_fail_closed`]).
     pub fn get_sync_terminal_secret(conn: &Connection) -> Result<Option<String>, PlatformError> {
         let raw = Self::get(conn, keys::SYNC_TERMINAL_SECRET)?;
-        Ok(raw
-            .filter(|s| !s.is_empty())
-            .map(|v| kasirmu_crypto::decrypt_sync_terminal_secret(&v).unwrap_or(v)))
+        raw.filter(|s| !s.is_empty())
+            .map(|v| {
+                decrypt_or_fail_closed(
+                    keys::SYNC_TERMINAL_SECRET,
+                    &v,
+                    kasirmu_crypto::decrypt_sync_terminal_secret,
+                )
+            })
+            .transpose()
     }
 
     /// Set the registered sync terminal device secret (ADR sync-auth-hardening P3).
@@ -432,9 +448,20 @@ impl Settings {
     }
 
     /// Get the PostgreSQL password (transparently decrypted).
+    ///
+    /// Fails closed on a value that has ciphertext shape but decrypts
+    /// under no derivation (see [`decrypt_or_fail_closed`]).
     pub fn get_pg_sync_password(conn: &Connection) -> Result<Option<String>, PlatformError> {
         let raw = Self::get(conn, keys::PG_SYNC_PASSWORD)?;
-        Ok(raw.map(|v| kasirmu_crypto::decrypt_pg_sync_password(&v).unwrap_or(v)))
+        Ok(raw
+            .map(|v| {
+                decrypt_or_fail_closed(
+                    keys::PG_SYNC_PASSWORD,
+                    &v,
+                    kasirmu_crypto::decrypt_pg_sync_password,
+                )
+            })
+            .transpose()?)
     }
 
     /// Set the PostgreSQL password (transparently encrypted at rest).
@@ -548,9 +575,20 @@ impl Settings {
     }
 
     /// Get the exchange rate API key (transparently decrypted).
+    ///
+    /// Fails closed on a value that has ciphertext shape but decrypts
+    /// under no derivation (see [`decrypt_or_fail_closed`]).
     pub fn get_rate_sync_api_key(conn: &Connection) -> Result<Option<String>, PlatformError> {
         let raw = Self::get(conn, keys::RATE_SYNC_API_KEY)?;
-        Ok(raw.map(|v| kasirmu_crypto::decrypt_rate_api_key(&v).unwrap_or(v)))
+        Ok(raw
+            .map(|v| {
+                decrypt_or_fail_closed(
+                    keys::RATE_SYNC_API_KEY,
+                    &v,
+                    kasirmu_crypto::decrypt_rate_api_key,
+                )
+            })
+            .transpose()?)
     }
 
     /// Set the exchange rate API key (transparently encrypted at rest).
@@ -634,9 +672,16 @@ impl Settings {
     // ── LAN Server PSK (secret — encrypted at rest) ─────────────
 
     /// Get the LAN server pre-shared key (transparently decrypted).
+    ///
+    /// Fails closed on a value that has ciphertext shape but decrypts
+    /// under no derivation (see [`decrypt_or_fail_closed`]).
     pub fn get_lan_server_psk(conn: &Connection) -> Result<Option<String>, PlatformError> {
         let raw = Self::get(conn, keys::LAN_SERVER_PSK)?;
-        Ok(raw.map(|v| kasirmu_crypto::decrypt_lan_psk(&v).unwrap_or(v)))
+        Ok(raw
+            .map(|v| {
+                decrypt_or_fail_closed(keys::LAN_SERVER_PSK, &v, kasirmu_crypto::decrypt_lan_psk)
+            })
+            .transpose()?)
     }
 
     /// Set the LAN server pre-shared key (transparently encrypted at rest).
@@ -644,5 +689,49 @@ impl Settings {
         let encrypted = kasirmu_crypto::encrypt_lan_psk(psk)
             .map_err(|e| PlatformError::Internal(e.to_string()))?;
         Self::set(conn, keys::LAN_SERVER_PSK, &encrypted)
+    }
+}
+
+// ── Fail-closed decrypt ──────────────────────────────────────────────
+
+/// A local restatement of the PRIVATE `kasirmu_crypto::looks_like_ciphertext`,
+/// which this crate cannot call: there is no public shape discriminator, so
+/// the same predicate is copied here — and it must stay copied, because the
+/// fallback below turns on it. A value has ciphertext shape when it decodes
+/// as base64 to at least a 12-byte nonce plus a 16-byte GCM tag.
+fn has_ciphertext_shape(value: &str) -> bool {
+    const ALPHABET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=_-";
+    // 12-byte nonce + 16-byte tag = 28 bytes = 38 base64 characters, at minimum.
+    value.len() >= 38 && value.chars().all(|c| ALPHABET.contains(c))
+}
+
+/// Read one stored credential: decrypt it, pass legacy plaintext through, and
+/// fail closed on a value that is ciphertext-shaped but decrypts under no
+/// derivation (C1 slice S1.5).
+///
+/// `decrypt` is the family's reader, which already tries every derivation the
+/// install knows (legacy first, then the `OZ_MASTER_KEY` branch). So a failure
+/// means the bytes were written by a newer binary with a key this install does
+/// not have, or are corrupt — in both cases the value is NOT the secret, and
+/// handing it back would put ciphertext where an SMTP client, a sync request or
+/// a PostgreSQL connection expects a credential, with no error anywhere.
+///
+/// Values that are legitimately not ciphertext — an empty string, a value the
+/// caller never set, or pre-encryption plaintext such as `sk-sync-legacy:0001`
+/// — keep the old behaviour and read back byte for byte. The error names the
+/// setting key and never the value.
+fn decrypt_or_fail_closed(
+    key: &str,
+    value: &str,
+    decrypt: impl FnOnce(&str) -> Result<String, kasirmu_crypto::CryptoError>,
+) -> Result<String, PlatformError> {
+    match decrypt(value) {
+        Ok(plaintext) => Ok(plaintext),
+        Err(_) if !has_ciphertext_shape(value) => Ok(value.to_string()),
+        Err(_) => Err(PlatformError::Internal(format!(
+            "stored setting `{key}` has ciphertext shape but could not be decrypted under any \
+             known key derivation — it is corrupt or was written by another install; refusing \
+             to return it as a credential"
+        ))),
     }
 }
