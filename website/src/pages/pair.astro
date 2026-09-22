@@ -1,5 +1,6 @@
 ---
 // Root /pair redirect — detects locale and forwards query string (?code=...)
+import { LANGUAGE_STORAGE_KEY } from '../lib/language';
 ---
 <!doctype html>
 <html lang="id">
@@ -7,8 +8,10 @@
     <meta charset="utf-8" />
     <title>kasir.mu — Pair Tablet</title>
     <meta name="robots" content="noindex" />
-    <script is:inline>
-      const saved = localStorage.getItem('oz_language');
+    <!-- The key arrives via define:vars because an is:inline script is never
+         bundled, so it cannot import the owner (lib/language.ts) directly. -->
+    <script is:inline define:vars={{ LANGUAGE_STORAGE_KEY }}>
+      const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
       const lang = (saved || navigator.language || 'id').toLowerCase();
       const locale = lang.startsWith('id') ? 'id' : 'en';
       window.location.replace(`/${locale}/pair${window.location.search}`);

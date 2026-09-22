@@ -6,6 +6,7 @@
 // astro.config.mjs declares. It is deliberately NOT in the sitemap: it
 // canonicalises to /id/, so listing it would contradict itself.
 // (CF-IPCountry sniffing would require a Cloudflare Function — out of v1.)
+import { LANGUAGE_STORAGE_KEY } from '../lib/language';
 ---
 
 <!doctype html>
@@ -40,12 +41,14 @@
     <meta name="twitter:description" content="Platform POS offline-first untuk kafe, restoran, dan ritel. Tetap berjalan tanpa internet, sinkron saat kembali online." />
     <meta name="twitter:image" content="https://kasir.mu/og-image.png" />
     <meta name="twitter:image:alt" content="kasir.mu — POS Kasir Offline-First untuk Indonesia" />
-    <script is:inline>
+    <!-- The key arrives via define:vars because an is:inline script is never
+         bundled, so it cannot import the owner (lib/language.ts) directly. -->
+    <script is:inline define:vars={{ LANGUAGE_STORAGE_KEY }}>
       // Privacy-friendly: stored user preference first, browser language fallback.
       // The last resort is 'id', not 'en': it only triggers when navigator.language
       // is empty (essentially never), and 'id' is what the noscript fallback,
       // canonical, x-default and astro.config defaultLocale all agree on.
-      const saved = localStorage.getItem('oz_language');
+      const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
       const lang = (saved || navigator.language || 'id').toLowerCase();
       const target = lang.startsWith('id') ? '/id/' : '/en/';
       window.location.replace(target);

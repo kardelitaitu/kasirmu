@@ -45,6 +45,7 @@ const activeIndex = locales.indexOf(locale);
 
 <script>
   import { navigate } from 'astro:transitions/client';
+  import { setPreferredLanguage } from '../lib/language';
   import { setRegion } from '../lib/region';
 
   function initLangSwitcher() {
@@ -79,12 +80,11 @@ const activeIndex = locales.indexOf(locale);
         }
         // Prevent immediate navigation
         e.preventDefault();
-        // Save language and region preference to localStorage
+        // Save both preferences through their owners — `oz_language` is spelled
+        // in lib/language.ts and `oz_region` in lib/region.ts and nowhere else,
+        // so these writes cannot name different keys than the readers do.
         const lang = idx === 0 ? 'en' : 'id';
-        localStorage.setItem('oz_language', lang);
-        // Through the region owner: `oz_region` is spelled in lib/region.ts and
-        // nowhere else, so this write cannot name a different key than the
-        // readers in SignupForm do.
+        setPreferredLanguage(lang);
         setRegion(lang === 'id' ? 'id' : 'global');
         // Slide pill to clicked option
         switcher!.dataset.activeIndex = String(idx);
