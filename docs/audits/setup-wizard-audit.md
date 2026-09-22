@@ -1,19 +1,28 @@
 # Setup Wizard — Audit & Review
 
 **Date:** 2026-09-08 · **Scope:** `ui/src/features/setup/**`, its FTL keys, its CSS, its tests
-**Verdict:** The **live** first-run path is healthy. The **9-step `SetupWizard.tsx` is not
-reachable from any application entry point** — it is imported only by its own tests. That is
-the headline finding, and it is a deliberate supersession (ADR #56 §2.3) that was never
-followed through in the code, the docs, or the tests.
+**Verdict:** The **live** first-run path (`ProvisioningFlow`) is healthy. The 9-step
+`SetupWizard.tsx` is **not reachable from any application entry point** — it is imported only
+by its own tests. That is deliberate (ADR #56 §2.3 keeps the component by name), but the
+commands that once persisted its state were deleted, so it now ships with an orphaned
+`onComplete` contract.
 
 ## Executive summary
 
-**ADR #56 executed a retirement bottom-up and stopped halfway.** §2.2 deleted the three Rust
-commands that persisted wizard state (`complete_setup`, `get_setup_status`,
-`dismiss_setup_wizard`); §2.3 replaced the wizard's critical path with `ProvisioningFlow`. Both
-halves of the backend decision shipped. What was left behind is the *front* half: an 839-line
-`SetupWizard.tsx` with no mount point, a `WizardState` contract whose only consumer is
-`vi.fn()`, and **49 passing tests that assert behaviour of a screen no user can reach.**
+**Correction to the first draft of this audit.** The wizard is unreachable — that stands. But
+it is not an oversight to be fixed by deletion: `docs/decisions/2026-10-04-adr56-first-run-provisioning.md`
+§2.3 **explicitly keeps the component**. It removes the nine steps *from the critical path*, not
+from the product ("its later stages are the in-app settings a provisioned terminal now reaches").
+§3.1 lists "the wizard's nine steps" under **Real deletion**, but the PART IMPLEMENTED note
+(`:476-482`) supersedes that: `Built: ProvisioningFlow … is now what both shells render … The
+wizard component itself is KEPT.`
+
+So the state is **documented and deliberate**, not drift. What is genuinely unresolvable is the
+*contract*: §2.2 deleted the three Rust commands that persisted `WizardState`
+(`complete_setup`, `get_setup_status`, `dismiss_setup_wizard`), and with them any path by which
+the wizard's chosen features or currency could ever be saved. The component ships, its
+`onComplete` has no caller, and its state has nowhere to go — a live-looking surface whose
+backend was retired underneath it.
 
 The live path (`ProvisioningFlow`) is genuinely well-built — offline is a hard honest block,
 the tablet/desktop split is a shell flag rather than a prop, and a failed verification keeps
@@ -22,16 +31,18 @@ missing test, and one whole dead sibling.
 
 | Rank | Finding | Severity |
 |---|---|---|
-| F1 | `SetupWizard.tsx` + `.css` + `StepAccount.tsx` unreachable; 49 green tests guard a dead screen | 🔴 |
-| F4 | `WizardState` → `onComplete` → nobody. Its persistence commands were retired, so the state is **unpersistable by design** | 🔴 |
+| F1 | `SetupWizard.tsx` + `.css` + `StepAccount.tsx` unreachable — **ADR #56 §2.3 keeps it deliberately**; the open question is its orphaned contract, not its existence | 🟡 |
+| F4 | `WizardState` → `onComplete` → nobody. §2.2 retired its persistence commands, so the state is **unpersistable by design** | 🔴 |
 | F2 | `StepAccount` nests `.setup-step-panel` inside the wizard's own → double animation | 🔴 latent |
 | F3 | `setup-complete-desc` gets a translated preset name in an English sentence frame | 🟡 |
 | F5 | `StepFeatures`'s `title` prop computed → passed → overwritten; prop is dead | 🟡 |
 | F6/F7 | Naming drift; empty CSS rule; stale "8-step" doc on a 9-step array | 🟢 |
 
-**Do not delete anything on this report alone** — F1 is a product decision, and
-`components/LiveSetupPreview.*` is *live* (used by `FeatureToggleScreen`, route `features`) and
-must survive any cleanup. The verified, deletion-safe set is spelled out in §2 F1.
+**Do not delete anything on this report alone.** `components/LiveSetupPreview.*` is *live* (used
+by `FeatureToggleScreen`, route `features`). And the QRIS upsell the ADR worries about (§3.2,
+"the one consequence here with revenue impact") is **not** actually lost if the wizard goes:
+`features/sales/payment/QrisTenderPanel.tsx:62` still gates QRIS behind `openUpgradePricing`,
+so the checkout path carries the upsell. That consequence can be struck from the ADR's risk list.
 
 ---
 
@@ -70,7 +81,7 @@ The FTL bundle agrees that the wizard is history — `shared-ui/locales/settings
 > `### First-run provisioning (ADR #56 §2.3). The flow asks three things and then provisions;
 > the nine-step wizard's later stages became in-app settings on an already-working terminal.`
 
-### ⚠️ One file in this directory is NOT dead — and it splits the deletion
+### ⚠️ One file in this directory is NOT dead
 
 `components/LiveSetupPreview.tsx` **has a second, live consumer**:
 
@@ -81,23 +92,38 @@ The FTL bundle agrees that the wizard is history — `shared-ui/locales/settings
 
 `FeatureToggleScreen` is a real registered page — `settings/register.tsx:21`
 (`route: 'features'`, owner-only). So its header comment ("Embedded in SetupWizard (Review
-step) and FeatureToggleScreen") is **accurate**, and it must be **kept** when the wizard is
-deleted. Its own suite (`LiveSetupPreview.test.tsx`) stays with it.
-
-The safe deletion set is therefore **`SetupWizard.tsx` + `SetupWizard.css` +
-`components/StepAccount.tsx` + their four test files** — *not* the whole `setup/` directory.
+step) and FeatureToggleScreen") is **accurate**, and it must be **kept** under any disposition.
+Its own suite (`LiveSetupPreview.test.tsx`) stays with it.
 
 ---
 
 ## 2. Findings, ranked
 
-### F1 — `SetupWizard.tsx` is production-dead but ships in the bundle (~1,700 LOC) 🔴
+### F1 — `SetupWizard.tsx` is production-dead; ADR #56 §2.3 keeps it *on purpose* 🟡
 
 `SetupWizard.tsx` (839 L) + `SetupWizard.css` + `components/StepAccount.tsx` (214 L) are
-never rendered by any application entry point. They are not tree-shaken: nothing marks the
-module side-effect-free from the app graph, and five test files keep importing it, so the
-source, the stylesheet, and the `setup-*` FTL keys only they read stay in the shipped bundle.
-(`components/LiveSetupPreview.*` is **excluded** from this finding — see the note above.)
+never rendered by any application entry point. Crucially, the ADR that made them unreachable
+**says to keep them** (`:476-482`), so this is not an unfinished cleanup — it is a recorded
+decision. §3.1's "Real deletion: … the wizard's nine steps" (`:716-719`) is the *aspiration*;
+the PART IMPLEMENTED note is the *record of what was built*, and it wins.
+
+**What is still worth fixing is the contract, not the file.** The component ships with an
+`onComplete?: (state: WizardState) => void` that nothing supplies (F4), a `Skip setup` control
+whose backend command was deleted, and an `Account` step that ADR #56 §2.3 lists among the
+things it deliberately moved to a working terminal (`:489-490` "No account step"). It reads as
+a live screen and behaves as a closed one.
+
+**Two honest resolutions — pick one:**
+
+1. **Retire it for real** (delete the three files + the four suites that only test them + the
+   `setup-*` keys they alone read). This is what §3.1 *claims* happened. Requires an ADR
+   amendment, because §2.3 currently says the opposite.
+2. **Re-admit it deliberately** — if the nine steps are meant to return as in-app settings,
+   mount it behind a real route (ADR #56 §2.3's own "its later stages are the in-app settings a
+   provisioned terminal now reaches"), and give `onComplete` a caller that persists.
+
+Leaving it as-is is the only option that costs something for nothing: it is neither reachable
+nor gone.
 
 **Cost:** dead source that every reader must triage, a whole FTL namespace maintained in two
 languages for a screen no user can reach, and 49 green tests that assert behaviour of a
@@ -131,7 +157,7 @@ go. Verify with `grep -o "first-run keys" ` before removing anything.
 planned-looking 9-step preset flow; someone may intend to re-mount it. But today it is
 unreachable, and that should be either fixed or admitted.
 
-### F2 — `StepAccount` renders a nested `.setup-step-panel` inside the wizard's own 🔴 (latent)
+### F2 — `StepAccount` rendered a nested `.setup-step-panel` inside the wizard's own ✅ **REPAIRED**
 
 `SetupWizard.tsx:474` wraps every step in `<div className="setup-step-panel">`.
 `StepAccount.tsx:81` opens **another** `<div className="setup-step-panel">` at its root.
@@ -148,7 +174,7 @@ Every other step component returns a `<>` fragment; `StepAccount` alone returns 
 distinct class. Note this is **latent while F1 holds** — it becomes a real defect only if the
 wizard is re-mounted.
 
-### F3 — `SetupWizard`'s completion screen passes a variable the message ignores 🟡
+### F3 — `SetupWizard`'s completion screen passed a variable the message framed badly ✅ **REPAIRED**
 
 `SetupWizard.tsx:433` sends `vars={{ preset: requiredLocalized(l10n, \`setup-preset-${preset}\`) }}`
 to `setup-complete-desc`:
@@ -174,7 +200,7 @@ that `:330-331` carefully documents as matching the Rust backend — terminates 
 I found **no code path that persists the user's chosen features or currency**. The wizard's
 configured state is discarded on completion.
 
-### F5 — `StepFeatures`'s `title` prop is computed then overwritten 🟡
+### F5 — `StepFeatures`'s `title` prop was computed then overwritten ✅ **REPAIRED**
 
 `SetupWizard.tsx:632` builds `localizedTitle` from `setup-features-section-${sectionId}`, and
 `636-638` passes it as the `{ $title }` variable to `setup-features-title`. But
@@ -262,6 +288,24 @@ that persisted wizard state, and §2.3 replaced the wizard's critical path — b
 `SetupWizard.tsx` component, its `WizardState` contract, and 49 tests that exercise the
 now-orphaned `onComplete` callback were all left in the tree. The retirement was executed
 **bottom-up and stopped halfway.**
+
+---
+
+## 4b. Repairs applied — commit `8bff7a66f`
+
+`fix(setup): repair the wizard's panel nesting, completion copy and dead title indirection`
+(6 files, +86/−93). Verified: `tsc --noEmit` clean · `npm run lint` 0 errors · **64 tests pass**
+across the 7 setup suites.
+
+| Finding | Repair |
+|---|---|
+| **F2** | `StepAccount` now returns a fragment, matching every sibling step component. The wizard's own `.setup-step-panel` is the only one, so the double fade-slide and the `:has(.lsp-root)` mis-match are both gone. |
+| **F3** | `setup-complete-desc` reworded in **both** bundles to read naturally around a translated preset noun (en: "Your X setup", id: "Pengaturan X Anda"). The component's fallback text was aligned to the same shape. |
+| **F5** | `StepFeatures` emits the localized section title directly; the `title` prop, the six dead `title` fields in `STEP_FEATURES`, and the pure-passthrough `setup-features-title` message were all removed. |
+| **F7** | Stale "8-step" doc corrected to 9 with the full step list; empty `.setup-step-panel {}` rule removed; stray inline `</div>`s re-indented; `LiveSetupPreview`'s stray leading space and duplicated `known` array removed. |
+
+**Not repaired, deliberately:** F1/F4. The ADR says keep the component (§2.3), and deleting it
+would require amending that record first. Reported, not acted on.
 
 ---
 
