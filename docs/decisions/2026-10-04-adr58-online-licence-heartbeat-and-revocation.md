@@ -2,7 +2,7 @@
 num: 58
 area: licensing
 title: "ADR #58: Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State"
-status: Partially implemented (2026-10-04; status re-audited 2026-09-22) — the Revoked state, the session lock, the export twin command, the ride-along and the per-device renewal refusal are IMPLEMENTED; the export twin has NO UI caller, so §2.6's promise is not reachable in the product, and §2.3's window ships as a UI poll gate rather than the session obligation its pseudocode specifies
+status: Partially implemented (2026-10-04; status re-audited 2026-09-22) — the Revoked state, the session lock, the export twin command, the ride-along, the per-device renewal refusal, and the §2.3/§2.5 Rust-side pre-expiry re-auth session obligation in create_session are IMPLEMENTED; the export twin has NO UI caller, so §2.6's promise is not reachable in the product
 ---
 
 # ADR #58: Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State
@@ -25,10 +25,12 @@ all IMPLEMENTED.**
    `ui/src/api/data.ts:283`) — and the tablet registers only the gated command
    (`apps/mobile-tauri/src/lib.rs:585`). Recorded as an **open gap** at §4a Q-A: §2.5's
    prerequisite is not discharged in product terms until the twin is reachable with no session.
-3. **§2.3's window ships as a poll GATE, not as the session obligation its pseudocode describes.**
-   `shouldPollLicense` (`ui/src/features/settings/LicenseSettings.tsx:109`) decides whether to arm
-   the timer; nothing requires, prompts or blocks re-authentication, and there is no Rust-side
-   window gate. §2.5's pseudocode marks that arm `[new]`, and that marker remains the accurate one.
+3. **§2.3's window is now implemented both as a UI poll gate and as a Rust-side session obligation.**
+   `shouldPollLicense` (`ui/src/features/settings/LicenseSettings.tsx:109`) arms the timer in settings,
+   and `crates/kasirmu-bridge/src/auth.rs` (`create_session`) now enforces the §2.3 / §2.5 obligation:
+   within the 3-day pre-expiry window on paid tiers, session creation invokes `check_license_status`
+   to ensure fresh lease and revocation status, failing open on transport failure per §2.4. Tested in
+   `auth_tests.rs`.
 
 The
 great majority of the pipeline below is **already

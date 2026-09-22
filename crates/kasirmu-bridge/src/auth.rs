@@ -631,6 +631,42 @@ pub async fn create_session(
         )));
     }
 
+    // ADR #58 §2.3 / §2.5: Pre-expiry re-authentication obligation for paid tenants.
+    //
+    // A paid tenant must re-authenticate within the last 3 days before expiry.
+    // Outside that window it operates locally on its stored signature; Free tenants
+    // and perpetual/lifetime licenses owe no check.
+    // Inside the window (now_ledger <= expires_at && now_ledger >= expires_at - 3 days),
+    // an online status check is triggered. Per §2.4, transport failures fail open into
+    // grace, so an outage does not brick the till; but a successful check refreshes
+    // the lease or returns an authoritative revocation/downgrade verdict.
+    if sub.tier != kasirmu_core::subscription::SubscriptionTier::Free {
+        if let Some(ref expires_at_str) = sub.expires_at {
+            if let Ok(expiry_dt) = chrono::DateTime::parse_from_rfc3339(expires_at_str) {
+                let expiry = expiry_dt.with_timezone(&chrono::Utc);
+                let now_ledger = {
+                    let db = ctx.lock_global().await;
+                    match TenantSubscription::compute_max_ledger_timestamp(&db) {
+                        Ok(ts) => chrono::DateTime::parse_from_rfc3339(&ts)
+                            .map(|dt| dt.with_timezone(&chrono::Utc))
+                            .unwrap_or_else(|_| chrono::Utc::now()),
+                        Err(_) => chrono::Utc::now(),
+                    }
+                };
+                let window_start = expiry - chrono::Duration::days(3);
+                if now_ledger >= window_start && now_ledger <= expiry {
+                    tracing::info!(
+                        tenant_id = %sub.tenant_id,
+                        "tenant is within 3-day pre-expiry window — executing re-auth status check (ADR #58 §2.3)"
+                    );
+                    // Best-effort check: if online, updates cache/CRL and sweeps sessions on revocation.
+                    // If network fails, fails open into grace per §2.4.
+                    let _ = crate::license::check_license_status(ctx).await;
+                }
+            }
+        }
+    }
+
     // ADR #58 §2.5: a REVOKED tenant gets no new session, therefore no app.
     //
     // This is the tenant-level arm, distinct from §2.4a.2's per-DEVICE check

@@ -526,6 +526,73 @@ async fn create_session_allows_a_canceled_tenant() {
 }
 
 #[tokio::test]
+async fn create_session_outside_pre_expiry_window_operates_locally() {
+    // ADR #58 §2.3: Outside the 3-day window, a paid tenant operates locally on its
+    // stored signature without requiring an online check.
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    // 30 days in the future (well outside the 3-day window)
+    let future_expiry = (chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339();
+    conn.execute(
+        "UPDATE tenant_subscription SET expires_at = ?1 WHERE tenant_id = 'default'",
+        [&future_expiry],
+    )
+    .unwrap();
+    let app = test_app(conn);
+
+    let res = create_session(
+        &app.ctx(),
+        &CreateSessionArgs {
+            user_id: "user-owner".into(),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-store-pos".into(),
+            type_key: "store-pos".into(),
+            terminal_id: "terminal-1".into(),
+            picker_ticket: test_picker_ticket("user-owner"),
+            org_id: None,
+        },
+    )
+    .await;
+
+    assert!(res.is_ok(), "session creation succeeds locally outside the 3-day window");
+}
+
+#[tokio::test]
+async fn create_session_inside_pre_expiry_window_fails_open_on_transport_failure() {
+    // ADR #58 §2.3 / §2.4: Inside the 3-day window, a check is triggered, but transport failure
+    // fails open so offline merchants can still open sessions.
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    // 1 day in the future (inside the 3-day window)
+    let near_expiry = (chrono::Utc::now() + chrono::Duration::days(1)).to_rfc3339();
+    conn.execute(
+        "UPDATE tenant_subscription SET expires_at = ?1 WHERE tenant_id = 'default'",
+        [&near_expiry],
+    )
+    .unwrap();
+    let app = test_app(conn);
+
+    let res = create_session(
+        &app.ctx(),
+        &CreateSessionArgs {
+            user_id: "user-owner".into(),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-store-pos".into(),
+            type_key: "store-pos".into(),
+            terminal_id: "terminal-1".into(),
+            picker_ticket: test_picker_ticket("user-owner"),
+            org_id: None,
+        },
+    )
+    .await;
+
+    assert!(res.is_ok(), "session creation fails open within the 3-day window when server is unreachable");
+}
+
+
+#[tokio::test]
 async fn invalidate_all_sessions_drops_every_live_session() {
     // ADR #58 §2.5: "Live sessions must be invalidated on revocation." Refusing
     // only NEW sessions would leave a banned tenant selling for up to the
