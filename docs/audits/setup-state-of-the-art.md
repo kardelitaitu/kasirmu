@@ -187,6 +187,38 @@ hardcoded. Verified to go red with the label hardcoded again.
 **Commit:** `7de6f582a`. **Verification:** `npx tsc --noEmit` clean · **1,250 website tests pass
 across 62 files** · the island-label-coverage gate passes with the new keys.
 
+### Round 6 — device-level verification, and a gap in my own round-3 work
+
+**A gap in my own fix.** Round 3 gave `StaffLoginScreen` an `aria-invalid` but **no visual
+styling**, unlike `CreatePinScreen` and `LicenseActivationScreen` where the same round added an
+error border. The mark reached assistive tech; a sighted user saw an unchanged PIN row and had to
+read the toast. Fixed in `ec9b31939`.
+
+**Real-browser verification now exists for the auth surface.** Two Playwright tests, running on
+both desktop and tablet projects against the dev-mock:
+
+1. the failed-PIN mark survives the real React commit (`e2e/auth.spec.ts`);
+2. the dot's computed `border-color` actually becomes the danger colour.
+
+**22/22 auth E2E pass.** The suite runs with `npm run e2e:ui -- --no-docker e2e/auth.spec.ts`.
+
+#### Writing test 2 took three wrong versions — worth keeping
+
+Each passed or failed for the wrong reason, and the pattern is the lesson:
+
+| Version | Why it was wrong |
+|---|---|
+| "the colour changed from the empty row" | **Passed with the CSS deleted.** Entering digits fills the dots, which changes `border-color` on its own. |
+| "equals `--color-danger` read from `<body>`" | Failed on tablet: the token is theme-dependent (desktop `rgb(255,107,104)` vs tablet `rgb(244,108,111)`), so it pinned the theme, not the behaviour. |
+| reading immediately after the attribute appears | Returned a **mid-transition blend**, `rgb(192,112,143)` — the dot transitions `border-color` (`StaffLoginScreen.css:455`), so it differed from the valid colour whether or not the rule existed. |
+
+The final version polls until the transition settles and compares against the danger token read
+from a probe outside the dot. Verified to fail with the rules removed (expected danger, received
+the valid colour) and pass with them present.
+
+**A failing screenshot was also read directly** during diagnosis, confirming the dots really render
+red — the visual evidence the DOM tests could not provide.
+
 ### Remaining, and honestly not mine to claim
 
 - **The website auth islands are unaudited by me.** Another agent owns that surface and has
