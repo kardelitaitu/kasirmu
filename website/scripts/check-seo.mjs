@@ -19,25 +19,34 @@
 //      invisible to every source-level test.
 //   2. hreflang alternates — exactly {en, id, x-default} on every locale page,
 //      each href on the canonical origin, x-default equal to the `id` variant
-//      (the same convention `scripts/sitemap-options.mjs` emits), and
-//      RECIPROCAL: the counterpart must be a built page and must point back.
+//      (the same convention `scripts/sitemap-options.mjs` emits), every target a
+//      page the build actually produced, and RECIPROCAL: the counterpart must
+//      point back. The existence arm is what catches a page that exists in only
+//      one locale — an href computed from the page's own path always looks
+//      right, so nothing else would notice the dangling id/x-default pointer.
 //   3. sitemap ⇄ built public pages, both directions — nothing submitted that
 //      is not a public built page (the gated NON_PUBLIC_PAGES, the locale-detect
-//      root, /404, /pair, /admin, /dev), and nothing public left unsubmitted.
+//      root, /404, /pair, /admin, /dev, /docs-portal), and nothing public left
+//      unsubmitted.
 //   4. noindex discipline — the gated locale pages and the standalone /pair/
 //      page carry the meta tag; no other content page does (a stray noindex
 //      silently de-indexes a live page); the headless /admin/ and /dev/ trees
 //      are covered by `X-Robots-Tag: noindex` in _headers, which is their only
 //      possible mechanism.
 //   5. JSON-LD — every block parses, declares @context/@type, carries the types
-//      its page class owes (docs = BreadcrumbList + Article, pricing =
-//      SoftwareApplication/Organization/WebSite + Product, marketing =
+//      its page class owes (docs articles = BreadcrumbList + Article — the class
+//      comes from the content collection, so a doc at any depth is held to it —
+//      pricing = SoftwareApplication/Organization/WebSite + Product, marketing =
 //      SoftwareApplication/Organization/WebSite), and describes only visible
 //      content: an Offer price must be a finite number (not "$0"/"Custom"), an
 //      Article's mainEntityOfPage must be this page, and every FAQPage question
 //      must appear as text in the body.
 //   6. titles and descriptions — present on every page that can be indexed, and
 //      unique site-wide.
+//   7. the docs corpus ⇄ the build — every doc in src/content/docs has a page.
+//      The collection is what the sidebar, the ⌘K index and this gate's docs
+//      class are all derived from, so a doc that stops building disappears
+//      from the site without any other check being able to see it.
 //
 // DELIBERATELY NOT CHECKED (each a decision, not an omission):
 //   • The root locale-detect stub (src/pages/index.astro) is a redirect document
@@ -49,14 +58,22 @@
 //     outside the titles/descriptions check too (it ships no meta description).
 //   • /admin/ and /dev/ are static trees copied from public/ with no Astro head:
 //     their noindex lives in _headers (X-Robots-Tag) and is asserted there.
+//   • /docs-portal/ is the generated mdBook/rustdoc/TypeDoc tree, staged from
+//     public/ by scripts/import-portal.sh and therefore present or absent
+//     depending on the tools (the same presence-dependence check-links.mjs
+//     handles). It is deliberately PUBLISHED — the docs hub links to it — and
+//     has no Astro head, so it owes no canonical/hreflang/JSON-LD and, unlike
+//     /admin/ and /dev/, must NOT be de-indexed. It is classified apart for
+//     exactly that reason.
 //   • llms.txt is noindexed via _headers for the same reason (it is a
 //     machine-facing summary, not a page) but is not a HTML surface, so it is
 //     out of scope here.
 //
-// SPEED: reads 89 files and 2 XML files — ~30 ms. It is a post-build step, not a
-// crawler.
+// SPEED: reads every built page, the sitemap and the docs corpus — ~40 ms. It is
+// a post-build step, not a crawler.
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { NON_PUBLIC_PAGES, SITE, isNonPublic } from '../src/lib/site.ts';
 
 const DIST = 'dist';
@@ -86,22 +103,85 @@ const SELF_HEAD_PAGES = {
   '/404.html': { kind: '404', canonicalPath: '/404/' },
   '/pair/index.html': { kind: 'standalone pair page', canonicalPath: null },
 };
-const STATIC_DIRS = ['/admin/', '/dev/'];
+// Headless trees copied verbatim from public/, with no Astro head of their own.
+// They are split by intent rather than lumped together because one pair owes a
+// noindex header and the other must not be judged by it at all.
+const HEADLESS_TREES = [
+  { prefix: '/admin/', kind: 'static headless' },
+  { prefix: '/dev/', kind: 'static headless' },
+  { prefix: '/docs-portal/', kind: 'vendored portal' },
+];
+
+// The docs-article set is NOT a URL pattern — it is the content collection.
+// `src/content.config.ts` loads `src/content/docs/**/*.md` and
+// `[locale]/docs/[...slug].astro` builds exactly one page per entry at
+// `/<locale>/docs/<id minus the locale prefix>`. Reading those same files here
+// is what makes a doc at ANY depth the same class as a top-level one: the
+// loader's glob is `**/*.md`, so `en/guides/deep.md` really does build
+// `/en/docs/guides/deep/`, and a one-segment pattern would have called that
+// page "marketing" and demanded the wrong structured data from it. It also
+// means a doc that no longer builds is a finding rather than a silent gap.
+const DOCS_SOURCE = new URL('../src/content/docs/', import.meta.url);
+
+/**
+ * Every doc the collection loads, keyed by the URL `[...slug].astro` builds for
+ * it: the file's first directory is its locale prefix and the rest is its slug,
+ * so `en/guides/deep.md` → `/en/docs/guides/deep/` at any depth.
+ *
+ * Note what is NOT here: a locale list. Whether a doc's URL is really served is
+ * decided by the build in the check below, not by a list this script would have
+ * to keep in step with src/i18n — so a doc filed under a locale the site does
+ * not serve is a finding instead of a doc that silently exists nowhere.
+ */
+function readDocsCorpus() {
+  const docs = new Map(); // built URL path -> source file, so findings can name it
+  const unbuildable = []; // loaded by the collection, but no route can build it
+  for (const name of readdirSync(DOCS_SOURCE, { recursive: true })) {
+    const relative = String(name).split(sep).join('/');
+    if (!relative.endsWith('.md')) continue;
+    const source = `src/content/docs/${relative}`;
+    const segments = relative.slice(0, -'.md'.length).split('/');
+    if (segments.length < 2) {
+      unbuildable.push({ source, because: 'it sits outside any locale directory' });
+      continue;
+    }
+    docs.set(`/${segments[0]}/docs/${segments.slice(1).join('/')}/`, source);
+  }
+  return { docs, unbuildable };
+}
+
+// Fail loudly rather than classify every docs page as marketing if the corpus
+// cannot be read: without it this gate cannot tell a docs article from a
+// marketing page, and guessing would produce exactly the false positives this
+// class exists to prevent.
+const { docs: docsCorpus, unbuildable } = (() => {
+  try {
+    return readDocsCorpus();
+  } catch (error) {
+    throw new Error(
+      `cannot read the docs corpus at ${fileURLToPath(DOCS_SOURCE)} (${error.message}) — ` +
+        'check:seo expects to run from the website package against a checkout that has src/content/docs',
+    );
+  }
+})();
 
 function classify(url) {
   if (SELF_HEAD_PAGES[url]) return { url, ...SELF_HEAD_PAGES[url] };
-  if (STATIC_DIRS.some((dir) => url.startsWith(dir))) {
-    return { url, kind: 'static headless', canonicalPath: null };
-  }
+  const tree = HEADLESS_TREES.find((entry) => url.startsWith(entry.prefix));
+  if (tree) return { url, kind: tree.kind, canonicalPath: null };
   const locale = url.match(/^\/(en|id)\//)?.[1];
-  if (locale) return { url, kind: 'content', locale, canonicalPath: dirUrl(url) };
-  return null;
+  if (!locale) return null;
+  const path = dirUrl(url);
+  // A docs article is one the corpus builds. The docs hub (/xx/docs/) is a page
+  // in its own right and stays a plain content page.
+  return { url, kind: docsCorpus.has(path) ? 'docs article' : 'content', locale, canonicalPath: path };
 }
 
-const isDocsContent = (url) => /^\/(?:en|id)\/docs\/[^/]+\/$/.test(url);
 const isPricing = (url) => /^\/(?:en|id)\/pricing\/$/.test(url);
+/** A page served under a locale prefix: the ones the locale rules apply to. */
+const isLocalePage = (rec) => rec.kind === 'content' || rec.kind === 'docs article';
 /** Pages that ship a shared <head> (SiteHead): the ones the head checks apply to. */
-const hasHead = (rec) => rec.kind === 'content' || rec.kind === 'root stub' || rec.kind === '404';
+const hasHead = (rec) => isLocalePage(rec) || rec.kind === 'root stub' || rec.kind === '404';
 
 // ── Head parsing ────────────────────────────────────────────────────────────
 const attr = (tag, name) => tag.match(new RegExp(`${name}="([^"]*)"`))?.[1];
@@ -203,6 +283,21 @@ for (const page of pages) {
   }
 }
 
+// 0b. The collection and the build must agree. The sidebar, the llms.txt page
+// list and the ⌘K index are all derived from this same collection, so a doc that
+// produces no page disappears from the entire site at once — and nothing else
+// here would notice, because a page that was never written leaves no trace in
+// dist/ to check.
+const builtPaths = new Set(pages.map((page) => page.path));
+for (const [url, source] of docsCorpus) {
+  if (!builtPaths.has(url)) {
+    add('page classes', source, `is loaded as a doc (the route would build ${url}) but the build produced no page for it — is its directory a locale the site serves?`);
+  }
+}
+for (const { source, because } of unbuildable) {
+  add('page classes', source, `is loaded by the docs collection but can never be built: ${because}`);
+}
+
 // 1. canonical ⇄ og:url.
 for (const page of pages.filter((p) => p.rec && hasHead(p.rec))) {
   const { canonical, ogUrl, rec } = page;
@@ -242,17 +337,28 @@ for (const page of pages.filter((p) => p.rec && hasHead(p.rec))) {
       add('hreflang', page.url, `hreflang="${lang}" points off the canonical origin: ${href}`);
     }
   }
-  if (rec.kind !== 'content') {
-    // The root stub and /404 have no locale of their own — their alternates are
-    // the locale homes (SiteHead falls back to `/` so hreflang never points at
-    // /en/404/). Only the targets existing is checkable for them.
-    for (const { lang, href } of alternates) {
-      if (href?.startsWith(`${SITE}/`) && !byCanonical.has(href)) {
-        add('hreflang', page.url, `hreflang="${lang}" points at ${href}, which is not the canonical of any built page`);
-      }
+  // Every alternate must name a page the build actually produced. This is the
+  // only arm that catches a dangling pointer: the en/id hrefs below are computed
+  // from this page's own path, so a page that exists in one locale only ships a
+  // perfectly well-formed `id` and `x-default` pointing at URLs that were never
+  // generated (there is no astro i18n `fallback` configured, so nothing does
+  // generate them).
+  for (const { lang, href } of alternates) {
+    if (!href?.startsWith(`${SITE}/`)) continue; // off-origin hrefs are reported above
+    if (!byCanonical.has(href)) {
+      add('hreflang', page.url, `hreflang="${lang}" points at ${href}, which is not the canonical of any built page`);
     }
-    continue;
   }
+  const xDefault = alternates.find((a) => a.lang === 'x-default')?.href;
+  const idVariant = alternates.find((a) => a.lang === 'id')?.href;
+  if (xDefault !== idVariant) {
+    add('hreflang', page.url, `x-default is ${xDefault} but must be the id variant (${idVariant}), matching scripts/sitemap-options.mjs`);
+  }
+  // The root stub and /404 have no locale of their own — their alternates are
+  // the locale homes (SiteHead falls back to `/` so hreflang never points at
+  // /en/404/) — so for them the existence and x-default arms above are all that
+  // can apply.
+  if (!isLocalePage(rec)) continue;
   const rest = page.path.slice(`/${rec.locale}`.length); // '/cafe/'
   for (const lang of ['en', 'id']) {
     const expected = `${SITE}/${lang}${rest}`;
@@ -260,11 +366,6 @@ for (const page of pages.filter((p) => p.rec && hasHead(p.rec))) {
     if (actual !== expected) {
       add('hreflang', page.url, `hreflang="${lang}" is ${actual} but the ${lang} variant of this page is ${expected}`);
     }
-  }
-  const xDefault = alternates.find((a) => a.lang === 'x-default')?.href;
-  const idVariant = alternates.find((a) => a.lang === 'id')?.href;
-  if (xDefault !== idVariant) {
-    add('hreflang', page.url, `x-default is ${xDefault} but must be the id variant (${idVariant}), matching scripts/sitemap-options.mjs`);
   }
   // Reciprocity: the other locale's page must point back at this one.
   const otherLang = rec.locale === 'en' ? 'id' : 'en';
@@ -301,7 +402,7 @@ for (const { loc, file } of submitted) {
 }
 const expectedSubmissions = new Set(
   pages
-    .filter((p) => p.rec?.kind === 'content' && !isNonPublic(`${SITE}${p.path}`))
+    .filter((p) => p.rec && isLocalePage(p.rec) && !isNonPublic(`${SITE}${p.path}`))
     .map((p) => `${SITE}${p.path}`),
 );
 for (const { loc, file } of submitted) {
@@ -322,7 +423,7 @@ const headerRules = parseHeaders();
 for (const page of pages) {
   const { rec } = page;
   if (!rec) continue;
-  if (rec.kind === 'content') {
+  if (isLocalePage(rec)) {
     const gated = isNonPublic(`${SITE}${page.path}`);
     const noindexed = /noindex/.test(page.robots);
     if (gated && !noindexed) {
@@ -347,18 +448,19 @@ for (const page of pages) {
 //    visible content.
 /** How a page is described in a failure message, by the rules it is held to. */
 const pageClass = (page) =>
-  page.rec.kind !== 'content'
-    ? page.rec.kind
-    : isDocsContent(page.path)
-      ? 'docs content'
-      : isPricing(page.path)
-        ? 'pricing'
-        : 'marketing';
+  page.rec.kind === 'content'
+    ? isPricing(page.path)
+      ? 'pricing'
+      : 'marketing'
+    : page.rec.kind;
 
 const requiredTypes = (rec) => {
   if (rec.kind === '404') return ['SoftwareApplication', 'Organization', 'WebSite'];
   if (rec.kind === 'root stub') return [];
-  if (isDocsContent(rec.path)) return ['BreadcrumbList', 'Article'];
+  // Every docs article renders through DocsLayout, which emits these two — at
+  // any depth, because the class comes from the collection rather than a URL
+  // shape.
+  if (rec.kind === 'docs article') return ['BreadcrumbList', 'Article'];
   const base = ['SoftwareApplication', 'Organization', 'WebSite'];
   return isPricing(rec.path) ? [...base, 'Product'] : base;
 };
@@ -384,7 +486,7 @@ for (const page of pages.filter((p) => p.rec && hasHead(p.rec))) {
       add('structured data', page.url, `is a ${pageClass(page)} page but ships no ${required} block (found: ${types.join(', ') || 'none'})`);
     }
   }
-  if (types.includes('FAQPage') && page.rec.kind === 'content' && isDocsContent(page.path)) {
+  if (types.includes('FAQPage') && page.rec.kind === 'docs article') {
     add('structured data', page.url, 'ships an FAQPage block, which does not belong on a docs article');
   }
   for (const product of blocks.filter((b) => b['@type'] === 'Product')) {
