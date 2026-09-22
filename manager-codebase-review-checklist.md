@@ -41,7 +41,7 @@ Derived from manager-codebase-review.md (commit 954d4b094), 2026-09-23. Nothing 
   Fence: crates/kasirmu-cli/src/commands/backup.rs:62-98 (the only restore); crates/kasirmu-core/src/db/mod.rs:264-272 and :281-305 (destination deleted before it is written) and :319 (check_integrity, no production caller); crates/kasirmu-bridge/src/data.rs:146-150 and :330-348; apps/desktop-tauri/src/commands/data.rs; ui/src/api/data.ts; ui/src/app/UpdateBanner.tsx:143-155 and :179-189.
   Approach (see D5): a **safe-mode boot flag** rather than an in-process restore - the live connection is an Arc shared with twelve detached daemons that cannot be joined, and there is no restart primitive. Done when: a restore_roundtrip test backs up through the same command the UI calls, corrupts the live database, restores from the app path, and asserts check_integrity() is Ok with a known sale reading back; a second case asserts a corrupt backup is refused and the live file is left byte-identical. Backups write to a temporary name and rename over the previous only on success; at least two generations are kept; the app either quiesces or refuses a restore while another process holds the database.
 
-- [ ] **C9 [P0] Decide what qris-core is, and make the manifest say it** (14.4, P0-10)
+- [x] **C9 [P0] Decide what qris-core is, and make the manifest say it** - DONE 2026-09-23, commit 57e0f8c84 (14.4, P0-10)
   Fence: crates/qris-core/Cargo.toml:6, :7, :9 (publish = true, MIT OR Apache-2.0, repository YOUR_ORG); deny.toml:83-268 (no entry for it, while MIT and Apache-2.0 are already allowlisted so cargo deny passes); root Cargo.toml:40 and :42.
   Done when: either it is proprietary like everything else (publish = false, license.workspace = true, a deny.toml clarification entry) or it is genuinely dual-licensed (LICENSE-MIT and LICENSE-APACHE committed, a real repository and authors, the deny.toml entry). cargo deny must no longer be blind to the difference. Owner decision D4: recommendation is to make it proprietary - zero dependents and no offline QRIS role today, while the code is worth keeping for the planned notification listener.
 
@@ -75,7 +75,7 @@ Derived from manager-codebase-review.md (commit 954d4b094), 2026-09-23. Nothing 
 - [ ] **C24 Make accessibility able to fail a build** (9.5) - wire test:a11y into CI as blocking (check.sh:309-313 is advisory-WARN today and no workflow runs it), and fix inventory/TransactionLogScreen.tsx:238-241 (mouse-only row) plus the missing alt at ProductThumb.tsx:81.
 - [ ] **C25 Make the gate registry tell the truth** (11.1) - add clippy and e2e to dev-ci.yml; re-label perf-smoke and data-testid-compliance as advisory; call check.sh from .githooks/pre-push or state plainly that a push is not the gate. Do not re-label clippy or e2e to make the registry self-consistent.
 - [ ] **C26 Decide the architecture boundary before 2026-11-06** (10.2, 10.3) - re-tier the checker with a named rule for the seven type-only re-export edges and an ADR, or move the model types back down; either way add a checker test that a bumped expiry without a new reason fails. Owner decision D3: close the currency edge now, add a named rule for the seven type shims, and move the model types into foundation later - do not bump the dates.
-- [ ] **C27 Reconcile the container's proxy with the licence server's routes** (12.1) - apps/unified/Caddyfile:44-72 misses pairing/* and midtrans/*, so five registered routes 404 in the shipped image; the checker that would catch this already exists, is registered as required (scripts/check.sh:102, gates.json:613), and **is red on the current tree** - node scripts/check-unified-routes.mjs exits 1 naming /api/v1/pairing/*. Add the pairing and midtrans handles, then widen the checker to read the Go path constants rather than main.go string literals, because otherwise it can never see the Midtrans paths (see D8).
+- [x] **C27 Reconcile the container's proxy with the licence server's routes** - DONE 2026-09-23, commit 65f69112f (12.1) - apps/unified/Caddyfile:44-72 misses pairing/* and midtrans/*, so five registered routes 404 in the shipped image; the checker that would catch this already exists, is registered as required (scripts/check.sh:102, gates.json:613), and **is red on the current tree** - node scripts/check-unified-routes.mjs exits 1 naming /api/v1/pairing/*. Add the pairing and midtrans handles, then widen the checker to read the Go path constants rather than main.go string literals, because otherwise it can never see the Midtrans paths (see D8).
 
 ---
 
@@ -117,6 +117,10 @@ Full analysis - deciding facts, options with pros and cons, what would change th
 
 ---
 
+## Wave 4 - added during implementation
+
+- [ ] **C31 [P2] Validate the Caddyfile itself, not just its routing semantics.** scripts/check-unified-routes.mjs parses apps/unified/Caddyfile as text, so a syntax error that the parser tolerates still ships and the container fails to start. Add caddy validate (or an equivalent parse) to the same gate, or state why it cannot run in CI. Found while closing C27.
+
 ## Verification log
 
 Fill one row per ticked item. An item is not done until the command and its result are here.
@@ -131,7 +135,12 @@ Fill one row per ticked item. An item is not done until the command and its resu
 | C6 | | | | |
 | C7 | | | | |
 | C8 | | | | |
-| C9 | | | | |
+| C9 | 2026-09-23 | cargo metadata --no-deps --format-version 1 | 39 packages, **0 with publish enabled**; qris-core now license = SEE LICENSE IN LICENSE, publish = [], repository = the real org | 57e0f8c84 |
+| C9 | 2026-09-23 | grep -n qris-core deny.toml | deny.toml:273 name = "qris-core" (clarify entry present) | 57e0f8c84 |
+| C9 | 2026-09-23 | cargo deny check licenses | exit 0 - licenses ok (cargo-deny 0.19.8 installed, so a real pass not a skip) | 57e0f8c84 |
+| C27 | 2026-09-23 | node scripts/check-unified-routes.mjs (before) | EXIT 1 - /api/v1/pairing/* not carved out | - |
+| C27 | 2026-09-23 | node scripts/check-unified-routes.mjs (after) | EXIT 0 - 7 prefixes (admin, desktop, license, midtrans, paddle, pairing, web) all -> pocketbase | 65f69112f |
+| C27 | 2026-09-23 | non-vacuity: delete the new midtrans handle, re-run | EXIT 1 naming /api/v1/midtrans/* - proves the widened parser sees constant-declared routes | 65f69112f |
 | C10 | | | | |
 | C11 | | | | |
 | C12 | | | | |
