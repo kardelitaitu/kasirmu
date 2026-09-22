@@ -7,6 +7,7 @@
 import { useMemo } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { WorkspaceIcon as SharedWorkspaceIcon } from '@/components/WorkspaceIcon';
+import { getNavItems } from '@/registries/menu-registry';
 import './LiveSetupPreview.css';
 
 // ── Workspace definitions ───────────────────────────────────────────
@@ -53,49 +54,49 @@ const WORKSPACES: WorkspaceDef[] = [
 ];
 
 // ── Known nav items ─────────────────────────────────────────────────
+//
+// Read from the PAGE REGISTRY rather than kept as a list here.
+//
+// This used to be a hand-written table of 34 {route, label, feature} rows
+// duplicating what every `registerPage(...)` call already declares. It drifted:
+// measured 2026-09-23, NINE registered routes were missing (analytics,
+// menu-engineering, kds-expo, sales, dashboard, custom-report, security-trail,
+// design, tooltips), so the "X / N items unlocked" count this component renders
+// on the live features page under-reported the denominator.
+//
+// Reading the registry removes the duplication rather than correcting one copy of
+// it, so the count cannot drift again. `getNavItems` applies the same feature and
+// role gates the sidebar itself applies, which is the point: this preview
+// answers "what will I be able to reach", and the sidebar is the thing that decides.
 
-interface NavItemDef {
+export interface NavItemDef {
   route: string;
   label: string;
-  feature?: string;
+  /** Explicitly `| undefined`: `exactOptionalPropertyTypes` is on, and the
+   *  registry's registrations carry the key whether or not a gate is set. */
+  feature: string | undefined;
 }
 
-const KNOWN_NAV_ITEMS: NavItemDef[] = [
-  { route: 'pos', label: 'POS', feature: 'simple-retail' },
-  { route: 'kds', label: 'KDS', feature: 'kitchen-display' },
-  { route: 'tables', label: 'Tables', feature: 'restaurant' },
-  { route: 'kiosk', label: 'Kiosk', feature: 'self-service-kiosk' },
-  { route: 'products', label: 'Products' },
-  { route: 'categories', label: 'Categories', feature: 'categories-enabled' },
-  { route: 'bundles', label: 'Bundles' },
-  { route: 'inventory', label: 'Inventory' },
-  { route: 'inventory-adjustment', label: 'Stock Adjust' },
-  { route: 'stock-counts', label: 'Stock Counts', feature: 'stock-counting' },
-  { route: 'stock-transfers', label: 'Stock Transfers', feature: 'stock-transfers' },
-  { route: 'purchase-orders', label: 'Purchase Orders', feature: 'purchase-orders' },
-  { route: 'suppliers', label: 'Suppliers', feature: 'purchase-orders' },
-  { route: 'sales-history', label: 'Sales History', feature: 'simple-retail' },
-  { route: 'sales-dashboard', label: 'Dashboard', feature: 'simple-retail' },
-  { route: 'orders', label: 'Orders', feature: 'simple-retail' },
-  { route: 'customers', label: 'Customers' },
-  { route: 'gift-cards', label: 'Gift Cards', feature: 'gift-cards' },
-  { route: 'loyalty', label: 'Loyalty' },
-  { route: 'promotions', label: 'Promotions' },
-  { route: 'reports', label: 'Sales Report' },
-  { route: 'eod-report', label: 'EOD Report' },
-  { route: 'inventory-report', label: 'Inventory Report' },
-  { route: 'tax-config', label: 'Tax Rates', feature: 'tax-engine' },
-  { route: 'exchange-rates', label: 'Exchange Rates' },
-  { route: 'staff', label: 'Staff' },
-  { route: 'shifts', label: 'Shifts' },
-  { route: 'terminals', label: 'Terminals' },
-  { route: 'locations', label: 'Locations', feature: 'multi-store' },
-  { route: 'settings', label: 'Settings' },
-  { route: 'features', label: 'Features' },
-  { route: 'data-management', label: 'Data' },
-  { route: 'audit-log', label: 'Audit Log' },
-  { route: 'offline-queue', label: 'Offline Queue' },
-];
+/**
+ * Pages the owner will actually be able to reach, given a feature set.
+ *
+ * `role` is forwarded so role-gated pages are filtered the same way the nav bar
+ * filters them. Omitted, `getNavItems` fails CLOSED on role-gated items — which
+ * under-counts (measured: 10 total instead of 39), so this is threaded rather
+ * than left to the default.
+ */
+function reachableNavItems(enabled: Set<string> | undefined, role?: string): NavItemDef[] {
+  return getNavItems(enabled, role)
+    // The DEV section (Design System, Tooltip Preview) is registered like any other
+    // page but is not something a merchant can use, so counting it would overstate
+    // what the feature set unlocks.
+    .filter((item) => item.section !== 'dev')
+    .map((item) => ({
+      route: item.route,
+      label: item.label,
+      feature: item.feature,
+    }));
+}
 
 // ── Workspace icons (inline SVGs) ───────────────────────────────────
 
@@ -108,12 +109,22 @@ function WorkspaceIcon({ wsKey }: { wsKey: string }) {
 export interface LiveSetupPreviewProps {
   /** Set of feature keys that are currently enabled. */
   selectedFeatures: Set<string>;
+  /**
+   * Role to evaluate role-gated items against.
+   *
+   * Defaults to 'owner' because that is the only role that can reach this screen
+   * (FeatureToggleScreen is registered `requiredRole: 'owner'`, settings/register.tsx:21).
+   * Omitting it is NOT safe: `getNavItems` treats an unknown role as failing every
+   * role-gated item, so the count collapses (measured: 10 total instead of the real
+   * set) and the preview would under-report what a feature unlocks.
+   */
+  userRole?: string;
 }
 
 // ── Component ───────────────────────────────────────────────────────
 
 /** Real-time preview of which workspaces and navigation items are unlocked by the currently-selected feature set. */
-export default function LiveSetupPreview({ selectedFeatures }: LiveSetupPreviewProps) {
+export default function LiveSetupPreview({ selectedFeatures, userRole = 'owner' }: LiveSetupPreviewProps) {
   const { l10n } = useLocalization();
 
   // ── Compute active workspaces ──────────────────────────────────
@@ -128,16 +139,27 @@ export default function LiveSetupPreview({ selectedFeatures }: LiveSetupPreviewP
 
   // ── Compute active nav items ───────────────────────────────────
 
-  const activeNavItems = useMemo(
-    () =>
-      KNOWN_NAV_ITEMS.filter(
-        (item) => !item.feature || selectedFeatures.has(item.feature),
-      ),
-    [selectedFeatures],
+  // The registry applies the feature gate itself; the preview only supplies the
+  // set. `role` is not threaded here yet because the prop carries only the feature
+  // set — a role-gated page is therefore counted as reachable, which for an OWNER
+  // (the only role that can open this screen) is correct.
+  const navItems = useMemo(
+    () => reachableNavItems(selectedFeatures, userRole),
+    [selectedFeatures, userRole],
   );
 
-  const totalNavItems = KNOWN_NAV_ITEMS.length;
+  const activeNavItems = navItems;
   const unlockedCount = activeNavItems.length;
+  // The denominator is what the OWNER could reach with EVERY feature on, not with
+  // the current set — otherwise "3 / 3 unlocked" would read as complete when the
+  // merchant has most of the product switched off.
+  // `getNavItems()` with NO feature set returns every item the ROLE can reach (its
+  // own doc: "If enabledFeatures is omitted, all pages are returned"), which is the
+  // honest denominator — the most this merchant could ever unlock.
+  const totalNavItems = useMemo(
+    () => reachableNavItems(undefined, userRole).length,
+    [userRole],
+  );
 
   return (
     <div className="lsp-root">
