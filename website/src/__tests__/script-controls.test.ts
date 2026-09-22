@@ -28,7 +28,10 @@
  * What this still does NOT cover, stated rather than left silent: any DOM
  * `admin.js` builds behind its own login and API calls, and any script outside
  * `SOURCE_ROOTS` — that page needs a browser, an admin session and mocked
- * endpoints, which is a harness too expensive to be the gate.
+ * endpoints, which is a harness too expensive to be the gate. The probes below
+ * have the same kind of limit kept in the same place: a builder is measured on
+ * this file's fixtures, so a branch no fixture reaches is unmeasured, and a
+ * probe exercises the builder rather than the call site that feeds it.
  *
  * Two limits are still not silence, and this file asserts both:
  *
@@ -42,6 +45,14 @@
  *      which `scripts/import-portal.sh` stages from mdBook/rustdoc/TypeDoc. It
  *      is the same tree checks 12 and 13 exempt by page class, and the same
  *      reason: nobody edits generated vendor HTML to satisfy this rule.
+ *   6. A declared `builder` shape is PROBED, not merely named. `OPAQUE_MARKUP`
+ *      saying `admin.js` reads markup from `svgChart` is, on its own, a claim
+ *      about an identifier: a builder that started returning an unnamed control
+ *      would satisfy every arm in this file and the gate alike. So each
+ *      `builder` shape has a probe here that calls the real builder with a
+ *      fixture and measures its output with the same name rule, and a `caller`
+ *      shape — supplied at the write, checkable by nothing — has to say where
+ *      its markup comes from instead.
  */
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -134,10 +145,12 @@ describe('controls a script builds, judged at the source', () => {
     // markup this rule can never read. Every such site must be answered by a
     // declaration that names its shape, and the count must not be zero — a
     // boundary that declares nothing here is the bug this replaces.
+    const writers = sources.filter((file) => controlEvidenceIn(file, factories).opaqueWrites.length);
     const { summary } = scriptControlVerdict(sources);
-    expect(summary.opaqueFiles).toBe(OPAQUE_MARKUP.length);
-    expect(summary.opaqueSites).toBeGreaterThan(15);
-    const shapes = new Set(OPAQUE_MARKUP.flatMap((entry) => entry.shapes));
+    expect(summary.opaque.files).toBe(writers.length);
+    expect(summary.opaque.declared + summary.opaque.undeclared).toBe(summary.opaque.files);
+    expect(summary.opaque.sites).toBeGreaterThan(15);
+    const shapes = new Set(OPAQUE_MARKUP.flatMap((entry) => entry.shapes.map((shape) => shape.name)));
     for (const file of sources) {
       for (const write of controlEvidenceIn(file, factories).opaqueWrites) {
         expect(shapes, `${file.path}:${write.line} reads markup from \`${write.shape}\``).toContain(write.shape);
@@ -159,6 +172,166 @@ describe('controls a script builds, judged at the source', () => {
       scriptControlIssues(file, factories).map((message) => `${file.path} ${message}`),
     );
     expect(shaped(findings.filter((finding) => finding.kind === 'name'))).toEqual(expected);
+  }, SLOW);
+});
+
+/**
+ * The markup a declared shape produces, obtained by calling it.
+ *
+ * `OPAQUE_MARKUP` naming `svgChart` is, on its own, a claim about an
+ * IDENTIFIER — a builder that started returning an unnamed control would pass
+ * every static arm in this file and in the gate. These probes call the real
+ * builders, the same module `admin.js` loads, with a fixture, and hand the
+ * output to the same name rule the rest of the sweep uses, so `builder` is a
+ * kind that was measured rather than a word in a reason string.
+ *
+ * They are here and not in the rule module on purpose: the module must not
+ * reach into `public/`, and the UMD's export depends on the loader
+ * (`self.AdminUtils` in a browser, `default` under vitest) — not a dependency a
+ * gate should acquire. The build still fails through this suite, because
+ * `prebuild` runs it before `astro build`.
+ */
+const CHART_ROWS = [
+  { label: 'idr', count: 12, churn: 2, paddleIdr: 8, midtransIdr: 4, paid: 3, notConverted: 5 },
+  { label: 'usd', count: 5, churn: 1, paddleIdr: 3, midtransIdr: 2, paid: 2, notConverted: 1 },
+];
+const CHART_BUCKETS = [
+  { req: 5, err: 1 },
+  { req: 9, err: 2 },
+  { req: 3, err: 0 },
+];
+/** Both donut writes read this: `donut.svg` and `donut.legend` come from one call. */
+const donutMarkup = (): string[] => {
+  const donut = utils.svgDonut('tiers', CHART_ROWS, 'label', 'count');
+  return [donut.svg, donut.legend];
+};
+const PROBES: Record<string, () => string | string[]> = {
+  svgChart: () => [utils.svgChart('trend', CHART_ROWS, ['count'], { wide: true })],
+  svgBarChart: () => utils.svgBarChart('signups', CHART_ROWS, { valueKey: 'count', color: 'var(--accent)' }),
+  svgStackedBars: () =>
+    utils.svgStackedBars('mix', CHART_ROWS, {
+      stack: [
+        { key: 'paddleIdr', color: 'var(--primary)' },
+        { key: 'midtransIdr', color: 'var(--success)' },
+      ],
+      fmt: (v: number) => String(v),
+    }),
+  sparkline: () => utils.sparkline(CHART_BUCKETS),
+  donut: donutMarkup,
+  donut2: donutMarkup,
+};
+
+describe('a declared shape, measured rather than named', () => {
+  const declaredShapes = OPAQUE_MARKUP.flatMap((entry) =>
+    entry.shapes.map((shape) => ({ ...shape, file: entry.file })),
+  );
+  const builders = declaredShapes.filter((shape) => shape.source === 'builder');
+
+  it('probes every `builder` shape, so a kind cannot be declared unmeasured', () => {
+    // The interop guard first: if the loader stopped handing back this module,
+    // every probe below would fail inside its own case instead of here.
+    expect(typeof utils.svgChart).toBe('function');
+    expect(builders.length).toBeGreaterThan(0);
+    expect(builders.map((shape) => shape.name).sort()).toEqual(Object.keys(PROBES).sort());
+  });
+
+  it.each(builders.map((shape) => [shape.name, shape.file] as [string, string]))(
+    '%s builds markup with no unnamed control',
+    (name, file) => {
+      const markup = PROBES[name]();
+      const parts = Array.isArray(markup) ? markup : [markup];
+      expect(parts.length).toBeGreaterThan(0);
+      for (const part of parts) {
+        expect(typeof part).toBe('string');
+        expect(part.length).toBeGreaterThan(0);
+        expect(
+          unnamedControls(part),
+          `${file} declares \`${name}\`, and its real output contains a control with no accessible name`,
+        ).toEqual([]);
+      }
+    },
+  );
+
+  it('fails a `caller` shape that does not say where its markup comes from', () => {
+    // The kind nothing here can measure: the content arrives at the write, so
+    // the declaration has to say where from — otherwise it reads exactly like
+    // the probed kind above. Enforced in the gate's pass, not only in this test.
+    const html = OPAQUE_MARKUP.find((entry) => entry.file === 'prototypes/app.js')!.shapes.find(
+      (shape) => shape.name === 'html',
+    )!;
+    const note = html.note;
+    delete html.note;
+    try {
+      expect(shaped(declarationGaps(sources))).toEqual([
+        'prototypes/app.js declares `html` as supplied by a caller without saying where from — a shape nothing checks has to say so',
+      ]);
+    } finally {
+      html.note = note;
+    }
+    // The two `caller` shapes are named, so a third cannot be added silently.
+    expect(declaredShapes.filter((shape) => shape.source === 'caller').map((shape) => shape.name).sort()).toEqual([
+      'html',
+      'icon',
+    ]);
+  }, SLOW);
+
+  it('reads a `literal` shape in place, so its content cannot change unchecked', () => {
+    // The kind's claim is that the markup is a literal in this same file, read
+    // where it is written. Exercised on the real constant: give COPY_ICON a
+    // control and the file's own verdict reports it, with no probe involved.
+    const app = sources.find((file) => file.path === 'prototypes/app.js')!;
+    expect(
+      OPAQUE_MARKUP.find((entry) => entry.file === app.path)!.shapes.some((shape) => shape.source === 'literal'),
+    ).toBe(true);
+    expect(scriptControlIssues(app, factories)).toEqual([]);
+    const issues = scriptControlIssues(
+      {
+        path: app.path,
+        source: app.source.replace("const COPY_ICON = '<svg", 'const COPY_ICON = \'<button class="icon"></button><svg'),
+      },
+      factories,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain('<button class="icon">');
+  }, SLOW);
+});
+
+describe('the boundary the gate prints', () => {
+  const writersOf = (files: SourceFile[]): SourceFile[] =>
+    files.filter((file) => controlEvidenceIn(file, factories).opaqueWrites.length);
+
+  it('counts the files that write unreadable markup, not the declarations', () => {
+    const { summary } = scriptControlVerdict(sources);
+    const writers = writersOf(sources);
+    expect(summary.walked).toBe(sources.length);
+    expect(summary.judged).toBe(sources.length - declared.size);
+    expect(summary.opaque.files).toBe(writers.length);
+    expect(summary.opaque.sites).toBe(
+      writers.reduce((total, file) => total + controlEvidenceIn(file, factories).opaqueWrites.length, 0),
+    );
+    expect(summary.opaque.declared + summary.opaque.undeclared).toBe(summary.opaque.files);
+    // This tree is clean — every writer is declared — which is exactly why the
+    // count had to stop meaning "declarations": the two were indistinguishable
+    // here and told a different story the moment a fifth file appeared.
+    expect(summary.opaque.undeclared).toBe(0);
+    expect(summary.shapes).toEqual({ builder: 6, literal: 8, caller: 2 });
+  }, SLOW);
+
+  it('does not report an undeclared opaque file as judged, or leave it uncounted', () => {
+    // The untruth this replaces: `opaqueFiles` counted declarations, so adding
+    // this file moved NOTHING — the boundary still said four files while five
+    // wrote markup nobody could read, and the fifth was neither judged nor
+    // declared anywhere in the printed numbers.
+    const foreign: SourceFile = {
+      path: 'website/public/admin/foreign.js',
+      source: 'function render(box) {\n  box.innerHTML = someChart(x);\n}\n',
+    };
+    const { summary, findings } = scriptControlVerdict([...sources, foreign]);
+    expect(summary.walked).toBe(sources.length + 1);
+    expect(summary.opaque.files).toBe(writersOf(sources).length + 1);
+    expect(summary.opaque.declared).toBe(OPAQUE_MARKUP.length);
+    expect(summary.opaque.undeclared).toBe(1);
+    expect(findings.map((finding) => finding.file)).toContain('website/public/admin/foreign.js');
   }, SLOW);
 });
 
@@ -274,7 +447,7 @@ describe('the rule on sources that are not in the repository', () => {
     // someone looked at, so a new expression is a finding like any other.
     const source =
       'function render(box) {\n' +
-      `  box.innerHTML = ${ADMIN_JS.shapes[0]}(m.trend);\n` +
+      `  box.innerHTML = ${ADMIN_JS.shapes[0].name}(m.trend);\n` +
       '  box.innerHTML = someOtherBuilder(row);\n' +
       '}\n';
     const gaps = declarationGaps([atAdminJs(FACTORY + source)]);
@@ -293,13 +466,13 @@ describe('the rule on sources that are not in the repository', () => {
     // becomes the place the previous exemption went to hide.
     const source =
       'function render(box) {\n' +
-      `  box.innerHTML = ${ADMIN_JS.shapes[0]}(m.trend);\n` +
+      `  box.innerHTML = ${ADMIN_JS.shapes[0].name}(m.trend);\n` +
       '}\n';
     const stale = declarationGaps([atAdminJs(FACTORY + source)]).find((gap) =>
       gap.message.includes('writes no markup from'),
     );
     expect(stale?.kind).toBe('opaque');
-    expect(stale?.message).toContain('`' + ADMIN_JS.shapes[1] + '`');
+    expect(stale?.message).toContain('`' + ADMIN_JS.shapes[1].name + '`');
     expect(stale?.message).toContain('remove them');
   });
 

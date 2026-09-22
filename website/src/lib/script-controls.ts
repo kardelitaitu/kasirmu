@@ -41,6 +41,11 @@
  *     `OPAQUE_MARKUP` that names the SHAPES the file reads markup from. A
  *     partially literal right-hand side counts (`COPY_ICON + '<span>Copy</span>'`):
  *     the half this rule can read is judged, the half it cannot is declared.
+ *     Each declared shape carries a `source`, because a declaration that names
+ *     an expression is not the same as one that measured it: a `builder` is run
+ *     and measured by the twin's probe, a `literal` is read in place by the arm
+ *     above, and a `caller` shape is measured by nothing at all and must say
+ *     where its markup comes from instead.
  *   • `NOT_OPERABLE` — controls that are real but deliberately unnamed, such as
  *     the off-screen textarea `AccountLicense` creates, focuses and removes to
  *     drive the execCommand clipboard fallback.
@@ -59,7 +64,9 @@
  * right-hand side; a shape a declared file writes but the declaration omits
  * fails, and a declared shape no write reads any more fails too. That last pair
  * is the difference between a declaration and a place to hide: the exemption is
- * for the expressions someone looked at, not for the file.
+ * for the expressions someone looked at, not for the file. A declared shape
+ * must carry a source, and a `caller` shape must say where its markup comes
+ * from, so no shape can look verified when nothing checked it.
  *
  * TWO CALLERS, ONE RULE, ONE SET OF FILES, ONE VERDICT. `scripts/check-seo.mjs`
  * runs `scriptControlVerdict()` as its check 14 — the gate's arm, and the only
@@ -215,41 +222,96 @@ export interface OpaqueWrite {
 }
 
 /**
+ * How a declared shape's markup can be checked — the difference between markup
+ * this rule verifies and markup someone vouched for.
+ *
+ *   • `builder` — produced by a call. `script-controls.test.ts` holds a probe
+ *     that runs the real builder under jsdom and measures its output with the
+ *     same name rule, so a shape that starts emitting an unnamed control fails
+ *     there, naming the shape and the file it is declared in.
+ *   • `literal` — the markup is a literal in this same file, so the literal arm
+ *     read it where it is written and reports a control found inside it.
+ *   • `caller` — supplied at the write by whoever calls the function, so this
+ *     rule cannot obtain it from the shape at all: nothing here checks it, and
+ *     `note` is required to say where the content comes from instead.
+ */
+export type ShapeSource = 'builder' | 'literal' | 'caller';
+
+/** One expression a file reads markup from, and how its markup can be checked. */
+export interface DeclaredShape {
+  /** The leading token of the right-hand side, as `opaqueWrites` reports it. */
+  name: string;
+  source: ShapeSource;
+  /** Where a `caller` shape's markup comes from — required for that kind. */
+  note?: string;
+}
+
+/**
  * Files whose markup arrives from a value, and the shapes they read it from.
  *
  * A declaration here says "these expressions build markup with no control in
  * it", and `declarationGaps` holds it to that in both directions — every opaque
  * write must be covered by a declared shape, and every declared shape must
- * still appear at a write, so neither half can drift into decoration.
+ * still appear at a write, so neither half can drift into decoration. What the
+ * shapes' `source` adds is which KIND of claim that is: a `builder` is measured
+ * at runtime by the twin's probe, a `literal` is read in place, and a `caller`
+ * is measured by nothing and has to say so.
  */
 export interface MarkupDeclaration {
   file: string;
-  /** Leading tokens of the right-hand sides this declaration covers. */
-  shapes: string[];
+  shapes: DeclaredShape[];
   reason: string;
 }
 
 export const OPAQUE_MARKUP: MarkupDeclaration[] = [
   {
     file: 'website/public/admin/admin.js',
-    shapes: ['svgChart', 'svgBarChart', 'svgStackedBars', 'sparkline', 'donut', 'donut2'],
+    shapes: [
+      { name: 'svgChart', source: 'builder' },
+      { name: 'svgBarChart', source: 'builder' },
+      { name: 'svgStackedBars', source: 'builder' },
+      { name: 'sparkline', source: 'builder' },
+      { name: 'donut', source: 'builder' },
+      { name: 'donut2', source: 'builder' },
+    ],
     reason:
       'the dashboard charts, their lists and their legends — every one is an SVG or a legend string returned by the helpers in admin-utils.js, and the only controls in that markup are named where their own call site builds them',
   },
   {
     file: 'website/public/admin/admin-utils.js',
-    shapes: ['icon'],
+    shapes: [
+      {
+        name: 'icon',
+        source: 'caller',
+        note: 'the SVG a caller passes to `kpiC` for the span beside its own labelled element — the markup comes from the call site, not from this function',
+      },
+    ],
     reason: 'an icon into the span beside a button whose text is set on the button itself — an SVG string, no control in it',
   },
   {
     file: 'prototypes/app.js',
-    shapes: ['ICON_BUSY', 'ICON_DONE', 'COPY_ICON', 'CHECK_ICON', 'html'],
+    shapes: [
+      { name: 'ICON_BUSY', source: 'literal' },
+      { name: 'ICON_DONE', source: 'literal' },
+      { name: 'COPY_ICON', source: 'literal' },
+      { name: 'CHECK_ICON', source: 'literal' },
+      {
+        name: 'html',
+        source: 'caller',
+        note: 'the parameter of `stripHtml`, which parses it into a detached div and returns its text — the markup is never inserted',
+      },
+    ],
     reason:
       'the icons the copy and save buttons swap between states, and `stripHtml` — a reader that parses markup into a detached div and returns its textContent, never inserting it',
   },
   {
     file: 'prototypes/kds-prototype.html',
-    shapes: ['CARET_SVG', 'cardHTML', 'buckets', 'COLOR_GROUPS'],
+    shapes: [
+      { name: 'CARET_SVG', source: 'literal' },
+      { name: 'cardHTML', source: 'literal' },
+      { name: 'buckets', source: 'literal' },
+      { name: 'COLOR_GROUPS', source: 'literal' },
+    ],
     reason:
       'an SVG caret, the card builder whose own template literal is judged at its call site, and two `map` callbacks over constants whose template literals are judged where they are written',
   },
@@ -882,16 +944,36 @@ export interface Finding {
   kind: FindingKind;
 }
 
-/** What the printed boundary reports — the limit, as data rather than prose. */
+/**
+ * What the printed boundary reports — the limit, as data rather than prose.
+ *
+ * Every number is the thing its name says. That is worth stating because the
+ * pair this replaced was not: `opaqueFiles` counted DECLARATIONS, so a fifth
+ * file writing markup nobody could read still printed "4 … 108 judged" — the
+ * file was neither judged nor declared and the boundary said nothing about it.
+ * `opaque.files` counts the files that write such markup, and the declaration is
+ * a property of those files rather than a stand-in for counting them.
+ */
 export interface BoundarySummary {
-  /** Files whose controls this rule judged. */
+  /** Files the walk produced. */
+  walked: number;
+  /** Of those, the ones the name arm judged — the rest are declared. */
   judged: number;
-  /** Files a declaration answers for. */
+  /** Files a declaration answers for (`UNJUDGEABLE` + `NOT_OPERABLE`). */
   declared: number;
-  /** Files declared for markup this rule cannot read. */
-  opaqueFiles: number;
-  /** Sites at which such markup is written. */
-  opaqueSites: number;
+  /** The markup this rule could not read, counting files rather than promises. */
+  opaque: {
+    /** Files that write markup from a value at least once. */
+    files: number;
+    /** Of those, the ones a declaration covers. */
+    declared: number;
+    /** Of those, the ones reported because nothing covers them. */
+    undeclared: number;
+    /** Sites at which such markup is written. */
+    sites: number;
+  };
+  /** Declared shapes by how their markup can be checked. */
+  shapes: { builder: number; literal: number; caller: number };
   roots: string[];
   skipped: string[];
 }
@@ -916,12 +998,15 @@ interface Survey {
 function survey(files: SourceFile[]): Survey {
   const factories = factoryRegistry(files);
   const exempt = declaredFiles();
+  const declaredShapes = OPAQUE_MARKUP.flatMap((entry) => entry.shapes);
   const ownBody = (file: string, at: number): boolean =>
     factories.some((factory) => factory.file === file && at >= factory.start && at <= factory.end);
   const names: Finding[] = [];
   const gaps: Finding[] = [];
   let declaredCount = 0;
   let opaqueFiles = 0;
+  let opaqueDeclared = 0;
+  let opaqueUndeclared = 0;
   let opaqueSites = 0;
   for (const file of files) {
     const evidence = controlEvidenceIn(file, factories);
@@ -932,8 +1017,15 @@ function survey(files: SourceFile[]): Survey {
       gaps.push({ file: file.path, kind, message });
     };
     if (unjudgeable || notOperable) declaredCount += 1;
-    if (markup) opaqueFiles += 1;
-    opaqueSites += evidence.opaqueWrites.length;
+    // The count is of FILES THAT WRITE unreadable markup, not of declarations:
+    // a fifth file doing so with no declaration is the case the old count could
+    // not express, because it had no row to add to.
+    if (evidence.opaqueWrites.length) {
+      opaqueFiles += 1;
+      if (markup) opaqueDeclared += 1;
+      else opaqueUndeclared += 1;
+      opaqueSites += evidence.opaqueWrites.length;
+    }
     const builds =
       evidence.literals.length +
       evidence.constructed.length +
@@ -996,7 +1088,7 @@ function survey(files: SourceFile[]): Survey {
           `writes markup at line ${first.line} whose right-hand side is not a literal (\`${first.rhs}\`) — say what it builds and declare the file in OPAQUE_MARKUP`,
         );
       } else {
-        const covered = new Set(markup.shapes);
+        const covered = new Set(markup.shapes.map((shape) => shape.name));
         const uncovered = evidence.opaqueWrites.find((write) => !covered.has(write.shape));
         if (uncovered) {
           gap(
@@ -1008,11 +1100,21 @@ function survey(files: SourceFile[]): Survey {
     }
     if (markup) {
       const written = new Set(evidence.opaqueWrites.map((write) => write.shape));
-      const unused = markup.shapes.filter((shape) => !written.has(shape));
+      const unused = markup.shapes.filter((shape) => !written.has(shape.name));
       if (unused.length) {
         gap(
           'opaque',
-          `declares the shape${unused.length > 1 ? 's' : ''} ${unused.map((shape) => `\`${shape}\``).join(', ')} in OPAQUE_MARKUP but writes no markup from ${unused.length > 1 ? 'them' : 'it'} — remove ${unused.length > 1 ? 'them' : 'it'}`,
+          `declares the shape${unused.length > 1 ? 's' : ''} ${unused.map((shape) => `\`${shape.name}\``).join(', ')} in OPAQUE_MARKUP but writes no markup from ${unused.length > 1 ? 'them' : 'it'} — remove ${unused.length > 1 ? 'them' : 'it'}`,
+        );
+      }
+      // A `caller` shape is the one kind nothing here checks, so it has to name
+      // where its markup comes from. Without that it reads exactly like a
+      // `builder`, whose output the twin probes.
+      const unexplained = markup.shapes.filter((shape) => shape.source === 'caller' && !shape.note);
+      if (unexplained.length) {
+        gap(
+          'opaque',
+          `declares \`${unexplained[0].name}\` as supplied by a caller without saying where from — a shape nothing checks has to say so`,
         );
       }
     }
@@ -1021,10 +1123,20 @@ function survey(files: SourceFile[]): Survey {
     names,
     gaps,
     summary: {
+      walked: files.length,
       judged: files.filter((file) => !exempt.has(file.path)).length,
       declared: declaredCount,
-      opaqueFiles,
-      opaqueSites,
+      opaque: {
+        files: opaqueFiles,
+        declared: opaqueDeclared,
+        undeclared: opaqueUndeclared,
+        sites: opaqueSites,
+      },
+      shapes: {
+        builder: declaredShapes.filter((shape) => shape.source === 'builder').length,
+        literal: declaredShapes.filter((shape) => shape.source === 'literal').length,
+        caller: declaredShapes.filter((shape) => shape.source === 'caller').length,
+      },
       roots: SOURCE_ROOTS,
       skipped: SKIPPED_SEGMENTS,
     },

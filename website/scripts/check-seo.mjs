@@ -937,7 +937,13 @@ for (const page of pages) {
 //     skipped, a markup write whose right-hand side is a value
 //     (`box.innerHTML = donut.svg`) is reported until a declaration names the
 //     shape it reads from, and a declaration the file no longer needs fails —
-//     including a declared shape that no longer appears at any write. What is
+//     including a declared shape that no longer appears at any write.
+//     A DECLARED SHAPE CARRIES A `source`, which is what keeps the exemption
+//     from reading as verification it never had: a `builder` is probed against
+//     the real builder in the twin, so a shape that starts emitting an unnamed
+//     control fails there naming the shape and the file; a `literal` is read in
+//     place by the arm above; and a `caller` shape must say where its markup
+//     comes from, because nothing here or there measures it. What is
 //     still out of reach is stated in the rule's docstring and in the twin
 //     rather than papered over here: DOM built behind the admin login and API
 //     calls would need a browser, a session and mocked endpoints, which is a
@@ -991,15 +997,27 @@ for (const check of checks) {
 // skipped a tree, or read only the markup written as a literal, said nothing
 // about the sites it never looked at either. Numbers and skip list come from the
 // same pass that produced the findings above.
+//
+// Each number counts the thing its label says. `opaque.files` is the files that
+// WRITE markup this rule cannot read — not the declarations written for them,
+// which is how a fifth undeclared file used to hide inside a count of four —
+// and `opaque.declared`/`opaque.undeclared` split that same set, so a file the
+// rule never judged cannot be reported as judged. The shape counts separate the
+// markup measured at runtime from the markup nobody measures.
 const { summary } = scriptControls;
 console.log(
-  `  boundary: script controls — ${summary.judged} files judged, ${summary.declared} declared ` +
-    `(${summary.opaqueFiles} for markup this rule cannot read, ${summary.opaqueSites} sites) · ` +
-    `roots ${summary.roots.join(' ')}`,
+  `  boundary: script controls — ${summary.judged} of ${summary.walked} walked files judged for names, ` +
+    `${summary.declared} declared · roots ${summary.roots.join(' ')}`,
 );
 console.log(
-  `            walking past ${summary.skipped.join(' ') || '(nothing)'} · a tag reached through a variable, or markup written ` +
-    'from a value, is reported rather than skipped · out of scope: DOM built behind the admin login',
+  `            markup this rule cannot read: ${summary.opaque.sites} writes in ${summary.opaque.files} files — ` +
+    `${summary.opaque.declared} declared, ${summary.opaque.undeclared} reported · declared shapes: ` +
+    `${summary.shapes.builder} probed against the real builder, ${summary.shapes.literal} read in place, ` +
+    `${summary.shapes.caller} supplied by a caller`,
+);
+console.log(
+  `            walking past ${summary.skipped.join(' ') || '(nothing)'} · a tag reached through a variable, or markup ` +
+    'written from a value, is reported rather than skipped · out of scope: DOM built behind the admin login',
 );
 
 if (findings.length) {
