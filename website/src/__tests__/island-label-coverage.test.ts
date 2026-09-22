@@ -8,7 +8,6 @@ import { PRICING_LABELS } from '../components/PricingGrid';
 import { SEARCH_LABELS } from '../components/SearchModal';
 import { SIGNUP_FORM_LABELS } from '../components/SignupForm';
 import { PAIR_LABELS } from '../components/PairView';
-import { AUTH_ERROR_LABELS } from '../lib/useAuth';
 
 /**
  * A hydrated island cannot read a locale dictionary without shipping it: it gets
@@ -54,7 +53,6 @@ const ISLANDS: Island[] = [
       '../components/AuthForm.tsx',
       '../components/PasswordField.tsx',
       '../components/PasswordStrength.tsx',
-      '../lib/useAuth.ts',
     ],
   },
   {
@@ -64,7 +62,6 @@ const ISLANDS: Island[] = [
       '../components/SignupForm.tsx',
       '../components/PasswordField.tsx',
       '../components/PasswordStrength.tsx',
-      '../lib/useAuth.ts',
     ],
   },
   {
@@ -143,10 +140,17 @@ describe('island label coverage', () => {
   it('keeps the shared key sets owned by the component that reads them', () => {
     // The password strings and the checkout strings are read by components
     // shared across islands, so each set has one owner and the islands spread it.
+    //
+    // The auth-error keys used to be asserted here as a subset of
+    // AUTH_FORM_LABELS, read out of lib/useAuth.ts. That hook had no production
+    // importer (the auth forms implement the flows directly) and was deleted, so
+    // the assertion went with it. What replaces it is stronger and already
+    // above: the login and signup islands assert every `t(labels, 'key')` their
+    // modules actually read is declared — which covers the error keys by use
+    // rather than by a copy of the list.
     expect(read('../components/AuthForm.tsx')).toContain('...PASSWORD_FIELD_LABELS');
     expect(read('../components/SignupForm.tsx')).toContain('...PASSWORD_STRENGTH_LABELS');
     expect(read('../components/AccountView.tsx')).toContain('...PASSWORD_FIELD_LABELS');
     expect(read('../components/PricingGrid.tsx')).toContain('...CHECKOUT_LABELS');
-    expect(AUTH_ERROR_LABELS.every((key) => AUTH_FORM_LABELS.includes(key))).toBe(true);
   });
 });

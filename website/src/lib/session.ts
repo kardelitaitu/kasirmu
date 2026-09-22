@@ -10,7 +10,20 @@
  * The Worker-served production path is cookie-first.
  */
 
-/** sessionStorage key AuthForm uses (legacy v1 token storage). */
+/**
+ * The sessionStorage key for the session token — the ONLY place this string is
+ * spelled in production code.
+ *
+ * Every read and every write (the three auth flows in AuthForm, SignupForm's
+ * verification, logout cleanup) imports it from here. Before that it was
+ * declared twice and written as a literal at eight sites, so a reader and a
+ * writer could disagree about where the token lives — and one of those eight
+ * lived in a module an island no longer imported at all. `lib/__tests__/
+ * session.test.ts` bans a second spelling reappearing.
+ *
+ * The value is unchanged (`oz_session`): the retired v1 clients that still read
+ * it in a no-Worker dev session must keep finding it in the same place.
+ */
 export const SESSION_STORAGE_KEY = 'oz_session';
 
 /**

@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getSessionToken, hasSession } from '../session';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { getSessionToken, hasSession, SESSION_STORAGE_KEY } from '../session';
 
 /**
  * R1 httpOnly-cookie session helper tests: getSessionToken must prefer the
@@ -117,5 +119,79 @@ describe('hasSession — cookie-first session gate', () => {
     }));
 
     expect(await hasSession()).toBe(false);
+  });
+});
+
+/**
+ * The key used to be declared twice — once here, once in paddle.ts — and
+ * written as a bare literal at eight call sites across AuthForm, SignupForm and
+ * a hook nothing imported. These assertions are the alarm for a second spelling
+ * reappearing, which is the failure that lets a writer and a reader disagree
+ * about where the token lives.
+ */
+describe('the session storage key has exactly one owner', () => {
+  const SRC = join(import.meta.dirname, '..', '..');
+  const OWNER = 'lib/session.ts';
+
+  /** Every production module, i.e. not a test file or a __tests__ directory. */
+  const productionFiles = (): string[] => {
+    const found: string[] = [];
+    const walk = (relative: string): void => {
+      for (const entry of readdirSync(join(SRC, relative), { withFileTypes: true })) {
+        const path = relative ? `${relative}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          if (entry.name === '__tests__' || entry.name === 'node_modules') continue;
+          walk(path);
+        } else if (/\.(ts|tsx|astro)$/.test(entry.name) && !/\.test\./.test(entry.name)) {
+          found.push(path);
+        }
+      }
+    };
+    walk('');
+    return found;
+  };
+
+  it('keeps the wire format: the value is still oz_session', () => {
+    // Not an implementation detail — a token the previous build wrote has to
+    // keep being found, and the Worker's cookie exchange keys off the same name.
+    expect(SESSION_STORAGE_KEY).toBe('oz_session');
+  });
+
+  it('is spelled as a literal in exactly one production file', () => {
+    const spellers = productionFiles().filter((file) =>
+      /['"]oz_session['"]/.test(readFileSync(join(SRC, file), 'utf-8')),
+    );
+    expect(spellers).toEqual([OWNER]);
+  });
+
+  it('is declared once, and not mirrored as a second constant', () => {
+    const declarations = productionFiles().filter((file) =>
+      /oz_session['"]\s*;?\s*$|=\s*['"]oz_session['"]/.test(readFileSync(join(SRC, file), 'utf-8')),
+    );
+    expect(declarations).toEqual([OWNER]);
+  });
+
+  it('is what every module that touches the token imports', () => {
+    // The read in AuthForm is the documented exemption from cookie-first
+    // resolution (it is the token THIS login just minted, not an "is the user
+    // signed in?" query) — but even an exempt read must not invent its own
+    // spelling of where the token lives.
+    for (const file of ['components/AuthForm.tsx', 'components/SignupForm.tsx', 'components/paddle.ts']) {
+      const source = readFileSync(join(SRC, file), 'utf-8');
+      expect(source, `${file} reads or writes the token`).toMatch(/sessionStorage\.(get|set|remove)Item/);
+      expect(source, `${file} must import the key owner`).toContain(
+        file === 'components/paddle.ts'
+          ? "SESSION_STORAGE_KEY } from '../lib/session'"
+          : 'SESSION_STORAGE_KEY',
+      );
+    }
+  });
+
+  it('logout cleanup clears the same key the auth flows write', () => {
+    // paddle.clearSession removing a different string than AuthForm writes
+    // would leave a signed-in token behind after logout.
+    const paddle = readFileSync(join(SRC, 'components/paddle.ts'), 'utf-8');
+    expect(paddle).toContain('sessionStorage.removeItem(SESSION_STORAGE_KEY)');
+    expect(paddle).not.toMatch(/export const SESSION_KEY/);
   });
 });

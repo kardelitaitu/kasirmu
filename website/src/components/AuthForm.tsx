@@ -5,6 +5,7 @@ import PasswordField, { PASSWORD_FIELD_LABELS } from './PasswordField';
 import PasswordStrength, { PASSWORD_STRENGTH_LABELS } from './PasswordStrength';
 import OtpInput from './OtpInput';
 import { licenseApiUrl } from '../lib/runtime-config';
+import { SESSION_STORAGE_KEY } from '../lib/session';
 import { sameOriginPath } from '../lib/safe-next';
 
 /**
@@ -24,11 +25,14 @@ import { sameOriginPath } from '../lib/safe-next';
  */
 
 /**
- * Strings this island reads — itself, `PasswordField`, `PasswordStrength` and
- * `useAuth`. `login.astro` turns the list into the `labels` prop with
- * `labelMap`, so the browser gets these strings in the document instead of both
- * locale dictionaries in the JS bundle;
- * `src/__tests__/island-label-coverage.test.ts` keeps the list honest.
+ * Strings this island reads — itself, `PasswordField` and `PasswordStrength`.
+ * `login.astro` turns the list into the `labels` prop with `labelMap`, so the
+ * browser gets these strings in the document instead of both locale dictionaries
+ * in the JS bundle; `src/__tests__/island-label-coverage.test.ts` keeps the list
+ * honest.
+ *
+ * (This used to credit `useAuth`, a hook this island never imported; it was
+ * deleted when nothing was found to be importing it.)
  */
 export const AUTH_FORM_LABELS = [
   'login.backToEmail',
@@ -173,7 +177,7 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
     // freshest token has to win. Pinned by auth-form.test.tsx — "uses the token
     // this login just minted, not a cookie token" — which fails if this is
     // rerouted through getSessionToken().
-    const token = sessionStorage.getItem('oz_session');
+    const token = sessionStorage.getItem(SESSION_STORAGE_KEY);
     if (redirect && token) {
       try {
         const u = new URL(redirect);
@@ -262,7 +266,7 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
       if (!res.ok) throw new Error('login failed');
       const data = (await res.json()) as { token?: string };
       if (!data.token) throw new Error('no token');
-      sessionStorage.setItem('oz_session', data.token);
+      sessionStorage.setItem(SESSION_STORAGE_KEY, data.token);
       // Cache the verified email so checkout can prefill it without a
       // round-trip to /me (see paddle.getSessionEmail).
       sessionStorage.setItem('oz_email', email);
@@ -320,7 +324,7 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
       if (!res.ok) throw new Error('verify-otp failed');
       const data = (await res.json()) as { token?: string };
       if (!data.token) throw new Error('no token');
-      sessionStorage.setItem('oz_session', data.token);
+      sessionStorage.setItem(SESSION_STORAGE_KEY, data.token);
       sessionStorage.setItem('oz_email', email);
       redirectAfterAuth();
     } catch {
@@ -373,7 +377,7 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
       if (!res.ok) throw new Error('reset-password failed');
       const data = (await res.json()) as { token?: string };
       if (!data.token) throw new Error('no token');
-      sessionStorage.setItem('oz_session', data.token);
+      sessionStorage.setItem(SESSION_STORAGE_KEY, data.token);
       sessionStorage.setItem('oz_email', resetEmail);
       redirectAfterAuth();
     } catch {

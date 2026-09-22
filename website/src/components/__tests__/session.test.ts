@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearSession, EMAIL_KEY, hasSession, isPlaceholderPriceId, SESSION_KEY } from '../paddle';
+import { clearSession, EMAIL_KEY, hasSession, isPlaceholderPriceId } from '../paddle';
+import { SESSION_STORAGE_KEY } from '../../lib/session';
 
 /**
  * Session storage helpers. The critical regression: clearSession must
@@ -24,10 +25,10 @@ describe('session helpers', () => {
   });
 
   it('clearSession removes BOTH the token and the cached email', () => {
-    sessionStorage.setItem(SESSION_KEY, 'tok');
+    sessionStorage.setItem(SESSION_STORAGE_KEY, 'tok');
     sessionStorage.setItem(EMAIL_KEY, 'alice@example.com');
     clearSession();
-    expect(sessionStorage.getItem(SESSION_KEY)).toBeNull();
+    expect(sessionStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
     expect(sessionStorage.getItem(EMAIL_KEY)).toBeNull();
   });
 
@@ -37,9 +38,9 @@ describe('session helpers', () => {
 
   it('hasSession reflects the stored token', async () => {
     expect(await hasSession()).toBe(false);
-    sessionStorage.setItem(SESSION_KEY, 'tok');
+    sessionStorage.setItem(SESSION_STORAGE_KEY, 'tok');
     expect(await hasSession()).toBe(true);
-    sessionStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
     expect(await hasSession()).toBe(false);
   });
 
@@ -51,7 +52,7 @@ describe('session helpers', () => {
       status: 200,
       json: async () => ({ token: 'cookie.token' }),
     }));
-    expect(sessionStorage.getItem(SESSION_KEY)).toBeNull();
+    expect(sessionStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
     expect(await hasSession()).toBe(true);
   });
 

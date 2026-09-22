@@ -6,6 +6,7 @@ import PasswordField, { PASSWORD_FIELD_LABELS } from './PasswordField';
 import PasswordStrength, { PASSWORD_STRENGTH_LABELS } from './PasswordStrength';
 import OtpInput from './OtpInput';
 import { licenseApiUrl } from '../lib/runtime-config';
+import { SESSION_STORAGE_KEY } from '../lib/session';
 
 /**
  * Signup form (website-plan.md §5) — the password-first registration path
@@ -197,7 +198,7 @@ export default function SignupForm({ locale, labels }: Props) {
       if (!res.ok) throw new Error('verify-otp failed');
       const data = (await res.json()) as { token?: string };
       if (!data.token) throw new Error('no token');
-      sessionStorage.setItem('oz_session', data.token);
+      sessionStorage.setItem(SESSION_STORAGE_KEY, data.token);
       // Cache the verified email so checkout can prefill it without a
       // round-trip to /me (see paddle.getSessionEmail).
       sessionStorage.setItem('oz_email', email);
