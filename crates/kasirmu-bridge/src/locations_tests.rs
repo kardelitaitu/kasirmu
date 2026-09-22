@@ -17,8 +17,6 @@ use kasirmu_core::db::Store;
 use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_reaches_a_paid_tier};
 
 /// The release leg for a scoped command this file drives through the
-//-- The release leg for these locations lives in crate::testing (RULE at assert_refused_by_the_seeded_row) --
-use kasirmu_core::migrations;
 use kasirmu_core::session::SessionContext;
 use serde_json::json;
 

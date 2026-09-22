@@ -1144,6 +1144,7 @@ func TestEnsureEmailVerifiedField_MigratesExistingCollection(t *testing.T) {
 		t.Fatalf("second ensureEmailVerifiedField should be a no-op: %v", err)
 	}
 }
+
 // TestEnsureRegionField_MigratesAndBackfills simulates a deployment that
 // predates ADR #59's residency field: the tenants collection exists WITHOUT
 // region, and a tenant row already exists. The migration must add the field,

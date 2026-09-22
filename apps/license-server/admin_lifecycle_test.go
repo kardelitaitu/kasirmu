@@ -1168,6 +1168,7 @@ func TestAdminEmailHealthSnapshot(t *testing.T) {
 		}
 	})
 }
+
 // ── POST /admin/tenants/{id}/region (ADR #59 §2.1a step 2) ────────
 
 func TestAdminSetRegion_RejectsAnUnknownRegion(t *testing.T) {
@@ -1338,6 +1339,7 @@ func TestKnownRegionsMatchTheSchemaSelectValues(t *testing.T) {
 		}
 	}
 }
+
 // ── region-change audit trail (ADR #59 §2.1a step 3) ───────────────
 
 func TestAdminSetRegion_RecordsADurableAuditRow(t *testing.T) {

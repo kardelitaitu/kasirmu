@@ -5,7 +5,6 @@ use crate::testing::{
     seeded_row_reaches_a_paid_tier, seeded_row_verdict_for_tier,
 };
 use kasirmu_core::availability::AvailabilityReason;
-use kasirmu_core::migrations;
 use kasirmu_core::subscription::TenantSubscription;
 
 /// A provisioned store, via the shared harness so the seeded baseline

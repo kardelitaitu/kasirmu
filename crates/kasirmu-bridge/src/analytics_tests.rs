@@ -14,7 +14,6 @@
 use super::*;
 use crate::testing::TestBridge;
 use kasirmu_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
-use kasirmu_core::migrations;
 
 /// Global identity DB (owner / manager / staff presets) + a store manager
 /// with store-a seeded with one staff's shifts + sales. `pre_seed` runs on

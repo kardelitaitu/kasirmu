@@ -3,7 +3,6 @@
 use super::*;
 use crate::testing::TestBridge;
 use kasirmu_core::db::receipt_formats::ReceiptSource;
-use kasirmu_core::migrations;
 use kasirmu_core::session::SessionContext;
 
 fn seed_owner(conn: &rusqlite::Connection) {

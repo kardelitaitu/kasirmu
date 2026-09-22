@@ -229,4 +229,3 @@ func TestCRL_EmptyAndDeviceRevocations(t *testing.T) {
 		t.Errorf("stolen-tablet-999 was not found in revoked_devices: %+v", payload.RevokedDevices)
 	}
 }
-

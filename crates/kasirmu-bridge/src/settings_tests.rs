@@ -3,9 +3,7 @@
 //! Relocated from `apps/desktop-tauri/src/commands/settings_tests.rs` (Wave E /
 //! EW1). The shell's `AppState::for_test` is replaced by the headless
 //! `TestBridge` harness ([`crate::testing`]); the conn-taking `run_*`
-//! helpers resolve against `kasirmu_bridge::settings` directly via `use super::*`.
 use super::*;
-use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {

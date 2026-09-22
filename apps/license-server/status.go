@@ -205,8 +205,8 @@ func handleStatus(app core.App) func(e *core.RequestEvent) error {
 				log.Printf("/status: tenant=%q has no active subscription", tenantID)
 			}
 			return e.JSON(http.StatusOK, map[string]any{
-				"tenant_id":         tenantID,
-				"status":            tenant.GetString("status"),
+				"tenant_id": tenantID,
+				"status":    tenant.GetString("status"),
 				// No active subscription means the FREE tier, which is the floor, not an
 				// unknown: a tier a customer cannot be missing is "unknown" to nobody, and
 				// a client rendering that string blank is a bug we already shipped once.
@@ -228,12 +228,12 @@ func handleStatus(app core.App) func(e *core.RequestEvent) error {
 		log.Printf("/status: tenant=%q tier=%s status=%s active=%v device_revoked=%v revoke_performed=%v hardware_verified=%v",
 			tenantID, tierKey, subStatus, subStatus == "active", deviceRevoked, revokePerformed, hardwareVerified)
 		return e.JSON(http.StatusOK, map[string]any{
-			"tenant_id":         tenantID,
-			"status":            tenant.GetString("status"),
-			"tier":              tierKey,
-			"active":            subStatus == "active",
-			"expires_at":        sub.GetString("expires_at"),
-			"grace_until":       sub.GetString("grace_until"),
+			"tenant_id":   tenantID,
+			"status":      tenant.GetString("status"),
+			"tier":        tierKey,
+			"active":      subStatus == "active",
+			"expires_at":  sub.GetString("expires_at"),
+			"grace_until": sub.GetString("grace_until"),
 			// 1g dual-emit: max_locations is the primary name; max_stores
 			// is kept for pre-rename clients whose LicenseStatusResponse
 			// defaults the quota to 0 when the field is absent — dropping

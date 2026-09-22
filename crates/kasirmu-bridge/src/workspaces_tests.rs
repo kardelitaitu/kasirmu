@@ -144,7 +144,6 @@ fn boot_resolution_dto_debug() {
 
 use kasirmu_core::LocationProfile;
 use kasirmu_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
-use kasirmu_core::migrations;
 
 /// Seed the GLOBAL identity DB with an owner and a limited user whose
 /// role has no workspace-type grants (so it sees no instances — the

@@ -11,7 +11,6 @@
 
 use super::*;
 use crate::testing::TestBridge;
-use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {

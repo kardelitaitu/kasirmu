@@ -609,7 +609,7 @@ pub async fn create_session(
     // honored, matching create_staff_scoped and every other subscription-
     // trusting command: a tampered row (forged tier, invalid RSA signature)
     // must fail closed, not silently widen session access.
-    let sub = {
+    let mut sub = {
         let db = ctx.lock_global().await;
         TenantSubscription::validate_clock_rollback(&db)?;
         let sub = TenantSubscription::load(&db, "default")?.unwrap_or_else(|| {
@@ -661,7 +661,14 @@ pub async fn create_session(
                     );
                     // Best-effort check: if online, updates cache/CRL and sweeps sessions on revocation.
                     // If network fails, fails open into grace per §2.4.
-                    let _ = crate::license::check_license_status(ctx).await;
+                    if crate::license::check_license_status(ctx).await.is_ok() {
+                        let db = ctx.lock_global().await;
+                        if let Ok(Some(fresh_sub)) = TenantSubscription::load(&db, &sub.tenant_id) {
+                            if fresh_sub.verify_signature().is_ok() {
+                                sub = fresh_sub;
+                            }
+                        }
+                    }
                 }
             }
         }

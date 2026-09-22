@@ -81,7 +81,6 @@ fn generate_machine_id_is_deterministic() {
 
 #[test]
 fn machine_id_is_persisted_in_settings() {
-    use kasirmu_core::migrations;
     let conn = crate::testing::temp_conn();
     let id1 = generate_machine_id();
     // Simulate what get_machine_id does: persist to Settings.
@@ -121,7 +120,6 @@ fn hardware_fingerprint_has_spec_shape_and_is_deterministic() {
 
 #[test]
 fn hardware_fingerprint_is_persisted_in_settings() {
-    use kasirmu_core::migrations;
     let conn = crate::testing::temp_conn();
     let fp1 = generate_hardware_fingerprint();
     // Simulate what get_hardware_fingerprint does: persist to Settings.
@@ -137,7 +135,6 @@ fn hardware_fingerprint_is_persisted_in_settings() {
 
 #[test]
 fn clock_tamper_detected_on_future_ledger_timestamps() {
-    use kasirmu_core::migrations;
     let conn = crate::testing::temp_conn();
 
     // Insert a sale with a timestamp far in the future
@@ -212,7 +209,6 @@ fn server_license_status_dto_null_optionals() {
 
 #[test]
 fn store_subscription_updates_tenant_subscription_default() {
-    use kasirmu_core::migrations;
     let conn = crate::testing::temp_conn();
 
     // Verify bootstrap Free tier is seeded
