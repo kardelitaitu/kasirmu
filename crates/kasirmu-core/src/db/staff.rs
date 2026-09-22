@@ -91,10 +91,14 @@ impl Store<'_> {
         Ok(count)
     }
 
-    /// List all roles, ordered by name.
+    /// List all LIVE roles, ordered by name.
+    ///
+    /// A trashed role is excluded here, which is what takes it out of every
+    /// picker, the drawer's taxonomy and the roster's badge lookup at once. The
+    /// trash has its own read, `list_trashed_roles`.
     pub fn list_roles(&self) -> Result<Vec<Role>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, description, permissions, created_at, updated_at FROM roles ORDER BY name",
+            "SELECT id, name, description, permissions, created_at, updated_at FROM roles\n             WHERE deleted_at IS NULL ORDER BY name",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(Role {
@@ -132,12 +136,16 @@ impl Store<'_> {
     }
 }
 
-/// How long a trashed staff account is kept before its personal data is erased.
+/// How long anything in the trash is kept before the 90-day sweep runs.
 ///
-/// The clock starts at `deleted_at` and is enforced by `Store::purge_expired_users`,
-/// which the staff read paths run — there is no scheduler to depend on, so the
-/// window closes the next time anything looks.
-pub const STAFF_TRASH_RETENTION_DAYS: i64 = 90;
+/// ONE window for both kinds of entry — staff (`purge_expired_users`) and custom
+/// roles (`purge_expired_roles`). A second constant is how the two halves drift
+/// apart, and "the trash holds things for 90 days" would stop being one promise.
+///
+/// The clock starts at `deleted_at` and is enforced by the staff read paths,
+/// which run the sweep: there is no scheduler to depend on, so the window closes
+/// the next time anything looks.
+pub const TRASH_RETENTION_DAYS: i64 = 90;
 
 /// A member sitting in the trash, with the moment they entered it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,6 +155,17 @@ pub struct TrashedUser {
     /// restored before that happens.
     pub user: User,
     /// When the member entered the trash; the retention clock reads this.
+    pub deleted_at: String,
+}
+
+/// A custom role sitting in the trash, with the moment it entered.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrashedRole {
+    /// The role row. Unlike a trashed member this is erased wholesale at the end
+    /// of the window rather than anonymised — a role carries no personal data,
+    /// and the delete guard has already proved nothing references it.
+    pub role: Role,
+    /// When the role entered the trash; the retention clock reads this.
     pub deleted_at: String,
 }
 
@@ -739,7 +758,7 @@ impl Store<'_> {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         // Timestamps are fixed-width RFC 3339 millis, so comparing the strings
         // compares the instants.
-        let cutoff = (chrono::Utc::now() - chrono::Duration::days(STAFF_TRASH_RETENTION_DAYS))
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS))
             .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let rows = self.conn.execute(
             "UPDATE users SET \

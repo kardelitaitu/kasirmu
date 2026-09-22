@@ -367,6 +367,16 @@ pub const ALL: &[Migration] = &[
         id: "20261009_staff_trash.sql",
         sql: include_str!("../migrations/20261009_staff_trash.sql"),
     },
+    // Custom roles join the same trash. Two nullable columns on `roles`, and
+    // deliberately no index: that table is O(tens) and read whole, so a scan for
+    // trashed rows is free and a partial index would be decoration. The purge
+    // for roles is a real DELETE (no personal data, and the delete guard has
+    // already proved nothing references the row) — see the file header. Date
+    // 20261010 sorts last.
+    Migration {
+        id: "20261010_role_trash.sql",
+        sql: include_str!("../migrations/20261010_role_trash.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

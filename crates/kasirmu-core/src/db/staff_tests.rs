@@ -782,7 +782,7 @@ fn purge_anonymises_only_past_the_window() {
     assert_eq!(store(&conn).purge_expired_users().unwrap(), 0);
     assert_eq!(store(&conn).list_trashed_users().unwrap().len(), 1);
 
-    let old = (chrono::Utc::now() - chrono::Duration::days(STAFF_TRASH_RETENTION_DAYS + 1))
+    let old = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS + 1))
         .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     conn.execute(
         "UPDATE users SET deleted_at = ?1 WHERE id = 'user-3'",
