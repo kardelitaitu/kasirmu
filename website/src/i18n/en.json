@@ -414,6 +414,7 @@
     "terminalCountLive": "{count} terminals",
     "unbindHint": "To migrate to new hardware, enter your license key into the new kasir.mu terminal app.",
     "revokeDevice": "Revoke",
+    "registerTerminal": "Register terminal",
     "billingInvoices": "Billing & Receipts",
     "billingInvoicesHint": "View transaction receipts and tax invoice history for your account.",
     "viewReceipts": "Access Billing Portal & Receipts",

@@ -125,6 +125,7 @@ export const ACCOUNT_LABELS = [
   'account.region',
   'account.regionHint',
   'account.regionSaved',
+  'account.registerTerminal',
   'account.renewHint',
   'account.renewLink',
   'account.renewsInDay',

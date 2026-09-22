@@ -32,15 +32,27 @@ interface Props {
 export default function AccountDevices({ locale, labels, devices, licenseTierKey, revokingId, revokeError, onRevoke }: Props) {
   return (
     <section className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm" aria-label={t(labels, 'account.devices')}>
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">{t(labels, 'account.devices')}</h2>
-        <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-semibold text-link">
-          {devices !== null
-            ? t(labels, 'account.terminalCountLive').replace('{count}', String(devices.length))
-            : licenseTierKey === 'pro' || licenseTierKey === 'enterprise' || licenseTierKey === 'premium'
-              ? t(labels, 'account.terminalUnlimited')
-              : t(labels, 'account.terminalCount')}
-        </span>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <h2 className="text-lg font-semibold">{t(labels, 'account.devices')}</h2>
+          <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-semibold text-link">
+            {devices !== null
+              ? t(labels, 'account.terminalCountLive').replace('{count}', String(devices.length))
+              : licenseTierKey === 'pro' || licenseTierKey === 'enterprise' || licenseTierKey === 'premium'
+                ? t(labels, 'account.terminalUnlimited')
+                : t(labels, 'account.terminalCount')}
+          </span>
+        </div>
+        <a
+          href={`/${locale}/pair`}
+          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-on-primary transition hover:opacity-90 shadow-sm"
+        >
+          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          {t(labels, 'account.registerTerminal')}
+        </a>
       </div>
       <p className="mt-1 text-sm text-muted">{t(labels, 'account.devicesHint')}</p>
       {devices && devices.length > 0 ? (
@@ -101,12 +113,20 @@ export default function AccountDevices({ locale, labels, devices, licenseTierKey
               <p className="text-xs text-muted">{t(labels, 'account.unbindHint')}</p>
             </div>
           </div>
-          <a
-            href={`/${locale}/docs/activation`}
-            className="rounded-md border border-ink/15 bg-surface px-2.5 py-1 text-xs font-medium text-ink transition hover:bg-ink/5 flex-shrink-0 ml-2"
-          >
-            {t(labels, 'account.activationGuide')}
-          </a>
+          <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+            <a
+              href={`/${locale}/pair`}
+              className="rounded-md bg-accent px-3 py-1 text-xs font-semibold text-on-primary transition hover:opacity-90 shadow-sm"
+            >
+              {t(labels, 'account.registerTerminal')}
+            </a>
+            <a
+              href={`/${locale}/docs/activation`}
+              className="rounded-md border border-ink/15 bg-surface px-2.5 py-1 text-xs font-medium text-ink transition hover:bg-ink/5"
+            >
+              {t(labels, 'account.activationGuide')}
+            </a>
+          </div>
         </div>
       )}
     </section>

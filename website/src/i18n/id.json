@@ -418,6 +418,7 @@
     "terminalCountLive": "{count} terminal",
     "unbindHint": "Untuk migrasi ke perangkat baru, masukkan kunci lisensi Anda ke aplikasi terminal kasir.mu yang baru.",
     "revokeDevice": "Cabut",
+    "registerTerminal": "Hubungkan terminal",
     "billingInvoices": "Tagihan & Kuitansi",
     "billingInvoicesHint": "Lihat kuitansi transaksi dan riwayat faktur pajak untuk akun Anda.",
     "viewReceipts": "Akses Portal Tagihan & Kuitansi",
