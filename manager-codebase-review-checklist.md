@@ -8,7 +8,7 @@ Derived from manager-codebase-review.md (commit 954d4b094), 2026-09-23. Nothing 
 
 ## Wave 1 - before the next release (P0)
 
-- [ ] **C1 [P0] Default to a real at-rest key instead of a public constant** (6.2, remediation P0-7)
+- [ ] **C1 [P0] Default to a real at-rest key instead of a public constant** (6.2, remediation P0-7) - **S1 DONE (012dd2663)**, S1.5 + S2 remain
   Fence: crates/kasirmu-crypto/src/lib.rs:59-111; the boot path of apps/desktop-tauri/src/lib.rs, apps/mobile-tauri/src/lib.rs, apps/cloud-server/src/main.rs; the README clause that conflates the keychain with the at-rest key.
   **Slices from the D1 design** (each independently shippable, in this order): **S1** branch-tolerant read in crates/kasirmu-crypto/src/lib.rs - a candidate-key helper (legacy first, master second) behind one decrypt path that treats the AES-GCM tag as the sole oracle; no marker column, no envelope version byte, no schema change, no eager rewrap. Gate = the existing pin test in crates/kasirmu-core/tests/credential_storage_form.rs **inverted** (child under OZ_MASTER_KEY decrypts the parent's legacy row; a master-written row still fails in the parent). **S1.5** fail closed on shaped-but-undecryptable values at platform/core/src/settings/typed.rs:334, :361, :437, :553, :639 - today they `unwrap_or(v)` and hand the ciphertext back as the credential. **S2a** dormant install-key seam in crypto. **S2b** new keychain entry oz-pos/at-rest-key.v1 (generate-once-if-absent) wired at startup - do NOT reuse oz-pos/encryption-key, whose rotation archives the old key without re-wrapping any row. **S2c** opt-in `oz rekey` CLI that copies the DB first and prints counts, never values. **S3** a pin test that .ozpkg user JSON never carries national_id or monthly pay.
   Done when: a per-install key is held in the OS keychain, a test asserts the static fallback cannot be reached in a release build, and a row written under the legacy derivation still decrypts after the key exists. **Precondition, and it is most of the work: make the reader branch-tolerant first** (see D1) - simply setting the environment variable, or refusing to boot without it, silently bricks five credential families and both PII columns on any existing install, including two families that have no product setter to restore them.
@@ -147,6 +147,10 @@ Fill one row per ticked item. An item is not done until the command and its resu
 | C27 | 2026-09-23 | node scripts/check-unified-routes.mjs (before) | EXIT 1 - /api/v1/pairing/* not carved out | - |
 | C27 | 2026-09-23 | node scripts/check-unified-routes.mjs (after) | EXIT 0 - 7 prefixes (admin, desktop, license, midtrans, paddle, pairing, web) all -> pocketbase | 65f69112f |
 | C27 | 2026-09-23 | non-vacuity: delete the new midtrans handle, re-run | EXIT 1 naming /api/v1/midtrans/* - proves the widened parser sees constant-declared routes | 65f69112f |
+| C1 S1 | 2026-09-23 | cargo test -p kasirmu-core --test credential_storage_form | 28 passed, 0 failed, 1 ignored (EXIT 0) | 012dd2663 |
+| C1 S1 | 2026-09-23 | cargo test -p kasirmu-crypto | 21 passed, 0 failed (EXIT 0) | 012dd2663 |
+| C1 S1 | 2026-09-23 | fails-before proof (lib.rs reverted at HEAD, new test in place) | 27 passed / 1 FAILED on decision_pin_reads_are_branch_tolerant, then lib.rs restored byte-for-byte | 012dd2663 |
+| C18 P1.1 | 2026-09-23 | (dispatched) acceptance is a CONFLICT-path test, not a happy path | pending | - |
 | C10 | | | | |
 | C11 | | | | |
 | C12 | | | | |
