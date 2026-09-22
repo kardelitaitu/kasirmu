@@ -683,7 +683,11 @@ pub fn is_revoked_in_crl_payload(
             hex::encode(hasher.finalize())
         };
 
-        if crl.entries.iter().any(|e| e.key == key || e.key_hash == key_hash) {
+        if crl
+            .entries
+            .iter()
+            .any(|e| e.key == key || e.key_hash == key_hash)
+        {
             return true;
         }
     }
@@ -984,11 +988,9 @@ pub fn apply_license_verdict_to_cache(
     }
 
     if let Some(ref tok) = resp.hardware_token {
-        if let Err(e) = crate::settings::Settings::set(
-            conn,
-            crate::settings::keys::HARDWARE_TOKEN,
-            tok,
-        ) {
+        if let Err(e) =
+            crate::settings::Settings::set(conn, crate::settings::keys::HARDWARE_TOKEN, tok)
+        {
             tracing::warn!("failed to persist hardware_token cache: {e}");
         }
     }

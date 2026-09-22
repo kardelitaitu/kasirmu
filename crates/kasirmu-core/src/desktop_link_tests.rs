@@ -292,7 +292,10 @@ async fn start_device_pairing_posts_machine_id_and_returns_session() {
         request.starts_with(&format!("POST {PAIRING_START_PATH} ")),
         "unexpected request line: {request}"
     );
-    assert!(request.contains(r#""machine_id":"mach-tablet-1""#), "{request}");
+    assert!(
+        request.contains(r#""machine_id":"mach-tablet-1""#),
+        "{request}"
+    );
     assert!(request.contains(r#""device_name":"Tablet 1""#), "{request}");
     assert_eq!(session.code, "ABCD-1234");
     assert_eq!(session.poll_token, "token-xyz");
@@ -303,10 +306,8 @@ async fn start_device_pairing_posts_machine_id_and_returns_session() {
 #[tokio::test]
 async fn poll_device_pairing_parses_pending_and_claimed() {
     // 1. Pending
-    let (origin, server) = one_shot_server(
-        "HTTP/1.1 200 OK",
-        r#"{"status":"pending"}"#.to_string(),
-    );
+    let (origin, server) =
+        one_shot_server("HTTP/1.1 200 OK", r#"{"status":"pending"}"#.to_string());
     let poll_res = poll_device_pairing(&origin, "token-xyz")
         .await
         .expect("poll pending");
@@ -335,4 +336,3 @@ async fn poll_device_pairing_parses_pending_and_claimed() {
     assert_eq!(term.terminal_id.as_deref(), Some("mach-tablet-1"));
     assert_eq!(term.device_secret.as_deref(), Some("sec-123"));
 }
-

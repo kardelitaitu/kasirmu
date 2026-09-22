@@ -132,4 +132,3 @@ pub async fn poll_device_pairing(
     }
     Ok(resp)
 }
-

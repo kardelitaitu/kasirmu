@@ -417,9 +417,7 @@ pub async fn scan_all_tenants_quota_pg(
 // ── Alert Rendering & Dispatch ──────────────────────────────────────
 
 /// Render the subject and body for a quota-effect alert.
-pub fn render_quota_alert(
-    v: &TenantQuotaViolation,
-) -> (String, String) {
+pub fn render_quota_alert(v: &TenantQuotaViolation) -> (String, String) {
     let subject = format!(
         "kasir.mu: tenant has exceeded their tier cap for {}",
         v.dimension.label()
@@ -597,10 +595,7 @@ pub fn start_quota_detector_loop_sqlite(
 
 /// Start the background quota detection loop on PostgreSQL.
 /// Runs every 24 hours (with an initial run shortly after boot).
-pub fn start_quota_detector_loop_pg(
-    pool: deadpool_postgres::Pool,
-    config: CloudServerConfig,
-) {
+pub fn start_quota_detector_loop_pg(pool: deadpool_postgres::Pool, config: CloudServerConfig) {
     let state = QuotaAlertState::new();
     tokio::spawn(async move {
         info!("quota_detector (pg): background loop started (interval = 24h)");

@@ -16,7 +16,7 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use kasirmu_bridge::setup::{EnabledFeaturesResult};
+pub use kasirmu_bridge::setup::EnabledFeaturesResult;
 
 // ── Commands ─────────────────────────────────────────────────────────
 

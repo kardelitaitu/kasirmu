@@ -302,16 +302,16 @@ impl CloudServerConfig {
 
     /// Return an `SmtpConfig` if `smtp_host` is configured.
     pub fn alert_smtp_config(&self) -> Option<kasirmu_core::export::email_report::SmtpConfig> {
-        self.smtp_host.as_ref().map(|host| {
-            kasirmu_core::export::email_report::SmtpConfig {
+        self.smtp_host
+            .as_ref()
+            .map(|host| kasirmu_core::export::email_report::SmtpConfig {
                 host: host.clone(),
                 port: self.smtp_port,
                 username: self.smtp_user.clone(),
                 password: self.smtp_password.clone(),
                 from: self.smtp_from.clone(),
                 use_tls: self.smtp_port == 465,
-            }
-        })
+            })
     }
 }
 

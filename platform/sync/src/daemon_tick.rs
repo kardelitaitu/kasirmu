@@ -504,7 +504,12 @@ async fn run_license_ride_along(db: &DbConnection) {
             .ok()
             .flatten()
             .filter(|s| !s.is_empty());
-            Some((api_key_enc, machine_id, hardware_fingerprint, hardware_token))
+            Some((
+                api_key_enc,
+                machine_id,
+                hardware_fingerprint,
+                hardware_token,
+            ))
         })
         .await
         .unwrap_or(None)
@@ -548,9 +553,7 @@ async fn run_license_ride_along(db: &DbConnection) {
             // Fail open: keep the cached verdict and keep selling. Logged at
             // warn (not error) because an unreachable licence server is an
             // expected condition on an offline-first till, not a fault.
-            tracing::warn!(
-                "licence ride-along: status check failed, keeping cached verdict: {e}"
-            );
+            tracing::warn!("licence ride-along: status check failed, keeping cached verdict: {e}");
             return;
         }
     };

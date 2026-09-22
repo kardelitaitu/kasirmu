@@ -797,20 +797,29 @@ fn test_crl_signature_verification_and_tamper_detection() {
     let signature_base64 = sign_test_payload(&private_key, &payload_json);
 
     // 1. Valid signature verifies successfully
-    let verified =
-        verify_crl_signature_with_pem(&payload_json, &signature_base64, &public_pem).expect("verify");
+    let verified = verify_crl_signature_with_pem(&payload_json, &signature_base64, &public_pem)
+        .expect("verify");
     assert_eq!(verified.issuer, "kasir.mu");
     assert_eq!(verified.entries.len(), 1);
     assert_eq!(verified.entries[0].key, "OZ-PRO-COMPROMISED-01");
-    assert_eq!(verified.revoked_tenants, vec!["tenant-banned-99".to_string()]);
-    assert_eq!(verified.revoked_devices, vec!["stolen-tablet-01".to_string()]);
+    assert_eq!(
+        verified.revoked_tenants,
+        vec!["tenant-banned-99".to_string()]
+    );
+    assert_eq!(
+        verified.revoked_devices,
+        vec!["stolen-tablet-01".to_string()]
+    );
 
     // 2. Tampered payload fails verification
     let tampered_json = payload_json.replace("kasir.mu", "attacker.io");
     let tampered_res =
         verify_crl_signature_with_pem(&tampered_json, &signature_base64, &public_pem);
     assert!(
-        matches!(tampered_res, Err(CoreError::InvalidSubscriptionSignature(_))),
+        matches!(
+            tampered_res,
+            Err(CoreError::InvalidSubscriptionSignature(_))
+        ),
         "tampered CRL payload must fail verification"
     );
 
@@ -826,7 +835,7 @@ fn test_crl_signature_verification_and_tamper_detection() {
 #[test]
 fn test_crl_caching_and_revocation_checks() {
     use crate::migrations;
-    use crate::settings::{keys, Settings};
+    use crate::settings::{Settings, keys};
 
     let conn = migrations::fresh_db();
     seed_subscription_row(&conn, "active", Some("2027-01-01T00:00:00Z"));
@@ -887,8 +896,13 @@ fn test_crl_caching_and_revocation_checks() {
         "revoked device must match in cached CRL"
     );
     assert!(
-        !is_revoked_in_cached_crl(&conn, Some("OZ-GOOD-KEY"), Some("tenant-good"), Some("pos-02"))
-            .unwrap(),
+        !is_revoked_in_cached_crl(
+            &conn,
+            Some("OZ-GOOD-KEY"),
+            Some("tenant-good"),
+            Some("pos-02")
+        )
+        .unwrap(),
         "good key and tenant must not match in CRL"
     );
 
@@ -933,4 +947,3 @@ fn test_verify_signature_with_crl_denies_revoked_tenant() {
         "verify_signature_with_crl must reject a tenant in CRL"
     );
 }
-

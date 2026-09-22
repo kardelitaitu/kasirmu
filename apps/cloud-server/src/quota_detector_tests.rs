@@ -90,8 +90,20 @@ fn test_under_quota_no_violations() {
     }
 
     // Seed 1 owner, 1 active staff (Free staff cap is 1)
-    seed_user(&conn, tenant, "u-owner", kasirmu_core::builtin_roles::OWNER, 1);
-    seed_user(&conn, tenant, "u-staff", kasirmu_core::builtin_roles::STAFF, 1);
+    seed_user(
+        &conn,
+        tenant,
+        "u-owner",
+        kasirmu_core::builtin_roles::OWNER,
+        1,
+    );
+    seed_user(
+        &conn,
+        tenant,
+        "u-staff",
+        kasirmu_core::builtin_roles::STAFF,
+        1,
+    );
 
     let violations = check_tenant_quota_sqlite(&conn, tenant);
     assert!(violations.is_empty(), "expected no violations under quota");
@@ -107,8 +119,20 @@ fn test_at_quota_limit_no_violations() {
         seed_product(&conn, tenant, &format!("p-{i}"), &format!("SKU-{i}"));
     }
     // Free tier max_staff_users = 1
-    seed_user(&conn, tenant, "u-owner", kasirmu_core::builtin_roles::OWNER, 1);
-    seed_user(&conn, tenant, "u-staff", kasirmu_core::builtin_roles::STAFF, 1);
+    seed_user(
+        &conn,
+        tenant,
+        "u-owner",
+        kasirmu_core::builtin_roles::OWNER,
+        1,
+    );
+    seed_user(
+        &conn,
+        tenant,
+        "u-staff",
+        kasirmu_core::builtin_roles::STAFF,
+        1,
+    );
 
     let violations = check_tenant_quota_sqlite(&conn, tenant);
     assert!(
@@ -143,12 +167,36 @@ fn test_staff_over_quota_detected_excludes_owner_and_inactive() {
     let tenant = "tenant-staff-over";
 
     // Owner should not count towards staff quota
-    seed_user(&conn, tenant, "u-owner", kasirmu_core::builtin_roles::OWNER, 1);
+    seed_user(
+        &conn,
+        tenant,
+        "u-owner",
+        kasirmu_core::builtin_roles::OWNER,
+        1,
+    );
     // Inactive staff should not count
-    seed_user(&conn, tenant, "u-inactive", kasirmu_core::builtin_roles::STAFF, 0);
+    seed_user(
+        &conn,
+        tenant,
+        "u-inactive",
+        kasirmu_core::builtin_roles::STAFF,
+        0,
+    );
     // 2 active non-owner staff (Free tier cap is 1)
-    seed_user(&conn, tenant, "u-staff-1", kasirmu_core::builtin_roles::STAFF, 1);
-    seed_user(&conn, tenant, "u-staff-2", kasirmu_core::builtin_roles::MANAGER, 1);
+    seed_user(
+        &conn,
+        tenant,
+        "u-staff-1",
+        kasirmu_core::builtin_roles::STAFF,
+        1,
+    );
+    seed_user(
+        &conn,
+        tenant,
+        "u-staff-2",
+        kasirmu_core::builtin_roles::MANAGER,
+        1,
+    );
 
     let violations = check_tenant_quota_sqlite(&conn, tenant);
     assert_eq!(violations.len(), 1);
@@ -177,7 +225,13 @@ fn test_unlimited_tier_no_violations() {
     }
     // 10 staff
     for i in 1..=10 {
-        seed_user(&conn, tenant, &format!("u-{i}"), kasirmu_core::builtin_roles::STAFF, 1);
+        seed_user(
+            &conn,
+            tenant,
+            &format!("u-{i}"),
+            kasirmu_core::builtin_roles::STAFF,
+            1,
+        );
     }
 
     let violations = check_tenant_quota_sqlite(&conn, tenant);
@@ -192,23 +246,45 @@ async fn test_alert_cooldown_state() {
     let state = QuotaAlertState::new();
     let t0 = Instant::now();
 
-    assert!(!state.is_suppressed("tenant-1", CONDITION_PRODUCTS_OVER_QUOTA, t0).await);
+    assert!(
+        !state
+            .is_suppressed("tenant-1", CONDITION_PRODUCTS_OVER_QUOTA, t0)
+            .await
+    );
 
-    state.record_alert("tenant-1", CONDITION_PRODUCTS_OVER_QUOTA, t0).await;
+    state
+        .record_alert("tenant-1", CONDITION_PRODUCTS_OVER_QUOTA, t0)
+        .await;
 
     // Inside 7-day cooldown (e.g. 1 day later)
     let t_1day = t0 + Duration::from_secs(86400);
-    assert!(state.is_suppressed("tenant-1", CONDITION_PRODUCTS_OVER_QUOTA, t_1day).await);
+    assert!(
+        state
+            .is_suppressed("tenant-1", CONDITION_PRODUCTS_OVER_QUOTA, t_1day)
+            .await
+    );
 
     // Different condition for same tenant is NOT suppressed
-    assert!(!state.is_suppressed("tenant-1", CONDITION_STAFF_OVER_QUOTA, t_1day).await);
+    assert!(
+        !state
+            .is_suppressed("tenant-1", CONDITION_STAFF_OVER_QUOTA, t_1day)
+            .await
+    );
 
     // Different tenant is NOT suppressed
-    assert!(!state.is_suppressed("tenant-2", CONDITION_PRODUCTS_OVER_QUOTA, t_1day).await);
+    assert!(
+        !state
+            .is_suppressed("tenant-2", CONDITION_PRODUCTS_OVER_QUOTA, t_1day)
+            .await
+    );
 
     // After 7 days, cooldown expires
     let t_8days = t0 + Duration::from_secs(8 * 86400);
-    assert!(!state.is_suppressed("tenant-1", CONDITION_PRODUCTS_OVER_QUOTA, t_8days).await);
+    assert!(
+        !state
+            .is_suppressed("tenant-1", CONDITION_PRODUCTS_OVER_QUOTA, t_8days)
+            .await
+    );
 }
 
 #[test]
@@ -245,7 +321,12 @@ fn test_scan_all_tenants_sqlite() {
 
     // Tenant BAD: 205 products (Free tier cap is 200)
     for i in 1..=205 {
-        seed_product(&conn, tenant_bad, &format!("pbad-{i}"), &format!("SKUBAD-{i}"));
+        seed_product(
+            &conn,
+            tenant_bad,
+            &format!("pbad-{i}"),
+            &format!("SKUBAD-{i}"),
+        );
     }
 
     let violations = scan_all_tenants_quota_sqlite(&conn);
@@ -262,7 +343,10 @@ fn test_location_quota_under_and_at_limit() {
     // Free tier max_locations is 1
     seed_location(&conn, tenant, "loc-1");
     let violations = check_tenant_quota_sqlite(&conn, tenant);
-    assert!(violations.is_empty(), "1 location on Free tier should have no violations");
+    assert!(
+        violations.is_empty(),
+        "1 location on Free tier should have no violations"
+    );
 }
 
 #[test]
@@ -300,7 +384,10 @@ fn test_location_quota_unlimited_enterprise() {
     }
 
     let violations = check_tenant_quota_sqlite(&conn, tenant);
-    assert!(violations.is_empty(), "Enterprise tier allows unlimited locations");
+    assert!(
+        violations.is_empty(),
+        "Enterprise tier allows unlimited locations"
+    );
 }
 
 #[tokio::test]
@@ -308,16 +395,34 @@ async fn test_location_quota_alert_cooldown() {
     let state = QuotaAlertState::new();
     let t0 = Instant::now();
 
-    assert!(!state.is_suppressed("tenant-1", CONDITION_LOCATIONS_OVER_QUOTA, t0).await);
+    assert!(
+        !state
+            .is_suppressed("tenant-1", CONDITION_LOCATIONS_OVER_QUOTA, t0)
+            .await
+    );
 
-    state.record_alert("tenant-1", CONDITION_LOCATIONS_OVER_QUOTA, t0).await;
-    assert!(state.is_suppressed("tenant-1", CONDITION_LOCATIONS_OVER_QUOTA, t0).await);
+    state
+        .record_alert("tenant-1", CONDITION_LOCATIONS_OVER_QUOTA, t0)
+        .await;
+    assert!(
+        state
+            .is_suppressed("tenant-1", CONDITION_LOCATIONS_OVER_QUOTA, t0)
+            .await
+    );
 
     // Still suppressed at 6 days
     let t_6days = t0 + Duration::from_secs(6 * 86400);
-    assert!(state.is_suppressed("tenant-1", CONDITION_LOCATIONS_OVER_QUOTA, t_6days).await);
+    assert!(
+        state
+            .is_suppressed("tenant-1", CONDITION_LOCATIONS_OVER_QUOTA, t_6days)
+            .await
+    );
 
     // After 7 days, cooldown expires
     let t_8days = t0 + Duration::from_secs(8 * 86400);
-    assert!(!state.is_suppressed("tenant-1", CONDITION_LOCATIONS_OVER_QUOTA, t_8days).await);
+    assert!(
+        !state
+            .is_suppressed("tenant-1", CONDITION_LOCATIONS_OVER_QUOTA, t_8days)
+            .await
+    );
 }

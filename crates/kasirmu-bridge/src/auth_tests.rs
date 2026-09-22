@@ -555,7 +555,10 @@ async fn create_session_outside_pre_expiry_window_operates_locally() {
     )
     .await;
 
-    assert!(res.is_ok(), "session creation succeeds locally outside the 3-day window");
+    assert!(
+        res.is_ok(),
+        "session creation succeeds locally outside the 3-day window"
+    );
 }
 
 #[tokio::test]
@@ -588,9 +591,11 @@ async fn create_session_inside_pre_expiry_window_fails_open_on_transport_failure
     )
     .await;
 
-    assert!(res.is_ok(), "session creation fails open within the 3-day window when server is unreachable");
+    assert!(
+        res.is_ok(),
+        "session creation fails open within the 3-day window when server is unreachable"
+    );
 }
-
 
 #[tokio::test]
 async fn invalidate_all_sessions_drops_every_live_session() {

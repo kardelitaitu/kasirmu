@@ -62,7 +62,6 @@ pub struct PairingPollResponse {
     pub terminal: Option<TerminalCredential>,
 }
 
-
 /// A PKCE pair for one link attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pkce {
@@ -285,7 +284,9 @@ pub async fn start_device_pairing(
         }))
         .send()
         .await
-        .map_err(|e| CoreError::Internal(format!("pairing start request to {base_url} failed: {e}")))?;
+        .map_err(|e| {
+            CoreError::Internal(format!("pairing start request to {base_url} failed: {e}"))
+        })?;
     if !response.status().is_success() {
         let status = response.status();
         let detail = response.text().await.unwrap_or_default();
@@ -318,7 +319,9 @@ pub async fn poll_device_pairing(
         }))
         .send()
         .await
-        .map_err(|e| CoreError::Internal(format!("pairing poll request to {base_url} failed: {e}")))?;
+        .map_err(|e| {
+            CoreError::Internal(format!("pairing poll request to {base_url} failed: {e}"))
+        })?;
     if !response.status().is_success() {
         let status = response.status();
         let detail = response.text().await.unwrap_or_default();
@@ -332,7 +335,6 @@ pub async fn poll_device_pairing(
         .await
         .map_err(|e| CoreError::Internal(format!("pairing poll response: {e}")))
 }
-
 
 /// POSTs a JSON body with the device's bearer key, mapping failures to typed errors.
 #[cfg(feature = "sync-http")]
