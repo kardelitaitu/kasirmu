@@ -1,8 +1,6 @@
 # qris-core
 
-[![crates.io](https://img.shields.io/crates/v/qris-core.svg)](https://crates.io/crates/qris-core)
-[![docs.rs](https://docs.rs/qris-core/badge.svg)](https://docs.rs/qris-core)
-[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
+[![License: Proprietary](https://img.shields.io/badge/license-Proprietary-red.svg)](../../LICENSE)
 
 Parse, build, decode, and render **QRIS** (Quick Response Code Indonesian Standard)
 QR payment payloads in Rust.
@@ -24,10 +22,10 @@ QRIS is Indonesia's national QR payment standard, built on the
 
 ```toml
 [dependencies]
-qris-core = "0.1"
+qris-core = { workspace = true }
 
 # Enable QR image decoding and rendering:
-# qris-core = { version = "0.1", features = ["decode", "render"] }
+# qris-core = { workspace = true, features = ["decode", "render"] }
 ```
 
 ### Flow 1 — Read a QR sticker, extract the NMID and merchant details
@@ -88,5 +86,7 @@ Rust **1.88** or newer (matches the workspace MSRV of the oz-pos project).
 
 ## License
 
-Licensed under either of [Apache License 2.0](LICENSE-APACHE) or
-[MIT License](LICENSE-MIT) at your option.
+**Proprietary and Confidential — Copyright (c) 2024-2026 kasir.mu Contributors / All Rights Reserved.**
+
+Part of the proprietary kasir.mu workspace: this crate is not published and is not open
+source. See the repository [LICENSE](../../LICENSE) for terms and restrictions.
