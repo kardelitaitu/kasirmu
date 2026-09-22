@@ -213,6 +213,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
         tenantId: account.tenantId,
         provider: 'email',
         email: account.email,
+        ...(account.terminal ? { terminal: account.terminal } : {}),
       };
       setLinkedAccount(linked);
       setEmailState('verified');

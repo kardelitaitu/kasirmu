@@ -489,14 +489,11 @@ later stages are the in-app settings a provisioned terminal now reaches.
 - **No account step.** A `local` install is the default (§2.4), so linking is an action on a
   WORKING terminal rather than step 8 of a gate.
 
-**NOT built, and this is the honest gap: the `identify` leg.** The §2.3 diagram starts with
-`identify → tenant_id`, and there is no UI for it on either shell. What ships today is the `local`
-tier end to end; the `linked` tier's bridge contract exists (`ProvisionDeviceArgs.mode = 'linked'`
-with its tenant and credential ids, plus the schema CHECK that refuses a linked row without them)
-but nothing calls it directly yet. Note that §2.5's tablet pairing flow is fully built (server endpoints in
-`apps/license-server/pairing.go`, tablet shell UI in `LicenseActivationScreen.tsx`/`ProvisioningFlow.tsx`,
-and operator claim page at `website/src/pages/[locale]/pair.astro`). Recorded here rather than in
-§3.3 so the two tiers' status cannot be misread from the diagram.
+**BUILT & VERIFIED: the `identify` leg.** The §2.3 diagram starts with
+`identify → tenant_id`. On desktop, `ProvisioningFlow.tsx` links via Google browser loopback (`link_device_google`).
+On tablet, it provides both the QR device-code pairing path (§2.5) and the manual email code verification leg
+(`requestDeviceLinkCode` + `consumeDeviceLinkCode`), both tested in `ProvisioningFlow.test.tsx` and passing `mode: 'linked'`
+with tenant and credential ids to `provision_device`. Recorded here rather than in §3.3 so the two tiers' status is accurate.
 
 **One thing the collapse removed that the ADR did not name:** `onSkip`. The wizard's Skip button
 and the `dismiss_setup_wizard` command behind it are both gone, because §1.5's trapdoor has no

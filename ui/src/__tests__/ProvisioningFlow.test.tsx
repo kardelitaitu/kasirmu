@@ -2,7 +2,13 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ProvisioningFlow from '../features/setup/ProvisioningFlow';
 import { provisionDevice } from '@/api/settings';
-import { startDevicePairing, pollDevicePairing, linkDeviceGoogle } from '@/api/license';
+import {
+  startDevicePairing,
+  pollDevicePairing,
+  linkDeviceGoogle,
+  requestDeviceLinkCode,
+  consumeDeviceLinkCode,
+} from '@/api/license';
 import { isTabletShell } from '@/utils/shellKind';
 
 const FAST_WAIT = { interval: 5, timeout: 500 } as const;
@@ -242,4 +248,70 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
       );
     }, FAST_WAIT);
   });
+
+  it('Tablet shell in Mode 2 allows manual email identification leg', async () => {
+    vi.mocked(isTabletShell).mockReturnValue(true);
+    vi.mocked(startDevicePairing).mockResolvedValueOnce({
+      code: 'ABCD1234',
+      poll_token: 'poll-token-xyz',
+      expires_at: new Date(Date.now() + 60000).toISOString(),
+      qr_url: 'https://kasir.mu/pair?code=ABCD1234',
+    });
+    vi.mocked(requestDeviceLinkCode).mockResolvedValueOnce(undefined as any);
+    vi.mocked(consumeDeviceLinkCode).mockResolvedValueOnce({
+      tenantId: 'tenant-email-789',
+      email: 'owner-tablet@example.com',
+      verified: true,
+      terminal: {
+        terminalId: 'term-email-1',
+        issued: true,
+      },
+    });
+
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+
+    // Switch to Mode 2
+    fireEvent.click(screen.getByTestId('provision-mode-linked'));
+
+    // Switch to Email Code subtab
+    const emailTab = screen.getByRole('tab', { name: /Email Code/i });
+    fireEvent.click(emailTab);
+    expect(emailTab.getAttribute('aria-selected')).toBe('true');
+
+    // Input email and send code
+    const emailInput = screen.getByPlaceholderText(/Email address/i);
+    fireEvent.change(emailInput, { target: { value: 'owner-tablet@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /Email me a code/i }));
+
+    await waitFor(() => {
+      expect(requestDeviceLinkCode).toHaveBeenCalledWith('owner-tablet@example.com');
+      expect(screen.getByPlaceholderText(/Verification code/i)).toBeInTheDocument();
+    }, FAST_WAIT);
+
+    // Input code and verify
+    const codeInput = screen.getByPlaceholderText(/Verification code/i);
+    fireEvent.change(codeInput, { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: /Verify/i }));
+
+    await waitFor(() => {
+      expect(consumeDeviceLinkCode).toHaveBeenCalledWith('123456');
+      expect(screen.getByText(/Linked to owner-tablet@example\.com\./i)).toBeInTheDocument();
+    }, FAST_WAIT);
+
+    fillBasicForm();
+    const submitBtn = screen.getByTestId('provision-submit');
+    expect(submitBtn).not.toBeDisabled();
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(provisionDevice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: 'linked',
+          tenant_id: 'tenant-email-789',
+          device_credential_id: 'term-email-1',
+        }),
+      );
+    }, FAST_WAIT);
+  });
 });
+
