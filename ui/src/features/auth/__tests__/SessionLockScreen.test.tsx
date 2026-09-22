@@ -89,6 +89,52 @@ describe('SessionLockScreen', () => {
     mockStaffLogin.mockRejectedValue(new Error('Invalid PIN'));
   });
 
+  // ── A failed PIN marks the field, not only the banner ──────────────
+  //
+  // The screen already announces the failure (the notice below carries
+  // role="alert"), so this is not about being silent: it is about the mark
+  // landing on the CONTROL the user must retry. A screen-reader user who
+  // navigates back to the PIN row otherwise cannot tell it apart from the one
+  // that just failed, and the shake is a CSS class they cannot perceive.
+
+  describe('0. Failed-PIN field state', () => {
+    const pinDots = () => document.querySelector('.session-lock-pin-dots')!;
+
+    it('leaves the PIN row valid before any attempt', () => {
+      render(<SessionLockScreen onUnlock={mockOnUnlock} />);
+      expect(pinDots()).not.toHaveAttribute('aria-invalid');
+    });
+
+    it('marks the PIN row invalid after a rejected PIN', async () => {
+      render(<SessionLockScreen onUnlock={mockOnUnlock} />);
+      enterPinViaButtons('1234');
+
+      await waitFor(() => {
+        expect(pinDots()).toHaveAttribute('aria-invalid', 'true');
+      });
+    });
+
+    it('clears the invalid mark when the user starts retrying', async () => {
+      // The mark must not outlive the failure, or a fresh attempt reads as
+      // already wrong.
+      render(<SessionLockScreen onUnlock={mockOnUnlock} />);
+      enterPinViaButtons('1234');
+      await waitFor(() => expect(pinDots()).toHaveAttribute('aria-invalid', 'true'));
+
+      enterPinViaButtons('1');
+
+      expect(pinDots()).not.toHaveAttribute('aria-invalid');
+    });
+
+    it('hides the decorative dots from assistive tech', () => {
+      // The row carries the count in its own label; without aria-hidden the
+      // reader announces the row and then four unlabelled elements inside it.
+      render(<SessionLockScreen onUnlock={mockOnUnlock} />);
+      const dots = pinDots().querySelectorAll('span');
+      expect(dots.length).toBe(4);
+      for (const dot of dots) expect(dot).toHaveAttribute('aria-hidden', 'true');
+    });
+  });
   describe('1. Mounting & Rendering', () => {
     it('renders the clock and date', () => {
       vi.useFakeTimers();
