@@ -305,6 +305,110 @@ function mockAuditMatches(row: MockAuditRow, f: { outcome?: string; query?: stri
 // claiming a review that never happened on the tenant's real log.
 const mockAuditReview: { checkpoint: MockReviewCheckpoint | null } = { checkpoint: null };
 
+
+/**
+ * The store-type presets the first-run flow offers, and the feature keys each enables —
+ * a MIRROR of `FeatureRegistry::{simple_retail, restaurant, full_store, cafe, franchise,
+ * custom}` in `crates/kasirmu-core/src/features.rs:304-414`, keyed by the slugs
+ * `preset_registry` (`:427`) accepts and sorted the way `preset_feature_keys` (`:449`) sorts
+ * them.
+ *
+ * Why a copy exists here at all: the mock runs in a browser and the fact lives in Rust. The
+ * product's answer to that is the real command this handler stands in for — the UI calls
+ * `get_preset_features` rather than carrying the lists (`ui/src/api/settings.ts:257-267`),
+ * which is what keeps the UI honest. ONLY the preview reads this table, and
+ * `ui/src/__tests__/dev-mock-preset-features.test.ts` pins it against the real payload shape
+ * so a hand-edit that breaks the sort or the slug set is caught rather than silently
+ * provisioning a preview terminal with a different feature set than production.
+ */
+const MOCK_PRESET_FEATURE_KEYS: Record<string, readonly string[]> = {
+  'simple-retail': [
+    'barcode-scanning',
+    'cash-payment',
+    'categories-enabled',
+    'inventory-tracking',
+    'receipt-printing',
+    'simple-retail',
+    'tax-engine',
+  ],
+  restaurant: [
+    'cash-payment',
+    'categories-enabled',
+    'discount-engine',
+    'inventory-tracking',
+    'kitchen-display',
+    'receipt-printing',
+    'restaurant',
+    'staff-login',
+    'table-management',
+    'tax-engine',
+  ],
+  'full-store': [
+    'analytics',
+    'audit-log',
+    'barcode-scanning',
+    'card-payment',
+    'cash-drawer',
+    'cash-payment',
+    'categories-enabled',
+    'customer-display',
+    'discount-engine',
+    'export-import',
+    'gift-cards',
+    'inventory-tracking',
+    'loyalty-program',
+    'multi-currency',
+    'nfc-reader',
+    'product-bundles',
+    'product-variants',
+    'promotions-engine',
+    'quick-return',
+    'receipt-printing',
+    'reporting',
+    'shift-management',
+    'simple-retail',
+    'staff-login',
+    'staff-roles',
+    'tax-engine',
+    'usb-scale',
+  ],
+  cafe: [
+    'card-payment',
+    'cash-payment',
+    'customer-display',
+    'discount-engine',
+    'kitchen-display',
+    'promotions-engine',
+    'receipt-printing',
+    'restaurant',
+    'simple-retail',
+    'tax-engine',
+  ],
+  franchise: [
+    'analytics',
+    'audit-log',
+    'card-payment',
+    'cash-payment',
+    'categories-enabled',
+    'cloud-sync',
+    'discount-engine',
+    'inventory-tracking',
+    'kitchen-display',
+    'multi-currency',
+    'multi-store',
+    'multi-terminal',
+    'product-variants',
+    'receipt-printing',
+    'reporting',
+    'restaurant',
+    'shift-management',
+    'staff-login',
+    'staff-roles',
+    'table-management',
+    'tax-engine',
+  ],
+  custom: [],
+};
 export const systemHandlers: Record<string, MockHandler> = {
 
   // Local-IP banner for the boot/setup screen — moved verbatim from
@@ -489,6 +593,28 @@ export const systemHandlers: Record<string, MockHandler> = {
     };
   },
   'get_enabled_features': () => ({ features: ['sales', 'inventory', 'reporting', 'staff', 'settings'] }),
+
+  // The preset→features fact has exactly ONE owner in core
+  // (`crates/kasirmu-core/src/features.rs:304-414`, read through `preset_feature_keys`
+  // at `:449`). This table is the mock's copy of it, and it is a copy because the browser
+  // preview cannot call Rust — the real `get_preset_features` (`kasirmu-bridge/src/setup.rs:225`)
+  // exists precisely so the UI never carries such a table itself. Keys are the kebab-case
+  // `feature_key` suffixes, sorted the way `preset_feature_keys` sorts them, so a preview
+  // that provisions a terminal pushes the same feature set the backend would.
+  //
+  // Unreachable here before 2026-09-22: `scripts/verify-ipc-parity.py` failed the whole gate
+  // on `get_preset_features` because the UI invoked it and nothing under `ui/src/dev-mock/`
+  // answered, so the browser preview rendered the first-run flow's failure path.
+  'get_preset_features': (a: unknown) => {
+    const { preset } = (a ?? {}) as { preset?: string };
+    const keys = MOCK_PRESET_FEATURE_KEYS[preset ?? ''];
+    // An unknown slug is an ERROR here, exactly as `BridgeError::Invalid` answers it
+    // (`kasirmu-bridge/src/setup.rs:231`). The first-run FLOW degrades to `[]` and
+    // provisions anyway (ProvisioningFlow.tsx:282-284); a mock that returned `[]` for a
+    // typo would hide the difference between that degradation and a lost preset.
+    if (!keys) throw new Error(`unknown store preset: ${preset ?? ''}`);
+    return { features: [...keys] };
+  },
 
   // ═══════════════════════════════════════════════════════════════
   // SECURITY / ENCRYPTION
