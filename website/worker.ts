@@ -380,15 +380,13 @@ export default {
       // Step 1b: The dashboard SPA calls /__oz/session to obtain the JWT
       // from the httpOnly cookie (so it can authenticate to the license API
       // with a Bearer header). Same-origin, so the token never leaks to
-      // third-party JS. Requires the cookie; a missing cookie here is 401.
+      // third-party JS. A missing cookie returns 200 {token:null} rather
+      // than 401: this endpoint is a session QUERY (the header asks it on
+      // every page), and a 401 here is logged by the browser as a console
+      // error for every signed-out visitor. Callers already treat a missing
+      // `token` as signed-out.
       if (url.pathname === SESSION_PATH) {
-        if (!sessionCookie) {
-          return new Response(JSON.stringify({ error: 'not signed in' }), {
-            status: 401,
-            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-          });
-        }
-        return new Response(JSON.stringify({ token: sessionCookie }), {
+        return new Response(JSON.stringify({ token: sessionCookie ?? null }), {
           headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
         });
       }
@@ -835,13 +833,9 @@ export default {
     // header without ever holding the token in JS-readable storage.
     if (url.pathname === SESSION_PATH) {
       const sessionCookie = getCookieWithLegacy(request.headers, COOKIE_NAME, LEGACY_COOKIE_NAME);
-      if (!sessionCookie) {
-        return new Response(JSON.stringify({ error: 'not signed in' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-        });
-      }
-      return new Response(JSON.stringify({ token: sessionCookie }), {
+      // 200 {token:null} when signed out — see the dashboard-host note above:
+      // a 401 here would be a console error on every page of the site.
+      return new Response(JSON.stringify({ token: sessionCookie ?? null }), {
         headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
       });
     }

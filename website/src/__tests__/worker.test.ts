@@ -166,13 +166,16 @@ describe('Cloudflare Worker — worker.ts', () => {
     expect(mockEnv.ASSETS.fetch).toHaveBeenCalled();
   });
 
-  it('returns 401 from /__oz/session when no cookie', async () => {
+  it('returns 200 {token:null} from /__oz/session when no cookie (not 401)', async () => {
+    // Was 401. This endpoint is a session QUERY the header asks on every page,
+    // so a 401 made the browser log a console error for every signed-out
+    // visitor. Callers already treat a missing token as signed-out.
     const req = new Request('https://admin.kasir.mu/__oz/session');
     const res = await worker.fetch(req, mockEnv);
 
-    expect(res.status).toBe(401);
-    const body = await res.json() as { error: string };
-    expect(body.error).toBe('not signed in');
+    expect(res.status).toBe(200);
+    const body = await res.json() as { token: string | null };
+    expect(body.token).toBeNull();
   });
 
   it('returns token from /__oz/session when cookie present', async () => {
@@ -397,13 +400,13 @@ describe('Cloudflare Worker — worker.ts', () => {
     expect(res.headers.get('Cache-Control')).toBe('no-store');
   });
 
-  it('R1: returns 401 from /__oz/session on the marketing host without a cookie', async () => {
+  it('R1: returns 200 {token:null} from /__oz/session on the marketing host without a cookie', async () => {
     const req = new Request('https://kasir.mu/__oz/session');
     const res = await worker.fetch(req, mockEnv);
 
-    expect(res.status).toBe(401);
-    const body = await res.json() as { error: string };
-    expect(body.error).toBe('not signed in');
+    expect(res.status).toBe(200);
+    const body = await res.json() as { token: string | null };
+    expect(body.token).toBeNull();
   });
 
   it('R1: /__oz/logout clears the cookie and redirects to marketing login', async () => {

@@ -310,7 +310,10 @@ export default function SignupForm({ locale, labels }: Props) {
           names, and this page is a separate component from AuthForm — so the control has to
           exist here too, not only where sign-in lives. An anchor, not a form: the Worker CSP
           sets form-action 'self'. */}
-      {API && (
+      {/* mounted-gated for the same reason as AuthForm: `API` differs between
+          the SSR pass (undefined) and the hydrated client (runtime config),
+          which caused a React hydration mismatch (#418) on this page. */}
+      {mounted && API && (
         <>
           <a
             href={API + '/api/v1/web/oauth/google/start?next=/' + locale + '/account'}

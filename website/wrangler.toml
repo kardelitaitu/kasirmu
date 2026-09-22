@@ -24,12 +24,28 @@ assets = { directory = "./dist", binding = "ASSETS", run_worker_first = true, no
 # `npx wrangler deploy` warns if this is more than a few days old.
 compatibility_date = "2026-08-16"
 
+# ── Routes (ADR #42) ─────────────────────────────────────────────
+# dashboard.kasir.mu and admin.kasir.mu route to this Worker. `routes` MUST be
+# a top-level key: it used to sit after the [observability.logs] table header,
+# which nests it as observability.logs.routes — wrangler warns "Unexpected
+# fields found in observability field: routes" and silently drops the routes,
+# so the subdomains were never bound by this config.
+routes = [
+  "dashboard.kasir.mu/*",
+  "admin.kasir.mu/*",
+]
+
 [vars]
 # Runtime backend URL — overrides the build-time PUBLIC_LICENSE_API_URL.
 # Update this (dashboard → Worker → Settings → Variables, or wrangler.toml)
 # when the Northflank host changes; no site rebuild required.
 LICENSE_API_URL = "https://license.kasir.mu"
-CONTACT_WEBHOOK_URL = "https://discord.com/api/webhooks/154258447961xxxxxx"
+# CONTACT_WEBHOOK_URL is a Worker SECRET, not a [vars] entry: committing it
+# would let anyone who can read this repo spam the support channel, and the
+# placeholder that used to live here was not a valid webhook (so a deploy that
+# relied on it returned 502 "Discord send failed" for every message). Set it with:
+#   npx wrangler secret put CONTACT_WEBHOOK_URL
+# Unset → /api/contact returns 503 and the form degrades to a mailto link.
 # Cloudflare account for the Health-tab deployments proxy (/__oz/cf-deploys).
 # The API token itself is a Worker secret: npx wrangler secret put CF_API_KEY
 CLOUDFLARE_ACCOUNT_ID = "872d4b05f29418e3e8c8a35d687e3dda"
@@ -41,13 +57,4 @@ CLOUDFLARE_ACCOUNT_ID = "872d4b05f29418e3e8c8a35d687e3dda"
 [observability.logs]
 enabled = true
 invocation_logs = true
-
-# ── Routes (ADR #42) ─────────────────────────────────────────────
-# dashboard.kasir.mu and admin.kasir.mu route to this Worker.
-# The Worker's hostname dispatch auth-gates them (302 → login when
-# no session cookie, placeholder when authenticated).
-routes = [
-  "dashboard.kasir.mu/*",
-  "admin.kasir.mu/*",
-]
 

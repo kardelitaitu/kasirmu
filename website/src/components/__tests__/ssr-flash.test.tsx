@@ -38,3 +38,46 @@ describe('SSR first paint — auth forms', () => {
     expect(html).toContain('type="email"');
   });
 });
+
+/**
+ * The Google OAuth link depends on `licenseApiUrl()`: undefined during SSR
+ * (no build-time PUBLIC_LICENSE_API_URL), present on the client (the Worker's
+ * runtime config). Rendering it on `API` alone made the server omit the block
+ * while the client's first render included it — a React hydration mismatch
+ * (#418) that discarded the server HTML on every login/signup page.
+ *
+ * renderToString models the SSR pass AND the pre-effect first client render
+ * (effects never run), so it proves the two agree even when the API URL is
+ * configured. If the OAuth block were gated on `API` alone, the configured
+ * case below would contain the link and fail.
+ */
+describe('SSR first paint — Google OAuth entry is mount-gated', () => {
+  const OAUTH = '/api/v1/web/oauth/google/start';
+
+  async function withApi<T>(fn: () => T): Promise<T> {
+    const env = import.meta.env as Record<string, unknown>;
+    const prev = env.PUBLIC_LICENSE_API_URL;
+    env.PUBLIC_LICENSE_API_URL = 'https://license.test';
+    try {
+      return fn();
+    } finally {
+      env.PUBLIC_LICENSE_API_URL = prev;
+    }
+  }
+
+  it('AuthForm first render omits the OAuth link even with the API configured', async () => {
+    const { default: AuthForm, AUTH_FORM_LABELS } = await import('../AuthForm');
+    const html = await withApi(() =>
+      renderToString(createElement(AuthForm, { locale: 'en', labels: labelMap('en', AUTH_FORM_LABELS) })),
+    );
+    expect(html).not.toContain(OAUTH);
+  });
+
+  it('SignupForm first render omits the OAuth link even with the API configured', async () => {
+    const { default: SignupForm, SIGNUP_FORM_LABELS } = await import('../SignupForm');
+    const html = await withApi(() =>
+      renderToString(createElement(SignupForm, { locale: 'en', labels: labelMap('en', SIGNUP_FORM_LABELS) })),
+    );
+    expect(html).not.toContain(OAUTH);
+  });
+});

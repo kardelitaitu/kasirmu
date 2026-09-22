@@ -63,6 +63,23 @@ describe('getSessionToken — R1 httpOnly cookie', () => {
 
     expect(await getSessionToken()).toBeNull();
   });
+
+  it('collapses concurrent callers into a single /__oz/session request', async () => {
+    // The header resolves the session on load and again on astro:page-load,
+    // and the checkout CTA also asks — without dedupe a page fired several
+    // identical probes.
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ token: 'cookie.token' }),
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const [a, b] = await Promise.all([getSessionToken(), getSessionToken()]);
+    expect(a).toBe('cookie.token');
+    expect(b).toBe('cookie.token');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('hasSession — cookie-first session gate', () => {

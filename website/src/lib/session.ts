@@ -26,11 +26,26 @@ export const SESSION_STORAGE_KEY = 'oz_session';
  * recognized everywhere. Reading sessionStorage alone was the regression this
  * module exists to prevent.
  */
+/** The in-flight session probe, shared so concurrent callers issue ONE request. */
+let inflightProbe: Promise<string | null> | null = null;
+
 export async function getSessionToken(): Promise<string | null> {
+  // The header resolves the session on load and again on astro:page-load, and
+  // the checkout CTA also asks — without this, a single page view fired two or
+  // three identical /__oz/session requests. Collapse them into one.
+  if (!inflightProbe) {
+    inflightProbe = probeSessionToken().finally(() => {
+      inflightProbe = null;
+    });
+  }
+  return inflightProbe;
+}
+
+async function probeSessionToken(): Promise<string | null> {
   try {
     const res = await fetch('/__oz/session');
     if (res.ok) {
-      const body = (await res.json()) as { token?: string };
+      const body = (await res.json()) as { token?: string | null };
       if (body.token) return body.token;
     }
   } catch {

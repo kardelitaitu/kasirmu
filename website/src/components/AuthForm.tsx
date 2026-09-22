@@ -581,7 +581,12 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
         </p>
       )}
 
-      {API && (
+      {/* mounted-gated: `API` is undefined during SSR (no build-time
+          PUBLIC_LICENSE_API_URL) but present on the client from the Worker's
+          runtime config. Rendering on `API` alone made the server omit this
+          block while the client rendered it — a React hydration mismatch that
+          discarded the server HTML (error #418) on every login page. */}
+      {mounted && API && (
         <>
           {/* An anchor, not a form: the Worker CSP sets form-action 'self', and this
               navigates to the licence host, which then redirects to Google. The
