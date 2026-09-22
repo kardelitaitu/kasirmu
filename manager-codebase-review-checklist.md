@@ -1,9 +1,8 @@
 # Remediation Checklist - kasir.mu
 
+**Progress at 2026-09-23:** 8 items verified and ticked (C5, C5b, C6, C9, C11-code, C12, C17 slice 1, C27); 3 partial with named remainders (C1 stage 1 of 3, C2 first step, C8 slice S1 of 7); the rest queued or blocked on an owner decision. Every ticked line names its commit, and the verification log at the end carries the command and its result.
+
 Derived from manager-codebase-review.md (commit 954d4b094), 2026-09-23. Nothing here is new evidence: every item traces to a numbered section of that review, and the acceptance check is the one stated there.
-
-**How to use it.** Work top-down. Wave 1 items are individually shippable, but three have ordering constraints: C11 (snapshot before migrating) and C12 (variance report) are prerequisites for C10 and C3 respectively, and C7 is an ops change rather than a code change. Do not batch a schema change with the code that depends on it. Never raise a ceiling, never re-label a gate to make a registry self-consistent, and never retry a failed fix a fourth time - after three red gates on one area, diagnose the root cause instead. Record the command and its result in the verification log at the end when you tick an item.
-
 ---
 
 ## Wave 1 - before the next release (P0)
