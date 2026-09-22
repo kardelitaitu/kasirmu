@@ -183,10 +183,10 @@ fn for_test_creates_valid_state() {
     assert_eq!(state.db_path.to_str(), Some(":memory:"));
     assert!(state.app.is_none());
     assert!(state.plugin_watcher.is_none());
-    assert!(state.plugin_hot_reload_task.is_none());
+    assert_eq!(state.plugin_change_refused.load(Ordering::SeqCst), 0);
 }
 
-// ── PLG-11: hot-reload last-known-good rollback ────────────────────
+// ── C2: an unverified plugin change is refused, never hot-swapped ──
 
 /// Write a minimal valid plugin directory for integration tests.
 fn write_plugin_dir(root: &Path, script: &str) {
@@ -209,58 +209,108 @@ required_permissions = ["cart:read", "cart:write"]
     std::fs::write(plugin_dir.join("main.lua"), script).unwrap();
 }
 
+/// The watcher observes a change and REFUSES it: the live manager keeps serving
+/// the exact plugin set it was loaded with, and the loaded content hash is
+/// unchanged.
+///
+/// This is the regression test for the silent hot-swap. The old wiring rebuilt
+/// the manager from disk on any file event, so writing one `.lua` file into the
+/// plugins directory bought in-process execution about a second later, with no
+/// verification of the bytes at all. If that behaviour returns, the new plugin
+/// becomes live and this test fails on both the hash and the discount.
 #[tokio::test]
-async fn reload_plugins_keeps_old_runtime_on_failed_reload() {
-    // A valid plugin that queues a discount at load time.
+async fn plugin_change_is_refused_and_live_set_survives() {
     let tmp = tempfile::tempdir().unwrap();
     write_plugin_dir(tmp.path(), "oz.apply_discount(\"cart\", 10)\n");
 
+    // The live runtime, built exactly as AppState builds it at startup.
     let plugins: Arc<Mutex<Option<PluginManager>>> =
         Arc::new(Mutex::new(Some(PluginManager::new(tmp.path()).unwrap())));
+    let loaded_hash = plugins
+        .lock()
+        .await
+        .as_ref()
+        .expect("a plugin dir loads")
+        .content_hash();
 
-    // Corrupt the manifest: the reload must fail and KEEP the old runtime.
-    std::fs::write(
-        tmp.path().join("test-plugin/plugin.toml"),
-        "[plugin]\nname = \"broken",
-    )
-    .unwrap();
-    reload_plugins(&plugins, tmp.path()).await;
+    let refused = Arc::new(AtomicU64::new(0));
+    let watcher = start_plugin_watcher(refused.clone(), tmp.path().to_path_buf())
+        .expect("watcher starts on an existing plugins directory");
 
-    let guard = plugins.lock().await;
-    assert!(
-        guard.is_some(),
-        "failed reload must keep the last-known-good runtime"
-    );
-    // The old runtime is still live: its plugin's discount (queued at
-    // initial load) is still drainable.
-    let d = guard.as_ref().unwrap().drain_pending_discounts();
-    assert_eq!(d.len(), 1, "old runtime must stay live after failed reload");
-}
-
-#[tokio::test]
-async fn reload_plugins_replaces_runtime_on_success() {
-    let tmp = tempfile::tempdir().unwrap();
-    write_plugin_dir(tmp.path(), "oz.apply_discount(\"cart\", 10)\n");
-
-    let plugins: Arc<Mutex<Option<PluginManager>>> =
-        Arc::new(Mutex::new(Some(PluginManager::new(tmp.path()).unwrap())));
-
-    // Change the script so a fresh runtime queues a different discount.
+    // Change the existing script and drop in a brand-new plugin — the exact
+    // two shapes the old watcher turned into in-process execution.
     std::fs::write(
         tmp.path().join("test-plugin/main.lua"),
-        "oz.apply_discount(\"cart\", 20)\n",
+        "oz.apply_discount(\"cart\", 99)\n",
     )
     .unwrap();
-    reload_plugins(&plugins, tmp.path()).await;
+    let extra = tmp.path().join("evil-plugin");
+    std::fs::create_dir(&extra).unwrap();
+    std::fs::write(
+        extra.join("plugin.toml"),
+        r#"[plugin]
+name = "evil-plugin"
+version = "1.0.0"
 
+[permissions]
+required_permissions = ["cart:read"]
+"#,
+    )
+    .unwrap();
+
+    // notify delivers asynchronously: wait for the refusal to be recorded.
+    let mut observed = 0u64;
+    for _ in 0..100 {
+        observed = refused.load(Ordering::SeqCst);
+        if observed > 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        observed > 0,
+        "the watcher must observe the change and record a refusal"
+    );
+    drop(watcher);
+
+    // Non-vacuity: the on-disk set really did change, so a hot-swap would have
+    // been observable. Without this the assertions below would also pass if the
+    // edits had simply failed to land.
+    let changed_hash = PluginManager::new(tmp.path())
+        .expect("the changed set is still loadable")
+        .content_hash();
+    assert_ne!(
+        changed_hash, loaded_hash,
+        "the edited plugin set must hash differently, or this test proves nothing"
+    );
+
+    // The live manager is untouched — same hash, same set, same behaviour.
     let guard = plugins.lock().await;
     let mgr = guard
         .as_ref()
-        .expect("successful reload must set a runtime");
-    let d = mgr.drain_pending_discounts();
-    assert_eq!(d.len(), 1);
+        .expect("a refused change must not clear the live runtime");
     assert_eq!(
-        d[0].percent, 20,
-        "successful reload must pick up the change"
+        mgr.content_hash(),
+        loaded_hash,
+        "a refused change must not alter the loaded plugin set"
+    );
+    let d = mgr.drain_pending_discounts();
+    assert_eq!(d.len(), 1, "the old set is still the live one");
+    assert_eq!(
+        d[0].percent, 10,
+        "the OLD script must still be live: a hot-swap would have produced 99"
+    );
+}
+
+/// Nothing in the shell rebuilds the manager from disk after startup: the only
+/// remaining call site is the startup load. A restart is the explicit operator
+/// action that picks up a changed set.
+#[test]
+fn plugin_manager_is_only_built_at_startup() {
+    let src = include_str!("state.rs");
+    assert_eq!(
+        src.matches("PluginManager::new").count(),
+        1,
+        "only the startup load may build a manager; a second call site means an automatic reload path is back"
     );
 }

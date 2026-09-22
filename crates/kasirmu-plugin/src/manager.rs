@@ -15,7 +15,7 @@ use kasirmu_lua::{
 use mlua::RegistryKey;
 
 use crate::error::PluginError;
-use crate::loader::load_plugins;
+use crate::loader::{hash_plugin_set, load_plugins};
 use crate::manifest::Permission;
 
 /// A discount queued by a plugin script for later application.
@@ -59,6 +59,9 @@ pub struct PluginManager {
     hook_names: Arc<Mutex<HashMap<String, Vec<HookRef>>>>,
     pending_discounts: Arc<Mutex<Vec<PendingDiscount>>>,
     bridge: Arc<Mutex<LuaEventBridge>>,
+    /// Content hash of the plugin set this runtime was built from (C2).
+    /// Recorded at load time; see [`Self::content_hash`].
+    content_hash: u64,
     /// Shared Lua VM. Declared LAST so it drops AFTER the per-plugin env
     /// `RegistryKey`s above: mlua 0.9's `RegistryKey::drop` touches the Lua
     /// state, so freeing the VM before the keys would be a use-after-free.
@@ -104,6 +107,13 @@ impl PluginManager {
                 )));
             }
         }
+
+        // ── Record the content hash of this set (C2) ────────────────
+        // Taken here, after the id-sort above, so the value is stable across
+        // directory-iteration order. It identifies the exact bytes loaded;
+        // nothing in this crate verifies them (no signature step yet), so a
+        // changed on-disk set is detected, never authenticated.
+        let content_hash = hash_plugin_set(&registry);
 
         // ── Enforce plugin permissions ──────────────────────────────
         for plugin in &registry.plugins {
@@ -319,6 +329,7 @@ impl PluginManager {
             hook_names,
             pending_discounts,
             bridge,
+            content_hash,
             runtime,
         })
     }
@@ -394,6 +405,15 @@ impl PluginManager {
             }
         }
         Ok(None)
+    }
+
+    /// Content hash of the plugin set this runtime was built from (C2).
+    ///
+    /// Stable for the lifetime of the runtime: changing it requires loading a
+    /// new set, which is an explicit operator action — the desktop shell no
+    /// longer swaps the live manager automatically.
+    pub fn content_hash(&self) -> u64 {
+        self.content_hash
     }
 
     /// Drain all queued discounts, returning them and clearing the queue.

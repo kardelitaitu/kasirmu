@@ -70,8 +70,8 @@ drivers = ["printer.so"]
 hooks = ["on_sale", "on_refund"]
 
 [permissions]
-allow_network = true
-allow_filesystem = true
+allow_network = false
+allow_filesystem = false
 allow_http = false
 "#;
     let dir = tempfile::tempdir().unwrap();
@@ -89,30 +89,66 @@ allow_http = false
     assert_eq!(manifest.capabilities.scripts.len(), 2);
     assert_eq!(manifest.capabilities.drivers.len(), 1);
     assert_eq!(manifest.capabilities.hooks.len(), 2);
-    assert!(manifest.permissions.allow_network);
-    assert!(manifest.permissions.allow_filesystem);
+    assert!(!manifest.permissions.allow_network);
+    assert!(!manifest.permissions.allow_filesystem);
     assert!(!manifest.permissions.allow_http);
 }
 
+// ── C2: unsupported capability flags fail closed ───────────────────
+
+/// Load a manifest that declares `flag = true` beside a valid permission set.
+fn load_with_capability_flag(flag: &str) -> Result<PluginManifest, PluginError> {
+    let toml = format!(
+        "[plugin]\nname = \"capped\"\nversion = \"1.0.0\"\n\n[permissions]\n{flag} = true\nrequired_permissions = [\"cart:read\"]\n",
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("plugin.toml");
+    std::fs::write(&path, toml).unwrap();
+    PluginManifest::load(&path)
+}
+
+/// The host implements no network, filesystem or HTTP access for plugins, so a
+/// manifest declaring one must be rejected rather than loaded with the flag
+/// silently ignored: a parsed-and-unenforced knob implies protection that does
+/// not exist, which is worse than having no knob at all.
 #[test]
-fn manifest_all_permissions_true() {
+fn unsupported_capability_flags_fail_closed() {
+    for flag in ["allow_network", "allow_filesystem", "allow_http"] {
+        let err = load_with_capability_flag(flag)
+            .expect_err("a declared but unenforced capability must not load");
+        let msg = err.to_string();
+        assert!(msg.contains(flag), "must name the offending flag {flag}: {msg}");
+        assert!(
+            msg.contains("unsupported capability flag"),
+            "must say the capabilities are unsupported: {msg}"
+        );
+        assert!(
+            msg.contains("network, filesystem or HTTP"),
+            "must say what is not implemented: {msg}"
+        );
+    }
+}
+
+/// Declaring a flag explicitly `false` states the plugin needs nothing beyond the
+/// sandbox, so it stays valid — only `true` claims a capability the host cannot
+/// grant.
+#[test]
+fn explicitly_false_capability_flags_are_accepted() {
     let toml = r#"
 [plugin]
-name = "networked"
+name = "honest"
 version = "1.0.0"
 
 [permissions]
-allow_network = true
-allow_filesystem = true
-allow_http = true
+allow_network = false
+allow_filesystem = false
+allow_http = false
+required_permissions = ["cart:read"]
 "#;
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("plugin.toml");
     std::fs::write(&path, toml).unwrap();
-    let manifest = PluginManifest::load(&path).unwrap();
-    assert!(manifest.permissions.allow_network);
-    assert!(manifest.permissions.allow_filesystem);
-    assert!(manifest.permissions.allow_http);
+    PluginManifest::load(&path).expect("explicit false must not fail the manifest");
 }
 
 #[test]

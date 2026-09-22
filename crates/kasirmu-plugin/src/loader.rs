@@ -45,6 +45,41 @@ impl PluginRegistry {
     }
 }
 
+/// Content hash of a loaded plugin set (C2).
+///
+/// Covers every byte that determines behaviour: each plugin's id and declared
+/// version, and the contents of each script it resolved. Recorded beside the
+/// runtime at load time so a later on-disk change is detectable — see
+/// [`crate::manager::PluginManager::content_hash`].
+///
+/// Deliberately a non-cryptographic fingerprint, not a digest: its only job is
+/// to detect that the bytes changed, never to authenticate them (signature
+/// verification is out of scope for this step). Plugins are unhashed at rest,
+/// so a fingerprint that is only ever compared in-process is sufficient, and
+/// keeping it dependency-free matters more than its collision resistance.
+/// Callers must therefore pass a deterministically ordered registry —
+/// [`load_plugins`] returns directory-iteration order, and
+/// `PluginManager::new` sorts by id before hashing.
+pub fn hash_plugin_set(registry: &PluginRegistry) -> u64 {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for plugin in &registry.plugins {
+        plugin.manifest.plugin.name.hash(&mut hasher);
+        plugin.manifest.plugin.version.hash(&mut hasher);
+        for script in &plugin.scripts {
+            script.hash(&mut hasher);
+            // An unreadable script still contributes a stable marker, so a
+            // set that becomes unreadable is not mistaken for an unchanged one.
+            match std::fs::read(script) {
+                Ok(bytes) => bytes.hash(&mut hasher),
+                Err(e) => format!("<unreadable: {e}>").hash(&mut hasher),
+            }
+        }
+    }
+    hasher.finish()
+}
+
 /// Resolve and validate a plugin's declared script paths (PLG-02).
 ///
 /// Every declared script is confined to its plugin directory:
