@@ -99,6 +99,36 @@ pub struct SalesByHourRow {
     pub sale_count: i64,
 }
 
+/// One completed-sale aggregation, bucketed by payment method and currency.
+///
+/// The EOD sheet's body (C5): every figure the sheet reports is derived from
+/// this one query, so the body cannot describe a different day than the
+/// header it is printed under.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct EodBreakdownRow {
+    /// Payment method key, or `other` when the sale carries none.
+    pub payment_method: String,
+    /// ISO-4217 currency code.
+    pub currency: String,
+    /// Number of completed sales paid this way.
+    pub sale_count: i64,
+    /// Sum of those sales' totals in minor units.
+    pub total_minor: i64,
+    /// How many of them applied a discount.
+    pub discount_count: i64,
+    /// Sum of those discounted sales' totals in minor units.
+    pub discount_total_minor: i64,
+}
+
+/// Voided sales for one store-local business day.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct EodVoidRow {
+    /// Number of voided sales.
+    pub void_count: i64,
+    /// Sum of their totals in minor units — a void keeps `total_minor`.
+    pub void_total_minor: i64,
+}
+
 /// Summary row for a held (parked) cart.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct HeldCartRow {
@@ -256,16 +286,27 @@ fn validate_payment_splits_cover_total(
 // ── Export / Report queries ─────────────────────────────────────────
 
 impl Store<'_> {
-    /// Query all sales for today, ordered chronologically.
+    /// Query today's completed sales, ordered chronologically.
     ///
     /// "Today" is the store's business day (REP-03): both sides of the
     /// comparison use the store's UTC offset, so a UTC+7 store's day ends
     /// at 23:00Z, not midnightZ.
+    ///
+    /// C5: `status = 'completed'` is the whole point of this query — its
+    /// callers sum and count the rows as revenue, and a pending (still open)
+    /// or voided (cancelled, and `void_sale` never clears `total_minor`)
+    /// row is not revenue. Every sibling report filters the same way
+    /// (`reports::sales_summary`, `reports::revenue`, `shifts`), so this
+    /// predicate is what makes the EOD header agree with the payment
+    /// breakdown printed under it. Voided money is reported separately, by
+    /// `void_sale` + `reports::sales_summary::voided_sales_summary`.
     pub fn export_daily_summary(&self) -> Result<Vec<DailySummaryRow>, CoreError> {
         let tz = self.tz_modifier();
         let mut stmt = self.conn.prepare(&format!(
             "SELECT id, total_minor, currency, line_count, status, created_at
-             FROM sales WHERE DATE(created_at, '{tz}') = DATE('now', '{tz}') ORDER BY created_at"
+             FROM sales
+             WHERE status = 'completed' AND DATE(created_at, '{tz}') = DATE('now', '{tz}')
+             ORDER BY created_at"
         ))?;
         let rows = stmt.query_map([], |row| {
             Ok(DailySummaryRow {
@@ -298,6 +339,78 @@ impl Store<'_> {
             })
         })?;
         rows.map(|r| Ok(r?)).collect()
+    }
+
+    /// Today's completed-sale aggregation, bucketed by payment method and
+    /// currency — the money breakdown printed under an EOD header.
+    ///
+    /// C5: this is the sibling of [`Self::export_daily_summary`] and uses the
+    /// SAME day definition (REP-03 store-local date, completed sales only),
+    /// so the header and the body of one EOD sheet cannot describe two
+    /// different days. Before this existed the bridge built its body from
+    /// bare `date(created_at) = date('now')` clauses, which is the UTC day
+    /// even for a +07:00 store.
+    ///
+    /// `discount_count` / `discount_total_minor` count the subset of the
+    /// same completed sales that applied a discount, so the sheet's discount
+    /// line is a slice of `total_minor` rather than a fourth number from a
+    /// fourth query.
+    pub fn export_eod_breakdown(&self) -> Result<Vec<EodBreakdownRow>, CoreError> {
+        let tz = self.tz_modifier();
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT COALESCE(payment_method, 'other') AS payment_method,
+                    currency,
+                    COUNT(*) AS sale_count,
+                    SUM(total_minor) AS total_minor,
+                    COALESCE(SUM(CASE WHEN discount_percent > 0 THEN 1 ELSE 0 END), 0)
+                        AS discount_count,
+                    COALESCE(SUM(CASE WHEN discount_percent > 0 THEN total_minor ELSE 0 END), 0)
+                        AS discount_total_minor
+             FROM sales
+             WHERE status = 'completed' AND DATE(created_at, '{tz}') = DATE('now', '{tz}')
+             GROUP BY payment_method, currency
+             ORDER BY currency, total_minor DESC"
+        ))?;
+        let rows = stmt.query_map([], |row| {
+            Ok(EodBreakdownRow {
+                payment_method: row.get("payment_method")?,
+                currency: row.get("currency")?,
+                sale_count: row.get("sale_count")?,
+                total_minor: row.get("total_minor")?,
+                discount_count: row.get("discount_count")?,
+                discount_total_minor: row.get("discount_total_minor")?,
+            })
+        })?;
+        rows.map(|r| Ok(r?)).collect()
+    }
+
+    /// Voided sales for the store's business day (C5).
+    ///
+    /// The same day definition as [`Self::export_daily_summary`] and
+    /// [`Self::export_eod_breakdown`] — store-local date — so the void line
+    /// on an EOD sheet cannot fall on a different day than the revenue line
+    /// it is read against. This is where a voided sale's money appears: a
+    /// completed-only revenue total excludes it, and `void_sale` leaves
+    /// `total_minor` untouched, so the money has to be shown somewhere or
+    /// it vanishes from the sheet.
+    pub fn export_eod_voids(&self) -> Result<EodVoidRow, CoreError> {
+        let tz = self.tz_modifier();
+        let row = self.conn.query_row(
+            &format!(
+                "SELECT COUNT(*) AS void_count,
+                        COALESCE(SUM(total_minor), 0) AS void_total_minor
+                 FROM sales
+                 WHERE status = 'voided' AND DATE(created_at, '{tz}') = DATE('now', '{tz}')"
+            ),
+            [],
+            |row| {
+                Ok(EodVoidRow {
+                    void_count: row.get("void_count")?,
+                    void_total_minor: row.get("void_total_minor")?,
+                })
+            },
+        )?;
+        Ok(row)
     }
 }
 

@@ -10,6 +10,7 @@ use super::*;
 use crate::testing::TestBridge;
 use foundation::{Currency, Money};
 use kasirmu_core::SaleLine;
+use kasirmu_core::refund::Refund;
 
 fn usd() -> Currency {
     "USD".parse().unwrap()
@@ -271,4 +272,96 @@ fn export_reports_scoped_reject_invalid_token() {
     let ctx = tb.ctx();
     let result = ctx.resolve_session("nonexistent-token");
     assert!(matches!(result, Err(BridgeError::InvalidSession)));
+}
+
+// ── C5: the EOD sheet's header and body share one day definition ───
+
+/// C5. `build_eod_report` used to derive the header from the store-local
+/// daily summary (REP-03: `DATE(created_at, tz) = DATE(now, tz)`) while every
+/// money sub-query underneath it used bare `date(created_at) = date('now')`
+/// — the UTC day. On a fixture carrying a refund AND a void, the two halves
+/// must now agree, and the void must stay out of revenue while remaining
+/// reported.
+#[test]
+fn eod_report_reconciles_on_a_refund_and_void_fixture() {
+    let conn = crate::testing::temp_conn();
+    let store = Store::new(&conn);
+
+    let sale = |total: i64, status: &str, method: &str, discount: i64| {
+        conn.execute(
+            "INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method, discount_percent, created_at, updated_at)
+             VALUES (?1, ?2, 'USD', 1, ?3, ?4, ?5, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+            rusqlite::params![uuid::Uuid::now_v7().to_string(), total, status, method, discount],
+        )
+        .expect("seed sale");
+    };
+
+    // Revenue: one discounted cash sale (later partly refunded) and one card sale.
+    sale(5_000, "completed", "cash", 10);
+    sale(2_000, "completed", "card", 0);
+    // Not revenue: a voided sale (it keeps its total_minor) and a pending one.
+    sale(9_000, "voided", "cash", 0);
+    sale(7_000, "pending", "cash", 0);
+
+    // The refund itself goes through the real path, so this fixture is not a
+    // hand-written status the product could never produce.
+    let completed_cash_id: String = conn
+        .query_row(
+            "SELECT id FROM sales WHERE status = 'completed' AND payment_method = 'cash'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    store
+        .create_refund(&Refund::new(
+            &completed_cash_id,
+            Money {
+                minor_units: 1_000,
+                currency: usd(),
+            },
+            "C5 fixture",
+            "",
+            "user-1",
+            vec![],
+        ))
+        .expect("a refund against a completed sale must succeed");
+
+    let report = build_eod_report(&conn).expect("EOD report");
+
+    // Header: completed sales only — not the void, not the pending row.
+    assert_eq!(
+        report.total_sales, 2,
+        "header counts the two completed sales"
+    );
+    assert_eq!(
+        report.total_revenue, 7_000,
+        "a voided sale must not change total_revenue"
+    );
+
+    // Body: the payment breakdown sums to exactly the header. This is the
+    // reconciliation that failed while the two halves used different days.
+    let paid: i64 = report.payment_breakdown.iter().map(|p| p.total).sum();
+    assert_eq!(
+        paid, report.total_revenue,
+        "header and payment breakdown must agree on one sheet"
+    );
+    let paid_count: i64 = report.payment_breakdown.iter().map(|p| p.count).sum();
+    assert_eq!(paid_count, report.total_sales);
+
+    // The void is excluded from revenue but still on the sheet, exactly once.
+    assert_eq!(report.void_count, 1);
+    assert_eq!(report.void_total, 9_000);
+    assert!(
+        report.void_total > 0 && !report.payment_breakdown.iter().any(|p| p.total == 9_000),
+        "the void's money must appear as a void, never inside the breakdown"
+    );
+
+    // Discount is a slice of revenue, not a fourth number.
+    assert_eq!(report.discount_count, 1);
+    assert!(
+        report.discount_total > 0 && report.discount_total <= report.total_revenue,
+        "discount {} must sit inside revenue {}",
+        report.discount_total,
+        report.total_revenue
+    );
 }
