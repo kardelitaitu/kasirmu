@@ -315,7 +315,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
 
         {/* Step 1: Mode Selection (ADR #56 §2.3) */}
         <section className="provisioning-mode-box" aria-labelledby="provision-mode-heading">
-          <h2 id="provision-mode-heading" className="provisioning-legend" style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)', margin: 0 }}>
+          <h2 id="provision-mode-heading" style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)', margin: 0 }}>
             <Localized id="setup-provision-mode-section">Setup Mode</Localized>
           </h2>
           <div className="provisioning-mode-options">
@@ -352,7 +352,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
         {/* Step 2: Account Linking (Shown only for Mode 2: Linked) */}
         {provisionMode === 'linked' && (
           <section className="provisioning-account-box" aria-labelledby="provision-account-heading">
-            <h2 id="provision-account-heading" className="provisioning-legend" style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)', margin: 0 }}>
+            <h2 id="provision-account-heading" style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)', margin: 0 }}>
               <Localized id="setup-provision-account-section">kasir.mu Account</Localized>
             </h2>
             <p className="provisioning-account-hint">

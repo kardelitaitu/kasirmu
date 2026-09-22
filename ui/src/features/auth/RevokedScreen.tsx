@@ -21,6 +21,7 @@
 import { useState } from 'react';
 import { useLocalization, Localized } from '@fluent/react';
 import { exportDataWithoutSession, pickExportPath } from '@/api/data';
+import { plainErrorMessage } from '@/utils/app-error';
 import { useToast } from '@/components/Toast';
 import StatusBar from '@/components/StatusBar';
 import './LicenseActivationScreen.css'; // reuse the auth-screen layout tokens
@@ -61,10 +62,14 @@ export default function RevokedScreen() {
         message: l10n.getString('auth-revoked-export-success'),
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      // plainErrorMessage, never err.message: raw backend text must not reach a
+      // user-facing toast (ERR-10). The FTL message keeps its substitution, so
+      // this still reads "Export failed: <user-safe reason>".
       addToast({
         type: 'error',
-        message: l10n.getString('auth-revoked-export-error', { message: msg }),
+        message: l10n.getString('auth-revoked-export-error', {
+          message: plainErrorMessage(err),
+        }),
       });
     } finally {
       setExporting(false);

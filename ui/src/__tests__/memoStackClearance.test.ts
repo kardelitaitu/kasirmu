@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync, statSync } from 'fs';
 import { resolve } from 'path';
 
 /* ── Memo stack clearance — regression guard ────────────────────────
@@ -204,7 +204,6 @@ describe('Memo stack clearance — the token chain', () => {
     // elsewhere would be a competing source of truth.
     const expectedSheets = new Set(Object.values(SHEETS));
     const uiSrc = resolve(__dirname, '..');
-    const { readdirSync, statSync } = require('fs') as typeof import('fs');
     const cssFiles: string[] = [];
     const walk = (dir: string) => {
       for (const entry of readdirSync(dir)) {
