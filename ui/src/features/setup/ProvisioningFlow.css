@@ -185,6 +185,18 @@
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
+/* Inline field validation. The border marks the field AND the message names the
+ * problem: colour alone would be the only signal for a user who cannot see it,
+ * and `aria-invalid` carries the same fact to a screen reader. */
+.provisioning-field input[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
+.provisioning-field-error {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-danger);
+}
 
 .provisioning-account-box {
   display: flex;
