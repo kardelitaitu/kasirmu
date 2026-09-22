@@ -257,7 +257,7 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
       expires_at: new Date(Date.now() + 60000).toISOString(),
       qr_url: 'https://kasir.mu/pair?code=ABCD1234',
     });
-    vi.mocked(requestDeviceLinkCode).mockResolvedValueOnce(undefined as any);
+    vi.mocked(requestDeviceLinkCode).mockResolvedValueOnce(undefined);
     vi.mocked(consumeDeviceLinkCode).mockResolvedValueOnce({
       tenantId: 'tenant-email-789',
       email: 'owner-tablet@example.com',

@@ -52,6 +52,7 @@ pub(super) fn split_statements(sql: &str) -> Vec<&str> {
             index = skip_block_comment(sql, index + 2);
             continue;
         }
+        // INVARIANT: rest is non-empty because index < sql.len() holds.
         let ch = rest.chars().next().expect("index is on a char boundary");
         if ch == '\'' {
             index = skip_quoted(sql, index, '\'').1;
@@ -72,6 +73,7 @@ pub(super) fn split_statements(sql: &str) -> Vec<&str> {
         } else if is_identifier_char(ch) {
             let word_start = index;
             while index < sql.len() {
+                // INVARIANT: index < sql.len() guarantees non-empty slice at char boundary.
                 let c = sql[index..].chars().next().expect("char boundary");
                 if is_identifier_char(c) {
                     index += c.len_utf8();
@@ -133,6 +135,7 @@ fn is_create_trigger_lead(lead: &[&str]) -> bool {
 fn skip_quoted(sql: &str, index: usize, quote: char) -> (usize, usize) {
     let mut cursor = index + quote.len_utf8();
     while cursor < sql.len() {
+        // INVARIANT: cursor < sql.len() guarantees non-empty slice at char boundary.
         let ch = sql[cursor..].chars().next().expect("char boundary");
         if ch == quote {
             let after = cursor + ch.len_utf8();
@@ -157,6 +160,7 @@ fn skip_bracket(sql: &str, index: usize) -> (usize, usize) {
         cursor += sql[cursor..]
             .chars()
             .next()
+            // INVARIANT: cursor < sql.len() guarantees non-empty slice at char boundary.
             .expect("char boundary")
             .len_utf8();
     }
@@ -209,6 +213,7 @@ pub(super) fn tokenize(sql: &str) -> Vec<Token<'_>> {
     let mut index = 0usize;
     while index < sql.len() {
         let rest = &sql[index..];
+        // INVARIANT: rest is non-empty because index < sql.len() holds.
         let ch = rest.chars().next().expect("index is on a char boundary");
         if ch.is_whitespace() {
             index += ch.len_utf8();
@@ -246,6 +251,7 @@ pub(super) fn tokenize(sql: &str) -> Vec<Token<'_>> {
             _ if is_identifier_char(ch) => {
                 let start = index;
                 while index < sql.len() {
+                    // INVARIANT: index < sql.len() guarantees non-empty slice at char boundary.
                     let c = sql[index..].chars().next().expect("char boundary");
                     if is_identifier_char(c) {
                         index += c.len_utf8();
