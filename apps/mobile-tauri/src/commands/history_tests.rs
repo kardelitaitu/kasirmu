@@ -442,13 +442,15 @@ async fn export_eod_report_scoped_requires_reports_export() {
     );
 }
 
-// ── KNOWN HAZARD — daily totals count voided sales as revenue ───────
+// ── INVERTED PIN — a voided sale must not reach revenue ─────────────
 //
-/// PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT. INVERT OR DELETE WHEN THE
-/// QUERY IS FIXED. Nothing today distinguishes the two numbers this pins, so
-/// the pair is asserted side by side: the report is internally inconsistent
-/// by construction, and a green run here means the inconsistency is still
-/// live, not that it is correct.
+/// INVERTED PIN (C5b). This began as a pin of a known hazard: the EOD header
+/// counted voided and pending sales as revenue because
+/// `Store::export_daily_summary` filtered on DATE only. That query now
+/// carries `status = 'completed'` (C5, crates/kasirmu-core/src/db/sales.rs)
+/// and the tablet EOD builder no longer re-implements the body queries
+/// (C5b, this file's sibling), so this pin asserts the CORRECTED behaviour:
+/// a voided sale is excluded from revenue and reported once, as a void.
 ///
 /// `Store::export_daily_summary` (crates/kasirmu-core/src/db/sales.rs:262-268)
 /// filters on DATE only — no status predicate at all — and five consumers
@@ -475,13 +477,11 @@ async fn export_eod_report_scoped_requires_reports_export() {
 /// as void_total. A drawer counted against payment_breakdown will NOT equal
 /// total_revenue, and nothing on the sheet says why.
 ///
-/// What the fix has to DECIDE, which is a product question and not a bug:
-/// whether the tile and the EOD header want completed only. Completed-only
-/// makes the header agree with the payment breakdown but changes what a
-/// merchant reads as a daily total, and the voided amount has to be shown
-/// somewhere or it vanishes from the sheet. This test takes no side: it
-/// pins both numbers so the day someone adds a status predicate, exactly one
-/// of these two assertions flips and names itself.
+/// The decision the old pin left open has been made: completed-only. The
+/// header now agrees with the payment breakdown, and the voided money still
+/// appears on the sheet exactly once — as `void_total`, which is where a
+/// merchant reads it. If a future change puts a row back into `total_revenue`
+/// that the payment breakdown does not also carry, this pin fails.
 #[tokio::test]
 async fn known_hazard_daily_totals_count_voided_sales_as_revenue() {
     let (mut state, _dir) = history_state();
@@ -527,10 +527,14 @@ async fn known_hazard_daily_totals_count_voided_sales_as_revenue() {
         let daily = store.export_daily_summary().unwrap();
         assert_eq!(
             daily.len(),
-            2,
-            "vacuity guard: both seeded sales must come back from the DATE-only query, got {} (ids: {:?})",
+            1,
+            "vacuity guard: only the completed sale is revenue, got {} (ids: {:?})",
             daily.len(),
             daily.iter().map(|r| r.sale_id.clone()).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            daily[0].sale_id, "s-pin-completed",
+            "the surviving row must be the completed one, not the void"
         );
     }
     drop(conn);
@@ -540,82 +544,69 @@ async fn known_hazard_daily_totals_count_voided_sales_as_revenue() {
         .await
         .expect("the EOD twin must answer for a session holding reports:export");
 
-    // Half one: the header counts every row the DATE-only query returned.
+    // Half one: the header counts completed sales only.
     assert_eq!(
-        report.total_sales, 2,
-        "total_sales counted the voided sale: the header is no longer a row count"
+        report.total_sales, 1,
+        "total_sales must count the completed sale and not the void"
     );
     assert_eq!(
-        report.total_revenue,
-        completed_minor + voided_minor,
-        "total_revenue must equal both rows today; if it now equals the completed-only sum, the query was fixed — invert or delete this pin"
+        report.total_revenue, completed_minor,
+        "the voided sale must not change total revenue"
     );
 
-    // Half two: the body of the same report filters, so it disagrees.
+    // Half two: the body of the same report shares the day and the status
+    // predicate, so it reconciles with the header.
     let paid: i64 = report.payment_breakdown.iter().map(|p| p.total).sum();
     assert_eq!(
         paid, completed_minor,
-        "the payment breakdown is completed-only; it must still exclude the voided sale for this pin to mean anything"
+        "the payment breakdown carries the completed sale only"
     );
     assert_eq!(
         report.void_count, 1,
-        "the voided row must also be reported as a void, which is the double count"
+        "the voided row is still reported, exactly once, as a void"
     );
     assert_eq!(
         report.void_total, voided_minor,
-        "the same 1500 rides in void_total and inside total_revenue"
+        "void_total is where the voided money appears — not inside total_revenue"
     );
 
-    // The pair, stated as the merchant meets it: a drawer counted against
-    // the payment breakdown will not equal the revenue line on the sheet.
-    assert_ne!(
-        report.total_revenue,
-        paid,
-        "reconciliation gap of {} minor: total_revenue vs the payment breakdown sum",
-        report.total_revenue - paid
+    // The pair, stated as the merchant meets it: the drawer counted against
+    // the payment breakdown equals the revenue line on the sheet.
+    assert_eq!(
+        report.total_revenue, paid,
+        "the header must reconcile with the payment breakdown"
     );
 }
 
-// ── The EOD report is assembled from TWO day boundaries ────
+// ── INVERTED PIN — one day definition across the whole EOD sheet ────
 
-/// PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT.
-/// INVERT OR DELETE WHEN THE DAY BOUNDARY IS FIXED.
+/// INVERTED PIN (C5b). This began as a pin of a known hazard: one `EodReport`
+/// was assembled from two different answers to “what day is it”. The header
+/// half applied the store's offset (`Store::export_daily_summary`,
+/// `export_sales_by_hour`), while every money sub-query in the same struct was
+/// bare `date(created_at) = date('now')` — the UTC day even for a +07:00
+/// store, so a row could be today to `total_revenue` and yesterday to the
+/// payment breakdown meant to explain it.
 ///
-/// One `EodReport` is built from two different answers to “what day is it”.
-/// The header half applies the store's offset — `Store::export_daily_summary
-/// ()` at crates/kasirmu-core/src/db/sales.rs:268 and `export_sales_by_hour` at :290,
-/// both `DATE(created_at, tz) = DATE(now, tz)` — while every money sub-query
-/// in the SAME struct is bare `date(created_at) = date('now')`: this door at
-/// apps/mobile-tauri/src/commands/history.rs:216, :237, :248; the scoped door
-/// at :437, :458, :469; the desktop's `build_eod_report` at
-/// crates/kasirmu-bridge/src/history.rs:291, :312, :323. Nine bare clauses, three
-/// gated reads, one struct.
+/// The decision the old pin left open has been made: the money sub-queries
+/// gain the store modifier. Every figure on the sheet now comes from a `Store`
+/// query sharing ONE store-local business day (REP-03) — C5 in
+/// crates/kasirmu-core/src/db/sales.rs, C5b in this lane's sibling
+/// (apps/mobile-tauri/src/commands/history.rs) and the desktop bridge's
+/// `build_eod_report`. This pin asserts the corrected behaviour: the boundary
+/// row lands in the header AND in the breakdown, and the two reconcile.
 ///
-/// For a +07:00 store the boundaries sit seven hours apart, so a row can be
-/// today to `total_revenue` and yesterday to the payment breakdown that is
-/// meant to explain it. Generalised: header revenue and payment breakdown are
-/// not comparable for ANY non-UTC store, not merely in an evening window.
-/// The desktop's three clauses are named and deliberately untested — one lane
-/// pinned, the class visible; copying the pin to a second lane makes two tests
-/// to keep in step instead of one defect with one name.
-///
-/// Why nothing has ever caught it. The pin above this one
-/// (`known_hazard_daily_totals_count_voided_sales_as_revenue`) seeds both rows
-/// at `chrono::Utc::now()`, and a now-created row satisfies the offset
-/// predicate and the bare predicate at once because both sides of each shift
-/// together: structurally blind, in whichever door runs it. The second
-/// blindness is `tz_modifier` (crates/kasirmu-core/src/db/reports.rs:420 to :432),
-/// which reads the offset from the `locations` table of whichever database it
-/// is handed and falls back to `+00:00` for anything unparseable, IANA names
-/// included — exactly what the bare clauses already do, so a misconfigured
-/// store makes the two halves AGREE instead of flagging itself. The anti-vacuity
-/// block below exists so a failed timezone seed fails loudly instead of passing.
-///
-/// What a fix has to DECIDE, an owner question and not a bug: either the money
-/// sub-queries gain the store modifier, which changes every historical EOD sheet
-/// a merchant has printed, or the header drops it, which changes the day a
-/// multi-store operator reads off the tile. That is an eight-in-the-morning
-/// decision, not a five-in-the-morning commit.
+/// Why nothing ever caught it, kept because it is still the reason the
+/// anti-vacuity block below exists. The pin above this one seeds both rows at
+/// `chrono::Utc::now()`, and a now-created row satisfies the offset predicate
+/// and the bare predicate at once because both sides of each shift together:
+/// structurally blind, in whichever door runs it. The second blindness is
+/// `tz_modifier` (crates/kasirmu-core/src/db/reports.rs:420 to :432), which
+/// reads the offset from the `locations` table of whichever database it is
+/// handed and falls back to `+00:00` for anything unparseable, IANA names
+/// included — so a misconfigured store makes the halves AGREE and turns this
+/// pin green having measured nothing. The anti-vacuity block below is what
+/// stops that.
 #[tokio::test]
 async fn known_hazard_eod_header_and_payment_breakdown_use_different_day_boundaries() {
     const OFFSET_HOURS: i64 = 7;
@@ -735,29 +726,31 @@ async fn known_hazard_eod_header_and_payment_breakdown_use_different_day_boundar
     let app = mock_app(state);
     let report = export_eod_report(app.state()).await.expect("eod report");
 
-    // 1. The offset-aware header counts the boundary row.
+    // 1. The store-local header counts the boundary row.
     assert_eq!(report.total_sales, 2, "the header must see both rows");
     assert_eq!(
         report.total_revenue,
         boundary_minor + control_minor,
         "total_revenue comes from the store-local day, so it includes the boundary row"
     );
-    // 2. The payment breakdown, three lines later in the same struct, does not.
+    // 2. The payment breakdown, three lines later in the same struct, shares
+    //    that day and so carries the boundary row too.
     let breakdown_total: i64 = report.payment_breakdown.iter().map(|row| row.total).sum();
     assert_eq!(
         breakdown_total,
-        control_minor,
-        "the bare-clause breakdown drops the boundary row at {} UTC",
+        boundary_minor + control_minor,
+        "the breakdown shares the store-local day, so the boundary row at {} UTC is in it",
         ts(boundary_at)
     );
-    // 3. The naive reconciliation a merchant does on the sheet does not close.
-    assert_ne!(
-        breakdown_total, report.total_revenue,
-        "sum(payment_breakdown) can equal total_revenue only if both halves share a day ",
-    );
+    // 3. The reconciliation a merchant does on the sheet closes.
     assert_eq!(
-        report.total_revenue - breakdown_total,
-        boundary_minor,
-        "the two halves disagree by exactly the boundary row, {OFFSET_HOURS} hours of offset"
+        breakdown_total, report.total_revenue,
+        "sum(payment_breakdown) must equal total_revenue: one sheet, one day",
+    );
+    //    And the boundary row is what makes that a real check: if the day
+    //    definition were bare, the breakdown would drop it.
+    assert!(
+        breakdown_total > control_minor,
+        "vacuity guard: the boundary row must actually be inside the breakdown total,          not just agree by both halves being empty of it"
     );
 }
