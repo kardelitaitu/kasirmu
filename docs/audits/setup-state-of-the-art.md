@@ -278,6 +278,35 @@ silently ungraded.
 
 **Verification:** `npx tsc --noEmit` clean · **1,380 website tests pass across 64 files**.
 
+### Round 9 — measuring the setup flow's inset fix instead of asserting it
+
+I set out to add E2E for `ProvisioningFlow` — the actual setup wizard. It is **not reachable in
+E2E**: `AppShell.tsx:214-217` sets `setupKnownComplete(true)` unconditionally in dev mode, which
+is the mode E2E runs, so the `!setupKnownComplete` branch at `:581` never renders the flow. There
+is no URL or storage hook to force it, and adding one to make a test pass is the same trap I
+declined for `CreatePinScreen`. **Zero E2E specs reference it**, which is why it has no browser
+coverage.
+
+**What I did instead: measured the round-1 inset fix in a real browser.** That fix was never
+verified visually, and the question is exactly the one a string assertion cannot settle — where
+the card actually lands. Method from `docs/frontend/css-verification.md`, harness built **outside
+the checkout**.
+
+**Measured in Chromium**, 412x915 notched viewport, insets 44/0/34/0, gutter `var(--space-8)` = 32px:
+
+| Rule | padding top | padding bottom | card top |
+|---|---|---|---|
+| `calc(gutter + inset)` — shipped | **76px** | **66px** | **y=459** |
+| bare gutter — the pre-fix bug | 32px | 32px | y=415 |
+
+The fix is real and load-bearing: without it the card starts **44px higher, under the notch**.
+The counterfactual was measured, not assumed.
+
+**Encoded** (`e64d9e28f`): the existing tests asserted the container *mentions* the four inset
+tokens — a shape that passes for a rule naming them **without summing them**. The new assertion
+pins the **sum** on all four edges. Verified red against the pre-fix padding (2 tests fail,
+including the pre-existing one) and green against the shipped rule.
+
 ### Remaining, and honestly not mine to claim
 
 - **The website auth islands are unaudited by me.** Another agent owns that surface and has
