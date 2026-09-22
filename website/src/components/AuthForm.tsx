@@ -163,6 +163,16 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
     // one-time code (hardening F1) so the real session token never appears
     // in a URL; the Worker consumes the code and sets the httpOnly cookie.
     const redirect = new URLSearchParams(window.location.search).get('redirect');
+    // Deliberate exception to the one-session-owner rule (src/lib/session.ts).
+    // This is not a "is the user signed in?" query — it is the token THIS login
+    // just minted, read immediately after the auth handler wrote it to
+    // sessionStorage (all three paths below do so right before calling this).
+    // Cookie-first resolution would be wrong here: the cookie can still hold an
+    // older identity (signing in as B while A's cookie is set), and the
+    // dashboard must receive the account that just authenticated, so the
+    // freshest token has to win. Pinned by auth-form.test.tsx — "uses the token
+    // this login just minted, not a cookie token" — which fails if this is
+    // rerouted through getSessionToken().
     const token = sessionStorage.getItem('oz_session');
     if (redirect && token) {
       try {

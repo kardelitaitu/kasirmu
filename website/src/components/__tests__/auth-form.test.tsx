@@ -574,6 +574,57 @@ describe('AuthForm — open redirect guard', () => {
     }
   });
 
+  it('uses the token this login just minted, not a cookie token (why the local read is exempt)', async () => {
+    // AuthForm keeps its own sessionStorage read rather than routing through the
+    // cookie-first owner (src/lib/session.ts). This test pins the reason: the
+    // read is not "is the user signed in?" but "hand the dashboard the identity
+    // I just authenticated". A stale cookie for a DIFFERENT account must not win
+    // — cookie-first resolution here would send the dashboard a session for the
+    // previous user. If this fails because the read was rerouted through
+    // getSessionToken(), fix the routing, not the assertion.
+    const authHeaders: string[] = [];
+    mockFetch((url, init) => {
+      if (url.includes('verify-otp')) return okJson({ token: 'tok-fresh-identity' });
+      // An older, different identity still sitting in the httpOnly cookie.
+      if (url.includes('/__oz/session')) return okJson({ token: 'cookie-old-identity' });
+      if (url.includes('exchange-issue')) {
+        authHeaders.push(String((init?.headers as Record<string, string>)?.Authorization ?? ''));
+        return okJson({ code: 'code-fresh' });
+      }
+      return okJson({ ok: true });
+    });
+    let capturedHref = '';
+    Object.defineProperty(window, 'location', {
+      value: {
+        get href() { return capturedHref; },
+        set href(v: string) { capturedHref = v; },
+        search: '?redirect=https://dashboard.kasir.mu/settings',
+        pathname: '/en/login',
+      },
+      writable: true,
+    });
+    const { container, root } = await renderAuthForm('en');
+    try {
+      setEmail(container, 'alice@example.com');
+      clickSubmit(container);
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+      setCode(container, '123456');
+      clickSubmit(container);
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 30));
+      });
+      expect(sessionStorage.getItem('oz_session')).toBe('tok-fresh-identity');
+      expect(authHeaders).toEqual(['Bearer tok-fresh-identity']);
+      expect(capturedHref).toContain('code=code-fresh');
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+      Object.defineProperty(window, 'location', { value: { href: '', search: '', pathname: '/en/login' }, writable: true });
+    }
+  });
+
   it('lands on the clean dashboard URL when the exchange fails (no token in URL)', async () => {
     // WEB-1: if /exchange-issue errors (or returns no code), the user is
     // never stranded, but the removed `?token=` fallback must not come

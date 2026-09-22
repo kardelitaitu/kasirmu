@@ -3,8 +3,6 @@ import { createPortal } from 'react-dom';
 import { t, type Labels } from '../i18n/labels';
 import { buildSearchIndex, filterSearch, type SearchDoc, type SearchItem } from '../lib/search-index';
 
-export type { SearchItem, SearchDoc };
-
 /**
  * Strings this modal reads — the docs header's island root hands it the map.
  * `Header.astro` builds it with `labelMap`, so the browser gets six strings in
