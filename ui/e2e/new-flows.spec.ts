@@ -118,6 +118,42 @@ test.describe('Session Lock', () => {
     // Workspace home should reappear after unlock.
     await expect(page.locator('.workspace-home')).toBeVisible({ timeout: 10_000 });
   });
+
+  // ── E2E-27b: a rejected unlock marks the PIN row ────────────────
+  //
+  // The test above covers the SUCCESS path only. This exercises the failure,
+  // which is where the field-marking fix landed: the screen already announced
+  // the error (the notice carries role=alert), but nothing marked the row the
+  // user has to retry, and the shake is a CSS class a screen reader cannot
+  // perceive. Runs in a real browser so the mark is proven to survive the
+  // actual React commit and the transition, not just jsdom.
+
+  test('a rejected unlock marks the PIN row invalid until the user retries', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('auto-lock-minutes', '0.25');
+    });
+    await loginAs(page, 'owner', '1234');
+
+    const lockCard = page.locator('.session-lock-card');
+    await expect(lockCard).toBeVisible({ timeout: 20_000 });
+
+    const pinDots = page.locator('.session-lock-pin-dots');
+    await expect(pinDots).not.toHaveAttribute('aria-invalid', 'true');
+
+    // A wrong PIN of the same length, so the screen attempts rather than waits.
+    for (const digit of '9999') {
+      await page.locator('.session-lock-pad-key').filter({ hasText: digit }).click();
+      await page.waitForTimeout(80);
+    }
+
+    await expect(pinDots).toHaveAttribute('aria-invalid', 'true', { timeout: 10_000 });
+
+    // Clears as soon as the user starts retrying, so a fresh attempt is not
+    // announced as already wrong.
+    await page.locator('.session-lock-pad-key').filter({ hasText: '1' }).click();
+    await expect(pinDots).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
 });
 
 // ── E2E-28: KDS ticket board ─────────────────────────────────
