@@ -593,24 +593,24 @@ pub async fn check_license_status(
     }
 
     // Opportunistically refresh CRL on status check (ADR #58 §2.1/§2.2)
-    if let Ok(crl_resp) = fetch_license_crl(None).await {
-        if let Ok(crl_payload) = verify_crl_signature(&crl_resp.payload, &crl_resp.signature) {
-            let conn = ctx.lock_global().await;
-            if let Ok(crl_revoked) = apply_crl_to_cache(
-                &conn,
-                &crl_payload,
-                Some(&resp.tenant_id),
-                None,
-                Some(&machine_id),
-            ) {
-                if crl_revoked {
-                    let dropped = crate::auth::invalidate_all_sessions(ctx);
-                    tracing::warn!(
-                        dropped,
-                        "CRL revocation detected — invalidated every live session (ADR #58 §2.1/§2.2)"
-                    );
-                }
-            }
+    if let Ok(crl_resp) = fetch_license_crl(None).await
+        && let Ok(crl_payload) = verify_crl_signature(&crl_resp.payload, &crl_resp.signature)
+    {
+        let conn = ctx.lock_global().await;
+        // `Ok(true)` IS the revocation; `Ok(false)` and `Err` both mean nothing
+        // was revoked, so they share the skip without a nested check.
+        if let Ok(true) = apply_crl_to_cache(
+            &conn,
+            &crl_payload,
+            Some(&resp.tenant_id),
+            None,
+            Some(&machine_id),
+        ) {
+            let dropped = crate::auth::invalidate_all_sessions(ctx);
+            tracing::warn!(
+                dropped,
+                "CRL revocation detected — invalidated every live session (ADR #58 §2.1/§2.2)"
+            );
         }
     }
 

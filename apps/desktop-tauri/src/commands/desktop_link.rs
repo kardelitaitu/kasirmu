@@ -137,10 +137,10 @@ pub async fn poll_device_pairing(
     let resp = kasirmu_core::desktop_link::poll_device_pairing(&base_url, &poll_token)
         .await
         .map_err(AppError::from)?;
-    if resp.status == "claimed" {
-        if let Some(ref terminal) = resp.terminal {
-            store_earned_credential(&state, Some(terminal)).await?;
-        }
+    if resp.status == "claimed"
+        && let Some(ref terminal) = resp.terminal
+    {
+        store_earned_credential(&state, Some(terminal)).await?;
     }
     Ok(resp)
 }

@@ -245,15 +245,15 @@ impl Store<'_> {
                     field: "terminal_id",
                     message: format!("cannot link an unprovisioned terminal: {terminal_id:?}"),
                 })?;
-        if let Some(current) = &existing.tenant_id {
-            if current != tenant_id {
-                return Err(CoreError::Validation {
-                    field: "tenant_id",
-                    message: format!(
-                        "terminal {terminal_id:?} already belongs to tenant {current:?}; refusing to reassign it to {tenant_id:?}"
-                    ),
-                });
-            }
+        if let Some(current) = &existing.tenant_id
+            && current != tenant_id
+        {
+            return Err(CoreError::Validation {
+                field: "tenant_id",
+                message: format!(
+                    "terminal {terminal_id:?} already belongs to tenant {current:?}; refusing to reassign it to {tenant_id:?}"
+                ),
+            });
         }
         self.conn.execute(
             "UPDATE provisioning SET tenant_id = ?1, device_id = ?2, mode = 'linked' WHERE terminal_id = ?3",

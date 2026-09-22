@@ -76,7 +76,7 @@ fn keytool_and_packagemanager_spellings_of_one_fingerprint_agree() {
 
     for spelling in [keytool_style, android_style] {
         assert_eq!(
-            classify_build_fingerprint(Some(&spelling), &[raw.clone()]),
+            classify_build_fingerprint(Some(&spelling), std::slice::from_ref(&raw)),
             BuildFingerprintVerdict::Valid,
             "{spelling} names the same certificate and must match"
         );
@@ -240,7 +240,7 @@ fn a_mismatch_escalates_immediately_without_repetition() {
 /// reasoning (why the counter resets on a usable report rather than decaying, why
 /// escalation never locks), but this module has **no production caller** — the
 /// thing that actually fires is `apps/license-server/build_integrity_alerts.go`,
-
+///
 /// which re-states N and the window in Go.
 ///
 /// That makes this a spec/implementation pair rather than dead code, and the risk

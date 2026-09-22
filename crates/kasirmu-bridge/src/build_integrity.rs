@@ -25,7 +25,7 @@
 //! §2.1 chose a native computation over a JS one.
 
 /// Compute this installation’s APK signing-certificate fingerprint, if any.
-
+///
 /// Returns lowercase bare 64-hex — the form `classify_build_fingerprint`
 /// compares against. `None` on every non-Android platform and on every failure
 /// inside the Android path (see the module docs for why that direction is the

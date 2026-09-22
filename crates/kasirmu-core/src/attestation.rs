@@ -78,8 +78,15 @@ pub enum AttestError {
         /// The origin that answered.
         origin: String,
         /// The underlying verification failure.
+        ///
+        /// BOXED so the Ok path of every `probe_origin_with` caller does not
+        /// carry a `CoreError`-sized Err variant. The ladder probe succeeds on
+        /// the common path, so the error is the cold side, and nothing reads
+        /// the payload: `origin()` and `advances()` match the variant only.
+        ///
+        /// A clippy `result_large_err` finding, not a behaviour change.
         #[source]
-        source: CoreError,
+        source: Box<CoreError>,
     },
 }
 
@@ -240,7 +247,7 @@ pub async fn probe_origin_with(
     }
     let rejected = |source: CoreError| AttestError::Rejected {
         origin: origin.to_string(),
-        source,
+        source: Box::new(source),
     };
     let body: AttestResponse = response
         .json()

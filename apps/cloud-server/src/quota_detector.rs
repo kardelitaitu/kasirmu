@@ -237,12 +237,12 @@ pub fn enumerate_active_tenants_sqlite(conn: &rusqlite::Connection) -> Vec<Strin
                  UNION SELECT DISTINCT tenant_id FROM products \
                  UNION SELECT DISTINCT tenant_id FROM users \
                  UNION SELECT DISTINCT tenant_id FROM locations";
-    if let Ok(mut stmt) = conn.prepare(query) {
-        if let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0)) {
-            for row in rows.flatten() {
-                if !row.trim().is_empty() {
-                    tenants.push(row);
-                }
+    if let Ok(mut stmt) = conn.prepare(query)
+        && let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0))
+    {
+        for row in rows.flatten() {
+            if !row.trim().is_empty() {
+                tenants.push(row);
             }
         }
     }
@@ -507,7 +507,13 @@ pub async fn process_violation(
         html_body: format!("<pre>{escaped_body}</pre>"),
     };
 
-    match send_email(&smtp_config, &report_email, &[config.admin_email.clone()]).await {
+    match send_email(
+        &smtp_config,
+        &report_email,
+        std::slice::from_ref(&config.admin_email),
+    )
+    .await
+    {
         Ok(()) => {
             info!(
                 tenant = %v.tenant_id,

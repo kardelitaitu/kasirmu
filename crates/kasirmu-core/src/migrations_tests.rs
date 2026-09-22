@@ -367,8 +367,8 @@ fn every_migration_re_applies_against_the_final_schema() {
 
     let mut not_reappliable: Vec<String> = Vec::new();
     let mut failures: Vec<String> = Vec::new();
-    for index in 0..ALL.len() {
-        let id = ALL[index].id;
+    for (index, entry) in ALL.iter().enumerate() {
+        let id = entry.id;
         // Only the entry under test is edited; every other one keeps the SQL
         // whose checksum the full apply stored, so it is not dragged into the
         // drift path as well.

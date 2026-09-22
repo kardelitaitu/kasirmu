@@ -637,16 +637,12 @@ pub fn apply_crl_to_cache(
         if let Err(e) = refresh_subscription_status_from_server(conn, tid, "revoked", None) {
             tracing::warn!("failed to set subscription status to revoked from CRL: {e}");
         }
-        if let Some(mid) = current_machine_id {
-            if crl.revoked_devices.iter().any(|d| d == mid) {
-                if let Err(e) = crate::settings::Settings::set(
-                    conn,
-                    crate::settings::keys::DEVICE_REVOKED,
-                    "true",
-                ) {
-                    tracing::warn!("failed to set device.revoked to true from CRL: {e}");
-                }
-            }
+        if let Some(mid) = current_machine_id
+            && crl.revoked_devices.iter().any(|d| d == mid)
+            && let Err(e) =
+                crate::settings::Settings::set(conn, crate::settings::keys::DEVICE_REVOKED, "true")
+        {
+            tracing::warn!("failed to set device.revoked to true from CRL: {e}");
         }
     }
 
@@ -661,17 +657,17 @@ pub fn is_revoked_in_crl_payload(
     machine_id: Option<&str>,
 ) -> bool {
     // 1. Check tenant ID
-    if let Some(tid) = tenant_id {
-        if crl.revoked_tenants.iter().any(|t| t == tid) {
-            return true;
-        }
+    if let Some(tid) = tenant_id
+        && crl.revoked_tenants.iter().any(|t| t == tid)
+    {
+        return true;
     }
 
     // 2. Check machine ID
-    if let Some(mid) = machine_id {
-        if crl.revoked_devices.iter().any(|d| d == mid) {
-            return true;
-        }
+    if let Some(mid) = machine_id
+        && crl.revoked_devices.iter().any(|d| d == mid)
+    {
+        return true;
     }
 
     // 3. Check license key (exact or SHA-256 hex digest)
@@ -977,22 +973,21 @@ pub fn apply_license_verdict_to_cache(
         tracing::warn!("failed to persist device_revoked cache: {e}");
     }
 
-    if resp.hardware_verified == Some(true) {
-        if let Err(e) = crate::settings::Settings::set(
+    if resp.hardware_verified == Some(true)
+        && let Err(e) = crate::settings::Settings::set(
             conn,
             crate::settings::keys::MACHINE_VERIFIED_AT,
             &chrono::Utc::now().to_rfc3339(),
-        ) {
-            tracing::warn!("failed to persist machine_verified_at cache: {e}");
-        }
+        )
+    {
+        tracing::warn!("failed to persist machine_verified_at cache: {e}");
     }
 
-    if let Some(ref tok) = resp.hardware_token {
-        if let Err(e) =
+    if let Some(ref tok) = resp.hardware_token
+        && let Err(e) =
             crate::settings::Settings::set(conn, crate::settings::keys::HARDWARE_TOKEN, tok)
-        {
-            tracing::warn!("failed to persist hardware_token cache: {e}");
-        }
+    {
+        tracing::warn!("failed to persist hardware_token cache: {e}");
     }
 
     resp.status.eq_ignore_ascii_case("revoked")

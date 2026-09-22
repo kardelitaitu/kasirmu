@@ -640,35 +640,34 @@ pub async fn create_session(
     // an online status check is triggered. Per §2.4, transport failures fail open into
     // grace, so an outage does not brick the till; but a successful check refreshes
     // the lease or returns an authoritative revocation/downgrade verdict.
-    if sub.tier != kasirmu_core::subscription::SubscriptionTier::Free {
-        if let Some(ref expires_at_str) = sub.expires_at {
-            if let Ok(expiry_dt) = chrono::DateTime::parse_from_rfc3339(expires_at_str) {
-                let expiry = expiry_dt.with_timezone(&chrono::Utc);
-                let now_ledger = {
-                    let db = ctx.lock_global().await;
-                    match TenantSubscription::compute_max_ledger_timestamp(&db) {
-                        Ok(ts) => chrono::DateTime::parse_from_rfc3339(&ts)
-                            .map(|dt| dt.with_timezone(&chrono::Utc))
-                            .unwrap_or_else(|_| chrono::Utc::now()),
-                        Err(_) => chrono::Utc::now(),
-                    }
-                };
-                let window_start = expiry - chrono::Duration::days(3);
-                if now_ledger >= window_start && now_ledger <= expiry {
-                    tracing::info!(
-                        tenant_id = %sub.tenant_id,
-                        "tenant is within 3-day pre-expiry window — executing re-auth status check (ADR #58 §2.3)"
-                    );
-                    // Best-effort check: if online, updates cache/CRL and sweeps sessions on revocation.
-                    // If network fails, fails open into grace per §2.4.
-                    if crate::license::check_license_status(ctx).await.is_ok() {
-                        let db = ctx.lock_global().await;
-                        if let Ok(Some(fresh_sub)) = TenantSubscription::load(&db, &sub.tenant_id) {
-                            if fresh_sub.verify_signature().is_ok() {
-                                sub = fresh_sub;
-                            }
-                        }
-                    }
+    if sub.tier != kasirmu_core::subscription::SubscriptionTier::Free
+        && let Some(ref expires_at_str) = sub.expires_at
+        && let Ok(expiry_dt) = chrono::DateTime::parse_from_rfc3339(expires_at_str)
+    {
+        let expiry = expiry_dt.with_timezone(&chrono::Utc);
+        let now_ledger = {
+            let db = ctx.lock_global().await;
+            match TenantSubscription::compute_max_ledger_timestamp(&db) {
+                Ok(ts) => chrono::DateTime::parse_from_rfc3339(&ts)
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .unwrap_or_else(|_| chrono::Utc::now()),
+                Err(_) => chrono::Utc::now(),
+            }
+        };
+        let window_start = expiry - chrono::Duration::days(3);
+        if now_ledger >= window_start && now_ledger <= expiry {
+            tracing::info!(
+                tenant_id = %sub.tenant_id,
+                "tenant is within 3-day pre-expiry window — executing re-auth status check (ADR #58 §2.3)"
+            );
+            // Best-effort check: if online, updates cache/CRL and sweeps sessions on revocation.
+            // If network fails, fails open into grace per §2.4.
+            if crate::license::check_license_status(ctx).await.is_ok() {
+                let db = ctx.lock_global().await;
+                if let Ok(Some(fresh_sub)) = TenantSubscription::load(&db, &sub.tenant_id)
+                    && fresh_sub.verify_signature().is_ok()
+                {
+                    sub = fresh_sub;
                 }
             }
         }
