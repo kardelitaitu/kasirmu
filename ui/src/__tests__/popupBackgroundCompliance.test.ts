@@ -614,8 +614,8 @@ describe('popup surfaces have visible backgrounds', () => {
       ["features/settings/screens/screens-placeholder.css",3],
       ["features/settings/sections/DiagnosticsSection.css",7],
       // SetupWizard.css (67 rules) was removed with the retired wizard (ADR #56 §2.3).
-      // Its six StepAccount form atoms moved to ProvisioningFlow.css, which the
-      // "appeared since baseline" arm reports rather than this shrink-only list.
+      // Its StepAccount atoms briefly moved to ProvisioningFlow.css and were then
+      // removed with StepAccount itself (no importer once the wizard was gone).
       ["features/setup/components/LiveSetupPreview.css",25],
       ["features/shifts/ShiftManagementScreen.css",101],
       ["features/staff/components/RoleAuthoringPanel.css",29],

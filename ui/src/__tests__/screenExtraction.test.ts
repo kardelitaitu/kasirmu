@@ -296,23 +296,6 @@ const SCREENS: ScreenEntry[] = [
     name: 'ProvisioningFlow',
     tsx: 'setup/ProvisioningFlow.tsx',
     css: ['setup/ProvisioningFlow.css'],
-    // StepAccount.tsx contributes the setup-* form atoms this sheet also carries,
-    // so the used-class walk has to read it or those six rules read as dead here.
-    additionalTsx: ['setup/components/StepAccount.tsx'],
-  },
-  {
-    // `StepAccount` is LIVE: AccountSetupGate renders it as the shell's
-    // post-provisioning account step. It used to be swept as `additionalTsx` of the
-    // SetupWizard entry and took its styling from SetupWizard.css; the wizard was
-    // retired (ADR #56 §2.3) and those six form atoms MOVED into ProvisioningFlow.css,
-    // which is the sheet AccountSetupGate already imports. So this is now a screen in
-    // its own right, reading the sheet it actually depends on.
-    name: 'StepAccount',
-    tsx: 'setup/components/StepAccount.tsx',
-    css: ['setup/ProvisioningFlow.css'],
-    // The mirror of the entry above: this sheet carries the provisioning-* chrome
-    // too, so StepAccount's walk needs ProvisioningFlow's TSX alongside it.
-    additionalTsx: ['setup/ProvisioningFlow.tsx'],
   },
 
   // ── Customers ─────────────────────────────────────────
