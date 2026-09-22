@@ -1560,3 +1560,189 @@ async fn update_staff_scoped_allows_manager_updating_staff() {
     assert_eq!(result.display_name, "Updated Cashier");
     assert_eq!(result.role_id, "role-lite");
 }
+// ── Trash: soft delete, 90-day retention ────────────────────────────
+//
+// Called in the BRIDGE shape (ctx first) rather than through a
+// `desktop_shaped` adapter: those adapters exist so the relocated desktop
+// call sites read byte-identically, and these commands have no desktop
+// predecessor. The shell shims are thin enough to read against the
+// signature directly.
+
+/// A second session for a caller other than the one `scoped_state_with_token`
+/// seeded, so one caller can be denied what the other is granted.
+fn insert_session(bridge: &TestBridge, token: &str, user_id: &str, role_id: &str) {
+    bridge.sessions().write().unwrap().insert(
+        token.into(),
+        SessionContext::new(
+            user_id.into(),
+            role_id.into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+}
+
+/// Put the seeded cashier in the state deletion requires (inactive).
+fn deactivate_cashier(conn: &rusqlite::Connection) {
+    conn.execute(
+        "UPDATE users SET is_active = 0 WHERE id = 'user-cashier'",
+        [],
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn scoped_delete_staff_requires_staff_delete() {
+    let conn = crate::testing::temp_conn();
+    seed_global_users(&conn);
+    deactivate_cashier(&conn);
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    // role-lite carries sales:view only, so the cashier holds no staff:delete.
+    insert_session(&bridge, "cashier-token", "user-cashier", "role-lite");
+    let ctx = bridge.ctx();
+
+    let denied = delete_staff_scoped(&ctx, "user-owner", "cashier-token").await;
+    assert!(matches!(denied, Err(BridgeError::PermissionDenied(_))));
+    // And nothing moved: a denied command must not have deleted as a side effect.
+    assert!(
+        list_staff_trash_scoped(&ctx, "owner-token")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn scoped_delete_staff_refuses_a_member_who_is_still_active() {
+    // soft_delete_user owns this rule; the command must not paper over it with
+    // a friendlier error, and the UI only offers the action on an inactive card
+    // for the same reason.
+    let conn = crate::testing::temp_conn();
+    seed_global_users(&conn);
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
+
+    let err = delete_staff_scoped(&ctx, "user-cashier", "owner-token").await;
+    // The typed Validation reaches the wire as a Core error carrying its
+    // message, so the words core chose are what a caller can assert against.
+    assert!(
+        matches!(
+            &err,
+            Err(BridgeError::Core { message, .. }) if message.contains("deactivate this member")
+        ),
+        "expected the active-account refusal, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn scoped_delete_staff_trashes_the_member_and_ends_their_session() {
+    let conn = crate::testing::temp_conn();
+    seed_global_users(&conn);
+    deactivate_cashier(&conn);
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    insert_session(&bridge, "cashier-token", "user-cashier", "role-lite");
+    let ctx = bridge.ctx();
+
+    delete_staff_scoped(&ctx, "user-cashier", "owner-token")
+        .await
+        .unwrap();
+
+    // Off the roster and in the trash, carrying the instant it entered.
+    let roster = list_staff_scoped("owner-token".into(), &ctx).await.unwrap();
+    assert!(roster.iter().all(|m| m.id != "user-cashier"));
+    let trash = list_staff_trash_scoped(&ctx, "owner-token").await.unwrap();
+    assert_eq!(trash.len(), 1);
+    assert_eq!(trash[0].id, "user-cashier");
+    assert!(trash[0].deleted_at.is_some());
+    assert!(!trash[0].is_active);
+
+    // resolve_session never re-reads the account, so the eviction — not the
+    // deleted_at stamp — is what actually ends the member's access.
+    assert!(matches!(
+        ctx.resolve_session("cashier-token"),
+        Err(BridgeError::InvalidSession)
+    ));
+    // The caller who did the deleting keeps their own session.
+    assert!(ctx.resolve_session("owner-token").is_ok());
+}
+
+#[tokio::test]
+async fn scoped_restore_staff_returns_them_inactive() {
+    let conn = crate::testing::temp_conn();
+    seed_global_users(&conn);
+    deactivate_cashier(&conn);
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
+    delete_staff_scoped(&ctx, "user-cashier", "owner-token")
+        .await
+        .unwrap();
+
+    let restored = restore_staff_scoped(&ctx, "user-cashier", "owner-token")
+        .await
+        .unwrap();
+    // Back on the roster INACTIVE — restoring must not re-grant access.
+    assert!(!restored.is_active);
+    assert!(restored.deleted_at.is_none());
+    let roster = list_staff_scoped("owner-token".into(), &ctx).await.unwrap();
+    assert!(roster.iter().any(|m| m.id == "user-cashier"));
+    assert!(
+        list_staff_trash_scoped(&ctx, "owner-token")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn scoped_role_trash_round_trip_keeps_the_row_restorable() {
+    let conn = crate::testing::temp_conn();
+    seed_global_users(&conn);
+    // An authored role nothing references: soft_delete_role refuses a preset id
+    // and any role a holder still points at, which is what keeps the trash safe
+    // to purge by DELETE.
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES ('role-temp', 'Temp', 'throwaway', '[]',
+                 '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
+
+    crate::staff::delete_role_scoped(&ctx, "role-temp", "owner-token")
+        .await
+        .unwrap();
+    assert!(
+        list_roles_scoped("owner-token".into(), &ctx)
+            .await
+            .unwrap()
+            .iter()
+            .all(|r| r.id != "role-temp")
+    );
+    let trash = list_role_trash_scoped(&ctx, "owner-token").await.unwrap();
+    assert_eq!(trash.len(), 1);
+    assert_eq!(trash[0].id, "role-temp");
+    assert!(trash[0].deleted_at.is_some());
+
+    let restored = restore_role_scoped(&ctx, "role-temp", "owner-token")
+        .await
+        .unwrap();
+    assert_eq!(restored.id, "role-temp");
+    assert!(restored.deleted_at.is_none());
+    assert!(
+        list_roles_scoped("owner-token".into(), &ctx)
+            .await
+            .unwrap()
+            .iter()
+            .any(|r| r.id == "role-temp")
+    );
+}
