@@ -382,15 +382,23 @@ for (const page of pages.filter((p) => p.rec && hasHead(p.rec))) {
 const sitemapFiles = walkAll(DIST).filter((f) => /sitemap-\d+\.xml$/.test(f));
 const sitemapIndex = join(DIST, 'sitemap-index.xml');
 const submitted = [];
+// Read the index ONCE, and guard the read: a missing index is a finding, not a
+// crash. Reading it inside the per-file loop below let its ENOENT escape before
+// the report printed, so a build with no sitemap-index.xml failed with a stack
+// trace instead of the diagnostic this check had already recorded.
+let sitemapIndexBody = null;
 try {
-  readFileSync(sitemapIndex, 'utf8');
+  sitemapIndexBody = readFileSync(sitemapIndex, 'utf8');
 } catch {
   add('sitemap', '/sitemap-index.xml', 'is missing from the build; robots.txt points crawlers at it');
 }
 for (const file of sitemapFiles) {
   const xml = readFileSync(file, 'utf8');
   const name = builtUrl(file);
-  if (!readFileSync(sitemapIndex, 'utf8').includes(`${SITE}${name}`)) {
+  // Only meaningful when there is an index to be absent from — otherwise every
+  // sitemap file is also reported as unlisted, burying the one finding that
+  // explains why.
+  if (sitemapIndexBody !== null && !sitemapIndexBody.includes(`${SITE}${name}`)) {
     add('sitemap', name, 'is not listed in sitemap-index.xml, so no crawler follows it');
   }
   for (const [, loc] of xml.matchAll(/<loc>([^<]+)<\/loc>/g)) submitted.push({ loc, file: name });

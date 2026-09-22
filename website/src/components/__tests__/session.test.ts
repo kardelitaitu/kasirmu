@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearSession, EMAIL_KEY, hasSession, isPlaceholderPriceId } from '../paddle';
-import { SESSION_STORAGE_KEY } from '../../lib/session';
+import { clearSession, hasSession, isPlaceholderPriceId } from '../paddle';
+import { EMAIL_STORAGE_KEY, SESSION_STORAGE_KEY } from '../../lib/session';
 
 /**
  * Session storage helpers. The critical regression: clearSession must
@@ -26,10 +26,10 @@ describe('session helpers', () => {
 
   it('clearSession removes BOTH the token and the cached email', () => {
     sessionStorage.setItem(SESSION_STORAGE_KEY, 'tok');
-    sessionStorage.setItem(EMAIL_KEY, 'alice@example.com');
+    sessionStorage.setItem(EMAIL_STORAGE_KEY, 'alice@example.com');
     clearSession();
     expect(sessionStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
-    expect(sessionStorage.getItem(EMAIL_KEY)).toBeNull();
+    expect(sessionStorage.getItem(EMAIL_STORAGE_KEY)).toBeNull();
   });
 
   it('clearSession is a no-op when storage is empty', () => {

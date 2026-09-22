@@ -30,7 +30,7 @@
  */
 
 import { licenseApiUrl } from '../lib/runtime-config';
-import { getSessionToken, SESSION_STORAGE_KEY } from '../lib/session';
+import { EMAIL_STORAGE_KEY, getSessionToken, SESSION_STORAGE_KEY } from '../lib/session';
 
 /** Event payload handed to Paddle.Initialize's eventCallback (v2). */
 export interface PaddleEvent {
@@ -88,14 +88,10 @@ const ENVIRONMENT =
   (import.meta.env.PUBLIC_PADDLE_ENVIRONMENT as string | undefined) === 'sandbox' ? 'sandbox' : 'production';
 const API = licenseApiUrl();
 
-/**
- * The signed-in email cache key, shared with AuthForm / AccountView.
- *
- * The SESSION key is deliberately NOT mirrored here: it has one owner,
- * `SESSION_STORAGE_KEY` in lib/session.ts, and this module imports it like
- * every other call site.
- */
-export const EMAIL_KEY = 'oz_email';
+// Neither storage key is declared here. `SESSION_STORAGE_KEY` and
+// `EMAIL_STORAGE_KEY` both live in lib/session.ts — the single owner of session
+// state — and this module imports them like every other call site, so the key a
+// logout clears cannot drift from the key a login wrote.
 
 /**
  * Placeholder ids (`pri_placeholder_…`) are used in the pricing content
@@ -194,7 +190,7 @@ export async function openPaddleCheckout(
 export function clearSession(): void {
   try {
     window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
-    window.sessionStorage.removeItem(EMAIL_KEY);
+    window.sessionStorage.removeItem(EMAIL_STORAGE_KEY);
   } catch {
     // Storage unavailable (private mode) — nothing to clear.
   }
@@ -223,7 +219,7 @@ export { hasSession } from '../lib/session';
  */
 export async function getSessionEmail(): Promise<string | null> {
   try {
-    const cached = window.sessionStorage.getItem(EMAIL_KEY);
+    const cached = window.sessionStorage.getItem(EMAIL_STORAGE_KEY);
     if (cached) return cached;
     const token = await getSessionToken();
     if (!token || !API) return null;
@@ -233,7 +229,7 @@ export async function getSessionEmail(): Promise<string | null> {
     if (!res.ok) return null;
     const data = (await res.json()) as { tenant?: { email?: string } };
     const email = data.tenant?.email ?? null;
-    if (email) window.sessionStorage.setItem(EMAIL_KEY, email);
+    if (email) window.sessionStorage.setItem(EMAIL_STORAGE_KEY, email);
     return email;
   } catch {
     return null;

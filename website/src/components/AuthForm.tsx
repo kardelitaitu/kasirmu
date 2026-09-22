@@ -5,7 +5,7 @@ import PasswordField, { PASSWORD_FIELD_LABELS } from './PasswordField';
 import PasswordStrength, { PASSWORD_STRENGTH_LABELS } from './PasswordStrength';
 import OtpInput from './OtpInput';
 import { licenseApiUrl } from '../lib/runtime-config';
-import { SESSION_STORAGE_KEY } from '../lib/session';
+import { EMAIL_STORAGE_KEY, SESSION_STORAGE_KEY } from '../lib/session';
 import { sameOriginPath } from '../lib/safe-next';
 
 /**
@@ -269,7 +269,7 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
       sessionStorage.setItem(SESSION_STORAGE_KEY, data.token);
       // Cache the verified email so checkout can prefill it without a
       // round-trip to /me (see paddle.getSessionEmail).
-      sessionStorage.setItem('oz_email', email);
+      sessionStorage.setItem(EMAIL_STORAGE_KEY, email);
       redirectAfterAuth();
     } catch {
       setError(t(labels, 'login.errorLogin'));
@@ -325,7 +325,7 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
       const data = (await res.json()) as { token?: string };
       if (!data.token) throw new Error('no token');
       sessionStorage.setItem(SESSION_STORAGE_KEY, data.token);
-      sessionStorage.setItem('oz_email', email);
+      sessionStorage.setItem(EMAIL_STORAGE_KEY, email);
       redirectAfterAuth();
     } catch {
       setError(t(labels, 'login.errorVerify'));
@@ -378,7 +378,7 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
       const data = (await res.json()) as { token?: string };
       if (!data.token) throw new Error('no token');
       sessionStorage.setItem(SESSION_STORAGE_KEY, data.token);
-      sessionStorage.setItem('oz_email', resetEmail);
+      sessionStorage.setItem(EMAIL_STORAGE_KEY, resetEmail);
       redirectAfterAuth();
     } catch {
       setError(t(labels, 'login.errorReset'));

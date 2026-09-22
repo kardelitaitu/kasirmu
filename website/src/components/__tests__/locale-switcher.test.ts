@@ -31,7 +31,13 @@ function extractScript(): string {
   const match = SWITCHER_SRC.match(/<script>([\s\S]*?)<\/script>/);
   if (!match) throw new Error('Could not extract <script> from LocaleSwitcher.astro');
   let script = match[1].trim();
-  script = script.replace(/^import\s*\{[^}]*\}\s*from\s*['"][^'"]*['"];?\s*$/m, '');
+  // EVERY import line, not just the first: the script imports `navigate` from
+  // astro:transitions and `setRegion` from the region owner, and both are
+  // supplied to the injected script as platform mocks below. Stripping only one
+  // leaves the other as a bare `import` statement, which jsdom rejects.
+  // `[ \t]*` before `import` matters: only the first one follows the trim, the
+  // rest carry their source indentation.
+  script = script.replace(/^[ \t]*import\s*\{[^}]*\}\s*from\s*['"][^'"]*['"];?[ \t]*$/gm, '');
   return stripTypeScript(script);
 }
 
@@ -43,7 +49,15 @@ function injectScript(code: string): void {
 
 // ─── Mock navigate (DOM-based) ───────────────────────────────────────
 
-const NAVIGATE_MOCK = `
+/**
+ * The module imports the extracted script relies on, stubbed for jsdom.
+ *
+ * `navigate` stands in for astro:transitions/client (recording calls instead of
+ * navigating); `setRegion` stands in for the region owner, writing through the
+ * same key lib/region.ts owns so the "persists the region" assertions below
+ * still observe a real storage effect rather than a spy on nothing.
+ */
+const PLATFORM_MOCKS = `
   window.navigate = function(href) {
     var marker = document.getElementById('__nav-calls');
     if (!marker) {
@@ -54,6 +68,7 @@ const NAVIGATE_MOCK = `
     }
     marker.dataset.calls = (marker.dataset.calls || '') + href + '|';
   };
+  window.setRegion = function(region) { localStorage.setItem('oz_region', region); };
 `;
 
 function getNavigateCalls(): string[] {
@@ -131,8 +146,13 @@ describe('LocaleSwitcher source structure', () => {
     expect(SWITCHER_SRC).toContain("localStorage.setItem('oz_language'");
   });
 
-  it('saves oz_region to localStorage', () => {
-    expect(SWITCHER_SRC).toContain("localStorage.setItem('oz_region'");
+  it('persists the region through its owner instead of a second spelling', () => {
+    // The behaviour is asserted by the switch tests below (localStorage ends up
+    // holding the right region). What is pinned here is that the component goes
+    // through lib/region.ts to do it: a bare localStorage.setItem('oz_region')
+    // is how two spellings of one key start drifting apart.
+    expect(SWITCHER_SRC).toContain('setRegion(');
+    expect(SWITCHER_SRC).not.toMatch(/localStorage\.(get|set)Item\(\s*['"]oz_region['"]/);
   });
 
   it('prevents default on click', () => {
@@ -185,13 +205,13 @@ describe('LocaleSwitcher behavior', () => {
   it('initializes without errors when switcher exists', () => {
     const switcher = buildSwitcherDOM('en');
     document.body.appendChild(switcher);
-    injectScript(NAVIGATE_MOCK + SCRIPT);
+    injectScript(PLATFORM_MOCKS + SCRIPT);
     expect(true).toBe(true);
   });
 
   it('does nothing when no switcher exists', () => {
     document.body.appendChild(document.createElement('p'));
-    injectScript(NAVIGATE_MOCK + SCRIPT);
+    injectScript(PLATFORM_MOCKS + SCRIPT);
     expect(getNavigateCalls()).toHaveLength(0);
   });
 
@@ -232,7 +252,7 @@ describe('LocaleSwitcher behavior', () => {
   it('prevents default navigation on click', () => {
     const switcher = buildSwitcherDOM('en');
     document.body.appendChild(switcher);
-    injectScript(NAVIGATE_MOCK + SCRIPT);
+    injectScript(PLATFORM_MOCKS + SCRIPT);
 
     const idLink = switcher.querySelector('a[data-index="1"]') as HTMLAnchorElement;
     const event = new MouseEvent('click', { bubbles: true, cancelable: true });
@@ -245,7 +265,7 @@ describe('LocaleSwitcher behavior', () => {
   it('saves oz_language to localStorage on switch to id', () => {
     const switcher = buildSwitcherDOM('en');
     document.body.appendChild(switcher);
-    injectScript(NAVIGATE_MOCK + SCRIPT);
+    injectScript(PLATFORM_MOCKS + SCRIPT);
 
     const idLink = switcher.querySelector('a[data-index="1"]') as HTMLAnchorElement;
     idLink.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -256,7 +276,7 @@ describe('LocaleSwitcher behavior', () => {
   it('saves oz_region to id on switch to id', () => {
     const switcher = buildSwitcherDOM('en');
     document.body.appendChild(switcher);
-    injectScript(NAVIGATE_MOCK + SCRIPT);
+    injectScript(PLATFORM_MOCKS + SCRIPT);
 
     const idLink = switcher.querySelector('a[data-index="1"]') as HTMLAnchorElement;
     idLink.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -269,7 +289,7 @@ describe('LocaleSwitcher behavior', () => {
     localStorage.setItem('oz_region', 'id');
     const switcher = buildSwitcherDOM('id');
     document.body.appendChild(switcher);
-    injectScript(NAVIGATE_MOCK + SCRIPT);
+    injectScript(PLATFORM_MOCKS + SCRIPT);
 
     const enLink = switcher.querySelector('a[data-index="0"]') as HTMLAnchorElement;
     enLink.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -281,7 +301,7 @@ describe('LocaleSwitcher behavior', () => {
   it('calls navigate after 280ms delay', () => {
     const switcher = buildSwitcherDOM('en');
     document.body.appendChild(switcher);
-    injectScript(NAVIGATE_MOCK + SCRIPT);
+    injectScript(PLATFORM_MOCKS + SCRIPT);
 
     const idLink = switcher.querySelector('a[data-index="1"]') as HTMLAnchorElement;
     idLink.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -296,7 +316,7 @@ describe('LocaleSwitcher behavior', () => {
   it('does NOT navigate when clicking current language', () => {
     const switcher = buildSwitcherDOM('en');
     document.body.appendChild(switcher);
-    injectScript(NAVIGATE_MOCK + SCRIPT);
+    injectScript(PLATFORM_MOCKS + SCRIPT);
 
     const enLink = switcher.querySelector('a[data-index="0"]') as HTMLAnchorElement;
     enLink.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -308,7 +328,7 @@ describe('LocaleSwitcher behavior', () => {
   it('does NOT save localStorage when clicking current language', () => {
     const switcher = buildSwitcherDOM('en');
     document.body.appendChild(switcher);
-    injectScript(NAVIGATE_MOCK + SCRIPT);
+    injectScript(PLATFORM_MOCKS + SCRIPT);
 
     const enLink = switcher.querySelector('a[data-index="0"]') as HTMLAnchorElement;
     enLink.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -319,7 +339,7 @@ describe('LocaleSwitcher behavior', () => {
   it('updates data-active-index on switch', () => {
     const switcher = buildSwitcherDOM('en');
     document.body.appendChild(switcher);
-    injectScript(NAVIGATE_MOCK + SCRIPT);
+    injectScript(PLATFORM_MOCKS + SCRIPT);
 
     const idLink = switcher.querySelector('a[data-index="1"]') as HTMLAnchorElement;
     idLink.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));

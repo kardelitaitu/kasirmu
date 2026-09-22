@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { t, type Labels } from '../i18n/labels';
 import { isStrongPassword, passwordsMatch } from '../lib/passwordPolicy';
-import { type Region, setRegion } from '../lib/region';
+import { type Region, getExplicitRegion, setRegion } from '../lib/region';
 import PasswordField, { PASSWORD_FIELD_LABELS } from './PasswordField';
 import PasswordStrength, { PASSWORD_STRENGTH_LABELS } from './PasswordStrength';
 import OtpInput from './OtpInput';
 import { licenseApiUrl } from '../lib/runtime-config';
-import { SESSION_STORAGE_KEY } from '../lib/session';
+import { EMAIL_STORAGE_KEY, SESSION_STORAGE_KEY } from '../lib/session';
 
 /**
  * Signup form (website-plan.md §5) — the password-first registration path
@@ -96,9 +96,12 @@ export default function SignupForm({ locale, labels }: Props) {
   const [email, setEmail] = useState('');
   const [emailTouched, setEmailTouched] = useState(false);
   const [region, setRegionState] = useState<Region>('global');
-  // Read from localStorage after hydration to avoid SSR/client mismatch
+  // Read the persisted choice after hydration to avoid SSR/client mismatch.
+  // Through the region owner rather than localStorage directly: `oz_region` is
+  // spelled in lib/region.ts and nowhere else, so this read cannot name a
+  // different key than setRegion writes.
   useEffect(() => {
-    const saved = localStorage.getItem('oz_region') as Region | null;
+    const saved = getExplicitRegion();
     if (saved && saved !== region) setRegionState(saved);
   }, []);
   const [regionOpen, setRegionOpen] = useState(false);
@@ -201,9 +204,9 @@ export default function SignupForm({ locale, labels }: Props) {
       sessionStorage.setItem(SESSION_STORAGE_KEY, data.token);
       // Cache the verified email so checkout can prefill it without a
       // round-trip to /me (see paddle.getSessionEmail).
-      sessionStorage.setItem('oz_email', email);
+      sessionStorage.setItem(EMAIL_STORAGE_KEY, email);
       // Persist region for pricing and checkout routing.
-      localStorage.setItem('oz_region', region);
+      setRegion(region);
       redirectAfterAuth();
     } catch {
       setError(t(labels, 'login.errorVerify'));

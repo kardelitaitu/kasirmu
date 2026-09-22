@@ -84,5 +84,17 @@ export async function hasSession(): Promise<boolean> {
   return Boolean(await getSessionToken());
 }
 
-/** The signed-in email cache key (used for checkout prefill). */
+/**
+ * The sessionStorage key for the cached signed-in email (checkout prefill) —
+ * like the token above, the ONLY place `oz_email` is spelled.
+ *
+ * Every site that touches it imports this: the three post-auth caches in
+ * AuthForm, SignupForm's verification, and paddle (the prefill read, the /me
+ * cache write, and the logout cleanup that must take the email with the token
+ * so the next account on the browser is not prefilled with the previous user's
+ * address). Before that it was declared twice — here and as `paddle.EMAIL_KEY`
+ * — and written as a literal at four more sites, so a writer and the reader
+ * could name different keys. `lib/__tests__/session.test.ts` bans a second
+ * spelling reappearing.
+ */
 export const EMAIL_STORAGE_KEY = 'oz_email';

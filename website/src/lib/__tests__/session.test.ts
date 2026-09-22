@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { getSessionToken, hasSession, SESSION_STORAGE_KEY } from '../session';
+import { EMAIL_STORAGE_KEY, getSessionToken, hasSession, SESSION_STORAGE_KEY } from '../session';
 
 /**
  * R1 httpOnly-cookie session helper tests: getSessionToken must prefer the
@@ -193,5 +193,38 @@ describe('the session storage key has exactly one owner', () => {
     const paddle = readFileSync(join(SRC, 'components/paddle.ts'), 'utf-8');
     expect(paddle).toContain('sessionStorage.removeItem(SESSION_STORAGE_KEY)');
     expect(paddle).not.toMatch(/export const SESSION_KEY/);
+  });
+
+  /**
+   * The email cache has the same rule for the same reason, and had the same
+   * defect: `oz_email` was declared twice (here and as `paddle.EMAIL_KEY`) and
+   * written as a literal at four more sites. A reader and a writer disagreeing
+   * about the key is how logout leaves the previous user's address behind for
+   * checkout prefill — the tenant mix-up clearSession exists to prevent.
+   */
+  describe('the cached-email storage key has exactly one owner', () => {
+    it('keeps the wire format: the value is still oz_email', () => {
+      // An email cached by the previous build must keep being found, and
+      // paddle's /me cache must write where the auth forms wrote.
+      expect(EMAIL_STORAGE_KEY).toBe('oz_email');
+    });
+
+    it('is spelled as a literal exactly once in production code', () => {
+      // Counting occurrences rather than files: a second constant living inside
+      // the owner itself would pass a file-level check, and that is exactly the
+      // shape the duplicate took here (an `EMAIL_KEY` beside the real one).
+      const spellings = productionFiles().flatMap((file) =>
+        Array.from(readFileSync(join(SRC, file), 'utf-8').matchAll(/['"]oz_email['"]/g), () => file),
+      );
+      expect(spellings).toEqual([OWNER]);
+    });
+
+    it('is what every module that touches the cached email imports', () => {
+      for (const file of ['components/AuthForm.tsx', 'components/SignupForm.tsx', 'components/paddle.ts']) {
+        const source = readFileSync(join(SRC, file), 'utf-8');
+        expect(source, `${file} must import the key owner`).toContain('EMAIL_STORAGE_KEY');
+        expect(source, `${file} must not spell the key itself`).not.toMatch(/['"]oz_email['"]/);
+      }
+    });
   });
 });
