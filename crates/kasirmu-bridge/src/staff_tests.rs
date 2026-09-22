@@ -1663,8 +1663,8 @@ async fn scoped_delete_staff_trashes_the_member_and_ends_their_session() {
     assert!(trash[0].deleted_at.is_some());
     assert!(!trash[0].is_active);
 
-    // resolve_session never re-reads the account, so the eviction — not the
-    // deleted_at stamp — is what actually ends the member's access.
+    // The eviction ends the member's access on THIS host at once, rather than
+    // at the next 30s account revalidation.
     assert!(matches!(
         ctx.resolve_session("cashier-token"),
         Err(BridgeError::InvalidSession)

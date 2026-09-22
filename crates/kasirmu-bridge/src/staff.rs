@@ -1464,10 +1464,12 @@ pub async fn bootstrap_owner(
 /// themselves in passing either: the sweep refuses active rows and a caller
 /// holding a session is active by definition.
 ///
-/// Every in-memory session of the member is dropped. `BridgeCtx::resolve_session`
-/// checks only a token's TTL and never re-reads the account, so without this a
-/// deleted member would keep working until their token expired; the eviction,
-/// not the `deleted_at` stamp, is what actually ends their access.
+/// Every in-memory session of the member is dropped. This closes the gap to
+/// zero on THIS host: `BridgeCtx::resolve_session` also re-reads the account,
+/// but only once per its 30s revalidation window, so revalidation alone would
+/// leave a member working for up to that window. The eviction ends their access
+/// here at once; the window is what covers the other hosts sharing this
+/// identity DB.
 ///
 /// # Errors
 ///

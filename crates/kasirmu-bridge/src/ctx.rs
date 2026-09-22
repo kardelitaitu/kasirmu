@@ -17,7 +17,11 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::LazyLock;
+use std::sync::Mutex as StdMutex;
 use std::sync::RwLock;
+use std::time::Duration;
+use std::time::Instant;
 
 use kasirmu_core::cache::Cache;
 use kasirmu_core::db::Store;
@@ -32,6 +36,10 @@ use rusqlite::{Connection, OptionalExtension};
 use tokio::sync::{Mutex, MutexGuard, oneshot};
 
 use crate::error::BridgeError;
+
+#[cfg(test)]
+#[path = "session_revalidation_tests.rs"]
+mod session_revalidation_tests;
 
 /// The bridge's tauri-free stand-in for `tauri::Emitter`.
 ///
@@ -107,33 +115,107 @@ fn map_gate_error(e: kasirmu_core::CoreError) -> BridgeError {
     }
 }
 
+/// How long a token may keep resolving before the identity DB is re-read.
+///
+/// [`BridgeCtx::resolve_session`] runs on every scoped command, so a read there
+/// would put a query on the hottest path in the process. Instead the account
+/// behind a token is re-read at most once per window: a member trashed or
+/// deactivated by ANOTHER host sharing the identity DB stops resolving after at
+/// most this long, and the process pays one extra indexed SELECT per window per
+/// token.
+///
+/// The window IS the revocation lag. 30s is short enough that a dismissed
+/// member is out well inside a break, and long enough that a till under load
+/// does not re-read per command. The single-instance desktop never notices: its
+/// own `delete_staff_scoped` evicts the shared in-process session map at once.
+const ACCOUNT_REVALIDATION_WINDOW: Duration = Duration::from_secs(30);
+
+/// `(identity DB, token) -> (user_id, when the account was last re-read)`.
+///
+/// A module-level side map rather than a `BridgeCtx` field: the context is
+/// rebuilt per call, so state hung off it would be forgotten between calls, and
+/// a new field would change the struct both shells construct. Keyed by the
+/// identity DB's `Arc` identity so the same token string used against a
+/// DIFFERENT identity DB never inherits another database's window.
+type AccountRevalidation = HashMap<(usize, String), (String, Instant)>;
+
+/// The revalidation side map behind [`ACCOUNT_REVALIDATION_WINDOW`].
+static ACCOUNT_REVALIDATION: LazyLock<StdMutex<AccountRevalidation>> =
+    LazyLock::new(|| StdMutex::new(HashMap::new()));
+
+/// The revalidation window in force.
+///
+/// Production reads [`ACCOUNT_REVALIDATION_WINDOW`]; a test may shrink it to
+/// zero through the thread-local below, so the elapsed path is reachable
+/// without sleeping a real 30 seconds.
+fn revalidation_window() -> Duration {
+    #[cfg(test)]
+    if let Some(window) = TEST_REVALIDATION_WINDOW.with(std::cell::Cell::get) {
+        return window;
+    }
+    ACCOUNT_REVALIDATION_WINDOW
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only override of [`ACCOUNT_REVALIDATION_WINDOW`], per test thread so
+    /// a test that shortens it cannot leak the shorter window into a parallel
+    /// test that relies on the production one.
+    static TEST_REVALIDATION_WINDOW: std::cell::Cell<Option<Duration>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// Test hook: set the revalidation window for THIS thread, returning the
+/// previous value so the caller can restore it.
+///
+/// The window is the only injected clock this design needs — a test shrinks it
+/// to zero and the elapsed branch becomes reachable without sleeping.
+#[cfg(test)]
+pub(crate) fn set_revalidation_window_for_test(window: Option<Duration>) -> Option<Duration> {
+    TEST_REVALIDATION_WINDOW.with(|cell| cell.replace(window))
+}
+
 impl<'a> BridgeCtx<'a> {
+    /// Identity of the identity DB this context points at, for keying
+    /// [`ACCOUNT_REVALIDATION`].
+    fn db_identity(&self) -> usize {
+        std::sync::Arc::as_ptr(self.db) as usize
+    }
+
     /// Resolve an opaque session token to its [`SessionContext`].
     ///
     /// ADR #4 / ADR #7: commands call this to look up the caller's resolved
     /// scope (store, instance, type, user, role, terminal). Returns
-    /// [`BridgeError::InvalidSession`] if the token is unknown OR if the
-    /// session has expired (TTL check).
+    /// [`BridgeError::InvalidSession`] if the token is unknown, if the session
+    /// has expired (TTL check), or if the account behind it is no longer on the
+    /// live roster (see [`ACCOUNT_REVALIDATION_WINDOW`]).
     ///
-    /// Expired sessions are atomically removed from the store during
+    /// Expired and revoked sessions are atomically removed from the store during
     /// resolution, so subsequent lookups also get `InvalidSession`.
     ///
     /// Uses a double-check lock pattern: the fast path (valid session) only
-    /// acquires a shared read lock; the exclusive write lock is taken only when
-    /// a session is actually expired, which is rare.
+    /// acquires a shared read lock, released before the account revalidation
+    /// below; the exclusive write lock is taken only when a session is actually
+    /// expired or revoked, which is rare.
     pub fn resolve_session(&self, token: &str) -> Result<SessionContext, BridgeError> {
-        // Fast path: read-only check.
-        {
+        // Fast path: read-only check. The guard is dropped before the account
+        // revalidation, so the session map is never held across a DB read.
+        let live = {
             let store = self
                 .sessions
                 .read()
                 .map_err(|e| BridgeError::Internal(format!("session store lock poisoned: {e}")))?;
 
             match store.get(token) {
-                Some(ctx) if !ctx.is_expired() => return Ok(ctx.clone()),
-                Some(_) => {} // expired — fall through to write-lock path
+                Some(ctx) if !ctx.is_expired() => Some(ctx.clone()),
+                Some(_) => None, // expired — fall through to write-lock path
                 None => return Err(BridgeError::InvalidSession),
             }
+        };
+
+        if let Some(session) = live {
+            self.revalidate_account(token, &session)?;
+            return Ok(session);
         }
 
         // Slow path: expired session — acquire write lock to remove it.
@@ -147,6 +229,10 @@ impl<'a> BridgeCtx<'a> {
             && ctx.is_expired()
         {
             store.remove(token);
+            ACCOUNT_REVALIDATION
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&(self.db_identity(), token.to_owned()));
             // Masked, not raw: this fires on ordinary use of a stale token,
             // and a session token is a bearer credential — anyone who reads
             // it off a console or a support capture can act as that session
@@ -154,6 +240,113 @@ impl<'a> BridgeCtx<'a> {
             tracing::info!(token = %mask_token(token), "session expired — removed from store");
         }
 
+        Err(BridgeError::InvalidSession)
+    }
+
+    /// Re-read the identity DB's account row for `session`, at most once per
+    /// [`ACCOUNT_REVALIDATION_WINDOW`], revoking the session if the account is
+    /// no longer live (trashed or deactivated).
+    ///
+    /// Three deliberate properties:
+    ///
+    /// - The FIRST resolve of a token against this DB only starts the window:
+    ///   the token was minted by a login that already filters `deleted_at` and
+    ///   `is_active`, so it cannot be born revoked, and the hot path stays
+    ///   query-free.
+    /// - The read uses `try_lock`, never `blocking_lock`: this runs inside the
+    ///   async command bodies, where `blocking_lock` on the tokio `Mutex`
+    ///   aborts (see `audit.rs`), and a busy identity DB must not stall a till.
+    ///   A skipped check does not consume the window, so the next resolve
+    ///   retries.
+    /// - A busy or failing DB fails OPEN and is logged: this is a revocation
+    ///   backstop on an already-authenticated session, and turning a transient
+    ///   DB hiccup into a mass logout is worse than the bounded staleness it
+    ///   would prevent.
+    fn revalidate_account(&self, token: &str, session: &SessionContext) -> Result<(), BridgeError> {
+        let now = Instant::now();
+        let key = (self.db_identity(), token.to_owned());
+
+        {
+            let mut cache = ACCOUNT_REVALIDATION
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            match cache.get(&key) {
+                // Already re-read inside the window for this exact user.
+                Some((user_id, checked_at))
+                    if user_id == &session.user_id
+                        && now.duration_since(*checked_at) < revalidation_window() =>
+                {
+                    return Ok(());
+                }
+                // First resolve of this token against this DB: start the window
+                // instead of spending a query on the hot path.
+                None => {
+                    cache.insert(key, (session.user_id.clone(), now));
+                    return Ok(());
+                }
+                // Window elapsed, or the token now names a different user.
+                Some(_) => {}
+            }
+        }
+
+        let account_is_live = {
+            let db = match self.db.try_lock() {
+                Ok(db) => db,
+                Err(_) => {
+                    tracing::debug!(
+                        token = %mask_token(token),
+                        "account revalidation deferred: identity DB busy"
+                    );
+                    return Ok(());
+                }
+            };
+            match db.query_row(
+                "SELECT EXISTS(SELECT 1 FROM users \
+                 WHERE id = ?1 AND deleted_at IS NULL AND is_active = 1)",
+                rusqlite::params![session.user_id],
+                |row| row.get::<_, bool>(0),
+            ) {
+                Ok(live) => live,
+                Err(e) => {
+                    tracing::warn!(
+                        token = %mask_token(token),
+                        error = %e,
+                        "account revalidation failed; session left in place"
+                    );
+                    return Ok(());
+                }
+            }
+        };
+
+        let mut cache = ACCOUNT_REVALIDATION
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if account_is_live {
+            cache.insert(key, (session.user_id.clone(), now));
+            // Bound the map: an entry not refreshed within the window belongs to
+            // a token that is no longer being resolved against this DB.
+            cache.retain(|_, (_, checked_at)| {
+                now.duration_since(*checked_at) < revalidation_window()
+            });
+            return Ok(());
+        }
+        cache.remove(&key);
+        drop(cache);
+
+        // Trashed or deactivated: end the session exactly as the TTL path does,
+        // so this resolve and every later one fails with the SAME error an
+        // unknown or expired token gets.
+        match self.sessions.write() {
+            Ok(mut store) => {
+                store.remove(token);
+            }
+            Err(e) => tracing::warn!("session store lock poisoned during revocation: {e}"),
+        }
+        tracing::info!(
+            token = %mask_token(token),
+            user_id = %session.user_id,
+            "session account no longer live — removed from store"
+        );
         Err(BridgeError::InvalidSession)
     }
 
