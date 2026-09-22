@@ -458,10 +458,26 @@
     transform var(--duration-100) var(--ease-out);
 }
 
+/* A failed attempt marks the row in BOTH channels: \`aria-invalid\` carries it to
+   assistive tech, and these rules carry it to the eye. The dots are outlines
+   rather than fills, so the invalid state colours the outline — the same
+   treatment CreatePinScreen and LicenseActivationScreen give their inputs, which
+   is what keeps a rejected attempt legible without reading the toast. */
+.staff-login-pin-dots[aria-invalid='true'] .staff-login-pin-dot {
+  border-color: var(--color-danger);
+}
+
 .staff-login-pin-dot--filled {
   background: var(--color-accent);
   border-color: var(--color-accent);
   transform: scale(1.15);
+}
+
+/* Must outrank the filled rule above: a failed attempt that had filled dots
+   would otherwise keep the accent colour and look like a good entry. */
+.staff-login-pin-dots[aria-invalid='true'] .staff-login-pin-dot--filled {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
 }
 
 /* ── PIN pad ─────────────────────────────────────────────────────── */
