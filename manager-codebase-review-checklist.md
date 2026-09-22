@@ -136,6 +136,58 @@ Full analysis - deciding facts, options with pros and cons, what would change th
 
 The ordered, lowest-risk-first list is in the inventory recorded in the journal: (1) delete the tablet's five ungated history reads and their registrations, because the scoped twins are already live and the UI already prefers them; (2) the tablet's four ungated settings reads; (3) the three ungated branding setters; (4) the ungated create_backup and get_backup_status; (5) six vendor/value wrappers; (6) five more; (7) set_setting's renderer-supplied user_id (needs a decision first: the ungated door writes the GLOBAL identity database while the scoped twin writes the store database, so they are not interchangeable); (8) five tablet wrappers; (9) hoist the tablet pos/refunds permission checks out of private run_* helpers into the wrapper bodies so the sweep can see them; (10) route the tablet promotions wrappers through the bridge shims that already enforce PROMOTIONS_*. Per deletion: remove the command and its registration, lower REGISTERED_FLOOR, DEBT_CEILING and the matching class count together, regenerate with KASIRMU_REGENERATE_GATE_LEDGER=1, then run both registration_gate_tests files. Ceilings may only fall.
 
+
+---
+
+## Gate commands - re-verify everything ticked so far
+
+Run from the repository root. These are the exact commands whose output is recorded in the verification log; none of them mutates the tree. (Per AGENTS.md, a full `cargo test --workspace` is not an iteration command - the workspace CHECK is fine, and the per-crate test targets below are what the ticks actually assert.)
+
+```bash
+# integration: does the whole workspace still compile
+cargo check --workspace
+
+# C2 step 1 - plugin host: no silent hot-swap, capability flags fail closed
+cargo test -p kasirmu-plugin                       # 181 passed
+cargo test -p kasirmu-app --lib state::tests        # 11 passed
+
+# C1 S1 + S1.5 - branch-tolerant reads, and fail closed on undecryptable
+cargo test -p kasirmu-core --test credential_storage_form   # 28 passed, 1 ignored
+cargo test -p kasirmu-crypto                                # 21 passed
+cargo test -p platform-core                                 # 410 passed
+
+# C8 S1 - atomic, verified, 3-generation backups
+cargo test -p kasirmu-core recovery                         # 5 passed
+cargo test -p kasirmu-core --test backup_restore_integration # 21 passed
+
+# C6 + C6b - one timezone contract on the read path, validation on the write path
+cargo test -p kasirmu-core datetime                         # 8 passed
+cargo test -p kasirmu-core --lib reports::tests             # 80 passed
+cargo test -p kasirmu-core provisioning                     # 25 passed
+
+# C12 - read-only stock variance report
+cargo test -p kasirmu-core stock_variance                   # 6 passed
+
+# C5 + C5b - completed sales only, one day definition, on BOTH shells
+cargo test -p kasirmu-core sales                            # 177 passed
+cargo test -p kasirmu-bridge history                        # 17 passed
+cargo test -p kasirmu-mobile history                        # 19 passed
+cargo test -p kasirmu-mobile known_hazard                   # 2 passed (both pins inverted)
+
+# C17 slice 1 (+2 in flight) - gate-debt ceilings, which may only fall
+cargo test -p kasirmu-mobile registration_gate              # 10 passed, all four drift pins
+
+# C27 - the shipped container routes every licence-server namespace
+node scripts/check-unified-routes.mjs                       # EXIT 0, 7 prefixes
+
+# C9 - no package may be publishable in a proprietary repository
+cargo metadata --no-deps --format-version 1                 # expect 0 packages with publish enabled
+grep -n qris-core deny.toml                                 # expect a clarify entry
+cargo deny check licenses                                   # expect 'licenses ok'
+```
+
+A tick without a command in the log is not a tick. If a command here fails, the item it belongs to is NOT done, whatever its checkbox says.
+
 ## Verification log
 
 Fill one row per ticked item. An item is not done until the command and its result are here.
