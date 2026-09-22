@@ -427,7 +427,21 @@
     "privacy": "Privacy",
     "terms": "Terms",
     "legal": "Legal",
-    "business": "Business types"
+    "sitemap": "Sitemap",
+    "col": {
+      "product": "Product",
+      "solutions": "Solutions",
+      "business": "Business types",
+      "help": "Help"
+    },
+    "link": {
+      "kasirGratis": "Free POS",
+      "kasirMurah": "Cheap POS",
+      "kasirQris": "QRIS POS",
+      "kasirAndroid": "Android POS",
+      "cara": "How-To Guides",
+      "perbandingan": "Compare"
+    }
   },
   "legal": {
     "privacyTitle": "Privacy Policy",

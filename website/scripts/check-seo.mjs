@@ -41,12 +41,27 @@
 //      content: an Offer price must be a finite number (not "$0"/"Custom"), an
 //      Article's mainEntityOfPage must be this page, and every FAQPage question
 //      must appear as text in the body.
-//   6. titles and descriptions — present on every page that can be indexed, and
-//      unique site-wide.
+//   6. titles and descriptions — present on every page that can be indexed,
+//      unique site-wide, and inside the SERP budget (TITLE_BUDGET /
+//      DESCRIPTION_BUDGET from src/lib/seo.ts). Length is measured on the
+//      decoded text, so an `&amp;` counts as the one character a searcher
+//      sees. `SiteHead` drops the brand prefix from an over-long title rather
+//      than trimming the page name, so what this catches is a page name that
+//      cannot fit on its own — a copy decision, flagged rather than guessed.
 //   7. the docs corpus ⇄ the build — every doc in src/content/docs has a page.
 //      The collection is what the sidebar, the ⌘K index and this gate's docs
 //      class are all derived from, so a doc that stops building disappears
 //      from the site without any other check being able to see it.
+//   8. locale copy — the rendered footer sitemap speaks the page's locale, in
+//      both directions: every label the locale's dictionary defines is present,
+//      and every label rendered is one of them. This is a VISITOR check rather
+//      than an SEO one, and it lives here for the same reason the rest of the
+//      file does — it needs the emitted HTML. The defect it catches shipped for
+//      months: the footer's link text was hard-coded Indonesian with no locale
+//      branch, so every /en/ page served "Fitur / Harga / Unduh / Warung / …"
+//      under English column headings. No source-level test could see it (the
+//      component agreed with itself) and no head check could either (the head
+//      was correct).
 //
 // DELIBERATELY NOT CHECKED (each a decision, not an omission):
 //   • The root locale-detect stub (src/pages/index.astro) is a redirect document
@@ -75,6 +90,8 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NON_PUBLIC_PAGES, SITE, isNonPublic } from '../src/lib/site.ts';
+import { DESCRIPTION_BUDGET, TITLE_BUDGET } from '../src/lib/seo.ts';
+import { FOOTER_COLUMNS } from '../src/lib/footer-nav.ts';
 
 const DIST = 'dist';
 // Cap the printed list so a catastrophic break floods neither the terminal nor
@@ -235,6 +252,9 @@ function parsePage(file) {
     ),
     faqItems: (html.match(/class="faq-item/g) ?? []).length,
     body,
+    // Footer markup only, for check 8. Everything before the first `<footer` is
+    // the page proper, which has no locale-copy invariant of its own here.
+    footer: html.slice(html.indexOf('<footer')),
   };
 }
 
@@ -534,12 +554,29 @@ for (const page of pages.filter((p) => p.rec && hasHead(p.rec))) {
   }
 }
 
-// 6. Titles and descriptions: present, and unique across the site.
+// 6. Titles and descriptions: present, unique, and inside the SERP budget.
 const titled = pages.filter((p) => p.rec?.canonicalPath);
 for (const page of titled) {
   if (!page.title.trim()) add('titles', page.url, 'has an empty <title>');
   if (!page.description.trim()) {
     add('titles', page.url, 'has no <meta name="description">');
+  }
+  // Length on the decoded text: the rendered character count is what truncates.
+  const titleText = decode(page.title);
+  if (titleText.length > TITLE_BUDGET) {
+    add(
+      'titles',
+      page.url,
+      `has a ${titleText.length}-character <title> (budget ${TITLE_BUDGET}) — the tail is ellipsised in a SERP; shorten the page name rather than relying on the brand to be dropped`,
+    );
+  }
+  const descText = decode(page.description);
+  if (descText.length > DESCRIPTION_BUDGET) {
+    add(
+      'titles',
+      page.url,
+      `has a ${descText.length}-character description (budget ${DESCRIPTION_BUDGET}) — the tail is ellipsised in a SERP snippet`,
+    );
   }
 }
 for (const [field, of] of [
@@ -558,6 +595,63 @@ for (const [field, of] of [
   }
 }
 
+// 8. Locale copy: the rendered footer sitemap must speak the page's locale.
+//    Expected string sets come from the page's own dictionary, resolved through
+//    the same key list the component renders (FOOTER_COLUMNS), so a label added
+//    to one locale only is a finding rather than a silent fallback.
+const FOOTER_DICT = {
+  en: JSON.parse(readFileSync(new URL('../src/i18n/en.json', import.meta.url), 'utf8')),
+  id: JSON.parse(readFileSync(new URL('../src/i18n/id.json', import.meta.url), 'utf8')),
+};
+
+/** Dotted-path lookup against a dictionary; `undefined` when absent. */
+function resolveKey(dict, key) {
+  return key.split('.').reduce((acc, part) => acc?.[part], dict);
+}
+
+const FOOTER_EXPECTED = Object.fromEntries(
+  Object.keys(FOOTER_DICT).map((locale) => {
+    const dict = FOOTER_DICT[locale];
+    return [
+      locale,
+      {
+        aria: resolveKey(dict, 'footer.sitemap'),
+        headings: FOOTER_COLUMNS.map((column) => resolveKey(dict, column.heading)),
+        labels: FOOTER_COLUMNS.flatMap((column) => column.links.map((link) => resolveKey(dict, link.label))),
+      },
+    ];
+  }),
+);
+
+const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const textOf = (markup) => collapse(decode(markup.replace(/<[^>]+>/g, ' ')));
+
+for (const page of pages.filter((p) => p.rec && isLocalePage(p.rec))) {
+  const expected = FOOTER_EXPECTED[page.rec.locale];
+  const nav = page.footer.match(new RegExp(`<nav[^>]*aria-label="${escapeRe(expected.aria)}"[^>]*>([\\s\\S]*?)</nav>`));
+  if (!nav) {
+    add('locale copy', page.url, `has no footer sitemap nav whose accessible name is "${expected.aria}" (the ${page.rec.locale} dictionary's footer.sitemap)`);
+    continue;
+  }
+  const rendered = {
+    headings: [...nav[1].matchAll(/<span class="font-semibold text-ink">([\s\S]*?)<\/span>/g)].map((m) => textOf(m[1])),
+    labels: [...nav[1].matchAll(/<a[^>]*>([\s\S]*?)<\/a>/g)].map((m) => textOf(m[1])),
+  };
+  for (const field of ['headings', 'labels']) {
+    const expectedSet = expected[field];
+    for (const text of rendered[field]) {
+      if (!expectedSet.includes(text)) {
+        add('locale copy', page.url, `footer renders the ${field === 'headings' ? 'column heading' : 'link'} "${text}", which is not a ${page.rec.locale} label — wrong locale, or copy that drifted out of the dictionary`);
+      }
+    }
+    for (const text of expectedSet) {
+      if (!rendered[field].includes(text)) {
+        add('locale copy', page.url, `footer is missing the ${page.rec.locale} ${field === 'headings' ? 'column heading' : 'label'} "${text}"`);
+      }
+    }
+  }
+}
+
 // ── Report ──────────────────────────────────────────────────────────────────
 const byCheck = new Map();
 for (const finding of findings) {
@@ -565,7 +659,7 @@ for (const finding of findings) {
   byCheck.get(finding.check).push(finding);
 }
 
-const checks = ['page classes', 'canonical/og:url', 'hreflang', 'sitemap', 'noindex', 'structured data', 'titles'];
+const checks = ['page classes', 'canonical/og:url', 'hreflang', 'sitemap', 'noindex', 'structured data', 'titles', 'locale copy'];
 const classes = {};
 for (const page of pages) {
   const kind = page.rec?.kind ?? 'unclassified';

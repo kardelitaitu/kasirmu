@@ -171,39 +171,39 @@
     "subtitle": "Fitur unggulan yang dirancang untuk transaksi super cepat, operasional tanpa henti meski offline, dan siap berkembang bersama bisnis Anda.",
     "items": [
       {
-        "title": "Offline-First",
+        "title": "Bisa Dipakai Offline",
         "description": "Penjualan, kasir, dan stok tetap bekerja 100% tanpa koneksi internet. Transaksi dan data Anda tidak pernah hilang."
       },
       {
-        "title": "No Hardware Barrier",
+        "title": "Tanpa Perangkat Mahal",
         "description": "Dibangun dengan stack teknologi state-of-the-art (Rust & SQLite tertanam) yang sangat ringan dan efisien. Berjalan mulus pada PC, tablet, maupun hardware kasir spesifikasi paling rendah."
       },
       {
-        "title": "Multi-Store & Multi-Terminal",
+        "title": "Multi-Toko & Multi-Kasir",
         "description": "Kelola banyak cabang toko, register kasir, dan gudang dalam satu topologi terpadu dengan sinkronisasi instan."
       },
       {
-        "title": "Advanced Reports & Analytics",
+        "title": "Laporan & Analitik Lengkap",
         "description": "Wawasan mendalam seputar tren penjualan, produk terlaris, analisis jam sibuk (rush-hour), dan margin laba bersih."
       },
       {
-        "title": "E-Wallets & Native QRIS",
+        "title": "QRIS & Dompet Digital",
         "description": "Terima pembayaran QRIS langsung di layar dan berbagai dompet digital tanpa perlu sewa perangkat EDC tambahan."
       },
       {
-        "title": "Debit & Credit Card",
+        "title": "Kartu Debit & Kredit",
         "description": "Integrasi mulus dengan terminal EDC dan payment gateway modern untuk kartu chip, contactless, dan gesek."
       },
       {
-        "title": "Whitelabel",
+        "title": "Whitelabel (Merek Sendiri)",
         "description": "Kustomisasi penuh untuk logo bisnis, header struk belanja, dan format cetak kasir Anda mulai dari paket Premium, tanpa perlu kontrak Enterprise khusus."
       },
       {
-        "title": "Lua Scripting",
+        "title": "Skrip Otomatis (Lua)",
         "description": "Mesin skrip Lua tertanam untuk fleksibilitas tanpa batas: logika diskon bertingkat, promo happy hour, BOGO, dan aturan pajak kustom."
       },
       {
-        "title": "Full Audit Logging & Shift",
+        "title": "Audit Lengkap & Shift Kasir",
         "description": "Catatan riwayat lengkap dan anti-manipulasi untuk setiap pembukaan laci kas, void, pembatalan, dan pergantian shift kasir."
       }
     ],
@@ -431,7 +431,21 @@
     "privacy": "Privasi",
     "terms": "Ketentuan",
     "legal": "Legal",
-    "business": "Jenis bisnis"
+    "sitemap": "Peta situs",
+    "col": {
+      "product": "Produk",
+      "solutions": "Solusi Kasir",
+      "business": "Jenis bisnis",
+      "help": "Bantuan"
+    },
+    "link": {
+      "kasirGratis": "Kasir Gratis",
+      "kasirMurah": "Kasir Murah",
+      "kasirQris": "Kasir QRIS",
+      "kasirAndroid": "Kasir Android",
+      "cara": "Cara Pakai",
+      "perbandingan": "Perbandingan"
+    }
   },
   "legal": {
     "privacyTitle": "Kebijakan Privasi",

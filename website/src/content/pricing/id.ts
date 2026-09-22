@@ -48,16 +48,16 @@ export const pricing: PricingTier[] = [
     description: 'Paket awal untuk lokasi tunggal yang siap berkembang.',
     cta: 'Berlangganan',
     prices: {
-      monthly: { price: 'Rp 49.000', period: '/m', priceId: 'pro_01m1amcb41qkbr7zzd1kxa3qnd' },
-      yearly: { price: 'Rp 500.000', period: '/y', priceId: 'pro_01m1amdj2swb3q21r2mwcy3krh' },
+      monthly: { price: 'Rp 49.000', period: '/bulan', priceId: 'pro_01m1amcb41qkbr7zzd1kxa3qnd' },
+      yearly: { price: 'Rp 500.000', period: '/tahun', priceId: 'pro_01m1amdj2swb3q21r2mwcy3krh' },
     },
     bundle: {
       id: 'restaurant_starter',
       label: 'Paket Restaurant Starter',
       note: 'Hemat 10% dari harga eceran',
       prices: {
-        monthly: { price: 'Rp 75.000', period: '/m', priceId: 'pri_placeholder_plus_bundle_monthly_usd' },
-        yearly: { price: 'Rp 750.000', period: '/y', priceId: 'pri_placeholder_plus_bundle_yearly_usd' },
+        monthly: { price: 'Rp 75.000', period: '/bulan', priceId: 'pri_placeholder_plus_bundle_monthly_usd' },
+        yearly: { price: 'Rp 750.000', period: '/tahun', priceId: 'pri_placeholder_plus_bundle_yearly_usd' },
       },
     },
     features: [
@@ -79,7 +79,7 @@ export const pricing: PricingTier[] = [
     highlight: true,
     prices: {
       monthly: {
-        price: 'Rp 99.000', period: '/m',
+        price: 'Rp 99.000', period: '/bulan',
         priceId: 'pro_01m1amdwp700jp6183k9zjsgaz',
         // C4.1: A/B variant — Rp 79.000 vs Rp 99.000 (controlled by ?ab=pro_price).
         // The variant price is NOT created on Paddle yet — placeholder keeps
@@ -87,7 +87,7 @@ export const pricing: PricingTier[] = [
         variantPriceId: 'pri_pro_monthly_usd_variant_799',
         variantPrice: 'Rp 79.000',
       },
-      yearly: { price: 'Rp 1.000.000', period: '/y', priceId: 'pro_01m1ame8ckw8vzjnf8y4q15mww' },
+      yearly: { price: 'Rp 1.000.000', period: '/tahun', priceId: 'pro_01m1ame8ckw8vzjnf8y4q15mww' },
     },
     features: [
       { label: '2 lokasi', included: true },
@@ -107,8 +107,8 @@ export const pricing: PricingTier[] = [
     description: 'Untuk jaringan multi-lokasi — whitelabel, loyalitas, dan otomatisasi.',
     cta: 'Berlangganan',
     prices: {
-      monthly: { price: 'Rp 399.000', period: '/m', priceId: 'pro_01m1amema8yj6w5mfm8wx8jwhm' },
-      yearly: { price: 'Rp 3.999.000', period: '/y', priceId: 'pro_01m1amf0vpbyfndg5rkvxvyqj4' },
+      monthly: { price: 'Rp 399.000', period: '/bulan', priceId: 'pro_01m1amema8yj6w5mfm8wx8jwhm' },
+      yearly: { price: 'Rp 3.999.000', period: '/tahun', priceId: 'pro_01m1amf0vpbyfndg5rkvxvyqj4' },
     },
     features: [
       { label: '5 lokasi', included: true },

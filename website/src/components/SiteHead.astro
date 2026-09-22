@@ -22,6 +22,7 @@
 import { ClientRouter } from 'astro:transitions';
 import { getAbsoluteLocaleUrl } from 'astro:i18n';
 import { locales } from '../i18n';
+import { fitDocumentTitle } from '../lib/seo';
 
 interface Props {
   /** Page title: <title> (unless titleTag overrides), og:title, twitter:title and both image alts. */
@@ -61,6 +62,12 @@ const {
   ogType = 'website',
   articleUpdatedAt,
 } = Astro.props;
+// Both titles pass through the shared budget (src/lib/seo.ts): a title long
+// enough to be truncated in a SERP loses its brand prefix rather than its page
+// name. Doing it here — the one place every content page's head is built —
+// keeps the rule off the ~20 pages that compose a title.
+const documentTitle = fitDocumentTitle(titleTag);
+const ogTitle = fitDocumentTitle(title);
 const ogLocale = locale === 'id' ? 'id_ID' : 'en_US';
 const ogAltLocale = locale === 'id' ? 'en_US' : 'id_ID';
 // hreflang alternates for the same page in the other locale. Reuse the
@@ -132,7 +139,7 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
 <meta property="og:site_name" content="kasir.mu" />
 <meta property="og:locale" content={ogLocale} />
 <meta property="og:locale:alternate" content={ogAltLocale} />
-<meta property="og:title" content={title} />
+<meta property="og:title" content={ogTitle} />
 <meta property="og:description" content={description} />
 <meta property="og:url" content={new URL(Astro.url.pathname, Astro.site)} />
 <!-- PNG (not SVG): social scrapers (Facebook/Twitter) don't rasterize SVG. The source is public/og-image.svg — regenerate with: magick public/og-image.svg public/og-image.png -->
@@ -144,11 +151,11 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
      and low-vision users of social cards, and are used by scrapers when
      the image itself cannot be fetched. Every page shares one brand card,
      so the title is the accurate description. -->
-<meta property="og:image:alt" content={title} />
+<meta property="og:image:alt" content={ogTitle} />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content={title} />
+<meta name="twitter:title" content={ogTitle} />
 <meta name="twitter:description" content={description} />
 <meta name="twitter:image" content={new URL('/og-image.png', Astro.site)} />
-<meta name="twitter:image:alt" content={title} />
+<meta name="twitter:image:alt" content={ogTitle} />
 <slot />
-<title>{titleTag}</title>
+<title>{documentTitle}</title>

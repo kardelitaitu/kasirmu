@@ -1,6 +1,19 @@
 ---
+/**
+ * Site footer: socials + copyright on the left, the sitemap and the legal
+ * links on the right.
+ *
+ * The sitemap is DATA (`FOOTER_COLUMNS` in ../lib/footer-nav), not markup, and
+ * every visible string resolves through `t(locale, …)` — including the column
+ * headings and the nav's accessible name. The link text used to be written
+ * into the markup as bare Indonesian words with no locale branch, so /en/
+ * pages rendered "Fitur / Harga / Unduh / Warung / Kafe / …" under English
+ * headings. A label key cannot drift like that: the i18n audit fails on a key
+ * that is missing from either dictionary.
+ */
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import { t } from '../i18n';
+import { FOOTER_COLUMNS } from '../lib/footer-nav';
 
 interface Props {
   /** Page locale, threaded down by Base so the copy matches the document. */
@@ -80,35 +93,22 @@ const year = new Date().getFullYear();
 
     <!-- Right: Sitemap + Legal Links -->
     <div class="flex flex-col items-center gap-6 sm:items-end">
-      <nav class="flex flex-wrap items-start justify-center gap-x-10 gap-y-4 text-xs sm:justify-end" aria-label="Sitemap">
-        <div class="flex flex-col gap-2">
-          <span class="font-semibold text-ink">{locale === 'id' ? 'Produk' : 'Product'}</span>
-          <a href={getRelativeLocaleUrl(locale, 'features')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Fitur</a>
-          <a href={getRelativeLocaleUrl(locale, 'pricing')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Harga</a>
-          <a href={getRelativeLocaleUrl(locale, 'download')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Unduh</a>
-        </div>
-        <div class="flex flex-col gap-2">
-          <span class="font-semibold text-ink">{locale === 'id' ? 'Solusi Kasir' : 'Solutions'}</span>
-          <a href={getRelativeLocaleUrl(locale, 'kasir-gratis')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Kasir Gratis</a>
-          <a href={getRelativeLocaleUrl(locale, 'kasir-murah')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Kasir Murah</a>
-          <a href={getRelativeLocaleUrl(locale, 'kasir-qris')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Kasir QRIS</a>
-          <a href={getRelativeLocaleUrl(locale, 'aplikasi-kasir-android')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Kasir Android</a>
-        </div>
-        <div class="flex flex-col gap-2">
-          <span class="font-semibold text-ink">{locale === 'id' ? 'Bisnis' : 'Business'}</span>
-          <a href={getRelativeLocaleUrl(locale, 'warung')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Warung</a>
-          <a href={getRelativeLocaleUrl(locale, 'cafe')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Kafe</a>
-          <a href={getRelativeLocaleUrl(locale, 'restaurant')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Restoran</a>
-          <a href={getRelativeLocaleUrl(locale, 'minimarket')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Minimarket</a>
-          <a href={getRelativeLocaleUrl(locale, 'warehouse')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Gudang</a>
-        </div>
-        <div class="flex flex-col gap-2">
-          <span class="font-semibold text-ink">{locale === 'id' ? 'Bantuan' : 'Help'}</span>
-          <a href={getRelativeLocaleUrl(locale, 'docs')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Docs</a>
-          <a href={getRelativeLocaleUrl(locale, 'support')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Support</a>
-          <a href={getRelativeLocaleUrl(locale, 'cara')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">{locale === 'id' ? 'Cara Pakai' : 'How-To Guides'}</a>
-          <a href={getRelativeLocaleUrl(locale, 'perbandingan')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">{locale === 'id' ? 'Perbandingan' : 'Compare'}</a>
-        </div>
+      <nav class="flex flex-wrap items-start justify-center gap-x-10 gap-y-4 text-xs sm:justify-end" aria-label={t(locale, 'footer.sitemap')}>
+        {
+          FOOTER_COLUMNS.map((column) => (
+            <div class="flex flex-col gap-2">
+              <span class="font-semibold text-ink">{t(locale, column.heading)}</span>
+              {column.links.map((link) => (
+                <a
+                  href={getRelativeLocaleUrl(locale, link.slug)}
+                  class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink"
+                >
+                  {t(locale, link.label)}
+                </a>
+              ))}
+            </div>
+          ))
+        }
       </nav>
       <nav class="flex items-center gap-6 text-xs text-muted" aria-label={t(locale, 'footer.legal')}>
         <a href={getRelativeLocaleUrl(locale, 'legal/privacy')} class="footer-link relative transition-colors duration-200 hover:text-ink">
