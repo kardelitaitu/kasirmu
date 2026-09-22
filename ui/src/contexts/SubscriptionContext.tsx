@@ -103,3 +103,36 @@ export function useAdminGate(): { locked: boolean; state: SubscriptionUiState } 
   const resolved = state ?? 'unavailable';
   return { locked: resolved !== 'active', state: resolved };
 }
+
+/** The ADR #58 §2.3 re-authentication window: 3 days before `expiresAt`. */
+export const PRE_EXPIRY_REAUTH_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+
+/**
+ * ADR #58 §2.3: Hook to determine if the paid subscription is within the 3-day
+ * pre-expiry re-authentication window where an online check is required / prompted.
+ */
+export function usePreExpiryReauth(): {
+  isPreExpiryWindow: boolean;
+  daysRemaining: number;
+  expiresAt: string | null;
+} {
+  const { caps, state } = useSubscription();
+  if (!caps || caps.tier === 'free' || !caps.expiresAt || state !== 'active') {
+    return { isPreExpiryWindow: false, daysRemaining: 0, expiresAt: null };
+  }
+
+  const expiresAtMs = Date.parse(caps.expiresAt);
+  if (Number.isNaN(expiresAtMs)) {
+    return { isPreExpiryWindow: false, daysRemaining: 0, expiresAt: null };
+  }
+
+  const nowMs = Date.now();
+  const isPreExpiryWindow =
+    nowMs >= expiresAtMs - PRE_EXPIRY_REAUTH_WINDOW_MS && nowMs < expiresAtMs;
+  const daysRemaining = isPreExpiryWindow
+    ? Math.max(1, Math.ceil((expiresAtMs - nowMs) / (24 * 60 * 60 * 1000)))
+    : 0;
+
+  return { isPreExpiryWindow, daysRemaining, expiresAt: caps.expiresAt };
+}
+

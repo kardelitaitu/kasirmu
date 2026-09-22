@@ -326,7 +326,8 @@ defeats the mechanism.
 ### 2.3 Re-authentication is required only in the last 3 days before expiry
 
 **IMPLEMENTED (2026-09-21) — see §4a Q-B.** The window gate ships as
-`shouldPollLicense` in `ui/src/features/settings/LicenseSettings.tsx`, and the ride-along that
+`shouldPollLicense` and the pre-expiry re-authentication prompt in `ui/src/features/settings/LicenseSettings.tsx`
+(with `usePreExpiryReauth` in `ui/src/contexts/SubscriptionContext.tsx`), and the ride-along that
 makes the gate safe ships in `platform/sync/src/daemon_tick.rs`. Every arm of the rule below is
 pinned by a test. The historical note follows, because it records what the tree looked like when
 the decision was taken.
@@ -1232,6 +1233,12 @@ which is true of the poll as it stands.
 > in-window (expires in ~1 day) so the existing poll tests still exercise the poll, and seven new
 > tests pin each arm of the gate — including one asserting `setInterval` is **not** called and
 > `checkLicenseStatus` is **not** invoked for a licence 90 days out.
+>
+> 3. **Merchant-facing pre-expiry prompt.** `ui/src/features/settings/LicenseSettings.tsx` renders a
+>    prominent warning banner (`.settings-license-reauth-banner`) when a paid tenant is inside the
+>    3-day pre-expiry window, informing the merchant that online re-authentication is required with a
+>    one-click "Verify Online Now" manual refresh trigger. A shared hook `usePreExpiryReauth()` in
+>    `ui/src/contexts/SubscriptionContext.tsx` exposes the window status and days remaining for UI gates.
 
 ### Q-C — Does an existing `revoked_at` on a DEVICE outlive a tenant un-revoke? `[deferrable]` — DECIDED
 

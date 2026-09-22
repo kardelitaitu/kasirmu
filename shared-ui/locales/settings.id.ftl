@@ -770,6 +770,10 @@ settings-license-resume-subscription = Lanjutkan langganan
 settings-license-resume-aria = Lanjutkan langganan yang dijeda
 settings-license-resume-success = Langganan dilanjutkan!
 settings-license-resume-failed = Gagal melanjutkan langganan
+# ADR #58 §2.3: Pre-expiry re-authentication window
+settings-license-reauth-banner-title = Pemeriksaan Perpanjangan Langganan Diperlukan
+settings-license-reauth-banner-desc = Langganan Anda berakhir dalam { $days } hari. Hubungkan ke internet untuk melakukan autentikasi ulang dengan server lisensi.
+settings-license-reauth-action = Verifikasi Online Sekarang
 settings-copyright-notice-value = kasir.mu © 2025–2026. Seluruh hak cipta dilindungi.
 
 # ── Toast messages ──

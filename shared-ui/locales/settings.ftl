@@ -543,6 +543,10 @@ settings-license-resume-subscription = Resume subscription
 settings-license-resume-aria = Resume paused subscription
 settings-license-resume-success = Subscription resumed!
 settings-license-resume-failed = Failed to resume subscription
+# ADR #58 §2.3: Pre-expiry re-authentication window
+settings-license-reauth-banner-title = Subscription Renewal Check Required
+settings-license-reauth-banner-desc = Your subscription expires in { $days } days. Connect to the internet to re-authenticate with the license server.
+settings-license-reauth-action = Verify Online Now
 settings-copyright-notice-value = kasir.mu © 2025–2026. All rights reserved.
 
 # Appearance / Brand settings

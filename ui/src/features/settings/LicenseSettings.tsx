@@ -394,9 +394,60 @@ export default function LicenseSettings() {
   }
 
   // ── Main render ─────────────────────────────────────────────
+  const now = Date.now();
+  const expiresAtMs = payload ? Date.parse(payload.expires_at) : NaN;
+  const isPreExpiry =
+    payload !== null &&
+    payload.tier_key !== 'free' &&
+    payload.status === 'active' &&
+    !Number.isNaN(expiresAtMs) &&
+    now >= expiresAtMs - REAUTH_WINDOW_MS &&
+    now < expiresAtMs;
+  const preExpiryDaysRemaining = isPreExpiry
+    ? Math.max(1, Math.ceil((expiresAtMs - now) / (24 * 60 * 60 * 1000)))
+    : 0;
+
   return (
     <Card shadow="sm" header={<Localized id="settings-section-license"><h2 className="settings-section-title">License</h2></Localized>}>
       <div className="settings-form settings-license-section" role="region" aria-label={l10n.getString('settings-section-license')}>
+
+        {/* ── Pre-expiry re-authentication prompt (ADR #58 §2.3) ── */}
+        {isPreExpiry && (
+          <div
+            className="settings-license-reauth-banner"
+            role="alert"
+            data-testid="license-reauth-banner"
+          >
+            <div className="settings-license-reauth-content">
+              <span className="settings-license-reauth-title">
+                <Localized id="settings-license-reauth-banner-title">
+                  <span>Subscription Renewal Check Required</span>
+                </Localized>
+              </span>
+              <span className="settings-license-reauth-desc">
+                <Localized
+                  id="settings-license-reauth-banner-desc"
+                  vars={{ days: preExpiryDaysRemaining }}
+                >
+                  <span>
+                    Your subscription expires in {preExpiryDaysRemaining} days. Connect to the internet to re-authenticate with the license server.
+                  </span>
+                </Localized>
+              </span>
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={checkingServer}
+              onClick={handleRefresh}
+              aria-label={l10n.getString('settings-license-reauth-action')}
+            >
+              <Localized id="settings-license-reauth-action">
+                <span>Verify Online Now</span>
+              </Localized>
+            </Button>
+          </div>
+        )}
 
         {/* ── Subscription details from local payload ── */}
         <div className="settings-license-row">

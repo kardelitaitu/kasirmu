@@ -189,7 +189,7 @@ describe('LicenseSettings — EN', () => {
     it('renders expiry date', async () => {
       await renderWithFluent(<LicenseSettings />);
       // The date is formatted with toLocaleDateString — check it renders something
-      const expiresRow = screen.getByText(/expires/i).closest('.settings-license-row');
+      const expiresRow = screen.getByText(/^expires$/i).closest('.settings-license-row');
       expect(expiresRow).toBeInTheDocument();
     });
 
@@ -400,6 +400,53 @@ describe('LicenseSettings — EN', () => {
       expect(mockCheckLicenseStatus).not.toHaveBeenCalled();
       expect(setIntervalSpy).not.toHaveBeenCalled();
       setIntervalSpy.mockRestore();
+    });
+  });
+
+  describe('Pre-expiry re-authentication prompt (ADR #58 §2.3)', () => {
+    it('renders re-auth banner when paid subscription is within 3 days of expiry', async () => {
+      mockGetLicenseStatus.mockResolvedValue({
+        payload: JSON.stringify(makePayload({ expires_at: new Date(Date.now() + 2 * 86400000).toISOString() })),
+        tier: 'pro',
+        status: 'active',
+      });
+      await renderWithFluent(<LicenseSettings />);
+      expect(screen.getByTestId('license-reauth-banner')).toBeInTheDocument();
+      expect(screen.getByText(/subscription renewal check required/i)).toBeInTheDocument();
+      expect(screen.getByText(/verify online now/i)).toBeInTheDocument();
+    });
+
+    it('clicking verify online triggers checkLicenseStatus', async () => {
+      mockGetLicenseStatus.mockResolvedValue({
+        payload: JSON.stringify(makePayload({ expires_at: new Date(Date.now() + 2 * 86400000).toISOString() })),
+        tier: 'pro',
+        status: 'active',
+      });
+      mockCheckLicenseStatus.mockResolvedValue({ tier: 'pro', active: true });
+      await renderWithFluent(<LicenseSettings />);
+      const verifyButton = screen.getByRole('button', { name: /verify online now/i });
+      fireEvent.click(verifyButton);
+      expect(mockCheckLicenseStatus).toHaveBeenCalled();
+    });
+
+    it('does not render re-auth banner outside the 3-day window', async () => {
+      mockGetLicenseStatus.mockResolvedValue({
+        payload: JSON.stringify(makePayload({ expires_at: new Date(Date.now() + 10 * 86400000).toISOString() })),
+        tier: 'pro',
+        status: 'active',
+      });
+      await renderWithFluent(<LicenseSettings />);
+      expect(screen.queryByTestId('license-reauth-banner')).not.toBeInTheDocument();
+    });
+
+    it('does not render re-auth banner for free tier', async () => {
+      mockGetLicenseStatus.mockResolvedValue({
+        payload: JSON.stringify(makePayload({ tier_key: 'free', expires_at: new Date(Date.now() + 86400000).toISOString() })),
+        tier: 'free',
+        status: 'active',
+      });
+      await renderWithFluent(<LicenseSettings />);
+      expect(screen.queryByTestId('license-reauth-banner')).not.toBeInTheDocument();
     });
   });
 
