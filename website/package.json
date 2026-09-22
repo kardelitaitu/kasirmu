@@ -13,6 +13,7 @@
     "precheck": "node scripts/audit-i18n.mjs && node --experimental-strip-types scripts/check-password-policy.mjs && vitest run",
     "check:i18n": "node scripts/audit-i18n.mjs",
     "check:links": "node scripts/check-links.mjs",
+    "check:seo": "node --experimental-strip-types scripts/check-seo.mjs",
     "astro": "astro",
     "deploy": "bash ../scripts/wrangler-deploy.sh",
     "preview": "astro preview",

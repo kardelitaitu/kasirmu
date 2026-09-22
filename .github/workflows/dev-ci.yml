@@ -167,6 +167,17 @@ jobs:
         run: cd website && npm run build
       - name: Internal link check
         run: cd website && npm run check:links
+      # The rendered <head> is the one thing a crawler actually reads, and the
+      # only surface the unit suite cannot check: `npm test` runs BEFORE
+      # `npm run build` in this job, so a test that read dist/** would fail on a
+      # clean checkout. That left canonical/og:url self-consistency, hreflang
+      # reciprocity including x-default, sitemap ⇄ built-page agreement,
+      # noindex discipline, JSON-LD validity and title/description uniqueness
+      # verified by nothing but source-shape assertions. check:seo reads the
+      # built files and fails naming the page, alongside the link gate above.
+      # ~0.2s, so it costs the job nothing.
+      - name: SEO / head check
+        run: cd website && npm run check:seo
 
   # ── 2. Cargo Check: Fast compilation check ────────────────────────────
   cargo-check:
