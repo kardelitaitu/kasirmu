@@ -36,6 +36,10 @@ export default function SearchModal({ isOpen, onClose, locale, labels, docs }: P
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
+  // Whatever had focus before the dialog opened, so closing it can hand focus
+  // back instead of dropping it on <body> (which restarts Tab at the top of the
+  // page).
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -47,9 +51,13 @@ export default function SearchModal({ isOpen, onClose, locale, labels, docs }: P
 
   useEffect(() => {
     if (isOpen) {
+      previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
       setQuery('');
       setSelectedIndex(0);
       setTimeout(() => inputRef.current?.focus(), 50);
+    } else if (previouslyFocusedRef.current) {
+      previouslyFocusedRef.current.focus?.();
+      previouslyFocusedRef.current = null;
     }
   }, [isOpen]);
 
@@ -63,7 +71,28 @@ export default function SearchModal({ isOpen, onClose, locale, labels, docs }: P
         return;
       }
 
-      if (e.key === 'Escape') {
+      if (e.key === 'Tab') {
+        // Keep focus inside the dialog. `aria-modal="true"` tells assistive
+        // tech the rest of the page is inert, so it must not be tabbable
+        // either — without this, Tab walks out of the dialog into the page
+        // behind the backdrop (measured: 10 tabs forward, 1 shift-tab back).
+        const focusables = dialogRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        );
+        if (focusables && focusables.length > 0) {
+          const first = focusables[0];
+          const last = focusables[focusables.length - 1];
+          const active = document.activeElement;
+          const inside = active ? dialogRef.current?.contains(active) === true : false;
+          if (e.shiftKey && (active === first || !inside)) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && (active === last || !inside)) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      } else if (e.key === 'Escape') {
         e.preventDefault();
         onClose();
       } else if (e.key === 'ArrowDown') {

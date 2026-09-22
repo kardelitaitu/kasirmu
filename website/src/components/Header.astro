@@ -7,7 +7,18 @@ import ThemeToggle from './ThemeToggle.astro';
 import SearchTrigger from './SearchTrigger';
 import { SEARCH_LABELS } from './SearchModal';
 
-const locale = Astro.currentLocale ?? 'en';
+interface Props {
+  /**
+   * The locale the page resolved. `Base` passes it, so a page that overrides
+   * the locale (the locale-less 404 does) gets a header in the same language as
+   * its own copy — otherwise `Astro.currentLocale` on a non-prefixed route
+   * falls back to the site default and the document ships an English <h1>
+   * inside Indonesian chrome. Locale-prefixed pages pass the same value they
+   * would have derived, so this is a no-op for them.
+   */
+  locale?: string;
+}
+const locale = Astro.props.locale ?? Astro.currentLocale ?? 'en';
 // The search island's strings travel with the document, so the browser never
 // loads a locale dictionary (see src/i18n/labels.ts).
 const searchLabels = labelMap(locale, SEARCH_LABELS);
@@ -61,7 +72,7 @@ const login = getRelativeLocaleUrl(locale, 'login');
       <div class="group relative">
         <button
           type="button"
-          class="nav-link flex items-center gap-1 text-sm text-muted transition-colors duration-200 group-hover:text-ink focus:outline-none"
+          class="nav-link flex items-center gap-1 text-sm text-muted transition-colors duration-200 group-hover:text-ink"
           aria-expanded="false"
           aria-haspopup="true"
         >
@@ -302,8 +313,8 @@ const login = getRelativeLocaleUrl(locale, 'login');
          trigger's only layout footprint really is that 36px square. -->
     <div class="flex items-center gap-2.5">
       {isDocs ? <SearchTrigger client:load locale={locale} labels={searchLabels} docs={searchDocs} /> : <span class="h-9 w-9" aria-hidden="true"></span>}
-      <ThemeToggle />
-      <LocaleSwitcher />
+      <ThemeToggle locale={locale} />
+      <LocaleSwitcher locale={locale} />
       <a
         href={login}
         data-auth-nav

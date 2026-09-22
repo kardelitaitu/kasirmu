@@ -78,11 +78,20 @@ const desc = description ?? t(locale, 'meta.description');
     </SiteHead>
   </head>
   <body class="flex min-h-screen flex-col bg text-ink antialiased">
-    <Header />
-    <main class="flex-1">
+    <!-- Skip link: the header is ~12 controls deep, so without this every
+         keyboard user crosses the whole nav (and on docs pages the sidebar)
+         before reaching the page content. Visible only while focused. -->
+    <a
+      href="#main"
+      class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-on-primary"
+    >
+      {t(locale, 'nav.skipToContent')}
+    </a>
+    <Header locale={locale} />
+    <main id="main" class="flex-1">
       <slot />
     </main>
-    <Footer />
+    <Footer locale={locale} />
     <script>
       // Scroll-reveal: observe elements with [data-reveal] and add .revealed class
       function initScrollReveal() {

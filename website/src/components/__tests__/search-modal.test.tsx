@@ -266,6 +266,98 @@ describe('SearchModal — keyboard navigation', () => {
       await m.unmount();
     }
   });
+
+  // ── Focus containment ─────────────────────────────────────────────
+  // Measured live before this: 10 tabs forward out of the dialog, and one
+  // shift-tab back. `aria-modal="true"` claims the rest of the page is inert,
+  // so it must not be tabbable either.
+
+  const searchInput = () => document.body.querySelector('input[type="search"]') as HTMLInputElement;
+
+  it('wraps focus to the first stop when tabbing forward off the last option', async () => {
+    const m = await renderOpen();
+    try {
+      const options = m.options();
+      options[options.length - 1].focus();
+      await m.press('Tab');
+      expect(document.activeElement).toBe(searchInput());
+    } finally {
+      await m.unmount();
+    }
+  });
+
+  it('wraps focus to the last option on Shift+Tab from the first stop', async () => {
+    const m = await renderOpen();
+    try {
+      searchInput().focus();
+      await m.press('Tab', { shiftKey: true });
+      const options = m.options();
+      expect(document.activeElement).toBe(options[options.length - 1]);
+    } finally {
+      await m.unmount();
+    }
+  });
+
+  it('pulls focus back into the dialog if it is outside it', async () => {
+    const m = await renderOpen();
+    try {
+      const outsider = document.createElement('button');
+      document.body.appendChild(outsider);
+      outsider.focus();
+      await m.press('Tab');
+      expect(document.activeElement).toBe(searchInput());
+      outsider.remove();
+    } finally {
+      await m.unmount();
+    }
+  });
+});
+
+// ── SearchModal — focus is returned to the opener on close ───────────
+
+describe('SearchModal — focus restore', () => {
+  async function render(open: boolean, root: ReturnType<typeof createRoot>) {
+    await act(async () => {
+      root.render(
+        <SearchModal
+          isOpen={open}
+          onClose={vi.fn()}
+          locale="en"
+          labels={labelMap('en', SEARCH_LABELS)}
+          docs={DOCS}
+        />,
+      );
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 60));
+    });
+  }
+
+  it('hands focus back to the element that opened it', async () => {
+    const opener = document.createElement('button');
+    opener.textContent = 'Search';
+    document.body.appendChild(opener);
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+      opener.focus();
+      await render(true, root);
+      // Focus moved into the dialog while open.
+      expect(document.activeElement).toBe(document.body.querySelector('input[type="search"]'));
+
+      await render(false, root);
+      // …and comes back to the trigger, so the next Tab resumes there rather
+      // than restarting at the top of the page.
+      expect(document.activeElement).toBe(opener);
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      opener.remove();
+    }
+  });
 });
 
 // ── SearchTrigger (gap analysis: 0 tests) ────────────────────────────

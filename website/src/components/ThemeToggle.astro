@@ -5,7 +5,12 @@
 // icon swaps via CSS (.icon-sun/.icon-moon rules in global.css).
 import { t } from '../i18n';
 
-const locale = Astro.currentLocale ?? 'en';
+interface Props {
+  /** Page locale, threaded down by Header so the label matches the document. */
+  locale?: string;
+}
+
+const locale = Astro.props.locale ?? Astro.currentLocale ?? 'en';
 ---
 
 <button

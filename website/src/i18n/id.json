@@ -34,7 +34,8 @@
     "theme": "Ganti tema",
     "language": "Bahasa",
     "homeAria": "Beranda kasir.mu",
-    "mainNav": "Navigasi utama"
+    "mainNav": "Navigasi utama",
+    "skipToContent": "Lewati ke konten"
   },
   "pageDesc": {
     "features": "Kasir offline-first: penjualan, shift, dan stok yang tetap berjalan tanpa koneksi sama sekali.",

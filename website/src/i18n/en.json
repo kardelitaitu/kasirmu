@@ -34,7 +34,8 @@
     "theme": "Toggle theme",
     "language": "Language",
     "homeAria": "kasir.mu home",
-    "mainNav": "Main navigation"
+    "mainNav": "Main navigation",
+    "skipToContent": "Skip to content"
   },
   "pageDesc": {
     "features": "Offline-first point of sale: sales, shifts, and stock that keep working with zero connectivity.",
