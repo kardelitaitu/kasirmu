@@ -667,9 +667,10 @@
 /* The days-left badge is the row's one urgency signal and the Restore button
    is its one action, so the name block takes the slack. Measured against the
    real sheet at 1280 / 768 / 390: the button's right edge stays 1px inside the
-   row's content box at every width, the display NAME wraps to a second line
-   once the row is narrow (the row grows; nothing is lost), and the second
-   line — username, or a role description — is what ellipsises. */
+   row's content box at every width, and the second line — username, or a role
+   description — is what ellipsises. Above the phone tier the display name may
+   also wrap to a second line when the row is narrow; below it the row is a grid
+   and the name keeps its own line (see the tier at the foot of this sheet). */
 .staff-mgmt-trash-row {
   display: flex;
   align-items: center;
@@ -681,11 +682,13 @@
 }
 
 /* The day count is a SENTENCE, not a number, so it is the one child that cannot
-   simply shrink: at a phone width it is wider than the space left beside the
-   Restore button. Letting its text wrap (the row grows a line) is what keeps the
-   button inside the row — measured at 390px with the real sheet, the row
-   otherwise overflows 4px and the button lands 18px past its content box. The
-   name block absorbs the slack in every other case. */
+   simply shrink: beside the Restore button it needs 217px to hold one line, and
+   at a phone width less than that is left over. Above the 600px tier it stays a
+   one-line pill and the name block absorbs the slack. Below that tier the pill
+   is dropped and the sentence becomes a plain secondary line on its own row (see
+   the tier at the foot of this sheet): measured at 390px against the real sheet,
+   the pill there starves the name block to 0px and the name paints across it,
+   and even handed a full row to itself the pill still wraps to two lines. */
 .staff-mgmt-trash-days {
   min-width: 0;
   white-space: normal;
@@ -1186,6 +1189,35 @@
 
   .staff-mgmt-footer {
     padding: var(--space-1) var(--space-4);
+  }
+
+  /* The trash row's day count cannot stay a pill at this width. The sentence is
+     217px on one line, so beside the Restore button the pill wraps to two lines
+     and squeezes the name block to 0px — the name then paints straight across
+     the pill. Hand the identity its own full-width row and drop the pill's
+     chrome, so the day count reads as a plain line under the name and the button
+     keeps the second row's right edge. The text keeps the badge's --color-info,
+     because this line is still the row's one urgency signal — only the pill's
+     shape and fill go. Measured at 390px against the real sheet: every row
+     overflow 0 and the button 1px inside the content box. Above this tier
+     nothing changes: the pill holds one line and stays. */
+  .staff-mgmt-trash-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .staff-mgmt-trash-who {
+    grid-column: 1 / -1;
+  }
+
+  .staff-mgmt-trash-days {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-info);
+    font-size: var(--text-sm);
+    text-align: left;
   }
 }
 

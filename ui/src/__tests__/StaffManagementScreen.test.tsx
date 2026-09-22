@@ -1200,6 +1200,21 @@ describe('StaffManagementScreen trash', () => {
     // 90-day window minus the 40 days the fixture is old.
     expect(within(row).getByText('50 days before permanent deletion')).toBeInTheDocument();
     expect(screen.getByTestId('staff-trash-role-night-manager')).toHaveTextContent('Night Manager');
+
+    // The phone tier's two-column grid (StaffManagementScreen.css, the 600px
+    // @container block) rests on the row being [who][days][Restore] with the
+    // days span and the button as DIRECT children: it gives the who block both
+    // columns, then puts days in column 1 and Restore in column 2. Move either
+    // into the who block and the button silently loses its right edge at phone
+    // widths — a layout the jsdom suite cannot see, so the structure it depends
+    // on is asserted here instead.
+    for (const r of [row, screen.getByTestId('staff-trash-role-night-manager')]) {
+      const days = r.querySelector('.staff-mgmt-trash-days');
+      expect(days).not.toBeNull();
+      expect(days?.parentElement).toBe(r);
+      const restore = within(r).getByRole('button', { name: /^Restore/ });
+      expect(restore.parentElement).toBe(r);
+    }
   });
 
   it('says the trash is empty rather than rendering an empty list', async () => {
