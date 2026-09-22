@@ -156,6 +156,37 @@ failures.**
 Commits: `d8666db1e` (staff login), `eb632399f` (session lock), `b705afed1` (create owner),
 `f968914a0` (activation + dead branch).
 
+### Round 5 — the website auth islands: two labels that never localized
+
+Having confirmed the surface was free, I checked the website forms for the same defect classes and
+found the surface **much better built than I assumed** — most of my hypotheses were wrong, which is
+worth recording:
+
+| Hypothesis | Reality |
+|---|---|
+| No live password feedback (silent-disable, like the app) | **Wrong.** `PasswordStrength` renders a 4-segment meter with a label, so the rule is visible. |
+| No mismatch feedback | **Wrong.** `PasswordField:128` shows a live mismatch hint. |
+| Email has no feedback either | **Wrong.** `SignupForm:391` shows a live ✓ for a valid address. |
+| `required type="email"` with no `noValidate` is the app's dead-branch bug again | **Wrong, and correctly so.** `AuthForm`'s handlers do NO client-side email validation — the native gate is the only one, so it is load-bearing rather than shadowing. The app's bug came from having *both* a JS check and the native gate; the website has only one. |
+
+**The defect that WAS real:** two accessible names were literal English in the JSX of otherwise
+fully localized islands —
+
+- `PasswordField` `aria-label="Passwords match"`
+- `SignupForm` `aria-label="Valid email"`
+
+A screen reader announced English to an Indonesian user while every visible string around them was
+translated. Both are now keys the component declares and its owning islands spread (the pattern
+`PASSWORD_FIELD_LABELS` already used for `password.mismatch`), added to **both** dictionaries with
+real translations.
+
+The proving test renders the field in **both locales** and asserts the Indonesian bundle's own word
+appears and the English one does not — the assertion that was impossible while the string was
+hardcoded. Verified to go red with the label hardcoded again.
+
+**Commit:** `7de6f582a`. **Verification:** `npx tsc --noEmit` clean · **1,250 website tests pass
+across 62 files** · the island-label-coverage gate passes with the new keys.
+
 ### Remaining, and honestly not mine to claim
 
 - **The website auth islands are unaudited by me.** Another agent owns that surface and has
