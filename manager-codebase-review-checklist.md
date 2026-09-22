@@ -13,7 +13,7 @@ Derived from manager-codebase-review.md (commit 954d4b094), 2026-09-23. Nothing 
   **Slices from the D1 design** (each independently shippable, in this order): **S1** branch-tolerant read in crates/kasirmu-crypto/src/lib.rs - a candidate-key helper (legacy first, master second) behind one decrypt path that treats the AES-GCM tag as the sole oracle; no marker column, no envelope version byte, no schema change, no eager rewrap. Gate = the existing pin test in crates/kasirmu-core/tests/credential_storage_form.rs **inverted** (child under OZ_MASTER_KEY decrypts the parent's legacy row; a master-written row still fails in the parent). **S1.5** fail closed on shaped-but-undecryptable values at platform/core/src/settings/typed.rs:334, :361, :437, :553, :639 - today they `unwrap_or(v)` and hand the ciphertext back as the credential. **S2a** dormant install-key seam in crypto. **S2b** new keychain entry oz-pos/at-rest-key.v1 (generate-once-if-absent) wired at startup - do NOT reuse oz-pos/encryption-key, whose rotation archives the old key without re-wrapping any row. **S2c** opt-in `oz rekey` CLI that copies the DB first and prints counts, never values. **S3** a pin test that .ozpkg user JSON never carries national_id or monthly pay.
   Done when: a per-install key is held in the OS keychain, a test asserts the static fallback cannot be reached in a release build, and a row written under the legacy derivation still decrypts after the key exists. **Precondition, and it is most of the work: make the reader branch-tolerant first** (see D1) - simply setting the environment variable, or refusing to boot without it, silently bricks five credential families and both PII columns on any existing install, including two families that have no product setter to restore them.
 
-- [ ] **C2 [P0] Put an integrity gate on plugin loading** (6.4, P0-8)
+- [ ] **C2 [P0] Put an integrity gate on plugin loading** (6.4, P0-8) - **first step DONE (28a2bfeb)**: content fingerprint at load, automatic hot-swap REMOVED (a change is refused with a visible error and the running set survives; restart picks up a change), and the three unread capability flags now fail closed. Signature verification and the operator grant store remain - they are the part your D7 answer decides.
   Fence: crates/kasirmu-plugin/src/lib.rs:8-12; manager.rs:109-129 and :218-308; apps/desktop-tauri/src/state.rs:325-347 and :702-755; manifest.rs:186-192.
   See D7 for the recommended shape (signed/checksummed manifest, operator grant, gated watcher - not removing the host). Done when: a modified .lua file is refused with a visible error and the previous plugin set keeps running; required_permissions become an operator grant rather than a self-declaration; allow_network / allow_filesystem / allow_http are either enforced or deleted.
 
@@ -25,11 +25,11 @@ Derived from manager-codebase-review.md (commit 954d4b094), 2026-09-23. Nothing 
   Fence: platform/sync/src/queue.rs:558-563 - they currently fall to Err(unsupported remote sync action) and dead-letter.
   Done when: a refund made on terminal A is visible on terminal B after a pull, with stock and shift figures consistent on both. Copy the idempotence pattern already used by finalize_sale (queue.rs:553-557) rather than inventing one.
 
-- [ ] **C5 [P0] Stop counting voided and pending sales as revenue** (8.2, P0-4)
+- [x] **C5 [P0] Stop counting voided and pending sales as revenue** (8.2, P0-4) - **desktop path DONE 2026-09-23, commit 743f222f**; the tablet's duplicate EOD builder is C5b
   Fence: crates/kasirmu-core/src/db/sales.rs:266-269 (export_daily_summary, no status predicate); crates/kasirmu-bridge/src/history.rs:319 versus :326, :347, :358 (two day definitions on one sheet).
   Done when: a voided sale does not change total_revenue, and the EOD header reconciles with its own payment breakdown on a refund-and-void fixture - a fixture that does not exist today and has to be written.
 
-- [ ] **C6 [P0] Make the report timezone contract match the write contract** (8.1, P0-5)
+- [x] **C6 [P0] Make the report timezone contract match the write contract** (8.1, P0-5) - **DONE 2026-09-23, commit 7559a3f6b** (the provisioning-validation half is split out as C6b)
   Fence: crates/kasirmu-core/src/db/reports/datetime.rs:26-47 and :96-98 (25 call sites inherit the silent UTC fallback); crates/kasirmu-core/src/timezone.rs:18-45 (the correct mapping that already exists); crates/kasirmu-core/src/db/provisioning.rs:467-476 and :514-564 (no validation of the timezone it writes); ui/src/features/analytics/analytics-data.ts:86-97 and :118.
   Done when: a store provisioned as Asia/Jakarta reports a 00:30 local sale on that local day, asserted by a test, and provisioning rejects or normalizes anything the reporting path cannot interpret. This is a code fix - there is no data fix, because the writer refuses offsets.
 
@@ -38,7 +38,7 @@ Derived from manager-codebase-review.md (commit 954d4b094), 2026-09-23. Nothing 
   Sequence (see D2): create the oz_app role, grant DML on the 30 tables, point DATABASE_URL at it **and set OZ_APPLY_SCHEMA=0 in the same step**, verify, and only then consider FORCE as the follow-up. Keep **both** BYPASSRLS roles (webhook resolution and email discovery/prune) and the /status tolerance. Note the blocker this review first missed: the shipped PostgreSQL profile connects as a **superuser** (docker-compose.pg.yml sets POSTGRES_USER and DATABASE_URL from one variable, :21 and :39), and superusers bypass RLS even with FORCE on - so the cutover alone enforces nothing. Add a boot-time rolsuper / relforcerowsecurity assertion. Never add FORCE to the generated migration while the app connects as the table owner - every query would return zero rows on deploy.
   Done when: a tenant-table query without the tenant GUC returns zero rows and a write is rejected, a query with the GUC returns only that tenant's rows, and the reversal (NO FORCE plus DROP ROLE) is written down and rehearsed. Decide D2 first: if no deployment has run the cutover, this is live.
 
-- [ ] **C8 [P0] Make recovery real: restore in the app, a backup that survives, verification on both sides** (14.1, P0-9)
+- [ ] **C8 [P0] Make recovery real: restore in the app, a backup that survives, verification on both sides** (14.1, P0-9) - **slice S1 DONE (6814222)**: backups are copy -> verify (integrity_check on the snapshot) -> rotate 3 generations -> atomic rename; a failed copy leaves the previous snapshot byte-identical; remove_destination_for_backup deleted with the directory-target typed error preserved. S2 (validate + swap) and S3-S7 remain.
   Fence: crates/kasirmu-cli/src/commands/backup.rs:62-98 (the only restore); crates/kasirmu-core/src/db/mod.rs:264-272 and :281-305 (destination deleted before it is written) and :319 (check_integrity, no production caller); crates/kasirmu-bridge/src/data.rs:146-150 and :330-348; apps/desktop-tauri/src/commands/data.rs; ui/src/api/data.ts; ui/src/app/UpdateBanner.tsx:143-155 and :179-189.
   Approach (see D5): a **safe-mode boot flag** rather than an in-process restore - the live connection is an Arc shared with twelve detached daemons that cannot be joined, and there is no restart primitive. Done when: a restore_roundtrip test backs up through the same command the UI calls, corrupts the live database, restores from the app path, and asserts check_integrity() is Ok with a known sale reading back; a second case asserts a corrupt backup is refused and the live file is left byte-identical. Backups write to a temporary name and rename over the previous only on success; at least two generations are kept; the app either quiesces or refuses a restore while another process holds the database.
 
@@ -51,11 +51,11 @@ Derived from manager-codebase-review.md (commit 954d4b094), 2026-09-23. Nothing 
   Fence: sales_checkout.rs:210, sales_lifecycle.rs:179 and :606, refunds.rs:66, gift_cards.rs:53, loyalty.rs:463, shifts.rs:109 (Immediate); a backfill migration before CHECK (qty >= 0) on stock_summary lands (20260813_init.sql:739-746 has none today); sales_tests.rs:3022-3092 (add busy_timeout, assert the lock error); migrations.rs:463-509 (fresh_db must apply production pragmas).
   Done when: (a) all seven sites use TransactionBehavior::Immediate; (b) the CHECK lands **after** a backfill that clamps or quarantines existing negatives, or it bricks startup; (c) fresh_db() carries busy_timeout 5000 and the loser of the concurrency test fails with a lock error rather than an unexamined one. **Prerequisite: C11.** Do not hunt for a reproduction of an oversell - the defect is the false invariant and the untested error path.
 
-- [ ] **C11 [P1, prerequisite] Snapshot before every migration, and document the pre-flight** (14.2)
+- [x] **C11 [P1, prerequisite] Snapshot before every migration** (14.2) - **code half DONE 2026-09-23, commit 9c6d76e1**; the runbook/pre-flight half is split out as C11b
   Fence: platform/core/src/database/migrations.rs:112-121 (drift is repaired by re-running SQL on live data) and :424-446 (per-statement fallback loses per-file atomicity); docs/operations/ (no pre-upgrade procedure for the desktop file); scripts/backup-db.sh.
   Done when: a test asserts a snapshot exists after migrations::run, a migration that fails midway leaves both the database and the snapshot intact, and the runbook names the four pinned un-re-runnable migrations (migrations_tests.rs:361-366) as the reason.
 
-- [ ] **C12 [P1, prerequisite] Variance report for stock already double-deducted** (5.1 remediation)
+- [x] **C12 [P1, prerequisite] Variance report for stock already double-deducted** (5.1 remediation) - **DONE 2026-09-23, commit bdaffa47**; wiring it to an operator surface is C12b
   Fence: a new reconciliation over stock_summary against stock_movements per (item, location).
   Done when: the report exists, has a test on a seeded double-deducted fixture, and an operator can accept or adjust each difference. Never write a blanket qty = SUM(deltas) update - it destroys legitimate manual adjustments.
 
@@ -67,7 +67,7 @@ Derived from manager-codebase-review.md (commit 954d4b094), 2026-09-23. Nothing 
 - [ ] **C14 Stop treating local_api.secret as plaintext and stop double-purposing it** (6.6) - crates/kasirmu-local-api/src/lib.rs:48-60, :202-227; clamp expiry_hours on POST /api/v1/tokens as the IPC mint already does (kasirmu-api/src/auth.rs:200-202).
 - [ ] **C15 Give one sale one total** (9.2) - decide whether tip and service belong in sales.total_minor or only in payments, and make validate_payment_splits_cover_total compare like with like (db/sales.rs:247; sales_checkout.rs:522-534, :613).
 - [ ] **C16 Fix the drawer: split tender and refund attribution** (8.4) - derive expected_cash from the payments table rather than the payment_method stamp; attribute refunds to refunds.processed_by (db/shifts.rs:147-186 versus :302-314; refunds.rs:340-342). Add the missing close_shift tests for split tender and house-account credit.
-- [ ] **C17 Work the IPC gate debt down deliberately** (7.3) - delete the renderer-supplied user_id variant of settings::set_setting in favour of the scoped twin (commands/settings.rs:243-253); gate create_backup or document it as a deliberate unauthenticated filesystem write (bridge/data.rs:330-347); lower the two generated ceilings, never raise them.
+- [ ] **C17 Work the IPC gate debt down deliberately** (7.3) - **slice 1 DONE and verified (3aa5af0e)**: tablet ceilings 95 -> 92, class-1 51 -> 48, REGISTERED_TOTAL 345 -> 342, all four drift pins green; items 1, 2, 4-10 remain - delete the renderer-supplied user_id variant of settings::set_setting in favour of the scoped twin (commands/settings.rs:243-253); gate create_backup or document it as a deliberate unauthenticated filesystem write (bridge/data.rs:330-347); lower the two generated ceilings, never raise them.
 - [ ] **C18 Wrap the money-path autocommit writes** (4.4) - 138 conn.execute sites in db/ outside tests; make update_sale_status a conditional in-transaction update like void_sale already is (sales_crud.rs:558-600 versus sales_lifecycle.rs:787-798).
 - [ ] **C19 Enforce conflicts, or stop pretending to** (5.4, 5.5) - consume Decision::LastWriterWins and Decision::AutoMerge or delete the computation; add sale to the money-entity test so a completed sale stops classifying as low-severity catalog metadata; write the 'delivering' state the CHECK constraint already allows; guard and transact mark_offline_synced (db/offline.rs:421-431).
 - [ ] **C20 Order the queue by priority on every push path** (5.3) - the daemon (platform/sync/src/daemon.rs:139) and the desktop bridge (kasirmu-bridge/src/sync.rs:545) do not sort, the tablet does (mobile commands/offline.rs:342).
@@ -121,6 +121,11 @@ Full analysis - deciding facts, options with pros and cons, what would change th
 
 ## Wave 4 - added during implementation
 
+- [ ] **C5b [P0] Mirror the EOD fix into the tablet's duplicate builder** - apps/mobile-tauri/src/commands/history.rs still lacks the status predicate and still mixes day definitions; its two hazard pins are now red/stale and must be INVERTED, not deleted (see commit 743f222f, which fixed only the desktop path).
+- [ ] **C6b [P1] Validate or normalize the timezone on the write path** - crates/kasirmu-core/src/db/provisioning.rs:467-476 and :514-564 insert locations.timezone verbatim with no validation while crates/kasirmu-bridge/src/locations.rs:314-321 accepts only Asia/Jakarta|Asia/Makassar|Asia/Jayapura|UTC. Split out of C6, whose reporting half is done.
+- [ ] **C11b [P2] Document the pre-migration snapshot and the pre-flight** - docs/operations/ carries no pre-upgrade procedure for the desktop SQLite file, and the four pinned un-re-runnable migrations (migrations_tests.rs:361-366) are not named anywhere an operator reads. Split out of C11, whose code half is done.
+- [ ] **C12b [P2] Wire the variance report to an operator surface** - the report exists in core (bdaffa47) with no caller: no Tauri command, no UI. Decide the surface (a Data-screen panel or a CLI subcommand) and gate it like the other read-only report surfaces.
+
 - [ ] **C31 [P2] Validate the Caddyfile itself, not just its routing semantics.** scripts/check-unified-routes.mjs parses apps/unified/Caddyfile as text, so a syntax error that the parser tolerates still ships and the container fails to start. Add caddy validate (or an equivalent parse) to the same gate, or state why it cannot run in CI. Found while closing C27.
 
 ## C17 work list (from the IPC gate-debt inventory; ceilings measured 75 desktop / 95 tablet during remediation)
@@ -151,6 +156,16 @@ Fill one row per ticked item. An item is not done until the command and its resu
 | C1 S1 | 2026-09-23 | cargo test -p kasirmu-crypto | 21 passed, 0 failed (EXIT 0) | 012dd2663 |
 | C1 S1 | 2026-09-23 | fails-before proof (lib.rs reverted at HEAD, new test in place) | 27 passed / 1 FAILED on decision_pin_reads_are_branch_tolerant, then lib.rs restored byte-for-byte | 012dd2663 |
 | C18 P1.1 | 2026-09-23 | (dispatched) acceptance is a CONFLICT-path test, not a happy path | pending | - |
+| C6 | 2026-09-23 | cargo test -p kasirmu-core datetime | 8 passed, 0 failed (EXIT 0) | 7559a3f6b |
+| C6 | 2026-09-23 | cargo test -p kasirmu-core --lib reports::tests | 80 passed, 0 failed - includes the INVERTED test iana_timezone_names_resolve_to_the_store_local_day | 7559a3f6b |
+| C11 | 2026-09-23 | cargo test -p platform-core migrations | 39 passed, 0 failed, 370 filtered (EXIT 0) | 9c6d76e1 |
+| C12 | 2026-09-23 | cargo test -p kasirmu-core stock_variance | 6 passed, 0 failed (EXIT 0) | bdaffa47 |
+| C17 slice 1 | 2026-09-23 | cargo test -p kasirmu-mobile registration_gate | 4 drift pins ok (ceilings_only_shrink, three_way_partition, registration_floor, generated_ledger_is_the_sweeps_own_output) - ceilings 92 | 3aa5af0e |
+| C5 | 2026-09-23 | cargo test -p kasirmu-core sales + cargo test -p kasirmu-bridge history | core 177 passed; bridge 17 passed incl. the new eod_report_reconciles_on_a_refund_and_void_fixture | 743f222f |
+| C2 step 1 | 2026-09-23 | cargo test -p kasirmu-plugin | 181 passed, 0 failed (+2 doctests) | 28a2bfeb |
+| C2 step 1 | 2026-09-23 | cargo test -p kasirmu-app --lib state::tests | 11 passed incl. plugin_change_is_refused_and_live_set_survives | 28a2bfeb |
+| C8 S1 | 2026-09-23 | cargo test -p kasirmu-core recovery | 5 passed, 0 failed | 6814222 |
+| C8 S1 | 2026-09-23 | cargo test -p kasirmu-core --test backup_restore_integration | 21 passed, 0 failed - the deletion did not break the RUST-03 directory-target pins | 6814222 |
 | C10 | | | | |
 | C11 | | | | |
 | C12 | | | | |
