@@ -109,6 +109,11 @@ check "ui tsx"              "rust=false ui=true i18n=true website=false docs=fal
 check "ui lockfile"         "rust=false ui=true i18n=false website=false docs=false release=false" "ui/package-lock.json"
 check "ftl bundle"          "rust=false ui=true i18n=true website=false docs=false release=false"  "shared-ui/locales/en/reports.ftl"
 check "website only"        "rust=false ui=false i18n=false website=true docs=false release=false" "website/src/pages/index.astro"
+# prototypes/ is outside website/ but its HTML is copied into
+# website/public/dev/ verbatim by scripts/sync-dev-files.mjs on prebuild, so it
+# reaches the build and check:seo's heading rule. Pinned because before this
+# rule the path matched NO bucket and a prototypes-only PR ran no job at all.
+check "prototype html"      "rust=false ui=false i18n=false website=true docs=false release=false" "prototypes/kds-prototype.html"
 check "i18n script"         "rust=false ui=false i18n=true website=false docs=false release=false" "scripts/verify-bundle-parity.py"
 # Docs must route to the drift checker: a docs-only PR is precisely the change
 # that can make CI docs lie, and before this output existed it ran nothing.

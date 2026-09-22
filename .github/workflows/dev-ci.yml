@@ -109,7 +109,15 @@ jobs:
             '^shared-ui/locales/|^ui/src/.*\.(ts|tsx)$|^scripts/lint-i18n\.sh$|^scripts/verify-bundle-parity\.py$|^scripts/dedupe-ftl\.py$|^scripts/verify-ftl-orphans\.py$' \
             && echo "i18n=true" >> "$GITHUB_OUTPUT" || echo "i18n=false" >> "$GITHUB_OUTPUT"
 
-          printf '%s\n' "$files" | grep -qE '^website/' \
+          # prototypes/ is not under website/, but its HTML ships VERBATIM:
+          # website/scripts/sync-dev-files.mjs (prebuild) copies the whole folder
+          # into website/public/dev/, so /dev/kds-prototype.html and
+          # /dev/design-language.html in the build output are byte-for-byte those
+          # files — and check:seo's heading rule judges them there. Before this
+          # rule existed a prototypes-only PR matched no bucket at all and ran NO
+          # job: not the test suite, not the post-build gate, so that page could
+          # lose its h1 with nothing to notice it.
+          printf '%s\n' "$files" | grep -qE '^website/|^prototypes/' \
             && echo "website=true" >> "$GITHUB_OUTPUT" || echo "website=false" >> "$GITHUB_OUTPUT"
 
           # Docs/CI truthfulness: the drift checker compares docs/operations/
