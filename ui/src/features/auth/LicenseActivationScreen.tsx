@@ -51,6 +51,15 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(initialError ?? null);
+  // The banner names the rule ("Enter a valid email") but not the control it
+  // refers to, so with two fields on screen the user has to guess which one to
+  // fix. Recording the offending field lets that input carry its own
+  // aria-invalid and error border.
+  const [badField, setBadField] = useState<'email' | 'phone' | null>(null);
+
+  /** Drop the mark as soon as the user edits the field it names. */
+  const clearBadField = (field: 'email' | 'phone') =>
+    setBadField((prev) => (prev === field ? null : prev));
   const [appVersion, setAppVersion] = useState<string>('0.0.39');
   const [ipAddress, setIpAddress] = useState<string>(requiredLocalized(l10n, 'auth-ip-detecting'));
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; field: 'email' | 'phone' | 'licenseKey' } | null>(null);
@@ -135,6 +144,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
   const handleActivate = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    setBadField(null);
     if (!key.trim() || !email.trim()) {
       setErrorMsg(l10n.getString('auth-validation-required'));
       return;
@@ -143,6 +153,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
     // Basic regex validation for email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim())) {
+      setBadField('email');
       setErrorMsg(l10n.getString('auth-validation-invalid-email'));
       return;
     }
@@ -151,11 +162,13 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
     // Accept international format (+country) or plain digits (min 7).
     const phoneTrimmed = phone.trim();
     if (!phoneTrimmed) {
+      setBadField('phone');
       setErrorMsg(l10n.getString('auth-validation-phone-required'));
       return;
     }
     const phoneDigits = phoneTrimmed.replace(/[^+\d]/g, '');
     if (phoneDigits.length < 7) {
+      setBadField('phone');
       setErrorMsg(l10n.getString('auth-validation-invalid-phone'));
       return;
     }
@@ -358,7 +371,12 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
                 </div>
               )}
 
-              <form onSubmit={handleActivate} autoComplete="off">
+              {/* noValidate: the app validates email and phone itself and shows LOCALIZED
+    copy (auth-validation-invalid-email / -invalid-phone). Left to the browser,
+    native constraint validation refuses to fire submit for type="email", so
+    handleActivate never runs - the app's own branch was unreachable and the
+    user got an untranslated browser bubble instead of the product's message. */}
+<form onSubmit={handleActivate} autoComplete="off" noValidate>
                 <div className="license-form-group">
                   <Localized id="auth-email-label">
                     <label htmlFor="email">Email Address</label>
@@ -374,8 +392,12 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
                       data-1p-ignore="true"
                       className="license-input"
                       placeholder={l10n.getString('auth-email-placeholder')}
+                      aria-invalid={badField === 'email' || undefined}
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        clearBadField('email');
+                      }}
                       onContextMenu={(e) => handleContextMenu(e, 'email')}
                       disabled={loading}
                     />
@@ -405,8 +427,12 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
                       data-1p-ignore="true"
                       className="license-input"
                       placeholder={l10n.getString('auth-phone-placeholder')}
+                      aria-invalid={badField === 'phone' || undefined}
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(e) => {
+                        setPhone(e.target.value);
+                        clearBadField('phone');
+                      }}
                       onContextMenu={(e) => handleContextMenu(e, 'phone')}
                       disabled={loading}
                     />

@@ -110,6 +110,64 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
     vi.mocked(activateLicense).mockResolvedValue(true);
     mockClipboardReadText.mockResolvedValue('clipboard-text');
   });
+  // ── A rejected submit marks the field it is about ───────────────────
+  //
+  // The banner names the rule ("Invalid email format") but not which control it
+  // refers to, and with two text fields on screen nothing distinguished the bad
+  // one — so a screen-reader user got a message with no field attached.
+
+  describe('validation marks the offending field', () => {
+    // The handler is async, so the mark lands after a microtask: every
+    // assertion here waits rather than reading synchronously.
+
+    it('marks only the email field when the email is malformed', async () => {
+      render(<LicenseActivationScreen onActivated={mockOnActivated} />);
+      fillForm('not-an-email', '08123456789', 'KEY123');
+      clickSubmit();
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Email Address/i)).toHaveAttribute('aria-invalid', 'true');
+      }, FAST_WAIT);
+      // The field that was fine must not be accused.
+      expect(screen.getByLabelText(/Phone Number/i)).not.toHaveAttribute('aria-invalid');
+    });
+    it('marks only the phone field when the phone is too short', async () => {
+      render(<LicenseActivationScreen onActivated={mockOnActivated} />);
+      fillForm('test@test.com', '123', 'KEY123');
+      clickSubmit();
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Phone Number/i)).toHaveAttribute('aria-invalid', 'true');
+      }, FAST_WAIT);
+      expect(screen.getByLabelText(/Email Address/i)).not.toHaveAttribute('aria-invalid');
+    });
+
+    it('disables submit rather than marking a whitespace-only phone', () => {
+      // The button's own guard is `!phone.trim()`, so a whitespace-only phone
+      // never reaches handleActivate: the disabled control IS the feedback, and
+      // an aria-invalid mark would be asserting a branch that does not run.
+      render(<LicenseActivationScreen onActivated={mockOnActivated} />);
+      fillForm('test@test.com', '   ', 'KEY123');
+
+      expect(screen.getByRole('button', { name: /Activate License/i })).toBeDisabled();
+      expect(screen.getByLabelText(/Phone Number/i)).not.toHaveAttribute('aria-invalid');
+    });
+
+    it('clears the mark as soon as the user edits that field', async () => {
+      render(<LicenseActivationScreen onActivated={mockOnActivated} />);
+      const email = screen.getByLabelText(/Email Address/i);
+      fillForm('not-an-email', '08123456789', 'KEY123');
+      clickSubmit();
+      await waitFor(() => {
+        expect(email).toHaveAttribute('aria-invalid', 'true');
+      }, FAST_WAIT);
+
+      fireEvent.change(email, { target: { value: 'fixed@example.com' } });
+
+      expect(email).not.toHaveAttribute('aria-invalid');
+    });
+  });
+
 
   describe('1. Mounting & Lifecycle', () => {
     it('1. getVersion resolves and displays the correct version on mount', async () => {
