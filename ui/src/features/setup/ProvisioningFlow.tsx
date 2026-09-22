@@ -1,6 +1,6 @@
 import { useCallback, useState, useEffect } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { getPresetFeatures, provisionDevice, type LocationKind, type ProvisioningMode } from '@/api/settings';
+import { getPresetFeatures, provisionDevice, type LocationKind, type Preset, type ProvisioningMode } from '@/api/settings';
 import { getDeviceId } from '@/api/system';
 import {
   consumeDeviceLinkCode,
@@ -16,7 +16,7 @@ import { useToast } from '@/components/Toast';
 import { Button } from '@/components/Button';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { QRCodeSVG } from 'qrcode.react';
-import type { Preset } from './SetupWizard';
+
 import './ProvisioningFlow.css';
 
 /** Formats an 8-character Crockford code with a middle separator for legibility. */
@@ -33,7 +33,8 @@ function formatCrockford(code: string): string {
  *
  * Requirements:
  * 1. Requires connecting to an account (Google on desktop, Email OTP on tablet)
- *    to obtain a tenant_id and link the device.
+ *    to obtain a tenant_id and link the device. The account is what the free
+ *    plan attaches to, so `mode` starts at 'linked' — see `provisionMode`.
  * 2. Hard blocks first run if offline with a clear connection message.
  * 3. Sends mode: 'linked' with tenant_id to provisionDevice.
  */
@@ -78,7 +79,12 @@ function kindForPreset(preset: Preset): LocationKind {
 export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProps) {
   const { l10n } = useLocalization();
   const { addToast } = useToast();
-  const [provisionMode, setProvisionMode] = useState<ProvisioningMode>('local');
+  // 'linked' is the DEFAULT, not merely an offered choice: the free plan attaches
+  // to a kasir.mu account (Google or an emailed code), so a fresh terminal signs
+  // up before it opens a register. The 'local' mode stays reachable — a merchant
+  // with no connection needs a way to provision at all — but it is now the
+  // deliberate exception rather than the path of least resistance.
+  const [provisionMode, setProvisionMode] = useState<ProvisioningMode>('linked');
   const [isOffline, setIsOffline] = useState(() => (typeof navigator !== 'undefined' ? !navigator.onLine : false));
   const [storeType, setStoreType] = useState<Preset | null>(null);
   const [locationName, setLocationName] = useState('');
@@ -225,6 +231,21 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
 
   const isLinked = linkedAccount !== null;
 
+  // ── Inline PIN validation ──────────────────────────────────────────
+  //
+  // `canSubmit` disables the button on a short or mismatched PIN, which leaves
+  // the merchant with a dead control and no reason for it. These two messages
+  // name the problem instead. Each is gated on the user having typed enough to
+  // HAVE the problem — a "PINs do not match" on first paint, before the confirm
+  // field is touched, reads as an accusation rather than help.
+  const pinTooShort = pin.length > 0 && pin.length < 4;
+  const pinMismatch = confirmPin.length > 0 && pin !== confirmPin;
+  const pinError = pinMismatch
+    ? l10n.getString('setup-provision-pin-mismatch')
+    : pinTooShort
+      ? l10n.getString('setup-provision-pin-too-short')
+      : null;
+
   const canSubmit =
     (provisionMode === 'local' || isLinked) &&
     storeType !== null &&
@@ -334,20 +355,9 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             <Localized id="setup-provision-mode-section">Setup Mode</Localized>
           </h2>
           <div className="provisioning-mode-options">
-            <button
-              type="button"
-              className={`provisioning-mode-card ${provisionMode === 'local' ? 'is-selected' : ''}`}
-              onClick={() => setProvisionMode('local')}
-              aria-pressed={provisionMode === 'local'}
-              data-testid="provision-mode-local"
-            >
-              <div className="provisioning-mode-card-header">
-                <span className="provisioning-mode-icon" aria-hidden="true">⚡</span>
-                <strong><Localized id="setup-mode-local-title">Standalone (Offline)</Localized></strong>
-              </div>
-              <p><Localized id="setup-mode-local-desc">No account needed. Set up and start selling 100% offline immediately.</Localized></p>
-            </button>
-
+            {/* The linked card is FIRST because it is the default: the free plan
+                attaches to an account, and the recommended path should not sit
+                second behind the exception. */}
             <button
               type="button"
               className={`provisioning-mode-card ${provisionMode === 'linked' ? 'is-selected' : ''}`}
@@ -357,9 +367,23 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             >
               <div className="provisioning-mode-card-header">
                 <span className="provisioning-mode-icon" aria-hidden="true">☁️</span>
-                <strong><Localized id="setup-mode-linked-title">Link kasir.mu Account (Free)</Localized></strong>
+                <strong><Localized id="setup-mode-linked-title">Link your kasir.mu account</Localized></strong>
               </div>
-              <p><Localized id="setup-mode-linked-desc">Connect to your cloud account for multi-device sync, cloud backup, and Free subscription.</Localized></p>
+              <p><Localized id="setup-mode-linked-desc">Sign up or sign in to attach this terminal to your account, for multi-device sync, cloud backup, and your plan.</Localized></p>
+            </button>
+
+            <button
+              type="button"
+              className={`provisioning-mode-card ${provisionMode === 'local' ? 'is-selected' : ''}`}
+              onClick={() => setProvisionMode('local')}
+              aria-pressed={provisionMode === 'local'}
+              data-testid="provision-mode-local"
+            >
+              <div className="provisioning-mode-card-header">
+                <span className="provisioning-mode-icon" aria-hidden="true">⚡</span>
+                <strong><Localized id="setup-mode-local-title">Offline only</Localized></strong>
+              </div>
+              <p><Localized id="setup-mode-local-desc">Keep this terminal completely offline. No account, no cloud sync — a free starter workspace is created on the device.</Localized></p>
             </button>
           </div>
         </section>
@@ -649,7 +673,17 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             value={confirmPin}
             onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
             autoComplete="new-password"
+            aria-invalid={pinError ? true : undefined}
+            aria-describedby={pinError ? 'provision-pin-error' : undefined}
           />
+          {pinError && (
+            /* role="status" rather than "alert": the message follows the user's
+               own keystrokes, so it is announced politely rather than
+               interrupting what they are still typing. */
+            <p className="provisioning-field-error" id="provision-pin-error" role="status">
+              {pinError}
+            </p>
+          )}
         </div>
 
         <Button size="lg" type="submit" disabled={!canSubmit || busy} data-testid="provision-submit">
