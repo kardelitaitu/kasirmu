@@ -11952,6 +11952,29 @@ My earlier metric (row `scrollWidth - clientWidth`) read 0 through all of that b
 
 **Commits:** `2dea49ddb` (layout + its structural test), `61e8b0381` (preset-key guard), `92a098652` (revalidation + the two corrected comments + 3 tests), `0dcdbad0c` (format, alone). Never push without a direct user order.
 
+## 2026-09-23 — E2E: the staff trash round trip, and what two mutation proofs taught (ui/e2e)
+
+**Context:** the trash review left exactly one real hole — the SQL was proven against real SQLite and the unit tests were green, but no E2E spec had ever carried a member into the trash and back through the assembled app. The suite runs the real UI in a browser against the dev-mock IPC (`ui/e2e/helpers.ts`), so this needs no Rust backend, and both the desktop (Chromium) and tablet (WebKit) projects run it.
+
+**Spec:** `ui/e2e/staff-trash.spec.ts` (2 cases, 4 tests across the two projects):
+- the round trip — delete an inactive member through the confirmation dialog, see them leave the roster, reach the trash BY TAB and then again BY DEEP LINK, assert the freshly-started `90 days before permanent deletion` badge, restore, and prove they return INACTIVE (the power button offers restore; the row is deletable again);
+- the gate — an admin session gets a rendered tab strip WITHOUT the trash tab, and no route into it renders the trash panel, list or empty state.
+
+**Mutation-proved, both directions** (the discipline used for the preset-key guard and the revalidation guard):
+- forcing the screen's `canDeleteStaff` gate open FAILS the gate case;
+- making restore leave the member ACTIVE in the served list FAILS the round-trip case.
+
+**What the proofs taught — worth recording instead of hiding:**
+- Widening the `trash` ROUTE registration's permission to `staff:read` did NOT fail the gate case. The enforcement that actually holds is the screen's own `passesGate('manager','staff:delete',...)` (`StaffManagementScreen.tsx:112`), which drives both `showTrash` and the panel. The route declaration and the screen check are two INDEPENDENT statements of one rule, so the spec asserts the observable outcome (no trash for an admin) rather than either mechanism. The spec's header says so.
+- The first attempt at the restore mutation (returning `is_active: true` from the mock's restore handler) also did NOT fail the case, because the roster reads `MOCK_STAFF_ROWS`, not the handler's return value. Mutating the wrong layer proves nothing — the effective mutation had to flip the row the list actually serves. A red-proof that comes back green is a statement about the MUTATION, not about the test.
+
+**Verification:** spec `4 passed (14.5s)` across both projects; `npm run testid:check` OK; `npx eslint e2e/staff-trash.spec.ts` exit 0; `npm run typecheck` exit 0. A throwaway viewport-390 spec rendered the real app's trash tab (screenshot, dark theme) confirming the phone layout there rather than only in the synthetic harness; it was deleted after the run.
+
+**Still not covered by E2E:** the Rust backend (dev-mock IPC is not a live Tauri process — the SQL is proven by the Rust suites instead), the 90-day purge sweep, the role-trash half of the tab, and the Android shell (the tablet project is WebKit at a POS viewport, not the device WebView).
+
+**Commit:** `23d629649`.
+
+
 
 
 
