@@ -105,6 +105,10 @@ pub struct StaffMemberDto {
     pub username: String,
     /// Display Name.
     pub display_name: String,
+    /// Avatar reference — the content-addressed image hash, or null for none.
+    /// `list_staff_scoped` already loads every member's profile, and `avatar`
+    /// is not a sensitive column, so this needs no `staff:read_*` grant.
+    pub avatar: Option<String>,
     /// ID of the associated role.
     pub role_id: String,
     /// Role Name.
@@ -593,6 +597,7 @@ pub fn to_staff_dto(
         id: user.id.clone(),
         username: user.username.clone(),
         display_name: user.display_name.clone(),
+        avatar: profile.and_then(|p| p.avatar.clone()),
         role_id: user.role_id.clone(),
         role_name,
         is_active: user.is_active,

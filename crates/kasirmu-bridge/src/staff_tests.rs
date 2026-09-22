@@ -142,6 +142,7 @@ fn staff_member_dto_debug() {
         id: "u1".into(),
         username: "jdoe".into(),
         display_name: "John Doe".into(),
+        avatar: None,
         role_id: "r1".into(),
         role_name: "Manager".into(),
         is_active: true,
@@ -160,6 +161,7 @@ fn staff_member_dto_serialize() {
         id: "u2".into(),
         username: "asmith".into(),
         display_name: "Alice Smith".into(),
+        avatar: Some("abcdef0123456789".into()),
         role_id: "r2".into(),
         role_name: "Cashier".into(),
         is_active: false,
@@ -170,6 +172,9 @@ fn staff_member_dto_serialize() {
     let json = serde_json::to_value(&dto).unwrap();
     assert_eq!(json["username"], "asmith");
     assert_eq!(json["is_active"], false);
+    // The list carries each member's avatar hash as a plain string so the
+    // roster can render a photo; null is the "no photo" case, not an omission.
+    assert_eq!(json["avatar"], "abcdef0123456789");
 }
 
 // ── RoleDto ─────────────────────────────────────────────────────────

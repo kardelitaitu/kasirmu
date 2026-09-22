@@ -152,6 +152,13 @@ export interface StaffMemberDto {
   role_id: string;
   role_name: string;
   is_active: boolean;
+  /**
+   * Content-addressed avatar image hash (16 hex), or null/absent when the
+   * member has no photo — the roster then renders the initials tile. Carried by
+   * the list payload since the Rust DTO gained it; optional here so fixtures
+   * that predate the field stay valid.
+   */
+  avatar?: string | null;
   /** National id rendered last-4 masked (ADR #35 D6) — the full value never
    * appears in the list payload. */
   national_id_masked: string;
