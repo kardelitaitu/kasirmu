@@ -293,6 +293,32 @@ export default function StaffManagementScreen() {
     setShowModal(false);
   }, []);
 
+  /**
+   * Reload BOTH live lists after a mutation.
+   *
+   * They live in two places, and this is the one ring that is easy to miss: the
+   * shell's own `staff`/`roles` (the roster, the drawer and the "Roles" stat
+   * tile) and the Roles panel's PRIVATE role list — the panel keeps its own
+   * because the two tabs share one component and re-issuing the role list, the
+   * permission registry and every expanded holder page on each tab click is
+   * work nobody asked for. A mutation that reloads only the shell therefore
+   * leaves the Roles tab showing the list from before it, which is the worst
+   * kind of wrong: a restore reads as a restore that FAILED (so the operator
+   * restores twice), and a new member leaves the role's holder count short.
+   *
+   * Every mutation that can change a role or a holder goes through here:
+   * - a Trash restore (staff or role) revives a row into the live lists;
+   * - the detail drawer's create/edit changes who holds what, and so the
+   *   `holder_count` the panel prints on each role row.
+   *
+   * `refreshRoles` is a no-op until the panel has been mounted, and the first
+   * visit fetches anyway, so this is safe for a session that never opened it.
+   */
+  const refreshLiveLists = useCallback(() => {
+    void rolesPanelRef.current?.refreshRoles();
+    void load();
+  }, [load]);
+
   // ── Deactivate / Reactivate ────────────────────────────────────
 
   const performActivate = useCallback(async (member: StaffMemberDto) => {
@@ -550,7 +576,14 @@ export default function StaffManagementScreen() {
             hidden={activeTab !== 'roles'}
           >
             {(rolesPanelMounted || activeTab === 'roles') && (
-              <RoleAuthoringPanel active={activeTab === 'roles'} handleRef={rolesPanelRef} />
+              <RoleAuthoringPanel
+                active={activeTab === 'roles'}
+                handleRef={rolesPanelRef}
+                // The panel owns its own role list, but the "Roles" stat tile
+                // reads the SHELL's — reloaded here so authoring a role cannot
+                // leave the tile counting the list as it was before the save.
+                onRolesChanged={refreshLiveLists}
+              />
             )}
           </div>
         )}
@@ -568,7 +601,7 @@ export default function StaffManagementScreen() {
             hidden={activeTab !== 'trash'}
           >
             {activeTab === 'trash' && (
-              <StaffTrashPanel canManageRoles={canManageRoles} onRestored={load} />
+              <StaffTrashPanel canManageRoles={canManageRoles} onRestored={refreshLiveLists} />
             )}
           </div>
         )}
@@ -585,7 +618,7 @@ export default function StaffManagementScreen() {
         member={editingMember}
         roles={roles}
         onClose={closeModal}
-        onSaved={load}
+        onSaved={refreshLiveLists}
       />
 
       {/* ── Deactivate Confirmation (STAFF-10) ─────────────────── */}

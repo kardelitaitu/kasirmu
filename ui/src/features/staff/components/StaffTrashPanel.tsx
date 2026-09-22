@@ -119,13 +119,18 @@ export function StaffTrashPanel({ canManageRoles, onRestored }: StaffTrashPanelP
         type: 'success',
         message: l10n.getString('role-restored', { name: role.name }),
       });
+      // A restored role is live again, so the shell's role list (and the
+      // "Roles" stat tile that reads it) is stale until it reloads. The staff
+      // half already does this via `onRestored`; the role half is the same
+      // fact and needs the same call.
+      onRestored();
       await load();
     } catch {
       addToast({ type: 'error', message: l10n.getString('staff-trash-restore-failed') });
     } finally {
       setBusy(null);
     }
-  }, [sessionToken, addToast, l10n, load]);
+  }, [sessionToken, addToast, l10n, onRestored, load]);
 
   // One clock reading per render, so every row on screen counts from the same
   // instant instead of drifting apart by a few milliseconds each.

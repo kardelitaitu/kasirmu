@@ -1110,6 +1110,52 @@ describe('StaffManagementScreen', () => {
     expect(screen.getByTestId('staff-stat-active')).toHaveTextContent('1');
   });
 
+  it('refreshes the Roles stat tile after a role is authored', async () => {
+    // The shell loads `roles` once (its own listRolesScoped) and renders the
+    // count as the fourth stat tile. The Roles panel keeps a SEPARATE copy and
+    // re-reads it after every save — but nothing tells the shell, so the tile
+    // keeps showing the pre-save number. Switching back to the Staff tab is
+    // where an operator reads it.
+    sessionPermissions.push('staff:manage_roles');
+    const roles: unknown[] = [...SAMPLE_ROLES];
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_staff_scoped') return Promise.resolve(SAMPLE_STAFF);
+      // A FRESH array per call, exactly as IPC delivers it: returning the same
+      // mutable reference would let the shell's state alias this fixture and
+      // re-read the pushed role without ever re-fetching — hiding the bug.
+      if (cmd === 'list_roles_scoped') return Promise.resolve([...roles]);
+      if (cmd === 'list_permission_keys_scoped') return Promise.resolve([]);
+      if (cmd === 'create_role_scoped') {
+        roles.push({ id: 'role-trainee', name: 'Trainee', description: '', permissions: [], is_builtin: false, reference_count: 0, holder_count: 0, grant_count: 0 });
+        return Promise.resolve(roles[roles.length - 1]);
+      }
+      if (cmd === 'list_all_workspaces_scoped') return Promise.resolve([]);
+      if (cmd === 'get_brand_settings' || cmd === 'get_brand_settings_scoped') {
+        return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
+      }
+      return Promise.resolve([]);
+    });
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    // The tile starts at the loaded role count (six fixtures).
+    expect(screen.getByTestId('staff-stat-roles')).toHaveTextContent(String(SAMPLE_ROLES.length));
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Roles' }));
+    await waitFor(() => expect(document.querySelector('.role-authoring')).not.toBeNull());
+    fireEvent.click(screen.getByTestId('staff-add-role-btn'));
+    fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Trainee' } });
+    fireEvent.click(screen.getByTestId('settings-popup-save'));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('create_role_scoped', expect.anything()), FAST_WAIT);
+
+    // Back on the Staff tab the tile must agree with the panel it just changed.
+    fireEvent.click(screen.getByRole('tab', { name: 'Staff' }));
+    await waitFor(
+      () => expect(screen.getByTestId('staff-stat-roles')).toHaveTextContent(String(SAMPLE_ROLES.length + 1)),
+      FAST_WAIT,
+    );
+  });
+
   it('searches across name, username and masked id', async () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
@@ -1252,14 +1298,141 @@ describe('StaffManagementScreen trash', () => {
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('list_staff_scoped', { sessionToken: 'session-1' }), FAST_WAIT);
   });
 
-  it('restores a trashed role', async () => {
+  it('re-reads the Roles panel list after a staff create changes a holder count', async () => {
+    // The same one-ring-short shape as the restore case, reached from the other
+    // side: creating a member changes the holder_count the Roles panel renders
+    // on that role's row, and the drawer's onSaved reloads only the SHELL. The
+    // panel's row would keep the pre-create number until a remount.
+    sessionPermissions.push('staff:manage_roles');
+    // An AUTHORED row on purpose: the holder-count label renders only inside
+    // the non-builtin action block, so a preset row would make this pass
+    // vacuously — the label would be absent no matter what the count was.
+    const roleStaff = {
+      id: 'role-trainee', name: 'Trainee', description: 'Trainee', permissions: [],
+      is_builtin: false, reference_count: 0, holder_count: 0, grant_count: 0,
+    };
+    // A taxonomy role must be present too, or the drawer's role dropdown
+    // renders nothing (taxonomyRoles filters to the five presets).
+    const taxonomyStaff = {
+      id: 'role-staff', name: 'Staff', description: 'Staff', permissions: [],
+      is_builtin: true, reference_count: 1, holder_count: 0, grant_count: 0,
+    };
+    const roleList = () => [{ ...taxonomyStaff }, { ...roleStaff }];
+    let created = false;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_staff_scoped') return Promise.resolve(SAMPLE_STAFF);
+      if (cmd === 'list_roles_scoped') {
+        return Promise.resolve(roleList().map((r) => ({ ...r, holder_count: created ? 1 : 0 })));
+      }
+      if (cmd === 'list_permission_keys_scoped') return Promise.resolve([]);
+      if (cmd === 'create_staff_scoped') {
+        created = true;
+        return Promise.resolve({ ...SAMPLE_STAFF[0], id: 'staff-9' });
+      }
+      if (cmd === 'list_all_workspaces_scoped') return Promise.resolve([]);
+      if (cmd === 'list_locations_scoped') return Promise.resolve(SAMPLE_BRANCHES);
+      if (cmd === 'get_brand_settings' || cmd === 'get_brand_settings_scoped') {
+        return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
+      }
+      recordUnmatchedInvoke(cmd);
+      return Promise.reject(new Error(`Unknown command: ${cmd}`));
+    });
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    // Mount the panel first so the later read cannot be its mount-time fetch.
+    fireEvent.click(screen.getByRole('tab', { name: 'Roles' }));
+    await waitFor(() => expect(document.querySelector('.role-authoring')).not.toBeNull(), FAST_WAIT);
+    fireEvent.click(screen.getByRole('tab', { name: 'Staff' }));
+
+    fireEvent.click(screen.getByRole('button', { name: /add staff/i }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /username/i }), { target: { value: 'newuser' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /display name/i }), { target: { value: 'New User' } });
+    fireEvent.change(within(dialog).getByPlaceholderText(/enter pin/i), { target: { value: '1234' } });
+    fireEvent.change(within(dialog).getByRole('combobox', { name: /^role/i }), { target: { value: 'role-staff' } });
+    await fillRequiredProfile(dialog);
+    fireEvent.click(within(dialog).getByRole('button', { name: /create/i }));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('create_staff_scoped', expect.anything()), FAST_WAIT);
+
+    // Back on Roles, no remount: the row must state the NEW holder count.
+    fireEvent.click(screen.getByRole('tab', { name: 'Roles' }));
+    await waitFor(() => expect(screen.getByText('Used by 1 account')).toBeInTheDocument(), FAST_WAIT);
+  });
+
+  it('re-reads the Roles panel list after a restore, without remounting the panel', async () => {
+    // The panel keeps its OWN role list (it must — the two tabs share one
+    // component so switching does not remount it). A restore therefore has to
+    // reach the panel, not just the shell: reloading only the shell leaves the
+    // Roles tab showing the list as it was while the role sat in the trash, so
+    // the operator reads "restore failed" and may restore twice. The role is
+    // absent from the panel's list BEFORE the restore, which is what makes the
+    // assertion below a real re-read rather than a first fetch.
+    sessionPermissions.push('staff:delete');
+    const restored = TRASHED_ROLES[0]!;
+    const withoutTrashed = SAMPLE_ROLES.filter((r) => r.id !== restored.id);
+    let roleIsLive = false;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_staff_scoped') return Promise.resolve(SAMPLE_STAFF);
+      // Fresh array per call, as IPC delivers: aliasing a shared fixture would
+      // let the panel "see" the restore through the same mutable reference.
+      if (cmd === 'list_roles_scoped') {
+        return Promise.resolve(roleIsLive ? [...withoutTrashed, restored] : [...withoutTrashed]);
+      }
+      if (cmd === 'list_permission_keys_scoped') return Promise.resolve([]);
+      if (cmd === 'list_staff_trash_scoped') return Promise.resolve(TRASHED_STAFF);
+      if (cmd === 'list_role_trash_scoped') return Promise.resolve(TRASHED_ROLES);
+      if (cmd === 'restore_role_scoped') {
+        roleIsLive = true;
+        return Promise.resolve(restored);
+      }
+      if (cmd === 'list_all_workspaces_scoped') return Promise.resolve([]);
+      if (cmd === 'list_locations_scoped') return Promise.resolve(SAMPLE_BRANCHES);
+      if (cmd === 'get_brand_settings' || cmd === 'get_brand_settings_scoped') {
+        return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
+      }
+      recordUnmatchedInvoke(cmd);
+      return Promise.reject(new Error(`Unknown command: ${cmd}`));
+    });
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    // Mount the panel by visiting Roles, so the later assertion cannot be
+    // satisfied by the mount-time fetch.
+    fireEvent.click(screen.getByRole('tab', { name: 'Roles' }));
+    // queryBy, not getBy: getBy THROWS when the role is absent, so a waitFor
+    // around it can never resolve and always times out.
+    await waitFor(() => expect(document.querySelector('.role-authoring')).not.toBeNull(), FAST_WAIT);
+    expect(screen.queryByText('Night Manager')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Trash' }));
+    fireEvent.click(await screen.findByTestId('staff-trash-restore-role-night-manager', undefined, FAST_WAIT));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('restore_role_scoped', expect.anything()), FAST_WAIT);
+
+    // Back on Roles — NO remount (same component, same mounted panel).
+    fireEvent.click(screen.getByRole('tab', { name: 'Roles' }));
+    await waitFor(() => expect(screen.getByText('Night Manager')).toBeInTheDocument(), FAST_WAIT);
+  });
+
+  it('restores a trashed role, and reloads the shell role list it feeds', async () => {
     sessionPermissions.push('staff:delete');
     await openTrash();
 
+    const loadsBefore = invokeMock.mock.calls.filter(([c]: unknown[]) => c === 'list_roles_scoped').length;
     fireEvent.click(screen.getByTestId('staff-trash-restore-role-night-manager'));
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('restore_role_scoped', { sessionToken: 'session-1', id: 'role-night-manager' });
     }, FAST_WAIT);
+    // A restored role is live again: the shell's list — the one the "Roles"
+    // stat tile counts — must be re-read, or the tile keeps the count from
+    // before the restore. The staff half asserts the same through onRestored.
+    await waitFor(
+      () =>
+        expect(
+          invokeMock.mock.calls.filter(([c]: unknown[]) => c === 'list_roles_scoped').length,
+        ).toBeGreaterThan(loadsBefore),
+      FAST_WAIT,
+    );
   });
 
   it('moves an INACTIVE member to the trash only after confirmation', async () => {
