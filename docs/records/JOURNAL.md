@@ -11922,5 +11922,36 @@ same pass: `crates/kasirmu-core/src/features_tests.rs:532` had been committed un
 **Commit:** two pathspec commits — the mock with its test, and the format alone — so the second reads as
 whitespace in another lane's file. Never push without a direct user order.
 
+## 2026-09-23 — Staff-management trash: phone-row layout, a preset-key guard, a bounded session revalidation (ui / kasirmu-core / kasirmu-bridge)
+
+**Context:** three follow-ups left by the trash review, run as parallel workstreams against one frozen tree.
+
+**Changes:**
+- `ui/src/features/staff/StaffManagementScreen.css` (the <=600px tier) plus a structural test: the trash row becomes a two-column grid — the who block spans both columns, then the days span sits in column 1 and `Restore` in column 2 as DIRECT children. Flex-wrap was rejected: it orphans the button and at 360px the days/button gap goes negative (-10px).
+- `ui/src/__tests__/StaffManagementScreen.test.tsx`: asserts the days span and the button are direct children of the row, because that structure is invisible to jsdom and moving either into the who block silently costs the button its right edge at phone widths.
+- `crates/kasirmu-core/src/features_tests.rs` (+252): `dev_mock_preset_feature_keys_match_this_crates_own_presets` compares the six preset slugs and their sorted feature keys in `ui/src/dev-mock/handlers/system.ts` against this crate's OWN `FeatureRegistry`, read through `include_str!`. The mock's `get_preset_features` answer feeds `provision_device`, so a key that drifts from the registry provisions a device the core would reject. The parser panics rather than skipping syntax it cannot read.
+- `crates/kasirmu-bridge/src/ctx.rs` + `session_revalidation_tests.rs` (new): closes the residual recorded in this file on 2026-09-22 — a session held by ANOTHER process survived to its TTL. `resolve_session`'s live branch now re-reads the account behind the token through one indexed `SELECT EXISTS(... deleted_at IS NULL AND is_active = 1)`, at most once per `ACCOUNT_REVALIDATION_WINDOW` (30s). The first resolve of a token only stamps the window (query-free: the token came from a login that already filters `deleted_at`/`is_active`, so it cannot be born revoked). A revoked account's session is removed and answers `InvalidSession`, byte-identical to the unknown/expired-token error. The read uses `try_lock`, never `blocking_lock` (it runs inside async command bodies); a busy or failing identity DB fails OPEN and does NOT consume the window, so the next resolve retries. State is a module-level `LazyLock<StdMutex<HashMap<(usize,String),...>>>` keyed by (identity-DB Arc address, token): the ctx is rebuilt per call, so a new field would have changed the struct at all three construction sites (desktop `authz.rs`, mobile `state.rs`, `testing.rs`). Warm-path cost: 0 queries inside the window, amortised 1 indexed SELECT per 30s per actively-resolving token, 0 for an idle token.
+- The two bridge comments that asserted `resolve_session` "checks only TTL and never re-reads the account" were made FALSE by that change and are corrected in place (`staff.rs` `delete_staff_scoped` doc, `staff_tests.rs`). The eviction closes the gap to zero on this host; the window covers the other hosts.
+
+**Correction of my own earlier claim:** I had recorded that at 390px the trash row "merely wraps and loses nothing". That was wrong. Re-measured against the pre-fix stylesheet with a real browser (`who` = identity block clientWidth, `nameOv` = name ink outside its box):
+- BEFORE at 390px: `who=0` and `nameOv=103/33/59` — the whole identity block collapses, its name paints 33-103px outside it across the days badge, and the identity line is 0px wide (invisible in the render) while still 18px tall. Rows 132/90/90px.
+- AFTER at 390px: `who=292`, `nameOv=0`, `subW=292`, name/days and days/button hit-tests 0, button inside its box, rows 124/103/103px.
+- At 768px and 1280px both stylesheets measure identically — no regression above the tier.
+My earlier metric (row `scrollWidth - clientWidth`) read 0 through all of that because a collapsed flex item reports no overflow of its own. The render settled it: the badge text is drawn straight through the name.
+
+**Verification:**
+- `cargo test --workspace --all-features` -> exit 0, **129 targets, 10096 passed, 0 failed** (includes the 3 new revalidation tests; bridge lib 1361 -> 1364).
+- `cargo clippy --all-targets --all-features -- -D warnings` -> exit 0, no warnings.
+- `cargo fmt --all -- --check` -> clean. It was RED first: R4 ran tests and clippy but not fmt, so `session_revalidation_tests.rs:63` landed unformatted in 92a098652. Fixed with `cargo fmt -p kasirmu-bridge` (never `--all`, which reformats other lanes' in-flight files) and committed separately.
+- `npm run test` (full UI suite) -> exit 0, **604 files, 10301 passed**, 24 skipped, 3 todo.
+- `cargo test -p kasirmu-core --lib features` -> **84 passed**; the preset-key guard was independently mutation-proved RED (mutating `tax-engine` in `system.ts` fails it), then restored byte-identically (SHA256 compared).
+- The revalidation guard was independently mutation-proved RED: deleting the `revalidate_account` call fails exactly the two revoke tests (1 passed; 2 failed), restored byte-identically, then 3/3 green.
+- Static gates, all on this tree: `generate-pg-migration.py --check` OK (127 tables, 158 indexes, 7 seed inserts); `verify-ipc-parity.py` -> IPC parity: OK; `verify-bundle-parity.py` -> 0 missing keys (4832 en / 4908 id); `dedupe-ftl.py` -> no duplicates; `verify-ftl-orphans.py --self-test` -> OK; `verify-migration-column-types.py` -> OK.
+
+**Recorded, not fixed:** `Store::get_user` deliberately does not filter `deleted_at` and `authorize_with` checks only `is_active`, so inside the revalidation window an already-resolved command from a just-trashed member still authorizes. That IS the bounded lag this design buys, not a separate hole; after the window the session is gone. No production signature changed, so no shell needed a follow-up.
+
+**Commits:** `2dea49ddb` (layout + its structural test), `61e8b0381` (preset-key guard), `92a098652` (revalidation + the two corrected comments + 3 tests), `0dcdbad0c` (format, alone). Never push without a direct user order.
+
+
 
 
