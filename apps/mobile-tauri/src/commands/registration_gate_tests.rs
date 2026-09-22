@@ -136,9 +136,9 @@ mod debt;
 /// certificate, which is a property of the public build and needs no authority
 /// to read, and the tablet's licence surface must be diagnosable BEFORE a session
 /// exists (the same property `get_device_id` and `get_local_ip` beside it have).
-/// It exists so the fingerprint read is observable on a fresh install, where the
-/// licence-status call — its only other caller — returns before reaching the JNI.
-const REGISTERED_FLOOR: usize = 337;
+/// The ADR #56 §2.5 pairing step (337 -> 339) adds `desktop_link::start_device_pairing`
+/// and `desktop_link::poll_device_pairing` for tablet device-code pairing.
+const REGISTERED_FLOOR: usize = 339;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.

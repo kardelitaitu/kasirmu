@@ -111,6 +111,11 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "desktop_link::link_device_email_consume",
         "no_session_resolution",
     ),
+    (
+        "desktop_link::start_device_pairing",
+        "no_session_resolution",
+    ),
+    ("desktop_link::poll_device_pairing", "no_session_resolution"),
     ("browser::open_product_images", "no_session_resolution"),
     ("workspaces::list_workspaces", "no_session_resolution"),
     (
@@ -258,7 +263,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// (Re-read 20-09-26: 324, and the floor was raised to it in the same pass as the
 /// ceilings below. The generator writing this number does not move the floor, so the
 /// two are only ever equal in a pass that touches both files.)
-pub const REGISTERED_TOTAL: usize = 337;
+pub const REGISTERED_TOTAL: usize = 339;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///
@@ -313,7 +318,9 @@ pub const REGISTERED_TOTAL: usize = 337;
 /// `Gated` shims over `kasirmu-bridge` and added no rows.
 /// 91 -> 92 with `data::export_data_without_session` (ADR #58 §4a Q-A option 3):
 /// ungated local twin for revoked tenants, mirroring desktop registration.
-pub const DEBT_CEILING: usize = 92;
+/// 92 -> 94 with `desktop_link::start_device_pairing` and `desktop_link::poll_device_pairing`
+/// (ADR #56 §2.5 / §5 Q1): device-code pairing runs before any staff account exists.
+pub const DEBT_CEILING: usize = 94;
 
 /// Lowered from 89 by T11: `settings::set_hardware_settings` shed its row by deletion,
 /// not by gating. Its only argument beyond the DTO was a renderer-supplied `user_id` --
@@ -341,12 +348,14 @@ pub const DEBT_CEILING: usize = 92;
 /// Their two predecessors (`setup::get_setup_status` and
 /// `setup::dismiss_setup_wizard`) left the ledger in the same pass.
 /// 47 -> 48 with `data::export_data_without_session` (ADR #58 §4a Q-A option 3).
-pub const NO_SESSION_RESOLUTION: usize = 48;
+/// 48 -> 50 with `desktop_link::start_device_pairing` and `desktop_link::poll_device_pairing`.
+pub const NO_SESSION_RESOLUTION: usize = 50;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
 /// 45 + 44 = 89 = `DEBT_CEILING`, as the class counts must sum to the ledger.
 /// 47 + 44 = 91 after the ADR #56 provisioning pass (two rows in, two out).
 /// 48 + 44 = 92 after adding data::export_data_without_session.
+/// 50 + 44 = 94 after adding pairing commands (ADR #56 §2.5).
 pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 44;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).

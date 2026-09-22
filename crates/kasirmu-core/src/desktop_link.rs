@@ -26,8 +26,42 @@ pub const LINK_CONSUME_PATH: &str = "/api/v1/desktop/link/consume";
 pub const LINK_EMAIL_REQUEST_PATH: &str = "/api/v1/desktop/link/email/request";
 /// Path an emailed link code is spent on.
 pub const LINK_EMAIL_CONSUME_PATH: &str = "/api/v1/desktop/link/email/consume";
+/// Path a tablet device-code pairing session is started on (ADR #56 §2.5 / §5 Q1).
+pub const PAIRING_START_PATH: &str = "/api/v1/pairing/start";
+/// Path a tablet device-code pairing session is polled on.
+pub const PAIRING_POLL_PATH: &str = "/api/v1/pairing/poll";
 /// How long either link request may take.
 const LINK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// Response from starting a device-code pairing session (ADR #56 §2.5).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PairingSessionStart {
+    /// 8-character Crockford Base32 human-friendly code (e.g. ABCD-1234).
+    pub code: String,
+    /// Secure random token the terminal presents when polling.
+    pub poll_token: String,
+    /// When this pairing session expires (RFC 3339).
+    pub expires_at: String,
+    /// Direct QR URL that operators can scan on their phone.
+    pub qr_url: String,
+}
+
+/// Response from polling an active device-code pairing session.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PairingPollResponse {
+    /// Pairing status: "pending" | "claimed".
+    pub status: String,
+    /// Tenant ID assigned to this device upon claim.
+    #[serde(default)]
+    pub tenant_id: Option<String>,
+    /// Account email that claimed this device.
+    #[serde(default)]
+    pub email: Option<String>,
+    /// Sync terminal credentials issued upon claim.
+    #[serde(default)]
+    pub terminal: Option<TerminalCredential>,
+}
+
 
 /// A PKCE pair for one link attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -230,6 +264,75 @@ pub async fn consume_desktop_link_code(
         .await
         .map_err(|e| CoreError::Internal(format!("link email consume response: {e}")))
 }
+
+/// Starts a tablet device-code pairing session (ADR #56 §2.5 / §5 Q1).
+#[cfg(feature = "sync-http")]
+pub async fn start_device_pairing(
+    base_url: &str,
+    machine_id: &str,
+    device_name: &str,
+) -> Result<PairingSessionStart, CoreError> {
+    let url = format!("{}{PAIRING_START_PATH}", base_url.trim_end_matches('/'));
+    let client = reqwest::Client::builder()
+        .timeout(LINK_TIMEOUT)
+        .build()
+        .map_err(|e| CoreError::Internal(format!("pairing start client: {e}")))?;
+    let response = client
+        .post(&url)
+        .json(&serde_json::json!({
+            "machine_id": machine_id,
+            "device_name": device_name,
+        }))
+        .send()
+        .await
+        .map_err(|e| CoreError::Internal(format!("pairing start request to {base_url} failed: {e}")))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let detail = response.text().await.unwrap_or_default();
+        return Err(CoreError::Validation {
+            field: "pairing",
+            message: format!("pairing start failed ({status}): {detail}"),
+        });
+    }
+    response
+        .json()
+        .await
+        .map_err(|e| CoreError::Internal(format!("pairing start response: {e}")))
+}
+
+/// Polls an active tablet device-code pairing session (ADR #56 §2.5 / §5 Q1).
+#[cfg(feature = "sync-http")]
+pub async fn poll_device_pairing(
+    base_url: &str,
+    poll_token: &str,
+) -> Result<PairingPollResponse, CoreError> {
+    let url = format!("{}{PAIRING_POLL_PATH}", base_url.trim_end_matches('/'));
+    let client = reqwest::Client::builder()
+        .timeout(LINK_TIMEOUT)
+        .build()
+        .map_err(|e| CoreError::Internal(format!("pairing poll client: {e}")))?;
+    let response = client
+        .post(&url)
+        .json(&serde_json::json!({
+            "poll_token": poll_token,
+        }))
+        .send()
+        .await
+        .map_err(|e| CoreError::Internal(format!("pairing poll request to {base_url} failed: {e}")))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let detail = response.text().await.unwrap_or_default();
+        return Err(CoreError::Validation {
+            field: "pairing",
+            message: format!("pairing poll failed ({status}): {detail}"),
+        });
+    }
+    response
+        .json()
+        .await
+        .map_err(|e| CoreError::Internal(format!("pairing poll response: {e}")))
+}
+
 
 /// POSTs a JSON body with the device's bearer key, mapping failures to typed errors.
 #[cfg(feature = "sync-http")]

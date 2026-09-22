@@ -111,6 +111,38 @@ export async function consumeDeviceLinkCode(code: string): Promise<VerifiedAccou
   return loggedInvoke('link_device_email_consume', { code });
 }
 
+/** Response from starting a device-code pairing session (ADR #56 §2.5 / §5 Q1). */
+export interface PairingSessionStart {
+  code: string;
+  poll_token: string;
+  expires_at: string;
+  qr_url: string;
+}
+
+/** Response from polling an active device-code pairing session. */
+export interface PairingPollResponse {
+  status: 'pending' | 'claimed';
+  tenant_id?: string;
+  email?: string;
+  terminal?: {
+    issued?: boolean;
+    terminalId?: string;
+    deviceSecret?: string;
+    reason?: string;
+  };
+}
+
+/** Start a device-code pairing session on the licence server. */
+export async function startDevicePairing(deviceName?: string): Promise<PairingSessionStart> {
+  return loggedInvoke('start_device_pairing', { deviceName });
+}
+
+/** Poll the device-code pairing session. */
+export async function pollDevicePairing(pollToken: string): Promise<PairingPollResponse> {
+  return loggedInvoke('poll_device_pairing', { pollToken });
+}
+
+
 /**
  * Get the device-level hardware fingerprint (SPEC-2026-TRIAL-LOCK):
  * "hw_" + SHA-256 hex of the hardware anchor, stable across reinstalls.

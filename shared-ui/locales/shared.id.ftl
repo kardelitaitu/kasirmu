@@ -449,6 +449,16 @@ auth-copyright = kasir.mu © { $year } Hak Cipta Dilindungi.
 auth-clipboard-error = Kesalahan papan klip: { $message }
 auth-error-title = Kesalahan
 
+## Tablet Device-Code Pairing (ADR #56 §2.5 / §5 Q1)
+auth-tab-license-key = Kunci Lisensi
+auth-tab-pair-device = Tautkan lewat HP
+auth-pair-scan-qr = Pindai kode QR ini dengan HP Anda atau kunjungi { $url }
+auth-pair-code-label = Kode Penautan
+auth-pair-waiting = Menunggu klaim di HP Anda…
+auth-pair-expired = Kode penautan kadaluarsa. Klik untuk memperbarui.
+auth-pair-refresh = Perbarui Kode
+auth-pair-success = Perangkat berhasil ditautkan!
+
 ## Revoked Account (ADR #58 §2.6)
 auth-revoked-title = Akun ditangguhkan
 auth-revoked-message = Akun kasir.mu Anda telah ditangguhkan. Anda tidak dapat masuk atau memproses penjualan baru. Data Anda tetap aman dan dapat diekspor di bawah ini.

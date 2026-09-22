@@ -676,6 +676,8 @@ pub fn run() {
                 commands::desktop_link::link_device_google,
         commands::desktop_link::link_device_email_request,
         commands::desktop_link::link_device_email_consume,
+        commands::desktop_link::start_device_pairing,
+        commands::desktop_link::poll_device_pairing,
                 commands::browser::open_product_images,
                 commands::tax::list_tax_rates_scoped,
                 commands::tax::list_tax_rate_rounding_modes_scoped,

@@ -23,7 +23,9 @@ vi.mock('@/components/Toast', () => ({
 vi.mock('@/api/license', () => ({
   activateLicense: vi.fn(),
   getMachineId: vi.fn(),
-  getHardwareFingerprint: vi.fn()
+  getHardwareFingerprint: vi.fn(),
+  startDevicePairing: vi.fn(),
+  pollDevicePairing: vi.fn(),
 }));
 
 vi.mock('@/api/system', () => ({
@@ -65,7 +67,12 @@ vi.mock('@fluent/react', () => ({
         'auth-ip-unknown': 'Unknown',
         'auth-ip-detecting': 'Detecting...',
         'staff-login-connection-auth': 'Auth',
-        'staff-login-connection-sync': 'Sync'
+        'staff-login-connection-sync': 'Sync',
+        'auth-pair-success': 'Device paired successfully!',
+        'auth-pair-code-label': 'Pairing Code',
+        'auth-pair-waiting': 'Waiting for you to claim on your phone…',
+        'auth-pair-expired': 'Pairing code expired. Click to refresh.',
+        'auth-pair-refresh': 'Refresh Code',
       };
       return (map as Record<string, string>)[id] || id;
     }
@@ -693,6 +700,51 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
       clickSubmit();
 
       await waitFor(() => expect(activateLicense).toHaveBeenCalledWith('KEY123', 'test@test.com', 'test-machine-id', '08123456789', undefined, undefined, 'hw_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'), FAST_WAIT);
+    });
+  });
+
+  describe('8. Tablet Device-Code Pairing (ADR #56 §2.5 / §5 Q1)', () => {
+    it('60. Switches to Pair with Phone tab, starts pairing session, renders QR & Crockford code, and activates on claim', async () => {
+      vi.useFakeTimers();
+      const { startDevicePairing, pollDevicePairing } = await import('@/api/license');
+      vi.mocked(startDevicePairing).mockResolvedValueOnce({
+        code: 'WXYZ7890',
+        poll_token: 'poll-license-123',
+        expires_at: new Date(Date.now() + 60000).toISOString(),
+        qr_url: 'https://kasir.mu/pair?code=WXYZ7890',
+      });
+      vi.mocked(pollDevicePairing)
+        .mockResolvedValueOnce({ status: 'pending' })
+        .mockResolvedValueOnce({
+          status: 'claimed',
+          tenant_id: 'tenant-paired',
+          email: 'paired@kasir.mu',
+        });
+
+      render(<LicenseActivationScreen onActivated={mockOnActivated} />);
+
+      // Switch to Pair with Phone tab
+      const pairTab = screen.getByRole('tab', { name: /Pair with Phone/i });
+      fireEvent.click(pairTab);
+
+      // Flush microtasks
+      await vi.runOnlyPendingTimersAsync();
+
+      expect(startDevicePairing).toHaveBeenCalled();
+      expect(screen.getByTestId('pairing-code-display')).toHaveTextContent('WXYZ - 7890');
+      expect(screen.getByTestId('pairing-qr-code')).toBeInTheDocument();
+
+      // Advance 3s for poll interval
+      await vi.advanceTimersByTimeAsync(3000);
+
+      expect(pollDevicePairing).toHaveBeenCalledWith('poll-license-123');
+      expect(mockAddToast).toHaveBeenCalledWith({
+        type: 'success',
+        message: 'Device paired successfully!',
+      });
+      expect(mockOnActivated).toHaveBeenCalled();
+
+      vi.useRealTimers();
     });
   });
 });

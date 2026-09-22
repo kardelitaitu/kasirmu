@@ -319,3 +319,147 @@
     padding: var(--space-8);
   }
 }
+
+/* Mode tabs (License Key vs Pair with Phone) */
+.license-mode-tabs {
+  display: flex;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-1);
+  margin-bottom: var(--space-6);
+  gap: var(--space-1);
+}
+
+.license-mode-tab {
+  flex: 1;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--duration-200) ease;
+  text-align: center;
+}
+
+.license-mode-tab:hover {
+  color: var(--color-fg);
+}
+
+.license-mode-tab.active {
+  background: var(--color-bg-elevated);
+  color: var(--color-fg);
+  font-weight: var(--font-weight-semibold);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Tablet Device-Code Pairing View (ADR #56 §2.5 / §5 Q1) */
+.license-pairing-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+}
+
+.license-pairing-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.license-pairing-instructions {
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+  margin: 0 0 var(--space-5) 0;
+  max-width: 20rem;
+  line-height: 1.4;
+}
+
+.license-pairing-qr-wrapper {
+  background: #ffffff;
+  padding: var(--space-4);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  margin-bottom: var(--space-5);
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.license-pairing-code-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-5);
+}
+
+.license-pairing-code-label {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-fg-secondary);
+}
+
+.license-pairing-code-display {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.15em;
+  color: var(--color-fg);
+  background: var(--color-bg);
+  padding: var(--space-2) var(--space-6);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+.license-pairing-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+.license-pulse-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background-color: var(--color-primary);
+  animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-ring {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(1.3);
+  }
+}
+
+.license-pairing-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-12) 0;
+  color: var(--color-fg-secondary);
+}
+
+.license-pairing-expired {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-6) 0;
+  color: var(--color-fg);
+}

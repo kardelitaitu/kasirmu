@@ -485,6 +485,16 @@ auth-copyright = kasir.mu © { $year } All rights reserved.
 auth-clipboard-error = Clipboard error: { $message }
 auth-error-title = Error
 
+## Tablet Device-Code Pairing (ADR #56 §2.5 / §5 Q1)
+auth-tab-license-key = License Key
+auth-tab-pair-device = Pair with Phone
+auth-pair-scan-qr = Scan this QR code with your phone or visit { $url }
+auth-pair-code-label = Pairing Code
+auth-pair-waiting = Waiting for you to claim on your phone…
+auth-pair-expired = Pairing code expired. Click to refresh.
+auth-pair-refresh = Refresh Code
+auth-pair-success = Device paired successfully!
+
 ## Revoked Account (ADR #58 §2.6)
 auth-revoked-title = Account suspended
 auth-revoked-message = Your kasir.mu account has been suspended. You cannot log in or process new sales. Your existing data is safe and can be exported below.

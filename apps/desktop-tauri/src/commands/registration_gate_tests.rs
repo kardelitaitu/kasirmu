@@ -94,7 +94,8 @@ mod debt;
 /// first, then `link_device_email_request` / `link_device_email_consume` with the emailed
 /// code. Unlike the three `qris_auto` names the 453 step absorbed, these three are NOT
 /// gated, so the same pass moves a ceiling and the class counts in the ledger beside it.
-const REGISTERED_FLOOR: usize = 461;
+/// The 461 -> 463 step adds `desktop_link::start_device_pairing` and `desktop_link::poll_device_pairing` (ADR #56 §2.5).
+const REGISTERED_FLOOR: usize = 463;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is

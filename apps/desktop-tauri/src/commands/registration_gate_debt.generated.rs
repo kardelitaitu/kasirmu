@@ -109,6 +109,11 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "desktop_link::link_device_email_consume",
         "no_session_resolution",
     ),
+    (
+        "desktop_link::start_device_pairing",
+        "no_session_resolution",
+    ),
+    ("desktop_link::poll_device_pairing", "no_session_resolution"),
     ("license::get_machine_id", "no_session_resolution"),
     ("license::get_hardware_fingerprint", "no_session_resolution"),
     ("license::renew_license", "no_session_resolution"),
@@ -187,7 +192,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// replaced. Re-read 20-09-26: regenerated with the floor's raise to 458, then to 461 with
 /// the emailed-code pair's arrival — the floor moved in the same pass both times, because
 /// the generator writing this number does not move it.)
-pub const REGISTERED_TOTAL: usize = 461;
+pub const REGISTERED_TOTAL: usize = 463;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 /// 70 -> 69: `security::rotate_encryption_key` was deregistered, and its ledger row
@@ -202,7 +207,8 @@ pub const REGISTERED_TOTAL: usize = 461;
 /// stored credentials, so a session permission would guard a door no session can reach —
 /// the same class `license::activate_license` has always occupied. Recorded in
 /// docs/records/JOURNAL.md, which is what the ceiling pin asks of a rise.
-pub const DEBT_CEILING: usize = 72;
+/// 72 -> 74: `desktop_link::start_device_pairing` and `desktop_link::poll_device_pairing` (ADR #56 §2.5 / §5 Q1).
+pub const DEBT_CEILING: usize = 74;
 
 /// Names that never resolve a session at all.
 /// 42: `topology::load_topology` now resolves session (moved to class 2, mirroring
@@ -210,7 +216,8 @@ pub const DEBT_CEILING: usize = 72;
 /// 42 -> 45: the three `desktop_link::` rows above. This count is a pin the generator
 /// does not recompute, so it moved by hand in the same pass as the ceiling.
 /// `45 + 27 = 72` partitions `DEBT_CEILING` again.
-pub const NO_SESSION_RESOLUTION: usize = 45;
+/// 45 -> 47: `desktop_link::start_device_pairing` and `desktop_link::poll_device_pairing`.
+pub const NO_SESSION_RESOLUTION: usize = 47;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
 pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 27;

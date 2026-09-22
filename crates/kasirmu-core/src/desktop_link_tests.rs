@@ -273,3 +273,66 @@ async fn consume_maps_a_refused_code_to_a_field_error_and_an_outage_to_internal(
         "a 503 is an outage, not a bad code: {outage:?}"
     );
 }
+
+// ── device-code pairing (ADR #56 §2.5 / §5 Q1) ────────────────────────
+
+#[cfg(feature = "sync-http")]
+#[tokio::test]
+async fn start_device_pairing_posts_machine_id_and_returns_session() {
+    let (origin, server) = one_shot_server(
+        "HTTP/1.1 200 OK",
+        r#"{"code":"ABCD-1234","poll_token":"token-xyz","expires_at":"2026-10-04T12:00:00Z","qr_url":"https://kasir.mu/pair?code=ABCD-1234"}"#.to_string(),
+    );
+    let session = start_device_pairing(&origin, "mach-tablet-1", "Tablet 1")
+        .await
+        .expect("start pairing");
+    let request = server.join().expect("server thread");
+
+    assert!(
+        request.starts_with(&format!("POST {PAIRING_START_PATH} ")),
+        "unexpected request line: {request}"
+    );
+    assert!(request.contains(r#""machine_id":"mach-tablet-1""#), "{request}");
+    assert!(request.contains(r#""device_name":"Tablet 1""#), "{request}");
+    assert_eq!(session.code, "ABCD-1234");
+    assert_eq!(session.poll_token, "token-xyz");
+    assert_eq!(session.qr_url, "https://kasir.mu/pair?code=ABCD-1234");
+}
+
+#[cfg(feature = "sync-http")]
+#[tokio::test]
+async fn poll_device_pairing_parses_pending_and_claimed() {
+    // 1. Pending
+    let (origin, server) = one_shot_server(
+        "HTTP/1.1 200 OK",
+        r#"{"status":"pending"}"#.to_string(),
+    );
+    let poll_res = poll_device_pairing(&origin, "token-xyz")
+        .await
+        .expect("poll pending");
+    let request = server.join().expect("server thread");
+
+    assert!(request.starts_with(&format!("POST {PAIRING_POLL_PATH} ")));
+    assert!(request.contains(r#""poll_token":"token-xyz""#));
+    assert_eq!(poll_res.status, "pending");
+    assert!(poll_res.tenant_id.is_none());
+
+    // 2. Claimed with terminal credentials
+    let (origin, server) = one_shot_server(
+        "HTTP/1.1 200 OK",
+        r#"{"status":"claimed","tenant_id":"tenant-99","email":"owner@kasir.mu","terminal":{"issued":true,"terminalId":"mach-tablet-1","deviceSecret":"sec-123"}}"#.to_string(),
+    );
+    let claimed_res = poll_device_pairing(&origin, "token-xyz")
+        .await
+        .expect("poll claimed");
+    server.join().expect("server thread");
+
+    assert_eq!(claimed_res.status, "claimed");
+    assert_eq!(claimed_res.tenant_id.as_deref(), Some("tenant-99"));
+    assert_eq!(claimed_res.email.as_deref(), Some("owner@kasir.mu"));
+    let term = claimed_res.terminal.expect("terminal payload present");
+    assert!(term.issued);
+    assert_eq!(term.terminal_id.as_deref(), Some("mach-tablet-1"));
+    assert_eq!(term.device_secret.as_deref(), Some("sec-123"));
+}
+
