@@ -395,6 +395,40 @@ features page, so the denominator under-reports. Two of the nine are dev/tool pa
 (`design`, `tooltips`) that legitimately should not appear, so a blanket "add all nine" would be
 wrong — this needs a decision about which routes the preview is meant to describe.
 
+### Round 14 — my round-13 suggestion was wrong, and the real defect was narrower
+
+I ended round 13 proposing to "replace the WORKSPACES table with an authoritative source, the same
+class of defect I just fixed for nav items." **Investigating first showed there is no such source:**
+workspaces arrive from the server as `WorkspaceDto[]` (`WorkspaceContext`), and the
+feature→workspace mapping in this component is genuinely preview-only knowledge — it *predicts*
+which feature unlocks which workspace, which is the component's job. Acting on my own suggestion
+would have deleted working behaviour to satisfy a pattern.
+
+**What was actually wrong, and it was narrower:** the table declared `features: string[]`, so any
+literal compiled. A typo would silently never match — the workspace never lights up, with no type
+error and no failing test.
+
+**Proved it before fixing it.** Planting `'inventory-trackin'`:
+
+```
+tsc --noEmit        clean
+vitest              12 passed
+```
+
+The four literals now use the typed `FEATURES` constant (`hooks/useFeatures.ts`) and the field is
+`FeatureKey[]`. The same typo now fails typecheck with a suggestion:
+
+```
+error TS2551: Property 'INVENTORY_TRACKIN' does not exist ... Did you mean 'INVENTORY_TRACKING'?
+```
+
+**Commit:** `94a6a8706`. **Verification:** `tsc` clean · lint 0 errors · 12 tests pass.
+
+**The lesson worth keeping:** my own "same class of defect" instinct was wrong here. Two components
+can look alike (duplicated tables) while one is duplication and the other is domain knowledge. The
+check that separated them was asking *where the authoritative data lives* — and for workspaces,
+nothing does.
+
 ### Remaining, and honestly not mine to claim
 
 - **The website auth islands are unaudited by me.** Another agent owns that surface and has
