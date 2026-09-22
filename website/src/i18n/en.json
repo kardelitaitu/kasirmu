@@ -517,6 +517,7 @@
     "confirmLabel": "Confirm password",
     "confirmPlaceholder": "Re-enter your password",
     "mismatch": "Passwords don't match",
+    "matchStatusLabel": "Passwords match",
     "show": "Show password",
     "hide": "Hide password"
   },
@@ -525,6 +526,7 @@
     "subtitle": "Set a password and verify your email with a code we send you.",
     "email": "Email",
     "emailPlaceholder": "you@example.com",
+    "validEmailLabel": "Valid email",
     "password": "Password",
     "passwordPlaceholder": "Create a password",
     "createAccount": "Create account",

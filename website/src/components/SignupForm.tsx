@@ -59,6 +59,7 @@ export const SIGNUP_FORM_LABELS = [
   'signup.createAccount',
   'signup.email',
   'signup.emailPlaceholder',
+  'signup.validEmailLabel',
   'signup.errorExists',
   'signup.errorRegister',
   'signup.haveAccount',
@@ -389,7 +390,7 @@ export default function SignupForm({ locale, labels }: Props) {
               className={`${inputClass} pr-10`}
             />
             {emailTouched && email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500" aria-label="Valid email">
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500" aria-label={t(labels, 'signup.validEmailLabel')}>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="3.5 8 6.5 11 12.5 5" />
                 </svg>

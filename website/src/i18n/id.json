@@ -521,6 +521,7 @@
     "confirmLabel": "Konfirmasi kata sandi",
     "confirmPlaceholder": "Masukkan ulang kata sandi",
     "mismatch": "Kata sandi tidak cocok",
+    "matchStatusLabel": "Kata sandi cocok",
     "show": "Tampilkan kata sandi",
     "hide": "Sembunyikan kata sandi"
   },
@@ -529,6 +530,7 @@
     "subtitle": "Buat kata sandi dan verifikasi email Anda dengan kode yang kami kirim.",
     "email": "Email",
     "emailPlaceholder": "anda@contoh.com",
+    "validEmailLabel": "Email valid",
     "password": "Kata sandi",
     "passwordPlaceholder": "Buat kata sandi",
     "createAccount": "Buat akun",
