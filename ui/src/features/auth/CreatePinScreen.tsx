@@ -20,15 +20,44 @@ export default function CreatePinScreen({ onCreated }: CreatePinScreenProps) {
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [loading, setLoading] = useState(false);
+  // The message alone could not mark WHICH input failed, so a rejected submit
+  // left every field looking identical — and "All fields are required" named
+  // none of them. Tracking the offending field(s) beside the copy lets each
+  // bad input carry its own aria-invalid, so the error lands on the control
+  // the user has to fix rather than only on a banner above the form.
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [badFields, setBadFields] = useState<ReadonlySet<string>>(() => new Set());
   const { addToast } = useToast();
   const { swapSession } = useAuth();
+
+  /**
+   * Drop a field's invalid mark as soon as the user edits it.
+   *
+   * Without this the mark outlives the failure: a user who fixes the PIN would
+   * still be told it is wrong, because nothing re-ran validation.
+   */
+  const clearBadField = (field: string) =>
+    setBadFields((prev) => {
+      if (!prev.has(field)) return prev;
+      const next = new Set(prev);
+      next.delete(field);
+      return next;
+    });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    setBadFields(new Set());
 
     if (!displayName.trim() || !username.trim() || !pin.trim()) {
+      // Name the empty ones, so "All fields are required" is actionable: the
+      // blanket copy is kept (it is the translated message) but every offending
+      // input carries the mark.
+      const empty = new Set<string>();
+      if (!displayName.trim()) empty.add('displayName');
+      if (!username.trim()) empty.add('username');
+      if (!pin.trim()) empty.add('pin');
+      setBadFields(empty);
       setErrorMsg(l10n.getString('auth-create-pin-error-fields'));
       return;
     }
@@ -42,10 +71,14 @@ export default function CreatePinScreen({ onCreated }: CreatePinScreenProps) {
       return; // re-render with cleaned values; user sees digits-only
     }
     if (cleanPin.length < 4) {
+      setBadFields(new Set(['pin']));
       setErrorMsg(l10n.getString('auth-create-pin-error-pin-length'));
       return;
     }
     if (pin !== confirmPin) {
+      // Both fields, because either could be the typo. Marking only the confirm
+      // field would assert a fact the screen does not have.
+      setBadFields(new Set(['pin', 'confirmPin']));
       setErrorMsg(l10n.getString('auth-create-pin-error-pin-mismatch'));
       return;
     }
@@ -113,9 +146,14 @@ export default function CreatePinScreen({ onCreated }: CreatePinScreenProps) {
                 id="displayName"
                 type="text"
                 className="create-pin-input"
+                aria-invalid={badFields.has('displayName') || undefined}
+
                 placeholder="Store Owner"
                 value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
+                onChange={(e) => {
+                  setDisplayName(e.target.value);
+                  clearBadField('displayName');
+                }}
                 disabled={loading}
               />
             </Localized>
@@ -133,9 +171,14 @@ export default function CreatePinScreen({ onCreated }: CreatePinScreenProps) {
                 id="username"
                 type="text"
                 className="create-pin-input"
+                aria-invalid={badFields.has('username') || undefined}
+
                 placeholder="owner"
                 value={username}
-                onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                onChange={(e) => {
+                  setUsername(e.target.value.toLowerCase());
+                  clearBadField('username');
+                }}
                 disabled={loading}
                 autoComplete="username"
               />
@@ -154,9 +197,14 @@ export default function CreatePinScreen({ onCreated }: CreatePinScreenProps) {
                 id="pin"
                 type="password"
                 className="create-pin-input"
+                aria-invalid={badFields.has('pin') || undefined}
+
                 placeholder="At least 4 digits"
                 value={pin}
-                onChange={(e) => setPin(e.target.value)}
+                onChange={(e) => {
+                  setPin(e.target.value);
+                  clearBadField('pin');
+                }}
                 disabled={loading}
                 autoComplete="new-password"
                 inputMode="numeric"
@@ -177,9 +225,14 @@ export default function CreatePinScreen({ onCreated }: CreatePinScreenProps) {
                 id="confirmPin"
                 type="password"
                 className="create-pin-input"
+                aria-invalid={badFields.has('confirmPin') || undefined}
+
                 placeholder="Re-enter PIN"
                 value={confirmPin}
-                onChange={(e) => setConfirmPin(e.target.value)}
+                onChange={(e) => {
+                  setConfirmPin(e.target.value);
+                  clearBadField('confirmPin');
+                }}
                 disabled={loading}
                 autoComplete="new-password"
                 inputMode="numeric"
