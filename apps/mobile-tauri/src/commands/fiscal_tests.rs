@@ -30,6 +30,12 @@ const SEEDED_ENTITY: &str = "default:default-legal-entity";
 #[test]
 fn upsert_then_read_round_trips_the_series() {
     let conn = kasirmu_core::migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     let store = Store::new(&conn);
     run_upsert(&conn, &upsert_args(SEEDED_ENTITY, "invoice", 4, "yearly")).unwrap();
     let seq = store
@@ -45,6 +51,12 @@ fn upsert_then_read_round_trips_the_series() {
 #[test]
 fn upsert_twice_reconfigures_without_resetting_the_counter() {
     let conn = kasirmu_core::migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     let store = Store::new(&conn);
     run_upsert(&conn, &upsert_args(SEEDED_ENTITY, "invoice", 4, "never")).unwrap();
     conn.execute(

@@ -261,6 +261,9 @@ const GRANTED_TOKEN: &str = "tok-granted";
 /// two users the doors are tested against, plus one sale row to identify.
 fn history_state() -> (AppState, tempfile::TempDir) {
     let conn = migrations::fresh_db();
+    // ADR #56 §2.6: a migrated-only DB is UNPROVISIONED — no subscription row for the tier
+    // gate and no seeded location/instances. This fixture drives a provisioned store.
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();
@@ -270,6 +273,9 @@ fn history_state() -> (AppState, tempfile::TempDir) {
     state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
     let conn = state.db_manager.open_store("store-a").unwrap();
     let db = conn.lock().unwrap();
+    // A store database is created by migrations only, so the baseline (the `default` location
+    // the tier/location gates read) has to be rebuilt here as well.
+    kasirmu_core::migrations::seed_provisioned_baseline(&db);
     db.execute_batch(
         r#"INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
          VALUES ('role-nope', 'Nope', 'Nothing granted', '[]', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
@@ -656,11 +662,22 @@ async fn known_hazard_eod_header_and_payment_breakdown_use_different_day_boundar
         // nothing else here creates that row: a missed seed means +00:00, which
         // makes both halves agree and turns this pin green having measured
         // nothing. Asserted before it is trusted.
-        db.execute(
-            "INSERT INTO locations (id, name, timezone, is_primary) VALUES ('loc-tz-pin', 'TZ Pin', '+07:00', 1)",
-            [],
-        )
-        .expect("seed the primary location with a fixed numeric offset");
+        //
+        // An UPDATE, not an INSERT: since the fixture seeds the provisioned baseline
+        // (ADR #56 §2.6), 'default' is already the one primary location — the unique partial
+        // index on is_primary = 1 refuses a second, and a second primary is not what
+        // tz_modifier reads anyway. The affected-row count is the assertion that the row the
+        // reader resolves is the row this writes.
+        let moved = db
+            .execute(
+                "UPDATE locations SET timezone = '+07:00' WHERE id = 'default' AND is_primary = 1",
+                [],
+            )
+            .expect("stamp the primary location with a fixed numeric offset");
+        assert_eq!(
+            moved, 1,
+            "the seeded primary location must be the row tz_modifier reads"
+        );
         db.execute(
             "INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method, user_id, created_at) VALUES ('s-tz-boundary', ?1, 'USD', 1, 'completed', 'cash', 'user-full', ?2)",
             rusqlite::params![boundary_minor, ts(boundary_at)],

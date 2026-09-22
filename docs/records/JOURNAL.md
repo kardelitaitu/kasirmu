@@ -11717,6 +11717,58 @@ whose own comment says which world it observes, and the repair restores that wor
 **Commit:** one pathspec commit for the gate pins and the two fixtures, separate from the feature commits, so a
 red census can be blamed or exonerated on its own. Never push without a direct user order.
 
+
+## 2026-09-22 — Repair: the tablet's fixtures measured a world ADR #56 §2.6 deleted — 34 failures to 0 (mobile-tauri/records)
+
+**Context:**
+`cargo test -p kasirmu-mobile --lib` stood at **624 passed / 34 failed** at HEAD. Every earlier run in this
+session stopped at an earlier failing target, so the tablet's own damage was never reached — the same way the
+desktop's two topology casualties stayed hidden until the app crate was the only thing left to fail.
+
+All 34 share ONE cause: §2.6 moved the baseline seed — the `Default Store` location, the five `default-*`
+instances, the `default:default-legal-entity` legal entity and the `BOOTSTRAP_FREE` tenant_subscription row —
+out of the migration chain into `migrations::seed_provisioned_baseline`, which `provision_device` calls. Every
+tablet fixture builds its database with `fresh_db()` (or a store database, which `StoreDatabaseManager`
+creates by MIGRATIONS ONLY — `platform/core/src/database/manager.rs:116`), so every one of them is now
+UNPROVISIONED. The symptoms are four spellings of the same absence: `not found: location default`,
+`no primary location to resolve the entity from`, `Internal("default tenant subscription not found")`,
+`Invalid("User does not have access to this workspace instance")` — plus tier stamps that silently updated no
+row, leaving a fixture named `pro`/`premium`/`free` running as "no subscription".
+
+**Fixes — the fixtures rebuild the baseline where they create the database:**
+- 26 test bodies that drive a provisioned store call `seed_provisioned_baseline` right after `fresh_db()`.
+- The SHARED helpers do it once for all their callers: `testing.rs::pin_seeded_row` (the audit and staff
+  security-event families), `audit_tests::seeded_conn` and `staff_security_events_tests::seeded_conn` (whose
+  own tier stamp was the no-op), `auth_tests::set_tier`, `subscription_tests::seed_tier`, `history_state`,
+  and the three `flow_state` builders (regional, local_payment, receipt_format), which also seed the STORE
+  database the resolver actually reads.
+- `seeded_row_reaches_a_paid_tier` seeds too. It runs the product's two steps over the row
+  `seed_provisioned_baseline` writes (its own doc says so); with no row the predicate answered `false` for a
+  reason that has nothing to do with the signature, so every fork took its RELEASE arm while a debug build was
+  running and `pin_seeded_row` compared a real row against a phantom.
+
+**What was NOT weakened.** No assertion's expected value changed. Two preconditions were RESTORED to what the
+test names already describe: `content_write_fails_closed_without_a_linked_entity` now unlinks the entity the
+shared fixture links (its name is about the unlinked case), and
+`known_hazard_eod_header_and_payment_breakdown_use_different_day_boundaries` UPDATEs the seeded primary
+location instead of INSERTing a second primary — the unique partial index on `is_primary = 1` refuses one, and
+`tz_modifier` reads the row it updated or nothing at all.
+
+**Noted, not changed:** `apps/mobile-tauri/src/commands/testing.rs` is mounted without `#[cfg(test)]`
+(`commands/mod.rs:117`), so its fixture helpers — including the predicate this pass fixed — are compiled into
+the shell. That is pre-existing shape, and seeding inside that predicate is exactly its documented contract.
+
+**Verification:**
+- `cargo test -p kasirmu-mobile --lib` -> **658 passed; 0 failed**, exit 0 (was 624 / 34).
+- `cargo fmt --all -- --check` -> clean; every touched file was rustfmt'd.
+- `cargo test --workspace --all-features` + `cargo clippy --all-targets --all-features -- -D warnings` + the full
+  UI suite are re-run after this commit; the only known non-deterministic leg is
+  `pg_isolates_locations_by_tenant`, which races the cluster-wide role `oz_rest_probe` under one-process
+  parallelism and passes alone.
+
+**Commit:** one pathspec commit for the tablet fixtures, separate from the feature and from the desktop
+repairs, so a red tablet suite can be blamed or exonerated on its own. Never push without a direct user order.
+
 ## 2026-09-22 — Repair: an independent audit of the staff/role trash found two holes the tests did not, and both close at the source (core/records)
 
 **Context:**
