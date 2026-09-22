@@ -4,12 +4,23 @@
  *
  * The fill, box and type are the design system's primary button
  * (.btn--primary.btn--md in theme/components.css), so a segmented control
- * reads as the same control family as the buttons beside it. Sizes are
- * repeated here as literals rather than borrowed from .btn: a thumb is not a
- * <button> and cannot carry those classes, and min-height states the 32px
- * instead of rebuilding it from a `line-height: 1` — the shape .kds-tab uses
- * one screen over, which also leaves this sheet out of the repo's frozen
- * line-height population.
+ * reads as the same control family as the buttons beside it.
+ *
+ * The box is DERIVED from that button's own tokens, not copied as a literal.
+ * .btn--md is `font-size: var(--text-base)` at `line-height: 1`, on
+ * `padding: var(--space-2)` and a 1px border, so its border-box height is
+ * `--text-base + 2 * --space-2 + 2px` — which is exactly what .segmented-tab
+ * below sets as its min-height. The old literal 32px was that same sum, but
+ * only at a 16px root: at the 14px root a narrow window gets, "Add Staff" is
+ * 28.25px against the strip's 32px; at the 125% zoom preset it is 39.5px, at
+ * 150% 47px, at 200% 62px (measured in Chromium 2026-09-19). The pill sat at
+ * the wrong height next to the button at every one of those. Deriving it keeps
+ * the pill EXACTLY the button's height at every root font size, and it is a
+ * no-op at the 16px reference root.
+ *
+ * Still no `line-height` here, the shape .kds-tab uses one screen over: the
+ * segment centres its glyph with flex, which keeps this sheet out of the repo's
+ * frozen line-height population (themeTokenCompliance.test.ts).
  *
  * LAYOUT, and why it is a grid: the thumb is one column wide and moves by
  * whole columns, so every segment must BE the same width. An equal-column grid
@@ -93,7 +104,10 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  min-height: 32px;
+  /* .btn--md's border-box, in .btn--md's own tokens: line box (line-height: 1,
+     so the font size) + its two --space-2 paddings + its 1px border. The thumb
+     is one tab tall, so this single value sets the pill's height too. */
+  min-height: calc(var(--text-base) + 2 * var(--space-2) + 2px);
   padding: 0 var(--space-4);
   border: none;
   border-radius: var(--radius-lg);
