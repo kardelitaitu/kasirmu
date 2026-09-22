@@ -96,7 +96,17 @@
 /* The only route back to the workspace picker on this sidebar-less page.
    Sized off the touch-target token rather than the neighbour at
    36px in AnalyticsScreen.css: this is a management screen operated on
-   terminals, and the token is the repo's stated minimum. */
+   terminals, and the token is the repo's stated minimum.
+
+   No border and no fill at rest. It used to carry
+   `border: 1px solid var(--color-border)` on `var(--color-bg-surface)` —
+   the very surface token its own header paints (.staff-mgmt-header above) —
+   so the fill was invisible against the bar and the only thing left to see
+   was a bare outlined square. A ghost square that fills on hover is the
+   resting style the KDS header's own back button uses (.kds-back-btn,
+   KdsScreen.css), which is the header shape this page already takes.
+   The :focus-visible ring below is untouched: for a keyboard user it is the
+   only cue this control has, and it is not the box that was reported. */
 .staff-mgmt-back-btn {
   display: inline-flex;
   align-items: center;
@@ -104,9 +114,9 @@
   width: var(--touch-target-min);
   height: var(--touch-target-min);
   padding: 0;
-  border: 1px solid var(--color-border);
+  border: none;
   border-radius: var(--radius-md);
-  background: var(--color-bg-surface);
+  background: transparent;
   color: var(--color-fg-secondary);
   cursor: pointer;
   flex-shrink: 0;
