@@ -96,12 +96,23 @@ Verify against `git ls-files` / `git log -- <path>` before citing it as a live d
 
 ## 5. Candidate next steps
 
-1. **Owner username availability pre-check** — `checkUsername` already exists (`@/api/staff`,
-   used by `StaffLoginScreen`). A duplicate login name currently fails at provision time with a
-   server field error; checking inline would catch it as the user types.
+1. ~~**Owner username availability pre-check**~~ — **INVESTIGATED AND REJECTED as a non-problem**
+   (round 2). Two independent reasons:
+   - `checkUsername` (`@/api/staff`) is deliberately **anti-enumeration**: its own doc says it
+     "always returns `{ proceed: true }` — the pre-check never reveals whether an account exists",
+     so it cannot answer an availability question by design. Wiring it here would either be a
+     no-op or would defeat the property STAFF-06 introduced it for.
+   - A collision is **impossible at first run anyway**. `provision_device` is a first-run-only
+     path (the step-1 guard refuses an already-provisioned terminal), so it runs on a fresh
+     install holding no users, and `create_owner_in_tx` cannot conflict.
+   The gap was in my census, not in the product.
 2. **Offline hard-block has no test** — the flow's most important safety behaviour is unasserted
    (no `navigator.onLine` mock in any suite touching it). Cheap and high value.
-3. **Currency/timezone are hardcoded** (`'IDR'`, `'Asia/Jakarta'` at the submit call). Region is a
-   real signup choice on the website; the app ignores it.
+3. ~~**Currency/timezone are hardcoded**~~ — **NOT A GAP** (round 2). ADR #56 §2.3 names this
+   explicitly as one of "two deliberate omissions from the flow": *"No currency or timezone field.
+   The flow sends the preset's defaults. §2.3's 'evaluated, not interrogated' rule is the reason:
+   the merchant answers a business question (what kind of shop is this) rather than a technical
+   one. A later slice resolves them from the scope chain."* The hardcoded `'IDR'` / `'Asia/Jakarta'`
+   at `ProvisioningFlow.tsx:288-289` is that decision implemented, not drift.
 4. **Review the whole login surface for a11y** — the website auth islands are unaudited for
    focus order and error announcement.
