@@ -47,6 +47,7 @@ next: B2 aggregate stores (sales/products/inventory deep read) | perf: backup ch
 
 use rusqlite::Connection;
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::Money;
@@ -253,55 +254,205 @@ impl<'a> Store<'a> {
 
 // ── Backup / Export ────────────────────────────────────────────────────
 
-impl Store<'_> {
-    /// Remove an existing destination file so an online backup can
-    /// (re)create it.
-    ///
-    /// RUST-03: only a missing destination is acceptable — permission
-    /// failures, directory targets, and other filesystem errors are
-    /// propagated so the caller surfaces the real cause instead of an
-    /// indirect backup error.
-    fn remove_destination_for_backup(output_path: &str) -> Result<(), CoreError> {
-        match std::fs::remove_file(output_path) {
-            Ok(()) => Ok(()),
-            // A missing destination is the normal fresh-backup case.
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(CoreError::Internal(format!(
-                "cannot prepare backup destination '{output_path}': {e}"
-            ))),
-        }
-    }
+/// How many snapshot generations a single destination path keeps, the
+/// destination itself included.
+///
+/// Generation 0 is the destination (`<db>.backup.db`); generations 1 and 2
+/// are its siblings `<db>.backup.1.db` / `<db>.backup.2.db`, so three good
+/// snapshots exist at any moment. C8: a backup that fails at any point
+/// leaves the destination untouched, so the previous good snapshot is always
+/// one of them. The in-app restore slice (decision D5) reads these.
+pub const BACKUP_GENERATIONS: usize = 3;
 
+impl Store<'_> {
     /// Create a snapshot of the database to a file at `output_path`.
     ///
     /// RUST-02: uses rusqlite's online backup API (the SQLite Backup API),
     /// so the source connection can remain in use during the copy and the
     /// destination path is handled as a filesystem path by the API rather
     /// than being interpolated into a `VACUUM INTO` SQL statement.
+    ///
+    /// C8 (durability): the snapshot is written to a temporary file in the
+    /// destination's own directory, integrity-checked, and only then promoted.
+    /// A failure at any point leaves the previous snapshot untouched, and the
+    /// previous snapshot survives at generation 1 — see [`BACKUP_GENERATIONS`].
     pub fn backup(&self, output_path: &str) -> Result<(), CoreError> {
-        Self::remove_destination_for_backup(output_path)?;
+        let destination = Path::new(output_path);
+        let snapshot = self.write_verified_snapshot(destination)?;
+        // The verified snapshot exists, so the old destination can be moved out
+        // of the way. A rotation failure discards the new snapshot and leaves
+        // the previous one exactly where it was.
+        if let Err(e) = Self::rotate_generations(destination) {
+            let _ = std::fs::remove_file(&snapshot);
+            return Err(e);
+        }
+        // Same-directory rename: an atomic replace on one filesystem. Should
+        // this still fail, the previous snapshot is intact as generation 1 —
+        // degraded, never lost.
+        std::fs::rename(&snapshot, destination).map_err(|e| {
+            let _ = std::fs::remove_file(&snapshot);
+            CoreError::Internal(format!(
+                "failed to move the verified backup into place at '{output_path}': {e}"
+            ))
+        })
+    }
 
-        let mut dst = rusqlite::Connection::open(output_path).map_err(|e| {
-            CoreError::Internal(format!(
-                "failed to open backup destination '{output_path}': {e}"
-            ))
-        })?;
-        // rusqlite 0.31: `Backup::new` takes the two distinct connections;
-        // `run_to_completion` copies the whole source database in chunks.
-        // 512 pages (~2 MB) per chunk with a 10 ms pause yields to concurrent
-        // writers between chunks (the online-backup contract) without the
-        // ~250 ms × chunks sleep that made small backups take ~18 s.
-        let backup = rusqlite::backup::Backup::new(self.conn, &mut dst).map_err(|e| {
-            CoreError::Internal(format!(
-                "failed to start online backup to '{output_path}': {e}"
-            ))
-        })?;
-        backup
-            .run_to_completion(512, std::time::Duration::from_millis(10), None)
-            .map_err(|e| {
-                CoreError::Internal(format!("online backup to '{output_path}' failed: {e}"))
+    /// Write a verified snapshot of the live database to a temporary file
+    /// beside `destination`, returning that temporary path.
+    ///
+    /// C8: `destination` itself is never touched here, so a full disk, a
+    /// permission failure or a crash mid-copy can only ever leave the previous
+    /// snapshot intact. The temporary file is created **in the destination's
+    /// own directory**, which makes the caller's final rename same-filesystem
+    /// (atomic) by construction, and `PRAGMA integrity_check` runs on the
+    /// written snapshot so a truncated copy is never promoted.
+    ///
+    /// Any failure removes the temporary file and returns a typed error.
+    fn write_verified_snapshot(&self, destination: &Path) -> Result<PathBuf, CoreError> {
+        let dest_str = destination.to_string_lossy();
+        // RUST-03 semantics kept: a destination that exists and is not a file
+        // is a typed error, not a rename that silently replaces a directory.
+        if destination.exists() && !destination.is_file() {
+            return Err(CoreError::Internal(format!(
+                "backup destination '{dest_str}' exists and is not a file"
+            )));
+        }
+        if destination.file_name().is_none() {
+            return Err(CoreError::Internal(format!(
+                "backup destination '{dest_str}' is not a file path"
+            )));
+        }
+
+        let temp_path = destination.with_file_name({
+            let mut name = destination.file_name().unwrap_or_default().to_os_string();
+            name.push(format!(".tmp-{}", uuid::Uuid::now_v7()));
+            name
+        });
+
+        let copy = (|| -> Result<(), CoreError> {
+            let mut dst = rusqlite::Connection::open(&temp_path).map_err(|e| {
+                CoreError::Internal(format!(
+                    "failed to open backup temporary file '{}': {e}",
+                    temp_path.display()
+                ))
             })?;
-        Ok(())
+            // rusqlite 0.31: `Backup::new` takes the two distinct connections;
+            // `run_to_completion` copies the whole source database in chunks.
+            // 512 pages (~2 MB) per chunk with a 10 ms pause yields to concurrent
+            // writers between chunks (the online-backup contract) without the
+            // ~250 ms × chunks sleep that made small backups take ~18 s.
+            let backup = rusqlite::backup::Backup::new(self.conn, &mut dst).map_err(|e| {
+                CoreError::Internal(format!(
+                    "failed to start online backup to '{dest_str}': {e}"
+                ))
+            })?;
+            backup
+                .run_to_completion(512, std::time::Duration::from_millis(10), None)
+                .map_err(|e| {
+                    CoreError::Internal(format!("online backup to '{dest_str}' failed: {e}"))
+                })?;
+            drop(backup);
+
+            // Verify the SNAPSHOT, not the live database: a copy that came out
+            // truncated must never be promoted over a good generation.
+            let errors = Self::integrity_errors(&dst).map_err(|e| {
+                CoreError::Internal(format!(
+                    "failed to verify the backup snapshot for '{dest_str}': {e}"
+                ))
+            })?;
+            if !errors.is_empty() {
+                return Err(CoreError::Internal(format!(
+                    "backup snapshot for '{dest_str}' failed integrity_check: {}",
+                    errors.join("; ")
+                )));
+            }
+            // Close the temporary connection before the rename — Windows keeps
+            // an open handle on the file until the connection drops.
+            drop(dst);
+            Ok(())
+        })();
+
+        match copy {
+            Ok(()) => Ok(temp_path),
+            Err(e) => {
+                let _ = std::fs::remove_file(&temp_path);
+                Err(e)
+            }
+        }
+    }
+
+    /// Rotate the backup generations beside `destination`.
+    ///
+    /// Called only once a verified snapshot exists: `destination` becomes
+    /// generation 1, each older generation shifts one slot down, and the oldest
+    /// is dropped, so [`BACKUP_GENERATIONS`] files survive in total. A failed
+    /// backup never reaches this point, so it never rotates.
+    ///
+    /// Dropping the oldest generation and shifting the middle ones are
+    /// best-effort (they only cost history); moving `destination` to
+    /// generation 1 is fatal, because the new snapshot must not take its place
+    /// before the old one has been preserved.
+    fn rotate_generations(destination: &Path) -> Result<(), CoreError> {
+        let last = BACKUP_GENERATIONS - 1;
+        if last == 0 || !destination.exists() {
+            return Ok(());
+        }
+        let oldest = Self::backup_generation_path(destination, last);
+        if oldest.exists() {
+            if let Err(e) = std::fs::remove_file(&oldest) {
+                tracing::warn!(
+                    event = "backup_rotation_failed",
+                    path = %oldest.display(),
+                    error = %e,
+                    "could not drop the oldest backup generation"
+                );
+            }
+        }
+        for generation in (1..last).rev() {
+            let from = Self::backup_generation_path(destination, generation);
+            if !from.exists() {
+                continue;
+            }
+            let to = Self::backup_generation_path(destination, generation + 1);
+            if let Err(e) = std::fs::rename(&from, &to) {
+                tracing::warn!(
+                    event = "backup_rotation_failed",
+                    from = %from.display(),
+                    to = %to.display(),
+                    error = %e,
+                    "could not shift an older backup generation"
+                );
+            }
+        }
+        let first = Self::backup_generation_path(destination, 1);
+        std::fs::rename(destination, &first).map_err(|e| {
+            CoreError::Internal(format!(
+                "failed to rotate the previous backup to '{}': {e}",
+                first.display()
+            ))
+        })
+    }
+
+    /// Path of backup generation `generation` for `destination`.
+    ///
+    /// Generation 0 is `destination` itself (`<db>.backup.db`); generation 1
+    /// is its sibling `<db>.backup.1.db`, and so on — the generation number
+    /// goes before the extension, so every generation shares the `.db` suffix
+    /// the backup family is recognised by. `generation` must be below
+    /// [`BACKUP_GENERATIONS`].
+    fn backup_generation_path(destination: &Path, generation: usize) -> PathBuf {
+        debug_assert!(generation < BACKUP_GENERATIONS);
+        if generation == 0 {
+            return destination.to_path_buf();
+        }
+        let mut name = destination.file_stem().unwrap_or_default().to_os_string();
+        name.push(format!(".{generation}"));
+        let extension = destination.extension().unwrap_or_default().to_os_string();
+        if !extension.is_empty() {
+            name.push(".");
+            name.push(extension);
+        }
+        destination.with_file_name(name)
     }
 
     /// Check database integrity using SQLite's `PRAGMA integrity_check`.
@@ -317,17 +468,7 @@ impl Store<'_> {
     /// databases (>1 GB), this may take several seconds. Call this at
     /// startup or on a background thread, not in a hot path.
     pub fn check_integrity(&self) -> Result<(), CoreError> {
-        let mut stmt = self.conn.prepare("PRAGMA integrity_check")?;
-
-        let mut errors = Vec::new();
-        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
-
-        for row in rows {
-            let msg = row?;
-            if msg != "ok" {
-                errors.push(msg);
-            }
-        }
+        let errors = Self::integrity_errors(self.conn)?;
 
         if errors.is_empty() {
             Ok(())
@@ -337,6 +478,26 @@ impl Store<'_> {
                 errors.join("; ")
             )))
         }
+    }
+
+    /// Run `PRAGMA integrity_check` on `conn` and return SQLite findings.
+    ///
+    /// A healthy database reports the single row `ok`; anything else is a
+    /// corruption message. Split out of [`Self::check_integrity`] so the same
+    /// check can run against the freshly written backup snapshot, which is not
+    /// reachable through `&self`.
+    fn integrity_errors(conn: &Connection) -> Result<Vec<String>, CoreError> {
+        let mut stmt = conn.prepare("PRAGMA integrity_check")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+
+        let mut errors = Vec::new();
+        for row in rows {
+            let msg = row?;
+            if msg != "ok" {
+                errors.push(msg);
+            }
+        }
+        Ok(errors)
     }
 
     /// Check for tenant-foreign rows in a desktop store database.
@@ -401,9 +562,9 @@ impl Store<'_> {
     /// corrupt to read, the output path is not writable, or an existing
     /// destination could not be removed — RUST-03).
     pub fn repair_to(&self, output_path: &str) -> Result<(), CoreError> {
-        // RUST-03: propagate filesystem failures when preparing the target
-        // (permission denied, directory target) instead of swallowing them.
-        Self::remove_destination_for_backup(output_path)?;
+        // C8: the destination is prepared, written and verified by `backup`
+        // itself, which owns the RUST-03 destination checks (permission denied,
+        // directory target) and never destroys the previous snapshot on failure.
         self.backup(output_path).map_err(|e| {
             CoreError::Internal(format!(
                 "database repair failed — backup to '{output_path}': {e}"
@@ -466,3 +627,7 @@ pub(crate) fn row_to_product(row: &rusqlite::Row) -> rusqlite::Result<crate::Pro
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "recovery_tests.rs"]
+mod recovery_tests;
