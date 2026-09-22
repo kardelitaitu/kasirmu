@@ -63,7 +63,9 @@ impl Drop for WindowGuard {
 async fn assert_account_change_revokes_within_the_window(ctx: &BridgeCtx<'_>, change: &str) {
     // A long window: the first resolve only stamps the token, and the second
     // resolve below must fall inside it.
-    let _guard = WindowGuard(set_revalidation_window_for_test(Some(Duration::from_secs(3600))));
+    let _guard = WindowGuard(set_revalidation_window_for_test(Some(Duration::from_secs(
+        3600,
+    ))));
     assert!(ctx.resolve_session("owner-token").is_ok());
 
     {
