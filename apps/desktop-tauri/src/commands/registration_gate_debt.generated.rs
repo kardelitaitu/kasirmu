@@ -192,7 +192,10 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// replaced. Re-read 20-09-26: regenerated with the floor's raise to 458, then to 461 with
 /// the emailed-code pair's arrival — the floor moved in the same pass both times, because
 /// the generator writing this number does not move it.)
-pub const REGISTERED_TOTAL: usize = 463;
+/// Re-read 22-09-26: regenerated to 468 with the floor's raise for the staff/role trash's
+/// five gated commands. 74 debt rows before and after, which is the measurement saying they
+/// arrived already gated.)
+pub const REGISTERED_TOTAL: usize = 468;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 /// 70 -> 69: `security::rotate_encryption_key` was deregistered, and its ledger row

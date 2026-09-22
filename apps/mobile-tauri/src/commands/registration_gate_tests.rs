@@ -138,7 +138,14 @@ mod debt;
 /// exists (the same property `get_device_id` and `get_local_ip` beside it have).
 /// The ADR #56 §2.5 pairing step (337 -> 339) adds `desktop_link::start_device_pairing`
 /// and `desktop_link::poll_device_pairing` for tablet device-code pairing.
-const REGISTERED_FLOOR: usize = 339;
+///
+/// The 339 -> 344 step is the staff/role TRASH (90-day soft delete), the same five
+/// gated commands the desktop shell gained: `delete_staff_scoped`,
+/// `restore_staff_scoped` and `list_staff_trash_scoped` behind `staff:delete`,
+/// plus `restore_role_scoped` and `list_role_trash_scoped` behind
+/// `staff:manage_roles`. Nothing lands on the ledger, so this step moves the floor
+/// and the ledger's measured total together and leaves every ceiling alone.
+const REGISTERED_FLOOR: usize = 344;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.

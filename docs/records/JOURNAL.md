@@ -11639,3 +11639,144 @@ and it must not land alone.
 **Commit:** one pathspec commit touching the two gate files, the two ledgers and this file together — the
 assertions ask for one deliberate pass, so splitting a const from its record would reproduce the exact
 failure mode the message describes. Never push without a direct user order.
+
+## 2026-09-22 — Absorb: the staff/role trash's five commands land on BOTH registration floors, and no ceiling and no ledger row moves (desktop-tauri/mobile-tauri/records)
+
+**Context:**
+The staff-management trash (90-day soft delete for staff members and custom roles) added five `_scoped`
+commands to each shell: `delete_staff_scoped`, `restore_staff_scoped` and `list_staff_trash_scoped` behind
+`staff:delete`, plus `restore_role_scoped` and `list_role_trash_scoped` behind `staff:manage_roles`. All five
+arrive ALREADY GATED, which is what makes them invisible to every leg of the registration ratchet except the
+floor — a gated name moves no ceiling, no class count and no ledger row.
+
+The floors are the one thing that had to move, and they move for the reason the pin's own message asks for:
+`REGISTERED_FLOOR` is an EQUALITY against the tree on both shells (`registration_gate_tests.rs:752` desktop,
+`:785` tablet), so 463 -> 468 and 339 -> 344 record what landed without approving it. On the tablet the floor
+is ALSO asserted equal to the generated ledger's total, so the const and the ledger can only move together —
+the same constraint the 09-20 pass recorded. Desktop's ledger total moved 463 -> 468 as well, because the
+generator was re-run in this pass rather than left to lag inside `REGISTERED_SLACK`.
+
+The measurement that says no debt moved: the two `DEBT_LEDGER` arrays render **74** rows on desktop and **94**
+on tablet before AND after regeneration. A gated addition cannot change either number, so the regeneration was
+read back rather than trusted (`drift_pin_generated_ledger_is_the_sweeps_own_output`, which in
+`KASIRMU_REGENERATE_GATE_LEDGER=1` mode writes the file and then re-parses it).
+
+The five names are also what `scripts/verify-ipc-parity.py` needs: it fails a registered `_scoped` command that
+no shipped UI file invokes, so the registrations and the Trash tab's `ui/src/api/staff.ts` wrappers land in the
+same feature, and the parity run in this pass is green with all five invoked.
+
+**Verification:**
+- `cargo test -p kasirmu-app --lib registration_gate` -> **14 passed; 0 failed**, exit 0.
+- `cargo test -p kasirmu-mobile --lib registration_gate` -> **10 passed; 0 failed**, exit 0.
+- Ledgers regenerated, not hand-edited: `KASIRMU_REGENERATE_GATE_LEDGER=1 cargo test -p kasirmu-app -p kasirmu-mobile --lib drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture` -> "74 debt row(s), registered total 468" / "94 debt row(s), registered total 344"; the commit's diff of both generated files is the two `REGISTERED_TOTAL` lines and the authored history note above them, nothing else.
+- `cargo clippy --all-targets --all-features -- -D warnings` -> exit 0 (the same sweep cleared every strict-lint finding the newer clippy had raised across untouched crates, in `dbf14f8bb`).
+- UI: `npm run test` -> **606 files, 10311 passed**; `npm run typecheck` and `npm run lint` clean.
+- The trash row's layout was measured, not asserted: with the final day-count copy at 1280/768/390 the row never overflows and the Restore button stays 1px inside its content box. The first copy (`90 days left`) fitted; the rename to `'90 days before permanent deletion'` did NOT at 390px (row over by 4px, button 18px outside), which is why `.staff-mgmt-trash-days` lets that sentence wrap.
+
+**Commit:** one pathspec commit touching the two gate files, the two generated ledgers and this file together —
+the floor's own message asks for one deliberate pass, and splitting a const from its record is the failure mode
+that message exists to prevent. Never push without a direct user order.
+
+## 2026-09-22 — Repair: the command census and two topology fixtures measured a world ADR #56 §2.6 deleted (desktop-tauri/records)
+
+**Context:**
+`cargo test --workspace --all-features` was red at HEAD on four legs, none of them introduced by the trash
+feature itself and all of them invisible to `cargo test -p <crate> --lib` alone. Two are pins this pass moves
+deliberately; two are fixtures that describe a database shape §2.6 stopped producing.
+
+**The pins (moved, with the reason).** `apps/desktop-tauri/tests/gate_audit.rs` walks the shell's `src/commands`
+AND `crates/kasirmu-bridge/src` and pins, per module stem, how many gate calls it holds and which permission
+keys those calls name. One `staff.rs` in the bridge serves both shells, so the five trash commands moved the
+desktop row from (11 calls, four keys) to (16, six), and the tablet's shim row to
+`["STAFF_READ_IDENTITY", "STAFF_UPDATE"]`. Raising a pin records what landed; it does not approve it. Two
+more rows are not mine and were red before this pass: `build_integrity` (desktop) and `license` / `locations`
+(tablet) walk into the census as modules with 0 gate calls and no pin, which the census reports as
+`unpinned gates permissions on disk but is NOT in the pinned census`. They are pinned at their measured
+`(0, &[])` rather than skipped. `STAFF_READ_IDENTITY` was already measured in the bridge's caller-aware
+profile write and had no `permission_value()` arm at all — resolving it is what lets the key set be checked
+instead of merely carried.
+
+**The fixtures (not the assertions).** ADR #56 §2.6 moved the baseline seed (the `Default Store` location, the
+five `default-*` instances and the `BOOTSTRAP_FREE` subscription) out of the migration chain into
+`migrations::seed_provisioned_baseline`, which `provision_device` calls. `commands::topology::topology_command_tests`
+builds its databases with `migrations::run` / `fresh_db()` only, so both fixtures are now UNPROVISIONED:
+`tauri_save_topology_with_wires_roundtrips_fully` names `store_profile_id: "default"` and no longer finds that
+location (`unknown-branch-location`), and `apply_naming_a_foreign_store_records_which_database_receives_the_writes`
+lost the seeded free-tier row and the location count its entitlement refusal depended on — it sailed past the
+gate and died later on an instance FK. Both now call `seed_provisioned_baseline`, and the second also seeds
+the two store databases it can reach, because a store database is created by migrations only
+(`platform/core/src/database/manager.rs:116`). NO assertion changed: the second is a CHARACTERISATION test
+whose own comment says which world it observes, and the repair restores that world rather than redefining it.
+
+**Verification:**
+- `cargo test -p kasirmu-app --test gate_audit` -> **3 passed; 0 failed**, exit 0.
+- `cargo test -p kasirmu-app --lib` -> **158 passed; 0 failed**, exit 0 (155/3 before this pass).
+- `cargo test --workspace --all-features` -> green in full. Run with an isolated `CARGO_TARGET_DIR` because a running `kasirmu-app.exe` on this host holds the default target dir's binary and Windows refuses to replace it — that lock is an environment fact, not a test result, and it is why the first workspace run died with "failed to remove file ... kasirmu-app.exe" before executing a single test.
+- The registration floors moved with it: 463 -> 468 desktop, 339 -> 344 tablet, both ledgers regenerated (recorded in the entry above).
+
+**Commit:** one pathspec commit for the gate pins and the two fixtures, separate from the feature commits, so a
+red census can be blamed or exonerated on its own. Never push without a direct user order.
+
+## 2026-09-22 — Repair: an independent audit of the staff/role trash found two holes the tests did not, and both close at the source (core/records)
+
+**Context:**
+A read-only audit of the trash feature (five commits, no builds run) found three defects and a set of stale
+claims. Two are MAJOR and both were invisible to the tests that shipped with the feature, because each is a
+combination of two correct-looking halves:
+
+1. **A trashed role stayed ASSIGNABLE.** `get_role` deliberately does not filter `deleted_at` (the trash renders
+   trashed rows through `role_dto` -> `role_holder_count` -> `get_role`), so `create_user_in_tx` and
+   `update_user_in_tx` accepted a trashed `role_id` off the wire. `purge_expired_roles` refuses to delete a row
+   anything references, so one re-reference closed the window for ever — and the role kept granting while
+   `list_roles` hid it from every picker. An author-visible grant with no row left to revoke.
+2. **A closed window was still offered as restorable.** `list_trashed_roles` had no deadline predicate, so a row
+   past its 90 days that the purge had refused to delete came back from `list_role_trash_scoped` as a row the
+   Trash tab offered to Restore (rendered as `0 days before permanent deletion`).
+3. **A trashed member was still editable.** `update_user_in_tx` updated by id with no `deleted_at` guard, so a
+   crafted call could set `is_active = 1` on a trashed row — an ACTIVE account that both the login path and the
+   roster filter out, i.e. one nobody can see and nobody can revoke.
+
+**Fixes, each with the check that holds it:**
+- `Store::require_assignable_role` (private, `crates/kasirmu-core/src/db/staff.rs`) is the G-2 zombie guard
+  extended: the role must exist AND not be in the trash. Both write paths call it, so it is one guard rather
+  than two. Test: `a_trashed_role_cannot_be_assigned_to_an_account` — and it ends by proving the window can
+  still close, which is the property the hole was destroying.
+- `list_trashed_roles` now carries the purge's OWN cutoff as a predicate, so `>= cutoff` means RESTORABLE and
+  the two halves read the same boundary in opposite directions. `purge_expired_roles` was made to stop reading
+  through that view: doing so made the sweep a no-op that reported 0 while the expired rows stayed on disk.
+  That bug was introduced by the predicate and caught immediately by
+  `purge_expired_roles_removes_only_past_the_window`, which is the test that exists for it — the sweep now asks
+  the table for the expired set directly and keeps its in-transaction reference re-check. Tests:
+  `a_closed_window_role_is_not_listed_as_restorable`, plus the two above.
+- `update_user_in_tx`'s UPDATE gained `AND deleted_at IS NULL`; a trashed member answers NotFound to an edit,
+  and `restore_user` remains the door back. Test: `a_trashed_member_is_not_editable`.
+- Stale claims retired: the `staff:delete` registry DESCRIPTION (served by `list_permission_keys_scoped` into
+  the role editor, so it told an author that the key guards nothing), two audit stamps, the broken
+  `[Store::delete_role]` intra-doc link, three prose sites, and the payment-methods plan's citation of a
+  convention this feature retired. NOT edited:
+  `crates/kasirmu-core/migrations/20261010_role_trash.sql:8` still names `delete_role` — a migration's bytes are
+  checksummed, so its stale comment stays as the historical record rather than being "fixed" into drift.
+
+**Residual, recorded rather than fixed:** the delete evicts sessions from this PROCESS's in-memory store, and
+`resolve_session` checks only TTL and never re-reads the account, so a session held by another process against
+the same identity DB survives to its TTL. Unreachable in the single-instance desktop shell (the shell and the
+bridge share one `Arc` session map); it becomes real only if a second host ever shares that database.
+
+**Verification:**
+- `cargo test -p kasirmu-core --lib db::roles` -> **40 passed; 0 failed** (38 + 2 new); `db::staff` -> **65 passed** (64 + 1 new).
+- `cargo test -p kasirmu-bridge --lib staff` -> **126 passed; 0 failed** (the create/update paths the new guard sits on).
+- `cargo test -p kasirmu-app --lib` -> **158 passed; 0 failed**; `--test gate_audit` -> **3 passed; 0 failed**.
+- `cargo clippy --all-targets --all-features -- -D warnings` -> exit 0; `cargo fmt --all -- --check` -> clean.
+- `cargo nextest run --workspace --all-features` -> green (the runner `dev-ci.yml:251` uses).
+- NOT MINE, FOUND WHILE VERIFYING: `crates/kasirmu-api`'s `pg::tests::pg_isolates_locations_by_tenant` fails when
+  the whole crate runs in one process and passes when run alone (`cargo test -p kasirmu-api --lib pg::tests::pg_isolates_locations_by_tenant`).
+  It races the cluster-wide role `oz_rest_probe` against `pg_integration_rest_rls_non_owner` at
+  `pg_tests.rs:1633`, in the window the file's own comment describes. Pre-existing and unrelated to this work;
+  process-isolated execution (nextest) and the crate's serial path both pass. Recorded, not papered over.
+
+**Commit:** two commits — the core behaviour with its tests, and the stale-claim sweep — because the first is
+what a reviewer must read against the trash feature and the second is prose. Never push without a direct user
+order.
+
+
+

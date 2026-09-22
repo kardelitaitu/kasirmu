@@ -95,7 +95,15 @@ mod debt;
 /// code. Unlike the three `qris_auto` names the 453 step absorbed, these three are NOT
 /// gated, so the same pass moves a ceiling and the class counts in the ledger beside it.
 /// The 461 -> 463 step adds `desktop_link::start_device_pairing` and `desktop_link::poll_device_pairing` (ADR #56 §2.5).
-const REGISTERED_FLOOR: usize = 463;
+///
+/// The 463 -> 468 step is the staff/role TRASH (90-day soft delete): the three staff
+/// commands `delete_staff_scoped`, `restore_staff_scoped` and
+/// `list_staff_trash_scoped` behind `staff:delete`, plus `restore_role_scoped` and
+/// `list_role_trash_scoped` behind `staff:manage_roles`. All five arrive ALREADY
+/// GATED, so this pass moves no ceiling, no class count and no ledger row — which is
+/// exactly why this EQUALITY is the leg that had to move, and why it is the only leg
+/// in this file that could see the five land.
+const REGISTERED_FLOOR: usize = 468;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is

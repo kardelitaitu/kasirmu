@@ -252,6 +252,12 @@ async fn tauri_save_topology_with_wires_roundtrips_fully() {
     {
         let mut conn = state.db.lock().await;
         migrations::run(&mut conn).unwrap();
+        // ADR #56 §2.6 stopped the baseline migration seeding the 'default'
+        // location, so a migrated-only DB no longer carries the profile this
+        // fixture names in store_profile_id. Restore the provisioned baseline the
+        // test was written against — the same call the suite's other
+        // provisioned-store fixtures use (crates/kasirmu-bridge/src/testing.rs).
+        migrations::seed_provisioned_baseline(&conn);
     }
 
     let app = tauri::test::mock_builder()
@@ -2040,6 +2046,12 @@ async fn apply_naming_a_foreign_store_records_which_database_receives_the_writes
     let store_b = "char-store-b"; // the DIAGRAM store_profile_id -- foreign
     let dir = tempdir().unwrap();
     let global = kasirmu_core::migrations::fresh_db();
+    // ADR #56 §2.6: the baseline the chain used to seed (the 'default' location and the
+    // BOOTSTRAP_FREE tenant_subscription) is now written only by provisioning, so a
+    // migrated-only DB is UNPROVISIONED. This fixture's scenario — and the one below,
+    // whose entitlement refusal depends on the location count and the free tier — is the
+    // provisioned world the test was written in, so restore it explicitly.
+    kasirmu_core::migrations::seed_provisioned_baseline(&global);
     {
         let store = Store::new(&global);
         store.seed_default_roles().unwrap();
@@ -2090,6 +2102,14 @@ async fn apply_naming_a_foreign_store_records_which_database_receives_the_writes
     let mut state = AppState::for_test_with_conn(global);
     state.db_manager =
         platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
+    // A store database is created by MIGRATIONS ONLY (manager.rs:116), so it is
+    // unprovisioned under §2.6 as well. Seed both stores the Apply below can reach,
+    // because an instance written into one carries a location FK into that same database.
+    for sid in [store_a, store_b] {
+        let conn = state.db_manager.open_store(sid).unwrap();
+        let db = conn.lock().unwrap();
+        migrations::seed_provisioned_baseline(&db);
+    }
     for (tok, uid, rid) in [
         ("token-legacy", "user-legacy", "role-owner"),
         ("token-scoped", "user-scoped", "role-topo-mgr"),

@@ -59,6 +59,10 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("desktop_link", 0, &[]),
     ("branding", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("browser", 0, &[]),
+    // Pinned at its measured shape, the same call the comment above records:
+    // `build_integrity.rs` gates nothing yet, and the census walks every
+    // non-skipped .rs in the directory, so an added module is a row.
+    ("build_integrity", 0, &[]),
     (
         "bundles",
         6,
@@ -216,13 +220,23 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
             "SHIFTS_VIEW_ANY",
         ],
     ),
+    // Re-pinned 22-09-26 for the staff/role trash: five scoped commands moved this
+    // stem from (11, four keys) to (16, six). Three of the calls are
+    // `require_permission_for_user(.., STAFF_DELETE)` on delete/restore/list-trash,
+    // two are `require_session_permission(.., STAFF_MANAGE_ROLES)` on the role trash,
+    // and STAFF_DELETE is a new key for this row. STAFF_READ_IDENTITY was already
+    // measured in the bridge's `update_staff_scoped` (the caller-aware profile
+    // write) and had never been added here — this pass absorbs it rather than
+    // leaving a known-stale row beside the edited one.
     (
         "staff",
-        11,
+        16,
         &[
             "STAFF_CREATE",
+            "STAFF_DELETE",
             "STAFF_MANAGE_ROLES",
             "STAFF_READ",
+            "STAFF_READ_IDENTITY",
             "STAFF_UPDATE",
         ],
     ),
@@ -323,6 +337,11 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ("inventory_counts", 1, &["INVENTORY_COUNT"]),
     ("kds", 1, &["KDS_UPDATE"]),
     ("legal_entities", 0, &[]),
+    // Both walk into the census ungated and unpinned: the tablet's license.rs and
+    // locations.rs hold no permission-gated command of their own (the bodies gate in
+    // kasirmu-bridge), and the census walks every non-skipped .rs in the directory.
+    ("license", 0, &[]),
+    ("locations", 0, &[]),
     ("local_payment", 1, &["SETTINGS_EDIT"]),
     ("loyalty", 0, &[]),
     ("memo", 0, &[]),
@@ -378,7 +397,10 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
         &["SALES_VIEW", "SETTINGS_EDIT", "SETTINGS_READ"],
     ),
     ("setup", 0, &[]),
-    ("staff", 1, &["STAFF_UPDATE"]),
+    // STAFF_READ_IDENTITY joined this row at 22-09-26: the tablet's shim measures it
+    // without the count moving, because the census counts CALLS and the key set is
+    // collected per call. Pinned at the measured pair rather than trimmed.
+    ("staff", 1, &["STAFF_READ_IDENTITY", "STAFF_UPDATE"]),
     ("stock_transfers", 0, &[]),
     (
         "subscription",
@@ -868,8 +890,15 @@ fn permission_value(name: &str) -> &'static str {
         "SHIFTS_OPEN" => p::SHIFTS_OPEN,
         "SHIFTS_VIEW_ANY" => p::SHIFTS_VIEW_ANY,
         "STAFF_CREATE" => p::STAFF_CREATE,
+        // Resolved through the real constant on purpose: the trash's delete/restore
+        // commands gate on it, so a rename has to break this arm rather than quietly
+        // unpin the key.
+        "STAFF_DELETE" => p::STAFF_DELETE,
         "STAFF_MANAGE_ROLES" => p::STAFF_MANAGE_ROLES,
         "STAFF_READ" => p::STAFF_READ,
+        // Measured in the bridge's caller-aware profile write; it had never been
+        // resolved here, so the key set was carrying a name nothing could check.
+        "STAFF_READ_IDENTITY" => p::STAFF_READ_IDENTITY,
         "STAFF_UPDATE" => p::STAFF_UPDATE,
         "SYNC_MANAGE" => p::SYNC_MANAGE,
         "TABLES_ASSIGN" => p::TABLES_ASSIGN,

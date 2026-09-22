@@ -263,7 +263,9 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// (Re-read 20-09-26: 324, and the floor was raised to it in the same pass as the
 /// ceilings below. The generator writing this number does not move the floor, so the
 /// two are only ever equal in a pass that touches both files.)
-pub const REGISTERED_TOTAL: usize = 339;
+/// Re-read 22-09-26: 344, with the floor raised to it in the same pass for the staff/role
+/// trash's five gated commands — 94 debt rows before and after.)
+pub const REGISTERED_TOTAL: usize = 344;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///
