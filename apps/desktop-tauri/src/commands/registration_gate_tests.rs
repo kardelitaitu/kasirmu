@@ -103,7 +103,16 @@ mod debt;
 /// GATED, so this pass moves no ceiling, no class count and no ledger row — which is
 /// exactly why this EQUALITY is the leg that had to move, and why it is the only leg
 /// in this file that could see the five land.
-const REGISTERED_FLOOR: usize = 468;
+///
+/// The 468 -> 469 step is **not this lane's**: `setup::get_preset_features` arrived with
+/// `6ac851dd4` (fix(setup): derive the terminal's feature set from the chosen store type),
+/// and it arrives UNGATED — the wizard reads the store-type presets before any session
+/// exists, the class `setup::get_first_run_state` and `setup::provision_device` have always
+/// occupied. So this step moves the floor, the debt ceiling and the class-1 count together
+/// and records the reason in docs/records/JOURNAL.md, which is what the ceiling pin asks of
+/// a RISE. The provenance is the point: this pass records what landed, it does not approve
+/// it.
+const REGISTERED_FLOOR: usize = 469;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is

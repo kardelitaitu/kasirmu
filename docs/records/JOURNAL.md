@@ -11769,6 +11769,39 @@ the shell. That is pre-existing shape, and seeding inside that predicate is exac
 **Commit:** one pathspec commit for the tablet fixtures, separate from the feature and from the desktop
 repairs, so a red tablet suite can be blamed or exonerated on its own. Never push without a direct user order.
 
+## 2026-09-22 — Absorb: `setup::get_preset_features` lands on the desktop floor, ceiling and ledger (desktop-tauri/records)
+
+**Context:**
+The desktop registration ratchet was red on four legs after a peer commit landed. Measured, not derived:
+`lib.rs` registers **469** names against a floor of 468; the sweep finds `setup::get_preset_features` ungated
+and NOT on the generated ledger; the debt ceiling is 74 against a measured **75**; and the ledger needs
+regenerating. Provenance is one commit: `6ac851dd4` (fix(setup): derive the terminal's feature set from the
+chosen store type). Nothing the staff/role trash landed moved these numbers — that pass was 463 -> 468 and its
+five commands arrived gated, recorded in the entry above.
+
+**The pass (the gate's own instructions, followed in one commit):**
+- `REGISTERED_FLOOR` 468 -> 469.
+- `DEBT_CEILING` 74 -> 75, with the RISE recorded here — which is what the ceiling pin asks of a rise.
+- `NO_SESSION_RESOLUTION` 47 -> 48: the new row is class 1, and `48 + 27 = 75` partitions the ceiling again.
+- Ledger regenerated through the generator (`KASIRMU_REGENERATE_GATE_LEDGER=1 cargo test -p kasirmu-app --lib
+  drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture`), which printed "75 debt row(s),
+  registered total 469" and re-reads its own output before passing.
+
+Class 1 is STRUCTURAL for this command rather than an omission being absorbed, and that is why the rise is
+defensible: `get_preset_features` answers with the store-type presets the SETUP WIZARD shows, and the wizard
+runs before any staff session exists — a `session_token` parameter would be a permission no caller could ever
+satisfy, the same class `setup::get_first_run_state`, `setup::provision_device`, `license::activate_license`
+and the three `desktop_link::*` rows have always occupied. Naming the provenance is deliberate: this pass
+records what landed and does not approve it.
+
+**Verification:**
+- `cargo test -p kasirmu-app --lib commands::registration_gate_tests` -> **14 passed; 0 failed**, exit 0 (was 10 passed / 4 failed).
+- The regeneration's own legs: `drift_pin_generated_ledger_is_the_sweeps_own_output` -> ok; `drift_pin_three_way_partition_is_complete_and_sums` -> ok; `drift_pin_debt_ceilings_only_shrink` -> ok; `drift_pin_registration_floor_is_met` -> ok.
+
+**Commit:** one pathspec commit touching the gate file, the generated ledger and this entry, because the floor's
+own message asks for one deliberate pass. Never push without a direct user order.
+
+
 ## 2026-09-22 — Repair: an independent audit of the staff/role trash found two holes the tests did not, and both close at the source (core/records)
 
 **Context:**
