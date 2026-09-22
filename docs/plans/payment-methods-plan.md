@@ -154,7 +154,7 @@ Rationale: **Staff collects but never creates** (taking the repayment money is c
 
 **What still rides existing keys (no new keys):** per-customer credit-limit editing → `customers:edit`; receivables settings (default due days, reminder timing) → `settings:edit`; AP authorization → `payables:*` family (no dependence on `purchasing:manage`).
 
-**Implementation ripple (lands with its phases — keys ship together with their first enforcement point, per the house `staff:delete` RESERVED convention):**
+**Implementation ripple (lands with its phases — keys ship together with their first enforcement point; `staff:delete` used to be the house's one RESERVED-until-then exception, and the 2026-09-22 staff/role trash retired that exception by giving the key three consumers):**
 - Phase 3 (AR): 4 constants + registry entries + `ALL_ENFORCED` + presets (Manager +4, Staff +2, Admin +4, Auditor +1) + role-editor i18n names + backend gates on `pay_later` checkout / collection / write-off + aging report gating.
 - Phase 4 (AP): the payables mirror, same shape, in the purchasing flow.
 - No DB change for the keys themselves (permissions live in role JSON strings); no version bumps.

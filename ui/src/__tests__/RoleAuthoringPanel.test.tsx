@@ -407,7 +407,7 @@ describe('RoleAuthoringPanel', () => {
   it('surfaces a refused delete and leaves the row in place', async () => {
     // The reference count is read when the list loads, so a role can become
     // in-use between render and click — exactly the race the pre-check in
-    // delete_role exists for. The dialog closes either way, so the only
+    // soft_delete_role_scoped exists for. The dialog closes either way, so the only
     // signal left is the alert and the row still being there.
     scripted({ roleLists: [[AUTHORED]], fail: 'delete_role_scoped' });
     renderScreen();
