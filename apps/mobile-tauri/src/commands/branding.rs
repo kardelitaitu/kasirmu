@@ -46,59 +46,17 @@ pub async fn get_brand_settings(state: State<'_, AppState>) -> Result<BrandSetti
     })
 }
 
-/// Set the primary brand colour.
-///
-/// ADR #49: the body is the bridge's, and this delegation is a pure identity.
-/// `kasirmu_bridge::branding::set_brand_primary_colour` locks `ctx.lock_global()`,
-/// which `AppState::bridge_ctx` binds to this same `state.db` — the same lock on
-/// the same connection — and calls the same `Settings::set_brand_primary_colour`.
-/// Ledger-neutral by construction: this door resolves no session (it presents no
-/// `session_token`), so the sweep's `resolves_session` arm is false for it
-/// whatever the `kasirmu_bridge::` call says.
-#[command]
-pub async fn set_brand_primary_colour(
-    colour: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let ctx = state.bridge_ctx();
-    kasirmu_bridge::branding::set_brand_primary_colour(&ctx, &colour)
-        .await
-        .map_err(Into::into)
-}
-
-/// Set the filesystem path to the store logo.
-///
-/// ADR #49 NOT APPLIED, deliberately. The bridge twin does **more** than this
-/// body: it validates the path first — inside the app data directory, with an
-/// extension from `ALLOWED_LOGO_EXTENSIONS` — and writes the *canonicalised*
-/// result (`crates/kasirmu-bridge/src/branding.rs:178-194`, H-3). This shell has
-/// never validated, so delegating would either add a check that can start
-/// refusing paths the tablet accepts today, or require passing `app_data: None`
-/// to opt out of it — a security-relevant choice, not an extraction. §4 forbids
-/// both inside a port, so the body stays and the difference is reported. The
-/// tablet has no dialog plugin, so its logo path is set by other means.
-#[command]
-pub async fn set_brand_logo_path(path: String, state: State<'_, AppState>) -> Result<(), AppError> {
-    let conn = state.db.lock().await;
-    Ok(Settings::set_brand_logo_path(&conn, &path)?)
-}
-
-/// Set the brand store display name.
-///
-/// ADR #49: the body is the bridge's, and this delegation is a pure identity —
-/// same `ctx.lock_global()` lock on the same `state.db`, same
-/// `Settings::set_brand_store_name` call. Ledger-neutral by construction, since
-/// this door resolves no session.
-#[command]
-pub async fn set_brand_store_name(
-    name: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let ctx = state.bridge_ctx();
-    kasirmu_bridge::branding::set_brand_store_name(&ctx, &name)
-        .await
-        .map_err(Into::into)
-}
+// ── The three unscoped setters are RETIRED (C17, 2026-09-22) ─────
+//
+// `set_brand_primary_colour`, `set_brand_logo_path` and `set_brand_store_name`
+// used to sit here as class-1 debt: registered doors that resolve no session at
+// all. Their session-scoped twins below were already registered and the UI had
+// already moved to them (ui/src/api/branding.ts:32,39,46), so the unscoped doors
+// were dead weight whose only measurable effect was to hold the debt ceiling up.
+// They were removed by deletion, exactly as `settings::set_hardware_settings`
+// was in T11 — the ratchet pays the debt by retiring the door, not by excusing it.
+// The getter `get_brand_settings` above stays: it is still registered and still
+// class 1, for the reason its own doc comment gives.
 
 // ── Scoped variants: all four are case 2, and stay ──────────────
 //

@@ -151,7 +151,14 @@ mod debt;
 /// absorbed it on the desktop — floor 345, ceiling 95, class 1 51, ledger regenerated. Its
 /// reason is recorded in docs/records/JOURNAL.md with the desktop entry; this line exists so
 /// the two shells' floors cannot drift apart on a command both of them register.
-const REGISTERED_FLOOR: usize = 345;
+///
+/// The 345 -> 342 step is C17 (2026-09-22), the first floor move for a RETIREMENT since the
+/// ADR #56 §2.2 step: the three unscoped branding setters left `lib.rs` because the UI had
+/// already stopped naming them (`ui/src/api/branding.ts` calls only the `_scoped` twins), so
+/// the shell kept the doors that derive identity from the session and dropped the ones that
+/// took it on faith — the same move T11 made for `settings::set_hardware_settings`. Their
+/// three ledger rows left with them and the ceiling and class-1 count fell by three.
+const REGISTERED_FLOOR: usize = 342;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.

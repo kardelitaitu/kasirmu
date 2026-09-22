@@ -32,12 +32,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "resolves_session_names_no_permission",
     ),
     ("branding::get_brand_settings", "no_session_resolution"),
-    (
-        "branding::set_brand_primary_colour",
-        "no_session_resolution",
-    ),
-    ("branding::set_brand_logo_path", "no_session_resolution"),
-    ("branding::set_brand_store_name", "no_session_resolution"),
     ("staff::bootstrap_owner", "no_session_resolution"),
     (
         "subscription::get_subscription_capabilities",
@@ -266,7 +260,9 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// two are only ever equal in a pass that touches both files.)
 /// Re-read 22-09-26: 344, with the floor raised to it in the same pass for the staff/role
 /// trash's five gated commands — 94 debt rows before and after.)
-pub const REGISTERED_TOTAL: usize = 345;
+/// Re-read 22-09-26 (C17): 342, with the floor lowered to it in the same pass that retired
+/// the three unscoped branding setters — 92 debt rows, down from 95.)
+pub const REGISTERED_TOTAL: usize = 342;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///
@@ -326,7 +322,13 @@ pub const REGISTERED_TOTAL: usize = 345;
 /// 94 -> 95 with `setup::get_preset_features` (`6ac851dd4`): the setup wizard reads the
 /// store-type presets BEFORE any staff session exists, the class the `desktop_link::*` and
 /// `setup::provision_device` rows above already occupy. Recorded in docs/records/JOURNAL.md.
-pub const DEBT_CEILING: usize = 95;
+/// 95 -> 92 with C17 (2026-09-22): the three unscoped branding setters shed their rows by
+/// DELETION, the same move T11 made for `settings::set_hardware_settings`. Their
+/// session-scoped twins were already registered and the UI had already moved to them
+/// (`ui/src/api/branding.ts:32,39,46`), so all three were class-1 rows whose only effect
+/// was to hold this ceiling up. The floor moves with them (three registrations fewer); the
+/// class-2 count does not.
+pub const DEBT_CEILING: usize = 92;
 
 /// Lowered from 89 by T11: `settings::set_hardware_settings` shed its row by deletion,
 /// not by gating. Its only argument beyond the DTO was a renderer-supplied `user_id` --
@@ -357,7 +359,9 @@ pub const DEBT_CEILING: usize = 95;
 /// 48 -> 50 with `desktop_link::start_device_pairing` and `desktop_link::poll_device_pairing`.
 /// 50 -> 51 with `setup::get_preset_features`. This count is a pin the generator does not
 /// recompute, so it moves by hand in the same pass that raised the ceiling: `51 + 44 = 95`.
-pub const NO_SESSION_RESOLUTION: usize = 51;
+/// 51 -> 48 with C17 (2026-09-22): the three retired unscoped branding setters were all in
+/// this class, so it falls by the same three and the sum keeps holding: `48 + 44 = 92`.
+pub const NO_SESSION_RESOLUTION: usize = 48;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
 /// 45 + 44 = 89 = `DEBT_CEILING`, as the class counts must sum to the ledger.
@@ -365,6 +369,7 @@ pub const NO_SESSION_RESOLUTION: usize = 51;
 /// 48 + 44 = 92 after adding data::export_data_without_session.
 /// 50 + 44 = 94 after adding pairing commands (ADR #56 §2.5).
 /// 51 + 44 = 95 after `setup::get_preset_features` joined class 1.
+/// 48 + 44 = 92 after C17 retired the three unscoped branding setters (class 1 only).
 pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 44;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).
