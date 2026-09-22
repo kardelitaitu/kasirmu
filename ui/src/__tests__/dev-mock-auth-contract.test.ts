@@ -47,7 +47,12 @@ describe('dev-mock auth contract (audit-open-findings picker ticket parity)', ()
       args: { username: 'owner', pin: '1234' },
     })) as unknown as StaffLoginResult;
 
-    expect(result.session.user_id).toBe('owner-1');
+    // 'staff-1', not 'owner-1': the session's user_id must be an id
+    // `list_staff_scoped` actually serves, so a preview's own identity can be
+    // matched against its own roster row. The old value was the seed's private
+    // id, which named the Owner here and the Staff member on the roster —
+    // see dev-mock-staff-identity.test.ts for the invariant.
+    expect(result.session.user_id).toBe('staff-1');
     expect(typeof result.picker_ticket).toBe('string');
     expect(result.picker_ticket.length).toBeGreaterThan(0);
     expect(result.picker_ticket).toMatch(/^mock-picker-/);
@@ -243,7 +248,7 @@ describe('dev-mock delegates to a real Tauri webview (production regression)', (
     })) as unknown as StaffLoginResult;
 
     expect(fakeInternalsInvoke).not.toHaveBeenCalled();
-    expect(result.session.user_id).toBe('owner-1');
+    expect(result.session.user_id).toBe('staff-1');
   });
 
   it('convertFileSrc and isTauri reflect the webview state', () => {

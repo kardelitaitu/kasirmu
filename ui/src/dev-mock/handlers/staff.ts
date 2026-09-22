@@ -326,7 +326,16 @@ export const staffHandlers: Record<string, MockHandler> = {
       throw new Error('Account locked. Too many failed attempts. Try again in 30s');
     }
 
-    if (!staff || pin !== staff.pin_hash) {
+    // An INACTIVE account fails exactly like a wrong PIN, and deliberately
+    // with the same message: the real command refuses one with the uniform
+    // "invalid username or PIN" so the client cannot learn that an account
+    // exists but is deactivated (kasirmu-bridge auth.rs:403). Omitting the
+    // check was invisible while the seed called every identity active; now
+    // that the auditor is inactive (as the roster has always said), a mock
+    // that admitted them would let the preview exercise a login the backend
+    // refuses. The attempt is recorded and not cleared, as the backend's
+    // rate limiter does before it ever resolves the account.
+    if (!staff || pin !== staff.pin_hash || !staff.is_active) {
       loginAttempts[key] = attempts + 1;
       saveMockLoginAttempts();
       throw new Error('Invalid credentials');
