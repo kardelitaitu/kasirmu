@@ -829,7 +829,12 @@ fn init_sql_creates_complete_schema_surface() {
         // lookup behind the boot gate and provision_device's idempotency
         // guard. Its TEXT PRIMARY KEY lands as sqlite_autoindex_*, excluded
         // here as ever.
-        186,
+        // 20261009_staff_trash.sql adds one: idx_users_trash, the partial
+        // index behind the trash listing and the 90-day retention sweep. It is
+        // partial (deleted_at IS NOT NULL), so it holds trashed rows only and
+        // the live roster pays nothing for it. That file's two ADD COLUMNs move
+        // no index count at all.
+        187,
         "index surface drifted"
     );
     assert_eq!(
@@ -2808,7 +2813,7 @@ fn sales_tax_estimate_note_column_pins_the_audit_stamp_shape() {
 /// device has no row and `get_first_run_state` answers `Unprovisioned`
 /// (kasirmu-bridge/src/setup.rs:238-249) — an already-set-up device re-enters
 /// onboarding on every boot. And the flow it lands in was invisible, because
-/// `ProvisioningFlow.css` animated `fade-up` without defining the keyframes:
+/// the provisioning flow stylesheet animated `fade-up` without defining the keyframes:
 /// `opacity: 0` plus a never-running `forwards` animation. The CSS half is a
 /// stylesheet and no Rust test can see it; the SQL half is what this asserts.
 ///

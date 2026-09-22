@@ -396,6 +396,16 @@ export const systemHandlers: Record<string, MockHandler> = {
   'plugin:updater|check': () => null,
   'get_machine_id': () => 'mock-machine-id-001',
   'get_hardware_fingerprint': () => 'hw_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+  'start_device_pairing': () => ({
+    code: 'ABCD-1234',
+    poll_token: 'mock-poll-token',
+    expires_at: new Date(Date.now() + 600_000).toISOString(),
+    base_url: 'https://license.kasir.mu',
+    qr_payload: 'https://kasir.mu/pair?code=ABCD-1234',
+  }),
+  'poll_device_pairing': () => ({
+    status: 'pending',
+  }),
   'pause_subscription': () => ({
     status: 'paused',
     tierKey: 'plus',

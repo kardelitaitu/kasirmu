@@ -426,7 +426,7 @@ pub(super) async fn run_tick(
     // nothing to push or pull, because a ban must reach an idle till too.
     //
     // Before this phase the only caller of `check_license_status` was the
-    // Settings screen's poll (`LicenseSettings.tsx`, armed on mount and torn
+    // Settings screen's poll (the license settings screen, armed on mount and torn
     // down on unmount), so a device that never opened Settings never learned
     // it had been revoked. This is that notice, on the daemon's cadence.
     //
