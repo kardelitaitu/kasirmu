@@ -132,14 +132,37 @@ impl Store<'_> {
     }
 }
 
+/// How long a trashed staff account is kept before its personal data is erased.
+///
+/// The clock starts at `deleted_at` and is enforced by `Store::purge_expired_users`,
+/// which the staff read paths run — there is no scheduler to depend on, so the
+/// window closes the next time anything looks.
+pub const STAFF_TRASH_RETENTION_DAYS: i64 = 90;
+
+/// A member sitting in the trash, with the moment they entered it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrashedUser {
+    /// The user row. Still carries its profile data until the purge anonymises
+    /// it — the trash is where a wrongly-deleted member can be read back and
+    /// restored before that happens.
+    pub user: User,
+    /// When the member entered the trash; the retention clock reads this.
+    pub deleted_at: String,
+}
+
 // ── User CRUD ───────────────────────────────────────────────────
 
 impl Store<'_> {
-    /// List all users, ordered by display_name.
+    /// List all LIVE users, ordered by display_name.
+    ///
+    /// Trashed members are excluded here and nowhere else has to ask: this one
+    /// read is the roster, the staff picker and the assignment editor's source,
+    /// so a soft-deleted member leaves all of them at once. The trash has its
+    /// own read, `list_trashed_users`.
     pub fn list_users(&self) -> Result<Vec<User>, CoreError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at
-             FROM users ORDER BY display_name",
+             FROM users WHERE deleted_at IS NULL ORDER BY display_name",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(User {
@@ -334,11 +357,16 @@ impl Store<'_> {
             .map_err(|e| CoreError::PermissionDenied(e.to_string()))
     }
 
-    /// Look up a user by username.
+    /// Look up a LIVE user by username.
+    ///
+    /// A trashed member is invisible to this lookup on purpose: it backs the
+    /// login path, and a deleted account must not authenticate. The deleted_at
+    /// filter is the load-bearing half — the row SURVIVES the trash (that is
+    /// the design), so nothing else here would stop it resolving.
     pub fn get_user_by_username(&self, username: &str) -> Result<Option<User>, CoreError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at
-             FROM users WHERE username = ?1",
+             FROM users WHERE username = ?1 AND deleted_at IS NULL",
         )?;
         let result = stmt.query_row(params![username], |row| {
             Ok(User {
@@ -605,11 +633,54 @@ impl Store<'_> {
         })
     }
 
-    /// Delete a user by id.
-    pub fn delete_user(&self, id: &str) -> Result<(), CoreError> {
-        let rows = self
-            .conn
-            .execute("DELETE FROM users WHERE id = ?1", params![id])?;
+    /// Move a member to the trash (the soft delete).
+    ///
+    /// REFUSES AN ACTIVE ACCOUNT, here and not only in the UI: deactivating
+    /// first is the policy, and the command layer is not the only caller. A
+    /// second delete on the same member is refused too, so a double-click
+    /// cannot silently restart the retention clock.
+    pub fn soft_delete_user(&self, id: &str) -> Result<User, CoreError> {
+        let user = self.get_user(id)?.ok_or_else(|| CoreError::NotFound {
+            entity: "user",
+            id: id.to_owned(),
+        })?;
+        if user.is_active {
+            return Err(CoreError::Validation {
+                field: "is_active",
+                message: "deactivate this member before deleting them".into(),
+            });
+        }
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let rows = self.conn.execute(
+            "UPDATE users SET deleted_at = ?1, updated_at = ?1 \
+             WHERE id = ?2 AND deleted_at IS NULL",
+            params![now, id],
+        )?;
+        if rows == 0 {
+            return Err(CoreError::Validation {
+                field: "deleted_at",
+                message: "this member is already in the trash".into(),
+            });
+        }
+        self.persist_over_quota_markers()?;
+        Ok(user)
+    }
+
+    /// Take a member back out of the trash.
+    ///
+    /// They return INACTIVE, exactly as the delete found them: deletion
+    /// requires an inactive account, so restoring must not become a back door
+    /// to re-granting access — the operator reactivates deliberately through
+    /// `update_user`, and that is the audited step. A purged tombstone is not
+    /// restorable: its personal data is erased, and bringing the row back
+    /// would claim otherwise.
+    pub fn restore_user(&self, id: &str) -> Result<User, CoreError> {
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let rows = self.conn.execute(
+            "UPDATE users SET deleted_at = NULL, updated_at = ?1 \
+             WHERE id = ?2 AND deleted_at IS NOT NULL AND purged_at IS NULL",
+            params![now, id],
+        )?;
         if rows == 0 {
             return Err(CoreError::NotFound {
                 entity: "user",
@@ -617,7 +688,72 @@ impl Store<'_> {
             });
         }
         self.persist_over_quota_markers()?;
-        Ok(())
+        self.get_user(id)?.ok_or_else(|| CoreError::NotFound {
+            entity: "user",
+            id: id.to_owned(),
+        })
+    }
+
+    /// Everything in the trash, newest first. Purged tombstones are not listed:
+    /// there is nothing left to read back or restore.
+    pub fn list_trashed_users(&self) -> Result<Vec<TrashedUser>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at, deleted_at \
+             FROM users WHERE deleted_at IS NOT NULL AND purged_at IS NULL \
+             ORDER BY deleted_at DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(TrashedUser {
+                user: User {
+                    id: row.get("id")?,
+                    username: row.get("username")?,
+                    pin_hash: row.get("pin_hash")?,
+                    display_name: row.get("display_name")?,
+                    role_id: row.get("role_id")?,
+                    is_active: row.get("is_active")?,
+                    created_at: row.get("created_at")?,
+                    updated_at: row.get("updated_at")?,
+                },
+                deleted_at: row.get("deleted_at")?,
+            })
+        })?;
+        rows.map(|r| Ok(r?)).collect()
+    }
+
+    /// Erase the personal data of every member whose retention window has
+    /// closed, returning how many were erased.
+    ///
+    /// ANONYMISE, NEVER DELETE. `inventory_shifts.user_id` and
+    /// `inventory_transactions.staff_id` are ON DELETE RESTRICT, and
+    /// `audit_log.user_id` is NOT NULL with no cascade, so a row delete fails
+    /// for anyone with history — and deleting the history instead would take
+    /// the books with it. The row stays on as a tombstone the historical rows
+    /// still resolve to; what goes is the person: name, contact details,
+    /// identity, pay, avatar, notes, and the username itself (rewritten to
+    /// `deleted-<id>`, which also frees the handle for a new member).
+    ///
+    /// `pin_hash` is blanked as well, so the account could not authenticate
+    /// even without the `deleted_at` filter on the login lookup — verify_pin
+    /// fails closed on a malformed hash.
+    pub fn purge_expired_users(&self) -> Result<usize, CoreError> {
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        // Timestamps are fixed-width RFC 3339 millis, so comparing the strings
+        // compares the instants.
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(STAFF_TRASH_RETENTION_DAYS))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let rows = self.conn.execute(
+            "UPDATE users SET \
+                 username = 'deleted-' || id, display_name = 'Deleted staff', pin_hash = '', \
+                 date_of_birth = NULL, phone = NULL, national_id_type = NULL, national_id = NULL, \
+                 email = NULL, monthly_take_home_minor = NULL, emergency_contact_name = NULL, \
+                 emergency_contact_phone = NULL, emergency_contact_relationship = NULL, \
+                 job_title = '', notes = '', address = NULL, language = NULL, avatar = NULL, \
+                 tax_id = NULL, national_id_expires_at = NULL, hire_date = NULL, \
+                 national_id_hash = NULL, purged_at = ?1, updated_at = ?1 \
+             WHERE deleted_at IS NOT NULL AND purged_at IS NULL AND deleted_at < ?2",
+            params![now, cutoff],
+        )?;
+        Ok(rows)
     }
 
     // ── Login attempt rate limiting (persistent) ───────────────────

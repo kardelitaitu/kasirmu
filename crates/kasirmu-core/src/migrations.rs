@@ -357,6 +357,16 @@ pub const ALL: &[Migration] = &[
         id: "20261008_provisioning_legacy_backfill.sql",
         sql: include_str!("../migrations/20261008_provisioning_legacy_backfill.sql"),
     },
+    // Staff trash: soft delete plus a 90-day retention window (ADR-#58-adjacent
+    // staff lifecycle). Two nullable columns on `users` and a partial index.
+    // `ADD COLUMN` has no `IF NOT EXISTS` in SQLite, so the columns stand on the
+    // drift path's tolerance for statements whose effect is provably already
+    // present — the same ground the `tenant_id` and `tender_currency` columns
+    // stand on — while the index is guarded outright. Date 20261009 sorts last.
+    Migration {
+        id: "20261009_staff_trash.sql",
+        sql: include_str!("../migrations/20261009_staff_trash.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.
@@ -425,6 +435,7 @@ pub fn seed_provisioned_baseline(conn: &rusqlite::Connection) {
          INSERT INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature)
          VALUES ('default', 'free', 'active', NULL, 1, 1, '[\"store-pos\", \"restaurant-pos\", \"admin\"]', 'BOOTSTRAP_FREE');"
     )
+    // INVARIANT: hardcoded valid SQL batch executed against a freshly-migrated baseline DB.
     .expect("seed_provisioned_baseline failed");
 }
 

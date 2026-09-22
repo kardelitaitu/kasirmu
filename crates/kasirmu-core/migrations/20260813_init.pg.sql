@@ -688,6 +688,8 @@ BEGIN
             ('users', 'hire_date', 'TEXT', NULL::text, false),
             ('users', 'national_id_hash', 'TEXT', NULL::text, false),
             ('users', 'index_id', 'BIGINT', NULL::text, false),
+            ('users', 'deleted_at', 'TEXT', NULL::text, false),
+            ('users', 'purged_at', 'TEXT', NULL::text, false),
             ('stock_adjustments', 'id', 'TEXT', NULL::text, true),
             ('stock_adjustments', 'count_id', 'TEXT', NULL::text, false),
             ('stock_adjustments', 'sku', 'TEXT', NULL::text, true),
@@ -2057,7 +2059,7 @@ CREATE TABLE IF NOT EXISTS "users" (
     emergency_contact_relationship TEXT,
     hire_date TEXT,
     national_id_hash TEXT
-, index_id BIGINT);
+, index_id BIGINT, deleted_at TEXT, purged_at TEXT);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
@@ -3500,6 +3502,10 @@ CREATE INDEX IF NOT EXISTS idx_user_wsi_user_id
 CREATE INDEX IF NOT EXISTS idx_users_role_id ON users(role_id);
 
 CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_users_trash
+    ON users(deleted_at)
+    WHERE deleted_at IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 

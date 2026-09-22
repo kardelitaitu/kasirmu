@@ -682,20 +682,133 @@ fn update_user_empty_display_name() {
     assert!(matches!(err, CoreError::Validation { field, .. } if field == "display_name"));
 }
 
-#[test]
-fn delete_user_removes_row() {
-    let conn = fresh();
-    seed_users(&conn);
-    store(&conn).delete_user("user-3").unwrap();
-    let u = store(&conn).get_user("user-3").unwrap();
-    assert!(u.is_none());
+// ── Trash: soft delete, restore, and the retention purge ─────────
+
+/// Satisfy the delete policy: only a deactivated member may be trashed.
+fn deactivate(conn: &rusqlite::Connection, id: &str) {
+    conn.execute("UPDATE users SET is_active = 0 WHERE id = ?1", params![id])
+        .unwrap();
 }
 
 #[test]
-fn delete_user_not_found() {
+fn soft_delete_refuses_an_active_member() {
     let conn = fresh();
-    let err = store(&conn).delete_user("nope").unwrap_err();
-    assert!(matches!(err, CoreError::NotFound { .. }));
+    seed_users(&conn);
+    // user-1 (alice) is the ACTIVE seed row; user-3 (carol) ships inactive,
+    // which is the state the delete policy asks for.
+    let err = store(&conn).soft_delete_user("user-1").unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "is_active"),
+        "an active member has to be deactivated before it can be deleted"
+    );
+}
+
+#[test]
+fn soft_delete_hides_the_member_from_the_roster_and_from_login() {
+    let conn = fresh();
+    seed_users(&conn);
+    deactivate(&conn, "user-3");
+    let username: String = conn
+        .query_row("SELECT username FROM users WHERE id = 'user-3'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+
+    store(&conn).soft_delete_user("user-3").unwrap();
+
+    assert!(
+        store(&conn)
+            .list_users()
+            .unwrap()
+            .iter()
+            .all(|u| u.id != "user-3")
+    );
+    // The login lookup is the half that matters: the row survives the trash,
+    // so this filter is the only thing standing between a deleted account and
+    // a successful login.
+    assert!(
+        store(&conn)
+            .get_user_by_username(&username)
+            .unwrap()
+            .is_none()
+    );
+    // The row itself survives — that is what history needs.
+    assert!(store(&conn).get_user("user-3").unwrap().is_some());
+}
+
+#[test]
+fn soft_delete_is_refused_twice() {
+    let conn = fresh();
+    seed_users(&conn);
+    deactivate(&conn, "user-3");
+    store(&conn).soft_delete_user("user-3").unwrap();
+    // A second delete must not silently restart the retention clock.
+    let err = store(&conn).soft_delete_user("user-3").unwrap_err();
+    assert!(matches!(err, CoreError::Validation { field, .. } if field == "deleted_at"));
+}
+
+#[test]
+fn restore_returns_the_member_inactive() {
+    let conn = fresh();
+    seed_users(&conn);
+    deactivate(&conn, "user-3");
+    store(&conn).soft_delete_user("user-3").unwrap();
+
+    let restored = store(&conn).restore_user("user-3").unwrap();
+    assert!(!restored.is_active, "a restore must not re-grant access");
+    assert!(
+        store(&conn)
+            .list_users()
+            .unwrap()
+            .iter()
+            .any(|u| u.id == "user-3")
+    );
+    assert!(store(&conn).list_trashed_users().unwrap().is_empty());
+}
+
+#[test]
+fn purge_anonymises_only_past_the_window() {
+    let conn = fresh();
+    seed_users(&conn);
+    deactivate(&conn, "user-3");
+    conn.execute(
+        "UPDATE users SET phone = '+14155550123' WHERE id = 'user-3'",
+        [],
+    )
+    .unwrap();
+    store(&conn).soft_delete_user("user-3").unwrap();
+
+    // Inside the window: a purge leaves the member untouched and restorable.
+    assert_eq!(store(&conn).purge_expired_users().unwrap(), 0);
+    assert_eq!(store(&conn).list_trashed_users().unwrap().len(), 1);
+
+    let old = (chrono::Utc::now() - chrono::Duration::days(STAFF_TRASH_RETENTION_DAYS + 1))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute(
+        "UPDATE users SET deleted_at = ?1 WHERE id = 'user-3'",
+        params![old],
+    )
+    .unwrap();
+
+    assert_eq!(store(&conn).purge_expired_users().unwrap(), 1);
+
+    let (username, display_name, phone, purged): (String, String, Option<String>, Option<String>) =
+        conn.query_row(
+            "SELECT username, display_name, phone, purged_at FROM users WHERE id = 'user-3'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .unwrap();
+    assert_eq!(display_name, "Deleted staff");
+    assert_eq!(username, "deleted-user-3", "the handle is freed, not kept");
+    assert!(phone.is_none(), "contact details must be erased");
+    assert!(purged.is_some());
+    // The row stays so shifts, stock transactions and audit entries still
+    // resolve — that is the whole reason this is an anonymise, not a delete.
+    assert!(store(&conn).get_user("user-3").unwrap().is_some());
+    // A tombstone is spent: not restorable, not listed.
+    assert!(store(&conn).restore_user("user-3").is_err());
+    assert!(store(&conn).list_trashed_users().unwrap().is_empty());
 }
 
 // ── Username normalization ────────────────────────────────────
