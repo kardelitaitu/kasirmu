@@ -162,7 +162,7 @@ beforeEach(() => {
 afterEach(() => assertAllInvokesHandled('StaffManagementScreen'));
 
 async function waitForTable() {
-  await screen.findByRole('table', { name: /staff members/i });
+  await screen.findByRole('list', { name: /staff members/i });
 }
 
 /** Fill the 8 required profile fields in the add/edit dialog. */
@@ -233,7 +233,7 @@ describe('StaffManagementScreen', () => {
     expect(screen.getByRole('button', { name: /add staff/i })).toBeInTheDocument();
   });
 
-  it('renders staff table rows', async () => {
+  it('renders a card per staff member', async () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
     expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
@@ -242,8 +242,10 @@ describe('StaffManagementScreen', () => {
     expect(screen.getByText('john')).toBeInTheDocument();
     expect(screen.getByText('owner')).toBeInTheDocument();
     expect(screen.getByText('staff')).toBeInTheDocument();
-    expect(screen.getByText('Active')).toBeInTheDocument();
-    expect(screen.getByText('Inactive')).toBeInTheDocument();
+    // Active/Inactive appear three times each now — the stat tile, the filter
+    // chip and the card's status pill — so this asserts presence, not uniqueness.
+    expect(screen.getAllByText('Active').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Inactive').length).toBeGreaterThan(0);
   });
 
   it('shows empty state when no staff', async () => {
@@ -360,8 +362,10 @@ describe('StaffManagementScreen', () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
-    // Find the Restore button for John (inactive) via visible text content
-    const restoreBtn = screen.getByText('Restore').closest('button')!;
+    // The Restore control is the same toggle in its other state, so it is
+    // located by testid now that the action is icon-only — its name is the
+    // aria-label ("Reactivate {name}"), which is not a visible text node.
+    const restoreBtn = screen.getByTestId('staff-toggle-active-staff-2');
     fireEvent.click(restoreBtn);
 
     // update_staff_scoped wraps args in { args } — assert the inner payload
@@ -565,10 +569,10 @@ describe('StaffManagementScreen', () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
-    // Jane is global all/all → "All"; John is scoped to restaurant → the
-    // workspace name from the loaded map.
-    expect(screen.getByText('All')).toBeInTheDocument();
-    expect(screen.getByText('Restaurant')).toBeInTheDocument();
+    // Scoped to each member's card: "All" is also the roster's status-filter
+    // chip, so a page-level getByText would match more than one node.
+    expect(within(screen.getByTestId('staff-card-staff-1')).getByText('All')).toBeInTheDocument();
+    expect(within(screen.getByTestId('staff-card-staff-2')).getByText('Restaurant')).toBeInTheDocument();
   });
 
   // ── Five-role taxonomy (ADR #35 D4 / spec 0048) ───────────────────
@@ -1035,4 +1039,84 @@ describe('StaffManagementScreen', () => {
     expect(panelFor("staff")?.className).toContain("staff-mgmt-tabpanel--from-left");
     expect(panelFor("roles")).toHaveAttribute("hidden");
   });
+
+  // ── Roster interactions (stat row · toolbar · cards) ──────────────
+  //
+  // The table became cards plus a search/filter/sort toolbar. All three are
+  // client-side over the loaded list — no IPC, no refetch — so each case below
+  // asserts the rendered slice rather than the invoke log.
+
+  /** Two members whose role order and name order disagree, for the sort case. */
+  const ROLE_ORDER_STAFF = [
+    { id: 'zoe', username: 'zoe', display_name: 'Zoe Adams', role_id: 'role-owner', role_name: 'owner', is_active: true, national_id_masked: '****', is_profile_complete: true, assignment: GLOBAL_ASSIGNMENT },
+    { id: 'anna', username: 'anna', display_name: 'Anna Bell', role_id: 'role-staff', role_name: 'staff', is_active: true, national_id_masked: '****', is_profile_complete: true, assignment: GLOBAL_ASSIGNMENT },
+  ];
+
+  it('renders each member as a card with an avatar tile and a status pill', async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    const janeCard = screen.getByTestId('staff-card-staff-1');
+    // The avatar is the same ProductThumb the restaurant sidebar renders for a
+    // user — a photo when the DTO's hash resolves, the initials tile otherwise,
+    // and in both cases named for a screen reader.
+    expect(within(janeCard).getByRole('img', { name: 'Jane Smith' })).toBeInTheDocument();
+    expect(within(janeCard).getByText('Active')).toBeInTheDocument();
+    expect(within(screen.getByTestId('staff-card-staff-2')).getByText('Inactive')).toBeInTheDocument();
+    // The stat row is the counts' single home now.
+    expect(screen.getByTestId('staff-stat-total')).toHaveTextContent('2');
+    expect(screen.getByTestId('staff-stat-active')).toHaveTextContent('1');
+  });
+
+  it('searches across name, username and masked id', async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.change(screen.getByTestId('staff-search'), { target: { value: 'john' } });
+    expect(screen.getByTestId('staff-card-staff-2')).toBeInTheDocument();
+    expect(screen.queryByTestId('staff-card-staff-1')).not.toBeInTheDocument();
+
+    // The masked id is searchable too: a manager often holds the number rather
+    // than the name, and that is the field they would paste.
+    fireEvent.change(screen.getByTestId('staff-search'), { target: { value: '6789' } });
+    expect(screen.getByTestId('staff-card-staff-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('staff-card-staff-2')).not.toBeInTheDocument();
+  });
+
+  it('filters by status, and says so when nothing matches', async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.click(screen.getByTestId('staff-filter-inactive'));
+    expect(screen.getByTestId('staff-card-staff-2')).toBeInTheDocument();
+    expect(screen.queryByTestId('staff-card-staff-1')).not.toBeInTheDocument();
+
+    // An empty result has to be STATED: an empty grid would read as "this store
+    // has no staff", which is a different and much worse claim.
+    fireEvent.change(screen.getByTestId('staff-search'), { target: { value: 'nobody' } });
+    expect(screen.getByText(/no staff match your search/i)).toBeInTheDocument();
+  });
+
+  it('orders by role by default and by name on demand', async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_staff_scoped') return Promise.resolve(ROLE_ORDER_STAFF);
+      if (cmd === 'list_roles_scoped') return Promise.resolve(SAMPLE_ROLES);
+      if (cmd === 'list_all_workspaces_scoped') return Promise.resolve([]);
+      if (cmd === 'get_brand_settings' || cmd === 'get_brand_settings_scoped') {
+        return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
+      }
+      return Promise.resolve([]);
+    });
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    const order = () => screen.getAllByTestId(/^staff-card-/).map((el) => el.getAttribute('data-testid'));
+    // Zoe holds owner and Anna holds staff, so role order puts Zoe first while
+    // name order reverses them — the two orders are distinguishable.
+    expect(order()).toEqual(['staff-card-zoe', 'staff-card-anna']);
+
+    fireEvent.change(screen.getByTestId('staff-sort'), { target: { value: 'name' } });
+    expect(order()).toEqual(['staff-card-anna', 'staff-card-zoe']);
+  });
 });
+

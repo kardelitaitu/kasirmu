@@ -10,13 +10,10 @@ staff-tabs-aria = Staff and roles
 # renders without AppLayout, so the app's own StatusBar is absent and the page
 # reports its own state. The counts are the loaded snapshot's, never an
 # assumption: a load that has not completed prints nothing.
-staff-footer-staff-count =
     { $count ->
         [one] { $count } staff member
        *[other] { $count } staff members
     }
-staff-footer-active = { $count } active
-staff-footer-roles =
     { $count ->
         [one] { $count } role
        *[other] { $count } roles
@@ -28,12 +25,19 @@ staff-empty-cta = Add your first staff member
 staff-col-name = Name
 staff-col-username = Username
 staff-col-role = Role
-staff-col-status = Status
 staff-col-workspace = Workspace
-staff-col-actions =
-    .aria-label = Actions
 staff-status-active = Active
 staff-status-inactive = Inactive
+
+// ── Roster (stat row + toolbar) ─────────────────────────────────────
+staff-stat-total = Total
+staff-search =
+    .aria-label = Search staff
+    .placeholder = Search name, username or ID
+staff-filter-all = All
+staff-sort =
+    .aria-label = Sort staff by
+staff-no-matches = No staff match your search
 staff-edit = Edit
 staff-edit-aria =
     .aria-label = Edit { $name }

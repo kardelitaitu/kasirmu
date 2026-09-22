@@ -14,22 +14,18 @@
  * because it names the scope the listed staff belong to and nothing else on
  * the page reads it.
  *
- * A snapshot that has not arrived renders NOTHING for the counts: `loadedAt`
+ * A snapshot that has not arrived renders NOTHING for the timestamp: `loadedAt`
  * is null while a load is in flight or after it failed, and the strip then
- * shows the scope alone rather than `0 staff members`, which would read as a
- * true answer about an empty roster instead of a missing one.
+ * shows the scope alone rather than a time it cannot vouch for.
+ *
+ * The roster's counts are deliberately NOT repeated here. They are the stat row
+ * at the top of the tab, which owns them; this strip is scope and freshness.
  */
 import type { ReactNode } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 
 interface StaffManagementFooterProps {
-  /** Members in the loaded list. */
-  totalCount: number;
-  /** Members of that list whose `is_active` is true. */
-  activeCount: number;
-  /** Roles in the loaded role list — the set the drawer assigns from. */
-  roleCount: number;
   /**
    * When the current lists landed, or null when no successful load has
    * completed (initial load in flight, or the load failed).
@@ -38,7 +34,7 @@ interface StaffManagementFooterProps {
 }
 
 /** Renders the Staff page's bottom status strip. Owns no staff data. */
-export function StaffManagementFooter({ totalCount, activeCount, roleCount, loadedAt }: StaffManagementFooterProps) {
+export function StaffManagementFooter({ loadedAt }: StaffManagementFooterProps) {
   const { l10n } = useLocalization();
   const { activeInstance } = useWorkspace();
   const locale = [...l10n.bundles][0]?.locales[0] ?? 'en-US';
@@ -56,30 +52,6 @@ export function StaffManagementFooter({ totalCount, activeCount, roleCount, load
   const segments: { id: string; node: ReactNode }[] = [];
   if (loadedAt !== null) {
     segments.push(
-      {
-        id: 'staff',
-        node: (
-          <Localized id="staff-footer-staff-count" vars={{ count: totalCount }}>
-            <span>{totalCount} staff members</span>
-          </Localized>
-        ),
-      },
-      {
-        id: 'active',
-        node: (
-          <Localized id="staff-footer-active" vars={{ count: activeCount }}>
-            <span>{activeCount} active</span>
-          </Localized>
-        ),
-      },
-      {
-        id: 'roles',
-        node: (
-          <Localized id="staff-footer-roles" vars={{ count: roleCount }}>
-            <span>{roleCount} roles</span>
-          </Localized>
-        ),
-      },
       {
         id: 'updated',
         node: (

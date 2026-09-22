@@ -33,9 +33,6 @@ staff-login-lockout = Terkunci. Coba lagi dalam { $seconds }d
 # ── Product Bundles ──
 staff-back-aria = Kembali ke ruang kerja
 staff-tabs-aria = Staf dan peran
-staff-footer-staff-count = { $count } anggota staf
-staff-footer-active = { $count } aktif
-staff-footer-roles = { $count } peran
 staff-footer-updated = Diperbarui { $time }
 staff-add-button = Tambah Staf
 staff-empty = Belum ada anggota staf.
@@ -43,12 +40,19 @@ staff-empty-cta = Tambah anggota staf pertama
 staff-col-name = Nama
 staff-col-username = Nama Pengguna
 staff-col-role = Peran
-staff-col-status = Status
 staff-col-workspace = Ruang Kerja
-staff-col-actions =
-    .aria-label = Tindakan
 staff-status-active = Aktif
 staff-status-inactive = Tidak Aktif
+
+// ── Roster (stat row + toolbar) ─────────────────────────────────────
+staff-stat-total = Total
+staff-search =
+    .aria-label = Cari staf
+    .placeholder = Cari nama, nama pengguna, atau ID
+staff-filter-all = Semua
+staff-sort =
+    .aria-label = Urutkan staf berdasarkan
+staff-no-matches = Tidak ada staf yang cocok dengan pencarian Anda
 staff-edit-aria =
     .aria-label = Ubah { $name }
 staff-deactivate-aria =

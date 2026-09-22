@@ -273,7 +273,7 @@ const SCREENS: ScreenEntry[] = [
     // The Agent 3 extraction moved the table/drawer/assignment JSX into
     // components/*.tsx; they share the screen's stylesheet (global classes).
     additionalTsx: [
-      'staff/components/StaffListTable.tsx',
+      'staff/components/StaffRoster.tsx',
       'staff/components/StaffDetailDrawer.tsx',
       'staff/components/RoleAssignmentMatrix.tsx',
       // The status footer renders staff-mgmt-footer* styled by this sheet.

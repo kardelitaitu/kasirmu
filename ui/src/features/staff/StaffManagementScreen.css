@@ -259,10 +259,6 @@
   pointer-events: none;
 }
 
-.staff-mgmt-loading-skeleton .staff-mgmt-table thead {
-  pointer-events: none;
-}
-
 /* ── Empty state ──────────────────────────────────────────────────── */
 
 .staff-mgmt-empty {
@@ -275,35 +271,302 @@
   color: var(--color-fg-secondary);
 }
 
-/* ── Table ────────────────────────────────────────────────────────── */
+/* ── Roster (stat row · toolbar · cards) ──────────────────────────── */
+/* Replaced the seven-column table. This screen is registered for BOTH shells
+   and seven columns of text do not survive on the tablet, so identity is
+   stated once per card (avatar · name · role · status) and the rest moves into
+   a labelled meta grid that reflows instead of dropping columns.
 
-.staff-mgmt-table-wrap {
-  overflow-x: auto;
+   No box-shadow anywhere here on purpose: the design language elevates with a
+   surface tone plus a hairline in dark mode, and a --shadow-* would also put
+   every one of these classes on the noise-dither ledger. */
+
+.staff-mgmt-roster {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
-.staff-mgmt-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--text-base);
+/* ── Stat row ─────────────────────────────────────────────────────── */
+
+.staff-mgmt-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: var(--space-3);
 }
 
-.staff-mgmt-table th {
-  text-align: left;
-  padding: var(--space-2) var(--space-3);
+.staff-mgmt-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  /* The surface belongs to the tone, and every stat names one — so the fill and
+     its border have exactly one source (the modifiers below). The transparent
+     base border keeps the width constant, so a tinted tile cannot shift. */
+  border: 1px solid transparent;
+}
+
+.staff-mgmt-stat--neutral {
+  border-color: var(--color-border);
+  background: var(--color-bg-subtle);
+}
+
+.staff-mgmt-stat-value {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--leading-tight);
+}
+
+.staff-mgmt-stat-label {
+  font-size: var(--text-xs);
   font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
   color: var(--color-fg-secondary);
-  border-bottom: 2px solid var(--color-border);
+}
+
+/* One semantic tint per stat, at the design language's 8-10% fill and 20%
+   border. The number inherits the same colour, so it reads as the hero. */
+.staff-mgmt-stat--success {
+  background: color-mix(in srgb, var(--color-success) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-success) 20%, transparent);
+  color: var(--color-success);
+}
+
+.staff-mgmt-stat--muted {
+  background: color-mix(in srgb, var(--color-fg-secondary) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-fg-secondary) 20%, transparent);
+  color: var(--color-fg-secondary);
+}
+
+.staff-mgmt-stat--accent {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  color: var(--color-accent);
+}
+
+/* ── Toolbar ──────────────────────────────────────────────────────── */
+
+.staff-mgmt-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* The box belongs to the wrapper so the leading glyph sits inside the field;
+   the input itself is bare. Focus is shown on the wrapper's :focus-within so
+   the ring hugs the whole control rather than the inner text box. */
+.staff-mgmt-search-field {
+  flex: 1 1 14rem;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  height: 36px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-input);
+  color: var(--color-fg-secondary);
+}
+
+.staff-mgmt-search-field:focus-within {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
+}
+
+.staff-mgmt-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+
+.staff-mgmt-filters {
+  display: flex;
+  gap: var(--space-1);
+  padding: 3px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.staff-mgmt-chip {
+  padding: var(--space-1) var(--space-3);
+  min-height: 32px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-secondary);
+}
+
+.staff-mgmt-chip:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
+}
+
+.staff-mgmt-chip--on,
+.staff-mgmt-chip--on:hover {
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+}
+
+.staff-mgmt-sort {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-input);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+/* ── Cards ────────────────────────────────────────────────────────── */
+
+.staff-mgmt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: var(--space-3);
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.staff-mgmt-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  transition:
+    border-color var(--duration-150) var(--ease-out),
+    transform var(--duration-150) var(--ease-out);
+}
+
+.staff-mgmt-card:hover {
+  border-color: var(--color-border-hover);
+  transform: translateY(-1px);
+}
+
+/* A deactivated member is still listed — searchable, restorable, and visibly
+   de-emphasised rather than removed. */
+.staff-mgmt-card--inactive {
+  opacity: 0.55;
+}
+
+.staff-mgmt-card-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.staff-mgmt-avatar {
+  flex-shrink: 0;
+  background-color: var(--color-bg-hover);
+}
+
+.staff-mgmt-card-who {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  min-width: 0;
+  flex: 1;
+}
+
+.staff-mgmt-card-name {
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-bold);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.staff-mgmt-table td {
-  padding: var(--space-3) var(--space-3);
-  border-bottom: 1px solid var(--color-border);
-  vertical-align: middle;
+/* Status pill: a dot AND the word, so colour is never the only carrier. */
+.staff-mgmt-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  padding: 3px var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
 }
 
-.staff-mgmt-row--inactive {
-  opacity: 0.5;
+.staff-mgmt-pill::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: currentColor;
+}
+
+.staff-mgmt-pill--on {
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  color: var(--color-success);
+}
+
+.staff-mgmt-pill--off {
+  background: color-mix(in srgb, var(--color-fg-secondary) 14%, transparent);
+  color: var(--color-fg-secondary);
+}
+
+.staff-mgmt-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.staff-mgmt-meta-item {
+  min-width: 0;
+}
+
+.staff-mgmt-meta-item dt {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  color: var(--color-fg-secondary);
+}
+
+.staff-mgmt-meta-item dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staff-mgmt-mono {
+  font-family: var(--font-mono);
+}
+
+.staff-mgmt-card-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.staff-mgmt-no-matches {
+  margin: 0;
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  color: var(--color-fg-secondary);
 }
 
 /* ── Cell styles ──────────────────────────────────────────────────── */
@@ -319,65 +582,41 @@
   flex-shrink: 0;
 }
 
-.staff-mgmt-cell-username {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  color: var(--color-fg-secondary);
-}
+/* ── Card actions ─────────────────────────────────────────────────── */
 
-.staff-mgmt-status-active {
-  color: var(--color-success);
-  font-weight: var(--font-weight-medium);
-  font-size: var(--text-sm);
-}
-
-.staff-mgmt-status-inactive {
-  color: var(--color-fg-tertiary);
-  font-weight: var(--font-weight-medium);
-  font-size: var(--text-sm);
-}
-
-/* ── Actions ──────────────────────────────────────────────────────── */
-
-.staff-mgmt-cell-actions {
-  display: flex;
+/* STAFF-12: a 44px square touch target — the same floor the text action
+   buttons held before this became icon-only, and the shape this walker grades.
+   Every one is named by aria-label; a glyph alone is not a name. */
+.staff-mgmt-icon-btn {
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-}
-
-.staff-mgmt-action-btn {
-  background: none;
-  border: 1px solid var(--color-border);
-  /* STAFF-12: ≥ 44px touch target on touch devices. */
-  padding: var(--space-2_5) var(--space-3);
+  justify-content: center;
+  width: 44px;
   min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  cursor: pointer;
+  background: none;
   color: var(--color-fg-secondary);
-  transition: all var(--duration-150) var(--ease-out);
+  cursor: pointer;
+  transition:
+    background var(--duration-150) var(--ease-out),
+    color var(--duration-150) var(--ease-out);
 }
 
-.staff-mgmt-action-btn:hover {
-  background: var(--color-bg-surface);
+.staff-mgmt-icon-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
 }
 
-.staff-mgmt-action-btn--warn {
+.staff-mgmt-icon-btn--warn:hover {
   color: var(--color-danger);
   border-color: var(--color-danger-dim);
 }
 
-.staff-mgmt-action-btn--warn:hover {
-  background: var(--color-danger-bg);
-}
-
-.staff-mgmt-action-btn--restore {
+.staff-mgmt-icon-btn--restore:hover {
   color: var(--color-success);
   border-color: var(--color-success-dim);
-}
-
-.staff-mgmt-action-btn--restore:hover {
-  background: var(--color-success-bg);
 }
 
 /* ── Form fields ──────────────────────────────────────────────────── */
@@ -803,17 +1042,14 @@
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   }
 
-  /* The same arithmetic one line down: 64px of root padding leaves ~640px of
-     table for the seven columns (Role / Workspace / Name / Username / ID /
-     Status / actions), and the last two action buttons are 44px touch targets
-     with their own 0.5rem gap. The ID column is masked identity data —
-     secondary to the roster's job of finding and editing a person — so below
-     900px it folds away rather than being the column that pushes the actions
-     out of the wrap. The wrapper already scrolls horizontally, so nothing is
-     lost at a width that can still hold the rest. */
-  .staff-mgmt-table th:nth-child(5),
-  .staff-mgmt-table td:nth-child(5) {
-    display: none;
+  /* The roster toolbar wraps on its own, but a search field squeezed beside
+     the filter chips is unusable — give it the whole first row and let the
+     chips and the sort share the second. The card grid needs no tier of its
+     own: its minmax(19rem, 1fr) columns already collapse to one below ~640px,
+     which is the property that let the seven-column table's column-dropping
+     arithmetic go away with it. */
+  .staff-mgmt-search-field {
+    flex-basis: 100%;
   }
 
   /* The two notice banners are a label/CTA row (staff-limit-approaching-premium

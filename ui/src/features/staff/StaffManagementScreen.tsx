@@ -7,7 +7,7 @@
  * workspace name map for the table column), the row actions (edit → drawer,
  * deactivate/restore with the STAFF-10 confirm, impersonation) and the tier
  * cap banner. The heavy UI subtrees live in `components/`:
- * - `StaffListTable` — the staff table.
+ * - `StaffRoster` — the stat row, filter toolbar and member cards.
  * - `StaffDetailDrawer` — the add/edit modal: identity + PIN fields, the
  *   five-role taxonomy selector with permission chips, the ADR #35 D6
  *   profile fieldset, and the embedded `RoleAssignmentMatrix`.
@@ -49,7 +49,7 @@ import { hasGrantedPermission, passesGate } from '@/registries/page-registry';
 import { EmptyState } from '@/components';
 import { NoStaffIcon } from '@/components/EmptyStateIllustrations';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { StaffListTable } from './components/StaffListTable';
+import { StaffRoster } from './components/StaffRoster';
 import { StaffDetailDrawer } from './components/StaffDetailDrawer';
 import { StaffManagementFooter } from './components/StaffManagementFooter';
 import RoleAuthoringPanel, { type RoleAuthoringPanelHandle } from './components/RoleAuthoringPanel';
@@ -437,27 +437,19 @@ export default function StaffManagementScreen() {
               {/* No header mimic here: the real header is rendered above for
                   every branch, so a second one would duplicate the tab strip
                   and the actions while the list loads. */}
-              <div className="staff-mgmt-table-wrap">
-                <table className="staff-mgmt-table">
-                  <thead>
-                    <tr>
-                      {['Role', 'Workspace', 'Name', 'Username', 'Status', ''].map((_, i) => (
-                        <th key={i}><Skeleton variant="text" width="4rem" /></th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>{Array.from({ length: 4 }).map((_, r) => (
-                      <tr key={r}>
-                        <td><Skeleton variant="block" width="5rem" height="1.25rem" style={{ borderRadius: 'var(--radius-full)' }} /></td>
-                        <td><Skeleton variant="text" width="6rem" /></td>
-                        <td><Skeleton variant="text" width="7rem" /></td>
-                        <td><Skeleton variant="text" width="4rem" /></td>
-                        <td><Skeleton variant="text" width="3.5rem" /></td>
-                        <td><Skeleton variant="block" width="5rem" height="1.5rem" /></td>
-                      </tr>
-                    ))}
-</tbody>
-                </table>
+              {/* The shapes mirror the roster it stands in for — stat tiles, the
+                  toolbar, then the cards — so the swap from skeleton to data
+                  does not jump. */}
+              <div className="staff-mgmt-stats">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} variant="block" width="100%" height="4.5rem" style={{ borderRadius: 'var(--radius-lg)' }} />
+                ))}
+              </div>
+              <Skeleton variant="block" width="100%" height="2.25rem" style={{ borderRadius: 'var(--radius-md)' }} />
+              <div className="staff-mgmt-grid">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} variant="block" width="100%" height="11rem" style={{ borderRadius: 'var(--radius-xl)' }} />
+                ))}
               </div>
             </div>
           ) : staff.length === 0 ? (
@@ -471,8 +463,9 @@ export default function StaffManagementScreen() {
               </div>
             </Card>
           ) : (
-            <StaffListTable
+            <StaffRoster
               staff={staff}
+              roleCount={roles.length}
               workspaceNameMap={workspaceNameMap}
               workspacesUnavailable={workspacesUnavailable}
               canImpersonate={canImpersonate}
@@ -504,12 +497,7 @@ export default function StaffManagementScreen() {
       {/* ── Status footer ───────────────────────────────────────────
           Fullscreen routes lose the app's own StatusBar (AppLayout mounts
           it), so the page carries its own. */}
-      <StaffManagementFooter
-        totalCount={staff.length}
-        activeCount={staff.filter((member) => member.is_active).length}
-        roleCount={roles.length}
-        loadedAt={loadedAt}
-      />
+      <StaffManagementFooter loadedAt={loadedAt} />
 
       {/* ── Add/Edit Drawer ─────────────────────────────────────── */}
       <StaffDetailDrawer

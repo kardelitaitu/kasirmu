@@ -817,7 +817,7 @@ const PLANTED = {
   staffMgmtTierOrder:
     '.staff-mgmt { container-type: inline-size; }\n' +
     '@container (max-width: 600px) { .staff-mgmt-field--horizontal { flex-direction: column; } }\n' +
-    '@container (max-width: 900px) { .staff-mgmt-table th:nth-child(5) { display: none; } }\n',
+    '@container (max-width: 900px) { .staff-mgmt-search { flex-basis: 100%; } }\n',
   /**
    * MultiStoreDashboard's two tiers declared finest-first — the wider gate
    * would win. The 640/480 ladder's ORDER plant: the 480px tier is below the
