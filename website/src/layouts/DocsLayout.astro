@@ -30,7 +30,7 @@ const docDesc = description ?? t(locale, 'docs.title');
 <!doctype html>
 <html lang={locale}>
   <head>
-    <SiteHead title={title} titleTag={`${title} — ${t(locale, 'docs.title')}`} description={docDesc} locale={locale} runtimeConfig={false}>
+    <SiteHead title={title} titleTag={`${title} — ${t(locale, 'docs.title')}`} description={docDesc} locale={locale} runtimeConfig={false} ogType="article" articleUpdatedAt={updated}>
       <script type="application/ld+json" is:inline set:html={JSON.stringify({
         "@context": "https://schema.org",
         "@type": "BreadcrumbList",
@@ -46,8 +46,18 @@ const docDesc = description ?? t(locale, 'docs.title');
         "headline": title,
         "description": docDesc,
         "inLanguage": locale,
+        // image, publisher and mainEntityOfPage are part of Google's Article
+        // guidance; without them the Article block was incomplete and the
+        // docs pages could not qualify for an article rich result.
+        "image": new URL('/og-image.png', Astro.site).toString(),
+        "mainEntityOfPage": new URL(Astro.url.pathname, Astro.site).toString(),
         ...(updated ? { "dateModified": updated } : {}),
-        "author": { "@type": "Organization", "name": "kasir.mu", "url": "https://kasir.mu" }
+        "author": { "@type": "Organization", "name": "kasir.mu", "url": "https://kasir.mu" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "kasir.mu",
+          "logo": { "@type": "ImageObject", "url": new URL('/og-image.png', Astro.site).toString() }
+        }
       })} />
     </SiteHead>
   </head>

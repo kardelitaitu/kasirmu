@@ -23,6 +23,9 @@ const FEATURES = read('pages', '[locale]', 'features.astro');
 const PRICING = read('pages', '[locale]', 'pricing.astro');
 const SIGNUP = read('pages', '[locale]', 'signup.astro');
 const PRICING_GRID = read('components', 'PricingGrid.tsx');
+const DOCS_LAYOUT = read('layouts', 'DocsLayout.astro');
+const ROOT_STUB = read('pages', 'index.astro');
+const NOT_FOUND = read('pages', '404.astro');
 
 describe('social cards describe their image', () => {
   it('the shared head emits og:image:alt and twitter:image:alt once', () => {
@@ -111,5 +114,55 @@ describe('auth pages are de-indexed', () => {
 
   it('NON_PUBLIC_PAGES covers exactly the five gated pages', () => {
     expect([...NON_PUBLIC_PAGES].sort()).toEqual(['account', 'enterprise-trial', 'login', 'pair', 'signup']);
+  });
+});
+
+describe('docs pages declare themselves as articles', () => {
+  it('SiteHead emits og:type from a prop instead of hardcoding website', () => {
+    // Before: og:type was the literal "website" on every page, so the 30 docs
+    // content pages advertised themselves as generic web pages and lost the
+    // article-specific OG fields.
+    expect(SITE_HEAD).toContain('content={ogType}');
+    expect(SITE_HEAD).not.toContain('property="og:type" content="website"');
+  });
+
+  it('defaults ogType to website so marketing pages are unchanged', () => {
+    expect(SITE_HEAD).toContain("ogType = 'website'");
+  });
+
+  it('emits article:modified_time only for article pages with a date', () => {
+    expect(SITE_HEAD).toMatch(/ogType === 'article' && articleUpdatedAt/);
+    expect(SITE_HEAD).toContain('property="article:modified_time"');
+  });
+
+  it('DocsLayout requests og:type=article and passes the updated date', () => {
+    expect(DOCS_LAYOUT).toMatch(/ogType="article"/);
+    expect(DOCS_LAYOUT).toMatch(/articleUpdatedAt=\{updated\}/);
+  });
+
+  it('the docs Article structured data carries image, publisher and mainEntityOfPage', () => {
+    // Google's Article guidance wants all three; the block shipped only
+    // headline/description/inLanguage/author, so it could not qualify.
+    expect(DOCS_LAYOUT).toContain('"mainEntityOfPage"');
+    expect(DOCS_LAYOUT).toContain('"publisher"');
+    expect(DOCS_LAYOUT).toContain('"image"');
+  });
+});
+
+describe('social completeness on the root redirect stub', () => {
+  it('the locale-detect root stub ships a Twitter card', () => {
+    // The root "/" is the most-visited URL and was the only page with no
+    // twitter:* tags at all (it hand-rolls its minimal head).
+    expect(ROOT_STUB).toContain('name="twitter:card"');
+    expect(ROOT_STUB).toContain('name="twitter:title"');
+    expect(ROOT_STUB).toContain('name="twitter:image"');
+  });
+});
+
+describe('404 carries its own description', () => {
+  it('does not silently inherit the homepage description', () => {
+    // Without a description prop, 404 fell back to meta.description — a
+    // byte-identical description to en/index.
+    expect(NOT_FOUND).toMatch(/<Base[^>]*\bdescription=/);
   });
 });

@@ -40,9 +40,27 @@ interface Props {
    * so docs pages (no islands) opt out to skip the request.
    */
   runtimeConfig?: boolean;
+  /**
+   * `og:type`. Content articles (docs) pass 'article' so social scrapers and
+   * search engines treat them as articles rather than generic web pages;
+   * marketing pages keep the 'website' default. A content page that shipped
+   * 'website' lost the article-specific OG fields entirely.
+   */
+  ogType?: 'website' | 'article';
+  /** ISO date for `article:modified_time`; only emitted when ogType==='article'. */
+  articleUpdatedAt?: string;
 }
 
-const { title, titleTag = title, description, noindex, locale, runtimeConfig = true } = Astro.props;
+const {
+  title,
+  titleTag = title,
+  description,
+  noindex,
+  locale,
+  runtimeConfig = true,
+  ogType = 'website',
+  articleUpdatedAt,
+} = Astro.props;
 const ogLocale = locale === 'id' ? 'id_ID' : 'en_US';
 const ogAltLocale = locale === 'id' ? 'en_US' : 'id_ID';
 // hreflang alternates for the same page in the other locale. Reuse the
@@ -107,7 +125,10 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
   <link rel="alternate" hreflang={code} href={getAbsoluteLocaleUrl(code, path)} />
 ))}
 <link rel="alternate" hreflang="x-default" href={getAbsoluteLocaleUrl('id', path)} />
-<meta property="og:type" content="website" />
+<meta property="og:type" content={ogType} />
+{ogType === 'article' && articleUpdatedAt && (
+  <meta property="article:modified_time" content={articleUpdatedAt} />
+)}
 <meta property="og:site_name" content="kasir.mu" />
 <meta property="og:locale" content={ogLocale} />
 <meta property="og:locale:alternate" content={ogAltLocale} />
