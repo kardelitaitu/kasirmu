@@ -188,4 +188,25 @@ describe('display insets are read once and consumed everywhere', () => {
     expect(container).toMatch(/--provisioning-gutter:\s*var\(--space-8\)/);
     expect(container).not.toContain('env(safe-area-inset-');
   });
+
+  it('adds the inset to the gutter on each edge rather than replacing one with the other', () => {
+    // WHY THIS IS ASSERTED RATHER THAN ONLY ITS INGREDIENTS. The tests above check
+    // that the tokens are mentioned; this one checks they are SUMMED. The
+    // difference was measured in Chromium against this sheet on a notched viewport
+    // (412x915, insets 44/0/34/0, gutter var(--space-8)=32px):
+    //
+    //   calc(gutter + inset)  padding 76px top / 66px bottom, card top y=459
+    //   bare gutter (the bug) padding 32px top / 32px bottom, card top y=415
+    //
+    // A flat padding put the card 44px higher - under the notch - while a test
+    // that merely looked for `var(--inset-top)` somewhere in the rule passed.
+    // The calc shape on all four edges is what produces the first row.
+    const container = ruleBody(PROVISIONING_CSS, '\\.provisioning-container')!;
+    for (const edge of ['top', 'right', 'bottom', 'left']) {
+      expect(
+        container,
+        `${edge}: the inset must be ADDED to the gutter, not used alone`,
+      ).toContain(`calc(var(--provisioning-gutter) + var(--inset-${edge}))`);
+    }
+  });
 });
