@@ -570,6 +570,18 @@ for (const page of titled) {
       `has a ${titleText.length}-character <title> (budget ${TITLE_BUDGET}) — the tail is ellipsised in a SERP; shorten the page name rather than relying on the brand to be dropped`,
     );
   }
+  // The brand belongs in a title once. "kasir.mu — Unduh kasir.mu" is what a
+  // composed prefix produces when the page name already names the brand, and a
+  // searcher reads the repeat as a mistake — three pages shipped that until the
+  // page-title strings were moved into the dictionaries whole.
+  const brandMentions = (titleText.match(/kasir\.mu/g) ?? []).length;
+  if (brandMentions > 1) {
+    add(
+      'titles',
+      page.url,
+      `names the brand ${brandMentions} times: ${JSON.stringify(titleText)} — the page name already carries it, so the composed prefix must go`,
+    );
+  }
   const descText = decode(page.description);
   if (descText.length > DESCRIPTION_BUDGET) {
     add(

@@ -8,6 +8,20 @@ import type { FeatureRow, PricingTier } from './types';
 // gratis (bayar 10 bulan, dapat 12) and is the DEFAULT selection on the
 // pricing page — marketed as "2 bulan gratis", never as a percentage.
 //
+// Indonesian tier copy uses the APP'S OWN vocabulary, not a fresh translation
+// of the English words: "ruang kerja" for workspace (shared.id.ftl
+// nav-switch-workspace = "Ganti Ruang Kerja", workspace-home-available =
+// "{ $count } ruang kerja tersedia"; docs/id/workspaces.md is titled "Ruang
+// Kerja"), "Layar Dapur (KDS)" for the kitchen display (docs/id/stores.md
+// names the preset exactly that) and "perangkat keras" for hardware
+// (docs/id/terminals.md). Two borrowings stay on purpose: "register" for a
+// cashier terminal (docs/id/terminals.md writes "register kasir") and "Memo",
+// which is the product's own noun in both languages — shared.id.ftl defines
+// memos-title = "Memo" and the Indonesian docs list it under Alat. Naming one
+// thing two ways is what made this list hard to read: it said "workspace" and
+// "Display Dapur" while the app and the docs said "ruang kerja" and "Layar
+// Dapur".
+//
 // NOTE: Paddle does not support IDR as a billing currency (their supported
 // list has no IDR), so today the checkout charges the USD price id and the
 // Rp figures on this page are the display price — the checkout shows the
@@ -34,7 +48,7 @@ export const pricing: PricingTier[] = [
     features: [
       { label: '1 lokasi', included: true },
       { label: '1 register', included: true },
-      { label: '1 workspace gudang', included: true },
+      { label: '1 ruang kerja gudang', included: true },
       { label: 'Riwayat penjualan 3 bulan', included: true },
       { label: 'QRIS statis + dinamis', included: true },
       { label: 'Sinkron cloud', included: false },
@@ -63,7 +77,7 @@ export const pricing: PricingTier[] = [
     features: [
       { label: '1 lokasi', included: true },
       { label: '2 register', included: true },
-      { label: '2 workspace gudang', included: true },
+      { label: '2 ruang kerja gudang', included: true },
       { label: 'QRIS statis + dinamis', included: true },
       { label: 'Dasbor Penjualan Harian', included: true },
       { label: 'Sinkron cloud', included: true },
@@ -74,7 +88,7 @@ export const pricing: PricingTier[] = [
     tierKey: 'pro',
     name: 'Pro',
     currency: 'IDR',
-    description: 'Untuk bisnis berkembang — analitik, Display Dapur, dan multi-terminal.',
+    description: 'Untuk bisnis berkembang — analitik, Layar Dapur (KDS), dan multi-terminal.',
     cta: 'Berlangganan',
     highlight: true,
     prices: {
@@ -92,10 +106,10 @@ export const pricing: PricingTier[] = [
     features: [
       { label: '2 lokasi', included: true },
       { label: '5 register per lokasi', included: true },
-      { label: '2 Display Dapur', included: true },
+      { label: '2 Layar Dapur (KDS)', included: true },
       { label: 'Laporan & analitik', included: true },
       { label: 'Memo', included: true },
-      { label: 'Kartu Stripe', included: true },
+      { label: 'Kartu debit & kredit (Stripe)', included: true },
       { label: 'Sinkron cloud', included: true },
     ],
   },
@@ -133,8 +147,8 @@ export const pricing: PricingTier[] = [
     features: [
       { label: 'Lokasi tanpa batas', included: true },
       { label: 'Register tanpa batas', included: true },
-      { label: 'Branding white-label', included: true },
-      { label: 'Driver HAL khusus', included: true },
+      { label: 'Branding whitelabel', included: true },
+      { label: 'Driver perangkat keras khusus (HAL)', included: true },
       { label: 'Account manager khusus', included: true },
       { label: 'SLA dukungan khusus', included: true },
     ],
@@ -145,13 +159,13 @@ export const pricing: PricingTier[] = [
 export const featureRows: FeatureRow[] = [
   { label: 'Lokasi', values: { free: 1, plus: 1, pro: 2, premium: 5, enterprise: 'Tanpa batas' } },
   { label: 'Terminal (register) per lokasi', values: { free: 1, plus: 2, pro: 5, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
-  { label: 'Workspace gudang', values: { free: 1, plus: 2, pro: 3, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
-  { label: 'Layar Display Dapur', values: { free: 0, plus: 0, pro: 2, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
+  { label: 'Ruang kerja gudang', values: { free: 1, plus: 2, pro: 3, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
+  { label: 'Layar Dapur (KDS)', values: { free: 0, plus: 0, pro: 2, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
   { label: 'Max produk/menu', values: { free: 200, plus: 500, pro: 1000, premium: 10000, enterprise: 'Tanpa batas' } },
   { label: 'Staf pengguna', values: { free: 1, plus: 5, pro: 20, premium: 50, enterprise: 'Tanpa batas' } },
   { label: 'Riwayat penjualan', values: { free: '3 bulan', plus: '1 tahun', pro: '5 tahun', premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
   { label: 'QRIS statis + dinamis', values: { free: true, plus: true, pro: true, premium: true, enterprise: true } },
-  { label: 'Kartu Stripe', values: { free: false, plus: false, pro: true, premium: true, enterprise: true } },
+  { label: 'Kartu debit & kredit (Stripe)', values: { free: false, plus: false, pro: true, premium: true, enterprise: true } },
   { label: 'Sinkron cloud', values: { free: false, plus: true, pro: true, premium: true, enterprise: true } },
   { label: 'Dasbor Penjualan Harian', values: { free: false, plus: true, pro: true, premium: true, enterprise: true } },
   { label: 'Laporan & analitik', values: { free: false, plus: false, pro: true, premium: true, enterprise: true } },

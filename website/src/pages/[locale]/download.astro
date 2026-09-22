@@ -7,7 +7,10 @@ import PlatformIcon from '../../components/PlatformIcon.astro';
 import { t, dict } from '../../i18n';
 
 const locale = Astro.currentLocale ?? 'en';
-const pageTitle = `kasir.mu — ${t(locale, 'download.title')}`;
+// The dictionary value already names the brand ("Unduh kasir.mu" / "Download
+// kasir.mu"), so it is the whole title — prefixing it produced
+// "kasir.mu — Unduh kasir.mu" on the same search result.
+const pageTitle = t(locale, 'download.title');
 const releaseUrl = 'https://github.com/kardelitaitu/oz-pos/releases';
 // Only Windows ships today; the other four are on the roadmap and render a
 // "coming soon" badge instead of a download link. Flip `ready` to true when

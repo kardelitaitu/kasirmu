@@ -56,6 +56,45 @@ describe('home feature grid', () => {
   });
 });
 
+describe('document title strings', () => {
+  /** Page-name strings that ARE the whole document title (see src/lib/seo.ts). */
+  const standalone = (): [string, string[]][] =>
+    ([
+      ['en', enDict],
+      ['id', idDict],
+    ] as const).map(([locale, dict]) => [
+      locale,
+      [
+        dict.cara.title,
+        dict.perbandingan.title,
+        dict.download.title,
+        ...Object.values(dict.vertical).flatMap((v: any) => (v?.title ? [v.title] : [])),
+        ...Object.values(dict.landing).map((l: any) => l.title),
+      ] as string[],
+    ]);
+
+  it('names the brand at most once in every page-title string', () => {
+    // "kasir.mu — Unduh kasir.mu" is what happens when a page name that already
+    // says the brand gets a composed brand prefix on top of it. The chain that
+    // renders it (Base → SiteHead) cannot tell, so the strings themselves are
+    // held to it here — and `check:seo` asserts it on the emitted <title>.
+    for (const [locale, titles] of standalone()) {
+      for (const title of titles) {
+        const mentions = (title.match(/kasir\.mu/g) ?? []).length;
+        expect(mentions, `${locale}: ${title}`).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  it('translates the cara and perbandingan page titles', () => {
+    expect(enDict.cara.title).toBe('How to Use kasir.mu: Step-by-Step Guides');
+    expect(enDict.perbandingan.title).toBe('kasir.mu vs Other POS Apps Compared');
+    expect(idDict.cara.title).not.toBe(enDict.cara.title);
+    expect(idDict.perbandingan.title).not.toBe(enDict.perbandingan.title);
+    expect(idDict.perbandingan.title).toContain('Perbandingan');
+  });
+});
+
 describe('landing page copy', () => {
   it('translates every vertical landing title and tagline', () => {
     for (const key of Object.keys(enDict.vertical)) {

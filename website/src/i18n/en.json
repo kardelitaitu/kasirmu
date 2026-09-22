@@ -141,6 +141,7 @@
     }
   },
   "hero": {
+    "badge": "Not backed by Y Combinator",
     "title": "The Lightweight, Easy, Free POS",
     "subtitle": "Corporate-grade POS that stays cheap: runs on Android, tablets, and old PCs with a blazing-fast offline-first core, with zero hidden per-feature fees.",
     "ctaPrimary": "Download free",
@@ -421,6 +422,12 @@
     "viewReceipts": "Access Billing Portal & Receipts",
     "invoiceNote": "Need a formal corporate tax invoice? Contact sales@kasir.mu with your company NPWP/VAT details.",
     "invoiceSubject": "Invoice Request - {email}"
+  },
+  "cara": {
+    "title": "How to Use kasir.mu: Step-by-Step Guides"
+  },
+  "perbandingan": {
+    "title": "kasir.mu vs Other POS Apps Compared"
   },
   "footer": {
     "rights": "All rights reserved.",

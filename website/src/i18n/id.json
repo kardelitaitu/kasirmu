@@ -145,6 +145,7 @@
     }
   },
   "hero": {
+    "badge": "Tidak didanai Y Combinator",
     "title": "Aplikasi Kasir yang Ringan, Mudah, dan Gratis",
     "subtitle": "Sistem POS kelas korporasi yang tetap murah: jalan di Android, tablet, dan PC tua dengan inti offline-first ultra-ringan, tanpa biaya per-fitur tersembunyi.",
     "ctaPrimary": "Unduh Gratis",
@@ -226,7 +227,7 @@
         "highlight": false
       },
       {
-        "feature": "Kitchen Display System (KDS)",
+        "feature": "Layar Dapur (KDS)",
         "ozPos": "Sudah termasuk gratis di browser & tablet",
         "others": "Biaya add-on mahal per-layar / bulan",
         "highlight": true
@@ -425,6 +426,12 @@
     "viewReceipts": "Akses Portal Tagihan & Kuitansi",
     "invoiceNote": "Butuh faktur pajak perusahaan resmi? Hubungi sales@kasir.mu dengan detail NPWP perusahaan Anda.",
     "invoiceSubject": "Permintaan Faktur - {email}"
+  },
+  "cara": {
+    "title": "Cara Pakai kasir.mu: Panduan Langkah demi Langkah"
+  },
+  "perbandingan": {
+    "title": "Perbandingan kasir.mu vs Aplikasi Kasir Lain"
   },
   "footer": {
     "rights": "Hak cipta dilindungi.",
