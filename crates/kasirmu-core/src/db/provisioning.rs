@@ -383,9 +383,10 @@ pub struct ProvisionDeviceResult {
 /// # Errors
 ///
 /// [`CoreError::Validation`] for an empty location name, an empty owner
-/// username/display name, a PIN shorter than 4 characters, or a `linked`
-/// mode missing its tenant or credential id. [`CoreError::Internal`] when a
-/// write succeeds but its row cannot be read back.
+/// username/display name, a PIN shorter than 4 characters, a timezone outside
+/// the accepted set (the three Indonesian IANA presets or `UTC`), or a
+/// `linked` mode missing its tenant or credential id. [`CoreError::Internal`]
+/// when a write succeeds but its row cannot be read back.
 pub fn provision_device(
     conn: &Connection,
     args: &ProvisionDeviceArgs,
@@ -511,6 +512,15 @@ fn provision_device_inner(
 /// A `linked` install must name its tenant and credential: the schema CHECK
 /// enforces the same rule, and failing here turns what would be a constraint
 /// violation into a field-named validation error.
+///
+/// The timezone is checked against the SAME set the regional write path
+/// enforces (`crate::regional::validate_regional_axis_value` and the bridge's
+/// `update_location_profile_scoped`), so the value a store is provisioned with
+/// is one the reporting and tax paths can resolve. The accepted set is read
+/// from the existing helpers rather than restated here: a free-text IANA name
+/// outside it resolves to UTC through the reporting path's fallback arm
+/// (`crate::timezone::offset_for_zone`), which would silently report a Jakarta
+/// store in UTC.
 fn validate_provision_args(args: &ProvisionDeviceArgs) -> Result<(), CoreError> {
     if args.location_name.trim().is_empty() {
         return Err(CoreError::Validation {
@@ -534,6 +544,21 @@ fn validate_provision_args(args: &ProvisionDeviceArgs) -> Result<(), CoreError> 
         return Err(CoreError::Validation {
             field: "owner_pin",
             message: "owner PIN must be at least 4 characters".into(),
+        });
+    }
+    // Rejected, never silently normalised to UTC: the operator learns at
+    // provisioning time, not months later from a report that is hours off.
+    // UTC is the legacy column-default sentinel and stays accepted, exactly as
+    // the regional write path accepts it.
+    if !crate::regional::is_preset_location_timezone(&args.timezone)
+        && !args.timezone.eq_ignore_ascii_case("UTC")
+    {
+        return Err(CoreError::Validation {
+            field: "timezone",
+            message: format!(
+                "timezone must be one of Asia/Jakarta, Asia/Makassar, Asia/Jayapura or UTC (got {})",
+                args.timezone
+            ),
         });
     }
     if args.terminal_id.trim().is_empty() {

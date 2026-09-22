@@ -506,6 +506,78 @@ fn location_kind_selects_the_workspace_topology() {
     );
 }
 
+// ── The timezone is validated on the WRITE path (C6b) ────────────
+
+#[test]
+fn a_valid_location_timezone_is_accepted_and_stored_verbatim() {
+    // The accepted value reaches the column unchanged: this is a rejection,
+    // never a silent normalisation, so what the operator chose is what a
+    // report resolves against later.
+    let conn = fresh();
+    let out = provision_device(&conn, &args_for("dev-tz-ok")).unwrap();
+    let stored: String = conn
+        .query_row(
+            "SELECT timezone FROM locations WHERE id = ?1",
+            rusqlite::params![out.location_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored, "Asia/Jakarta");
+}
+
+#[test]
+fn utc_is_still_accepted_as_the_legacy_column_default() {
+    // UTC is the column default for un-migrated rows and the reporting path
+    // resolves it for real (is_known_zone), so it stays accepted here exactly
+    // as the regional write path accepts it.
+    let conn = fresh();
+    let mut args = args_for("dev-tz-utc");
+    args.timezone = "UTC".to_owned();
+    assert!(provision_device(&conn, &args).is_ok());
+}
+
+#[test]
+fn an_unsupported_timezone_is_rejected_and_names_the_accepted_values() {
+    // The defect C6b closes: the write path validated nothing, so a value the
+    // reporting path cannot resolve was stored verbatim and the store silently
+    // reported in UTC (timezone::offset_for_zone falls back on any other name).
+    // Asia/Pontianak is in the list on purpose: it IS resolvable by the
+    // reporting path but is NOT in the write boundary's closed set, so it
+    // proves this reuses the bridge's set rather than a wider one.
+    let conn = fresh();
+    for bad in [
+        "Europe/London",
+        "Asia/Pontianak",
+        "WIB",
+        "UTC+7",
+        "nonsense",
+        "",
+    ] {
+        let mut args = args_for("dev-tz-bad");
+        args.timezone = bad.to_owned();
+        let err = provision_device(&conn, &args)
+            .expect_err("an unsupported timezone must be refused, not stored");
+        match err {
+            CoreError::Validation { field, message } => {
+                assert_eq!(field, "timezone", "the error must name the field");
+                for accepted in ["Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura", "UTC"] {
+                    assert!(
+                        message.contains(accepted),
+                        "the message must name {accepted}: {message}"
+                    );
+                }
+                assert!(
+                    message.contains(bad),
+                    "the message must echo the rejected value {bad:?}: {message}"
+                );
+            }
+            other => panic!("expected a timezone validation error, got {other:?}"),
+        }
+        // Rejected BEFORE the transaction, so no half-built terminal survives.
+        assert!(!store(&conn).is_provisioned("dev-tz-bad").unwrap());
+    }
+}
+
 #[test]
 fn location_kind_round_trips_and_rejects_unknown_values() {
     assert_eq!(LocationKind::Retail.as_str(), "retail");
