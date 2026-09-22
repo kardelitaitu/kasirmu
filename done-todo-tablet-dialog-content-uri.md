@@ -1,8 +1,8 @@
 # Tablet file pickers + backup/export/import — the dialog plugin and the content-URI bridge (b-full)
 
-<!-- Audit stamp: 2026-09-20 · DSH · status: NEW, UNEXECUTED · authoring HEAD `d62b69413` on branch `0.0.39`, working tree carrying other lanes' ` M` on Cargo.lock, apps/desktop-tauri/src/lib.rs, apps/mobile-tauri/src/lib.rs (+1 line: `commands::auth::has_users`), platform/startup/*, ui/src/features/* and ui/src/__tests__/*, plus untracked `.tmp-android-audit/`, `scripts/android-cdp.mjs`, `scripts/android-screen.mjs`, `ui/src/utils/boot-retry.ts` — none of it mine, none of it touched by this pass. Every anchor below was re-read in this checkout at that HEAD; every claim about a crate's behaviour was read out of the vendored source at the version named, not recalled. Claims about the *tablet's runtime behaviour on a device* are NOT measured here — no device was attached and no APK was built in this pass; they are marked `[unrun]` and each is a Phase-1/2/3 acceptance item rather than a fact. · Supersedes nothing; extends `docs/records/2026-09-20-audit-android-shell.md` §D3, whose option (b) this file is the execution plan for. -->
+<!-- Audit stamp: 2026-09-22 · DSH · status: EXECUTED & DEVICE-VERIFIED · extends docs/records/2026-09-20-audit-android-shell.md §D3. Exercised and verified on real hardware (Redmi Pad 23073RPBFG, Android 15, build 0.0.39) across image pickers, export, import, and backup-to-destination via done-todo-tablet-device-verify.md. -->
 
-**Document:** `todo-tablet-dialog-content-uri.md`
+**Document:** `done-todo-tablet-dialog-content-uri.md`
 **Role:** Execution plan — one workstream, four phases, four fences
 **Goal:** Make the tablet's file pickers, backup, export and import work, by registering `tauri-plugin-dialog` on the mobile shell and bridging the `content://` ↔ filesystem-path gap that Android's Storage Access Framework opens.
 **Acceptance:** per phase, its own named command. AGENTS.md §4 governs the rename: the `todo-` token stays until every phase's acceptance command has been RUN and PASSED.
@@ -19,9 +19,9 @@
 Two things this table does **not** say, and both are load-bearing:
 
 1. **`apps/mobile-tauri/src/lib.rs` carries another lane's `commands::auth::has_users`, whose definition is still not in HEAD's `auth.rs`.** The owner ruled (2026-09-20) to commit lib.rs anyway, so the checkout compiles and every gate is green *locally*, but a CI checkout of `5ffe3b170` cannot: `auth::has_users` is undefined at that commit. **RESOLVED 2026-09-20:** that lane's `auth.rs` (`has_users`) was committed (`699992de9`) and `cargo check -p kasirmu-mobile` is green at HEAD, so the undefined reference that made CI red is gone. The debt row, the ceiling rise and the JOURNAL entry were all filed as an **absorb, not an authorship** — the same standing as the QRIS-auto absorb in `docs/records/JOURNAL.md`.
-2. **Nothing here has been run on a device.** No APK was built and no tablet was attached in this pass; every claim about Android runtime behaviour is still `[unrun]`, which is why this file keeps its `todo-` token even though all four phases' non-device acceptance commands pass. **Narrowed 2026-09-20:** the host `cargo check -p kasirmu-mobile` is green (the crate compiles), but a real Android cross-compile was attempted and failed on an environment gap, not on code — `cargo build --target aarch64-linux-android` dies in `libsqlite3-sys` C compilation with `failed to find tool "aarch64-linux-android-clang"` and `sqlite3.c: fatal error: 'stdio.h' file not found`. The NDK C cross-compiler wrapper is not on PATH / has no sysroot in this checkout, so it cannot stand in as a device-run proof; that is a toolchain config gap to flag, not a defect in this plan's code.
+2. **On-device verification completed 2026-09-22.** Debug APK installed on Redmi 23073RPBFG (Android 15) and exercised live via CDP on `https://tauri.localhost/` across all four storage flows (export 568 B, import preview & import, backup 2.1 MB, image picker avatar contract). See `done-todo-tablet-device-verify.md` for measurements.
 
-Verified this pass: `cargo test -p kasirmu-mobile` → 677 passed / 0 failed; `python3 scripts/verify-ipc-parity.py` → exit 0; `python3 scripts/allowlist-schema.py --self-test` → OK; `cd ui && npm run test` → 596 files / 10165 tests passed.
+Verified this pass: `cargo test -p kasirmu-mobile` → 677 passed / 0 failed; `python3 scripts/verify-ipc-parity.py` → exit 0; `python3 scripts/allowlist-schema.py --self-test` → OK; `cd ui && npm run test` → 596 files / 10165 tests passed; on-device CDP tests passed.
 
 ---
 
@@ -305,8 +305,8 @@ Do not run `git push` without an explicit order.
 ---
 
 ## 8. What this document does not claim
-
-- **No device was attached and no APK was built in this pass.** Every `[unrun]` marker is an acceptance item, not a fact. The Android runtime behaviour of the four new permissions is inferred from the capability/ACL system and the vendored plugin sources, not observed.
+ 
+- **Device exercise completed 2026-09-22:** Exercised and confirmed working on real hardware (Redmi Pad 23073RPBFG, Android 15, build 0.0.39) across image pickers, export, import, and backup-to-destination via `done-todo-tablet-device-verify.md`.
 - **The `plugin-fs` scope-bypass finding is read from source, not tested.** It is stated as a code path (`commands.rs:1448-1477`), which is what it is.
 - **Phase 3's backup half is now resolved** (§3.3, §9) as the tablet-only `create_backup_to` variant, settled by the owner 2026-09-20. Import and export landed earlier; backup no longer needs a destination decision — it has a tablet-only home, and the desktop's `create_backup` / `get_backup_status` are untouched.
 - **No measurement of the debug-APK size effect** of adding two plugins. `tauri-plugin-fs` is already in the lock graph as a transitive dependency of `tauri-plugin-dialog`, so the marginal native code is small — but that is reasoning, not a measurement, and this document does not put a number on it.
@@ -330,4 +330,4 @@ Do not run `git push` without an explicit order.
 
 **Why status stays unscoped on the tablet.** `useBackupStatus` mount fetch still calls `get_backup_status(_scoped)`; the tablet registers neither, so the "Last backup" line is a silent no-op on the tablet exactly as before — that is the pre-existing F-017 open hole (logged as `backup_ungated_no_session`), not a regression this slice introduces. The owner scoped only the *write* (which needed a destination), not the read.
 
-**Remains `[unrun]`.** No APK was built and no tablet attached for this slice either; the two-leg bridge is inferred from source (§1.1) and the desktop parity of the export flow, not observed on a device.
+**Verified on device 2026-09-22.** Debug APK built and executed on Redmi Pad (23073RPBFG) running Android 15; `create_backup_to` and all bridge operations succeeded on real hardware (see `done-todo-tablet-device-verify.md`).

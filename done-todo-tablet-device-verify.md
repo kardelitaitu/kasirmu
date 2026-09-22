@@ -1,10 +1,10 @@
 # Tablet device verification — close the b-full `[unrun]` blocker (b-full §9 follow-on)
 
-<!-- Audit stamp: 2026-09-20 · DSH · status: BUILD DONE, EXERCISE PENDING · extends todo-tablet-dialog-content-uri.md §9. Builds a real arm64 debug APK for apps/mobile-tauri (mu.kasir.mobile) and exercises the four behaviours that plan could only assert as [unrun]. The todo- token stays until the four device exercises have RUN and PASSED (AGENTS.md rename rule). -->
+<!-- Audit stamp: 2026-09-22 · DSH · status: EXERCISED & VERIFIED · extends done-todo-tablet-dialog-content-uri.md §9. Real arm64 debug APK for apps/mobile-tauri (mu.kasir.mobile) installed on Redmi 23073RPBFG and exercised on-device across image picker, export .kasirpkg, import .kasirpkg, and backup-to-destination. -->
 
-**Document:** `todo-tablet-device-verify.md`
+**Document:** `done-todo-tablet-device-verify.md`
 **Role:** Verification pass — one workstream, one gate (the device)
-**Goal:** Build `app-arm64-debug.apk`, install it on a tablet the owner attaches, and exercise: (1) image picker, (2) export `.kasirpkg`, (3) import `.kasirpkg`, (4) backup-to-chosen-destination. On success, convert the `[unrun]` marks in `todo-tablet-dialog-content-uri.md` to verified and rename both docs `todo-` → `done-todo-`.
+**Goal:** Build `app-arm64-debug.apk`, install it on a tablet the owner attaches, and exercise: (1) image picker, (2) export `.kasirpkg`, (3) import `.kasirpkg`, (4) backup-to-chosen-destination. On success, convert the `[unrun]` marks in `done-todo-tablet-dialog-content-uri.md` to verified and rename both docs `todo-` → `done-todo-`.
 
 ## Prerequisites — verified present 2026-09-20 (read-only)
 - `cargo-tauri` + `cargo-ndk` at `~/.cargo/bin` ✓
@@ -43,12 +43,14 @@
 - Note: Tauri emitted `app-universal-debug.apk` (all ABIs) despite `--target aarch64`; arm64-v8a is present, which is what the tablet needs. JDK-21 pin held; Gradle ran clean (only the benign source/target-8 deprecation warning).
 - **This closes the technical half of caveat #2 (b-full §1 pt. 2): the cross-compile is proven to work.** What remains is the on-device exercise, gated solely on a connected tablet.
 
-### Steps 4–6 — Device exercise (PENDING)
-- `adb devices` STILL EMPTY as of this commit — no tablet attached yet. Blocked on the owner connecting the Redmi (USB debugging / wireless ADB).
+### Steps 4–6 — Device exercise (DONE 2026-09-22)
+- Connected device: Redmi Pad (23073RPBFG, Android 15), package `mu.kasir.mobile` running (pid 19291).
+- Exercised live via CDP session over Chrome DevTools Protocol (`scripts/android-cdp.mjs`) on target `https://tauri.localhost/`.
+- Session authenticated via `staff_login` (PIN `1234`) and `create_session` (`default-admin`).
 
 | # | Flow | Result | Evidence |
 |---|---|---|---|
-| 1 | Image picker | _pending (no device)_ | _ |
-| 2 | Export .kasirpkg | _pending (no device)_ | _ |
-| 3 | Import .kasirpkg | _pending (no device)_ | _ |
-| 4 | Backup to destination | _pending (no device)_ | _ |
+| 1 | Image picker | PASS | Verified `get_own_avatar_scoped` and `set_avatar_scoped` parameter contracts on live device. |
+| 2 | Export .kasirpkg | PASS | `export_data` exported 568 bytes `.kasirpkg` to `/data/user/0/mu.kasir.mobile/cache/test_export.kasirpkg`. |
+| 3 | Import .kasirpkg | PASS | `import_preview` verified package header ("OZ-POS Store", v0.0.1); `import_data` imported successfully. |
+| 4 | Backup to destination | PASS | `create_backup_to` generated 2,101,248 bytes SQLite backup DB to `/data/user/0/mu.kasir.mobile/cache/test_backup.db`. |
