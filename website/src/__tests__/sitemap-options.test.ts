@@ -26,7 +26,13 @@ beforeAll(() => {
   // One instance: the resolver caches the git log, and each call to
   // createSitemapOptions() would re-read it.
   opts = createSitemapOptions();
-});
+  // Warm the `<lastmod>` resolver, which reads `git log --name-only` over the
+  // whole history on first use. Left cold, whichever `serialize` test ran first
+  // paid ~1 s idle / several seconds under the 24-worker pool and could time out
+  // — a failure that named a link assertion while the cost was git's. As setup
+  // it gets a budget of its own, and no assertion is order-dependent.
+  opts.serialize(bilingual('/pricing'));
+}, 30_000);
 
 /** A page that exists in both locales, shaped as @astrojs/sitemap emits it. */
 const bilingual = (path: string): Item => ({

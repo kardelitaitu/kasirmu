@@ -3,7 +3,7 @@ title: Instalasi
 description: Pasang kasir.mu di Windows, macOS, atau Linux.
 category: gettingStarted
 order: 2
-updated: "2026-08-17"
+updated: "2026-09-23"
 ---
 
 ## Persyaratan sistem
@@ -27,11 +27,11 @@ WebView2 yang sudah tersedia di Windows 10 dan 11.
 
 ## Unduh dan pasang
 
-Unduh penginstal dari
-[halaman rilis](https://github.com/kardelitaitu/oz-pos/releases). Tidak
-diperlukan akun.
+Unduh dari [halaman unduh](../../download/) — tidak diperlukan akun.
+Penginstalnya sendiri dipublikasikan di
+[GitHub Releases](https://github.com/kardelitaitu/oz-pos/releases).
 
-**Windows** — jalankan `OZ-POS_<versi>_x64-setup.exe` (atau `.msi`) dan ikuti
+**Windows** — jalankan `kasir.mu_<versi>_x64-setup.exe` (atau `.msi`) dan ikuti
 petunjuknya. Terpasang ke akun pengguna Anda dan menambahkan entri kasir.mu ke
 menu Mulai.
 

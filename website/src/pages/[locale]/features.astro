@@ -14,10 +14,10 @@ const featuresData = dict(locale).features as {
   items: { title: string; description: string }[];
   comparisonTitle: string;
   comparisonSubtitle: string;
-  comparisonOzPos: string;
+  comparisonKasirMu: string;
   comparisonOthers: string;
   comparisonHeaderFeature: string;
-  comparisonRows: { feature: string; ozPos: string; others: string; highlight: boolean }[];
+  comparisonRows: { feature: string; kasirMu: string; others: string; highlight: boolean }[];
 };
 const features = featuresData.items;
 const comparisonRows = featuresData.comparisonRows;
@@ -111,7 +111,7 @@ const featureIcons = [
             <thead>
               <tr class="border-b border-ink/10 bg-ink/[0.03]">
                 <th scope="col" class="w-[22%] px-6 py-4.5 text-xs font-semibold uppercase tracking-wider text-muted/80"></th>
-                <th scope="col" class="w-[39%] px-6 py-4.5 text-center text-xs font-bold uppercase tracking-wider text-primary border-x border-ink/5 bg-primary/[0.03]">{t(locale, 'features.comparisonOzPos')}</th>
+                <th scope="col" class="w-[39%] px-6 py-4.5 text-center text-xs font-bold uppercase tracking-wider text-primary border-x border-ink/5 bg-primary/[0.03]">{t(locale, 'features.comparisonKasirMu')}</th>
                 <th scope="col" class="w-[39%] px-6 py-4.5 text-center text-xs font-semibold uppercase tracking-wider text-danger">{t(locale, 'features.comparisonOthers')}</th>
               </tr>
             </thead>
@@ -123,7 +123,7 @@ const featureIcons = [
                     <td class="px-6 py-4 font-medium text-ink border-x border-ink/5 bg-primary/[0.015] align-middle">
                       <div class="flex items-start gap-2.5">
                         <span class="mt-0.5 inline-flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">✓</span>
-                        <span class="leading-relaxed">{row.ozPos}</span>
+                        <span class="leading-relaxed">{row.kasirMu}</span>
                       </div>
                     </td>
                     <td class="px-6 py-4 text-muted align-middle">

@@ -24,6 +24,11 @@ const platforms: { name: string; label: string; platform: Platform; ready: boole
   { name: 'iOS', label: 'iOS (Tablets & phones)', platform: 'ios', ready: false },
 ];
 const reqList = (dict(locale).download as { requirements: string[] }).requirements;
+// The three-step stepper was the last block on this page carrying inline
+// `locale === 'id' ? … : …` copy, which `audit-i18n.mjs` cannot see: a string
+// that is not in the dictionary cannot be found missing from it. It is data
+// now, and the number beside each step is its position rather than a literal.
+const steps = (dict(locale).download as { steps: { title: string; body: string }[] }).steps;
 // Segmented-trial callout copy (C2.1): revealed client-side when the URL
 // carries a vertical (?v=kafe / ?v=restoran / ?v=enterprise_referral).
 const trialProText = t(locale, 'download.trialCallout');
@@ -123,35 +128,19 @@ const trialEnterpriseText = t(locale, 'download.trialCalloutEnterprise');
 
     <!-- Visual 3-Step Setup Stepper -->
     <div data-reveal class="mt-16 rounded-2xl border border-ink/10 bg-surface/50 p-8 shadow-sm">
-      <h2 class="text-center text-xl font-bold">{locale === 'id' ? 'Mulai Berjualan dalam 3 Langkah Mudah' : 'Start Selling in 3 Simple Steps'}</h2>
+      <h2 class="text-center text-xl font-bold">{t(locale, 'download.stepsTitle')}</h2>
       <div class="mt-8 grid gap-6 sm:grid-cols-3">
-        <div class="flex flex-col items-center text-center p-4 rounded-xl bg-surface border border-ink/5">
-          <div class="flex h-10 w-10 items-center justify-center rounded-full bg-accent text-on-primary font-bold text-sm">
-            1
-          </div>
-          <h3 class="mt-3 font-semibold text-ink">{locale === 'id' ? 'Unduh & Pasang' : 'Download & Install'}</h3>
-          <p class="mt-1 text-xs text-muted leading-relaxed">
-            {locale === 'id' ? 'Unduh paket instalasi sesuai sistem operasi komputer kasir Anda.' : 'Download the installer tailored for your store or cashier terminal OS.'}
-          </p>
-        </div>
-        <div class="flex flex-col items-center text-center p-4 rounded-xl bg-surface border border-ink/5">
-          <div class="flex h-10 w-10 items-center justify-center rounded-full bg-accent text-on-primary font-bold text-sm">
-            2
-          </div>
-          <h3 class="mt-3 font-semibold text-ink">{locale === 'id' ? 'Masukkan Kunci Lisensi' : 'Enter License Key'}</h3>
-          <p class="mt-1 text-xs text-muted leading-relaxed">
-            {locale === 'id' ? 'Buka aplikasi dan tempelkan kunci lisensi dari dashboard akun Anda.' : 'Launch the client and paste your license key from your account dashboard.'}
-          </p>
-        </div>
-        <div class="flex flex-col items-center text-center p-4 rounded-xl bg-surface border border-ink/5">
-          <div class="flex h-10 w-10 items-center justify-center rounded-full bg-accent text-on-primary font-bold text-sm">
-            3
-          </div>
-          <h3 class="mt-3 font-semibold text-ink">{locale === 'id' ? 'Siap Digunakan Offline' : 'Ready to Sell Offline'}</h3>
-          <p class="mt-1 text-xs text-muted leading-relaxed">
-            {locale === 'id' ? 'Mulai catat transaksi secara instan, tanpa takut koneksi internet putus.' : 'Process sales at 0ms latency with 100% offline-first local storage.'}
-          </p>
-        </div>
+        {
+          steps.map((step, i) => (
+            <div class="flex flex-col items-center text-center p-4 rounded-xl bg-surface border border-ink/5">
+              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-accent text-on-primary font-bold text-sm">
+                {i + 1}
+              </div>
+              <h3 class="mt-3 font-semibold text-ink">{step.title}</h3>
+              <p class="mt-1 text-xs text-muted leading-relaxed">{step.body}</p>
+            </div>
+          ))
+        }
       </div>
     </div>
   </section>

@@ -52,13 +52,6 @@
 //      The collection is what the sidebar, the ⌘K index and this gate's docs
 //      class are all derived from, so a doc that stops building disappears
 //      from the site without any other check being able to see it.
-//   9. docs next step — every docs article's body offers the locale's download
-//      and pricing page, with the dictionary's own label text. The docs are the
-//      site's most search-aligned content, and 30 of the 36 articles used to
-//      link to no commercial page at all in the body: a reader who arrived from
-//      "how do I …" had no route into the product, and no internal-link equity
-//      flowed to the pages that pay for the site. This asserts the block is
-//      rendered, is in the right language, and points at the reader's locale.
 //   8. locale copy — the rendered footer sitemap speaks the page's locale, in
 //      both directions: every label the locale's dictionary defines is present,
 //      and every label rendered is one of them. This is a VISITOR check rather
@@ -69,6 +62,23 @@
 //      under English column headings. No source-level test could see it (the
 //      component agreed with itself) and no head check could either (the head
 //      was correct).
+//   9. docs next step — every docs article's body offers the locale's download
+//      and pricing page, with the dictionary's own label text. The docs are the
+//      site's most search-aligned content, and 30 of the 36 articles used to
+//      link to no commercial page at all in the body: a reader who arrived from
+//      "how do I …" had no route into the product, and no internal-link equity
+//      flowed to the pages that pay for the site. This asserts the block is
+//      rendered, is in the right language, and points at the reader's locale.
+//  10. retired brand — no page names the product by a name it no longer has.
+//      Both install guides told the reader to run
+//      `OZ-POS_<version>_x64-setup.exe` a full year of versions after the app
+//      was renamed to kasir.mu (apps/desktop-tauri/tauri.conf.json productName),
+//      so anyone who followed the install steps went looking for a file that is
+//      never published under that name. Source-level tests cannot see it either:
+//      the string was correct prose in a markdown file. Checked against the
+//      rendered body of every page that owes a head, with the GitHub repository
+//      path excepted — the repo kept its name, so `kardelitaitu/oz-pos` is not a
+//      finding whether it appears as an href or as visible text.
 //
 // DELIBERATELY NOT CHECKED (each a decision, not an omission):
 //   • The root locale-detect stub (src/pages/index.astro) is a redirect document
@@ -718,6 +728,26 @@ for (const page of pages.filter((p) => p.rec?.kind === 'docs article')) {
   }
 }
 
+// 10. Retired brand: no page may name the product by a name it no longer has.
+//     Scanned on `body` — the script-stripped, tag-stripped text — so an href to
+//     the repository (which still contains `oz-pos`) is not a finding, and only
+//     words the visitor actually reads are judged.
+const RETIRED_BRAND = /\bOZ[-_ ]?POS/i;
+// The GitHub repository kept its name through the rebrand; naming it is correct.
+const KEPT_REPOSITORY = /kardelitaitu\/oz-pos/g;
+
+for (const page of pages.filter((p) => p.rec && hasHead(p.rec))) {
+  const visible = page.body.replace(KEPT_REPOSITORY, ' ');
+  const match = visible.match(RETIRED_BRAND);
+  if (!match) continue;
+  const from = Math.max(0, (match.index ?? 0) - 45);
+  add(
+    'retired brand',
+    page.url,
+    `names the product ${JSON.stringify(match[0])} — the app (and its installer) have been kasir.mu since the rebrand; context: "…${visible.slice(from, from + 110).trim()}…"`,
+  );
+}
+
 // ── Report ──────────────────────────────────────────────────────────────────
 const byCheck = new Map();
 for (const finding of findings) {
@@ -735,6 +765,7 @@ const checks = [
   'titles',
   'locale copy',
   'docs next step',
+  'retired brand',
 ];
 const classes = {};
 for (const page of pages) {

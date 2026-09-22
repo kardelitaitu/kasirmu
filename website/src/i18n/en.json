@@ -218,49 +218,49 @@
     ],
     "comparisonTitle": "kasir.mu vs Conventional Cloud POS",
     "comparisonSubtitle": "See why true offline-first architecture and transparent all-inclusive features set kasir.mu apart.",
-    "comparisonOzPos": "kasir.mu",
+    "comparisonKasirMu": "kasir.mu",
     "comparisonOthers": "Other POS",
     "comparisonHeaderFeature": "Features & Capabilities",
     "comparisonRows": [
       {
         "feature": "Offline Outage Resilience",
-        "ozPos": "100% Full Functionality (Local SQLite on each device)",
+        "kasirMu": "100% Full Functionality (Local SQLite on each device)",
         "others": "Freezes / Failed transactions during outages",
         "highlight": true
       },
       {
         "feature": "Hardware Efficiency",
-        "ozPos": "SOTA Rust engine — smooth on budget hardware & lean RAM",
+        "kasirMu": "SOTA Rust engine — smooth on budget hardware & lean RAM",
         "others": "Heavy web app requiring expensive specs",
         "highlight": false
       },
       {
         "feature": "Kitchen Display System (KDS)",
-        "ozPos": "Included free on any browser or tablet",
+        "kasirMu": "Included free on any browser or tablet",
         "others": "Costly add-on per screen per month",
         "highlight": true
       },
       {
         "feature": "Multi-Store & Warehouses",
-        "ozPos": "Available directly on regular plans",
+        "kasirMu": "Available directly on regular plans",
         "others": "Locked behind expensive Enterprise contracts",
         "highlight": false
       },
       {
         "feature": "Business Rule Customization",
-        "ozPos": "Embedded Lua Scripting for custom promos",
+        "kasirMu": "Embedded Lua Scripting for custom promos",
         "others": "Rigid, requires waiting for vendor updates",
         "highlight": true
       },
       {
         "feature": "Audit Trail & Fraud Prevention",
-        "ozPos": "Full tamper-evident audit logging on all actions",
+        "kasirMu": "Full tamper-evident audit logging on all actions",
         "others": "Basic reports without sensitive action logs",
         "highlight": false
       },
       {
         "feature": "Pricing Model",
-        "ozPos": "Transparent & scale-based, no gated features",
+        "kasirMu": "Transparent & scale-based, no gated features",
         "others": "Hidden fees per add-on feature & register",
         "highlight": false
       }
@@ -310,6 +310,21 @@
     "note": "Release downloads are published on GitHub Releases.",
     "releaseLink": "View GitHub Releases",
     "comingSoon": "Coming soon",
+    "stepsTitle": "Start Selling in 3 Simple Steps",
+    "steps": [
+      {
+        "title": "Download & Install",
+        "body": "Download the installer tailored for your store or cashier terminal OS."
+      },
+      {
+        "title": "Enter License Key",
+        "body": "Launch the client and paste your license key from your account dashboard."
+      },
+      {
+        "title": "Ready to Sell Offline",
+        "body": "Process sales at 0ms latency with 100% offline-first local storage."
+      }
+    ],
     "trialCallout": "You came from a restaurant/cafe page — your trial key unlocks a 14-day Pro trial.",
     "trialCalloutEnterprise": "Referral — your trial key unlocks a 30-day Pro trial."
   },

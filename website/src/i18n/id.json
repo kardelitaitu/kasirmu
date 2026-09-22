@@ -222,49 +222,49 @@
     ],
     "comparisonTitle": "kasir.mu vs POS Cloud Konvensional",
     "comparisonSubtitle": "Lihat mengapa arsitektur offline-first dan paket all-inclusive membuat kasir.mu unggul jauh.",
-    "comparisonOzPos": "kasir.mu",
+    "comparisonKasirMu": "kasir.mu",
     "comparisonOthers": "POS Lainnya",
     "comparisonHeaderFeature": "Fitur & Kapabilitas",
     "comparisonRows": [
       {
         "feature": "Keandalan Saat Internet Mati",
-        "ozPos": "100% Berjalan Penuh (Local SQLite di tiap perangkat)",
+        "kasirMu": "100% Berjalan Penuh (Local SQLite di tiap perangkat)",
         "others": "Macet / Transaksi gagal saat offline",
         "highlight": true
       },
       {
         "feature": "Efisiensi Hardware",
-        "ozPos": "SOTA Rust engine — lancar di hardware termurah & hemat RAM",
+        "kasirMu": "SOTA Rust engine — lancar di hardware termurah & hemat RAM",
         "others": "Aplikasi web berat, butuh hardware mahal",
         "highlight": false
       },
       {
         "feature": "Layar Dapur (KDS)",
-        "ozPos": "Sudah termasuk gratis di browser & tablet",
+        "kasirMu": "Sudah termasuk gratis di browser & tablet",
         "others": "Biaya add-on mahal per-layar / bulan",
         "highlight": true
       },
       {
         "feature": "Multi-Toko & Gudang",
-        "ozPos": "Tersedia langsung di paket reguler",
+        "kasirMu": "Tersedia langsung di paket reguler",
         "others": "Terkunci di paket Enterprise jutaan rupiah",
         "highlight": false
       },
       {
         "feature": "Kustomisasi Aturan Bisnis",
-        "ozPos": "Mesin Skrip Lua bebas atur promo kustom",
+        "kasirMu": "Mesin Skrip Lua bebas atur promo kustom",
         "others": "Kaku, harus menunggu vendor update",
         "highlight": true
       },
       {
         "feature": "Audit Trail & Fraud Prevention",
-        "ozPos": "Full audit logging tamper-evident untuk tiap aksi kasir",
+        "kasirMu": "Full audit logging tamper-evident untuk tiap aksi kasir",
         "others": "Laporan dasar tanpa log aksi sensitif",
         "highlight": false
       },
       {
         "feature": "Struktur Biaya",
-        "ozPos": "Transparan & bayar sesuai skala, bukan mengunci fitur",
+        "kasirMu": "Transparan & bayar sesuai skala, bukan mengunci fitur",
         "others": "Banyak biaya tersembunyi per-fitur tambahan",
         "highlight": false
       }
@@ -314,6 +314,21 @@
     "note": "Unduhan rilis dipublikasikan di GitHub Releases.",
     "releaseLink": "Lihat GitHub Releases",
     "comingSoon": "Segera hadir",
+    "stepsTitle": "Mulai Berjualan dalam 3 Langkah Mudah",
+    "steps": [
+      {
+        "title": "Unduh & Pasang",
+        "body": "Unduh paket instalasi sesuai sistem operasi komputer kasir Anda."
+      },
+      {
+        "title": "Masukkan Kunci Lisensi",
+        "body": "Buka aplikasi dan tempelkan kunci lisensi dari dashboard akun Anda."
+      },
+      {
+        "title": "Siap Digunakan Offline",
+        "body": "Mulai catat transaksi secara instan, tanpa takut koneksi internet putus."
+      }
+    ],
     "trialCallout": "Anda datang dari halaman kafe/restoran — kunci trial Anda membuka trial Pro 14 hari.",
     "trialCalloutEnterprise": "Referensi — kunci trial Anda membuka trial Pro 30 hari."
   },
