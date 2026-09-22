@@ -1835,6 +1835,14 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
 
     let line_count = cart.line_count();
 
+    // ── Plugin tax overrides (no DB lock held) ────────────────────
+    // C2: the main checkout door passes the plugin's calc_line_tax overrides
+    // into the tax computation; this door passed an EMPTY list, so a sale that
+    // went through shortfall resolution was taxed at the DB rates while the
+    // same basket at the main door was taxed at the plugin's. Same helper,
+    // same list: computed here, consumed inside the tax lock below.
+    let lua_overrides = lua_calc_line_overrides(ctx, &cart).await?;
+
     let mut sale = kasirmu_core::Sale::from_cart_with_user(&cart, Some(session.user_id.clone()))
         .ok_or_else(|| BridgeError::Invalid("cart total overflowed i64".into()))?;
     sale.payment_method = Some(args.payment_method.clone());
@@ -1867,7 +1875,7 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
         // Compute tax (same as first command)
         store.compute_sale_tax_for_location(
             &mut sale,
-            &[],
+            &lua_overrides,
             kasirmu_core::Settings::get_tax_rounding_mode(&db)?,
             Some(&tax_scope_now(&store, &session.store_id)),
         )?;
@@ -2069,6 +2077,10 @@ pub async fn complete_sale_scoped(
     let line_count = cart.line_count();
 
     // ── Plugin business-rule hooks (no DB lock held) ──────────────
+    // A plugin discount is collected here and applied AFTER the plugin guard
+    // is dropped, because applying it now needs a permission check that
+    // awaits (C13) and a guard must never be held across one.
+    let mut plugin_discount: Option<(i64, String)> = None;
     {
         let plugins = ctx.plugins.lock().await;
         if let Some(ref plugins) = *plugins {
@@ -2108,9 +2120,7 @@ pub async fn complete_sale_scoped(
                         discount.percent
                     )));
                 }
-                // SAFETY: discount.percent is validated 0..=100 above.
-                let lua_pct = Percentage::new(discount.percent as u8).unwrap();
-                cart.set_discount(lua_pct, Some(label));
+                plugin_discount = Some((discount.percent, label));
             }
 
             let currency = String::from_utf8_lossy(&cart.currency().0).into_owned();
@@ -2126,11 +2136,25 @@ pub async fn complete_sale_scoped(
                         pd.percent
                     )));
                 }
-                // SAFETY: pd.percent is validated 0..=100 above.
-                let pct = Percentage::new(pd.percent as u8).unwrap();
-                cart.set_discount(pct, Some(pd.target));
+                plugin_discount = Some((pd.percent, pd.target));
             }
         }
+    }
+
+    // C13: a plugin-supplied discount is money off the bill, so it clears the
+    // SAME gate the manual path enforces (set_cart_discount_scoped). The plugin
+    // manifest's required_permissions list is self-declared and never compared
+    // with the caller's role, so without this gate anything able to drop a .lua
+    // file in the plugin directory could discount an order with no permission
+    // and no audit. Checked here, not before the drain, so a checkout that
+    // pushes no discount still needs no extra permission.
+    if let Some((percent, label)) = plugin_discount {
+        ctx.require_session_permission(&session, kasirmu_core::permissions::SALES_DISCOUNT)
+            .await?;
+        // SAFETY: `percent` is validated 0..=100 at the point it is collected
+        // above, on both the apply_discount and the drained path.
+        let pct = Percentage::new(percent as u8).unwrap();
+        cart.set_discount(pct, Some(label));
     }
 
     let mut sale = kasirmu_core::Sale::from_cart_with_user(&cart, Some(session.user_id.clone()))
