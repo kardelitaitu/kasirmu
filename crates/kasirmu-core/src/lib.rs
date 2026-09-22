@@ -145,6 +145,15 @@ pub mod sku;
 pub mod stock_count;
 /// Inter-store stock transfers.
 pub mod stock_transfer;
+/// Read-only `stock_summary` vs `stock_movements` reconciliation report (C12).
+///
+/// Lives at `src/db/stock_variance.rs` but is declared here rather than in
+/// `db/mod.rs` (the `#[path]` is load-bearing, matching `products.rs`'s child
+/// modules): the report is a self-contained read surface with no `Store`
+/// internals, and keeping the declaration out of the `db` facade leaves that
+/// file's module list to the domain aggregates it already owns.
+#[path = "db/stock_variance.rs"]
+pub mod stock_variance;
 /// Tenant subscription and license state.
 pub mod subscription;
 /// Supplier directory.
