@@ -307,6 +307,34 @@ tokens — a shape that passes for a rule naming them **without summing them**. 
 pins the **sum** on all four edges. Verified red against the pre-fix padding (2 tests fail,
 including the pre-existing one) and green against the shipped rule.
 
+### Round 10 — closing the provisioning-E2E question definitively
+
+Round 9 concluded `ProvisioningFlow` was unreachable in E2E from reading the source. This round
+**measured it** rather than trusting that reading, and the answer is firmer than the one I gave:
+
+**Three independent blockers, each verified:**
+
+| # | Blocker | Evidence |
+|---|---|---|
+| 1 | Desktop: dev-mode bypass | `AppShell.tsx:214-217` sets `setupKnownComplete(true)` unconditionally under `import.meta.env.DEV`, so the `:581` branch never renders the flow. `import.meta.env.DEV` is a **compile-time** constant, so no runtime flag can avoid it while the dev server serves the app. |
+| 2 | The tablet shell — which HAS no bypass — is not what E2E serves | `isTabletShell` is set by the entry point (`main.tsx` → `'desktop'`, `main.mobile.tsx` → `'tablet'`), and the E2E `baseURL` serves `index.html`. The `tablet` Playwright project is only a **viewport** (1024×1366), not an entry. |
+| 3 | Even the tablet entry, fetched directly, does not reach it | `/index.mobile.html` returns **200** and mounts the shell, but `TabletAppShell.tsx:186-187` sets `hasCompletedSetup` from `get_first_run_state`, and the dev-mock answers `state: 'provisioned'` **by design** (`dev-mock/handlers/system.ts:457-468`: *"the mock reports a PROVISIONED terminal so the dev shell routes to a session rather than the first-run flow"*). |
+
+**Measured, not inferred.** Two throwaway Playwright probes were run and deleted in-session:
+
+```
+probe 1 (desktop, /)                  PROBE {"provisioning":0,"signup":0,"login":1,...}
+probe 2 (tablet project, /index.mobile.html)  MOBILE_PROBE status=200
+                                      {"provisioning":0,"login":1,...}
+```
+
+**So the honest status is: reaching the setup flow end-to-end requires changing the dev-mock's
+deliberate first-run answer** — a mock whose comment states the decision. That is fitting the
+fixture to the assertion, and it is the same trade declined for `CreatePinScreen` in round 7. The
+flow's browser coverage stays at: **unit level (15 tests), the CSS walkers, the SCREENS ledger, and
+the round-9 measured inset verification** — no E2E, and now for a recorded reason rather than an
+unexplained gap.
+
 ### Remaining, and honestly not mine to claim
 
 - **The website auth islands are unaudited by me.** Another agent owns that surface and has
