@@ -22,6 +22,7 @@ import { Localized } from '@/components/Localized';
 import { ProductThumb } from '@/components/ProductThumb';
 import { useLocalization } from '@fluent/react';
 import { animDuration } from '@/utils/animation';
+import { hueFromName } from '@/utils/color';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useVersionStatus } from '@/hooks/useVersionStatus';
 
@@ -151,15 +152,6 @@ function Tile({ children }: { children: React.ReactNode }) {
       {children}
     </span>
   );
-}
-
-/** Stable per-user hue for the initials fallback, so two cashiers differ. */
-function hueFromName(name: string): number {
-  let hash = 0;
-  for (let i = 0; i < name.length; i += 1) {
-    hash = (hash * 31 + name.charCodeAt(i)) % 360;
-  }
-  return hash;
 }
 
 export function RestaurantSidebar({
