@@ -47,6 +47,14 @@
   </header>
 
   <main class="wrap">
+    <!-- The page's own heading. Every panel below is rendered by admin.js into
+         #content, which is also where the skip link lands — so without this,
+         the document had NO headings at all: a screen-reader user jumping to
+         content arrived at a region with nothing to announce, and the outline
+         was empty. It is screen-reader-only because the visible title is the
+         "Admin" brand in the topbar, and repeating it would read as two
+         headings for the same thing. -->
+    <h1 class="sr-only">kasir.mu admin dashboard</h1>
     <div id="content"><div class="skeleton" style="height:10rem"></div></div>
   </main>
 

@@ -324,10 +324,15 @@
   }
   .kds-panel-section { margin-bottom: 14px; }
   .kds-panel-section:last-child { margin-bottom: 0; }
-  .kds-panel-section h3 { font-size: 12px; font-weight: 600; color: var(--text); opacity: 0.5; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.08em; }
+  /* h2, not h3: the settings sections sit directly under the document's h1, so
+     an h3 here skipped a level (check-seo check 12). The selector moves with
+     the tag — before it did, these three headings rendered as raw h2. */
+  .kds-panel-section h2 { font-size: 12px; font-weight: 600; color: var(--text); opacity: 0.5; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.08em; }
+  /* Visually hidden, still announced — the document's h1 below. */
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   /* section head row: eyebrow + theme tag (which config is being edited) */
   .kds-section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-  .kds-section-head h3 { margin-bottom: 0; }
+  .kds-section-head h2 { margin-bottom: 0; }
   .kds-theme-tag {
     font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
     color: var(--text); opacity: 0.45;
@@ -869,6 +874,11 @@
 </style>
 </head>
 <body>
+<!-- This screen is a rendering of the POS at 1280x800, so it has no visible
+     page title to promote. It still owes the document one h1: the first
+     heading in the file used to be a settings <h3>, which left the outline
+     headless and skipped two levels. -->
+<h1 class="sr-only">KDS v2 — Kitchen Display prototype</h1>
 <div class="kds-screen light" id="screen">
   <!-- TOPMENU -->
   <div class="kds-topmenu">
@@ -895,7 +905,7 @@
         <div class="kds-panel-body">
           <!-- DISPLAY: theme + scale -->
           <div class="kds-panel-section">
-            <h3>Display</h3>
+            <h2>Display</h2>
             <div class="kds-setting-card">
               <div class="kds-setting-row">
                 <span class="kds-setting-label">Theme</span>
@@ -929,7 +939,7 @@
           </div>
           <!-- BEHAVIOUR: kitchen toggles -->
           <div class="kds-panel-section">
-            <h3>Behaviour</h3>
+            <h2>Behaviour</h2>
             <div class="kds-setting-card">
               <div class="kds-setting-row">
                 <div class="kds-setting-text">
@@ -957,7 +967,7 @@
           <!-- CARD COLOURS: per-theme config, accordion groups + scoped reset -->
           <div class="kds-panel-section">
             <div class="kds-section-head">
-              <h3>Card Colours</h3>
+              <h2>Card Colours</h2>
               <span class="kds-theme-tag" id="theme-tag">dark</span>
             </div>
             <div class="kds-setting-card">

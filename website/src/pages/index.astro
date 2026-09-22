@@ -66,5 +66,24 @@ const DESCRIPTION =
       <meta http-equiv="refresh" content="0; url=/id/" />
     </noscript>
   </head>
-  <body></body>
+  <body>
+    <!-- Language detection needs JavaScript, so the only reader who needs
+         this block is the one for whom nothing else works — no script, and
+         perhaps a browser that ignores the meta refresh above. It used to
+         find an empty <body>: no heading, no links, nothing to read. The
+         heading also gives this document the h1 that every built page owes
+         (`check-seo` check 12), which is why it is real content rather than a
+         screen-reader-only label. -->
+    <noscript>
+      <h1>kasir.mu — aplikasi kasir untuk warung, kafe, dan toko</h1>
+      <p>
+        Skrip dimatikan di browser ini, jadi kami tidak bisa memilih bahasa otomatis. Silakan pilih
+        sendiri:
+      </p>
+      <ul>
+        <li><a href="/id/">Bahasa Indonesia</a></li>
+        <li><a href="/en/">English</a></li>
+      </ul>
+    </noscript>
+  </body>
 </html>

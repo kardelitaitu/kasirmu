@@ -1,5 +1,12 @@
 ---
 // Root /pair redirect — detects locale and forwards query string (?code=...)
+//
+// The pairing SCREEN is src/pages/[locale]/pair.astro, which has its own h1;
+// this document only chooses the language and forwards. It has no visible
+// content by design, which used to mean no <body> content at all — so a reader
+// with scripting off got a blank page, and the document had no h1 for any
+// consumer that reads the markup (check-seo check 12). The noscript block below
+// is the same fallback the root locale stub carries.
 import { LANGUAGE_STORAGE_KEY } from '../lib/language';
 ---
 <!doctype html>
@@ -20,5 +27,17 @@ import { LANGUAGE_STORAGE_KEY } from '../lib/language';
       <meta http-equiv="refresh" content="0; url=/id/pair" />
     </noscript>
   </head>
-  <body></body>
+  <body>
+    <noscript>
+      <h1>kasir.mu — memasangkan tablet sebagai terminal kasir</h1>
+      <p>
+        Skrip dimatikan di browser ini, jadi kami tidak bisa mengarahkan Anda ke halaman pasangkan
+        tablet yang tepat. Silakan pilih sendiri:
+      </p>
+      <ul>
+        <li><a href="/id/pair">Pasangkan tablet (Bahasa Indonesia)</a></li>
+        <li><a href="/en/pair">Pair a tablet (English)</a></li>
+      </ul>
+    </noscript>
+  </body>
 </html>
