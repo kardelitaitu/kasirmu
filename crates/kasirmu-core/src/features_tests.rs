@@ -866,3 +866,255 @@ fn restaurant_does_not_auto_enable_kitchen_display() {
     assert!(!reg.is_enabled(Feature::KitchenDisplay));
     assert!(!reg.is_enabled(Feature::TableManagement));
 }
+
+// ── The dev-mock's copy of the preset table ─────────────────────────────
+//
+// `ui/src/dev-mock/handlers/system.ts` cannot call Rust, so its `get_preset_features`
+// answers the browser preview from a copy of this table (`MOCK_PRESET_FEATURE_KEYS`)
+// rather than from `preset_feature_keys`. Until this guard nothing compared the two:
+// the mock's own test (`ui/src/__tests__/dev-mock-preset-features.test.ts`) pins it
+// against literals restated in TypeScript, so a preset that moved here and not there
+// provisioned a preview terminal with a different feature set than production while
+// every suite stayed green.
+//
+// This file is the single owner of the fact. The guard reads the mock's table OUT OF
+// ITS SOURCE (an `include_str!` of the handler) and compares it, slug by slug, with
+// `preset_feature_keys` — it parses the TS object instead of restating a second list,
+// because a second list here would be the same drift one file over.
+
+/// The dev-mock handler source, embedded at compile time.
+///
+/// Path is relative to this file (`crates/kasirmu-core/src/`).
+const MOCK_SYSTEM_TS: &str = include_str!("../../../ui/src/dev-mock/handlers/system.ts");
+
+/// The slugs `preset_registry` accepts, read from that function's own match arms.
+///
+/// Parsed, not restated: the mock table must be compared against the owner of the slug
+/// set, and a hand-typed copy of the six strings would be exactly the drift this guard
+/// exists to catch. A missing function or a shape the scan cannot read panics rather
+/// than returning an empty set — an empty set would make every later assertion vacuous,
+/// which is the green-that-measures-nothing failure mode.
+fn preset_registry_slugs() -> Vec<String> {
+    const FEATURES_RS: &str = include_str!("features.rs");
+    let at = FEATURES_RS
+        .find("pub fn preset_registry(")
+        .expect("features.rs no longer declares `pub fn preset_registry`");
+    let mut slugs = Vec::new();
+    for line in FEATURES_RS[at..].lines() {
+        let trimmed = line.trim();
+        if trimmed == "}" {
+            break; // the fn's closing brace, at column zero
+        }
+        let Some(rest) = trimmed.strip_prefix('"') else {
+            continue;
+        };
+        let Some(close) = rest.find('"') else {
+            continue;
+        };
+        if rest[close + 1..].trim_start().starts_with("=>") {
+            slugs.push(rest[..close].to_string());
+        }
+    }
+    assert!(
+        !slugs.is_empty(),
+        "the `preset_registry` scan read no slug arms, so this guard would compare \
+         nothing: fix the scan, not this assertion"
+    );
+    slugs
+}
+
+/// The `{ ... }` body of the `MOCK_PRESET_FEATURE_KEYS` object literal.
+fn mock_preset_object_body(src: &str) -> &str {
+    const DECL: &str = "const MOCK_PRESET_FEATURE_KEYS";
+    let at = src.find(DECL).unwrap_or_else(|| {
+        panic!(
+            "{DECL} is not in the mock source: the table this guard compares was renamed or removed"
+        )
+    });
+    let rest = &src[at..];
+    let open = rest
+        .find("= {")
+        .expect("MOCK_PRESET_FEATURE_KEYS has no object literal")
+        + 2;
+    let mut depth = 0usize;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for (offset, ch) in rest[open..].char_indices() {
+        if let Some(q) = quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == q {
+                quote = None;
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' | '`' => quote = Some(ch),
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return &rest[open + 1..open + offset];
+                }
+            }
+            _ => {}
+        }
+    }
+    panic!("MOCK_PRESET_FEATURE_KEYS has no closing brace");
+}
+
+/// Parse `MOCK_PRESET_FEATURE_KEYS` into `(slug, keys)` pairs, in source order.
+fn mock_preset_feature_keys(src: &str) -> Vec<(String, Vec<String>)> {
+    let body = mock_preset_object_body(src);
+    let cs: Vec<char> = body.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < cs.len() {
+        let ch = cs[i];
+        if ch.is_whitespace() || ch == ',' {
+            i += 1;
+            continue;
+        }
+        let key = if ch == '\'' || ch == '"' {
+            let (s, next) = read_ts_string(&cs, i);
+            i = next;
+            s
+        } else if ch.is_alphanumeric() || ch == '_' || ch == '$' {
+            let start = i;
+            while i < cs.len() && (cs[i].is_alphanumeric() || cs[i] == '_' || cs[i] == '$') {
+                i += 1;
+            }
+            cs[start..i].iter().collect()
+        } else {
+            panic!(
+                "MOCK_PRESET_FEATURE_KEYS holds an unexpected {ch:?}: this guard reads the \
+                 object literal, so a new syntax here must be taught to the parser rather \
+                 than skipped"
+            );
+        };
+        i = skip_ts_ws(&cs, i);
+        assert_eq!(
+            cs.get(i),
+            Some(&':'),
+            "mock table entry {key:?} is not followed by `:`"
+        );
+        i = skip_ts_ws(&cs, i + 1);
+        assert_eq!(
+            cs.get(i),
+            Some(&'['),
+            "mock table entry {key:?} is not an array literal"
+        );
+        let (keys, next) = read_ts_string_array(&cs, i);
+        i = next;
+        out.push((key, keys));
+    }
+    out
+}
+
+fn skip_ts_ws(cs: &[char], mut i: usize) -> usize {
+    while i < cs.len() && cs[i].is_whitespace() {
+        i += 1;
+    }
+    i
+}
+
+/// Read one `'`- or `"`-quoted literal, returning it and the index after the close.
+fn read_ts_string(cs: &[char], at: usize) -> (String, usize) {
+    let quote = cs[at];
+    assert!(quote == '\'' || quote == '"');
+    let mut s = String::new();
+    let mut i = at + 1;
+    while i < cs.len() {
+        match cs[i] {
+            '\\' => {
+                if let Some(&next) = cs.get(i + 1) {
+                    s.push(next);
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            c if c == quote => return (s, i + 1),
+            c => {
+                s.push(c);
+                i += 1;
+            }
+        }
+    }
+    panic!("unterminated string literal in MOCK_PRESET_FEATURE_KEYS");
+}
+
+/// Read a `[ ... ]` literal and collect its depth-1 string members.
+fn read_ts_string_array(cs: &[char], at: usize) -> (Vec<String>, usize) {
+    assert_eq!(cs[at], '[');
+    let mut keys = Vec::new();
+    let mut depth = 0usize;
+    let mut i = at;
+    while i < cs.len() {
+        match cs[i] {
+            '[' => {
+                depth += 1;
+                i += 1;
+            }
+            ']' => {
+                depth -= 1;
+                i += 1;
+                if depth == 0 {
+                    return (keys, i);
+                }
+            }
+            '\'' | '"' => {
+                let (s, next) = read_ts_string(cs, i);
+                if depth == 1 {
+                    keys.push(s);
+                }
+                i = next;
+            }
+            _ => i += 1,
+        }
+    }
+    panic!("unterminated array literal in MOCK_PRESET_FEATURE_KEYS");
+}
+
+/// The dev-mock's preset table must equal this crate's own, for every slug
+/// `preset_registry` accepts and for no slug it does not.
+#[test]
+fn dev_mock_preset_feature_keys_match_this_crates_own_presets() {
+    let mock = mock_preset_feature_keys(MOCK_SYSTEM_TS);
+    assert!(
+        !mock.is_empty(),
+        "the mock table parsed as empty, so this guard compared nothing"
+    );
+
+    let registry_slugs = preset_registry_slugs();
+    for slug in &registry_slugs {
+        let (_, mock_keys) = mock.iter().find(|(s, _)| s == slug).unwrap_or_else(|| {
+            panic!(
+                "preset_registry accepts {slug:?} but the dev mock's \
+                 MOCK_PRESET_FEATURE_KEYS has no entry for it: the browser preview \
+                 would answer \"unknown store preset\" (or serve a stale set) for a \
+                 store type production accepts. Add the slug to \
+                 ui/src/dev-mock/handlers/system.ts."
+            )
+        });
+        let expected = preset_feature_keys(slug).expect("registry slug resolves");
+        assert_eq!(
+            mock_keys, &expected,
+            "the dev mock's feature keys for {slug:?} drifted from preset_feature_keys: \
+             a preview that provisions this store type would enable a different set than \
+             production. Update MOCK_PRESET_FEATURE_KEYS in \
+             ui/src/dev-mock/handlers/system.ts to the sorted list above."
+        );
+    }
+
+    for (slug, _) in &mock {
+        assert!(
+            registry_slugs.contains(slug),
+            "the dev mock answers preset {slug:?}, which preset_registry does not accept: \
+             the preview would provision a store type production refuses. Remove the entry \
+             from MOCK_PRESET_FEATURE_KEYS or add the preset to core."
+        );
+    }
+}
