@@ -356,7 +356,38 @@ question. Fixing my own blind spot, not just the file.
 **Commit:** `ffbb9a24a`. **Verification:** `tsc` clean · `lint:i18n` no issues · **380 tests pass
 across 15 suites**.
 
-**Recorded for next round, unfixed:** `LiveSetupPreview`'s `KNOWN_NAV_ITEMS` is a hand-maintained
+### Round 13 — the feature preview now reads the registry (was: drift)
+
+The drift recorded in round 12 is fixed. `LiveSetupPreview` kept its own table of 34
+`{route,label,feature}` rows duplicating what every `registerPage`/`registerNavItem` call already
+declares. It now calls `getNavItems` — **the same call `AppLayout.tsx:118` makes** — so the
+"X / N items unlocked" count cannot disagree with the sidebar it describes.
+
+**What the duplication had accumulated:**
+
+| | Duplicated table | Reality |
+|---|---|---|
+| Missing routes | — | **9 registered routes absent** |
+| Route `pos` | `'POS'` | `'POS Terminal'` |
+| Route `tables` | gated `restaurant` | gated `table-management` |
+| `'Inventory'`, `'Tables'` chips | present | **no register call creates them** |
+
+**Two mistakes I made in the same pass, both kept because the reasoning matters more than the diff:**
+
+1. **Passing no role.** `getNavItems` fails CLOSED on role-gated items, so the first version
+   counted **10 total instead of 39** — I had introduced a *worse* under-count while fixing an
+   under-count. The role is now threaded and defaults to `'owner'`, which is the only role that
+   can open this screen (`settings/register.tsx:21` registers it `requiredRole: 'owner'`).
+2. **Assuming the old tests were right.** Eight assertions encoded the duplicated table's labels
+   rather than the product's. Each was re-pointed at the registry **only after checking the real
+   registration** — and two turned out to be my own errors: `'Dashboard'` is correct for route
+   `sales-dashboard`, and `'Tables'` is real but gated on `table-management`.
+
+**Commit:** `de29bb600`. **Verification:** `tsc` clean · lint 0 errors · **323 tests pass across 4
+suites**. The new test pins the denominator to `getNavItems`; verified to fail by reintroducing a
+hardcoded `34`, which reproduced exactly the old buggy string (`22 / 34` vs `22 / 39`).
+
+**Superseded note, kept for the record:**
 copy of the app's nav registry, and it has drifted — **9 registered routes are missing**
 (`analytics`, `menu-engineering`, `kds-expo`, `sales`, `dashboard`, `custom-report`,
 `security-trail`, `design`, `tooltips`). The screen renders "X / 34 items unlocked" on the live
