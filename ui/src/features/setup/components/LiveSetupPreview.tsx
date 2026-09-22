@@ -1,4 +1,3 @@
- 
 /**
  * LiveSetupPreview — real-time preview of which workspaces and
  * navigation items will be unlocked by the currently-selected features.
@@ -101,8 +100,6 @@ const KNOWN_NAV_ITEMS: NavItemDef[] = [
 // ── Workspace icons (inline SVGs) ───────────────────────────────────
 
 function WorkspaceIcon({ wsKey }: { wsKey: string }) {
-  const known = ['restaurant-pos', 'store-pos', 'kds', 'warehouse', 'admin'];
-  if (!known.includes(wsKey)) return null;
   return <SharedWorkspaceIcon wsKey={wsKey} />;
 }
 

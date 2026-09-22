@@ -110,11 +110,10 @@ const PRESETS: PresetOption[] = [
 ];
 
 /** Features shown per wizard step. */
-const STEP_FEATURES: { sectionId: string; title: string; features: FeatureDef[] }[] = [
+const STEP_FEATURES: { sectionId: string; features: FeatureDef[] }[] = [
   // Step 2 — Payments
   {
     sectionId: 'payments',
-    title: 'Payment Methods',
     features: [
       { key: 'cash-payment', label: 'Cash', description: 'Accept cash payments and track cash drawer' },
       { key: 'card-payment', label: 'Card', description: 'Accept debit and credit card payments' },
@@ -124,7 +123,6 @@ const STEP_FEATURES: { sectionId: string; title: string; features: FeatureDef[] 
   // Step 3 — Products
   {
     sectionId: 'products',
-    title: 'Products & Inventory',
     features: [
       { key: 'inventory-tracking', label: 'Inventory Tracking', description: 'Track stock levels per product with alerts' },
       { key: 'product-variants', label: 'Product Variants', description: 'Size, colour, flavour variants per product' },
@@ -134,7 +132,6 @@ const STEP_FEATURES: { sectionId: string; title: string; features: FeatureDef[] 
   // Step 4 — Staff
   {
     sectionId: 'staff',
-    title: 'Staff Management',
     features: [
       { key: 'staff-login', label: 'Staff Login', description: 'PIN or password login for cashiers' },
       { key: 'staff-roles', label: 'Staff Roles', description: 'Owner, manager, cashier permission levels' },
@@ -145,7 +142,6 @@ const STEP_FEATURES: { sectionId: string; title: string; features: FeatureDef[] 
   // Step 5 — Hardware
   {
     sectionId: 'hardware',
-    title: 'Hardware & Peripherals',
     features: [
       { key: 'barcode-scanning', label: 'Barcode Scanner', description: 'USB, serial, or Bluetooth barcode scanning' },
       { key: 'receipt-printing', label: 'Receipt Printer', description: 'USB, serial, or network receipt printing' },
@@ -157,7 +153,6 @@ const STEP_FEATURES: { sectionId: string; title: string; features: FeatureDef[] 
   // Step 6 — Business Rules
   {
     sectionId: 'business-rules',
-    title: 'Business Rules',
     features: [
       { key: 'discount-engine', label: 'Discounts', description: 'Percentage and fixed-amount discounts on items or cart' },
       { key: 'tax-engine', label: 'Tax Engine', description: 'Tax inclusive/exclusive with configurable rates' },
@@ -169,7 +164,6 @@ const STEP_FEATURES: { sectionId: string; title: string; features: FeatureDef[] 
   // Step 7 — Data & Cloud
   {
     sectionId: 'data-cloud',
-    title: 'Data, Reporting & Cloud',
     features: [
       { key: 'reporting', label: 'Reporting', description: 'Sales, inventory, and shift reports' },
       { key: 'analytics', label: 'Analytics', description: 'Charts, top products, hourly heatmap, CSV exports' },
@@ -312,13 +306,14 @@ export interface SetupWizardProps {
 // ── Component ──────────────────────────────────────────────────────
 
 /**
- * 8-step first-run Setup Wizard.
+ * 9-step first-run Setup Wizard.
  *
  * Steps:
- *   1. Store Type / Preset  5. Hardware
- *   2. Payments             6. Business Rules
- *   3. Products             7. Data & Cloud
- *   4. Staff                8. Review & Confirm
+ *   1. Store Type / Preset  6. Business Rules
+ *   2. Payments             7. Data & Cloud
+ *   3. Products             8. Account
+ *   4. Staff                9. Review & Confirm
+ *   5. Hardware
  */
 export default function SetupWizard({ onComplete, onSkip, onLaunch }: SetupWizardProps) {
   const { l10n } = useLocalization();
@@ -430,9 +425,14 @@ export default function SetupWizard({ onComplete, onSkip, onLaunch }: SetupWizar
             <Localized id="setup-complete-title">
               <h1 className="setup-complete-title">All Set!</h1>
             </Localized>
+            {/* The variable is the *localized preset name*, so both bundles must
+                read naturally around a translated noun. The English frame was
+                "Your { $preset } POS …", which produced "Your Ritel Sederhana POS …"
+                in Indonesian; it now says "setup" instead of "POS" in both locales. */}
             <Localized id="setup-complete-desc" vars={{ preset: requiredLocalized(l10n, `setup-preset-${preset ?? 'custom'}`) }}>
               <p className="setup-complete-desc">
-                {PRESET_NAMES[preset ?? 'custom']} &mdash; ready to go.
+                Your {PRESET_NAMES[preset ?? 'custom']} setup is configured and ready. You can
+                adjust settings anytime.
               </p>
             </Localized>
             <Localized id="setup-complete-features" vars={{ count: String(enabledCount) }}>
@@ -482,7 +482,6 @@ export default function SetupWizard({ onComplete, onSkip, onLaunch }: SetupWizar
             {step >= 1 && step <= 6 && (
               <StepFeatures
                 sectionId={STEP_FEATURES[step - 1]!.sectionId}
-                title={STEP_FEATURES[step - 1]!.title}
                 features={STEP_FEATURES[step - 1]!.features}
                 enabled={features}
                 onToggle={toggleFeature}
@@ -585,30 +584,31 @@ function StepPreset({
       </Localized>
 
       <div className="setup-presets" role="radiogroup" aria-label={l10n.getString('setup-preset-group-aria')}>
-          {PRESETS.map((p) => (
-            <button
-              key={p.value}
-              type="button"
-              role="radio"
-              aria-checked={selected === p.value}
-              className={
-                selected === p.value
-                  ? 'setup-preset-card setup-preset-card--selected'
-                  : 'setup-preset-card'
-              }
-              onClick={() => onSelect(p.value)}
-            >
-              <span className="setup-preset-emoji" aria-hidden="true">
-                {p.emoji}
-              </span>
-              <Localized id={`setup-preset-${p.value}`}>
-                <span className="setup-preset-name">{p.name}</span>
-              </Localized>
-              <Localized id={`setup-preset-${p.value}-desc`}>
-                <span className="setup-preset-desc">{p.description}</span>
-              </Localized>
-            </button>
-          ))}          </div>
+        {PRESETS.map((p) => (
+          <button
+            key={p.value}
+            type="button"
+            role="radio"
+            aria-checked={selected === p.value}
+            className={
+              selected === p.value
+                ? 'setup-preset-card setup-preset-card--selected'
+                : 'setup-preset-card'
+            }
+            onClick={() => onSelect(p.value)}
+          >
+            <span className="setup-preset-emoji" aria-hidden="true">
+              {p.emoji}
+            </span>
+            <Localized id={`setup-preset-${p.value}`}>
+              <span className="setup-preset-name">{p.name}</span>
+            </Localized>
+            <Localized id={`setup-preset-${p.value}-desc`}>
+              <span className="setup-preset-desc">{p.description}</span>
+            </Localized>
+          </button>
+        ))}
+      </div>
     </>
   );
 }
@@ -617,25 +617,25 @@ function StepPreset({
 
 function StepFeatures({
   sectionId,
-  title,
   features,
   enabled,
   onToggle,
 }: {
   sectionId: string;
-  title: string;
   features: FeatureDef[];
   enabled: Record<string, boolean>;
   onToggle: (key: string) => void;
 }) {
   const { l10n } = useLocalization();
+  // The section title is looked up directly. It used to be resolved here and
+  // then handed to `setup-features-title`, which is a pure passthrough
+  // (`{ $title }`) in BOTH bundles - so the message and the `title` prop it
+  // was fed both existed only to return the string they were given.
   const localizedTitle = requiredLocalized(l10n, `setup-features-section-${sectionId}`);
 
   return (
     <>
-      <Localized id="setup-features-title" vars={{ title: localizedTitle }}>
-        <h2 className="setup-step-title">{title}</h2>
-      </Localized>
+      <h2 className="setup-step-title">{localizedTitle}</h2>
       <Localized id="setup-features-desc">
         <p className="setup-step-desc">
           Toggle the features you need. You can change these later.
@@ -643,44 +643,45 @@ function StepFeatures({
       </Localized>
 
       <div className="setup-features" role="group" aria-label={l10n.getString('setup-features-group-aria', { title: localizedTitle })}>
-          {features.map((f) => {
-            const isOn = !!enabled[f.key];
-            // All 27 setup-feature-*-label keys resolve in both bundles,
-            // so the plain-key fallback this line chained through was dead
-            // code behind a stale comment claiming the id bundle had only
-            // 12 of 27. setupWizardFeatureLabels.test.ts now asserts that.
-            const label = requiredLocalized(l10n, `setup-feature-${f.key}-label`);
-            return (
-              <label
-                key={f.key}
-                className="setup-feature-row"
-              >
-                <div className="setup-feature-info">
-                  <Localized id={`setup-feature-${f.key}-label`}>
-                    <div className="setup-feature-name">{f.label}</div>
-                  </Localized>
-                  <Localized id={`setup-feature-${f.key}-desc`}>
-                    <div className="setup-feature-desc">{f.description}</div>
-                  </Localized>
-                </div>
+        {features.map((f) => {
+          const isOn = !!enabled[f.key];
+          // All 27 setup-feature-*-label keys resolve in both bundles,
+          // so the plain-key fallback this line chained through was dead
+          // code behind a stale comment claiming the id bundle had only
+          // 12 of 27. setupWizardFeatureLabels.test.ts now asserts that.
+          const label = requiredLocalized(l10n, `setup-feature-${f.key}-label`);
+          return (
+            <label
+              key={f.key}
+              className="setup-feature-row"
+            >
+              <div className="setup-feature-info">
+                <Localized id={`setup-feature-${f.key}-label`}>
+                  <div className="setup-feature-name">{f.label}</div>
+                </Localized>
+                <Localized id={`setup-feature-${f.key}-desc`}>
+                  <div className="setup-feature-desc">{f.description}</div>
+                </Localized>
+              </div>
 
-                <span className="toggle-switch">
-                  <Localized id="setup-features-toggle-aria" attrs={{ 'aria-label': true }} vars={{ label }}>
-                    <input
-                      id={`setup-feature-${f.key}`}
-                      type="checkbox"
-                      checked={isOn}
-                      onChange={() => onToggle(f.key)}
-                      aria-label={requiredLocalized(l10n, 'setup-feature-toggle-aria', { name: label })}
-                    />
-                  </Localized>
-                  <span className="toggle-track">
-                    <span className="toggle-thumb" />
-                  </span>
+              <span className="toggle-switch">
+                <Localized id="setup-features-toggle-aria" attrs={{ 'aria-label': true }} vars={{ label }}>
+                  <input
+                    id={`setup-feature-${f.key}`}
+                    type="checkbox"
+                    checked={isOn}
+                    onChange={() => onToggle(f.key)}
+                    aria-label={requiredLocalized(l10n, 'setup-feature-toggle-aria', { name: label })}
+                  />
+                </Localized>
+                <span className="toggle-track">
+                  <span className="toggle-thumb" />
                 </span>
-              </label>
-            );
-          })}          </div>
+              </span>
+            </label>
+          );
+        })}
+      </div>
     </>
   );
 }

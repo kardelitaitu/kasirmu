@@ -78,7 +78,7 @@ export default function StepAccount() {
   };
 
   return (
-    <div className="setup-step-panel">
+    <>
       <h2 className="setup-step-title">{requiredLocalized(l10n, 'setup-account-title')}</h2>
       <p className="setup-step-desc">{requiredLocalized(l10n, 'setup-account-desc')}</p>
 
@@ -209,6 +209,6 @@ export default function StepAccount() {
           You can skip this. Your licence key still runs the POS.
         </Localized>
       </p>
-    </div>
+    </>
   );
 }

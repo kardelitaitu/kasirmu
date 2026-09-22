@@ -196,7 +196,6 @@ setup-preset-cafe = Kafe / Toko Roti
 setup-preset-cafe-desc = Layanan cepat dengan layar dapur, tunai+kartu, diskon
 setup-preset-franchise = Waralaba
 setup-preset-franchise-desc = Multi-toko, multi-terminal, restoran + tumpukan admin lengkap
-setup-features-title = { $title }
 setup-features-desc = Aktifkan fitur yang Anda butuhkan. Anda dapat mengubahnya nanti.
 setup-features-group-aria = { $title }
 setup-features-toggle-aria =
@@ -307,7 +306,7 @@ setup-review-more = +{ $count } lagi
 setup-default-currency-label = Mata Uang Default
 
 setup-complete-title = Siap!
-setup-complete-desc = { $preset } POS Anda telah dikonfigurasi dan siap digunakan. Anda dapat menyesuaikan pengaturan kapan saja.
+setup-complete-desc = Pengaturan { $preset } Anda telah dikonfigurasi dan siap digunakan. Anda dapat menyesuaikan pengaturan kapan saja.
 setup-launch = Luncurkan kasir.mu
 setup-complete-features = { $count } { $count ->
     [one] fitur diaktifkan

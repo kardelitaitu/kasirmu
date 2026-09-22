@@ -122,9 +122,6 @@
   position: relative;
 }
 
-.setup-step-panel {
-}
-
 @media (prefers-reduced-motion: no-preference) {
   .setup-step-panel {
     animation: setup-fade-slide-in 0.35s var(--ease-out) both;

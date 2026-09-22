@@ -125,7 +125,6 @@ setup-preset-cafe-desc = Quick-service with kitchen display, cash+card, discount
 setup-preset-franchise = Franchise
 setup-preset-franchise-desc = Multi-store, multi-terminal, restaurant + full admin stack
 
-setup-features-title = { $title }
 setup-features-desc = Toggle the features you need. You can change these later.
 setup-features-group-aria = { $title }
 setup-features-toggle-aria =
@@ -245,7 +244,7 @@ setup-review-more = +{ $count } more
 setup-default-currency-label = Default Currency
 
 setup-complete-title = All Set!
-setup-complete-desc = Your { $preset } POS is configured and ready. You can adjust settings anytime.
+setup-complete-desc = Your { $preset } setup is configured and ready. You can adjust settings anytime.
 setup-launch = Launch kasir.mu
 setup-complete-features = { $count } { $count ->
     [one] feature enabled
