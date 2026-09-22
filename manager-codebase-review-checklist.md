@@ -123,6 +123,10 @@ Full analysis - deciding facts, options with pros and cons, what would change th
 
 - [ ] **C31 [P2] Validate the Caddyfile itself, not just its routing semantics.** scripts/check-unified-routes.mjs parses apps/unified/Caddyfile as text, so a syntax error that the parser tolerates still ships and the container fails to start. Add caddy validate (or an equivalent parse) to the same gate, or state why it cannot run in CI. Found while closing C27.
 
+## C17 work list (from the IPC gate-debt inventory; ceilings measured 75 desktop / 95 tablet during remediation)
+
+The ordered, lowest-risk-first list is in the inventory recorded in the journal: (1) delete the tablet's five ungated history reads and their registrations, because the scoped twins are already live and the UI already prefers them; (2) the tablet's four ungated settings reads; (3) the three ungated branding setters; (4) the ungated create_backup and get_backup_status; (5) six vendor/value wrappers; (6) five more; (7) set_setting's renderer-supplied user_id (needs a decision first: the ungated door writes the GLOBAL identity database while the scoped twin writes the store database, so they are not interchangeable); (8) five tablet wrappers; (9) hoist the tablet pos/refunds permission checks out of private run_* helpers into the wrapper bodies so the sweep can see them; (10) route the tablet promotions wrappers through the bridge shims that already enforce PROMOTIONS_*. Per deletion: remove the command and its registration, lower REGISTERED_FLOOR, DEBT_CEILING and the matching class count together, regenerate with KASIRMU_REGENERATE_GATE_LEDGER=1, then run both registration_gate_tests files. Ceilings may only fall.
+
 ## Verification log
 
 Fill one row per ticked item. An item is not done until the command and its result are here.
