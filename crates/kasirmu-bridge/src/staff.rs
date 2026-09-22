@@ -109,6 +109,10 @@ pub struct StaffMemberDto {
     /// `list_staff_scoped` already loads every member's profile, and `avatar`
     /// is not a sensitive column, so this needs no `staff:read_*` grant.
     pub avatar: Option<String>,
+    /// Phone in E.164 form, or null when the member has none on file. Not a
+    /// withheld field: `get_staff_profile_scoped` already returns it to any
+    /// `staff:read` caller, so listing it widens no access.
+    pub phone: Option<String>,
     /// ID of the associated role.
     pub role_id: String,
     /// Role Name.
@@ -598,6 +602,7 @@ pub fn to_staff_dto(
         username: user.username.clone(),
         display_name: user.display_name.clone(),
         avatar: profile.and_then(|p| p.avatar.clone()),
+        phone: profile.and_then(|p| p.phone.clone()),
         role_id: user.role_id.clone(),
         role_name,
         is_active: user.is_active,

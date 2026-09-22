@@ -143,6 +143,7 @@ fn staff_member_dto_debug() {
         username: "jdoe".into(),
         display_name: "John Doe".into(),
         avatar: None,
+        phone: None,
         role_id: "r1".into(),
         role_name: "Manager".into(),
         is_active: true,
@@ -162,6 +163,7 @@ fn staff_member_dto_serialize() {
         username: "asmith".into(),
         display_name: "Alice Smith".into(),
         avatar: Some("abcdef0123456789".into()),
+        phone: Some("+14155550123".into()),
         role_id: "r2".into(),
         role_name: "Cashier".into(),
         is_active: false,
@@ -175,6 +177,7 @@ fn staff_member_dto_serialize() {
     // The list carries each member's avatar hash as a plain string so the
     // roster can render a photo; null is the "no photo" case, not an omission.
     assert_eq!(json["avatar"], "abcdef0123456789");
+    assert_eq!(json["phone"], "+14155550123");
 }
 
 // ── RoleDto ─────────────────────────────────────────────────────────

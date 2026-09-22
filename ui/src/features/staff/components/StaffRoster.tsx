@@ -311,13 +311,16 @@ export function StaffRoster({
                       </Badge>
                     )}
                   </div>
+                  {/* Status is a dot in the corner, and the word is its accessible
+                      name — so the state is announced rather than carried by
+                      colour alone. No `title`: native tooltips are gated off
+                      (nativeTooltipCompliance), and the filled-vs-hollow shape
+                      is what separates the two states for everyone else. */}
                   <span
-                    className={`staff-mgmt-pill ${member.is_active ? 'staff-mgmt-pill--on' : 'staff-mgmt-pill--off'}`}
-                  >
-                    <Localized id={member.is_active ? 'staff-status-active' : 'staff-status-inactive'}>
-                      <span>{member.is_active ? 'Active' : 'Inactive'}</span>
-                    </Localized>
-                  </span>
+                    className={`staff-mgmt-status-dot ${member.is_active ? 'staff-mgmt-status-dot--on' : 'staff-mgmt-status-dot--off'}`}
+                    role="img"
+                    aria-label={l10n.getString(member.is_active ? 'staff-status-active' : 'staff-status-inactive')}
+                  />
                 </div>
 
                 <dl className="staff-mgmt-meta">
@@ -326,16 +329,13 @@ export function StaffRoster({
                     <dd className="staff-mgmt-mono">{member.username}</dd>
                   </div>
                   <div className="staff-mgmt-meta-item">
+                    <Localized id="staff-col-phone"><dt>Phone</dt></Localized>
+                    <dd className="staff-mgmt-mono">{member.phone ?? '—'}</dd>
+                  </div>
+                  {/* Workspace spans the row: a scoped member lists every key. */}
+                  <div className="staff-mgmt-meta-item staff-mgmt-meta-item--wide">
                     <Localized id="staff-col-workspace"><dt>Workspace</dt></Localized>
                     <dd>{workspaceLabel}</dd>
-                  </div>
-                  <div className="staff-mgmt-meta-item">
-                    <Localized id="staff-col-id"><dt>ID</dt></Localized>
-                    <dd className="staff-mgmt-mono">
-                      <span aria-label={l10n.getString('staff-id-masked-aria')}>
-                        {member.national_id_masked}
-                      </span>
-                    </dd>
                   </div>
                 </dl>
 

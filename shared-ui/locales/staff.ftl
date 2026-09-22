@@ -26,6 +26,7 @@ staff-col-name = Name
 staff-col-username = Username
 staff-col-role = Role
 staff-col-workspace = Workspace
+staff-col-phone = Phone
 staff-status-active = Active
 staff-status-inactive = Inactive
 
@@ -176,8 +177,6 @@ staff-login-connection-sync = Sync
 
 # ── ADR #35 D6 user profile (spec 0049) ─────────────────────────────────
 
-staff-col-id = ID
-staff-id-masked-aria = National ID (masked)
 staff-profile-incomplete = Profile incomplete
 staff-profile-incomplete-edit-hint = Complete this member's profile to unlock role and workspace assignment.
 staff-profile-section-label = Profile

@@ -159,6 +159,12 @@ export interface StaffMemberDto {
    * that predate the field stay valid.
    */
   avatar?: string | null;
+  /**
+   * Phone in E.164 form, or null when none is on file. Ungated on the profile
+   * read, so the roster shows it beside the username. Optional here so fixtures
+   * that predate the field stay valid.
+   */
+  phone?: string | null;
   /** National id rendered last-4 masked (ADR #35 D6) — the full value never
    * appears in the list payload. */
   national_id_masked: string;

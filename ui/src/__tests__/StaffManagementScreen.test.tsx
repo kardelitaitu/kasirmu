@@ -39,7 +39,7 @@ const GLOBAL_ASSIGNMENT = {
 };
 
 const SAMPLE_STAFF = [
-  { id: 'staff-1', username: 'jane', display_name: 'Jane Smith', role_id: 'role-owner', role_name: 'owner', is_active: true, national_id_masked: '*****6789', is_profile_complete: true, assignment: GLOBAL_ASSIGNMENT },
+  { id: 'staff-1', username: 'jane', display_name: 'Jane Smith', phone: '+14155550111', role_id: 'role-owner', role_name: 'owner', is_active: true, national_id_masked: '*****6789', is_profile_complete: true, assignment: GLOBAL_ASSIGNMENT },
   { id: 'staff-2', username: 'john', display_name: 'John Doe', role_id: 'role-staff', role_name: 'staff', is_active: false, national_id_masked: '****', is_profile_complete: false, assignment: { scope_mode: 'scoped', branches_all: true, branch_ids: [], workspaces_all: false, workspace_keys: ['restaurant'], scope_type: 'organization', scope_id: null } },
 ];
 
@@ -443,10 +443,19 @@ describe('StaffManagementScreen', () => {
 
   // ── ADR #35 D6 UI behaviors ────────────────────────────────────
 
-  it('renders the national id masked to last-4 in the list', async () => {
+  it('shows username, phone and workspace, and no identity document', async () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
-    expect(screen.getByText('*****6789')).toBeInTheDocument();
+
+    const janeCard = screen.getByTestId('staff-card-staff-1');
+    expect(within(janeCard).getByText('jane')).toBeInTheDocument();
+    expect(within(janeCard).getByText('+14155550111')).toBeInTheDocument();
+    expect(within(janeCard).getByText('All')).toBeInTheDocument();
+    // The card prints no national id at all now — not even the last-4 mask the
+    // table used to carry (ADR #35 D6 keeps the full value out of the list
+    // payload; the mask belongs in the edit drawer). Pinned so identity data
+    // cannot creep back onto the roster unnoticed.
+    expect(screen.queryByText('*****6789')).not.toBeInTheDocument();
     expect(screen.queryByText('123456789')).not.toBeInTheDocument();
   });
 
@@ -1061,8 +1070,14 @@ describe('StaffManagementScreen', () => {
     // user — a photo when the DTO's hash resolves, the initials tile otherwise,
     // and in both cases named for a screen reader.
     expect(within(janeCard).getByRole('img', { name: 'Jane Smith' })).toBeInTheDocument();
-    expect(within(janeCard).getByText('Active')).toBeInTheDocument();
-    expect(within(screen.getByTestId('staff-card-staff-2')).getByText('Inactive')).toBeInTheDocument();
+    // Status is the corner dot, and its accessible name is the word it replaced,
+    // so the state is still announced rather than carried by colour alone.
+    expect(within(janeCard).getByRole('img', { name: 'Active' })).toBeInTheDocument();
+    expect(within(screen.getByTestId('staff-card-staff-2')).getByRole('img', { name: 'Inactive' })).toBeInTheDocument();
+    // Username beside phone, workspace beneath them.
+    expect(within(janeCard).getByText('jane')).toBeInTheDocument();
+    expect(within(janeCard).getByText('+14155550111')).toBeInTheDocument();
+    expect(within(janeCard).getByText('All')).toBeInTheDocument();
     // The stat row is the counts' single home now.
     expect(screen.getByTestId('staff-stat-total')).toHaveTextContent('2');
     expect(screen.getByTestId('staff-stat-active')).toHaveTextContent('1');

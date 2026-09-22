@@ -41,6 +41,7 @@ staff-col-name = Nama
 staff-col-username = Nama Pengguna
 staff-col-role = Peran
 staff-col-workspace = Ruang Kerja
+staff-col-phone = Telepon
 staff-status-active = Aktif
 staff-status-inactive = Tidak Aktif
 
@@ -186,8 +187,6 @@ staff-login-connection-sync = Sinkron
 
 # ── ADR #35 D6 profil pengguna (spec 0049) ─────────────────────────────
 
-staff-col-id = ID
-staff-id-masked-aria = Nomor identitas (disamarkan)
 staff-profile-incomplete = Profil belum lengkap
 staff-profile-incomplete-edit-hint = Lengkapi profil anggota ini untuk membuka penetapan peran dan workspace.
 staff-profile-section-label = Profil
