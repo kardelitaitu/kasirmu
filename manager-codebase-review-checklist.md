@@ -1,6 +1,6 @@
 # Remediation Checklist - kasir.mu
 
-**Progress at 2026-09-23:** 8 items verified and ticked (C5, C5b, C6, C9, C11-code, C12, C17 slice 1, C27); 3 partial with named remainders (C1 stage 1 of 3, C2 first step, C8 slice S1 of 7); the rest queued or blocked on an owner decision. Every ticked line names its commit, and the verification log at the end carries the command and its result.
+**Progress at 2026-09-23:** 9 items verified and ticked (C5, C5b, C6, C6b, C9, C11-code, C12, C17 slice 1, C27); 3 partial with named remainders (C1 stage 1 of 3, C2 first step, C8 slice S1 of 7); the rest queued or blocked on an owner decision. Every ticked line names its commit, and the verification log at the end carries the command and its result.
 
 Derived from manager-codebase-review.md (commit 954d4b094), 2026-09-23. Nothing here is new evidence: every item traces to a numbered section of that review, and the acceptance check is the one stated there.
 ---
@@ -124,7 +124,7 @@ Full analysis - deciding facts, options with pros and cons, what would change th
 ## Wave 4 - added during implementation
 
 - [x] **C5b [P0] Mirror the EOD fix into the tablet's duplicate builder** - **DONE 2026-09-23, commit 1eee8e0f**. Both doors now call the shared core queries; both hazard pins INVERTED (names kept) and the boundary-row pin gained an anti-vacuity guard. The tablet builder also lost a latent bug: its payment query had no COALESCE and grouped by method without currency while the header is per-row.
-- [ ] **C6b [P1] Validate or normalize the timezone on the write path** - crates/kasirmu-core/src/db/provisioning.rs:467-476 and :514-564 insert locations.timezone verbatim with no validation while crates/kasirmu-bridge/src/locations.rs:314-321 accepts only Asia/Jakarta|Asia/Makassar|Asia/Jayapura|UTC. Split out of C6, whose reporting half is done.
+- [x] **C6b [P1] Validate the timezone on the write path** - **DONE 2026-09-23, commit 1fea7d78**: validate_provision_args now rejects anything outside the three Indonesian presets plus UTC, reusing the same predicate the bridge's update path and the regional axis validator use - so the accepted set has one owner. Rejection only, storage untouched, no migration. Six unsupported values rejected with a field-named message; Asia/Pontianak is deliberately in the rejection list because the reporting path can resolve it while the write boundary's closed set does not (proof the set was reused, not widened) - crates/kasirmu-core/src/db/provisioning.rs:467-476 and :514-564 insert locations.timezone verbatim with no validation while crates/kasirmu-bridge/src/locations.rs:314-321 accepts only Asia/Jakarta|Asia/Makassar|Asia/Jayapura|UTC. Split out of C6, whose reporting half is done.
 - [ ] **C11b [P2] Document the pre-migration snapshot and the pre-flight** - docs/operations/ carries no pre-upgrade procedure for the desktop SQLite file, and the four pinned un-re-runnable migrations (migrations_tests.rs:361-366) are not named anywhere an operator reads. Split out of C11, whose code half is done.
 - [ ] **C12b [P2] Wire the variance report to an operator surface** - the report exists in core (bdaffa47) with no caller: no Tauri command, no UI. Decide the surface (a Data-screen panel or a CLI subcommand) and gate it like the other read-only report surfaces.
 
