@@ -426,7 +426,7 @@ This section exists because the most expensive defect class in a documented code
 | `DriverRegistry::discover()` | **UNCALLED** | Used only in its own tests; bootstrap uses discover_scanners_excluding instead. |
 | `init_console_subscriber` | **NO-OP** | Called by both shells, but compiles to nothing without the tokio-console feature (console.rs:28-31). |
 
-Two more from the frontend and data layers, for completeness: features/marketplace/AddonsMarketplace.tsx has no importer outside its own passing test - a green test on a screen no route can reach (features/index.ts:68-74 records it as UNRESOLVED) - and 32 exported API symbols have zero non-test references (the six promotions.ts scoped getters, four tables.ts commands, purchasing.ts:updatePoStatus, staff.ts:clearAvatarScoped), which is an inference-grade identifier scan rather than a graph result.
+Two more from the frontend and data layers, for completeness: features/marketplace/AddonsMarketplace.tsx has no importer outside its own passing test - a green test on a screen no route can reach (features/index.ts:68-74 records it as UNRESOLVED) - and a set of exported API symbols have zero non-test references. Verified name by name this session: all four scoped promotions.ts getters, tables.ts's getTableScoped, updateTableScoped and deleteTableScoped, and staff.ts's clearAvatarScoped each appear ONLY in their own api file once __tests__ and dev-mock are excluded. One earlier example was wrong - purchasing.ts:updatePoStatus is called from ui/src/features/purchasing/PurchaseOrdersScreen.tsx and is therefore live - which is the honest limit of an identifier scan: it over-reports until every name is checked against screens as well as tests.
 
 ## 14. Four findings found after the first draft
 
