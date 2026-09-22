@@ -17,6 +17,14 @@ export const SESSION_STORAGE_KEY = 'oz_session';
  * Resolve the current session token: prefer the httpOnly cookie via the
  * Worker's /__oz/session endpoint, falling back to sessionStorage when the
  * endpoint is absent (no-Worker dev) or returns no token.
+ *
+ * This is the SINGLE owner of session state. Every call site that needs to
+ * know whether a user is signed in — the checkout CTA gate, the header nav,
+ * the Midtrans path, the account portal — must go through this (or
+ * `hasSession` below) rather than reading sessionStorage directly, so a
+ * cookie-only session (sessionStorage cleared, a new tab, another tab) is
+ * recognized everywhere. Reading sessionStorage alone was the regression this
+ * module exists to prevent.
  */
 export async function getSessionToken(): Promise<string | null> {
   try {
@@ -33,6 +41,19 @@ export async function getSessionToken(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Whether the user is signed in, cookie-first. Async because the httpOnly
+ * cookie is not readable from JS — the Worker's /__oz/session endpoint is the
+ * only way to see it. Callers must not substitute a synchronous
+ * sessionStorage read: that treats a new tab with a valid cookie as signed
+ * out (the bug this fixes).
+ */
+export async function hasSession(): Promise<boolean> {
+  // Boolean(), not `!== null`: an empty-string sessionStorage token is not a
+  // session (matches the old synchronous `Boolean(sessionStorage.get(...))`).
+  return Boolean(await getSessionToken());
 }
 
 /** The signed-in email cache key (used for checkout prefill). */

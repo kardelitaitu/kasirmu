@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearSession, EMAIL_KEY, hasSession, isPlaceholderPriceId, SESSION_KEY } from '../paddle';
 
 /**
@@ -7,9 +7,21 @@ import { clearSession, EMAIL_KEY, hasSession, isPlaceholderPriceId, SESSION_KEY 
  * remove the cached email WITH the token — otherwise the next account on
  * the same browser gets the previous user's email prefilled in Paddle
  * checkout, attaching the subscription to the wrong tenant.
+ *
+ * `hasSession` is re-exported from lib/session.ts and is cookie-first, so it
+ * is async and consults the Worker's /__oz/session before sessionStorage.
  */
 describe('session helpers', () => {
-  beforeEach(() => sessionStorage.clear());
+  beforeEach(() => {
+    sessionStorage.clear();
+    // Deterministic no-Worker default: the relative endpoint rejects, so
+    // hasSession falls back to sessionStorage.
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no worker')));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
   it('clearSession removes BOTH the token and the cached email', () => {
     sessionStorage.setItem(SESSION_KEY, 'tok');
@@ -23,12 +35,24 @@ describe('session helpers', () => {
     expect(() => clearSession()).not.toThrow();
   });
 
-  it('hasSession reflects the stored token', () => {
-    expect(hasSession()).toBe(false);
+  it('hasSession reflects the stored token', async () => {
+    expect(await hasSession()).toBe(false);
     sessionStorage.setItem(SESSION_KEY, 'tok');
-    expect(hasSession()).toBe(true);
+    expect(await hasSession()).toBe(true);
     sessionStorage.removeItem(SESSION_KEY);
-    expect(hasSession()).toBe(false);
+    expect(await hasSession()).toBe(false);
+  });
+
+  it('hasSession is cookie-first: signed in from the cookie with empty sessionStorage', async () => {
+    // The re-export must not read sessionStorage directly — a cookie-only
+    // session in a new tab has an empty store and must still read as signed in.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ token: 'cookie.token' }),
+    }));
+    expect(sessionStorage.getItem(SESSION_KEY)).toBeNull();
+    expect(await hasSession()).toBe(true);
   });
 
   it('isPlaceholderPriceId detects only placeholder ids', () => {

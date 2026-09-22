@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getSessionToken } from '../session';
+import { getSessionToken, hasSession } from '../session';
 
 /**
  * R1 httpOnly-cookie session helper tests: getSessionToken must prefer the
@@ -62,5 +62,43 @@ describe('getSessionToken — R1 httpOnly cookie', () => {
     }));
 
     expect(await getSessionToken()).toBeNull();
+  });
+});
+
+describe('hasSession — cookie-first session gate', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+  });
+
+  it('reports signed in from a cookie-only session with empty sessionStorage', async () => {
+    // The regression: a user signed in via the httpOnly cookie, opening the
+    // site in a new tab (sessionStorage is per-tab and therefore empty) must
+    // still be recognized as signed in.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ token: 'cookie.token' }),
+    }));
+
+    expect(sessionStorage.getItem('oz_session')).toBeNull();
+    expect(await hasSession()).toBe(true);
+  });
+
+  it('reports signed in from a sessionStorage-only session (no Worker)', async () => {
+    sessionStorage.setItem('oz_session', 'stored.token');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no worker')));
+
+    expect(await hasSession()).toBe(true);
+  });
+
+  it('reports signed out when neither source has a token', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: 'not signed in' }),
+    }));
+
+    expect(await hasSession()).toBe(false);
   });
 });

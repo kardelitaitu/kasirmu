@@ -64,13 +64,22 @@ export default function CheckoutButton({ tier, locale, labels }: Props) {
   // online yet (placeholder price id / unconfigured provider) — a different,
   // actionable message instead of the generic "try again".
   const [unavailable, setUnavailable] = useState(false);
-  // SSR-safe label: hasSession() reads sessionStorage, which does not
-  // exist during the Astro server render. Rendering it unconditionally
-  // made the SSR HTML say "Sign in to subscribe" while hydration showed
-  // the real CTA for signed-in users — the same flash class as the
-  // login page. The label resolves only after mount.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // SSR-safe session state: hasSession() is async (cookie-first through
+  // session.ts / the Worker's /__oz/session), so it cannot run during the
+  // Astro server render. `signedIn` starts false — matching the SSR "Sign in"
+  // label, so hydration has no mismatch — then resolves in an effect. A
+  // synchronous sessionStorage read here would misreport a cookie-only
+  // session (new tab, sessionStorage cleared) as signed out.
+  const [signedIn, setSignedIn] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void hasSession().then((v) => {
+      if (alive) setSignedIn(v);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
   const priceId = tier.priceId;
   // Region-based payment routing: Indonesia region uses Midtrans Snap
   // (fixed IDR, QRIS/VA/e-wallet — ADR #39 D1). Paddle stays for global.
@@ -92,7 +101,9 @@ export default function CheckoutButton({ tier, locale, labels }: Props) {
   const loginHref = `/${locale}/login?next=/${locale}/pricing&tier=${encodeURIComponent(tier.tierKey)}`;
 
   const handleClick = async () => {
-    if (!hasSession()) {
+    // Re-check at click time (cookie-first, async) instead of trusting the
+    // rendered state, which another tab may have invalidated since mount.
+    if (!(await hasSession())) {
       // register-first: payment requires an account (website-plan.md §5)
       window.location.href = loginHref;
       return;
@@ -145,7 +156,7 @@ export default function CheckoutButton({ tier, locale, labels }: Props) {
         disabled={loading}
         className="block w-full rounded-md bg-accent px-4 py-2.5 text-center text-sm font-semibold text-on-primary whitespace-nowrap transition hover:opacity-90 disabled:opacity-60"
       >
-        {loading ? '…' : mounted && hasSession() ? tier.cta : t(labels, 'checkout.signInToSubscribe')}
+        {loading ? '…' : signedIn ? tier.cta : t(labels, 'checkout.signInToSubscribe')}
       </button>
       {unavailable && (
         <p className="text-xs text-link" role="alert">

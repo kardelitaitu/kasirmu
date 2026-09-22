@@ -19,6 +19,9 @@ beforeEach(async () => {
   vi.resetModules();
   paddle = await import('../paddle');
   sessionStorage.clear();
+  // Default no-Worker state: hasSession/getSessionEmail fall back to
+  // sessionStorage. Individual tests override this with their own fetch stub.
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no worker')));
 });
 
 afterEach(() => {
@@ -45,19 +48,31 @@ describe('isPlaceholderPriceId', () => {
 });
 
 describe('hasSession', () => {
-  it('returns false when sessionStorage is empty', () => {
-    expect(paddle.hasSession()).toBe(false);
+  it('returns false when sessionStorage is empty', async () => {
+    expect(await paddle.hasSession()).toBe(false);
   });
 
-  it('returns true when a session token is present', () => {
+  it('returns true when a session token is present', async () => {
     sessionStorage.setItem('oz_session', 'tok_abc123');
-    expect(paddle.hasSession()).toBe(true);
+    expect(await paddle.hasSession()).toBe(true);
   });
 
-  it('returns false after the session is cleared', () => {
+  it('returns false after the session is cleared', async () => {
     sessionStorage.setItem('oz_session', 'tok_abc123');
     paddle.clearSession();
-    expect(paddle.hasSession()).toBe(false);
+    expect(await paddle.hasSession()).toBe(false);
+  });
+
+  it('is cookie-first: true from the cookie with empty sessionStorage', async () => {
+    // The re-export delegates to session.ts, so a cookie-only session (new
+    // tab, sessionStorage cleared) must read as signed in.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ token: 'cookie.token' }),
+    }));
+    expect(sessionStorage.getItem('oz_session')).toBeNull();
+    expect(await paddle.hasSession()).toBe(true);
   });
 });
 

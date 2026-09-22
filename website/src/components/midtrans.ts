@@ -18,6 +18,7 @@
  */
 
 import { licenseApiUrl } from '../lib/runtime-config';
+import { getSessionToken } from '../lib/session';
 
 declare global {
   interface Window {
@@ -89,7 +90,11 @@ export async function openMidtransCheckout(
   onClosed?: OnSnapClosed,
   bundle?: string,
 ): Promise<void> {
-  const token = window.sessionStorage.getItem('oz_session');
+  // Cookie-first via the single session owner (session.ts): a signed-in user
+  // whose sessionStorage is empty (new tab, cookie-only login) must still be
+  // able to open the Midtrans overlay. Reading sessionStorage directly here
+  // made the id-locale checkout fail outright for those users.
+  const token = await getSessionToken();
   if (!token || !API) throw new Error('midtrans not configured');
   const res = await fetch(`${API}/api/v1/midtrans/snap`, {
     method: 'POST',

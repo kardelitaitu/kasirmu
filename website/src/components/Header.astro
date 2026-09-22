@@ -419,33 +419,13 @@ const login = getRelativeLocaleUrl(locale, 'login');
   </div>
 </header>
 
+<!--
+  The auth-nav logic lives in src/lib/header-nav.ts and resolves session state
+  cookie-first through src/lib/session.ts (the single owner). It is imported
+  rather than inlined so a call site cannot read sessionStorage directly and
+  regress a cookie-only session back to "Sign in".
+-->
 <script>
-  function updateAuthNav() {
-    const isAuth = Boolean(sessionStorage.getItem('oz_session'));
-    const loginLinks = document.querySelectorAll<HTMLAnchorElement>('[data-auth-nav]');
-    loginLinks.forEach((link) => {
-      const loc = link.getAttribute('data-locale') || 'en';
-      if (isAuth) {
-        link.href = `/${loc}/account`;
-        link.textContent = link.getAttribute('data-account-text') || 'Account';
-      } else {
-        link.href = `/${loc}/login`;
-        link.textContent = link.getAttribute('data-login-text') || 'Sign in';
-      }
-    });
-  }
-
-  // Update on initial load, after SPA page swap, and on storage change
-  updateAuthNav();
-  document.addEventListener('astro:page-load', updateAuthNav);
-  document.addEventListener('astro:after-swap', updateAuthNav);
-  window.addEventListener('storage', updateAuthNav);
-
-  document.addEventListener('click', (e) => {
-    const link = (e.target as HTMLElement)?.closest('details.group a');
-    if (link) {
-      const details = link.closest('details');
-      if (details) details.removeAttribute('open');
-    }
-  });
+  import { initHeaderNav } from '../lib/header-nav';
+  initHeaderNav();
 </script>

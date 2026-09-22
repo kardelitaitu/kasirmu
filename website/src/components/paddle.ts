@@ -195,14 +195,16 @@ export function clearSession(): void {
   }
 }
 
-/** True when a session token is present (signed in). */
-export function hasSession(): boolean {
-  try {
-    return Boolean(window.sessionStorage.getItem(SESSION_KEY));
-  } catch {
-    return false; // storage unavailable (private mode) — treat as signed out
-  }
-}
+/**
+ * Whether the user is signed in, cookie-first.
+ *
+ * Re-exported from session.ts — the SINGLE owner of session state — so every
+ * caller (the checkout CTA gate, the header nav) resolves the same way. Never
+ * read sessionStorage here: it is per-tab, so a session that lives only in the
+ * httpOnly cookie (a new tab, or another tab after login) would be reported as
+ * signed out.
+ */
+export { hasSession } from '../lib/session';
 
 /**
  * The signed-in user's email: cached in sessionStorage (set by AuthForm

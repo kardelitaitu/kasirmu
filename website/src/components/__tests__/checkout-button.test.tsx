@@ -9,7 +9,7 @@ import { labelMap } from '../../i18n';
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 const paddleMock = vi.hoisted(() => ({
-  hasSession: vi.fn(),
+  hasSession: vi.fn<() => Promise<boolean>>(async () => true),
   isPaddleConfigured: vi.fn(() => true),
   isPlaceholderPriceId: vi.fn(() => false),
   openPaddleCheckout: vi.fn(),
@@ -39,7 +39,7 @@ describe('CheckoutButton Component', () => {
     sessionStorage.clear();
     localStorage.clear();
     window.__OZ_CONFIG__ = { licenseApiUrl: 'https://license.test' };
-    paddleMock.hasSession.mockReturnValue(true);
+    paddleMock.hasSession.mockResolvedValue(true);
     paddleMock.isPaddleConfigured.mockReturnValue(true);
     paddleMock.isPlaceholderPriceId.mockReturnValue(false);
     paddleMock.getSessionEmail.mockResolvedValue('user@example.com');
@@ -67,7 +67,7 @@ describe('CheckoutButton Component', () => {
 
   it('shows a "not available" message when provider is unconfigured (no mailto fallback)', async () => {
     paddleMock.isPaddleConfigured.mockReturnValue(false);
-    paddleMock.hasSession.mockReturnValue(true);
+    paddleMock.hasSession.mockResolvedValue(true);
     const { container, unmount } = await renderBtn(sampleTier, 'en');
 
     const link = container.querySelector('a[href^="mailto:"]');
@@ -86,7 +86,7 @@ describe('CheckoutButton Component', () => {
   });
 
   it('redirects to login when user has no session', async () => {
-    paddleMock.hasSession.mockReturnValue(false);
+    paddleMock.hasSession.mockResolvedValue(false);
     const { container, unmount } = await renderBtn(sampleTier, 'en');
 
     const button = container.querySelector('button');
@@ -109,7 +109,7 @@ describe('CheckoutButton Component', () => {
   });
 
   it('opens Paddle checkout when signed in on global locale', async () => {
-    paddleMock.hasSession.mockReturnValue(true);
+    paddleMock.hasSession.mockResolvedValue(true);
     const { container, unmount } = await renderBtn(sampleTier, 'en');
 
     const button = container.querySelector('button');
@@ -127,7 +127,7 @@ describe('CheckoutButton Component', () => {
   });
 
   it('opens Midtrans checkout when on id locale', async () => {
-    paddleMock.hasSession.mockReturnValue(true);
+    paddleMock.hasSession.mockResolvedValue(true);
     const { container, unmount } = await renderBtn(sampleTier, 'id');
 
     const button = container.querySelector('button');
@@ -149,7 +149,7 @@ describe('CheckoutButton Component', () => {
     // not the URL locale. A user on /en/pricing with region=id must get
     // Midtrans — the same bug class we fixed in AccountView.
     localStorage.setItem('oz_region', 'id');
-    paddleMock.hasSession.mockReturnValue(true);
+    paddleMock.hasSession.mockResolvedValue(true);
     const { container, unmount } = await renderBtn(sampleTier, 'en');
 
     const button = container.querySelector('button');
@@ -167,7 +167,7 @@ describe('CheckoutButton Component', () => {
     // dead Paddle overlay or hide behind a mailto link — it shows the
     // actionable "not available to purchase online" message.
     paddleMock.isPlaceholderPriceId.mockReturnValue(true);
-    paddleMock.hasSession.mockReturnValue(true);
+    paddleMock.hasSession.mockResolvedValue(true);
     const { container, unmount } = await renderBtn(sampleTier, 'en');
 
     const link = container.querySelector('a[href^="mailto:"]');
@@ -185,10 +185,35 @@ describe('CheckoutButton Component', () => {
     await unmount();
   });
 
+  it('shows the real CTA and opens checkout for a cookie-only session (sessionStorage empty)', async () => {
+    // The regression: hasSession() used to read sessionStorage synchronously,
+    // so a user signed in via the httpOnly cookie in a new tab (per-tab
+    // sessionStorage empty) saw "Sign in to subscribe" and was bounced to
+    // /login. The gate/label now resolve cookie-first.
+    sessionStorage.clear();
+    paddleMock.hasSession.mockResolvedValue(true);
+    const { container, unmount } = await renderBtn(sampleTier, 'en');
+
+    const button = container.querySelector('button');
+    expect(button?.textContent).toBe('Get Pro');
+
+    await act(async () => {
+      button?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(paddleMock.openPaddleCheckout).toHaveBeenCalledWith(
+      'pri_pro_yearly',
+      'user@example.com',
+      undefined,
+      undefined
+    );
+    await unmount();
+  });
+
   it('redirects to login when Paddle checkout has no session email', async () => {
     // Regression: a signed-in session whose email cannot be resolved (cache
     // cleared, /me down) must fall back to the login gate, not fail silently.
-    paddleMock.hasSession.mockReturnValue(true);
+    paddleMock.hasSession.mockResolvedValue(true);
     paddleMock.getSessionEmail.mockResolvedValue(null);
     const { container, unmount } = await renderBtn(sampleTier, 'en');
 
