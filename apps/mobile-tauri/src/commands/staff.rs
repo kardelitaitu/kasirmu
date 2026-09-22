@@ -233,6 +233,72 @@ pub async fn list_role_holders_scoped(
         .map_err(Into::into)
 }
 
+/// Move a staff member to the trash (the soft delete, 90-day retention window).
+///
+/// The first enforcement consumer of `staff:delete`, which had none until now.
+#[command]
+pub async fn delete_staff_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::staff::delete_staff_scoped(&ctx, &id, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// Take a staff member back out of the trash.
+///
+/// They come back INACTIVE — reactivating is the separate, audited step.
+#[command]
+pub async fn restore_staff_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<StaffMemberDto, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::staff::restore_staff_scoped(&ctx, &id, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// The staff trash, newest first. Runs the 90-day purge sweep before listing.
+#[command]
+pub async fn list_staff_trash_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<StaffMemberDto>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::staff::list_staff_trash_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// Take a custom role back out of the trash.
+#[command]
+pub async fn restore_role_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<RoleDto, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::staff::restore_role_scoped(&ctx, &id, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// The role trash, newest first. Runs the 90-day purge sweep before listing.
+#[command]
+pub async fn list_role_trash_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<RoleDto>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::staff::list_role_trash_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
+}
 /// Create a staff member. Caller identity is resolved from the session token.
 ///
 /// STAFF-02: enforces the role-assignment hierarchy (only Owner-level

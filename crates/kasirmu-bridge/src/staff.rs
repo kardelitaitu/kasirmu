@@ -28,7 +28,8 @@ use kasirmu_core::db::Store;
 use kasirmu_core::db::assignments::{Assignment, AssignmentSpec, ScopeMode, ScopeType};
 use kasirmu_core::db::audit_security::{
     SECURITY_ACTION_USER_CREATE, SECURITY_ACTION_USER_UPDATE, SECURITY_REASON_ACCOUNT_CREATED,
-    SECURITY_REASON_PIN_ROTATED, SECURITY_REASON_PROFILE_CHANGED, SecurityEvent,
+    SECURITY_REASON_ACCOUNT_DELETED, SECURITY_REASON_ACCOUNT_RESTORED, SECURITY_REASON_PIN_ROTATED,
+    SECURITY_REASON_PROFILE_CHANGED, SecurityEvent,
 };
 use kasirmu_core::db::profile::{SensitiveWritePolicy, UserProfile, mask_last4};
 use kasirmu_core::entitlements::Entitlements;
@@ -113,6 +114,12 @@ pub struct StaffMemberDto {
     /// withheld field: `get_staff_profile_scoped` already returns it to any
     /// `staff:read` caller, so listing it widens no access.
     pub phone: Option<String>,
+    /// When the member entered the trash, or null on the live roster.
+    ///
+    /// Set only by the trash read: the live paths build this DTO through
+    /// `to_staff_dto`, which leaves it null, so "has a deleted_at" is exactly
+    /// "this row came from the trash" without a second flag to keep in step.
+    pub deleted_at: Option<String>,
     /// ID of the associated role.
     pub role_id: String,
     /// Role Name.
@@ -300,6 +307,10 @@ pub struct RoleDto {
     /// (may include `"*"`). Shown in the staff screen so an admin can see
     /// exactly what each role can do.
     pub permissions: Vec<String>,
+    /// Set only when the row is in the trash: the RFC-3339 instant the role was
+    /// soft-deleted, or `None` for a live role. The trash tab renders the
+    /// days remaining before the purge sweep deletes the row for good.
+    pub deleted_at: Option<String>,
     /// Whether the preset seeder owns this row. `true` means the authoring
     /// surface must not offer Edit or Delete: `seed_default_roles` upserts
     /// preset ids and overwrites their grants, and it is reachable from the
@@ -603,6 +614,9 @@ pub fn to_staff_dto(
         display_name: user.display_name.clone(),
         avatar: profile.and_then(|p| p.avatar.clone()),
         phone: profile.and_then(|p| p.phone.clone()),
+        // The live paths never produce a trashed row; the trash read stamps
+        // this after the fact.
+        deleted_at: None,
         role_id: user.role_id.clone(),
         role_name,
         is_active: user.is_active,
@@ -721,6 +735,7 @@ pub fn role_dto(store: &Store<'_>, role: Role) -> Result<RoleDto, BridgeError> {
         name: role.name,
         description: role.description,
         permissions,
+        deleted_at: None,
         is_builtin,
         reference_count,
         holder_count,
@@ -786,13 +801,19 @@ pub fn enforce_role_assignment_policy(
     Ok(())
 }
 
-/// Sweep every session belonging to `user_id` except `keep_token` (STAFF-03).
+/// Sweep every session belonging to `user_id` except `keep_token` (STAFF-03),
+/// logging `reason` so a PIN rotation and an account deletion share one path.
 ///
 /// Verbatim port of `AppState::invalidate_user_sessions_except`, including the
 /// poisoned-lock warn-and-return-0 behaviour and the masked log line: the
 /// bridge holds the SAME `Arc` session map as the shell (see [`crate::auth`]),
 /// so this is the same eviction, not a second copy of the state.
-fn invalidate_user_sessions_except(ctx: &BridgeCtx<'_>, user_id: &str, keep_token: &str) {
+fn invalidate_user_sessions_except(
+    ctx: &BridgeCtx<'_>,
+    user_id: &str,
+    keep_token: &str,
+    reason: &str,
+) {
     let mut store = match ctx.sessions.write() {
         Ok(s) => s,
         Err(e) => {
@@ -810,7 +831,8 @@ fn invalidate_user_sessions_except(ctx: &BridgeCtx<'_>, user_id: &str, keep_toke
             user_id = %user_id,
             removed = %removed,
             keep_token = %mask_token(keep_token),
-            "sessions invalidated after PIN rotation"
+            reason = %reason,
+            "sessions invalidated"
         );
     }
 }
@@ -1016,7 +1038,7 @@ pub async fn delete_role_scoped(
     ctx.require_session_permission(&session, permissions::STAFF_MANAGE_ROLES)
         .await?;
     let db = ctx.lock_global().await;
-    Store::new(&db).delete_role(id)?;
+    Store::new(&db).soft_delete_role(id)?;
     Ok(())
 }
 
@@ -1307,7 +1329,7 @@ pub async fn update_staff_scoped(
         // STAFF-03: a rotated PIN invalidates every OTHER session issued
         // under the old PIN. The caller own session is preserved — they
         // authenticated moments ago and the UI reloads with the same token.
-        invalidate_user_sessions_except(ctx, &args.id, session_token);
+        invalidate_user_sessions_except(ctx, &args.id, session_token, SECURITY_REASON_PIN_ROTATED);
     }
 
     let profile = match &args.profile {
@@ -1425,6 +1447,203 @@ pub async fn bootstrap_owner(
         now_ts + PICKER_TICKET_TTL_SECS,
     );
     Ok(result)
+}
+
+// ── Trash: soft-deleted staff and roles ───────────────────────────────
+
+// The 90-day retention window has no scheduler. Each trash read runs its own
+// purge sweep before it lists, so a window closes the next time anyone looks —
+// and a row past its deadline can never be read or restored as if it still had
+// time left. Both clocks read `TRASH_RETENTION_DAYS` in core.
+
+/// Move a staff member to the trash (the soft delete, 90-day window).
+///
+/// Deletion is owner-only (`staff:delete`) and requires an account that is
+/// already INACTIVE — `Store::soft_delete_user` enforces that itself, so the
+/// rule holds for every caller and not only this one. A member cannot delete
+/// themselves in passing either: the sweep refuses active rows and a caller
+/// holding a session is active by definition.
+///
+/// Every in-memory session of the member is dropped. `BridgeCtx::resolve_session`
+/// checks only a token's TTL and never re-reads the account, so without this a
+/// deleted member would keep working until their token expired; the eviction,
+/// not the `deleted_at` stamp, is what actually ends their access.
+///
+/// # Errors
+///
+/// [`BridgeError::InvalidSession`] for an unknown or expired token;
+/// [`BridgeError::PermissionDenied`] without `staff:delete`;
+/// [`BridgeError::NotFound`] for an unknown id; [`BridgeError::Core`] on store
+/// errors, including the active-account and already-trashed refusals.
+pub async fn delete_staff_scoped(
+    ctx: &BridgeCtx<'_>,
+    id: &str,
+    session_token: &str,
+) -> Result<(), BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    let db = ctx.lock_global().await;
+    let store = Store::new(&db);
+    require_permission_for_user(&store, &session.user_id, permissions::STAFF_DELETE)?;
+    let user = store.soft_delete_user(id)?;
+    // Recorded after the row is trashed, exactly as `create_staff_scoped`
+    // records its event after the account exists: `soft_delete_user` commits
+    // its own transaction, so there is no outer transaction to join. A failure
+    // here can lose the trail but can never resurrect the member.
+    record_security_event(
+        &store,
+        &SecurityEvent::staff_change(
+            &session.user_id,
+            &user.id,
+            &user.username,
+            SECURITY_ACTION_USER_UPDATE,
+            SECURITY_REASON_ACCOUNT_DELETED,
+        ),
+    );
+    drop(db);
+
+    // Keep no token: the point of the eviction is that NOBODY stays logged in
+    // as the deleted member.
+    invalidate_user_sessions_except(ctx, &user.id, "", SECURITY_REASON_ACCOUNT_DELETED);
+    Ok(())
+}
+
+/// Take a staff member back out of the trash.
+///
+/// They come back INACTIVE, exactly as the delete found them (core owns that
+/// invariant), so a restore is not a back door to re-granting access —
+/// reactivating is the separate, audited step.
+///
+/// # Errors
+///
+/// [`BridgeError::InvalidSession`] for an unknown or expired token;
+/// [`BridgeError::PermissionDenied`] without `staff:delete`;
+/// [`BridgeError::NotFound`] when no such member sits in the trash (a purged
+/// tombstone included); [`BridgeError::Core`] on store errors.
+pub async fn restore_staff_scoped(
+    ctx: &BridgeCtx<'_>,
+    id: &str,
+    session_token: &str,
+) -> Result<StaffMemberDto, BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    let db = ctx.lock_global().await;
+    let store = Store::new(&db);
+    require_permission_for_user(&store, &session.user_id, permissions::STAFF_DELETE)?;
+    let user = store.restore_user(id)?;
+    record_security_event(
+        &store,
+        &SecurityEvent::staff_change(
+            &session.user_id,
+            &user.id,
+            &user.username,
+            SECURITY_ACTION_USER_UPDATE,
+            SECURITY_REASON_ACCOUNT_RESTORED,
+        ),
+    );
+    let roles = store.list_roles()?;
+    let profile = store.get_user_profile(&user.id).ok().flatten();
+    let assignment = store.assignment_for_user(&user.id).ok().flatten();
+    let dto = to_staff_dto(&user, &roles, profile.as_ref(), assignment.as_ref());
+    drop(db);
+    Ok(dto)
+}
+
+/// The staff trash, newest first.
+///
+/// Gated on `staff:delete` rather than `staff:read`, unlike the roster: a deleted
+/// identity is still an identity, and a manager who cannot delete anyone has no
+/// business reading the names of the people who were. Owner-only by preset, so
+/// the same key that admits a delete admits its undo.
+///
+/// # Errors
+///
+/// [`BridgeError::InvalidSession`] for an unknown or expired token;
+/// [`BridgeError::PermissionDenied`] without `staff:delete`;
+/// [`BridgeError::Core`] on store errors.
+pub async fn list_staff_trash_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+) -> Result<Vec<StaffMemberDto>, BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    let db = ctx.lock_global().await;
+    let store = Store::new(&db);
+    require_permission_for_user(&store, &session.user_id, permissions::STAFF_DELETE)?;
+    // The retention sweep rides the read: opening the trash is what closes the
+    // windows that have expired, so a stale row is never listed as restorable
+    // after its deadline.
+    store.purge_expired_users()?;
+    let roles = store.list_roles()?;
+    let dtos = store
+        .list_trashed_users()?
+        .iter()
+        .map(|entry| {
+            let profile = store.get_user_profile(&entry.user.id).ok().flatten();
+            let assignment = store.assignment_for_user(&entry.user.id).ok().flatten();
+            let mut dto = to_staff_dto(&entry.user, &roles, profile.as_ref(), assignment.as_ref());
+            dto.deleted_at = Some(entry.deleted_at.clone());
+            dto
+        })
+        .collect();
+    drop(db);
+    Ok(dtos)
+}
+
+/// Take a custom role back out of the trash.
+///
+/// # Errors
+///
+/// [`BridgeError::InvalidSession`] for an unknown or expired token;
+/// [`BridgeError::PermissionDenied`] without `staff:manage_roles`;
+/// [`BridgeError::NotFound`] when no such role sits in the trash;
+/// [`BridgeError::Core`] on store errors.
+pub async fn restore_role_scoped(
+    ctx: &BridgeCtx<'_>,
+    id: &str,
+    session_token: &str,
+) -> Result<RoleDto, BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::STAFF_MANAGE_ROLES)
+        .await?;
+    let db = ctx.lock_global().await;
+    let store = Store::new(&db);
+    let role = store.restore_role(id)?;
+    let dto = role_dto(&store, role)?;
+    drop(db);
+    Ok(dto)
+}
+
+/// The role trash, newest first.
+///
+/// Unlike the staff half this window really deletes at the end of it, which is
+/// safe for a role and only for a role: it carries no personal data, and core
+/// trashed it only after proving nothing references it (`purge_expired_roles`
+/// re-checks inside its own transaction).
+///
+/// # Errors
+///
+/// [`BridgeError::InvalidSession`] for an unknown or expired token;
+/// [`BridgeError::PermissionDenied`] without `staff:manage_roles`;
+/// [`BridgeError::Core`] on store errors.
+pub async fn list_role_trash_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+) -> Result<Vec<RoleDto>, BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::STAFF_MANAGE_ROLES)
+        .await?;
+    let db = ctx.lock_global().await;
+    let store = Store::new(&db);
+    store.purge_expired_roles()?;
+    let dtos = store
+        .list_trashed_roles()?
+        .iter()
+        .map(|entry| {
+            let mut dto = role_dto(&store, entry.role.clone())?;
+            dto.deleted_at = Some(entry.deleted_at.clone());
+            Ok(dto)
+        })
+        .collect::<Result<Vec<_>, BridgeError>>()?;
+    drop(db);
+    Ok(dtos)
 }
 
 #[cfg(test)]

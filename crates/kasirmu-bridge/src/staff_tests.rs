@@ -144,6 +144,9 @@ fn staff_member_dto_debug() {
         display_name: "John Doe".into(),
         avatar: None,
         phone: None,
+        // Live rows never carry a trash stamp; the trash read sets it after
+        // the fact, which is how the screen tells the two lists apart.
+        deleted_at: None,
         role_id: "r1".into(),
         role_name: "Manager".into(),
         is_active: true,
@@ -164,6 +167,7 @@ fn staff_member_dto_serialize() {
         display_name: "Alice Smith".into(),
         avatar: Some("abcdef0123456789".into()),
         phone: Some("+14155550123".into()),
+        deleted_at: None,
         role_id: "r2".into(),
         role_name: "Cashier".into(),
         is_active: false,
@@ -189,6 +193,7 @@ fn role_dto_debug() {
         name: "Admin".into(),
         description: "Full access".into(),
         permissions: vec![],
+        deleted_at: None,
         // preset-guard fields (7948344e): a preset-owned builtin row with
         // no references — the common default shape.
         is_builtin: true,
@@ -207,6 +212,7 @@ fn role_dto_serialize() {
         name: "Viewer".into(),
         description: String::new(),
         permissions: vec![],
+        deleted_at: None,
         is_builtin: false,
         reference_count: 0,
         holder_count: 0,
