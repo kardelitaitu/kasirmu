@@ -17,33 +17,47 @@
  *   1. Every script source in the repository is judged by the same rule module
  *      the built check uses, so the two cannot disagree about what a control or
  *      a name is.
- *   2. The coverage BOUNDARY is asserted, not implied: `coverageGaps` fails on a
- *      file that builds a control without being judged or declared, and on a
- *      declaration that has outlived its reason.
+ *   2. The coverage BOUNDARY is asserted, not implied: `declarationGaps` fails on
+ *      a file that builds a control without being judged or declared, on a
+ *      declaration that has outlived its reason, and on an opaque write whose
+ *      shape the file's declaration does not cover.
  *   3. A runtime arm (this file is jsdom) evaluates the real `admin-utils.js`
  *      module and measures the element it returns with the same rule, so a
  *      static verdict is checked against a real DOM at least once.
  *
- * What this still does NOT cover, stated rather than left silent: a tag that
- * reaches `document.createElement` through a variable, a control assembled from
- * a runtime data shape, and any DOM `admin.js` builds behind its own login and
- * API calls — that page needs a browser, an admin session and mocked endpoints,
- * which is a harness too expensive to be the gate. Those cases are the reason
- * `coverageGaps` exists: an unreadable tag is reported until an author declares
- * the file and says why, so the limit is visible in the rule's own output.
+ * What this still does NOT cover, stated rather than left silent: any DOM
+ * `admin.js` builds behind its own login and API calls, and any script outside
+ * `SOURCE_ROOTS` — that page needs a browser, an admin session and mocked
+ * endpoints, which is a harness too expensive to be the gate.
+ *
+ * Two limits are still not silence, and this file asserts both:
+ *
+ *   4. A markup write whose right-hand side is a VALUE rather than a literal
+ *      (`box.innerHTML = donut.svg`, `tmp.innerHTML = html`) yields no string to
+ *      read, so it used to yield nothing at all. It is now evidence: reported
+ *      until a declaration in `OPAQUE_MARKUP` names the shapes the file reads
+ *      markup from, and only those shapes — a new expression in a declared file
+ *      fails like any other undeclared one. 22 sites across 4 files.
+ *   5. The walk does not reach vendored tree `website/public/docs-portal/**`,
+ *      which `scripts/import-portal.sh` stages from mdBook/rustdoc/TypeDoc. It
+ *      is the same tree checks 12 and 13 exempt by page class, and the same
+ *      reason: nobody edits generated vendor HTML to satisfy this rule.
  */
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import utils from '../../public/admin/admin-utils.js';
 import { unnamedControls } from '../lib/accessibility';
 import {
-  boundaryIssues,
   collectScriptSources,
-  coverageGaps,
+  controlEvidenceIn,
+  declarationGaps,
   declaredFiles,
   factoryRegistry,
-  judgedIssues,
+  OPAQUE_MARKUP,
   scriptControlIssues,
+  scriptControlVerdict,
+  SKIPPED_SEGMENTS,
+  type Finding,
   type SourceFile,
 } from '../lib/script-controls';
 
@@ -58,10 +72,13 @@ const sources: SourceFile[] = collectScriptSources(REPO);
 
 const factories = factoryRegistry(sources);
 
-// A declared file is answered by its declaration, and `coverageGaps` is what
+// A declared file is answered by its declaration, and `declarationGaps` is what
 // keeps that honest in both directions — so the per-file arm judges the rest.
 const declared = declaredFiles();
 const judged = sources.filter((file) => !declared.has(file.path));
+
+/** `file message` — the readable form, since a Finding carries a kind too. */
+const shaped = (findings: Finding[]): string[] => findings.map((finding) => `${finding.file} ${finding.message}`);
 
 // The arms below read and scan the whole repository, and vitest's default 5 s
 // per-test budget is tight for that under a fully parallel run — a timed-out
@@ -99,17 +116,49 @@ describe('controls a script builds, judged at the source', () => {
   });
 
   it('judges or declares every file that builds a control', () => {
-    expect(coverageGaps(sources)).toEqual([]);
+    expect(shaped(declarationGaps(sources))).toEqual([]);
   }, SLOW);
 
-  it('shows the gate exactly the findings this file judges', () => {
-    // Check 14 calls `judgedIssues`; the arm above calls `scriptControlIssues`
-    // per file. They must be the same set, or a defect could be red in the gate
-    // and green here (or worse, the reverse).
+  it('walks past the vendored portal, the same tree checks 12 and 13 exempt', () => {
+    // A developer who runs scripts/import-portal.sh must not be blocked by a
+    // finding in generated mdBook/rustdoc/TypeDoc output. The exemption is
+    // declared in the walk (one owner) and asserted here, because a stale skip
+    // entry is otherwise indistinguishable from a working one.
+    expect(SKIPPED_SEGMENTS).toContain('/website/public/docs-portal/');
+    const names = sources.map((file) => file.path);
+    expect(names.some((path) => path.startsWith('website/public/docs-portal/'))).toBe(false);
+  }, SLOW);
+
+  it('declares the shapes it reads markup from, and reports the sites', () => {
+    // The arm that used to be silence: `box.innerHTML = donut.svg` hands the DOM
+    // markup this rule can never read. Every such site must be answered by a
+    // declaration that names its shape, and the count must not be zero — a
+    // boundary that declares nothing here is the bug this replaces.
+    const { summary } = scriptControlVerdict(sources);
+    expect(summary.opaqueFiles).toBe(OPAQUE_MARKUP.length);
+    expect(summary.opaqueSites).toBeGreaterThan(15);
+    const shapes = new Set(OPAQUE_MARKUP.flatMap((entry) => entry.shapes));
+    for (const file of sources) {
+      for (const write of controlEvidenceIn(file, factories).opaqueWrites) {
+        expect(shapes, `${file.path}:${write.line} reads markup from \`${write.shape}\``).toContain(write.shape);
+      }
+    }
+  }, SLOW);
+
+  it('shows the gate every finding exactly once, through one path', () => {
+    // Check 14 calls `scriptControlVerdict` only. Two loops used to feed it —
+    // the boundary gaps already contained the name issues that a second pass
+    // re-derived — so one defect printed twice and reported `FAIL 2`.
+    const { findings } = scriptControlVerdict(sources);
+    const rows = shaped(findings);
+    expect(new Set(rows).size).toBe(rows.length);
+
+    // And the aggregate must be the same set the per-file arms judge, or a
+    // defect could be red in the gate and green here (or worse, the reverse).
     const expected = judged.flatMap((file) =>
-      scriptControlIssues(file, factories).map((message) => ({ file: file.path, message })),
+      scriptControlIssues(file, factories).map((message) => `${file.path} ${message}`),
     );
-    expect(judgedIssues(sources)).toEqual(expected);
+    expect(shaped(findings.filter((finding) => finding.kind === 'name'))).toEqual(expected);
   }, SLOW);
 });
 
@@ -151,7 +200,8 @@ describe('the rule on sources that are not in the repository', () => {
     const one = [file(FACTORY + source)];
     return scriptControlIssues(one[0], factoryRegistry(one));
   };
-  const gapsIn = (source: string): string[] => coverageGaps([file(FACTORY + source)]);
+  const gapsOf = (files: SourceFile[]): string[] => shaped(declarationGaps(files));
+  const gapsIn = (source: string): string[] => gapsOf([file(FACTORY + source)]);
 
   it('accepts the shapes the dashboard actually writes', () => {
     // Every naming mechanism the codebase uses, in one authoring case: the
@@ -175,6 +225,82 @@ describe('the rule on sources that are not in the repository', () => {
       '}\n';
     expect(issuesIn(clean)).toEqual([]);
     expect(gapsIn(clean)).toEqual([]);
+  });
+
+  it('treats a markup write it CAN read as judged, not as opaque', () => {
+    // The authoring case that keeps the new arm from becoming noise. A literal
+    // right-hand side is read whole — every control in it is judged — so writing
+    // markup this way needs no declaration at all, whether it is quoted or a
+    // template with substitutions, and whether or not it holds a control.
+    const readable =
+      'function render(box) {\n' +
+      "  box.innerHTML = '<p>No data</p>';\n" +
+      '  var b = document.createElement(\'div\');\n' +
+      '  b.innerHTML = `<button>${t(\'retry\')}</button>`;\n' +
+      "  b.insertAdjacentHTML('beforeend', '<a href=\"/docs/\">Docs</a>');\n" +
+      '  box.appendChild(b);\n' +
+      '}\n';
+    expect(issuesIn(readable)).toEqual([]);
+    expect(gapsIn(readable)).toEqual([]);
+  });
+
+  it('reports markup written from a value instead of passing it unseen', () => {
+    // The case the whole arm exists for: nothing at this write says what the
+    // markup contains, so it is a finding until a declaration names the shape.
+    const opaque =
+      'function render(box) {\n' +
+      '  var donut = buildDonut();\n' +
+      '  var legend = document.createElement(\'div\');\n' +
+      '  legend.innerHTML = donut.legend;\n' +
+      '  box.appendChild(legend);\n' +
+      '}\n';
+    expect(issuesIn(opaque)).toEqual([]);
+    const gaps = declarationGaps([file(FACTORY + opaque)]);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0].file).toBe('website/public/admin/example.js');
+    expect(gaps[0].kind).toBe('opaque');
+    expect(gaps[0].message).toContain('writes markup at line 9 whose right-hand side is not a literal');
+    expect(gaps[0].message).toContain('declare the file in OPAQUE_MARKUP');
+  });
+
+  // The declared dashboard file, so the two cases below exercise a DECLARED
+  // file rather than an undeclared one — which is the distinction that matters
+  // between "nothing was claimed here" and "what was claimed no longer holds".
+  const ADMIN_JS = OPAQUE_MARKUP.find((entry) => entry.file === 'website/public/admin/admin.js')!;
+  const atAdminJs = (source: string): SourceFile => ({ path: ADMIN_JS.file, source });
+
+  it('reports a shape the declaration for the file does not cover', () => {
+    // A declared file keeps its accountability: the exemption is for the shapes
+    // someone looked at, so a new expression is a finding like any other.
+    const source =
+      'function render(box) {\n' +
+      `  box.innerHTML = ${ADMIN_JS.shapes[0]}(m.trend);\n` +
+      '  box.innerHTML = someOtherBuilder(row);\n' +
+      '}\n';
+    const gaps = declarationGaps([atAdminJs(FACTORY + source)]);
+    const uncovered = gaps.filter((gap) => gap.message.includes('does not cover'));
+    expect(uncovered).toHaveLength(1);
+    expect(uncovered[0].file).toBe(ADMIN_JS.file);
+    expect(uncovered[0].kind).toBe('opaque');
+    expect(uncovered[0].message).toContain('`someOtherBuilder`');
+    // And the shapes this synthetic file never writes report as stale in the
+    // same pass — the declaration is held from both ends at once.
+    expect(gaps.some((gap) => gap.message.includes('writes no markup from'))).toBe(true);
+  });
+
+  it('reports a declared shape that no write reads from any more', () => {
+    // The other direction: a declaration must still be earned, or the shape list
+    // becomes the place the previous exemption went to hide.
+    const source =
+      'function render(box) {\n' +
+      `  box.innerHTML = ${ADMIN_JS.shapes[0]}(m.trend);\n` +
+      '}\n';
+    const stale = declarationGaps([atAdminJs(FACTORY + source)]).find((gap) =>
+      gap.message.includes('writes no markup from'),
+    );
+    expect(stale?.kind).toBe('opaque');
+    expect(stale?.message).toContain('`' + ADMIN_JS.shapes[1] + '`');
+    expect(stale?.message).toContain('remove them');
   });
 
   it('reports a factory control with no name anywhere', () => {
@@ -217,12 +343,13 @@ describe('the rule on sources that are not in the repository', () => {
   });
 
   it('attributes a boundary gap to the file it is about', () => {
-    // `scripts/check-seo.mjs` prints the file beside the message, so the split
-    // has to name the file rather than a prefix of the message.
+    // `scripts/check-seo.mjs` prints the file beside the message, so a Finding
+    // has to name the file rather than bury it in the message.
     const unreadable = "function render(box) {\n  var control = el(kind, 'x');\n  box.appendChild(control);\n}\n";
-    expect(boundaryIssues([file(FACTORY + unreadable)])).toEqual([
+    expect(declarationGaps([file(FACTORY + unreadable)])).toEqual([
       {
         file: 'website/public/admin/example.js',
+        kind: 'boundary',
         message:
           'builds a control through an element factory whose tag is not a literal (line 7) — judge the call or declare the file in script-controls.ts',
       },
@@ -239,7 +366,7 @@ describe('the rule on sources that are not in the repository', () => {
         source: "const ta = document.createElement('textarea');\nta.setAttribute('aria-label', 'Licence key');\n",
       },
     ];
-    expect(coverageGaps(declared)).toEqual([
+    expect(gapsOf(declared)).toEqual([
       'website/src/components/account/AccountLicense.tsx is declared NOT_OPERABLE but its controls are all named now — remove the declaration',
     ]);
   });

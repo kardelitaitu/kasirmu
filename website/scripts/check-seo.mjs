@@ -123,17 +123,24 @@
 //      copy and scroll-to-top buttons are `createElement` calls; nothing in dist
 //      contains any of them, so no arm above can see one. This check runs the
 //      rule in src/lib/script-controls.ts over the SOURCE — the only place the
-//      controls exist — and its limit is ENFORCED rather than implied: a file
-//      that builds a control must be judged or declared with a reason, a tag the
-//      rule cannot read is reported instead of skipped, and a declaration whose
-//      file no longer needs it fails. This is the one check that reads source
-//      rather than dist, and it is the only post-build arm for these controls.
-//      What it deliberately does not cover is written down where it belongs
-//      (the rule's docstring and its twin): a tag assembled from variables, a
-//      control built from a runtime data shape, and the DOM admin.js builds
-//      behind its own login and API calls — that last one needs a browser, an
-//      admin session and mocked endpoints, a harness too expensive for this
-//      gate. Stated, not silent: silence is what made this gap survive.
+//      controls exist. This is the one check that reads source rather than dist,
+//      and it is the only post-build arm for these controls.
+//      Its limit is ENFORCED rather than implied, and the line printed under the
+//      check list is that limit as numbers: files judged, files declared, and
+//      how many of those declarations are for markup written from a VALUE
+//      (`box.innerHTML = donut.svg`, 22 sites across 4 files) which no extractor
+//      can read. Such a site is reported until a declaration names the shape it
+//      reads from, and stays accountable afterwards — a NEW expression in a
+//      declared file, or a declared shape no write uses any more, both fail.
+//      The walk also skips two generated/vendored trees, printed beside it:
+//      `public/dev` (the prebuild copy of prototypes/) and `public/docs-portal`
+//      (mdBook/rustdoc/TypeDoc output) — the same tree checks 12 and 13 exempt
+//      by page class, so a developer who runs import-portal.sh is not blocked by
+//      a finding in generated vendor HTML. What is still out of reach is written
+//      down where it belongs (the rule's docstring and its twin): the DOM
+//      admin.js builds behind its own login and API calls, which needs a
+//      browser, an admin session and mocked endpoints — a harness too expensive
+//      for this gate.
 //
 // DELIBERATELY NOT CHECKED (each a decision, not an omission):
 //   • The root locale-detect stub (src/pages/index.astro) is a redirect document
@@ -148,7 +155,9 @@
 //   • /docs-portal/ is the generated mdBook/rustdoc/TypeDoc tree, staged from
 //     public/ by scripts/import-portal.sh and therefore present or absent
 //     depending on the tools (the same presence-dependence check-links.mjs
-//     handles). It is deliberately PUBLISHED — the docs hub links to it — and
+//     handles). Check 14 skips it by path for the same reason checks 12 and 13
+//     skip its pages by class: nobody edits generated vendor HTML to satisfy
+//     this rule. It is deliberately PUBLISHED — the docs hub links to it — and
 //     has no Astro head, so it owes no canonical/hreflang/JSON-LD and, unlike
 //     /admin/ and /dev/, must NOT be de-indexed. It is classified apart for
 //     exactly that reason.
@@ -163,13 +172,7 @@ import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { accessibilityIssues } from '../src/lib/accessibility.ts';
 import { outlineIssues, renderedHeadings } from '../src/lib/heading-outline.ts';
-import {
-  boundaryIssues,
-  collectScriptSources,
-  declaredFiles,
-  judgedIssues,
-  SOURCE_ROOTS,
-} from '../src/lib/script-controls.ts';
+import { collectScriptSources, scriptControlVerdict } from '../src/lib/script-controls.ts';
 import { LANDING_CONTRACTS } from '../src/lib/landings.ts';
 import { NON_PUBLIC_PAGES, SITE, isNonPublic } from '../src/lib/site.ts';
 import { DESCRIPTION_BUDGET, TITLE_BUDGET } from '../src/lib/seo.ts';
@@ -928,18 +931,24 @@ for (const page of pages) {
 //     only place these controls exist — and the same rule, over the same file
 //     list, is the twin in src/__tests__/script-controls.test.ts, so the two
 //     cannot disagree about what a control or a name is.
-//     The limit is enforced rather than implied. `boundaryIssues` fails when a
-//     file that builds a control is neither judged nor declared — a tag that
-//     reached `document.createElement` through a variable is REPORTED, not
-//     skipped — and it fails a declaration whose file no longer needs it, so
-//     the exemption list cannot become a place to hide. What is still out of
-//     reach is stated in the rule's docstring and in the twin rather than
-//     papered over here: DOM built behind the admin login and API calls would
-//     need a browser, a session and mocked endpoints, which is a harness too
-//     expensive to be this gate.
+//     The limit is enforced rather than implied, in BOTH directions: a file
+//     that builds a control is judged or declared, a tag that reached
+//     `document.createElement` through a variable is REPORTED rather than
+//     skipped, a markup write whose right-hand side is a value
+//     (`box.innerHTML = donut.svg`) is reported until a declaration names the
+//     shape it reads from, and a declaration the file no longer needs fails —
+//     including a declared shape that no longer appears at any write. What is
+//     still out of reach is stated in the rule's docstring and in the twin
+//     rather than papered over here: DOM built behind the admin login and API
+//     calls would need a browser, a session and mocked endpoints, which is a
+//     harness too expensive to be this gate.
+//     ONE VERDICT PATH. `scriptControlVerdict` returns every finding once and
+//     the boundary to print. It replaced two loops whose outputs overlapped —
+//     the name issues were folded into the boundary gaps AND re-derived — so a
+//     single unnamed control printed twice and reported `FAIL 2`.
 const scriptSources = collectScriptSources(REPO_ROOT);
-for (const { file, message } of boundaryIssues(scriptSources)) add('script controls', file, message);
-for (const { file, message } of judgedIssues(scriptSources)) add('script controls', file, message);
+const scriptControls = scriptControlVerdict(scriptSources);
+for (const { file, message } of scriptControls.findings) add('script controls', file, message);
 
 // ── Report ──────────────────────────────────────────────────────────────────
 const byCheck = new Map();
@@ -978,11 +987,19 @@ for (const check of checks) {
 }
 // The coverage LIMIT of the accessibility pair, printed rather than implied. A
 // green `accessibility` row used to say nothing about controls a script builds,
-// which is how the gap survived a sweep of all 89 pages.
+// which is how the gap survived a sweep of all 89 pages — and a boundary that
+// skipped a tree, or read only the markup written as a literal, said nothing
+// about the sites it never looked at either. Numbers and skip list come from the
+// same pass that produced the findings above.
+const { summary } = scriptControls;
 console.log(
-  `  boundary: script controls — ${scriptSources.length - declaredFiles().size} files judged, ` +
-    `${declaredFiles().size} declared, of ${SOURCE_ROOTS.join(' ')}; a tag reached through a variable is reported ` +
-    'rather than skipped, and the only thing out of scope is DOM built behind the admin login',
+  `  boundary: script controls — ${summary.judged} files judged, ${summary.declared} declared ` +
+    `(${summary.opaqueFiles} for markup this rule cannot read, ${summary.opaqueSites} sites) · ` +
+    `roots ${summary.roots.join(' ')}`,
+);
+console.log(
+  `            walking past ${summary.skipped.join(' ') || '(nothing)'} · a tag reached through a variable, or markup written ` +
+    'from a value, is reported rather than skipped · out of scope: DOM built behind the admin login',
 );
 
 if (findings.length) {

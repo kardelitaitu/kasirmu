@@ -32,38 +32,53 @@
  *     third argument, `el('input', 'input')` needs a name set beside it. This
  *     one arm reaches 46 of the dashboard's controls, none of which is a
  *     `createElement` call or a markup string.
+ *   • `opaqueWrites` — markup written into the DOM from a VALUE rather than a
+ *     literal (`box.innerHTML = donut.svg`, `tmp.innerHTML = html`). There is no
+ *     string at that site to read, so before this arm existed the write produced
+ *     no evidence at all: no literal, no control, nothing to report — which is
+ *     how 22 sites across four files passed unseen while `UNJUDGEABLE` sat
+ *     empty. It is evidence now, answerable only by a declaration in
+ *     `OPAQUE_MARKUP` that names the SHAPES the file reads markup from. A
+ *     partially literal right-hand side counts (`COPY_ICON + '<span>Copy</span>'`):
+ *     the half this rule can read is judged, the half it cannot is declared.
  *   • `NOT_OPERABLE` — controls that are real but deliberately unnamed, such as
  *     the off-screen textarea `AccountLicense` creates, focuses and removes to
  *     drive the execCommand clipboard fallback.
  *   • `UNJUDGEABLE` — files whose controls cannot be enumerated from source at
- *     all. It is EMPTY, and that is the point of this revision: the dashboard's
- *     generic factory was the one entry, and following its call sites closed
- *     the hole, so the list holds only what a future file genuinely cannot
- *     decide.
+ *     all. It is EMPTY, and the honest reason is narrow: the dashboard's generic
+ *     factory was the one entry and following its call sites closed that hole.
+ *     It does NOT mean every file is decidable — an opaque write is decided by
+ *     a declaration, not by extraction, and a control built by a script this
+ *     walk never reads is neither. Emptiness here is a statement about the files
+ *     walker sees, not about what the site builds.
  *
- * Both lists are ENFORCED, in both directions, by `boundaryIssues()` (via
- * `coverageGaps()`): a file that builds a control must be judged or declared
- * with a reason, a declaration whose file no longer needs it is stale and fails,
- * and a tag this module cannot read is REPORTED as a gap rather than skipped —
- * an unreadable tag is the case that used to be invisible. The point is that the
- * coverage limit is written down and checked rather than implied by silence.
+ * EVERY DECLARATION IS ENFORCED IN BOTH DIRECTIONS. A file that builds a control
+ * must be judged or declared with a reason; a declaration whose file no longer
+ * needs it is stale and fails; a tag this module cannot read is REPORTED rather
+ * than skipped; an undeclared opaque write is reported with its line and
+ * right-hand side; a shape a declared file writes but the declaration omits
+ * fails, and a declared shape no write reads any more fails too. That last pair
+ * is the difference between a declaration and a place to hide: the exemption is
+ * for the expressions someone looked at, not for the file.
  *
- * TWO CALLERS, ONE RULE, AND ONE SET OF FILES. `scripts/check-seo.mjs` runs
- * `boundaryIssues()` and `judgedIssues()` as its check 14 — the gate's arm, and
- * the only post-build guard these controls have — while
+ * TWO CALLERS, ONE RULE, ONE SET OF FILES, ONE VERDICT. `scripts/check-seo.mjs`
+ * runs `scriptControlVerdict()` as its check 14 — the gate's arm, and the only
+ * post-build guard these controls have — while
  * `__tests__/script-controls.test.ts` is the twin, run by `npm test` before the
  * build. Both read the boundary from `SOURCE_ROOTS`/`SKIPPED_SEGMENTS` through
- * `collectScriptSources()` and both take their findings from `judgedIssues()`, so
- * neither can judge a file the other does not. The gate also PRINTS the boundary
- * (files judged, files declared, what is out of scope) beside its check list: an
- * `ok accessibility` row that said nothing about runtime-built controls is how
- * this gap survived a sweep of all 89 built pages.
+ * `collectScriptSources()`, so neither can judge a file the other does not, and
+ * the gate takes its findings and its printed boundary from ONE pass, so a
+ * finding cannot appear twice or in one place only. That matters: this module
+ * previously exposed two verdict functions whose outputs overlapped, and the
+ * gate called both, printing every script-control defect twice (`FAIL 2` for one
+ * defect).
  *
  * What remains uncovered after that is stated in the gate's own output and in
- * the twin: a tag assembled from variables no extractor can follow, a control
- * whose markup comes from a runtime data shape, and the DOM `admin.js` builds
- * behind its own login and API calls — that last one needs a browser, a session
- * and mocked endpoints, which is a harness too expensive to be the gate.
+ * the twin: the DOM `admin.js` builds behind its own login and API calls, which
+ * needs a browser, a session and mocked endpoints — a harness too expensive to
+ * be the gate — and any script outside `SOURCE_ROOTS`. A tag assembled from
+ * variables, and markup from a value, are no longer in that list: they are
+ * findings a declaration has to answer for.
  */
 
 // The name rule itself comes from the accessibility module: one owner for "what
@@ -77,9 +92,8 @@ import { unnamedControls } from './accessibility.ts';
  * (`scripts/check-seo.mjs`, check 14) and the twin
  * (`__tests__/script-controls.test.ts`). A root added here is judged by both; a
  * root missing here is judged by neither, so the limit is a declaration rather
- * than a silence. `website/public/dev/` is generated by the prebuild copy of
- * `prototypes/`, so judging it would judge the same markup twice under a name
- * that does not exist on a clean checkout.
+ * than a silence. A path listed in `SKIPPED_SEGMENTS` is the same kind of
+ * decision, and the summary the gate prints reports both.
  */
 export const SOURCE_ROOTS = ['website/src', 'website/public', 'prototypes'];
 
@@ -92,7 +106,19 @@ export const SOURCE_ROOTS = ['website/src', 'website/public', 'prototypes'];
  * have — the same markup judged twice, and the file set depending on whether a
  * build had run.
  */
-export const SKIPPED_SEGMENTS = ['/__tests__/', '/website/public/dev/'];
+export const SKIPPED_SEGMENTS = [
+  // The rule's own tests, and the twin's synthetic fixtures.
+  '/__tests__/',
+  // Generated: `prebuild` copies `prototypes/` here, so judging it would judge
+  // the same markup twice under a path a clean checkout does not have.
+  '/website/public/dev/',
+  // Vendored: mdBook/rustdoc/TypeDoc output staged by scripts/import-portal.sh.
+  // Checks 12 and 13 exempt this same tree by page class (`vendored portal`),
+  // and the reason is identical here — nobody edits generated vendor HTML to
+  // satisfy this repository's accessibility rule, so a finding in it is a false
+  // positive that blocks whoever ran the import script.
+  '/website/public/docs-portal/',
+];
 
 /** The source extensions a control can be built from. */
 const SOURCE_FILE = /\.(?:ts|tsx|js|jsx|astro|html?)$/;
@@ -145,6 +171,8 @@ export interface ControlEvidence {
   factoryControls: FactoryControl[];
   /** Lines where such a factory is called with a tag this arm cannot read. */
   unresolvedCalls: number[];
+  /** Markup written into the DOM from a value this rule cannot read. */
+  opaqueWrites: OpaqueWrite[];
 }
 
 /** Where a file's controls cannot be enumerated from source at all. */
@@ -160,6 +188,70 @@ export const NOT_OPERABLE: Declaration[] = [
     file: 'website/src/components/account/AccountLicense.tsx',
     reason:
       'a transient textarea for the execCommand clipboard fallback — created off-screen, focused, selected and removed in the same block, so no reader operates it as a control',
+  },
+];
+
+/**
+ * A markup write whose right-hand side this rule cannot read.
+ *
+ * `box.innerHTML = donut.svg` hands the DOM markup from a value, and there is
+ * nothing at the write to judge: the string does not exist in the source. Before
+ * this arm existed, such a site produced no evidence at all — zero literals,
+ * zero names needed — so it was neither found nor reported, which is how 22
+ * writes across four files went unseen (admin.js:255, prototypes/app.js:373 and
+ * their neighbours).
+ */
+export interface OpaqueWrite {
+  line: number;
+  /**
+   * The leading token of the right-hand side — `svgChart`, `donut`, `COPY_ICON`.
+   * It is the unit a declaration answers for: a NEW right-hand side in a
+   * declared file is a shape the declaration does not cover, so it fails and
+   * someone has to look at it rather than inheriting the file's exemption.
+   */
+  shape: string;
+  /** The right-hand side as written, collapsed for the message. */
+  rhs: string;
+}
+
+/**
+ * Files whose markup arrives from a value, and the shapes they read it from.
+ *
+ * A declaration here says "these expressions build markup with no control in
+ * it", and `declarationGaps` holds it to that in both directions — every opaque
+ * write must be covered by a declared shape, and every declared shape must
+ * still appear at a write, so neither half can drift into decoration.
+ */
+export interface MarkupDeclaration {
+  file: string;
+  /** Leading tokens of the right-hand sides this declaration covers. */
+  shapes: string[];
+  reason: string;
+}
+
+export const OPAQUE_MARKUP: MarkupDeclaration[] = [
+  {
+    file: 'website/public/admin/admin.js',
+    shapes: ['svgChart', 'svgBarChart', 'svgStackedBars', 'sparkline', 'donut', 'donut2'],
+    reason:
+      'the dashboard charts, their lists and their legends — every one is an SVG or a legend string returned by the helpers in admin-utils.js, and the only controls in that markup are named where their own call site builds them',
+  },
+  {
+    file: 'website/public/admin/admin-utils.js',
+    shapes: ['icon'],
+    reason: 'an icon into the span beside a button whose text is set on the button itself — an SVG string, no control in it',
+  },
+  {
+    file: 'prototypes/app.js',
+    shapes: ['ICON_BUSY', 'ICON_DONE', 'COPY_ICON', 'CHECK_ICON', 'html'],
+    reason:
+      'the icons the copy and save buttons swap between states, and `stripHtml` — a reader that parses markup into a detached div and returns its textContent, never inserting it',
+  },
+  {
+    file: 'prototypes/kds-prototype.html',
+    shapes: ['CARET_SVG', 'cardHTML', 'buckets', 'COLOR_GROUPS'],
+    reason:
+      'an SVG caret, the card builder whose own template literal is judged at its call site, and two `map` callbacks over constants whose template literals are judged where they are written',
   },
 ];
 
@@ -616,6 +708,63 @@ function factoryControlsIn(
 }
 
 /**
+ * The DOM APIs that take MARKUP rather than text. `textContent`/`innerText` are
+ * deliberately absent: they cannot carry an element, so a value given to them is
+ * not an unreadable control.
+ */
+const MARKUP_WRITE = /(?:innerHTML|outerHTML)\s*\+?=|insertAdjacentHTML\s*\(/g;
+
+/**
+ * Markup written into the DOM from a right-hand side this rule cannot read.
+ *
+ * The test is deliberately blunt, and blunt is the point: either the right-hand
+ * side BEGINS with a string or template literal — which the literal arm above
+ * has already read, controls and all — or it is a value, and nothing at this
+ * write says what it contains. A partially literal right-hand side is opaque
+ * too (`COPY_ICON + '<span>Copy</span>'`): the half this rule can read is judged,
+ * the half it cannot is what the declaration answers for.
+ *
+ * The shape is the right-hand side's leading token, because that is the unit a
+ * declaration can honestly claim: `svgChart(…)` and `donut.svg` in `admin.js`
+ * are SVG strings, while a NEW expression in that same file is one nobody has
+ * looked at, and inherits nothing from the file's declaration.
+ */
+function opaqueWritesIn(code: string): OpaqueWrite[] {
+  const found: OpaqueWrite[] = [];
+  MARKUP_WRITE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = MARKUP_WRITE.exec(code))) {
+    let cursor: number;
+    if (match[0].endsWith('(')) {
+      // `insertAdjacentHTML('beforeend', markup)` — the markup is the SECOND
+      // argument, so the position has to be stepped over to reach it.
+      const open = match.index + match[0].length - 1;
+      const close = matchParen(code, open);
+      const comma = code.indexOf(',', open);
+      if (close === -1 || comma === -1 || comma > close) continue;
+      cursor = comma + 1;
+    } else {
+      cursor = match.index + match[0].length;
+    }
+    while (code[cursor] === '(') cursor += 1;
+    // To the end of the statement: a message that ran on into the NEXT write
+    // says less about this one, and the line number already locates it.
+    const rhs = code
+      .slice(cursor, cursor + 64)
+      .split(';')[0]
+      .replace(/\s+/g, ' ')
+      .trim();
+    // A literal right-hand side is READ, not declared — and an empty one is not
+    // markup at all.
+    if (!rhs || /^['"`]/.test(rhs)) continue;
+    const shape = /^[A-Za-z_$][\w$]*/.exec(rhs)?.[0];
+    if (!shape) continue;
+    found.push({ line: lineAt(code, match.index), shape, rhs: rhs.slice(0, 44) });
+  }
+  return found;
+}
+
+/**
  * What one file builds, from the code it contains. `factories` is the registry
  * for the whole codebase by default, because the factory a file calls is
  * usually defined in another one (`admin-utils.js`).
@@ -635,6 +784,7 @@ export function controlEvidenceIn(file: SourceFile, factories?: LocalFactory[]):
     partial,
     factoryControls,
     unresolvedCalls,
+    opaqueWrites: opaqueWritesIn(code),
   };
 }
 
@@ -642,11 +792,11 @@ const NAME_GAP =
   'never names it in the block that follows — no aria-label, title, textContent, text-bearing innerHTML or label it names';
 
 /**
- * Where a control a script builds has no name. Messages carry the line, so a
- * failure points at the missing assignment rather than at the file.
+ * Where a control a script builds has no name, read off evidence already in
+ * hand. Messages carry the line, so a failure points at the missing assignment
+ * rather than at the file.
  */
-export function scriptControlIssues(file: SourceFile, factories?: LocalFactory[]): string[] {
-  const evidence = controlEvidenceIn(file, factories);
+function unnamedIn(evidence: ControlEvidence): string[] {
   const issues: string[] = [];
   for (const fragment of evidence.literals) {
     for (const message of unnamedControls(fragment.text).filter((issue) =>
@@ -664,6 +814,15 @@ export function scriptControlIssues(file: SourceFile, factories?: LocalFactory[]
     issues.push(`line ${control.line}: builds a <${control.tag}> through an element factory and ${NAME_GAP}`);
   }
   return issues;
+}
+
+/**
+ * The same verdict for one file, parsed on its own — the per-file view the twin
+ * asserts file by file. The aggregate path builds its evidence once for the
+ * whole tree; this one exists so a failure can name a single file cheaply.
+ */
+export function scriptControlIssues(file: SourceFile, factories?: LocalFactory[]): string[] {
+  return unnamedIn(controlEvidenceIn(file, factories));
 }
 
 const declared = (path: string, list: Declaration[]): Declaration | undefined =>
@@ -694,95 +853,119 @@ export function collectScriptSources(repoRoot: string): SourceFile[] {
   return out;
 }
 
-/** A boundary violation: which file, and why it is not judged or declared. */
-export interface BoundaryIssue {
-  file: string;
-  message: string;
-}
-
 /**
- * The paths a declaration answers for. A declared file is judged by
- * `boundaryIssues` (is the declaration still needed?) rather than by the name
- * arm, so the two callers must agree on which files those are — `AccountLicense`
- * would otherwise be reported as an unnamed control by the gate and silently
- * skipped by the twin.
+ * The paths a name declaration answers for. A declared file is held to its
+ * declaration (is it still needed?) rather than judged by the name arm, so the
+ * two callers must agree on which files those are — `AccountLicense` would
+ * otherwise be reported as an unnamed control by the gate and silently skipped
+ * by the twin.
+ *
+ * `OPAQUE_MARKUP` is deliberately NOT in this set: answering for a file's
+ * unreadable markup strings is not a licence to stop naming the controls it
+ * builds in code. `admin.js` is declared for its chart SVGs and still judged for
+ * its 42 factory call sites.
  */
 export const declaredFiles = (): Set<string> =>
   new Set([...UNJUDGEABLE, ...NOT_OPERABLE].map((entry) => entry.file));
 
-/**
- * Every unnamed control the boundary judges, attributed to the file it is in.
- * The gate's arm and the twin's per-file arm both come through here, so a
- * finding cannot exist in one and not the other.
- */
-export function judgedIssues(files: SourceFile[]): BoundaryIssue[] {
-  const exempt = declaredFiles();
-  const factories = factoryRegistry(files);
-  return files
-    .filter((file) => !exempt.has(file.path))
-    .flatMap((file) => scriptControlIssues(file, factories).map((message) => ({ file: file.path, message })));
+/** The declaration that answers for a file's unreadable markup, if any. */
+const declaredMarkup = (path: string): MarkupDeclaration | undefined =>
+  OPAQUE_MARKUP.find((entry) => entry.file === path);
+
+/** What a finding is about, so a caller can report the halves differently. */
+export type FindingKind = 'name' | 'boundary' | 'opaque';
+
+/** One verdict about one source file. */
+export interface Finding {
+  file: string;
+  message: string;
+  kind: FindingKind;
+}
+
+/** What the printed boundary reports — the limit, as data rather than prose. */
+export interface BoundarySummary {
+  /** Files whose controls this rule judged. */
+  judged: number;
+  /** Files a declaration answers for. */
+  declared: number;
+  /** Files declared for markup this rule cannot read. */
+  opaqueFiles: number;
+  /** Sites at which such markup is written. */
+  opaqueSites: number;
+  roots: string[];
+  skipped: string[];
+}
+
+/** One pass over the tree: what each file yields, and the two verdicts from it. */
+interface Survey {
+  names: Finding[];
+  gaps: Finding[];
+  summary: BoundarySummary;
 }
 
 /**
- * Every file, judged or declared — as structured verdicts.
+ * The single pass every verdict comes from.
  *
- * This is the enforcing half, and the reason a limit can be stated honestly: a
- * control-building file that is neither judged nor declared FAILS (its tag was
- * assembled from a variable, say), and a declaration the file no longer needs
- * fails too, so an exemption list cannot quietly become a place to hide.
+ * It exists because the two halves used to be computed by two exports that each
+ * re-derived the other's work: the gap list folded per-file name issues into
+ * its own output while the name list produced them again, so the gate ran two
+ * loops over identical data and printed every script-control defect TWICE (one
+ * defect, `FAIL 2`). Here each file's evidence is built once and each verdict is
+ * raised once, and the boundary the gate prints is derived from the same pass.
  */
-export function boundaryIssues(files: SourceFile[]): BoundaryIssue[] {
-  return coverageGaps(files).map((gap) => {
-    const space = gap.indexOf(' ');
-    return { file: gap.slice(0, space), message: gap.slice(space + 1) };
-  });
-}
-
-/**
- * The enforced boundary, in both directions. Every file that builds a control
- * must be judged or declared with a reason, and every declaration must still be
- * needed — so a new runtime-built control fails until it is judged or declared,
- * and a declaration that has outlived its reason fails too.
- */
-export function coverageGaps(files: SourceFile[]): string[] {
-  const gaps: string[] = [];
+function survey(files: SourceFile[]): Survey {
   const factories = factoryRegistry(files);
+  const exempt = declaredFiles();
   const ownBody = (file: string, at: number): boolean =>
     factories.some((factory) => factory.file === file && at >= factory.start && at <= factory.end);
+  const names: Finding[] = [];
+  const gaps: Finding[] = [];
+  let declaredCount = 0;
+  let opaqueFiles = 0;
+  let opaqueSites = 0;
   for (const file of files) {
     const evidence = controlEvidenceIn(file, factories);
-    const issues = scriptControlIssues(file, factories);
     const unjudgeable = declared(file.path, UNJUDGEABLE);
     const notOperable = declared(file.path, NOT_OPERABLE);
+    const markup = declaredMarkup(file.path);
+    const gap = (kind: FindingKind, message: string): void => {
+      gaps.push({ file: file.path, kind, message });
+    };
+    if (unjudgeable || notOperable) declaredCount += 1;
+    if (markup) opaqueFiles += 1;
+    opaqueSites += evidence.opaqueWrites.length;
     const builds =
       evidence.literals.length +
       evidence.constructed.length +
       evidence.partial.length +
       evidence.factoryControls.length +
       evidence.unresolvedCalls.length +
-      evidence.untaggedCreates.length;
+      evidence.untaggedCreates.length +
+      evidence.opaqueWrites.length;
     if (!builds) {
-      if (unjudgeable || notOperable) {
-        gaps.push(`${file.path} is declared in script-controls.ts but no longer builds a control — remove the declaration`);
+      if (unjudgeable || notOperable || markup) {
+        gap('boundary', 'is declared in script-controls.ts but no longer builds a control — remove the declaration');
       }
       continue;
     }
     if (unjudgeable) {
-      if (!evidence.untaggedCreates.length && !evidence.unresolvedCalls.length) {
-        gaps.push(`${file.path} is declared UNJUDGEABLE but everything it builds is decidable now — remove the declaration`);
+      if (!evidence.untaggedCreates.length && !evidence.unresolvedCalls.length && !evidence.opaqueWrites.length) {
+        gap('boundary', 'is declared UNJUDGEABLE but everything it builds is decidable now — remove the declaration');
       }
       continue;
     }
+    const unnamed = unnamedIn(evidence);
     if (notOperable) {
-      if (!issues.length) {
-        gaps.push(`${file.path} is declared NOT_OPERABLE but its controls are all named now — remove the declaration`);
+      if (!unnamed.length && !evidence.opaqueWrites.length) {
+        gap('boundary', 'is declared NOT_OPERABLE but its controls are all named now — remove the declaration');
       }
-      continue;
+    } else {
+      for (const message of unnamed) names.push({ file: file.path, kind: 'name', message });
     }
-    for (const message of issues) gaps.push(`${file.path} ${message}`);
     if (evidence.partial.length) {
-      gaps.push(
-        `${file.path} writes control markup its own literal does not complete (line ${evidence.partial[0].line}) — judge it or declare the file in script-controls.ts`,
+      gap(
+        'boundary',
+        `writes control markup its own literal does not complete (line ${evidence.partial[0].line}) — judge it or declare the file in script-controls.ts`,
       );
     }
     // A factory's own `createElement(tag)` takes the tag as a parameter by
@@ -790,15 +973,82 @@ export function coverageGaps(files: SourceFile[]): string[] {
     const untagged = evidence.untaggedCreates.filter((at) => !ownBody(file.path, at));
     if (untagged.length) {
       const code = codeOnly(file.source, file.path);
-      gaps.push(
-        `${file.path} calls document.createElement with a tag that is not a literal (line ${lineAt(code, untagged[0])}) — declare the file in script-controls.ts`,
+      gap(
+        'boundary',
+        `calls document.createElement with a tag that is not a literal (line ${lineAt(code, untagged[0])}) — declare the file in script-controls.ts`,
       );
     }
     if (evidence.unresolvedCalls.length) {
-      gaps.push(
-        `${file.path} builds a control through an element factory whose tag is not a literal (line ${evidence.unresolvedCalls[0]}) — judge the call or declare the file in script-controls.ts`,
+      gap(
+        'boundary',
+        `builds a control through an element factory whose tag is not a literal (line ${evidence.unresolvedCalls[0]}) — judge the call or declare the file in script-controls.ts`,
       );
     }
+    // The markup this rule can never read. Undeclared, the first site is named —
+    // which is the difference between a limit that is declared and one that is
+    // silent, and the reason a live `box.innerHTML = someCard` is a finding
+    // rather than a shrug.
+    if (evidence.opaqueWrites.length) {
+      if (!markup) {
+        const first = evidence.opaqueWrites[0];
+        gap(
+          'opaque',
+          `writes markup at line ${first.line} whose right-hand side is not a literal (\`${first.rhs}\`) — say what it builds and declare the file in OPAQUE_MARKUP`,
+        );
+      } else {
+        const covered = new Set(markup.shapes);
+        const uncovered = evidence.opaqueWrites.find((write) => !covered.has(write.shape));
+        if (uncovered) {
+          gap(
+            'opaque',
+            `writes markup at line ${uncovered.line} from \`${uncovered.shape}\`, which the OPAQUE_MARKUP declaration for this file does not cover — judge the site or add the shape`,
+          );
+        }
+      }
+    }
+    if (markup) {
+      const written = new Set(evidence.opaqueWrites.map((write) => write.shape));
+      const unused = markup.shapes.filter((shape) => !written.has(shape));
+      if (unused.length) {
+        gap(
+          'opaque',
+          `declares the shape${unused.length > 1 ? 's' : ''} ${unused.map((shape) => `\`${shape}\``).join(', ')} in OPAQUE_MARKUP but writes no markup from ${unused.length > 1 ? 'them' : 'it'} — remove ${unused.length > 1 ? 'them' : 'it'}`,
+        );
+      }
+    }
   }
-  return gaps;
+  return {
+    names,
+    gaps,
+    summary: {
+      judged: files.filter((file) => !exempt.has(file.path)).length,
+      declared: declaredCount,
+      opaqueFiles,
+      opaqueSites,
+      roots: SOURCE_ROOTS,
+      skipped: SKIPPED_SEGMENTS,
+    },
+  };
+}
+
+/** Every unnamed control the boundary judges, attributed to the file it is in. */
+export function nameIssues(files: SourceFile[]): Finding[] {
+  return survey(files).names;
+}
+
+/**
+ * Every file this rule cannot judge, and every declaration it no longer needs.
+ * Both directions, so an exemption list cannot quietly become a place to hide.
+ */
+export function declarationGaps(files: SourceFile[]): Finding[] {
+  return survey(files).gaps;
+}
+
+/**
+ * The one verdict path. Every finding, exactly once, plus the boundary the gate
+ * prints — raised in a single pass so the two can never disagree about a file.
+ */
+export function scriptControlVerdict(files: SourceFile[]): { findings: Finding[]; summary: BoundarySummary } {
+  const done = survey(files);
+  return { findings: [...done.names, ...done.gaps], summary: done.summary };
 }
