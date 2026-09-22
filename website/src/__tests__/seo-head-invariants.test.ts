@@ -109,7 +109,7 @@ describe('auth pages are de-indexed', () => {
     expect(SITE_HEAD).toMatch(/\{noindex\s*&&\s*<meta name="robots" content="noindex"\s*\/>\}/);
   });
 
-  it('NON_PUBLIC_PAGES covers exactly the four gated pages', () => {
-    expect([...NON_PUBLIC_PAGES].sort()).toEqual(['account', 'enterprise-trial', 'login', 'signup']);
+  it('NON_PUBLIC_PAGES covers exactly the five gated pages', () => {
+    expect([...NON_PUBLIC_PAGES].sort()).toEqual(['account', 'enterprise-trial', 'login', 'pair', 'signup']);
   });
 });

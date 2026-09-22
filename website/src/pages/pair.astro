@@ -1,0 +1,21 @@
+---
+// Root /pair redirect — detects locale and forwards query string (?code=...)
+---
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <title>kasir.mu — Pair Tablet</title>
+    <meta name="robots" content="noindex" />
+    <script is:inline>
+      const saved = localStorage.getItem('oz_language');
+      const lang = (saved || navigator.language || 'id').toLowerCase();
+      const locale = lang.startsWith('id') ? 'id' : 'en';
+      window.location.replace(`/${locale}/pair${window.location.search}`);
+    </script>
+    <noscript>
+      <meta http-equiv="refresh" content="0; url=/id/pair" />
+    </noscript>
+  </head>
+  <body></body>
+</html>

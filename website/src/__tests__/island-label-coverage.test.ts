@@ -7,6 +7,7 @@ import { SUPPORT_LABELS } from '../components/ContactForm';
 import { PRICING_LABELS } from '../components/PricingGrid';
 import { SEARCH_LABELS } from '../components/SearchModal';
 import { SIGNUP_FORM_LABELS } from '../components/SignupForm';
+import { PAIR_LABELS } from '../components/PairView';
 import { AUTH_ERROR_LABELS } from '../lib/useAuth';
 
 /**
@@ -83,6 +84,11 @@ const ISLANDS: Island[] = [
       '../components/account/AccountSubscription.tsx',
       '../components/account/accountShared.ts',
     ],
+  },
+  {
+    name: 'pair (pair.astro)',
+    list: PAIR_LABELS,
+    files: ['../components/PairView.tsx'],
   },
 ];
 

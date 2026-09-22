@@ -2,34 +2,23 @@
 num: 56
 area: topology
 title: "ADR #56: First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the multi-boolean boot gate"
-status: Partially implemented (2026-10-04; status re-audited 2026-09-22) — §2.1, §2.2, §2.6 and the `local` tier of §2.3/§2.4 are IMPLEMENTED; §2.3's `identify` leg, §2.5 pairing and §5 Q2's tablet licence gate are NOT
+status: Partially implemented (2026-10-04; status re-audited 2026-09-22) — §2.1, §2.2, §2.5, §2.6, §5 Q2 tablet licence gate, and the `local` tier of §2.3/§2.4 are IMPLEMENTED; only §2.3's `identify` leg for the `linked` tier is NOT
 ---
 
 # ADR #56: First-Run Provisioning
 
 **Status: Partially implemented** (2026-10-04; status re-audited 2026-09-22). **Updated
-2026-10-05: §2.1, §2.2 and §2.6 are now IMPLEMENTED**, and §2.3's critical path is replaced — the
+2026-10-05: §2.1, §2.2, §2.5, §2.6, and §5 Q2 are now IMPLEMENTED**, and §2.3's critical path is replaced — the
 `local` tier provisions a working terminal end to end.
 
-**Not implemented — the complete list, and it is THREE, where an earlier revision of this block
-named only the first two:**
+**Not implemented — the remaining item:**
 
-1. **§2.3's `identify` leg.** The `linked` tier's identity step has no UI on either shell;
+1. **§2.3's `identify` leg for the `linked` tier.** The manual email identity step has no UI on either shell;
    `ProvisioningMode = 'local' | 'linked'` exists (`ui/src/api/settings.ts:151`) and only
-   `'local'` is ever sent (`ui/src/features/setup/ProvisioningFlow.tsx:104`).
-2. **§2.5 pairing** — §5 Q1's *chosen* answer. The claim code and poll endpoint do not exist in
-   `apps/license-server`.
-3. **§5 Q2's convergence of both shells on the desktop boot order.** Its accepted cost was "the
-   tablet gains a licence-activation gate it has never had"; the tablet still has no such gate
-   (`ui/src/app/AppShell.tsx` is the only caller of `get_license_status` and the only renderer of
-   `LicenseActivationScreen`, both desktop; the tablet shell renders neither). Cited by symbol
-   rather than by line, because a concurrent edit to that file moved these anchors during this
-   audit.
-
-Three, not two, matters because item 3 was a `[was blocking]` decision: a tablet that cannot
-activate a licence also cannot link (§1.6), so it cannot reach a sync credential either. That is
-the same unfinished leg, and a status block that names two thirds of it invites the reading that
-the tablet is one UI screen away from the linked tier.
+   `'local'` is currently sent directly from the wizard (`ui/src/features/setup/ProvisioningFlow.tsx:104`).
+   Note: §2.5 pairing is fully shipped across `apps/license-server/pairing.go`, `LicenseActivationScreen.tsx`,
+   `ProvisioningFlow.tsx`, and the operator web portal at `website/src/pages/[locale]/pair.astro`.
+   §5 Q2 is also shipped: `TabletAppShell.tsx` gates `!bootAllowed` before `!hasCompletedSetup`.
 
 *Clock note: the `last audited` stamp at the foot of this record carries the host clock's date,
 2026-09-22, which trails this record's own 2026-10-05 revision notes. The stamp is the machine's
@@ -504,7 +493,9 @@ later stages are the in-app settings a provisioned terminal now reaches.
 `identify → tenant_id`, and there is no UI for it on either shell. What ships today is the `local`
 tier end to end; the `linked` tier's bridge contract exists (`ProvisionDeviceArgs.mode = 'linked'`
 with its tenant and credential ids, plus the schema CHECK that refuses a linked row without them)
-but nothing calls it. §2.5's tablet pairing flow is likewise unbuilt. Recorded here rather than in
+but nothing calls it directly yet. Note that §2.5's tablet pairing flow is fully built (server endpoints in
+`apps/license-server/pairing.go`, tablet shell UI in `LicenseActivationScreen.tsx`/`ProvisioningFlow.tsx`,
+and operator claim page at `website/src/pages/[locale]/pair.astro`). Recorded here rather than in
 §3.3 so the two tiers' status cannot be misread from the diagram.
 
 **One thing the collapse removed that the ADR did not name:** `onSkip`. The wizard's Skip button

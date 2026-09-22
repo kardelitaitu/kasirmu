@@ -47,7 +47,8 @@
     "account": "Your kasir.mu license, subscription, and billing information.",
     "privacy": "How kasir.mu collects, uses, and protects your data.",
     "terms": "The terms that govern your use of kasir.mu.",
-    "signup": "Create your kasir.mu account — set a password and verify your email."
+    "signup": "Create your kasir.mu account — set a password and verify your email.",
+    "pair": "Pair a tablet POS terminal to your kasir.mu account."
   },
   "support": {
     "title": "Support",
@@ -808,5 +809,24 @@
     "copyButton": "Copy",
     "nextSteps": "Next: Open kasir.mu, paste this key along with your email, and start using Enterprise features immediately.",
     "downloadButton": "Download kasir.mu"
+  },
+  "pair": {
+    "title": "Pair a tablet",
+    "subtitle": "Confirm the pairing code displayed on your tablet to link it to your account.",
+    "codeLabel": "Pairing code",
+    "claimButton": "Pair this device",
+    "claiming": "Pairing…",
+    "successTitle": "Tablet paired!",
+    "successHint": "Your tablet will connect automatically in a few seconds.",
+    "goToAccount": "Go to account",
+    "anonTitle": "Sign in to continue",
+    "anonHint": "You must be signed in to claim this pairing code.",
+    "signIn": "Sign in",
+    "errorExpired": "This pairing code has expired. Generate a new code on the tablet and try again.",
+    "errorUsed": "This pairing code has already been used.",
+    "errorInvalid": "Invalid pairing code. Please check the code on your tablet.",
+    "errorNetwork": "Could not reach the server. Please check your connection and try again.",
+    "noCode": "No pairing code found. Open this page by scanning the QR code on your tablet.",
+    "notConfigured": "Pairing service is currently unavailable."
   }
 }

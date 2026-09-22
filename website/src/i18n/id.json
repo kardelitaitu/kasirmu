@@ -47,7 +47,8 @@
     "account": "Lisensi, langganan, dan informasi penagihan kasir.mu Anda.",
     "privacy": "Bagaimana kasir.mu mengumpulkan, menggunakan, dan melindungi data Anda.",
     "terms": "Ketentuan yang mengatur penggunaan kasir.mu Anda.",
-    "signup": "Buat akun kasir.mu Anda — buat kata sandi dan verifikasi email."
+    "signup": "Buat akun kasir.mu Anda — buat kata sandi dan verifikasi email.",
+    "pair": "Hubungkan terminal POS tablet ke akun kasir.mu Anda."
   },
   "support": {
     "title": "Dukungan",
@@ -812,5 +813,24 @@
     "copyButton": "Salin",
     "nextSteps": "Langkah berikutnya: Buka kasir.mu, tempel kunci ini bersama email Anda, dan mulai menggunakan fitur Enterprise segera.",
     "downloadButton": "Unduh kasir.mu"
+  },
+  "pair": {
+    "title": "Hubungkan tablet",
+    "subtitle": "Konfirmasi kode pairing yang tampil di tablet untuk menghubungkannya ke akun Anda.",
+    "codeLabel": "Kode pairing",
+    "claimButton": "Hubungkan perangkat ini",
+    "claiming": "Menghubungkan…",
+    "successTitle": "Tablet terhubung!",
+    "successHint": "Tablet Anda akan terhubung secara otomatis dalam beberapa detik.",
+    "goToAccount": "Buka akun",
+    "anonTitle": "Masuk untuk melanjutkan",
+    "anonHint": "Anda harus masuk untuk mengklaim kode pairing ini.",
+    "signIn": "Masuk",
+    "errorExpired": "Kode pairing ini telah kedaluwarsa. Buat kode baru di tablet lalu coba lagi.",
+    "errorUsed": "Kode pairing ini sudah pernah digunakan.",
+    "errorInvalid": "Kode pairing tidak valid. Silakan periksa kembali kode di tablet Anda.",
+    "errorNetwork": "Tidak dapat menghubungi server. Periksa koneksi internet Anda dan coba lagi.",
+    "noCode": "Kode pairing tidak ditemukan. Buka halaman ini dengan memindai kode QR di tablet Anda.",
+    "notConfigured": "Layanan pairing saat ini tidak tersedia."
   }
 }
