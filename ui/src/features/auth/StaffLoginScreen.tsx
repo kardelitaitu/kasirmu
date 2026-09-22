@@ -379,10 +379,23 @@ export default function StaffLoginScreen() {
 
   // ── PIN dots ─────────────────────────────────────────────────
 
+  // A failed attempt marks the PIN region invalid until the user starts retrying,
+  // which is the same moment the toast gate above resets. Deriving it from `pin`
+  // rather than a second piece of state keeps the two in step: a flag of its own
+  // would have to be cleared in the same place and could drift.
+  const pinErrorForA11y = error !== null && step === 'pin' && pin.length === 0;
+
+
   const renderPinDots = () => (
     <div
       className="staff-login-pin-dots"
       aria-label={l10n.getString('staff-login-pin-aria', { length: pin.length, max: MAX_PIN_LENGTH })}
+      /* A failed attempt is announced by the toast (role=alert), but the FIELD
+       * itself never became invalid: the shake is a CSS class, which a screen
+       * reader cannot perceive, and `setPin([])` clears the dots without saying
+       * why. Marking the region keeps the failure attached to the control the
+       * user has to retry, not only to a transient notification. */
+      aria-invalid={pinErrorForA11y || undefined}
     >
       {Array.from({ length: MAX_PIN_LENGTH }, (_, i) => (
         <span
