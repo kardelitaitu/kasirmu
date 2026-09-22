@@ -2,7 +2,7 @@
 num: 56
 area: topology
 title: "ADR #56: First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the multi-boolean boot gate"
-status: Partially implemented (2026-10-04; status re-audited 2026-09-22) — §2.1, §2.2, §2.5, §2.6, §5 Q2 tablet licence gate, and the `local` tier of §2.3/§2.4 are IMPLEMENTED; only §2.3's `identify` leg for the `linked` tier is NOT
+status: Partially implemented (2026-10-04; status re-audited 2026-09-22; §2.3 amended 2026-09-23) — §2.1, §2.2, §2.5, §2.6, §5 Q2 tablet licence gate, and the `local` tier of §2.3/§2.4 are IMPLEMENTED; only §2.3's `identify` leg for the `linked` tier is NOT
 ---
 
 # ADR #56: First-Run Provisioning
@@ -10,6 +10,12 @@ status: Partially implemented (2026-10-04; status re-audited 2026-09-22) — §2
 **Status: Partially implemented** (2026-10-04; status re-audited 2026-09-22). **Updated
 2026-10-05: §2.1, §2.2, §2.5, §2.6, and §5 Q2 are now IMPLEMENTED**, and §2.3's critical path is replaced — the
 `local` tier provisions a working terminal end to end.
+
+**Amended 2026-09-23 (§2.3):** the wizard component this record says is "KEPT" is confirmed
+**unreachable in production** and its state-persistence path is severed by §2.2's own deletions.
+See the AMENDMENT under §2.3 for the measurements, the two open resolutions, and the one
+constraint the follow-up slice must honour (it cannot write from either current boot position).
+§3.1's "wizard's nine steps" deletion bullet and §3.2's QRIS revenue claim are both corrected there.
 
 **Not implemented — the remaining item:**
 
@@ -507,6 +513,69 @@ target, focus-visible and theme-token walkers over the new sheet, and `screenExt
 shrink-only uncited list). `npm run lint` → 0 errors; `npm run lint:i18n` → no issues, keys in both
 bundles; `npx tsc --noEmit` → clean.
 
+#### AMENDMENT 2026-09-23 — the kept component is unreachable, and its write path is severed
+
+**This amendment records the state the record above left ambiguous. It changes no decision.**
+
+§2.3 above says the wizard "is KEPT", and §3.1 lists "the wizard's nine steps" under **Real
+deletion**. Both sentences are in this record; they cannot both describe the tree. An audit of
+`ui/src/features/setup/**` (2026-09-23) resolves it: **the component is kept and unreachable.**
+
+**Measured:**
+
+- `SetupWizard.tsx` (839 L), `SetupWizard.css`, and `components/StepAccount.tsx` (214 L) have
+  **no production importer**. The only non-test reference anywhere in `ui/src` is a *type-only*
+  import at `ProvisioningFlow.tsx:19` (`import type { Preset }`). The two other importers are
+  `SetupWizard.test.tsx` and `SetupWizardRender.test.tsx`.
+- Both shells render `ProvisioningFlow` on the unprovisioned path (`AppShell.tsx:586`,
+  `TabletAppShell.tsx:300`), as §2.3 records. No shell renders `SetupWizard`.
+- `onComplete`, `onSkip` and `onLaunch` are optional props with **no production caller**. The
+  `onComplete={...}` at `AppShell.tsx:546` belongs to `ActivationFlow`, not the wizard.
+- `components/LiveSetupPreview.tsx` **is live** and is **not** part of this: it is consumed by
+  `settings/FeatureToggleScreen.tsx:415` (route `features`, registered `settings/register.tsx:21`).
+  Its header comment naming both hosts is accurate. Any future cleanup must keep it.
+
+**So §3.1's "Real deletion: … the wizard's nine steps" describes work that was NOT done.** The
+kept-instead reading of §2.3 is the accurate one, and §3.1's bullet should be read as aspiration.
+
+**The orphaned contract.** §2.2 retired `complete_setup`, `get_setup_status` and
+`dismiss_setup_wizard` — the three commands that persisted `WizardState` (`preset`,
+`features`, `default_currency`). The component therefore ships with a callback nothing supplies
+and a payload with nowhere to go. It reads as a live screen and behaves as a closed one.
+
+**This is a severance, not stale data.** All 27 wizard feature keys resolve to live entries in the
+Rust `Feature` enum (`kasirmu_core::features::feature_from_key`, exercised at
+`crates/kasirmu-bridge/src/features.rs:154`), and the write command §2.3's successor surface
+needs is already shipped and transactional: `set_features_bulk` (`features.rs:133`,
+`Settings::set_default_currency` also live). `ui/src/api/features.ts:45` wraps it. The data
+model is valid; only the wire is cut.
+
+**One constraint this amendment adds for the follow-up slice**, because §2.3 does not state it:
+`set_features_bulk` requires a resolved session and `SETTINGS_EDIT`
+(`features.rs:138-140`), while the ADR §1 table places the wizard **before** login on tablet
+(row 3) and **after** it on desktop (row 5). A re-admitted wizard therefore **cannot write from
+either current position** — it must move to the post-login settings surface. Re-mounting it where
+it sits today would produce a screen that discards its own configuration, i.e. F4 unchanged.
+
+**Also corrected:** §3.2 calls the orphaned `QrisSetupRow` "the one consequence here with revenue
+impact". That overstates it — `features/sales/payment/QrisTenderPanel.tsx:62` still gates QRIS
+behind `openUpgradePricing(locale, 'plus')`, so the checkout upsell survives the wizard's absence.
+That risk may be struck from §3.2.
+
+**Two resolutions remain open, neither taken here:**
+
+| # | Resolution | Cost |
+|---|---|---|
+| A | **Retire for real** — delete the 3 files, the 4 suites that only test them, and the `setup-*` keys they alone read. Requires amending §2.3, which says KEPT. | Deletes `PRESET_FEATURES` (`SetupWizard.tsx:186-259`), the **only** preset→feature map in the tree; `ProvisioningFlow` sends a store type, not a feature set, so preset curation leaves the product. |
+| B | **Re-admit post-login** — mount as an in-app settings screen on a provisioned terminal, wire `onComplete` → `setFeaturesBulk` + `set_default_currency`, drop the Account step (§2.3 already says "No account step"). | Real work; must move past the login gate on both shells, touching the boot order §1 argues over. |
+
+**Recommendation: B**, because it executes what §2.3 already decided and the backend it needs is
+live. **A is defensible** only if the loss of `PRESET_FEATURES` is called out and accepted in the
+amending record rather than discovered later.
+
+**Not done here:** no code changed by this amendment. F2/F3/F5/F7 defects found by the same audit
+are repaired separately (`8bff7a66f`).
+
 ### 2.4 Two tiers, because offline-first cannot require the network
 
 `mode` in §2.1 is not decoration:
@@ -717,6 +786,9 @@ an omission: provisioning creates the location and the entity together.
   wizard's nine steps, `boot-retry.ts`'s lost-response workaround, the footer docstring that says
   eight (`SetupWizard.tsx:315`), and five seeded workspace rows plus the seeded
   `Default Store` location.
+  **Amended 2026-09-23: of these, the wizard's nine steps were NOT deleted** — the component is
+  kept and unreachable, and its stale "eight" docstring was corrected to nine in `8bff7a66f`.
+  See the AMENDMENT under §2.3. Every other item in this list was carried out.
 - **The tablet stops being a data-entry device** under §2.5.1 — the store picker moves to a phone
   or desktop, where picking a branch from a list is an ordinary interaction.
 - **Idempotent provisioning is retry-safe by construction**, which is the property the Android
@@ -748,6 +820,9 @@ an omission: provisioning creates the location and the entity together.
   (`SetupWizard.tsx:499`), gating the onboarding surface on `supports_qris()`. Removing the steps
   orphans it; it needs a home in Settings or the upsell surface silently disappears — the one
   consequence here with revenue impact.
+  **Amended 2026-09-23: overstated.** `features/sales/payment/QrisTenderPanel.tsx:62` still gates
+  QRIS behind `openUpgradePricing(locale, 'plus')`, so the checkout upsell survives the wizard's
+  absence. Only the *onboarding-time* prompt is orphaned, and the revenue path is intact.
 - **Pairing (§2.5.1) is new server surface** — a claim code, a poll endpoint, TTL and rate limits.
   It is not free, and it is the largest single addition this ADR proposes.
 - **A `local` install is outside every server-side control** (§2.4). It cannot be revoked, cannot be
