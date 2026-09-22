@@ -219,6 +219,27 @@ the valid colour) and pass with them present.
 **A failing screenshot was also read directly** during diagnosis, confirming the dots really render
 red — the visual evidence the DOM tests could not provide.
 
+### Round 7 — the session-lock failure path, and a coverage boundary
+
+**Added:** `1a5e5fc2c` — E2E for the Session Lock **failure** path. The pre-existing test
+(`new-flows.spec.ts`, E2E-27) covered only the success case (correct PIN → unlock), so the
+round-3 field-marking fix had no end-to-end coverage at all. The new test asserts the row is
+marked after a rejected PIN **and** that the mark clears when the user starts retrying.
+
+Verified to fail with the `aria-invalid` attribute removed (`received null, expected "true"`) and
+pass with it present, **on both desktop and tablet** — 4/4 for the Session Lock suite, 6/6 for the
+whole spec file.
+
+**Checked and deliberately NOT added — a real reachability boundary:**
+
+| Screen | Why it has no E2E |
+|---|---|
+| `CreatePinScreen` | The dev-mock hardcodes `has_users: true` (`dev-mock/handlers/staff.ts:306`); the screen renders only when there are **no** users. Reaching it would mean editing the mock so the test passes — fitting the fixture to the assertion. Its coverage stays at the unit level. |
+
+`SessionLockScreen` was reachable because `AppShell` listens for an `app:lock` event explicitly
+provided "to exercise this screen" (`AppShell.tsx:163-170`), which `new-flows.spec.ts` already used
+for the success case.
+
 ### Remaining, and honestly not mine to claim
 
 - **The website auth islands are unaudited by me.** Another agent owns that surface and has
