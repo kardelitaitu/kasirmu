@@ -287,6 +287,15 @@
    * restated token reads as a second source of truth). */
   --statusbar-height: 28px;
 
+  /* The top bar's height, single-sourced for the same reason: the settings
+   * hub's top bar and the staff management header are two different sheets
+   * that must render ONE bar height, and neither may drift when the touch
+   * floor changes. Derived, not invented: --touch-target-min is the tallest
+   * mandatory child either bar hosts, both carry --space-2 vertical padding,
+   * and both carry a 1px bottom border. Chrome geometry, not theme — so it
+   * is deliberately NOT restated in the light/dark blocks. */
+  --topbar-height: calc(var(--touch-target-min) + 2 * var(--space-2) + 1px);
+
   /* The memo stack's bottom clearance, DEFAULT value. Each SHELL overrides
    * this on its own layout root as "its own bottom chrome height +
    * --space-6" (the desktop shell: AppLayout.css's .app-layout uses
