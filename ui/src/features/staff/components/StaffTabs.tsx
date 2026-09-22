@@ -34,10 +34,12 @@ export interface StaffTabsProps {
   onSelectTab: (tab: StaffTab) => void;
   /** Render the Roles tab. False for a session without `staff:manage_roles`. */
   showRoles: boolean;
+  /** Render the Trash tab. False for a session without `staff:delete`. */
+  showTrash: boolean;
 }
 
-/** The Staff / Roles tab strip. */
-export function StaffTabs({ activeTab, onSelectTab, showRoles }: StaffTabsProps) {
+/** The Staff / Roles / Trash tab strip. */
+export function StaffTabs({ activeTab, onSelectTab, showRoles, showTrash }: StaffTabsProps) {
   const { l10n } = useLocalization();
 
   const items: SegmentedTabItem<StaffTab>[] = [
@@ -55,6 +57,15 @@ export function StaffTabs({ activeTab, onSelectTab, showRoles }: StaffTabsProps)
         tabId: STAFF_TAB_IDS.roles.tab,
         controls: STAFF_TAB_IDS.roles.panel,
         testId: 'staff-tab-roles',
+      }]
+      : []),
+    ...(showTrash
+      ? [{
+        value: 'trash' as StaffTab,
+        label: <Localized id="staff-tab-trash"><span>Trash</span></Localized>,
+        tabId: STAFF_TAB_IDS.trash.tab,
+        controls: STAFF_TAB_IDS.trash.panel,
+        testId: 'staff-tab-trash',
       }]
       : []),
   ];

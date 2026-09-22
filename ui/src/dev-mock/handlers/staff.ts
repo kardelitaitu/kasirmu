@@ -72,14 +72,25 @@ function mockStaffMember(overrides: Partial<Record<string, unknown>> = {}): Reco
  * the real backend was just fixed for, reproduced in the preview that exists
  * to catch it. One source, so the mock cannot show it.
  */
+const MOCK_STAFF_ROWS: Array<Record<string, unknown>> = [
+  mockStaffMember({ id: 'staff-1', username: 'owner', display_name: 'Owner', role_id: 'role-owner', role_name: 'Owner' }),
+  mockStaffMember({ id: 'staff-2', username: 'admin', display_name: 'Admin', role_id: 'role-admin', role_name: 'Admin' }),
+  mockStaffMember({ id: 'staff-3', username: 'manager', display_name: 'Manager', role_id: 'role-manager', role_name: 'Manager' }),
+  mockStaffMember({ id: 'staff-4', username: 'staff', display_name: 'Staff', role_id: 'role-staff', role_name: 'Staff' }),
+  // Inactive on purpose: delete REFUSES an active member, so without one
+  // inactive row the trash flow would be unreachable in browser preview.
+  mockStaffMember({ id: 'staff-5', username: 'auditor', display_name: 'Auditor', role_id: 'role-auditor', role_name: 'Auditor', is_active: false }),
+];
+
+/**
+ * Soft-deleted members by id -> when they entered the trash. An id absent
+ * here is a live member. A member row stays in MOCK_STAFF_ROWS either way,
+ * mirroring the backend, where the trash is a column and never a second list.
+ */
+const MOCK_TRASH_STAFF = new Map<string, string>();
+
 function mockStaffFixtures(): Array<Record<string, unknown>> {
-  return [
-    mockStaffMember({ id: 'staff-1', username: 'owner', display_name: 'Owner', role_id: 'role-owner', role_name: 'Owner' }),
-    mockStaffMember({ id: 'staff-2', username: 'admin', display_name: 'Admin', role_id: 'role-admin', role_name: 'Admin' }),
-    mockStaffMember({ id: 'staff-3', username: 'manager', display_name: 'Manager', role_id: 'role-manager', role_name: 'Manager' }),
-    mockStaffMember({ id: 'staff-4', username: 'staff', display_name: 'Staff', role_id: 'role-staff', role_name: 'Staff' }),
-    mockStaffMember({ id: 'staff-5', username: 'auditor', display_name: 'Auditor', role_id: 'role-auditor', role_name: 'Auditor' }),
-  ];
+  return MOCK_STAFF_ROWS.filter((m) => !MOCK_TRASH_STAFF.has(m['id'] as string));
 }
 
 /** Granted permission keys per preset, mirroring platform-core ROLE_PRESETS. */
@@ -119,6 +130,18 @@ const MOCK_AUTHORED_ROLES: MockAuthoredRole[] = [
     reference_count: 0,
   },
 ];
+
+/** A trashed role: the row plus the moment it entered the trash. */
+interface MockTrashedRole extends MockAuthoredRole {
+  deleted_at: string;
+}
+
+/**
+ * The role trash. Real, not a decoration: delete_role_scoped moves the row
+ * here rather than splicing it, because the backend soft-deletes a role and
+ * keeps it restorable for 90 days.
+ */
+const MOCK_TRASH_ROLES: MockTrashedRole[] = [];
 
 const mockRoleList = () => [
   ...MOCK_ROLES.map((r) => ({
@@ -183,7 +206,14 @@ function mockRoleHolders(roleId: string | undefined): {
   // Checked against the two role stores directly rather than against
   // mockRoleList(), which now calls back through mockRoleCounts ->
   // mockRoleHolders. Going through the list would recurse forever.
-  const known = [...MOCK_ROLES.map((r) => r.id), ...MOCK_AUTHORED_ROLES.map((r) => r.id)];
+  const known = [
+    ...MOCK_ROLES.map((r) => r.id),
+    ...MOCK_AUTHORED_ROLES.map((r) => r.id),
+    // A trashed role still exists, so its holder page is an honest empty one
+    // rather than a refusal: list_role_trash_scoped reads the counts, and a
+    // mock that threw here would break the Trash tab in browser preview.
+    ...MOCK_TRASH_ROLES.map((r) => r.id),
+  ];
   if (!known.includes(wanted)) {
     throw new Error(`role ${wanted || '(no id given)'} does not exist`);
   }
@@ -509,9 +539,61 @@ export const staffHandlers: Record<string, MockHandler> = {
     if (existing.reference_count > 0) {
       throw new Error(`role ${id} is still referenced; reassign those rows first`);
     }
+    // Soft delete, as the backend does: the row moves to the trash and stays
+    // restorable for the retention window instead of vanishing.
+    MOCK_TRASH_ROLES.push({ ...existing, deleted_at: new Date().toISOString() });
     MOCK_AUTHORED_ROLES.splice(idx, 1);
     return null;
   },
+  'restore_role_scoped': (raw) => {
+    const id = (raw as { id?: string })?.id ?? '';
+    const idx = MOCK_TRASH_ROLES.findIndex((r) => r.id === id);
+    const trashed = MOCK_TRASH_ROLES[idx];
+    if (!trashed) throw new Error(`role ${id} not found`);
+    MOCK_TRASH_ROLES.splice(idx, 1);
+    const restored: MockAuthoredRole = {
+      id: trashed.id,
+      name: trashed.name,
+      description: trashed.description,
+      permissions: trashed.permissions,
+      is_builtin: trashed.is_builtin,
+      reference_count: trashed.reference_count,
+    };
+    MOCK_AUTHORED_ROLES.push(restored);
+    return { ...restored, ...mockRoleCounts(restored.id) };
+  },
+  'list_role_trash_scoped': () =>
+    MOCK_TRASH_ROLES.map((r) => ({ ...r, ...mockRoleCounts(r.id) })),
+  'delete_staff_scoped': (raw) => {
+    const id = (raw as { id?: string })?.id ?? '';
+    // MOCK_STAFF_ROWS, not mockStaffFixtures(): the trash is a column, not a
+    // second list, so an already-trashed row is still FOUND here and then
+    // refused by the guard below — exactly the order core's soft_delete_user
+    // takes (look up, check active, then the UPDATE that matches no row).
+    const member = MOCK_STAFF_ROWS.find((m) => m['id'] === id);
+    if (!member) throw new Error(`user ${id} not found`);
+    // Mirrors the backend refusal: an active account is deactivated first.
+    if (member['is_active'] === true) {
+      throw new Error('deactivate this member before deleting them');
+    }
+    if (MOCK_TRASH_STAFF.has(id)) throw new Error('this member is already in the trash');
+    MOCK_TRASH_STAFF.set(id, new Date().toISOString());
+    return null;
+  },
+  'restore_staff_scoped': (raw) => {
+    const id = (raw as { id?: string })?.id ?? '';
+    if (!MOCK_TRASH_STAFF.has(id)) throw new Error(`user ${id} not found`);
+    MOCK_TRASH_STAFF.delete(id);
+    const row = MOCK_STAFF_ROWS.find((m) => m['id'] === id);
+    if (!row) throw new Error(`user ${id} not found`);
+    // Back INACTIVE, exactly as the delete found them.
+    return { ...row, is_active: false };
+  },
+  'list_staff_trash_scoped': () =>
+    MOCK_STAFF_ROWS.filter((m) => MOCK_TRASH_STAFF.has(m['id'] as string)).map((m) => ({
+      ...m,
+      deleted_at: MOCK_TRASH_STAFF.get(m['id'] as string) ?? null,
+    })),
   'create_staff_scoped': (args) => {
     const a = (args as { username?: string; display_name?: string; role_id?: string; pin?: string }) ?? {};
     const roleId = a.role_id && MOCK_ROLE_PERMISSIONS[a.role_id] ? a.role_id : 'role-staff';

@@ -282,6 +282,8 @@ const SCREENS: ScreenEntry[] = [
       'staff/components/StaffManagementFooter.tsx',
       // The header tab strip renders staff-tabs / staff-tab*, also styled here.
       'staff/components/StaffTabs.tsx',
+      // The Trash tab's panel renders staff-mgmt-trash* from the same sheet.
+      'staff/components/StaffTrashPanel.tsx',
     ],
   },
 

@@ -165,6 +165,12 @@ export interface StaffMemberDto {
    * that predate the field stay valid.
    */
   phone?: string | null;
+  /**
+   * Set only on a row that came from the trash: when the member was
+   * soft-deleted. The live roster leaves it absent, so this is also the flag
+   * that says which list a row arrived from.
+   */
+  deleted_at?: string | null;
   /** National id rendered last-4 masked (ADR #35 D6) — the full value never
    * appears in the list payload. */
   national_id_masked: string;
@@ -271,6 +277,11 @@ export interface RoleDto {
    * holds anything through it, so it gets its own wording.
    */
   grant_count: number;
+  /**
+   * Set only on a row that came from the trash: when the role was
+   * soft-deleted. Absent on every live role.
+   */
+  deleted_at?: string | null;
 }
 
 /**
@@ -410,6 +421,46 @@ export const listStaffScoped = (sessionToken: string): Promise<StaffMemberDto[]>
 /** List all roles (caller resolved from session token). */
 export const listRolesScoped = (sessionToken: string): Promise<RoleDto[]> =>
   loggedInvoke<RoleDto[]>('list_roles_scoped', { sessionToken });
+
+// ── Trash (soft delete, 90-day retention) ─────────────────────────────────
+//
+// Both reads run the retention sweep server-side before they list, so a row
+// whose window has closed is never handed back as restorable.
+
+/**
+ * Move a DEACTIVATED member to the trash. Gated on `staff:delete` (owner
+ * only by preset). The backend also drops every session the member held.
+ */
+export const deleteStaffScoped = (
+  sessionToken: string,
+  id: string,
+): Promise<null> => loggedInvoke<null>('delete_staff_scoped', { sessionToken, id });
+
+/**
+ * Take a member out of the trash. They come back INACTIVE — reactivating is
+ * the separate, audited step.
+ */
+export const restoreStaffScoped = (
+  sessionToken: string,
+  id: string,
+): Promise<StaffMemberDto> =>
+  loggedInvoke<StaffMemberDto>('restore_staff_scoped', { sessionToken, id });
+
+/** The staff trash, newest first. */
+export const listStaffTrashScoped = (
+  sessionToken: string,
+): Promise<StaffMemberDto[]> =>
+  loggedInvoke<StaffMemberDto[]>('list_staff_trash_scoped', { sessionToken });
+
+/** Take a custom role out of the trash. Gated on `staff:manage_roles`. */
+export const restoreRoleScoped = (
+  sessionToken: string,
+  id: string,
+): Promise<RoleDto> => loggedInvoke<RoleDto>('restore_role_scoped', { sessionToken, id });
+
+/** The role trash, newest first. Gated on `staff:manage_roles`. */
+export const listRoleTrashScoped = (sessionToken: string): Promise<RoleDto[]> =>
+  loggedInvoke<RoleDto[]>('list_role_trash_scoped', { sessionToken });
 
 // ── Role authoring (ADR #47 ruling 4) ─────────────────────────────────────
 //

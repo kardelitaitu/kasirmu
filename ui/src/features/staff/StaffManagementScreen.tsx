@@ -26,6 +26,7 @@ import {
   listStaffScoped,
   listRolesScoped,
   updateStaffScoped,
+  deleteStaffScoped,
   impersonateUserScoped,
   type StaffMemberDto,
   type RoleDto,
@@ -50,6 +51,7 @@ import { EmptyState } from '@/components';
 import { NoStaffIcon } from '@/components/EmptyStateIllustrations';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { StaffRoster } from './components/StaffRoster';
+import { StaffTrashPanel } from './components/StaffTrashPanel';
 import { StaffDetailDrawer } from './components/StaffDetailDrawer';
 import { StaffManagementFooter } from './components/StaffManagementFooter';
 import RoleAuthoringPanel, { type RoleAuthoringPanelHandle } from './components/RoleAuthoringPanel';
@@ -100,6 +102,19 @@ export default function StaffManagementScreen() {
     session?.role_name,
     session?.permissions,
   );
+  /**
+   * The Trash tab, gated the same way — `passesGate` with the role and
+   * permission the `trash` route registration declares. `staff:delete` is
+   * owner-only by preset, so in practice this is the Owner; a custom role that
+   * carries the key reaches it too, which is why the gate is a permission and
+   * not a role-name comparison.
+   */
+  const canDeleteStaff = passesGate(
+    'manager',
+    'staff:delete',
+    session?.role_name,
+    session?.permissions,
+  );
   const [staff, setStaff] = useState<StaffMemberDto[]>([]);
   const [roles, setRoles] = useState<RoleDto[]>([]);
   /**
@@ -119,6 +134,10 @@ export default function StaffManagementScreen() {
   const [confirmTarget, setConfirmTarget] = useState<StaffMemberDto | null>(null);
   /** STAFF-10: true while the confirmed deactivation request is in flight. */
   const [deactivating, setDeactivating] = useState(false);
+  /** The inactive member awaiting deletion confirmation. */
+  const [deleteTarget, setDeleteTarget] = useState<StaffMemberDto | null>(null);
+  /** True while the confirmed delete request is in flight. */
+  const [deleting, setDeleting] = useState(false);
   const [showModal, setShowModal] = useState(false);
   /** The member the drawer edits; `null` while it creates. */
   const [editingMember, setEditingMember] = useState<StaffMemberDto | null>(null);
@@ -187,7 +206,10 @@ export default function StaffManagementScreen() {
     // deep link) opens on Staff. The query is stripped because a route hash
     // may carry one — AppShell does the same before matching a page.
     const route = window.location.hash.replace(/^#\//, '').split('?')[0];
-    return route === 'roles' ? 'roles' : 'staff';
+    if (route === 'roles') return 'roles';
+    // The trash route's own gate is re-checked here: a deep link cannot open a
+    // tab the header would not render.
+    return route === 'trash' && canDeleteStaff ? 'trash' : 'staff';
   });
 
   /**
@@ -232,10 +254,11 @@ export default function StaffManagementScreen() {
     const syncTabFromHash = () => {
       const route = window.location.hash.replace(/^#\//, '').split('?')[0];
       if (route === 'staff' || route === 'roles') changeTab(route);
+      if (route === 'trash' && canDeleteStaff) changeTab(route);
     };
     window.addEventListener('hashchange', syncTabFromHash);
     return () => window.removeEventListener('hashchange', syncTabFromHash);
-  }, [changeTab]);
+  }, [changeTab, canDeleteStaff]);
 
   // The roles panel is mounted on first visit and then kept: it fetches the
   // role list, the permission-key registry and per-row holders, and re-issuing
@@ -342,6 +365,39 @@ export default function StaffManagementScreen() {
     setConfirmTarget(null);
   }, [deactivating]);
 
+  // ── Delete (staff:delete, 90-day trash) ────────────────────────
+  //
+  // Only reachable for an inactive member, but the confirmation is still
+  // explicit: the member leaves every list the moment this returns, and the
+  // only way back is the Trash tab.
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    if (!sessionToken) {
+      addToast({ message: l10n.getString('staff-delete-failed'), type: 'error' });
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deleteStaffScoped(sessionToken, deleteTarget.id);
+      addToast({
+        type: 'success',
+        message: l10n.getString('staff-toast-deleted', { name: deleteTarget.display_name }),
+      });
+      setDeleteTarget(null);
+      await load();
+    } catch {
+      addToast({ message: l10n.getString('staff-delete-failed'), type: 'error' });
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteTarget, sessionToken, addToast, l10n, load]);
+
+  const cancelDelete = useCallback(() => {
+    if (deleting) return;
+    setDeleteTarget(null);
+  }, [deleting]);
+
   // ── Render ─────────────────────────────────────────────────────
 
   // The slide direction rides on BOTH panels: only one is ever displayed, so the
@@ -380,13 +436,18 @@ export default function StaffManagementScreen() {
         {/* Centre column, KDS-header style. No h1: the tab names the view, and
             a heading repeating the active tab is noise — the panel is
             announced through aria-labelledby instead. */}
-        <StaffTabs activeTab={activeTab} onSelectTab={selectTab} showRoles={canManageRoles} />
+        <StaffTabs
+          activeTab={activeTab}
+          onSelectTab={selectTab}
+          showRoles={canManageRoles}
+          showTrash={canDeleteStaff}
+        />
 
         <div className="staff-mgmt-header-actions">
           {/* One action slot, two jobs: the create affordance belongs to
               whichever tab is showing. Roles is gated on the grant that gates
               its route, so a staff-only manager never sees the button. */}
-          {activeTab === 'roles' && canManageRoles ? (
+          {activeTab === 'trash' ? null : activeTab === 'roles' && canManageRoles ? (
             <Localized id="role-create">
               <Button onClick={() => rolesPanelRef.current?.openCreate()} data-testid="staff-add-role-btn">Add New Role</Button>
             </Localized>
@@ -471,6 +532,7 @@ export default function StaffManagementScreen() {
               canImpersonate={canImpersonate}
               onEdit={openEdit}
               onToggleActive={toggleActive}
+              onDelete={canDeleteStaff ? setDeleteTarget : undefined}
               onImpersonate={handleImpersonate}
             />
           )}
@@ -489,6 +551,24 @@ export default function StaffManagementScreen() {
           >
             {(rolesPanelMounted || activeTab === 'roles') && (
               <RoleAuthoringPanel active={activeTab === 'roles'} handleRef={rolesPanelRef} />
+            )}
+          </div>
+        )}
+
+        {/* Rendered whenever its tab exists so aria-controls resolves. The
+            panel inside mounts only WHILE active: a trash list is worth showing
+            fresh, and this route's reads are the ones that run the retention
+            sweep, so entering the tab is what enforces the window. */}
+        {canDeleteStaff && (
+          <div
+            className={panelClass}
+            id={STAFF_TAB_IDS.trash.panel}
+            role="tabpanel"
+            aria-labelledby={STAFF_TAB_IDS.trash.tab}
+            hidden={activeTab !== 'trash'}
+          >
+            {activeTab === 'trash' && (
+              <StaffTrashPanel canManageRoles={canManageRoles} onRestored={load} />
             )}
           </div>
         )}
@@ -519,6 +599,19 @@ export default function StaffManagementScreen() {
         loading={deactivating}
         confirmLabel={l10n.getString('staff-deactivate-confirm-confirm')}
         cancelLabel={l10n.getString('staff-deactivate-confirm-cancel')}
+      />
+
+      {/* ── Delete Confirmation (staff:delete) ──────────────────── */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onCancel={cancelDelete}
+        onConfirm={() => void confirmDelete()}
+        title={l10n.getString('staff-delete-confirm-title')}
+        message={l10n.getString('staff-delete-confirm-body', { name: deleteTarget?.display_name ?? '' })}
+        variant="danger"
+        loading={deleting}
+        confirmLabel={l10n.getString('staff-delete-confirm-confirm')}
+        cancelLabel={l10n.getString('staff-delete-confirm-cancel')}
       />
     </div>
   );

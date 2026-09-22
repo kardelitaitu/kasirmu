@@ -32,7 +32,7 @@ staff-login-lockout = Terkunci. Coba lagi dalam { $seconds }d
 
 # ── Product Bundles ──
 staff-back-aria = Kembali ke ruang kerja
-staff-tabs-aria = Staf dan peran
+staff-tabs-aria = Staf, peran, dan sampah
 staff-footer-updated = Diperbarui { $time }
 staff-add-button = Tambah Staf
 staff-empty = Belum ada anggota staf.
@@ -283,9 +283,9 @@ role-perm-sensitive = Sensitif
 role-cancel = Batal
 role-save = Simpan peran
 role-saved = Peran { $name } tersimpan.
-role-deleted = Peran { $name } dihapus.
+role-deleted = Peran { $name } dipindahkan ke sampah.
 role-delete-confirm-title = Hapus peran ini?
-role-delete-confirm-body = Akun yang memegang { $name } akan kehilangan izinnya. Tindakan ini tidak bisa dibatalkan.
+role-delete-confirm-body = Akun yang memegang { $name } akan kehilangan izinnya. Peran ini masuk ke sampah dan dapat dipulihkan selama 90 hari.
 
 # Pemegang peran, per akun. Baris yang tertutup sudah menyebut total yang
 # sama lewat role-in-use-accounts, dan keduanya membaca holder_count yang
@@ -322,6 +322,37 @@ role-holders-dims-workspaces = { $count ->
    *[other] { $count } workspace
   }
 role-holders-dims-both-lists = { $branches } cabang, { $workspaces } workspace
+
+# ── Sampah (staff:delete · retensi 90 hari) ────────────────────────
+# Anggota staf atau peran kustom dihapus lunak ke sampah dan dibersihkan
+# setelah TRASH_RETENTION_DAYS (90) di kasirmu-core. Backend yang memiliki
+# jendela waktu itu -- pembacaannya menjalankan penyapuan sebelum menjawab --
+# jadi hitungan hari di bawah hanya petunjuk bagi operator untuk memulihkan
+# baris tepat waktu, bukan yang menentukan baris sudah kedaluwarsa.
+staff-tab-trash = Sampah
+staff-trash-intro = Staf dan peran yang dihapus tetap di sini selama 90 hari sebelum dihapus permanen. Memulihkan anggota staf akan mengembalikannya dalam keadaan nonaktif.
+staff-trash-staff-section = Staf yang dihapus
+staff-trash-roles-section = Peran yang dihapus
+staff-trash-empty = Tidak ada isi sampah
+staff-trash-days-left = { $days } hari lagi
+staff-trash-restore = Pulihkan
+staff-trash-restore-staff-aria =
+    .aria-label = Pulihkan { $name }
+staff-trash-restore-role-aria =
+    .aria-label = Pulihkan peran { $name }
+staff-trash-error = Gagal memuat sampah
+staff-trash-restore-failed = Gagal memulihkan. Coba lagi.
+
+# ── Hapus (staff:delete) ────────────────────────────────────────────
+staff-delete-aria =
+    .aria-label = Hapus { $name }
+staff-delete-confirm-title = Hapus anggota staf?
+staff-delete-confirm-body = { $name } akan dipindahkan ke sampah dan dihapus permanen setelah 90 hari. Pulihkan dari tab Sampah sebelum itu. Lanjutkan?
+staff-delete-confirm-confirm = Hapus
+staff-delete-confirm-cancel = Batal
+staff-toast-deleted = { $name } dipindahkan ke sampah
+staff-delete-failed = Gagal menghapus anggota staf
+role-restored = Peran { $name } dipulihkan.
 
 # ── Impersonation (operator:impersonate) ───────────────────────────
 staff-impersonate-action = Impersonasi

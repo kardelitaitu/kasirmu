@@ -52,6 +52,13 @@ interface StaffRosterProps {
   onEdit: (member: StaffMemberDto) => void;
   /** STAFF-10: deactivate (via confirm) or restore this member. */
   onToggleActive: (member: StaffMemberDto) => void;
+  /**
+   * Move an INACTIVE member to the trash (via confirm in the parent), or
+   * undefined for a caller without `staff:delete`. Absent means the action is
+   * not rendered at all — the backend also refuses an active member, so the
+   * button only ever appears where it can succeed.
+   */
+  onDelete?: ((member: StaffMemberDto) => void) | undefined;
   /** Start an impersonation session for this member. */
   onImpersonate: (member: StaffMemberDto) => void;
 }
@@ -120,6 +127,15 @@ const PowerIcon = () => (
   </svg>
 );
 
+const TrashIcon = () => (
+  <svg {...iconProps}>
+    <path d="M3 6h18" />
+    <path d="M8 6V4h8v2" />
+    <path d="M19 6l-1 14H6L5 6" />
+    <path d="M10 11v6M14 11v6" />
+  </svg>
+);
+
 const ImpersonateIcon = () => (
   <svg {...iconProps}>
     <path d="M16 3h5v5" />
@@ -155,6 +171,7 @@ export function StaffRoster({
   canImpersonate,
   onEdit,
   onToggleActive,
+  onDelete,
   onImpersonate,
 }: StaffRosterProps) {
   const { l10n } = useLocalization();
@@ -360,6 +377,21 @@ export function StaffRoster({
                       <PowerIcon />
                     </Button>
                   </Localized>
+                  {/* Only an inactive member is deletable — the backend
+                      refuses the rest, so the rule is stated by the button's
+                      presence rather than by a dialog that would fail. */}
+                  {onDelete && !member.is_active && (
+                    <Localized id="staff-delete-aria" attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
+                      <Button
+                        unstyled
+                        className="staff-mgmt-icon-btn staff-mgmt-icon-btn--warn"
+                        onClick={() => onDelete(member)}
+                        data-testid={`staff-delete-${member.id}`}
+                      >
+                        <TrashIcon />
+                      </Button>
+                    </Localized>
+                  )}
                   {canImpersonate && (
                     <Localized id="staff-impersonate-aria" attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
                       <Button

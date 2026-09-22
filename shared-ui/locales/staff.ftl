@@ -4,8 +4,8 @@
 # a sidebar; this labels the page-level back button that returns to the
 # workspace picker.
 staff-back-aria = Back to workspaces
-# Names the Staff / Roles tab strip in the page header.
-staff-tabs-aria = Staff and roles
+# Names the Staff / Roles / Trash tab strip in the page header.
+staff-tabs-aria = Staff, roles and trash
 # Status strip (components/StaffManagementFooter.tsx). A fullscreen route
 # renders without AppLayout, so the app's own StatusBar is absent and the page
 # reports its own state. The counts are the loaded snapshot's, never an
@@ -282,9 +282,9 @@ role-perm-sensitive = Sensitive
 role-cancel = Cancel
 role-save = Save role
 role-saved = Saved the { $name } role.
-role-deleted = Deleted the { $name } role.
+role-deleted = Moved the { $name } role to the trash.
 role-delete-confirm-title = Delete this role?
-role-delete-confirm-body = Accounts holding { $name } will lose its permissions. This cannot be undone.
+role-delete-confirm-body = Accounts holding { $name } will lose its permissions. The role goes to the trash, where it can be restored for 90 days.
 
 # Who holds a role, per holder. The collapsed row already states the same
 # total via role-in-use-accounts, and both read holder_count, which core
@@ -322,6 +322,41 @@ role-holders-dims-workspaces = { $count ->
    *[other] { $count } workspaces
   }
 role-holders-dims-both-lists = { $branches } branches, { $workspaces } workspaces
+
+# ── Trash (staff:delete · 90-day retention) ─────────────────────────
+# A staff member or a custom role is soft-deleted into the trash and purged
+# after TRASH_RETENTION_DAYS (90) in kasirmu-core. The backend owns that
+# window -- its reads run the sweep before they answer -- so the day count
+# below is the operator's cue to restore a row in time, never the thing that
+# decides the row has expired.
+staff-tab-trash = Trash
+staff-trash-intro = Deleted staff and roles stay here for 90 days before they are removed for good. Restoring a staff member brings them back inactive.
+staff-trash-staff-section = Deleted staff
+staff-trash-roles-section = Deleted roles
+staff-trash-empty = Nothing in the trash
+staff-trash-days-left =
+    { $days ->
+        [one] { $days } day left
+       *[other] { $days } days left
+    }
+staff-trash-restore = Restore
+staff-trash-restore-staff-aria =
+    .aria-label = Restore { $name }
+staff-trash-restore-role-aria =
+    .aria-label = Restore the { $name } role
+staff-trash-error = Could not load the trash
+staff-trash-restore-failed = Could not restore. Try again.
+
+# ── Delete (staff:delete) ───────────────────────────────────────────
+staff-delete-aria =
+    .aria-label = Delete { $name }
+staff-delete-confirm-title = Delete staff member?
+staff-delete-confirm-body = { $name } will be moved to the trash and removed for good after 90 days. Restore them from the Trash tab before then. Continue?
+staff-delete-confirm-confirm = Delete
+staff-delete-confirm-cancel = Cancel
+staff-toast-deleted = { $name } moved to the trash
+staff-delete-failed = Could not delete staff member
+role-restored = Restored the { $name } role.
 
 # ── Impersonation (operator:impersonate) ───────────────────────────
 staff-impersonate-action = Impersonate

@@ -43,6 +43,19 @@ const SAMPLE_STAFF = [
   { id: 'staff-2', username: 'john', display_name: 'John Doe', role_id: 'role-staff', role_name: 'staff', is_active: false, national_id_masked: '****', is_profile_complete: false, assignment: { scope_mode: 'scoped', branches_all: true, branch_ids: [], workspaces_all: false, workspace_keys: ['restaurant'], scope_type: 'organization', scope_id: null } },
 ];
 
+/**
+ * Trash fixtures. `deleted_at` is exactly 40 days old, so the window's own
+ * arithmetic (90 - 40) is what the row must print — a hardcoded "50 days left"
+ * in the component would pass this too, which is why the assertion reads the
+ * rendered day count rather than a fixed string in the source.
+ */
+const TRASHED_STAFF = [
+  { ...SAMPLE_STAFF[1], deleted_at: new Date(Date.now() - 40 * 86_400_000).toISOString() },
+];
+const TRASHED_ROLES = [
+  { id: 'role-night-manager', name: 'Night Manager', description: 'Overnight shift lead', permissions: [], is_builtin: false, reference_count: 0, holder_count: 0, grant_count: 0, deleted_at: new Date(Date.now() - 40 * 86_400_000).toISOString() },
+];
+
 /** Store profiles = the branch ids the assignment scopes on. */
 const SAMPLE_BRANCHES = [
   { id: 'store-a', name: 'Jakarta HQ', address: '', tax_id: '', currency: 'IDR', timezone: 'Asia/Jakarta', is_primary: true, created_at: '', updated_at: '' },
@@ -68,11 +81,18 @@ const SAMPLE_PROFILE = {
   is_complete: true,
 };
 
-const { invokeMock, setActiveWorkspaceMock } = vi.hoisted(() => ({
+const { invokeMock, setActiveWorkspaceMock, sessionPermissions } = vi.hoisted(() => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   invokeMock: vi.fn() as any,
   /** The back control's destination setter, from the mocked WorkspaceContext. */
   setActiveWorkspaceMock: vi.fn(),
+  /**
+   * The granted keys the mocked session carries. Mutable because the screen has
+   * three separately-gated surfaces and a suite has to be able to hold ONE of
+   * them back: the Trash tab and the card's Delete action both hang off
+   * `staff:delete`, which the base session below deliberately does not carry.
+   */
+  sessionPermissions: ['operator:impersonate', 'staff:manage_roles'] as string[],
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -92,7 +112,7 @@ vi.mock('@/contexts/AuthContext', () => ({
       display_name: 'Test',
       role_name: 'owner',
       role_id: 'role-1',
-      permissions: ['operator:impersonate', 'staff:manage_roles'],
+      permissions: [...sessionPermissions],
     },
     loading: false,
     error: null,
@@ -115,6 +135,8 @@ beforeEach(() => {
   invokeMock.mockClear();
   setActiveWorkspaceMock.mockClear();
   resetUnmatchedInvokes();
+  sessionPermissions.length = 0;
+  sessionPermissions.push('operator:impersonate', 'staff:manage_roles');
   // The tab is reflected in the route hash, so a case that switched tabs
   // would otherwise leave the next render mounting on the Roles tab.
   window.location.hash = '';
@@ -133,6 +155,11 @@ beforeEach(() => {
       { key: 'store', name: 'Retail Store', description: 'Retail counter', icon: 'store' },
     ]);
     if (cmd === 'list_locations_scoped') return Promise.resolve(SAMPLE_BRANCHES);
+    if (cmd === 'list_staff_trash_scoped') return Promise.resolve(TRASHED_STAFF);
+    if (cmd === 'list_role_trash_scoped') return Promise.resolve(TRASHED_ROLES);
+    if (cmd === 'restore_staff_scoped') return Promise.resolve({ ...SAMPLE_STAFF[1] });
+    if (cmd === 'restore_role_scoped') return Promise.resolve({ ...TRASHED_ROLES[0] });
+    if (cmd === 'delete_staff_scoped') return Promise.resolve(null);
     if (cmd === 'list_legal_entities_scoped') {
       return Promise.resolve([
         {
@@ -1132,6 +1159,118 @@ describe('StaffManagementScreen', () => {
 
     fireEvent.change(screen.getByTestId('staff-sort'), { target: { value: 'name' } });
     expect(order()).toEqual(['staff-card-anna', 'staff-card-zoe']);
+  });
+});
+
+// ── Trash (staff:delete · 90-day retention) ──────────────────────────
+//
+// The tab, the card's Delete action and both Restore actions hang off ONE
+// grant, so this suite runs with it added and the suite above runs without it:
+// the pair is what proves the gate, not just the surface.
+describe('StaffManagementScreen trash', () => {
+  const openTrash = async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+    fireEvent.click(screen.getByRole('tab', { name: 'Trash' }));
+    return screen.findByTestId('staff-trash-staff-list', undefined, FAST_WAIT);
+  };
+
+  it('hides the Trash tab, and the card Delete action, without staff:delete', async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    expect(screen.queryByRole('tab', { name: 'Trash' })).not.toBeInTheDocument();
+    // staff-2 is inactive, so the only reason its Delete action is absent is
+    // the missing grant -- a filter that hid it for everyone would pass this
+    // test and fail the one below.
+    expect(screen.queryByTestId('staff-delete-staff-2')).not.toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith('list_staff_trash_scoped', expect.anything());
+  });
+
+  it('lists deleted staff and roles with the days left, and runs the sweep on open', async () => {
+    sessionPermissions.push('staff:delete');
+    await openTrash();
+
+    // Opening the tab is what runs the retention sweep, so both reads happen.
+    expect(invokeMock).toHaveBeenCalledWith('list_staff_trash_scoped', { sessionToken: 'session-1' });
+    expect(invokeMock).toHaveBeenCalledWith('list_role_trash_scoped', { sessionToken: 'session-1' });
+
+    const row = screen.getByTestId('staff-trash-staff-2');
+    expect(within(row).getByText('John Doe')).toBeInTheDocument();
+    // 90-day window minus the 40 days the fixture is old.
+    expect(within(row).getByText('50 days left')).toBeInTheDocument();
+    expect(screen.getByTestId('staff-trash-role-night-manager')).toHaveTextContent('Night Manager');
+  });
+
+  it('says the trash is empty rather than rendering an empty list', async () => {
+    sessionPermissions.push('staff:delete');
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_staff_scoped') return Promise.resolve(SAMPLE_STAFF);
+      if (cmd === 'list_roles_scoped') return Promise.resolve(SAMPLE_ROLES);
+      if (cmd === 'list_staff_trash_scoped') return Promise.resolve([]);
+      if (cmd === 'list_role_trash_scoped') return Promise.resolve([]);
+      if (cmd === 'list_all_workspaces_scoped') return Promise.resolve([]);
+      if (cmd === 'list_locations_scoped') return Promise.resolve(SAMPLE_BRANCHES);
+      if (cmd === 'get_brand_settings' || cmd === 'get_brand_settings_scoped') {
+        return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
+      }
+      recordUnmatchedInvoke(cmd);
+      return Promise.reject(new Error(`Unknown command: ${cmd}`));
+    });
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+    fireEvent.click(screen.getByRole('tab', { name: 'Trash' }));
+
+    expect(await screen.findByTestId('staff-trash-empty', undefined, FAST_WAIT)).toHaveTextContent('Nothing in the trash');
+  });
+
+  it('restores a trashed member, who returns to the roster inactive', async () => {
+    sessionPermissions.push('staff:delete');
+    await openTrash();
+
+    fireEvent.click(screen.getByTestId('staff-trash-restore-staff-2'));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('restore_staff_scoped', { sessionToken: 'session-1', id: 'staff-2' });
+    }, FAST_WAIT);
+    // The live lists are reloaded, so the roster cannot keep showing a member
+    // the backend has moved.
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('list_staff_scoped', { sessionToken: 'session-1' }), FAST_WAIT);
+  });
+
+  it('restores a trashed role', async () => {
+    sessionPermissions.push('staff:delete');
+    await openTrash();
+
+    fireEvent.click(screen.getByTestId('staff-trash-restore-role-night-manager'));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('restore_role_scoped', { sessionToken: 'session-1', id: 'role-night-manager' });
+    }, FAST_WAIT);
+  });
+
+  it('moves an INACTIVE member to the trash only after confirmation', async () => {
+    sessionPermissions.push('staff:delete');
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    // An active member carries no Delete action at all: the backend refuses
+    // one, so the button states the rule instead of the dialog failing.
+    expect(screen.queryByTestId('staff-delete-staff-1')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('staff-delete-staff-2'));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Delete staff member?');
+    expect(dialog).toHaveTextContent('John Doe');
+
+    // Cancelling writes nothing.
+    fireEvent.click(within(dialog).getByTestId('confirm-dialog-cancel'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), FAST_WAIT);
+    expect(invokeMock).not.toHaveBeenCalledWith('delete_staff_scoped', expect.anything());
+
+    fireEvent.click(screen.getByTestId('staff-delete-staff-2'));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByTestId('confirm-dialog-confirm'));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('delete_staff_scoped', { sessionToken: 'session-1', id: 'staff-2' });
+    }, FAST_WAIT);
   });
 });
 
