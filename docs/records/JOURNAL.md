@@ -11888,5 +11888,39 @@ bridge share one `Arc` session map); it becomes real only if a second host ever 
 what a reviewer must read against the trash feature and the second is prose. Never push without a direct user
 order.
 
+## 2026-09-22 — Repair: the dev-mock answers get_preset_features, and the parity gate is green again (ui/records)
+
+**Context:**
+`scripts/verify-ipc-parity.py` failed the WHOLE gate on one command: the UI invokes `get_preset_features`
+(`ui/src/api/settings.ts:266`, from `ProvisioningFlow`'s submit path) and nothing under `ui/src/dev-mock/`
+registered a handler, so the browser preview returned null and the first-run flow rendered its failure path —
+while every test that mocked the wrapper stayed green. The command itself is sound: both shells register it and
+it reads the preset→features fact from its one owner (`crates/kasirmu-core/src/features.rs`). Repaired in the
+same pass: `crates/kasirmu-core/src/features_tests.rs:532` had been committed unformatted, so
+`cargo fmt --all -- --check` was red.
+
+**Fixes:**
+- `ui/src/dev-mock/handlers/system.ts`: a `get_preset_features` handler beside `get_enabled_features`, with
+  `MOCK_PRESET_FEATURE_KEYS` — the six slugs and their sorted kebab-case keys, extracted MECHANICALLY from
+  `FeatureRegistry::{simple_retail,restaurant,full_store,cafe,franchise,custom}` rather than retyped. An unknown
+  slug REJECTS (`unknown store preset: ...`), mirroring `kasirmu-bridge/src/setup.rs:231`; the flow catches
+  that and degrades to `[]` (`ProvisioningFlow.tsx:282-284`), so a mock that answered `[]` would erase the
+  difference between the degradation and a lost preset.
+- `ui/src/__tests__/dev-mock-preset-features.test.ts` (6 tests): payload shape; each slug's list; the sorted
+  order the payload promises; `custom` as an honest empty list rather than a missing table entry; the refusal;
+  and that every key is a real feature key. That last leg is load-bearing: the `get_enabled_features` handler
+  beside it answers `['sales','inventory',...]`, which are NOT feature keys, and this flow sends its answer to
+  `provision_device`.
+- `crates/kasirmu-core/src/features_tests.rs`: rustfmt only — one `assert!` wrapped, 4 lines of whitespace.
+
+**Verification:**
+- `python scripts/verify-ipc-parity.py` -> **IPC parity: OK**, exit 0.
+- `npm run test` (full UI suite) -> **604 files, 10301 passed**, exit 0.
+- `cargo test -p kasirmu-core --lib features` -> **83 passed; 0 failed**; `cargo fmt --all -- --check` -> clean;
+  `cargo clippy --all-targets --all-features -- -D warnings` -> exit 0.
+
+**Commit:** two pathspec commits — the mock with its test, and the format alone — so the second reads as
+whitespace in another lane's file. Never push without a direct user order.
+
 
 
