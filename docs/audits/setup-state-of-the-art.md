@@ -335,6 +335,35 @@ flow's browser coverage stays at: **unit level (15 tests), the CSS walkers, the 
 the round-9 measured inset verification** — no E2E, and now for a recorded reason rather than an
 unexplained gap.
 
+### Round 12 — three defects in the setup flow, found by delegating
+
+**On subagents.** Three audits were fanned out in round 11. All three were slow enough that I
+interrupted them; one nonetheless delivered a report, and it found things I had walked past.
+
+**Every finding was reproduced before being fixed.** The audit's own numbers were checked against
+the source rather than relayed.
+
+| # | Defect | Verification |
+|---|---|---|
+| 1 | **The store-type labels could never translate.** `label: 'Shop'` / `blurb: 'Barcode, cash…'` were TSX literals rendered raw at `:593-594`, while every sibling string on the same screen used `<Localized>`. An Indonesian merchant read English on the first screen of setup. | Read the literals and the render site. Fixed with keys in both bundles + a fallback map. |
+| 2 | **A failed pairing dead-ended the tablet's default tab.** `pairingError` renders the message with no retry, and the auto-start effect is gated on `!pairingError` (`:139`) so it never retries. The only way back was re-clicking the QR Pairing tab that already looked selected. | Reproduced, then **proved the new test fails with the button removed** and passes with it. |
+| 3 | **The "hard block if offline" contract was stale, not the code.** The doc claimed a hard block; `canSubmit` has no `isOffline` term. | Traced `provision_device`: it takes a DB lock and writes local SQLite, **with zero network calls in its body**. So the guard would refuse a provision that would have succeeded. **Corrected the doc**, not the code — and the audit had flagged exactly this caveat. |
+
+Finding 1 is the one I should have caught myself: it sat 13 lines from code I had edited in a
+previous round, and the audit found it because I never framed "is this string translatable?" as a
+question. Fixing my own blind spot, not just the file.
+
+**Commit:** `ffbb9a24a`. **Verification:** `tsc` clean · `lint:i18n` no issues · **380 tests pass
+across 15 suites**.
+
+**Recorded for next round, unfixed:** `LiveSetupPreview`'s `KNOWN_NAV_ITEMS` is a hand-maintained
+copy of the app's nav registry, and it has drifted — **9 registered routes are missing**
+(`analytics`, `menu-engineering`, `kds-expo`, `sales`, `dashboard`, `custom-report`,
+`security-trail`, `design`, `tooltips`). The screen renders "X / 34 items unlocked" on the live
+features page, so the denominator under-reports. Two of the nine are dev/tool pages
+(`design`, `tooltips`) that legitimately should not appear, so a blanket "add all nine" would be
+wrong — this needs a decision about which routes the preview is meant to describe.
+
 ### Remaining, and honestly not mine to claim
 
 - **The website auth islands are unaudited by me.** Another agent owns that surface and has
