@@ -40,14 +40,6 @@ const searchDocs = isDocs
         description: doc.data.description ?? '',
       }))
   : [];
-const nav = [
-  { href: getRelativeLocaleUrl(locale, '/'), label: t(locale, 'nav.home') },
-  { href: getRelativeLocaleUrl(locale, 'features'), label: t(locale, 'nav.features') },
-  { href: getRelativeLocaleUrl(locale, 'pricing'), label: t(locale, 'nav.pricing') },
-  { href: getRelativeLocaleUrl(locale, 'download'), label: t(locale, 'nav.download') },
-  { href: getRelativeLocaleUrl(locale, 'support'), label: t(locale, 'nav.support') },
-  { href: getRelativeLocaleUrl(locale, 'docs'), label: t(locale, 'nav.docs') },
-];
 const home = getRelativeLocaleUrl(locale, '/');
 const login = getRelativeLocaleUrl(locale, 'login');
 ---
@@ -68,12 +60,17 @@ const login = getRelativeLocaleUrl(locale, 'login');
         <span class="nav-underline absolute -bottom-1 left-0 h-0.5 w-0 bg-primary rounded-full transition-all duration-200 ease-[cubic-bezier(0.2,0,0,1)]"></span>
       </a>
 
-      {/* Solutions dropdown */}
-      <div class="group relative">
+      {/* Solutions disclosure. Hover opens it for pointers; Enter, Space and
+           click open it for everyone — see initSolutionsDisclosure() in
+           src/lib/header-nav.ts. It used to open on `group-hover:` alone, which
+           left its eight destinations unreachable without a mouse. */}
+      <div class="group relative" data-solutions>
         <button
           type="button"
+          data-solutions-trigger
           class="nav-link flex items-center gap-1 text-sm text-muted transition-colors duration-200 group-hover:text-ink"
           aria-expanded="false"
+          aria-controls="solutions-panel"
           aria-haspopup="true"
         >
           <span>{t(locale, 'nav.solutions')}</span>
@@ -91,8 +88,15 @@ const login = getRelativeLocaleUrl(locale, 'login');
           </svg>
         </button>
 
-        {/* Dropdown panel */}
-        <div class="invisible absolute left-1/2 top-full z-50 mt-2 w-[560px] -translate-x-1/2 opacity-0 transition-all duration-200 ease-out group-hover:visible group-hover:opacity-100">
+        {/* Dropdown panel. Its visibility is owned by the disclosure script
+             (which swaps `invisible`/`visible` and the opacity pair), NOT by
+             `group-hover:` — with a single owner `aria-expanded` can never
+             disagree with what is on screen. */}
+        <div
+          id="solutions-panel"
+          data-solutions-panel
+          class="invisible absolute left-1/2 top-full z-50 mt-2 w-[560px] -translate-x-1/2 opacity-0 transition-all duration-200 ease-out"
+        >
           <div class="rounded-2xl border border-ink/10 bg-surface p-5 shadow-2xl backdrop-blur-lg">
             <div class="grid grid-cols-2 gap-6">
               {/* Column 1: By Industry */}
