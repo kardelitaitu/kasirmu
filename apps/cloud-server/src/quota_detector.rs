@@ -32,6 +32,8 @@ use crate::email::send_email;
 pub const CONDITION_PRODUCTS_OVER_QUOTA: &str = "products_over_quota";
 /// Condition identifier for staff quota alert state.
 pub const CONDITION_STAFF_OVER_QUOTA: &str = "staff_over_quota";
+/// Condition identifier for locations quota alert state.
+pub const CONDITION_LOCATIONS_OVER_QUOTA: &str = "locations_over_quota";
 
 /// Default alert cooldown period: 7 days, matching the license-server integrity alert window.
 pub const ALERT_COOLDOWN: Duration = Duration::from_secs(7 * 24 * 3600);
@@ -43,6 +45,8 @@ pub enum QuotaDimensionKind {
     Products,
     /// Active staff user accounts (excluding owner).
     Staff,
+    /// Physical store locations.
+    Locations,
 }
 
 impl QuotaDimensionKind {
@@ -51,6 +55,7 @@ impl QuotaDimensionKind {
         match self {
             Self::Products => CONDITION_PRODUCTS_OVER_QUOTA,
             Self::Staff => CONDITION_STAFF_OVER_QUOTA,
+            Self::Locations => CONDITION_LOCATIONS_OVER_QUOTA,
         }
     }
 
@@ -59,6 +64,7 @@ impl QuotaDimensionKind {
         match self {
             Self::Products => "products",
             Self::Staff => "staff members",
+            Self::Locations => "locations",
         }
     }
 }
@@ -161,6 +167,16 @@ pub fn count_tenant_staff_sqlite(conn: &rusqlite::Connection, tenant_id: &str) -
     .unwrap_or(0)
 }
 
+/// Count locations for a tenant on SQLite.
+pub fn count_tenant_locations_sqlite(conn: &rusqlite::Connection, tenant_id: &str) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM locations WHERE tenant_id = ?1",
+        params![tenant_id],
+        |row| row.get::<_, i64>(0),
+    )
+    .unwrap_or(0)
+}
+
 /// Check quota violations for a single tenant on SQLite.
 pub fn check_tenant_quota_sqlite(
     conn: &rusqlite::Connection,
@@ -197,6 +213,20 @@ pub fn check_tenant_quota_sqlite(
         }
     }
 
+    // Check locations axis
+    if let Some(cap) = tier.max_locations() {
+        let count = count_tenant_locations_sqlite(conn, tenant_id);
+        if count > cap {
+            violations.push(TenantQuotaViolation {
+                tenant_id: tenant_id.to_string(),
+                tier: tier.clone(),
+                dimension: QuotaDimensionKind::Locations,
+                observed_count: count,
+                allowed_cap: cap,
+            });
+        }
+    }
+
     violations
 }
 
@@ -205,7 +235,8 @@ pub fn enumerate_active_tenants_sqlite(conn: &rusqlite::Connection) -> Vec<Strin
     let mut tenants = Vec::new();
     let query = "SELECT DISTINCT tenant_id FROM tenant_plans \
                  UNION SELECT DISTINCT tenant_id FROM products \
-                 UNION SELECT DISTINCT tenant_id FROM users";
+                 UNION SELECT DISTINCT tenant_id FROM users \
+                 UNION SELECT DISTINCT tenant_id FROM locations";
     if let Ok(mut stmt) = conn.prepare(query) {
         if let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0)) {
             for row in rows.flatten() {
@@ -295,6 +326,21 @@ pub async fn count_tenant_staff_pg(
     Ok(row.get::<_, i64>(0))
 }
 
+/// Count locations for a tenant on PostgreSQL.
+pub async fn count_tenant_locations_pg(
+    client: &deadpool_postgres::Client,
+    tenant_id: &str,
+) -> Result<i64, String> {
+    let row = client
+        .query_one(
+            "SELECT COUNT(*) FROM locations WHERE tenant_id = $1",
+            &[&tenant_id],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(row.get::<_, i64>(0))
+}
+
 /// Check quota violations for a single tenant on PostgreSQL.
 pub async fn check_tenant_quota_pg(
     client: &deadpool_postgres::Client,
@@ -325,6 +371,20 @@ pub async fn check_tenant_quota_pg(
                 tenant_id: tenant_id.to_string(),
                 tier: tier.clone(),
                 dimension: QuotaDimensionKind::Staff,
+                observed_count: count,
+                allowed_cap: cap,
+            });
+        }
+    }
+
+    // Check locations axis
+    if let Some(cap) = tier.max_locations() {
+        let count = count_tenant_locations_pg(client, tenant_id).await?;
+        if count > cap {
+            violations.push(TenantQuotaViolation {
+                tenant_id: tenant_id.to_string(),
+                tier: tier.clone(),
+                dimension: QuotaDimensionKind::Locations,
                 observed_count: count,
                 allowed_cap: cap,
             });

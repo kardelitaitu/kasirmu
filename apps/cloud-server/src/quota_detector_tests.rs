@@ -31,6 +31,15 @@ fn seed_user(conn: &Connection, tenant_id: &str, id: &str, role_id: &str, is_act
     .unwrap();
 }
 
+fn seed_location(conn: &Connection, tenant_id: &str, id: &str) {
+    conn.execute(
+        "INSERT INTO locations (id, tenant_id, name, created_at, updated_at)
+         VALUES (?1, ?2, 'Test Location', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+        params![id, tenant_id],
+    )
+    .unwrap();
+}
+
 #[test]
 fn test_resolve_tenant_tier_priority() {
     let conn = setup_test_db();
@@ -243,4 +252,72 @@ fn test_scan_all_tenants_sqlite() {
     assert_eq!(violations.len(), 1);
     assert_eq!(violations[0].tenant_id, tenant_bad);
     assert_eq!(violations[0].dimension, QuotaDimensionKind::Products);
+}
+
+#[test]
+fn test_location_quota_under_and_at_limit() {
+    let conn = setup_test_db();
+    let tenant = "tenant-loc-ok";
+
+    // Free tier max_locations is 1
+    seed_location(&conn, tenant, "loc-1");
+    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    assert!(violations.is_empty(), "1 location on Free tier should have no violations");
+}
+
+#[test]
+fn test_location_quota_exceeded_violation() {
+    let conn = setup_test_db();
+    let tenant = "tenant-loc-over";
+
+    // Free tier max_locations is 1. Seed 2 locations.
+    seed_location(&conn, tenant, "loc-1");
+    seed_location(&conn, tenant, "loc-2");
+
+    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    assert_eq!(violations.len(), 1);
+    assert_eq!(violations[0].tenant_id, tenant);
+    assert_eq!(violations[0].dimension, QuotaDimensionKind::Locations);
+    assert_eq!(violations[0].observed_count, 2);
+    assert_eq!(violations[0].allowed_cap, 1);
+}
+
+#[test]
+fn test_location_quota_unlimited_enterprise() {
+    let conn = setup_test_db();
+    let tenant = "tenant-enterprise";
+
+    conn.execute(
+        "INSERT INTO tenant_subscription (tenant_id, tier_key, status, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key, updated_at)
+         VALUES (?1, 'enterprise', 'active', 0, 0, '[]', 'sig', 'payload', 'key', '2026-01-01T00:00:00Z')",
+        params![tenant],
+    )
+    .unwrap();
+
+    // Seed 10 locations; Enterprise cap is None (unlimited)
+    for i in 1..=10 {
+        seed_location(&conn, tenant, &format!("loc-{i}"));
+    }
+
+    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    assert!(violations.is_empty(), "Enterprise tier allows unlimited locations");
+}
+
+#[tokio::test]
+async fn test_location_quota_alert_cooldown() {
+    let state = QuotaAlertState::new();
+    let t0 = Instant::now();
+
+    assert!(!state.is_suppressed("tenant-1", CONDITION_LOCATIONS_OVER_QUOTA, t0).await);
+
+    state.record_alert("tenant-1", CONDITION_LOCATIONS_OVER_QUOTA, t0).await;
+    assert!(state.is_suppressed("tenant-1", CONDITION_LOCATIONS_OVER_QUOTA, t0).await);
+
+    // Still suppressed at 6 days
+    let t_6days = t0 + Duration::from_secs(6 * 86400);
+    assert!(state.is_suppressed("tenant-1", CONDITION_LOCATIONS_OVER_QUOTA, t_6days).await);
+
+    // After 7 days, cooldown expires
+    let t_8days = t0 + Duration::from_secs(8 * 86400);
+    assert!(!state.is_suppressed("tenant-1", CONDITION_LOCATIONS_OVER_QUOTA, t_8days).await);
 }
