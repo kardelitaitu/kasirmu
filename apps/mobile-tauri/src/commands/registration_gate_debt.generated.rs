@@ -78,9 +78,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("history::export_daily_summary", "no_session_resolution"),
     ("history::export_sales_by_hour", "no_session_resolution"),
     ("history::export_eod_report", "no_session_resolution"),
-    ("settings::get_receipt_settings", "no_session_resolution"),
-    ("settings::get_store_settings", "no_session_resolution"),
-    ("settings::get_credit_settings", "no_session_resolution"),
     ("settings::get_hardware_settings", "no_session_resolution"),
     (
         "settings::get_user_preferences_scoped",
@@ -262,7 +259,12 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// trash's five gated commands — 94 debt rows before and after.)
 /// Re-read 22-09-26 (C17): 342, with the floor lowered to it in the same pass that retired
 /// the three unscoped branding setters — 92 debt rows, down from 95.)
-pub const REGISTERED_TOTAL: usize = 342;
+/// Re-read 23-09-26 (C17 slice 2): 339, floor lowered to it in the pass that retired the
+/// three unscoped settings READS (`settings::get_receipt_settings`, `get_store_settings`,
+/// `get_credit_settings`) — 89 debt rows, down from 92. The fourth name of that inventory
+/// slice, `settings::get_hardware_settings`, is NOT retired: a live renderer arm still
+/// calls it (see `registration_gate_tests.rs`'s floor comment and C17b).
+pub const REGISTERED_TOTAL: usize = 339;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///
@@ -328,7 +330,14 @@ pub const REGISTERED_TOTAL: usize = 342;
 /// (`ui/src/api/branding.ts:32,39,46`), so all three were class-1 rows whose only effect
 /// was to hold this ceiling up. The floor moves with them (three registrations fewer); the
 /// class-2 count does not.
-pub const DEBT_CEILING: usize = 92;
+/// 92 -> 89 with C17 slice 2 (2026-09-23): the three unscoped settings READS shed their rows
+/// the same way — by DELETION. `settings::get_receipt_settings`, `get_store_settings` and
+/// `get_credit_settings` had no shipped-UI caller (the IPC parity gate listed all three under
+/// `tablet-unrequested` as named by neither side; `ui/src/api/settings.ts` calls only the
+/// `_scoped` twins), so each was a class-1 row whose only effect was to hold this ceiling up.
+/// The floor moves with them (three registrations fewer); class 2 does not.
+/// `settings::get_hardware_settings` stays: it is class-1 debt with a live caller.
+pub const DEBT_CEILING: usize = 89;
 
 /// Lowered from 89 by T11: `settings::set_hardware_settings` shed its row by deletion,
 /// not by gating. Its only argument beyond the DTO was a renderer-supplied `user_id` --
@@ -361,7 +370,9 @@ pub const DEBT_CEILING: usize = 92;
 /// recompute, so it moves by hand in the same pass that raised the ceiling: `51 + 44 = 95`.
 /// 51 -> 48 with C17 (2026-09-22): the three retired unscoped branding setters were all in
 /// this class, so it falls by the same three and the sum keeps holding: `48 + 44 = 92`.
-pub const NO_SESSION_RESOLUTION: usize = 48;
+/// 48 -> 45 with C17 slice 2 (2026-09-23): the three retired unscoped settings reads were all
+/// in this class, so it falls by the same three and the sum keeps holding: `45 + 44 = 89`.
+pub const NO_SESSION_RESOLUTION: usize = 45;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
 /// 45 + 44 = 89 = `DEBT_CEILING`, as the class counts must sum to the ledger.
@@ -370,6 +381,7 @@ pub const NO_SESSION_RESOLUTION: usize = 48;
 /// 50 + 44 = 94 after adding pairing commands (ADR #56 §2.5).
 /// 51 + 44 = 95 after `setup::get_preset_features` joined class 1.
 /// 48 + 44 = 92 after C17 retired the three unscoped branding setters (class 1 only).
+/// 45 + 44 = 89 after C17 slice 2 retired the three unscoped settings reads (class 1 only).
 pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 44;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).

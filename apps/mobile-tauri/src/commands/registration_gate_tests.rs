@@ -158,7 +158,23 @@ mod debt;
 /// the shell kept the doors that derive identity from the session and dropped the ones that
 /// took it on faith — the same move T11 made for `settings::set_hardware_settings`. Their
 /// three ledger rows left with them and the ceiling and class-1 count fell by three.
-const REGISTERED_FLOOR: usize = 342;
+///
+/// The 342 -> 339 step is C17 slice 2 (2026-09-23), the same move one slice later: the
+/// tablet's three ungated settings READS — `settings::get_receipt_settings`,
+/// `get_store_settings` and `get_credit_settings` — left `lib.rs` because no shipped
+/// UI file named them (`ui/src/api/settings.ts` calls only the `_scoped` twins, and
+/// the IPC parity gate printed all three under `tablet-unrequested` as "named by
+/// neither side"). Their three ledger rows left with them, so the floor, `DEBT_CEILING`
+/// and the class-1 count all fell by three.
+///
+/// `settings::get_hardware_settings` was the FOURTH name in the inventory's slice and
+/// is deliberately NOT retired here. `ui/src/hooks/useTerminalHardware.ts:240` still
+/// calls it on the no-session branch (`sessionToken ? … : await getHardwareSettings()`),
+/// and the hook coerces a null token to `''` at `:221`, so the arm is reachable and
+/// deleting the door would break a live renderer path. It is carried as its own item
+/// (C17b): retire that fallback arm first, then delete the command and its row in a
+/// slice whose acceptance proves hardware settings still resolve WITH a session.
+const REGISTERED_FLOOR: usize = 339;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.
