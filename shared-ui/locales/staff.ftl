@@ -330,14 +330,14 @@ role-holders-dims-both-lists = { $branches } branches, { $workspaces } workspace
 # below is the operator's cue to restore a row in time, never the thing that
 # decides the row has expired.
 staff-tab-trash = Trash
-staff-trash-intro = Deleted staff and roles stay here for 90 days before they are removed for good. Restoring a staff member brings them back inactive.
+staff-trash-intro = Deleted staff and roles stay here for 90 days before permanent deletion. Restoring a staff member brings them back inactive.
 staff-trash-staff-section = Deleted staff
 staff-trash-roles-section = Deleted roles
 staff-trash-empty = Nothing in the trash
 staff-trash-days-left =
     { $days ->
-        [one] { $days } day left
-       *[other] { $days } days left
+        [one] { $days } day before permanent deletion
+       *[other] { $days } days before permanent deletion
     }
 staff-trash-restore = Restore
 staff-trash-restore-staff-aria =

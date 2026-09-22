@@ -136,7 +136,7 @@ export function StaffTrashPanel({ canManageRoles, onRestored }: StaffTrashPanelP
     <div className="staff-mgmt-trash">
       <p className="staff-mgmt-trash-intro">
         <Localized id="staff-trash-intro">
-          <span>Deleted staff and roles stay here for 90 days before they are removed for good.</span>
+          <span>Deleted staff and roles stay here for 90 days before permanent deletion.</span>
         </Localized>
       </p>
 
@@ -177,9 +177,9 @@ export function StaffTrashPanel({ canManageRoles, onRestored }: StaffTrashPanelP
                       <span className="staff-mgmt-trash-name">{member.display_name}</span>
                       <span className="staff-mgmt-trash-sub">{member.username}</span>
                     </div>
-                    <Badge variant="info">
+                    <Badge variant="info" className="staff-mgmt-trash-days">
                       <Localized id="staff-trash-days-left" vars={{ days: daysLeft(member.deleted_at, now) }}>
-                        <span>{daysLeft(member.deleted_at, now)} days left</span>
+                        <span>{daysLeft(member.deleted_at, now)} days before permanent deletion</span>
                       </Localized>
                     </Badge>
                     <Localized id="staff-trash-restore-staff-aria" attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
@@ -211,9 +211,9 @@ export function StaffTrashPanel({ canManageRoles, onRestored }: StaffTrashPanelP
                       <span className="staff-mgmt-trash-name">{role.name}</span>
                       <span className="staff-mgmt-trash-sub">{role.description}</span>
                     </div>
-                    <Badge variant="info">
+                    <Badge variant="info" className="staff-mgmt-trash-days">
                       <Localized id="staff-trash-days-left" vars={{ days: daysLeft(role.deleted_at, now) }}>
-                        <span>{daysLeft(role.deleted_at, now)} days left</span>
+                        <span>{daysLeft(role.deleted_at, now)} days before permanent deletion</span>
                       </Localized>
                     </Badge>
                     <Localized id="staff-trash-restore-role-aria" attrs={{ 'aria-label': true }} vars={{ name: role.name }}>

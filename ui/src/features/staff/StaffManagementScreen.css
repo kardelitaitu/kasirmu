@@ -680,6 +680,18 @@
   background: var(--color-bg-elevated);
 }
 
+/* The day count is a SENTENCE, not a number, so it is the one child that cannot
+   simply shrink: at a phone width it is wider than the space left beside the
+   Restore button. Letting its text wrap (the row grows a line) is what keeps the
+   button inside the row — measured at 390px with the real sheet, the row
+   otherwise overflows 4px and the button lands 18px past its content box. The
+   name block absorbs the slack in every other case. */
+.staff-mgmt-trash-days {
+  min-width: 0;
+  white-space: normal;
+  text-align: center;
+}
+
 .staff-mgmt-trash-who {
   display: flex;
   flex: 1;

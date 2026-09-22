@@ -45,7 +45,7 @@ const SAMPLE_STAFF = [
 
 /**
  * Trash fixtures. `deleted_at` is exactly 40 days old, so the window's own
- * arithmetic (90 - 40) is what the row must print — a hardcoded "50 days left"
+ * arithmetic (90 - 40) is what the row must print — a hardcoded "50 days"
  * in the component would pass this too, which is why the assertion reads the
  * rendered day count rather than a fixed string in the source.
  */
@@ -1198,7 +1198,7 @@ describe('StaffManagementScreen trash', () => {
     const row = screen.getByTestId('staff-trash-staff-2');
     expect(within(row).getByText('John Doe')).toBeInTheDocument();
     // 90-day window minus the 40 days the fixture is old.
-    expect(within(row).getByText('50 days left')).toBeInTheDocument();
+    expect(within(row).getByText('50 days before permanent deletion')).toBeInTheDocument();
     expect(screen.getByTestId('staff-trash-role-night-manager')).toHaveTextContent('Night Manager');
   });
 
