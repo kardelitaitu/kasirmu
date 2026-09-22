@@ -405,10 +405,20 @@ pub mod permissions {
     pub const STAFF_READ: &str = "staff:read";
     /// Update an existing staff member.
     pub const STAFF_UPDATE: &str = "staff:update";
-    /// Delete / deactivate a staff member. RESERVED (G-3): registered and
-    /// sensitive, but no enforcement consumer yet across desktop, tablet,
-    /// cloud, and CLI — deactivation rides [`Self::STAFF_UPDATE`]; any
-    /// future hard-delete surface must gate on this key.
+    /// Move a staff member to the trash, read that trash, and restore from it.
+    ///
+    /// Enforcement consumers since 2026-09-21 (G-3 discharged for the shells):
+    /// `delete_staff_scoped`, `list_staff_trash_scoped` and
+    /// `restore_staff_scoped` in `kasirmu-bridge`, registered in BOTH Tauri
+    /// shells and reached from the staff screen's Trash tab. It stays owner-only
+    /// by preset — Admin and Manager do not carry it — because a deleted
+    /// identity is still an identity, so reading the trash is a read of people
+    /// who were removed.
+    ///
+    /// NOT what deactivation rides: deactivating or reactivating an account is
+    /// [`Self::STAFF_UPDATE`], and the backend refuses to trash an account that
+    /// is still active. A future hard delete (purging rather than anonymising a
+    /// tombstone) must gate on this key too.
     pub const STAFF_DELETE: &str = "staff:delete";
     /// Create, edit, or delete roles and their permission sets.
     pub const STAFF_MANAGE_ROLES: &str = "staff:manage_roles";

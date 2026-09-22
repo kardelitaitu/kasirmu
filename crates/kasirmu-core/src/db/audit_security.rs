@@ -110,6 +110,16 @@ pub const SECURITY_REASON_PROFILE_CHANGED: &str = "profile_changed";
 /// Administrative classifier: the PIN was rotated, which also dropped every
 /// other session for the account (STAFF-03).
 pub const SECURITY_REASON_PIN_ROTATED: &str = "pin_rotated";
+/// Administrative classifier: the account was moved to the trash (soft
+/// deleted). Rides [`SECURITY_ACTION_USER_UPDATE`] rather than a new action,
+/// the same way a PIN rotation does: the audit catalog has no `user.delete`
+/// key, and inventing one would render as "Unknown Action" until a front-end
+/// label shipped. This row is still the only `user.update` whose reason is
+/// `account_deleted`.
+pub const SECURITY_REASON_ACCOUNT_DELETED: &str = "account_deleted";
+/// Administrative classifier: the account was taken back out of the trash.
+/// Separable from [`SECURITY_REASON_ACCOUNT_DELETED`] by this reason alone.
+pub const SECURITY_REASON_ACCOUNT_RESTORED: &str = "account_restored";
 
 /// One authentication outcome to persist.
 ///
