@@ -31,6 +31,11 @@ function mockFetch(handler: (url: string, init?: RequestInit) => { ok: boolean; 
   vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string, init?: RequestInit) => handler(url, init)));
 }
 
+/** Every URL the mocked fetch was called with, in order. */
+function fetchMockCalls(): string[] {
+  return (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((c) => String(c[0]));
+}
+
 function okJson(data: unknown) {
   return { ok: true, status: 200, json: async () => data };
 }
@@ -187,17 +192,77 @@ describe('AccountView — cookie-only session (R1)', () => {
   });
 });
 
-// ── Not configured state ──────────────────────────────────────────────
+// ── Runtime config (Worker-supplied) ──────────────────────────────────
 
-describe('AccountView — not configured', () => {
-  it('shows not-configured notice when API URL is absent', async () => {
+describe('AccountView — runtime config arrives after the first render', () => {
+  // An unset PUBLIC_* var does not reach the client as undefined: Astro ships
+  // the literal placeholder '__PUBLIC_LICENSE_API_URL__', a TRUTHY string.
+  // Because licenseApiUrl() returned it verbatim, `if (!api)` never fired and
+  // the island fetched the placeholder string itself as a base URL — the
+  // not-configured notice appeared only AFTER that request failed, and
+  // getSessionToken() resolved no token in the meantime, so a signed-in user
+  // briefly saw "not signed in". Both halves below failed before the fix.
+  it('shows not-configured and fetches nothing while the URL is unset', async () => {
     const env = import.meta.env as Record<string, unknown>;
-    env.PUBLIC_LICENSE_API_URL = '';
+    env.PUBLIC_LICENSE_API_URL = '__PUBLIC_LICENSE_API_URL__';
     window.__OZ_CONFIG__ = undefined;
     sessionStorage.setItem('oz_session', 'tok-test');
     const { container, root } = await renderAccount('en');
     try {
       assertText(container, 'The license API is not configured on this deployment.');
+      // No URL means no request — and specifically not a request to the
+      // placeholder string itself, which is what a missing guard produced.
+      expect(fetchMockCalls()).toHaveLength(0);
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('re-runs the auth fetches against the runtime URL once it lands', async () => {
+    const env = import.meta.env as Record<string, unknown>;
+    // Exactly what Astro substitutes when PUBLIC_LICENSE_API_URL is unset:
+    // the placeholder itself, which is a truthy string.
+    env.PUBLIC_LICENSE_API_URL = '__PUBLIC_LICENSE_API_URL__';
+    window.__OZ_CONFIG__ = undefined;
+    sessionStorage.setItem('oz_session', 'tok-runtime-config');
+    // getSessionToken() probes the Worker's /__oz/session first and only then
+    // falls back to sessionStorage, so the route has to answer here too.
+    mockFetch((url) => {
+      if (url === '/__oz/session') return okJson({ token: 'tok-runtime-config' });
+      if (url.includes('/devices')) return okJson({ devices: [] });
+      if (url.includes('/identities')) return okJson({ identities: [] });
+      return okJson({
+        tenant: { email: 'test@example.com', emailVerified: true, status: 'active' },
+        license: STUB_LICENSE,
+        subscription: null,
+      });
+    });
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const { default: AccountView, ACCOUNT_LABELS } = await import('../AccountView');
+    const labels = labelMap('en', ACCOUNT_LABELS);
+    // The Worker's /__oz/runtime-config.js has landed before the island mounts
+    // — the normal case, since Astro's client directive and the deferred script
+    // both run after the document parses.
+    act(() => {
+      window.__OZ_CONFIG__ = { licenseApiUrl: 'https://runtime.example' };
+    });
+    act(() => {
+      root.render(<AccountView locale="en" labels={labels} />);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    try {
+      // The request has to go to the runtime URL, not to the placeholder the
+      // build left behind — that is what the `!api` guard not firing produced.
+      expect(fetchMockCalls()).toContain('https://runtime.example/api/v1/web/me');
+      assertNoText(container, "You're not signed in.");
+      assertNoText(container, 'The license API is not configured on this deployment.');
+      assertText(container, 'test@example.com');
     } finally {
       act(() => root.unmount());
       container.remove();

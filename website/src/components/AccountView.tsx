@@ -191,11 +191,22 @@ export default function AccountView({ locale, labels }: Props) {
     };
   }, []);
 
-  /** Fetch /me once; returns the payload, or null when signed out (token cleared). */
-  const fetchMe = useCallback(async (): Promise<MeResponse | null> => {
+  /**
+   * Fetch /me once; returns the payload, or null when signed out (token cleared).
+   *
+   * `api` is threaded in rather than closed over. `API` comes from
+   * `licenseApiUrl()`, which returns whatever is known at call time, and the
+   * three callers do not all run under the same render: the mount effect and
+   * `pollAfterCheckout` run in the render that produced them, while the revoke
+   * and unlink handlers run later. Passing the URL makes each caller use the
+   * value from the render it is actually running in, so the effect's
+   * `[API, …]` dependency is what re-issues the fetches once the Worker's
+   * runtime config lands.
+   */
+  const fetchMe = useCallback(async (api: string | undefined): Promise<MeResponse | null> => {
     const token = await getSessionToken();
-    if (!token || !API) return null;
-    const res = await fetch(`${API}/api/v1/web/me`, {
+    if (!token || !api) return null;
+    const res = await fetch(`${api}/api/v1/web/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.status === 401) {
@@ -209,11 +220,11 @@ export default function AccountView({ locale, labels }: Props) {
   }, []);
 
   /** Fetch the tenant's registered devices (best-effort; null on any error). */
-  const fetchDevices = useCallback(async (): Promise<Device[] | null> => {
+  const fetchDevices = useCallback(async (api: string | undefined): Promise<Device[] | null> => {
     const token = await getSessionToken();
-    if (!token || !API) return null;
+    if (!token || !api) return null;
     try {
-      const res = await fetch(`${API}/api/v1/web/devices`, {
+      const res = await fetch(`${api}/api/v1/web/devices`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return null;
@@ -225,11 +236,11 @@ export default function AccountView({ locale, labels }: Props) {
   }, []);
 
   /** Fetch the tenant's linked sign-in methods (best-effort; null on any error). */
-  const fetchIdentities = useCallback(async (): Promise<SignInMethod[] | null> => {
+  const fetchIdentities = useCallback(async (api: string | undefined): Promise<SignInMethod[] | null> => {
     const token = await getSessionToken();
-    if (!token || !API) return null;
+    if (!token || !api) return null;
     try {
-      const res = await fetch(`${API}/api/v1/web/identities`, {
+      const res = await fetch(`${api}/api/v1/web/identities`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return null;
@@ -270,7 +281,14 @@ export default function AccountView({ locale, labels }: Props) {
   const [unlinkError, setUnlinkError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!API) {
+    // Read the URL from the render scope (`API`, a dependency below), NOT by
+    // calling licenseApiUrl() here. The Worker's /__oz/runtime-config.js can
+    // land after this island's first render, so the effect has to re-run once
+    // the URL appears — and the render-scoped value is the only one whose
+    // identity change React can see. An in-effect call cannot: React compares
+    // dependencies, it does not re-run effects on external state.
+    const api = licenseApiUrl();
+    if (!api) {
       setState('error');
       return;
     }
@@ -280,7 +298,7 @@ export default function AccountView({ locale, labels }: Props) {
     // when neither exists — so a session that lives ONLY in the httpOnly
     // cookie (sessionStorage cleared, another tab, or an R1-only login)
     // still loads the dashboard instead of falsely showing "anon".
-    fetchMe()
+    fetchMe(api)
       .then((data) => {
         if (!mountedRef.current) return;
         if (data) {
@@ -294,7 +312,7 @@ export default function AccountView({ locale, labels }: Props) {
         if (mountedRef.current) setState('error');
       });
     // Best-effort device list — a failure here must not fail the dashboard.
-    void fetchDevices()
+    void fetchDevices(api)
       .then((list) => {
         if (mountedRef.current) setDevices(list);
       })
@@ -302,14 +320,16 @@ export default function AccountView({ locale, labels }: Props) {
         if (mountedRef.current) setDevices(null);
       });
     // Same contract for the linked sign-in methods.
-    void fetchIdentities()
+    void fetchIdentities(api)
       .then((list) => {
         if (mountedRef.current) setIdentities(list);
       })
       .catch(() => {
         if (mountedRef.current) setIdentities(null);
       });
-  }, [fetchMe, fetchDevices, fetchIdentities]);
+    // Deliberately keyed on the URL, not on the fetchers: a runtime-config
+    // change must re-run the auth fetches once the real backend is known.
+  }, [API, fetchMe, fetchDevices, fetchIdentities]);
 
   const savePassword = async (password: string) => {
     setPwMsg('idle');
@@ -390,7 +410,7 @@ export default function AccountView({ locale, labels }: Props) {
         await new Promise((r) => setTimeout(r, 2500));
         if (!mountedRef.current) return;
         try {
-          const data = await fetchMe();
+          const data = await fetchMe(API);
           if (data) {
             setMe(data);
             setState('ready');
@@ -421,7 +441,7 @@ export default function AccountView({ locale, labels }: Props) {
       // full list so any server-side ordering is preserved. If the refresh
       // fails (null), keep the existing list and just stamp the revoked
       // device — the list must not collapse to the fallback hint.
-      const fresh = await fetchDevices();
+      const fresh = await fetchDevices(API);
       if (mountedRef.current) {
         setDevices((prev) => {
           const list = fresh ?? prev ?? [];
@@ -450,7 +470,7 @@ export default function AccountView({ locale, labels }: Props) {
       if (!res.ok) throw new Error(String(res.status));
       // Drop the row locally, then reconcile with the server list. If the
       // refresh fails (null) the removal still stands — the DELETE succeeded.
-      const fresh = await fetchIdentities();
+      const fresh = await fetchIdentities(API);
       if (mountedRef.current) {
         setIdentities((prev) => (fresh ?? (prev ?? []).filter((m) => m.id !== method.id)));
       }
