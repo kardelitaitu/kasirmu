@@ -240,7 +240,7 @@
       },
       {
         "feature": "Layar Dapur (KDS)",
-        "kasirMu": "Sudah termasuk gratis di browser & tablet",
+        "kasirMu": "Jalan di browser & tablet — 2 layar di paket Pro",
         "others": "Biaya add-on mahal per-layar / bulan",
         "highlight": true
       },
@@ -582,6 +582,14 @@
         {
           "q": "Bagaimana jika internet mati saat bayar QRIS?",
           "a": "Transaksi tercatat lokal dan direkonsiliasi saat koneksi kembali — kasir tidak pernah terblokir."
+        },
+        {
+          "q": "Apakah perlu mesin EDC atau kerja sama bank?",
+          "a": "Tidak perlu perangkat tambahan: QRIS jalan dari layar kasir atau tablet. QR dinamis dibuat per transaksi lewat Midtrans, atau Anda bisa menampilkan stiker QRIS toko sendiri."
+        },
+        {
+          "q": "Bagaimana tahu pembayarannya benar-benar masuk?",
+          "a": "QR dinamis dipolling sampai setelmennya kembali, lalu dicocokkan ke transaksi itu. Untuk QR statis, referensinya dicatat dan server merekonsiliasi untuk struk."
         }
       ]
     },
@@ -612,7 +620,21 @@
         {
           "q": "Apa yang terjadi setelah riwayat 3 bulan?",
           "a": "Data lama diarsipkan; upgrade ke paket berbayar untuk riwayat lebih panjang dan laporan terjadwal."
+        },
+        {
+          "q": "Apakah paket Gratis butuh akun atau kartu?",
+          "a": "Tidak perlu keduanya. Paket Gratis dimulai pada peluncuran pertama, tanpa kunci lisensi dan tanpa kartu. Akun hanya diperlukan untuk paket berbayar dan sinkron cloud, yang belum termasuk di paket Gratis."
+        },
+        {
+          "q": "Bisa naik paket tanpa memasang ulang?",
+          "a": "Bisa. Naik atau turun paket hanya mengganti kunci lisensi, bukan pemasangan, dan tambahan toko, register, serta riwayat langsung tersedia."
         }
+      ],
+      "howTitle": "Mulai jualan dalam tiga langkah",
+      "how": [
+        "Unduh penginstal Windows dan jalankan — pemasangan hanya untuk akun pengguna Anda sendiri, jadi tidak butuh hak administrator.",
+        "Buka aplikasi dan isi nama usaha serta mata uang bawaan; keduanya bisa diubah kapan saja di pengaturan.",
+        "Langsung catat penjualan: paket Gratis dimulai pada peluncuran pertama — satu toko, satu register, satu workspace gudang, dan riwayat penjualan 3 bulan."
       ]
     },
     "murah": {
@@ -645,7 +667,21 @@
         {
           "q": "Apakah ada diskon tahunan?",
           "a": "Ya — bayar tahunan sama dengan 2 bulan gratis."
+        },
+        {
+          "q": "Apakah paket lebih murah mengurangi fitur?",
+          "a": "Tidak. Semua paket memuat fitur intinya — penjualan, QRIS, shift, stok, dan antrean offline — yang berbeda hanya kapasitas: jumlah toko, register, gudang, riwayat, dan layar."
+        },
+        {
+          "q": "Bagaimana pembayarannya?",
+          "a": "Pelanggan Indonesia membayar dalam rupiah lewat Midtrans (QRIS, transfer bank, atau e-wallet); negara lain membayar dengan kartu dalam dolar AS lewat Paddle."
         }
+      ],
+      "howTitle": "Cara naik paket",
+      "how": [
+        "Mulai dari paket Gratis: satu toko, satu register, riwayat 3 bulan, tanpa kartu.",
+        "Pilih paket di halaman harga — bayar tahunan sama dengan dua bulan gratis.",
+        "Tempel kunci lisensi di aplikasi. Kapasitas tambahannya langsung tersedia; tidak ada pemasangan ulang."
       ]
     },
     "android": {
@@ -675,6 +711,14 @@
         {
           "q": "Apakah bisa dipakai di HP kasir touchscreen?",
           "a": "Ya. Target sentuh mengikuti standar 44px dan layout beradaptasi ke layar kecil."
+        },
+        {
+          "q": "Apakah aplikasi Android juga jalan offline?",
+          "a": "Ya. Inti yang sama berjalan di semua platform, jadi tablet atau ponsel tetap bisa jualan saat koneksi putus dan mengejar ketertinggalan saat kembali."
+        },
+        {
+          "q": "Apa yang dibutuhkan tabletnya?",
+          "a": "Android 7.0 Nougat atau lebih baru, dengan RAM 4 GB dan ruang kosong 1 GB disarankan. Tablet adalah layar kasir yang dituju."
         }
       ]
     }
@@ -684,6 +728,13 @@
     "whyTitle": "Mengapa kasir.mu untuk bisnis Anda?",
     "otherTitle": "Dibuat untuk jenis bisnis Anda",
     "otherSubtitle": "kasir.mu menyesuaikan cara Anda berjualan — pilih industri Anda.",
+    "dayTitle": "Satu hari dengan kasir.mu",
+    "hardwareTitle": "Kompatibel dengan Perangkat Keras Standar Kasir",
+    "hardware": [
+      "Printer Thermal 58/80mm (ESC/POS)",
+      "Scanner Barcode 1D / 2D QR",
+      "Laci Kasir RJ-11"
+    ],
     "ctaSecondary": "Unduh gratis",
     "bundleCta": "Plus + KDS — Paket Restaurant Starter",
     "kafe": {
@@ -716,6 +767,30 @@
         "Kasir native QRIS — pelanggan Anda sudah terbiasa membayar dengan QR.",
         "Instalasi hitungan menit; tim Anda langsung paham cara pakainya.",
         "Berfungsi tanpa internet — tidak ada penjualan yang hilang saat gangguan."
+      ],
+      "day": [
+        "Buka shift saat staf masuk. Penjualan tiap kasir masuk ke shift-nya sendiri, jadi hitungan laci per orang, bukan per hari.",
+        "Terima pesanan di kasir, kirim ke Layar Dapur, dan tetap melayani saat pesanan dibuat.",
+        "Lihat dasbor pagi: penjualan kemarin, produk terlaris, dan berapa banyak yang masuk tunai versus QRIS.",
+        "Tutup tiap shift saat berakhir. Laporan Akhir Hari memecah hari per jam, jadi jadwal staf berikutnya mengikuti jam sibuk, bukan menebak."
+      ],
+      "faq": [
+        {
+          "q": "Apakah Layar Dapur langganan tambahan?",
+          "a": "Layar Dapur berjalan di browser atau tablet, dan paket Pro sudah termasuk 2 layar. Di paket Plus tersedia lewat bundle Restaurant Starter, dan Premium tanpa batas layar."
+        },
+        {
+          "q": "Bagaimana kalau Wi-Fi kafe mati?",
+          "a": "Tetap jalan. Pesanan, pembayaran, dan pergerakan stok disimpan lebih dulu di perangkat dan mengantre saat offline; begitu koneksi kembali, antrean tersinkron berurutan dan semua register diperbarui."
+        },
+        {
+          "q": "Bisa coba fitur berbayarnya dulu?",
+          "a": "Bisa — datang dari halaman ini ke halaman unduh memberi Anda kunci trial yang membuka 14 hari paket Pro."
+        },
+        {
+          "q": "Bagaimana melihat jam tersibuk?",
+          "a": "Laporan Akhir Hari menampilkan penjualan per jam bersama rincian pembayaran dan rekonsiliasi tunai, jadi jadwal staf bisa mengikuti data."
+        }
       ]
     },
     "minimarket": {
@@ -746,6 +821,30 @@
         "Tidak ada lagi stok kosong atau salah belanja — lihat produk yang bergerak cepat.",
         "QRIS di kasir tanpa perangkat tambahan.",
         "Cadangan cloud agar data tidak pernah hilang."
+      ],
+      "day": [
+        "Scan sambil jalan. Barcode membuat satu keranjang penuh selesai sekali lewat, dan stok berkurang otomatis tiap barang terjual.",
+        "Isi ulang rak dan koreksi stok dalam dua langkah: pilih produk, pilih alasan — isi ulang, koreksi stok opname, retur pelanggan, rusak, penghapusan, transfer — lalu masukkan perubahannya.",
+        "Hitung rak saat shift malam dan catat koreksinya di bawah opname itu, jadi selisih yang ketahuan minggu depan tetap bisa dijelaskan.",
+        "Tutup shift, lalu baca Laporan Stok: stok, ambang, harga, biaya, margin, dan nilai stok per produk, siap dicetak atau diekspor."
+      ],
+      "faq": [
+        {
+          "q": "Bagaimana tahu stok hampir habis?",
+          "a": "Atur ambang stok rendah per produk per lokasi, dengan cadangan Global untuk sisanya, dan tiap ambang bisa dinyalakan atau dimatikan. Produk di bawah ambang ditandai supaya pengisian ulang tidak menebak."
+        },
+        {
+          "q": "Bagaimana memindahkan stok antara toko dan gudang?",
+          "a": "Lewat transfer tercatat: asal, tujuan, jumlah, dan waktu kirim. Barang tetap berstatus transit sampai tiba, transit yang terlambat ditandai, dan transfer yang keliru bisa dibalik sehingga stok kembali ke asalnya."
+        },
+        {
+          "q": "Bisa menerima kiriman pemasok?",
+          "a": "Bisa. Simpan data pemasok, buat pesanan pembelian, lalu tekan Terima saat kiriman datang — jumlah yang diterima masuk ke stok otomatis."
+        },
+        {
+          "q": "Apakah stok toko dan gudang satu angka?",
+          "a": "Tidak. Stok dilacak per produk per lokasi — register atau gudang — dan setiap register melayani dari lokasi yang ditetapkan, jadi kedua angka tetap terpisah dan keduanya terlihat."
+        }
       ]
     },
     "warung": {
@@ -776,6 +875,30 @@
         "Cukup sederhana untuk warung — tanpa perlu pelatihan.",
         "Lacak produk yang laris agar stok lebih cerdas.",
         "Tanpa internet: jangan pernah kehilangan penjualan saat gangguan."
+      ],
+      "day": [
+        "Buka shift dengan uang yang sudah ada di laci. Saldo awal opsional — isi saja, dan hitungan tutup nanti langsung cocok.",
+        "Jualan cukup beberapa ketukan. Scanner barcode tetap didukung, tapi warung biasanya menjual dua puluh barang yang sama, jadi mengetik harga lebih cepat. Kembalian dihitung otomatis.",
+        "Biarkan pelanggan bayar QRIS saat tidak membawa tunai. Kode QR memuat nominal persisnya, dan setelmennnya dicocokkan kembali ke transaksi itu.",
+        "Tutup dengan uang yang dihitung. kasir.mu membandingkan dengan jumlah seharusnya, menandai selisihnya Lebih atau Kurang, dan Laporan Akhir Hari bisa dicetak atau diekspor."
+      ],
+      "faq": [
+        {
+          "q": "Bagaimana kalau internet mati?",
+          "a": "Tidak ada yang berhenti. Semua transaksi, event shift, dan perubahan stok ditulis lebih dulu ke perangkat. Saat offline semuanya menunggu di antrean dan mengalir ke cloud sesuai urutan begitu koneksi kembali, dan tiap item tercatat pending, synced, atau failed — tidak ada yang hilang diam-diam."
+        },
+        {
+          "q": "Apakah perlu scanner barcode atau mesin kasir khusus?",
+          "a": "Tidak. kasir.mu jalan di PC Windows atau tablet yang sudah Anda punya, dan printer struknya printer biasa 58/80mm (ESC/POS). Scanner barcode dan laci kasir RJ-11 tetap bisa dipakai kalau sudah ada."
+        },
+        {
+          "q": "Bisa terima QRIS?",
+          "a": "Bisa, di semua paket termasuk Gratis. Tampilkan QR dinamis dengan nominal persisnya, atau pakai stiker QRIS toko Anda sendiri dan catat referensinya untuk struk."
+        },
+        {
+          "q": "Bagaimana cara melihat hasil penjualan hari ini?",
+          "a": "Tutup shift, lalu Laporan Akhir Hari merangkumnya: pendapatan, void dan diskon, rincian pembayaran, rekonsiliasi tunai, dan penjualan per jam — bisa dicetak atau diekspor."
+        }
       ]
     },
     "restoran": {
@@ -815,6 +938,30 @@
         "Tagihan terpisah atau gabung per meja tanpa drama di kasir.",
         "Pembayaran QRIS statis + dinamis yang sudah dipakai pelanggan Anda.",
         "Tetap terima pesanan saat Wi-Fi restoran mati — sinkron saat online."
+      ],
+      "day": [
+        "Mulai shift dengan uang di laci dan catatan siapa yang menjaganya.",
+        "Catat pesanan meja per kategori menu dan kirim ke dapur — Layar Dapur jalan di browser atau tablet, tanpa layar khusus yang harus dibeli.",
+        "Perbaiki kesalahan secara terbuka. Setiap void, refund, dan penarikan tunai mencatat siapa pelakunya dan di terminal mana.",
+        "Tutup dengan angka: rincian pembayaran per metode, penjualan per jam, dan hitungan tunai yang harus cocok sebelum register ditutup untuk malam itu."
+      ],
+      "faq": [
+        {
+          "q": "Bisa dua terminal menerima pesanan bersamaan?",
+          "a": "Bisa. Setiap terminal menyimpan database lokalnya sendiri, jadi tidak saling menunggu, dan keduanya bertemu begitu terhubung ke cloud."
+        },
+        {
+          "q": "Pesanan yang salah tetap masuk pembukuan?",
+          "a": "Masuk sebagai void. Void dan refund tercatat dengan pengguna, terminal, dan alasannya, jadi laporan hari itu menunjukkan apa yang terjual dan apa yang dibatalkan."
+        },
+        {
+          "q": "Bagaimana kalau Wi-Fi restoran sering putus?",
+          "a": "Pesanan dan pembayaran ditulis lokal lebih dulu dan mengantre saat offline. Begitu koneksi kembali, antrean tersinkron berurutan dan terminal diperbarui — koneksi putus tidak pernah memblokir meja."
+        },
+        {
+          "q": "Bisa memisahkan tagihan atau memindahkan meja?",
+          "a": "Bisa: tagihan dapat dipisah atau digabung per tamu dan dipindahkan antar meja, dan analitik mencatat berapa meja yang ditangani tiap pelayan."
+        }
       ]
     },
     "warehouse": {
@@ -845,6 +992,30 @@
         "Mode pergudangan khusus untuk pusat pemenuhan pesanan dan depo stok.",
         "Jejak audit lengkap untuk setiap penyesuaian rak, pengiriman, dan penerimaan.",
         "Keandalan SQLite lokal — tetap scan palet meski di gudang berdinding baja tanpa sinyal."
+      ],
+      "day": [
+        "Pindahkan palet lewat transfer tercatat: asal, tujuan, jumlah, dan waktu kirim, dengan transit yang terlambat ditandai sebelum palet benar-benar hilang.",
+        "Balik transfer yang salah lokasi dan stok kembali ke asalnya.",
+        "Jaga hitungan tetap jujur — setiap penyesuaian, baik isi ulang, koreksi opname, rusak, maupun penghapusan, menulis entri buku besar berisi siapa, kapan, dan mengapa.",
+        "Ketahui nilai barang Anda: Laporan Stok memberi stok, ambang, harga, biaya, margin, dan nilai stok per produk, bisa dicetak atau diekspor CSV."
+      ],
+      "faq": [
+        {
+          "q": "Bisa kerja tanpa internet?",
+          "a": "Bisa. Pergerakan stok ditulis lebih dulu ke database lokal dan mengantre saat offline; begitu koneksi kembali, semuanya tersinkron berurutan dan tiap item tercatat pending, synced, atau failed."
+        },
+        {
+          "q": "Bagaimana melihat barang yang masih di jalan?",
+          "a": "Transfer dalam transit diaudit dengan asal, tujuan, jumlah, dan waktu kirim, dan yang terlambat ditandai supaya bisa ditelusuri sebelum jadi kerugian."
+        },
+        {
+          "q": "Siapa yang boleh mengubah stok?",
+          "a": "Peran yang menentukan. Staf bisa menjual tapi tidak menyesuaikan stok, manajer bisa menyesuaikan, transfer, dan opname, dan auditor bisa membaca inventaris serta laporan tanpa mengubah apa pun."
+        },
+        {
+          "q": "Bisa mengekspor angka stoknya?",
+          "a": "Laporan Stok bisa dicetak atau diekspor CSV, lengkap dengan kolom stok, ambang, harga, biaya, margin, dan nilai stok per produk."
+        }
       ]
     }
   },

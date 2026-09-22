@@ -79,6 +79,16 @@
 //      rendered body of every page that owes a head, with the GitHub repository
 //      path excepted — the repo kept its name, so `kardelitaitu/oz-pos` is not a
 //      finding whether it appears as an href or as visible text.
+//  11. content depth — the five industry landings and four keyword landings
+//      carry the words a first-time visitor needs. Measured before this check
+//      existed (2026-09-23): 147–271 words of body copy against 526 on the home
+//      page. Depth is counted on rendered `<main>` text, so the ~130 words of
+//      header and footer on every page cannot stand in for it, and the floors
+//      live in src/lib/landings.ts — which also names the dictionary branch
+//      each page reads, letting this check assert that copy which was AUTHORED
+//      actually renders. It did not always: `/kasir-qris/` held four `how`
+//      steps in the dictionary behind a wrapper condition that never tested for
+//      them, so the section was written and invisible.
 //
 // DELIBERATELY NOT CHECKED (each a decision, not an omission):
 //   • The root locale-detect stub (src/pages/index.astro) is a redirect document
@@ -106,6 +116,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { LANDING_CONTRACTS } from '../src/lib/landings.ts';
 import { NON_PUBLIC_PAGES, SITE, isNonPublic } from '../src/lib/site.ts';
 import { DESCRIPTION_BUDGET, TITLE_BUDGET } from '../src/lib/seo.ts';
 import { FOOTER_COLUMNS } from '../src/lib/footer-nav.ts';
@@ -251,9 +262,17 @@ function parsePage(file) {
   const body = collapse(
     decode(html.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ')),
   );
+  // `<main>` only, for check 11. The body also carries the header nav and the
+  // footer sitemap — about 130 words that are on every page — so measuring
+  // depth on it would let a stub pass on chrome alone.
+  const mainHtml = /<main[^>]*>([\s\S]*?)<\/main>/.exec(html)?.[1] ?? html;
+  const main = collapse(
+    decode(mainHtml.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ')),
+  );
   return {
     file,
     url,
+    main,
     // The page's own URL as a crawler sees it (`/en/cafe/`, not the file path
     // `/en/cafe/index.html`) — what canonical and hreflang must agree with.
     path: dirUrl(url),
@@ -748,6 +767,54 @@ for (const page of pages.filter((p) => p.rec && hasHead(p.rec))) {
   );
 }
 
+// 11. Content depth, on the pages organic search actually lands on.
+//     Two failures are possible per landing page and they are different
+//     problems: too few words means the page cannot explain anything (these
+//     ran 147–271 words before the copy was deepened), and an authored section
+//     that never renders means someone wrote the copy and nothing showed it —
+//     which was true of `/kasir-qris/`, whose four `how` steps sat in the
+//     dictionary behind a wrapper condition that did not test `v.how`.
+for (const page of pages.filter((p) => p.rec && isLocalePage(p.rec))) {
+  const contract = LANDING_CONTRACTS.find(
+    (candidate) => page.rec.path === `/${page.rec.locale}${candidate.slug}`,
+  );
+  if (!contract) continue;
+
+  const words = page.main.split(' ').filter(Boolean).length;
+  if (words < contract.minWords) {
+    add(
+      'content depth',
+      page.url,
+      `has ${words} words of body copy (floor ${contract.minWords}) — a landing page this thin cannot explain the product to someone deciding`,
+    );
+  }
+
+  if (page.faqItems < contract.minFaq) {
+    add(
+      'content depth',
+      page.url,
+      `renders ${page.faqItems} FAQ entries (floor ${contract.minFaq}) — src/lib/landings.ts sets the floor for this page`,
+    );
+  }
+
+  // Every authored step must reach the page. The dictionary is the source of
+  // truth for what was written, so a section it defines but the rendered body
+  // does not contain is copy that never shipped.
+  const authored = resolveKey(DICTS[page.rec.locale], contract.copyKey) ?? {};
+  for (const field of ['how', 'day']) {
+    const steps = authored[field];
+    if (!Array.isArray(steps)) continue;
+    const missing = steps.filter((step) => !page.main.includes(step));
+    if (missing.length) {
+      add(
+        'content depth',
+        page.url,
+        `does not render ${missing.length} of its ${steps.length} \`${field}\` steps, starting with ${JSON.stringify(collapse(missing[0]).slice(0, 70))} — authored copy that never reaches the page`,
+      );
+    }
+  }
+}
+
 // ── Report ──────────────────────────────────────────────────────────────────
 const byCheck = new Map();
 for (const finding of findings) {
@@ -766,6 +833,7 @@ const checks = [
   'locale copy',
   'docs next step',
   'retired brand',
+  'content depth',
 ];
 const classes = {};
 for (const page of pages) {

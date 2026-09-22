@@ -236,7 +236,7 @@
       },
       {
         "feature": "Kitchen Display System (KDS)",
-        "kasirMu": "Included free on any browser or tablet",
+        "kasirMu": "Runs in any browser or tablet — 2 screens with Pro",
         "others": "Costly add-on per screen per month",
         "highlight": true
       },
@@ -578,6 +578,14 @@
         {
           "q": "What if the internet dies during a QRIS payment?",
           "a": "The sale is recorded locally and reconciled when the connection returns — the counter is never blocked."
+        },
+        {
+          "q": "Do I need an EDC machine or a bank contract?",
+          "a": "No extra terminal: QRIS runs from the cashier screen or a tablet. Dynamic QR codes are created per transaction through Midtrans, or you can display your shop's own QRIS sticker."
+        },
+        {
+          "q": "How do I know the payment actually landed?",
+          "a": "A dynamic QR is polled until the settlement comes back, then matched to that sale. With a static QR you record the reference and the server reconciles it for the receipt."
         }
       ]
     },
@@ -608,7 +616,21 @@
         {
           "q": "What happens after the 3-month history?",
           "a": "Older data is archived; upgrade to a paid plan for longer history and scheduled reports."
+        },
+        {
+          "q": "Does the free plan need an account or a card?",
+          "a": "Neither. It starts on first launch with no licence key and no card. An account is only needed for paid plans and for cloud sync, which the free plan does not include."
+        },
+        {
+          "q": "Can I upgrade later without reinstalling?",
+          "a": "Yes. Upgrading and downgrading change the licence key, not the installation, and the extra stores, registers and history are there straight away."
         }
+      ],
+      "howTitle": "Get selling in three steps",
+      "how": [
+        "Download the Windows installer and run it — it installs for your own user account, so it needs no administrator rights.",
+        "Open the app and set your business name and default currency; both can be changed later in settings.",
+        "Ring up a sale straight away: the free plan starts on first launch — one store, one register, one warehouse workspace, and 3 months of sales history."
       ]
     },
     "murah": {
@@ -641,7 +663,21 @@
         {
           "q": "Is there a yearly discount?",
           "a": "Yes — yearly billing equals 2 months free."
+        },
+        {
+          "q": "Will a cheaper plan take features away?",
+          "a": "No. Every plan carries the core — sales, QRIS, shifts, stock and the offline queue — and only capacity differs: stores, registers, warehouses, history and screens."
+        },
+        {
+          "q": "How am I billed?",
+          "a": "Indonesian customers pay in rupiah through Midtrans (QRIS, bank transfer or e-wallet); other countries pay by card in US dollars through Paddle."
         }
+      ],
+      "howTitle": "How upgrading works",
+      "how": [
+        "Start on Free: one store, one register, 3 months of history, no card.",
+        "Pick a plan on the pricing page — yearly works out to two months free.",
+        "Paste the licence key into the app. The extra capacity is there immediately; nothing is reinstalled."
       ]
     },
     "android": {
@@ -671,6 +707,14 @@
         {
           "q": "Can it be used on touchscreen cashier phones?",
           "a": "Yes. Touch targets follow the 44px standard and the layout adapts to small screens."
+        },
+        {
+          "q": "Will the Android app work offline too?",
+          "a": "Yes. The same core runs on every platform, so a tablet or phone keeps selling when the connection drops and catches up when it returns."
+        },
+        {
+          "q": "What will the tablet need?",
+          "a": "Android 7.0 Nougat or newer, with 4 GB of RAM and 1 GB of free storage recommended. Tablets are the intended cashier screen."
         }
       ]
     }
@@ -680,6 +724,13 @@
     "whyTitle": "Why kasir.mu for your business?",
     "otherTitle": "Built for your kind of business",
     "otherSubtitle": "kasir.mu adapts to how you sell — pick your industry.",
+    "dayTitle": "A day with kasir.mu",
+    "hardwareTitle": "Compatible with Standard POS Hardware",
+    "hardware": [
+      "58/80mm Thermal Receipt Printers (ESC/POS)",
+      "1D / 2D QR Barcode Scanners",
+      "RJ-11 Cash Drawers"
+    ],
     "ctaSecondary": "Download free",
     "bundleCta": "Plus + KDS — Restaurant Starter bundle",
     "kafe": {
@@ -712,6 +763,30 @@
         "The QRIS-native POS — your customers already pay with QR.",
         "Set up in minutes; your team already knows how to use it.",
         "Works without internet — no more lost sales during outages."
+      ],
+      "day": [
+        "Open shifts as staff arrive. Each cashier's sales land in their own shift, so the drawer is counted per person, not per day.",
+        "Take the order at the counter, send it to the Kitchen Display, and keep serving while it is made.",
+        "Read the morning dashboard: yesterday's sales, best sellers, and how much came in as cash versus QRIS.",
+        "Close each shift as it ends. The End of Day report breaks the day down by hour, so the next roster follows the rush instead of guessing at it."
+      ],
+      "faq": [
+        {
+          "q": "Is the Kitchen Display an extra subscription?",
+          "a": "It runs in any browser or on a tablet, and Pro includes 2 screens. On the Plus plan it comes with the Restaurant Starter bundle, and Premium has no screen limit."
+        },
+        {
+          "q": "What happens to orders when the cafe Wi-Fi dies?",
+          "a": "They keep going. Orders, payments and stock movements are saved on the device first and queue while offline; when the connection returns the queue syncs in order and every register is updated."
+        },
+        {
+          "q": "Can I try the paid features first?",
+          "a": "Yes — coming from this page to the download page hands you a trial key that unlocks 14 days of Pro."
+        },
+        {
+          "q": "How do I see which hours are busiest?",
+          "a": "The End of Day report shows sales by hour next to the payment breakdown and the cash reconciliation, so staffing can follow the data."
+        }
       ]
     },
     "minimarket": {
@@ -742,6 +817,30 @@
         "No more stockouts or over-ordering — see what's moving.",
         "QRIS at the counter without extra hardware.",
         "Cloud backup so your data is never lost."
+      ],
+      "day": [
+        "Scan as you go. Barcodes clear a full basket in one pass, and every item sold comes off stock automatically.",
+        "Refill the shelf and correct it in two steps: pick the product, pick the reason — restock, count correction, customer return, damaged, disposal, transfer — and enter the change.",
+        "Count the shelves on the night shift and file the corrections under that count, so a difference found next week is still explainable.",
+        "Close the shift, then read the Stock Report: stock, threshold, price, cost, margin and stock value per product, ready to print or export."
+      ],
+      "faq": [
+        {
+          "q": "Will I know before a product runs out?",
+          "a": "You set a low-stock threshold per product per location, with a Global fallback for everything else, and each one can be switched on or off. Products below the line are flagged for reordering."
+        },
+        {
+          "q": "How do I move stock between the shop and the warehouse?",
+          "a": "As a recorded transfer: source, destination, quantity and dispatch time. It stays in transit until it arrives, late transit is flagged, and a transfer entered by mistake can be reversed to put the stock back."
+        },
+        {
+          "q": "Can I receive supplier deliveries into stock?",
+          "a": "Yes. Keep your suppliers, raise a purchase order, and press Receive when the delivery arrives — the received quantities go into stock automatically."
+        },
+        {
+          "q": "Do the shop and the warehouse share one stock number?",
+          "a": "Neither shares the other. Stock is tracked per product per location — a register or a warehouse — and each register serves from its assigned location, so both numbers stay separate and both stay visible."
+        }
       ]
     },
     "warung": {
@@ -765,13 +864,37 @@
         },
         {
           "title": "Free forever",
-          "description": "One store, one register, and 30 days of history — free, no card required."
+          "description": "One store, one register, and 3 months of history — free, no card required."
         }
       ],
       "benefits": [
         "Simple enough for a warung — no training needed.",
         "Track what sells so you stock smarter.",
         "Works offline: never lose a sale during an outage."
+      ],
+      "day": [
+        "Open the shift with the cash that is already in the drawer. The opening float is optional — enter it, and the evening count reconciles itself.",
+        "Sell in a few taps. Barcode scanners work, but a warung sells the same twenty things, so typing the price is faster. Change is worked out for you.",
+        "Let customers pay by QRIS when they have no cash. The QR carries the exact amount, and the settlement is matched back to that one sale.",
+        "Close with a counted drawer. kasir.mu compares it with what should be there, flags the gap as over or short, and the End of Day report prints or exports for your records."
+      ],
+      "faq": [
+        {
+          "q": "What happens when the internet drops?",
+          "a": "Nothing stops. Every sale, shift event and stock change is written to the device first. While offline they wait in a queue that flows to the cloud in order once the connection returns, and each item is tracked as pending, synced or failed — nothing is lost silently."
+        },
+        {
+          "q": "Do I need a barcode scanner or a special cash register?",
+          "a": "No. kasir.mu runs on the Windows PC or tablet you already have, and receipt printers are ordinary 58/80mm ESC/POS models. A barcode scanner and an RJ-11 cash drawer work too, if you have them."
+        },
+        {
+          "q": "Can my customers pay with QRIS?",
+          "a": "Yes, on every plan including Free. Show a dynamic QR with the exact amount, or display your own store's QRIS sticker and record the reference for the receipt."
+        },
+        {
+          "q": "How do I check the day's takings?",
+          "a": "Close the shift and the End of Day report summarises it: revenue, voids and discounts, payment breakdown, cash reconciliation and sales by hour — printable or exportable."
+        }
       ]
     },
     "restoran": {
@@ -811,6 +934,30 @@
         "Split or merge bills per table with no cashier drama.",
         "Static + dynamic QRIS payments your customers already use.",
         "Keep taking orders when restaurant Wi-Fi dies — syncs when back online."
+      ],
+      "day": [
+        "Start the shift with the cash in the drawer and a note of who is carrying it.",
+        "Ring up a table by menu category and send it to the kitchen — the Kitchen Display runs in any browser or on a tablet, with no screen to buy.",
+        "Correct mistakes in the open. Every void, refund and cash payout records who did it, on which terminal.",
+        "Finish on the numbers: payment breakdown by method, sales by hour, and a cash count that has to reconcile before the register closes for the night."
+      ],
+      "faq": [
+        {
+          "q": "Can two terminals take orders at the same time?",
+          "a": "Yes. Each terminal keeps its own local database, so neither waits on the other, and they converge as soon as they can reach the cloud."
+        },
+        {
+          "q": "Does a wrong order end up in the books?",
+          "a": "Only as a void. Voids and refunds are recorded with the user, the terminal and the reason, so the day's report shows what was rung and what was taken back."
+        },
+        {
+          "q": "What if the restaurant's Wi-Fi is unreliable?",
+          "a": "Orders and payments are written locally first and queue while offline. When the connection returns, the queue syncs in order and the terminals are updated — a dropped connection never blocks a table."
+        },
+        {
+          "q": "Do you support splitting a bill or moving tables?",
+          "a": "Yes: bills split or merge per guest and can be moved between tables, and the analytics track how many tables each server handles."
+        }
       ]
     },
     "warehouse": {
@@ -841,6 +988,30 @@
         "Dedicated warehousing mode for fulfillment centers and stock depots.",
         "Full audit trail for every bin adjustment, dispatch, and receipt.",
         "Local SQLite reliability — keep scanning pallets even in steel warehouses with dead zones."
+      ],
+      "day": [
+        "Move pallets as recorded transfers: source, destination, quantity and dispatch time, with late transit flagged before a pallet is simply missing.",
+        "Reverse the transfer that went to the wrong location and the stock returns to where it came from.",
+        "Keep the count honest — every adjustment, whether a restock, a count correction, damage or disposal, writes a ledger entry with who changed it, when and why.",
+        "Value what you hold: the Stock Report gives stock, threshold, price, cost, margin and total stock value per product, printable or exportable as CSV."
+      ],
+      "faq": [
+        {
+          "q": "Can the warehouse keep working without internet?",
+          "a": "Yes. Movements are written to the local database first and queue while offline; when the connection returns they sync in order, each item tracked as pending, synced or failed."
+        },
+        {
+          "q": "How do I see what is stuck in transit?",
+          "a": "Transfers in transit are audited with source, destination, quantity and dispatch time, and anything overdue is flagged so you can chase it before it becomes a loss."
+        },
+        {
+          "q": "Who is allowed to change stock?",
+          "a": "Roles decide. Staff can sell but not adjust stock, managers can adjust, transfer and run counts, and an auditor can read inventory and reports without changing anything."
+        },
+        {
+          "q": "Can I get the stock figures out of the app?",
+          "a": "The Stock Report prints or exports to CSV, with stock, threshold, price, cost, margin and stock value for every product."
+        }
       ]
     }
   },
