@@ -294,6 +294,12 @@ pub struct LicenseStatusResponse {
     /// row and answers `false`. That is the fail-open direction §2.4 requires.
     #[serde(default)]
     pub device_revoked: bool,
+    /// Whether the hardware fingerprint matched the registered machine record (ADR #58 §2.4).
+    #[serde(default)]
+    pub hardware_verified: Option<bool>,
+    /// Rotated hardware token issued by the licence server upon attestation (ADR #58 §2.4).
+    #[serde(default)]
+    pub hardware_token: Option<String>,
     /// When the subscription expires (RFC 3339).
     #[serde(default)]
     pub expires_at: Option<String>,
@@ -842,10 +848,15 @@ pub async fn renew_license(req: &RenewLicenseRequest) -> Result<RenewLicenseResp
 ///   to authenticate this status check.
 /// * `machine_id` - The persisted machine fingerprint (`keys::MACHINE_ID`),
 ///   used by the server to identify this device.
+/// * `build_fingerprint` - Optional APK signing certificate fingerprint (Android).
+/// * `hardware_fingerprint` - Optional hardware fingerprint (`keys::HARDWARE_FINGERPRINT`).
+/// * `hardware_token` - Optional hardware token previously minted by server (`keys::HARDWARE_TOKEN`).
 pub async fn check_license_status(
     api_key: &str,
     machine_id: &str,
     build_fingerprint: Option<&str>,
+    hardware_fingerprint: Option<&str>,
+    hardware_token: Option<&str>,
 ) -> Result<LicenseStatusResponse, CoreError> {
     let url = format!("{}/api/v1/license/status", license_server_url());
     let client = reqwest::Client::new();
@@ -861,6 +872,12 @@ pub async fn check_license_status(
     let mut body = serde_json::json!({ "machine_id": machine_id });
     if let Some(fp) = build_fingerprint {
         body["build_fingerprint"] = serde_json::Value::String(fp.to_string());
+    }
+    if let Some(hw_fp) = hardware_fingerprint {
+        body["hardware_fingerprint"] = serde_json::Value::String(hw_fp.to_string());
+    }
+    if let Some(hw_tok) = hardware_token {
+        body["hardware_token"] = serde_json::Value::String(hw_tok.to_string());
     }
 
     let resp = client
@@ -947,12 +964,33 @@ pub fn apply_license_verdict_to_cache(
     // Server-authored only — never written from user input. A failed write
     // fails open (the device keeps working), which is the direction §2.4
     // requires for anything that could otherwise lock a till.
+    let device_revoked = resp.device_revoked || resp.hardware_verified == Some(false);
     if let Err(e) = crate::settings::Settings::set(
         conn,
         crate::settings::keys::DEVICE_REVOKED,
-        if resp.device_revoked { "true" } else { "false" },
+        if device_revoked { "true" } else { "false" },
     ) {
         tracing::warn!("failed to persist device_revoked cache: {e}");
+    }
+
+    if resp.hardware_verified == Some(true) {
+        if let Err(e) = crate::settings::Settings::set(
+            conn,
+            crate::settings::keys::MACHINE_VERIFIED_AT,
+            &chrono::Utc::now().to_rfc3339(),
+        ) {
+            tracing::warn!("failed to persist machine_verified_at cache: {e}");
+        }
+    }
+
+    if let Some(ref tok) = resp.hardware_token {
+        if let Err(e) = crate::settings::Settings::set(
+            conn,
+            crate::settings::keys::HARDWARE_TOKEN,
+            tok,
+        ) {
+            tracing::warn!("failed to persist hardware_token cache: {e}");
+        }
     }
 
     resp.status.eq_ignore_ascii_case("revoked")

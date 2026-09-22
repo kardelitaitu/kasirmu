@@ -132,6 +132,7 @@ func createTestCollections(t *testing.T, app *tests.TestApp) {
 		&core.DateField{Name: "last_seen_at"},
 		&core.TextField{Name: "machine_id"},
 		&core.DateField{Name: "revoked_at"},
+		&core.TextField{Name: "hardware_fingerprint", Max: 128},
 	)
 	// Autodate created/updated mirror production so "-created" sorts work.
 	tenantMachines.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
@@ -561,6 +562,7 @@ func createMinimalCollections(t *testing.T, app *tests.TestApp, skip map[string]
 			&core.DateField{Name: "last_seen_at"},
 			&core.TextField{Name: "machine_id"},
 			&core.DateField{Name: "revoked_at"},
+			&core.TextField{Name: "hardware_fingerprint", Max: 128},
 		)
 		tenantMachines.CreateRule = types.Pointer("")
 		tenantMachines.ListRule = types.Pointer("")

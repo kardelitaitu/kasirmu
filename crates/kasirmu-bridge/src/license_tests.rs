@@ -170,6 +170,7 @@ fn server_license_status_dto_camel_case() {
         tier: "pro".into(),
         active: true,
         device_revoked: false,
+        hardware_verified: Some(true),
         expires_at: Some("2027-01-01T00:00:00Z".into()),
         grace_until: Some("2027-01-15T00:00:00Z".into()),
         max_locations: 2,
@@ -183,6 +184,7 @@ fn server_license_status_dto_camel_case() {
     assert!(json.contains("\"active\":true"));
     // ADR #58 §2.4a.2: the device verdict rides the IPC DTO in camelCase.
     assert!(json.contains("\"deviceRevoked\":false"));
+    assert!(json.contains("\"hardwareVerified\":true"));
 }
 
 #[test]
@@ -193,6 +195,7 @@ fn server_license_status_dto_null_optionals() {
         tier: "free".into(),
         active: false,
         device_revoked: true,
+        hardware_verified: None,
         expires_at: None,
         grace_until: None,
         max_locations: 1,

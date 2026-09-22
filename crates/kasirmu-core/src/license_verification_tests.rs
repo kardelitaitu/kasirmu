@@ -501,6 +501,8 @@ fn status_response(
         grace_until: None,
         max_locations: None,
         max_stores: None,
+        hardware_verified: None,
+        hardware_token: None,
     }
 }
 
@@ -570,6 +572,89 @@ fn verdict_caches_and_clears_the_device_flag() {
         Some("false"),
         "an un-revoke must clear the cached verdict, not leave it stuck"
     );
+}
+
+#[test]
+fn verdict_attestation_caches_hardware_token_and_verified_at() {
+    use crate::migrations;
+    use crate::settings::{Settings, keys};
+
+    let conn = migrations::fresh_db();
+    seed_subscription_row(&conn, "active", Some("2027-01-01T00:00:00Z"));
+
+    let mut resp = status_response("active", false, None);
+    resp.hardware_verified = Some(true);
+    resp.hardware_token = Some("hwt_sig_12345".to_string());
+
+    apply_license_verdict_to_cache(&conn, &resp);
+
+    assert_eq!(
+        Settings::get(&conn, keys::DEVICE_REVOKED)
+            .unwrap()
+            .as_deref(),
+        Some("false")
+    );
+    assert_eq!(
+        Settings::get(&conn, keys::HARDWARE_TOKEN)
+            .unwrap()
+            .as_deref(),
+        Some("hwt_sig_12345")
+    );
+    assert!(
+        Settings::get(&conn, keys::MACHINE_VERIFIED_AT)
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[test]
+fn verdict_hardware_mismatch_locks_device() {
+    use crate::migrations;
+    use crate::settings::{Settings, keys};
+
+    let conn = migrations::fresh_db();
+    seed_subscription_row(&conn, "active", Some("2027-01-01T00:00:00Z"));
+
+    let mut resp = status_response("active", false, None);
+    resp.hardware_verified = Some(false); // hardware mismatch detected by server
+
+    apply_license_verdict_to_cache(&conn, &resp);
+
+    assert_eq!(
+        Settings::get(&conn, keys::DEVICE_REVOKED)
+            .unwrap()
+            .as_deref(),
+        Some("true"),
+        "hardware mismatch must lock the device under device.revoked"
+    );
+}
+
+#[test]
+fn test_status_response_deserialization_hardware_fields() {
+    let json_verified = r#"{
+        "tenant_id": "t1",
+        "status": "active",
+        "tier": "pro",
+        "active": true,
+        "device_revoked": false,
+        "hardware_verified": true,
+        "hardware_token": "hwt_test_token"
+    }"#;
+
+    let parsed: LicenseStatusResponse = serde_json::from_str(json_verified).unwrap();
+    assert_eq!(parsed.hardware_verified, Some(true));
+    assert_eq!(parsed.hardware_token.as_deref(), Some("hwt_test_token"));
+
+    let json_legacy = r#"{
+        "tenant_id": "t1",
+        "status": "active",
+        "tier": "pro",
+        "active": true,
+        "device_revoked": false
+    }"#;
+    let parsed_legacy: LicenseStatusResponse = serde_json::from_str(json_legacy).unwrap();
+    assert_eq!(parsed_legacy.hardware_verified, None);
+    assert_eq!(parsed_legacy.hardware_token, None);
 }
 
 /// The subscription row's server-authoritative fields are refreshed, so the

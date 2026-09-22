@@ -269,6 +269,10 @@ pub const CRL_CHECKED_AT: &str = "crl.checked_at";
 /// it this machine's identity — so it is refused on both untrusted lanes
 /// while `license.rs` keeps minting it under TrustedLocal.
 pub const HARDWARE_FINGERPRINT: &str = "hardware_fingerprint";
+/// RFC 3339 timestamp when the machine attestation was last verified by the licence server (ADR #58 §2.4).
+pub const MACHINE_VERIFIED_AT: &str = "machine.verified_at";
+/// Rotated hardware token issued by the licence server upon attestation (ADR #58 §2.4).
+pub const HARDWARE_TOKEN: &str = "hardware.token";
 
 /// Settings keys that must never be returned by the raw `get_setting` IPC
 /// surface, nor travel in a portable export/restore package.

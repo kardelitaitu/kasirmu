@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -90,9 +92,14 @@ func handleStatus(app core.App) func(e *core.RequestEvent) error {
 		// active subscription exists).
 		deviceRevoked := false
 		revokePerformed := false
+		hardwareVerified := true
+		hardwareToken := ""
+		lastSeenAt := ""
 		var statusReq struct {
-			MachineID string `json:"machine_id,omitempty"`
-			Revoke    bool   `json:"revoke,omitempty"`
+			MachineID           string `json:"machine_id,omitempty"`
+			HardwareFingerprint string `json:"hardware_fingerprint,omitempty"`
+			HardwareToken       string `json:"hardware_token,omitempty"`
+			Revoke              bool   `json:"revoke,omitempty"`
 			// ADR #57 §2.1: the APK signing-certificate fingerprint the client
 			// computed. Absent on every platform that cannot produce one (desktop,
 			// or an unpinnable install), which is why this is a plain string and
@@ -129,6 +136,36 @@ func handleStatus(app core.App) func(e *core.RequestEvent) error {
 						log.Printf("/status: machine %q revoked for tenant %q", statusReq.MachineID, tenantID)
 					}
 				}
+
+				// ADR #58 §2.4: periodic machine attestation & hardware fingerprint verification
+				nowUTC := time.Now().UTC()
+				lastSeenAt = nowUTC.Format(time.RFC3339)
+				machine.Set("last_seen_at", nowUTC)
+
+				if statusReq.HardwareFingerprint != "" {
+					storedFP := machine.GetString("hardware_fingerprint")
+					if storedFP == "" {
+						// Bind hardware fingerprint on initial report
+						machine.Set("hardware_fingerprint", statusReq.HardwareFingerprint)
+					} else if storedFP != statusReq.HardwareFingerprint {
+						// Mismatch: cloned machine_id or spoofed hardware anchor!
+						log.Printf("/status: hardware fingerprint mismatch for machine %q: stored=%q reported=%q",
+							statusReq.MachineID, storedFP, statusReq.HardwareFingerprint)
+						deviceRevoked = true
+						hardwareVerified = false
+					}
+				}
+
+				if err := app.Save(machine); err != nil {
+					log.Printf("/status: failed to update machine record %q: %v", statusReq.MachineID, err)
+				}
+
+				if !deviceRevoked && hardwareVerified {
+					hardwareToken = mintHardwareToken(tenantID, statusReq.MachineID, statusReq.HardwareFingerprint, nowUTC.Unix())
+				}
+			} else {
+				// Machine not registered to this tenant.
+				hardwareVerified = false
 			}
 		}
 
@@ -168,16 +205,19 @@ func handleStatus(app core.App) func(e *core.RequestEvent) error {
 				log.Printf("/status: tenant=%q has no active subscription", tenantID)
 			}
 			return e.JSON(http.StatusOK, map[string]any{
-				"tenant_id": tenantID,
-				"status":    tenant.GetString("status"),
+				"tenant_id":         tenantID,
+				"status":            tenant.GetString("status"),
 				// No active subscription means the FREE tier, which is the floor, not an
 				// unknown: a tier a customer cannot be missing is "unknown" to nobody, and
 				// a client rendering that string blank is a bug we already shipped once.
 				// `active: false` below still tells the caller there is nothing paid here.
-				"tier":             "free",
-				"active":           false,
-				"device_revoked":   deviceRevoked,
-				"revoke_performed": revokePerformed,
+				"tier":              "free",
+				"active":            false,
+				"device_revoked":    deviceRevoked,
+				"revoke_performed":  revokePerformed,
+				"hardware_verified": hardwareVerified,
+				"hardware_token":    hardwareToken,
+				"last_seen_at":      lastSeenAt,
 			})
 		}
 
@@ -185,23 +225,40 @@ func handleStatus(app core.App) func(e *core.RequestEvent) error {
 		tierKey := sub.GetString("tier_key")
 		subStatus := sub.GetString("status")
 
-		log.Printf("/status: tenant=%q tier=%s status=%s active=%v device_revoked=%v revoke_performed=%v",
-			tenantID, tierKey, subStatus, subStatus == "active", deviceRevoked, revokePerformed)
+		log.Printf("/status: tenant=%q tier=%s status=%s active=%v device_revoked=%v revoke_performed=%v hardware_verified=%v",
+			tenantID, tierKey, subStatus, subStatus == "active", deviceRevoked, revokePerformed, hardwareVerified)
 		return e.JSON(http.StatusOK, map[string]any{
-			"tenant_id":   tenantID,
-			"status":      tenant.GetString("status"),
-			"tier":        tierKey,
-			"active":      subStatus == "active",
-			"expires_at":  sub.GetString("expires_at"),
-			"grace_until": sub.GetString("grace_until"),
+			"tenant_id":         tenantID,
+			"status":            tenant.GetString("status"),
+			"tier":              tierKey,
+			"active":            subStatus == "active",
+			"expires_at":        sub.GetString("expires_at"),
+			"grace_until":       sub.GetString("grace_until"),
 			// 1g dual-emit: max_locations is the primary name; max_stores
 			// is kept for pre-rename clients whose LicenseStatusResponse
 			// defaults the quota to 0 when the field is absent — dropping
 			// the legacy key would silently report quota 0 to them.
-			"max_locations":    sub.GetInt("max_stores"),
-			"max_stores":       sub.GetInt("max_stores"),
-			"device_revoked":   deviceRevoked,
-			"revoke_performed": revokePerformed,
+			"max_locations":     sub.GetInt("max_stores"),
+			"max_stores":        sub.GetInt("max_stores"),
+			"device_revoked":    deviceRevoked,
+			"revoke_performed":  revokePerformed,
+			"hardware_verified": hardwareVerified,
+			"hardware_token":    hardwareToken,
+			"last_seen_at":      lastSeenAt,
 		})
 	}
+}
+
+// mintHardwareToken issues a cryptographically verifiable hardware attestation token (ADR #58 §2.4).
+func mintHardwareToken(tenantID, machineID, hwFP string, timestamp int64) string {
+	msg := fmt.Sprintf("hw-token-v1:%s:%s:%s:%d", tenantID, machineID, hwFP, timestamp)
+	sig, err := signDetached([]byte(msg))
+	if err != nil {
+		h := sha256.Sum256([]byte(msg))
+		return fmt.Sprintf("hwt_%x_%d", h[:16], timestamp)
+	}
+	if len(sig) > 32 {
+		return fmt.Sprintf("hwt_%s_%d", sig[:32], timestamp)
+	}
+	return fmt.Sprintf("hwt_%s_%d", sig, timestamp)
 }

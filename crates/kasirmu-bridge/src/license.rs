@@ -479,6 +479,9 @@ pub struct ServerLicenseStatusDto {
     /// (ADR #58 §2.4a.2). Server-authored; the session gate refuses when the
     /// cached verdict is set.
     pub device_revoked: bool,
+    /// Whether the hardware fingerprint matched the registered machine record (ADR #58 §2.4).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hardware_verified: Option<bool>,
     /// When the subscription expires (RFC 3339).
     pub expires_at: Option<String>,
     /// When the grace period ends (RFC 3339).
@@ -502,11 +505,20 @@ pub struct ServerLicenseStatusDto {
 pub async fn check_license_status(
     ctx: &BridgeCtx<'_>,
 ) -> Result<ServerLicenseStatusDto, BridgeError> {
-    let (api_key_encrypted, machine_id) = {
+    let (api_key_encrypted, machine_id, hardware_fingerprint, hardware_token) = {
         let conn = ctx.lock_global().await;
         let api_key_enc = Settings::get(&conn, "license.api_key")?.filter(|s| !s.is_empty());
         let mid = Settings::get(&conn, keys::MACHINE_ID)?.unwrap_or_default();
-        (api_key_enc, mid)
+        let hw_fp = match Settings::get(&conn, keys::HARDWARE_FINGERPRINT)? {
+            Some(fp) if !fp.is_empty() => Some(fp),
+            _ => {
+                let fp = generate_hardware_fingerprint();
+                let _ = Settings::set(&conn, keys::HARDWARE_FINGERPRINT, &fp);
+                Some(fp)
+            }
+        };
+        let hw_tok = Settings::get(&conn, keys::HARDWARE_TOKEN)?.filter(|s| !s.is_empty());
+        (api_key_enc, mid, hw_fp, hw_tok)
     };
 
     let api_key = match api_key_encrypted {
@@ -528,9 +540,15 @@ pub async fn check_license_status(
     // device that cannot be fingerprinted is never refused a renewal for it.
     let build_fingerprint = crate::build_integrity::apk_signing_fingerprint();
 
-    let resp = core_check_license_status(&api_key, &machine_id, build_fingerprint.as_deref())
-        .await
-        .map_err(|e| BridgeError::Internal(e.to_string()))?;
+    let resp = core_check_license_status(
+        &api_key,
+        &machine_id,
+        build_fingerprint.as_deref(),
+        hardware_fingerprint.as_deref(),
+        hardware_token.as_deref(),
+    )
+    .await
+    .map_err(|e| BridgeError::Internal(e.to_string()))?;
 
     // Refresh local capability cache upon successful license-server response,
     // and learn whether the tenant verdict is a revocation.
@@ -547,11 +565,11 @@ pub async fn check_license_status(
     // §2.4a.2's per-device verdict drops live sessions too, for the same reason
     // the tenant sweep exists: refusing the NEXT session does not stop the one
     // already open on a stolen tablet.
-    if resp.device_revoked {
+    if resp.device_revoked || resp.hardware_verified == Some(false) {
         let dropped = crate::auth::invalidate_all_sessions(ctx);
         tracing::warn!(
             dropped,
-            "device revoked — invalidated every live session (ADR #58 §2.4a.2)"
+            "device revoked or hardware mismatch — invalidated every live session (ADR #58 §2.4)"
         );
     }
 
@@ -604,6 +622,7 @@ pub async fn check_license_status(
         tier: resp.tier,
         active: resp.active,
         device_revoked: resp.device_revoked,
+        hardware_verified: resp.hardware_verified,
         expires_at: resp.expires_at,
         grace_until: resp.grace_until,
         max_locations,

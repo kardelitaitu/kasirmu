@@ -305,6 +305,11 @@ func main() {
 		if err := ensureFeatureGrantsField(app); err != nil {
 			return err
 		}
+		// ADR #58 §2.4: add hardware_fingerprint text field to tenant_machines
+		// for continuous machine attestation and hardware token verification.
+		if err := ensureTenantMachinesHardwareFingerprint(app); err != nil {
+			return err
+		}
 		// Admin identity precondition (admin registration squat guard):
 		// createTenant now refuses self-signup for the admin email on
 		// every registration path, so the admin tenants row is a hard
@@ -1297,6 +1302,28 @@ func ensurePauseFields(app core.App) error {
 		log.Println("migrated: added paused_until field to subscriptions")
 	}
 
+	return nil
+}
+
+// ensureTenantMachinesHardwareFingerprint adds the hardware_fingerprint text field
+// to tenant_machines for machine attestation (ADR #58 §2.4). Idempotent.
+func ensureTenantMachinesHardwareFingerprint(app core.App) error {
+	collection, err := app.FindCollectionByNameOrId("tenant_machines")
+	if err != nil {
+		return nil
+	}
+	if collection.Fields.GetByName("hardware_fingerprint") != nil {
+		return nil // already exists
+	}
+	collection.Fields.Add(&core.TextField{
+		Name: "hardware_fingerprint",
+		Max:  128,
+		Help: "Hardware-bound fingerprint (hw_<64hex>) bound during activation/heartbeat.",
+	})
+	if err := app.Save(collection); err != nil {
+		return fmt.Errorf("failed to add hardware_fingerprint to tenant_machines: %w", err)
+	}
+	log.Println("migrated tenant_machines collection: added hardware_fingerprint field")
 	return nil
 }
 

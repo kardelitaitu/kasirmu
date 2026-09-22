@@ -490,13 +490,27 @@ async fn run_license_ride_along(db: &DbConnection) {
             .ok()
             .flatten()
             .unwrap_or_default();
-            Some((api_key_enc, machine_id))
+            let hardware_fingerprint = kasirmu_core::settings::Settings::get(
+                &conn,
+                kasirmu_core::settings::keys::HARDWARE_FINGERPRINT,
+            )
+            .ok()
+            .flatten()
+            .filter(|s| !s.is_empty());
+            let hardware_token = kasirmu_core::settings::Settings::get(
+                &conn,
+                kasirmu_core::settings::keys::HARDWARE_TOKEN,
+            )
+            .ok()
+            .flatten()
+            .filter(|s| !s.is_empty());
+            Some((api_key_enc, machine_id, hardware_fingerprint, hardware_token))
         })
         .await
         .unwrap_or(None)
     };
 
-    let Some((api_key_enc, machine_id)) = creds else {
+    let Some((api_key_enc, machine_id, hardware_fingerprint, hardware_token)) = creds else {
         // No licence activated on this terminal — nothing to ask about.
         // This is the common path for a free/local install, so it is debug.
         tracing::debug!("licence ride-along skipped: no stored api key");
@@ -513,32 +527,37 @@ async fn run_license_ride_along(db: &DbConnection) {
         }
     };
 
-    // No fingerprint is sent from here, deliberately: `platform-sync` is shared
+    // No build fingerprint is sent from here, deliberately: `platform-sync` is shared
     // with the desktop shell (which has no APK to fingerprint) and does not
     // depend on `kasirmu-hal`, where the Android reader lives. Passing `None`
     // omits the field, which the server classifies as `unknown` — never
-    // `mismatch` — so this path cannot refuse a renewal. The Android tablet
-    // reports its fingerprint through the bridge's licence-status lane
+    // `mismatch` (§2.2), so this path cannot refuse a renewal. The Android tablet
+    // reports its build fingerprint through the bridge's licence-status lane
     // (`kasirmu_bridge::license::check_license_status`), which can reach it.
-    let resp =
-        match kasirmu_core::license_verification::check_license_status(&api_key, &machine_id, None)
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                // Fail open: keep the cached verdict and keep selling. Logged at
-                // warn (not error) because an unreachable licence server is an
-                // expected condition on an offline-first till, not a fault.
-                tracing::warn!(
-                    "licence ride-along: status check failed, keeping cached verdict: {e}"
-                );
-                return;
-            }
-        };
+    let resp = match kasirmu_core::license_verification::check_license_status(
+        &api_key,
+        &machine_id,
+        None,
+        hardware_fingerprint.as_deref(),
+        hardware_token.as_deref(),
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            // Fail open: keep the cached verdict and keep selling. Logged at
+            // warn (not error) because an unreachable licence server is an
+            // expected condition on an offline-first till, not a fault.
+            tracing::warn!(
+                "licence ride-along: status check failed, keeping cached verdict: {e}"
+            );
+            return;
+        }
+    };
 
     // Read the device verdict and tenant_id before the response is moved into
     // the blocking closure below — it is needed for the log line and CRL check.
-    let device_revoked = resp.device_revoked;
+    let device_revoked = resp.device_revoked || resp.hardware_verified == Some(false);
     let tenant_id = resp.tenant_id.clone();
 
     let tenant_revoked = {
