@@ -156,9 +156,11 @@ describe('SegmentedTabs keyboard pattern', () => {
 // tokens.css: a literal 32px matched "Add Staff" only at a 16px root — at the
 // 14px root a narrow window gets, the button is 28.25px, at the 125% zoom
 // preset 39.5px, at 150% 47px, at 200% 62px, while the pill stayed 32px.
-// Derived, the two agree to 0px at all five, and the track stays exactly 8px
-// taller than the pill (its 3px padding + 1px border per side), so the pill
-// can never overflow the track.
+// Derived, the two agree to 0px at all five, and the track now stands exactly
+// 4px taller than the pill — its 2px halo per side, with the hairline painted
+// as an inset ring so it costs no layout size — so the pill can never overflow
+// it. The halo was 4px per side (3px padding + a 1px border) before the outer
+// box was shrunk.
 //
 // Two couplings make the pill's height equal the button's, and these cases pin
 // both: (a) the segment's box is .btn--md's border-box arithmetic, and (b) the
@@ -221,12 +223,39 @@ describe('SegmentedTabs box contract', () => {
   });
 
   it('insets the thumb by the track padding, so it spans exactly the segment box', () => {
-    expect(ruleBody(css, '.segmented-tabs')).toMatch(/padding:\s*3px/);
+    // The inset must EQUAL the halo. That equality is what makes the thumb span
+    // the track's content box, so the halo can be resized without touching the
+    // thumb — the property that let the outer box shrink while the pill (and so
+    // "Add Staff" parity) stayed put. Measured: the thumb is 68.58 x 32 at a
+    // 16px root at a 2px halo and at 3px alike.
+    const track = ruleBody(css, '.segmented-tabs');
+    const halo = track.match(/padding:\s*(\d+)px/)![1];
     const thumb = ruleBody(css, '.segmented-tab-indicator');
-    expect(thumb).toMatch(/top:\s*3px/);
-    expect(thumb).toMatch(/bottom:\s*3px/);
+    expect(thumb).toMatch(new RegExp(`top:\\s*${halo}px`));
+    expect(thumb).toMatch(new RegExp(`bottom:\\s*${halo}px`));
+    expect(thumb).toMatch(new RegExp(`left:\\s*${halo}px`));
+    expect(thumb).toMatch(new RegExp(`width:\\s*calc\\(\\(100% - ${Number(halo) * 2}px\\)`));
     // No height of its own: a height here would decouple the pill from the
     // segment box — exactly the regression this pins against.
     expect(thumb).not.toMatch(/(?:^|[;\s])(?:min-)?height\s*:/);
+  });
+
+  it('nests the thumb radius inside the track radius, or the corner pinches', () => {
+    // Equal radii are the defect: two --radius-lg arcs 4px apart crossed and the
+    // gap closed to nothing along the diagonal. The inner radius must be the
+    // outer one minus the halo, and --radius-lg is rem so it tracks every root.
+    const halo = ruleBody(css, '.segmented-tabs').match(/padding:\s*(\d+)px/)![1];
+    expect(ruleBody(css, '.segmented-tab-indicator')).toMatch(
+      new RegExp(`border-radius:\\s*calc\\(var\\(--radius-lg\\)\\s*-\\s*${halo}px\\)`),
+    );
+  });
+
+  it('keeps the hairline out of the layout box', () => {
+    // `border: 1px` adds its width to the box — how the outer box came to stand
+    // 8px taller than the button it mirrors. The hairline must stay a ring, or
+    // the box cannot be shrunk without shrinking the thumb with it.
+    const track = ruleBody(css, '.segmented-tabs');
+    expect(track).toMatch(/box-shadow:\s*inset 0 0 0 1px var\(--color-border\)/);
+    expect(track).not.toMatch(/(?:^|[;\s])border\s*:/);
   });
 });

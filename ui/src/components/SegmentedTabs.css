@@ -71,25 +71,39 @@
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
   align-items: center;
-  padding: 3px;
+  /* The halo around the thumb, and the single number that sizes the outer box.
+     The thumb is inset by this SAME value, so it spans the track's content box
+     and its own size does not move when this does (measured at a 16px root: the
+     thumb is 68.58 x 32 at 2px and at 3px alike). 2px, down from 3px: with 3px
+     plus a 1px border the outer box stood 8px taller than the .btn--md it
+     mirrors — the "too big" this repairs. */
+  padding: 2px;
   background: var(--color-bg);
-  border: 1px solid var(--color-border);
+  /* The hairline as an INSET RING, not `border: 1px`. A border adds its width to
+     the box, so a border could only be dropped by shrinking the thumb with it;
+     the ring paints the same line inside the halo and costs no layout size. */
+  box-shadow: inset 0 0 0 1px var(--color-border);
   border-radius: var(--radius-lg);
 }
 
 /* The thumb: .btn--primary's fill, .btn--md's box, one column wide, inset by the
-   track's 3px padding. `translateX` percentages resolve against the thumb's OWN
+   track's 2px padding. `translateX` percentages resolve against the thumb's OWN
    width, so `value index * 100%` lands exactly on segment `index`; the width
    subtracts the two insets because the 100% it divides is the track's PADDING
    box. The index and count arrive as custom properties from the component, which
    keeps it free of refs, measure effects and resize listeners. */
 .segmented-tab-indicator {
   position: absolute;
-  top: 3px;
-  bottom: 3px;
-  left: 3px;
-  width: calc((100% - 6px) / var(--segmented-tab-count, 1));
-  border-radius: var(--radius-lg);
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc((100% - 4px) / var(--segmented-tab-count, 1));
+  /* NESTED radius — the correction that makes the corner clean. Two rounded rects
+     nest only while the inner radius is the outer one minus the gap; at equal
+     radii the two --radius-lg arcs, their centres a whole gap apart, crossed and
+     the gap pinched to nothing along the diagonal. The gap is the 2px halo, and
+     --radius-lg is in rem, so this tracks at every root font size. */
+  border-radius: calc(var(--radius-lg) - 2px);
   background: var(--color-accent);
   transform: translateX(calc(var(--segmented-tab-index, 0) * 100%));
   transition: transform var(--duration-300) var(--ease-out);
