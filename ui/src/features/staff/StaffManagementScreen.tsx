@@ -54,10 +54,21 @@ import { StaffDetailDrawer } from './components/StaffDetailDrawer';
 import { StaffManagementFooter } from './components/StaffManagementFooter';
 import RoleAuthoringPanel, { type RoleAuthoringPanelHandle } from './components/RoleAuthoringPanel';
 import { StaffTabs } from './components/StaffTabs';
-import { STAFF_TAB_IDS, type StaffTab } from './components/staffTabsModel';
+import { STAFF_TAB_IDS, STAFF_TAB_ORDER, type StaffTab } from './components/staffTabsModel';
 import './StaffManagementScreen.css';
 
 // ── Component ───────────────────────────────────────────────────────
+
+/**
+ * The panel slide classes, spelled out rather than interpolated from `slideFrom`.
+ * screenExtraction.test.ts walks this file for the literal class name to prove
+ * every rule in the stylesheet is reachable, and an interpolated suffix is
+ * invisible to that walk — the two rules then read as dead classes.
+ */
+const PANEL_SLIDE_CLASS: Record<'left' | 'right', string> = {
+  right: 'staff-mgmt-tabpanel--from-right',
+  left: 'staff-mgmt-tabpanel--from-left',
+};
 
 /** Staff management screen — manage user accounts, roles, PIN codes, and workspace assignments. */
 export default function StaffManagementScreen() {
@@ -179,24 +190,52 @@ export default function StaffManagementScreen() {
     return route === 'roles' ? 'roles' : 'staff';
   });
 
-  const selectTab = useCallback((tab: StaffTab) => {
+  /**
+   * Where the panel now being shown slides in from, or null while the page has
+   * not switched yet — the first paint must not slide. Set with the tab, in the
+   * one place that changes it, so a tab click and a browser Back agree on the
+   * direction: the panel follows the thumb, which travels right when the tab
+   * moves right along STAFF_TAB_ORDER.
+   */
+  const [slideFrom, setSlideFrom] = useState<'left' | 'right' | null>(null);
+
+  /**
+   * The tab the last change moved away from. A ref rather than state: it is a
+   * read of the PREVIOUS value at change time, and holding it in state would
+   * make the direction lag the panel it describes by a render.
+   */
+  const previousTabRef = useRef<StaffTab>(activeTab);
+
+  /** The single path a tab change takes, so click and hashchange cannot drift. */
+  const changeTab = useCallback((tab: StaffTab) => {
+    const from = previousTabRef.current;
+    if (from !== tab) {
+      setSlideFrom(
+        STAFF_TAB_ORDER.indexOf(tab) > STAFF_TAB_ORDER.indexOf(from) ? 'right' : 'left',
+      );
+      previousTabRef.current = tab;
+    }
     setActiveTab(tab);
+  }, []);
+
+  const selectTab = useCallback((tab: StaffTab) => {
+    changeTab(tab);
     // Keep the URL honest so each tab stays deep-linkable and the browser's
     // back button moves between them. AppShell's own hashchange listener
     // resolves the route from this hash, finding the same component.
     window.location.hash = `#/${tab}`;
-  }, []);
+  }, [changeTab]);
 
   // Back/forward and external deep links land here: AppShell maps the route,
   // this keeps the tab in step with it.
   useEffect(() => {
     const syncTabFromHash = () => {
       const route = window.location.hash.replace(/^#\//, '').split('?')[0];
-      if (route === 'staff' || route === 'roles') setActiveTab(route);
+      if (route === 'staff' || route === 'roles') changeTab(route);
     };
     window.addEventListener('hashchange', syncTabFromHash);
     return () => window.removeEventListener('hashchange', syncTabFromHash);
-  }, []);
+  }, [changeTab]);
 
   // The roles panel is mounted on first visit and then kept: it fetches the
   // role list, the permission-key registry and per-row holders, and re-issuing
@@ -305,6 +344,16 @@ export default function StaffManagementScreen() {
 
   // ── Render ─────────────────────────────────────────────────────
 
+  // The slide direction rides on BOTH panels: only one is ever displayed, so the
+  // class is inert on the other, and whichever is revealed reads it. See the
+  // animation's note in StaffManagementScreen.css for why no timer is involved.
+  // ONE line on purpose: resolveComposedClassNames (screenExtraction.test.ts)
+  // credits the right-hand side of the ASSIGNING line only, so splitting this
+  // ternary makes 'staff-mgmt-tabpanel' read as a dead class. The map is read
+  // through a template interpolation, which is how the two --from-* names are
+  // reached as well.
+  const panelClass = slideFrom ? `staff-mgmt-tabpanel ${PANEL_SLIDE_CLASS[slideFrom]}` : 'staff-mgmt-tabpanel';
+
   return (
     <div className="staff-mgmt" onContextMenu={(e) => e.preventDefault()}>
       <div className="staff-mgmt-header">
@@ -358,7 +407,7 @@ export default function StaffManagementScreen() {
           button with it. */}
       <div className="staff-mgmt-main">
         <div
-          className="staff-mgmt-tabpanel"
+          className={panelClass}
           id={STAFF_TAB_IDS.staff.panel}
           role="tabpanel"
           aria-labelledby={STAFF_TAB_IDS.staff.tab}
@@ -439,7 +488,7 @@ export default function StaffManagementScreen() {
             (see rolesPanelMounted). */}
         {canManageRoles && (
           <div
-            className="staff-mgmt-tabpanel"
+            className={panelClass}
             id={STAFF_TAB_IDS.roles.panel}
             role="tabpanel"
             aria-labelledby={STAFF_TAB_IDS.roles.tab}

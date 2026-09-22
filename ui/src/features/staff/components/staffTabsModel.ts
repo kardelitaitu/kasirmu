@@ -22,3 +22,11 @@ export const STAFF_TAB_IDS: Record<StaffTab, { tab: string; panel: string }> = {
   staff: { tab: 'staff-tab-account', panel: 'staff-panel-account' },
   roles: { tab: 'staff-tab-roles', panel: 'staff-panel-roles' },
 };
+
+/**
+ * The two tabs in strip order, left to right. The strip builds its segments in
+ * this order, so it is also the direction the thumb travels — and the panel
+ * slide reads its own direction from the same order, which is why it lives here
+ * rather than being inferred twice.
+ */
+export const STAFF_TAB_ORDER: readonly StaffTab[] = ['staff', 'roles'];

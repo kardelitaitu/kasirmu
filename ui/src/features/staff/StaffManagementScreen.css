@@ -138,6 +138,10 @@
 .staff-mgmt-main {
   flex: 1 1 auto;
   min-height: 0;
+  /* overflow-x is stated, not left to default: an `overflow-y: auto` beside a
+     `visible` overflow-x computes that axis to `auto`, so the panel slide below
+     would raise a horizontal scrollbar for the 300ms it is translated. */
+  overflow-x: hidden;
   overflow-y: auto;
   padding: var(--space-6) var(--space-8);
 }
@@ -155,6 +159,48 @@
    selector. */
 .staff-mgmt-tabpanel[hidden] {
   display: none;
+}
+
+/* The panel slide. The strip's thumb slides between segments
+   (SegmentedTabs.css, .segmented-tab-indicator), so the panel it swaps in
+   slides with it, entering from the side the thumb travelled towards. The
+   duration and easing are the thumb's own, so the two movements read as one.
+
+   This is the entire mechanism: no timer, no exiting state machine and no
+   unmount guard, because the panel that leaves is [hidden] in the SAME React
+   commit and its exit is never on screen to snap. Chromium drops a
+   display: none element's animation and starts it again when the element is
+   displayed — measured 2026-09-19: 0 animations while hidden, currentTime
+   back at 0 on every unhide — so clearing [hidden] replays this with no JS at
+   all. The direction class sits on BOTH panels and is inert on the hidden one. */
+@media (prefers-reduced-motion: no-preference) {
+  .staff-mgmt-tabpanel--from-right {
+    animation: staff-mgmt-panel-in-right var(--duration-300) var(--ease-out);
+  }
+  .staff-mgmt-tabpanel--from-left {
+    animation: staff-mgmt-panel-in-left var(--duration-300) var(--ease-out);
+  }
+
+  @keyframes staff-mgmt-panel-in-right {
+    from {
+      opacity: 0;
+      transform: translateX(var(--space-6));
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  @keyframes staff-mgmt-panel-in-left {
+    from {
+      opacity: 0;
+      transform: translateX(calc(var(--space-6) * -1));
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
 }
 
 /* ── Area 3: status footer (pinned) ──────────────────────────────── */

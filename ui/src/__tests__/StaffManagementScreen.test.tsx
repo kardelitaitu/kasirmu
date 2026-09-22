@@ -9,6 +9,7 @@ import {
 } from '@/__tests__/test-utils/invokeCoverage';
 import staffFtl from '@/locales/staff.ftl?raw';
 import StaffManagementScreen from '@/features/staff/StaffManagementScreen';
+import { STAFF_TAB_IDS } from '@/features/staff/components/staffTabsModel';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { ImpersonationProvider } from '@/contexts/ImpersonationContext';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
@@ -988,5 +989,50 @@ describe('StaffManagementScreen', () => {
         targetUserId: 'staff-1',
       });
     }, FAST_WAIT);
+  });
+
+  // ── Panel slide direction ─────────────────────────────────────────
+  //
+  // The slide itself is CSS (StaffManagementScreen.css) and
+  // animationCompliance.test.ts holds it behind prefers-reduced-motion. What the
+  // screen owns is the DIRECTION: the panel enters from the side the thumb
+  // travelled towards. jsdom computes no animation, so the direction class is
+  // the whole observable contract here — a wrong direction is invisible to every
+  // other test in this file.
+
+  const panelFor = (tab: "staff" | "roles") => document.getElementById(STAFF_TAB_IDS[tab].panel);
+
+  it("does not slide a panel on first paint", async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    // Both panels sit on the bare class, so the page opens still: a panel that
+    // arrived already carrying a direction would animate on load.
+    expect(panelFor("staff")?.className).toBe("staff-mgmt-tabpanel");
+    expect(panelFor("roles")?.className).toBe("staff-mgmt-tabpanel");
+  });
+
+  it("brings the incoming panel in from the right when the tab moves right", async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.click(screen.getByTestId("staff-tab-roles"));
+
+    expect(panelFor("roles")?.className).toContain("staff-mgmt-tabpanel--from-right");
+    expect(panelFor("roles")).not.toHaveAttribute("hidden");
+    // The outgoing panel is hidden in the SAME commit, which is why the CSS
+    // needs no exit animation: there is nothing left on screen to snap.
+    expect(panelFor("staff")).toHaveAttribute("hidden");
+  });
+
+  it("brings the panel in from the left when the tab moves back", async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.click(screen.getByTestId("staff-tab-roles"));
+    fireEvent.click(screen.getByTestId("staff-tab-account"));
+
+    expect(panelFor("staff")?.className).toContain("staff-mgmt-tabpanel--from-left");
+    expect(panelFor("roles")).toHaveAttribute("hidden");
   });
 });
