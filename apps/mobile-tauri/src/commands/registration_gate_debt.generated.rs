@@ -100,6 +100,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("settings::gateway_status", "no_session_resolution"),
     ("settings::set_setting", "no_session_resolution"),
     ("setup::get_enabled_features", "no_session_resolution"),
+    ("setup::get_preset_features", "no_session_resolution"),
     ("setup::get_first_run_state", "no_session_resolution"),
     ("setup::provision_device", "no_session_resolution"),
     ("desktop_link::link_device_google", "no_session_resolution"),
@@ -265,7 +266,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// two are only ever equal in a pass that touches both files.)
 /// Re-read 22-09-26: 344, with the floor raised to it in the same pass for the staff/role
 /// trash's five gated commands — 94 debt rows before and after.)
-pub const REGISTERED_TOTAL: usize = 344;
+pub const REGISTERED_TOTAL: usize = 345;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///
@@ -322,7 +323,10 @@ pub const REGISTERED_TOTAL: usize = 344;
 /// ungated local twin for revoked tenants, mirroring desktop registration.
 /// 92 -> 94 with `desktop_link::start_device_pairing` and `desktop_link::poll_device_pairing`
 /// (ADR #56 §2.5 / §5 Q1): device-code pairing runs before any staff account exists.
-pub const DEBT_CEILING: usize = 94;
+/// 94 -> 95 with `setup::get_preset_features` (`6ac851dd4`): the setup wizard reads the
+/// store-type presets BEFORE any staff session exists, the class the `desktop_link::*` and
+/// `setup::provision_device` rows above already occupy. Recorded in docs/records/JOURNAL.md.
+pub const DEBT_CEILING: usize = 95;
 
 /// Lowered from 89 by T11: `settings::set_hardware_settings` shed its row by deletion,
 /// not by gating. Its only argument beyond the DTO was a renderer-supplied `user_id` --
@@ -351,13 +355,16 @@ pub const DEBT_CEILING: usize = 94;
 /// `setup::dismiss_setup_wizard`) left the ledger in the same pass.
 /// 47 -> 48 with `data::export_data_without_session` (ADR #58 §4a Q-A option 3).
 /// 48 -> 50 with `desktop_link::start_device_pairing` and `desktop_link::poll_device_pairing`.
-pub const NO_SESSION_RESOLUTION: usize = 50;
+/// 50 -> 51 with `setup::get_preset_features`. This count is a pin the generator does not
+/// recompute, so it moves by hand in the same pass that raised the ceiling: `51 + 44 = 95`.
+pub const NO_SESSION_RESOLUTION: usize = 51;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
 /// 45 + 44 = 89 = `DEBT_CEILING`, as the class counts must sum to the ledger.
 /// 47 + 44 = 91 after the ADR #56 provisioning pass (two rows in, two out).
 /// 48 + 44 = 92 after adding data::export_data_without_session.
 /// 50 + 44 = 94 after adding pairing commands (ADR #56 §2.5).
+/// 51 + 44 = 95 after `setup::get_preset_features` joined class 1.
 pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 44;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).

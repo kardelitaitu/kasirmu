@@ -11798,8 +11798,33 @@ records what landed and does not approve it.
 - `cargo test -p kasirmu-app --lib commands::registration_gate_tests` -> **14 passed; 0 failed**, exit 0 (was 10 passed / 4 failed).
 - The regeneration's own legs: `drift_pin_generated_ledger_is_the_sweeps_own_output` -> ok; `drift_pin_three_way_partition_is_complete_and_sums` -> ok; `drift_pin_debt_ceilings_only_shrink` -> ok; `drift_pin_registration_floor_is_met` -> ok.
 
-**Commit:** one pathspec commit touching the gate file, the generated ledger and this entry, because the floor's
-own message asks for one deliberate pass. Never push without a direct user order.
+**Commit:** one pathspec commit touching the gate file, the generated ledger and this entry, because the floor's own message asks for one deliberate pass. Never push without a direct user order.
+
+
+## 2026-09-22 — Absorb: the same command lands on the tablet's ratchet, in the same pass (mobile-tauri/records)
+
+**Context:**
+The commit that reddened the desktop floor reddened the tablet's ledger, partition and ceiling legs too —
+`setup::get_preset_features` (`6ac851dd4`) is registered in BOTH shells. Measured on the tablet: 95 ungated
+against a ceiling of 94, the name absent from the generated ledger (`first row out of order: measured
+setup::get_preset_features, ledger setup::get_first_run_state`), and the class counts no longer partitioning
+the ceiling. The REASON is one reason and it is recorded in the entry above (the setup wizard reads the
+store-type presets before any staff session exists, so class 1 is structural for it); this entry records the
+tablet's own numbers so neither shell's record is a pointer into a file that holds only the other's.
+
+**The pass:** `REGISTERED_FLOOR` 344 -> 345; `DEBT_CEILING` 94 -> 95; `NO_SESSION_RESOLUTION` 50 -> 51
+(`51 + 44 = 95` partitions the ceiling; `RESOLVES_SESSION_NAMES_NO_PERMISSION` stays 44); ledger regenerated
+through the generator, which printed "95 debt row(s), registered total 345".
+
+**Verification:**
+- `cargo test -p kasirmu-mobile --lib commands::registration_gate_tests` -> **10 passed; 0 failed**, exit 0 (was 7 passed / 3 failed).
+- The four legs named in the failure: floor ok, partition ok, ceiling ok, generated-ledger ok.
+- `cargo test --workspace --all-features` is re-run after both halves land; the only leg that has failed
+  non-deterministically in this session is `kds_lan_live_offline_buffer_replay_respects_station_filter`, which
+  passes alone and was not touched here.
+
+**Commit:** its own pathspec commit immediately after the desktop half, because the two floors and the two
+ledgers may not drift apart on a command both shells register. Never push without a direct user order.
 
 
 ## 2026-09-22 — Repair: an independent audit of the staff/role trash found two holes the tests did not, and both close at the source (core/records)

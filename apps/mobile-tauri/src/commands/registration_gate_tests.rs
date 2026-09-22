@@ -145,7 +145,13 @@ mod debt;
 /// plus `restore_role_scoped` and `list_role_trash_scoped` behind
 /// `staff:manage_roles`. Nothing lands on the ledger, so this step moves the floor
 /// and the ledger's measured total together and leaves every ceiling alone.
-const REGISTERED_FLOOR: usize = 344;
+///
+/// The 344 -> 345 step is **not this lane's**: `setup::get_preset_features` arrived with
+/// `6ac851dd4` (the desktop half of the same commit) and lands here on the SAME pass that
+/// absorbed it on the desktop — floor 345, ceiling 95, class 1 51, ledger regenerated. Its
+/// reason is recorded in docs/records/JOURNAL.md with the desktop entry; this line exists so
+/// the two shells' floors cannot drift apart on a command both of them register.
+const REGISTERED_FLOOR: usize = 345;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.
