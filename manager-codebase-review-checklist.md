@@ -25,7 +25,7 @@ Derived from manager-codebase-review.md (commit 954d4b094), 2026-09-23. Nothing 
   Fence: platform/sync/src/queue.rs:558-563 - they currently fall to Err(unsupported remote sync action) and dead-letter.
   Done when: a refund made on terminal A is visible on terminal B after a pull, with stock and shift figures consistent on both. Copy the idempotence pattern already used by finalize_sale (queue.rs:553-557) rather than inventing one.
 
-- [x] **C5 [P0] Stop counting voided and pending sales as revenue** (8.2, P0-4) - **desktop path DONE 2026-09-23, commit 743f222f**; the tablet's duplicate EOD builder is C5b
+- [x] **C5 [P0] Stop counting voided and pending sales as revenue** (8.2, P0-4) - **DONE 2026-09-23**, desktop 743f222f + tablet 1eee8e0f (C5b)
   Fence: crates/kasirmu-core/src/db/sales.rs:266-269 (export_daily_summary, no status predicate); crates/kasirmu-bridge/src/history.rs:319 versus :326, :347, :358 (two day definitions on one sheet).
   Done when: a voided sale does not change total_revenue, and the EOD header reconciles with its own payment breakdown on a refund-and-void fixture - a fixture that does not exist today and has to be written.
 
@@ -121,7 +121,7 @@ Full analysis - deciding facts, options with pros and cons, what would change th
 
 ## Wave 4 - added during implementation
 
-- [ ] **C5b [P0] Mirror the EOD fix into the tablet's duplicate builder** - apps/mobile-tauri/src/commands/history.rs still lacks the status predicate and still mixes day definitions; its two hazard pins are now red/stale and must be INVERTED, not deleted (see commit 743f222f, which fixed only the desktop path).
+- [x] **C5b [P0] Mirror the EOD fix into the tablet's duplicate builder** - **DONE 2026-09-23, commit 1eee8e0f**. Both doors now call the shared core queries; both hazard pins INVERTED (names kept) and the boundary-row pin gained an anti-vacuity guard. The tablet builder also lost a latent bug: its payment query had no COALESCE and grouped by method without currency while the header is per-row.
 - [ ] **C6b [P1] Validate or normalize the timezone on the write path** - crates/kasirmu-core/src/db/provisioning.rs:467-476 and :514-564 insert locations.timezone verbatim with no validation while crates/kasirmu-bridge/src/locations.rs:314-321 accepts only Asia/Jakarta|Asia/Makassar|Asia/Jayapura|UTC. Split out of C6, whose reporting half is done.
 - [ ] **C11b [P2] Document the pre-migration snapshot and the pre-flight** - docs/operations/ carries no pre-upgrade procedure for the desktop SQLite file, and the four pinned un-re-runnable migrations (migrations_tests.rs:361-366) are not named anywhere an operator reads. Split out of C11, whose code half is done.
 - [ ] **C12b [P2] Wire the variance report to an operator surface** - the report exists in core (bdaffa47) with no caller: no Tauri command, no UI. Decide the surface (a Data-screen panel or a CLI subcommand) and gate it like the other read-only report surfaces.
@@ -166,6 +166,8 @@ Fill one row per ticked item. An item is not done until the command and its resu
 | C2 step 1 | 2026-09-23 | cargo test -p kasirmu-app --lib state::tests | 11 passed incl. plugin_change_is_refused_and_live_set_survives | 28a2bfeb |
 | C8 S1 | 2026-09-23 | cargo test -p kasirmu-core recovery | 5 passed, 0 failed | 6814222 |
 | C8 S1 | 2026-09-23 | cargo test -p kasirmu-core --test backup_restore_integration | 21 passed, 0 failed - the deletion did not break the RUST-03 directory-target pins | 6814222 |
+| C5b | 2026-09-23 | cargo test -p kasirmu-mobile history | 19 passed, 0 failed (EXIT 0) | 1eee8e0f |
+| C5b | 2026-09-23 | cargo test -p kasirmu-mobile known_hazard | 2 passed - both pins inverted in place, names unchanged, both now asserting the CORRECTED behaviour | 1eee8e0f |
 | C10 | | | | |
 | C11 | | | | |
 | C12 | | | | |
