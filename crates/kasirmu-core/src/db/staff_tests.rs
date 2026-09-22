@@ -737,6 +737,37 @@ fn soft_delete_hides_the_member_from_the_roster_and_from_login() {
 }
 
 #[test]
+fn a_trashed_member_is_not_editable() {
+    // Without the `deleted_at IS NULL` guard on the update, a crafted call could set
+    // is_active = 1 on a trashed row — an ACTIVE account that both the login path and
+    // the roster filter out, so nobody could see it and nobody could revoke it.
+    let conn = fresh();
+    seed_users(&conn);
+    deactivate(&conn, "user-3");
+    store(&conn).soft_delete_user("user-3").unwrap();
+
+    let err = store(&conn)
+        .update_user("user-3", "carol", "Carol", "role-staff", true)
+        .expect_err("a trashed member must not be editable");
+    assert!(
+        matches!(err, CoreError::NotFound { entity, .. } if entity == "user"),
+        "expected the row to be treated as gone, got {err:?}"
+    );
+    // And nothing moved: the member is still inactive and still in the trash.
+    let (is_active, deleted): (bool, Option<String>) = conn
+        .query_row(
+            "SELECT is_active, deleted_at FROM users WHERE id = 'user-3'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert!(
+        !is_active,
+        "the refused update must not have activated the row"
+    );
+    assert!(deleted.is_some(), "nor taken it out of the trash");
+}
+#[test]
 fn soft_delete_is_refused_twice() {
     let conn = fresh();
     seed_users(&conn);

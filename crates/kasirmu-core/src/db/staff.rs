@@ -5,7 +5,7 @@
 //! [`Store::seed_default_roles`]. [`Store::authorize_with`] is the
 //! deny-by-default resolver every gate funnels through.
 //!
-//! Role AUTHORING is not here: `create_role`, `update_role`, `delete_role` and
+//! Role AUTHORING is not here: `create_role`, `update_role`, `soft_delete_role` and
 //! `role_reference_counts` live in [`super::roles`] behind that module's single
 //! grant validator and preset-id guard. This module keeps the preset side only
 //! — [`Store::seed_default_roles`] upserts every `RolePreset` row and overwrites
@@ -111,6 +111,42 @@ impl Store<'_> {
             })
         })?;
         rows.map(|r| Ok(r?)).collect()
+    }
+
+    /// The G-2 zombie-account guard, extended to the trash: `role_id` must name a
+    /// role that exists AND is not soft-deleted.
+    ///
+    /// Why the live half is a separate question from `get_role`: that read
+    /// deliberately does NOT filter `deleted_at`, because the role trash renders
+    /// trashed rows through `role_dto` -> `role_holder_count` -> `get_role`. So the
+    /// assignment path asks here instead of filtering there.
+    ///
+    /// Why it matters: a role kept assignable after being trashed can never be
+    /// purged (`purge_expired_roles` refuses a row anything references), so the
+    /// window would never close; and the role keeps granting while `list_roles`
+    /// hides it from every picker, which is an author-visible grant with no row
+    /// to revoke.
+    fn require_assignable_role(&self, role_id: &str) -> Result<(), CoreError> {
+        if self.get_role(role_id)?.is_none() {
+            return Err(CoreError::Validation {
+                field: "role_id",
+                message: format!("role '{role_id}' does not exist"),
+            });
+        }
+        let trashed: bool = self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM roles WHERE id = ?1 AND deleted_at IS NOT NULL)",
+            params![role_id],
+            |row| row.get(0),
+        )?;
+        if trashed {
+            return Err(CoreError::Validation {
+                field: "role_id",
+                message: format!(
+                    "role '{role_id}' is in the trash; restore it before assigning it"
+                ),
+            });
+        }
+        Ok(())
     }
 
     /// Look up a single role by id.
@@ -499,18 +535,7 @@ impl Store<'_> {
                 ),
             });
         }
-        // G-2: a role_id that references no row would either violate the FK
-        // (mislabelled as a username Conflict by the catch-all arm below)
-        // or — on a connection with foreign_keys off — create a user whose
-        // gate always denies ("role not found"), a silent zombie account.
-        // Validate up front so every caller (desktop, cloud, CLI) gets a
-        // typed error instead.
-        if self.get_role(role_id)?.is_none() {
-            return Err(CoreError::Validation {
-                field: "role_id",
-                message: format!("role '{role_id}' does not exist"),
-            });
-        }
+        self.require_assignable_role(role_id)?;
 
         let id = uuid::Uuid::now_v7().to_string();
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
@@ -597,16 +622,16 @@ impl Store<'_> {
         }
         // G-2: same zombie-account guard as create_user — a role change to
         // a nonexistent role must fail with a typed error before any write.
-        if self.get_role(role_id)?.is_none() {
-            return Err(CoreError::Validation {
-                field: "role_id",
-                message: format!("role '{role_id}' does not exist"),
-            });
-        }
+        self.require_assignable_role(role_id)?;
 
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        // `deleted_at IS NULL` is a guard, not a filter on the WHERE: a trashed
+        // member is not editable, and without it a crafted call could set
+        // is_active = 1 on a row that BOTH the login path and the roster filter
+        // out — an active account nobody can see. Restoring is the door back.
         let rows = self.conn.execute(
-            "UPDATE users SET username = ?1, display_name = ?2, role_id = ?3, is_active = ?4, updated_at = ?5 WHERE id = ?6",
+            "UPDATE users SET username = ?1, display_name = ?2, role_id = ?3, is_active = ?4, updated_at = ?5 \
+             WHERE id = ?6 AND deleted_at IS NULL",
             params![username, display_name.trim(), role_id, is_active, now, id],
         )?;
         if rows == 0 {

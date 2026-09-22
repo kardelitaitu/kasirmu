@@ -340,6 +340,76 @@ fn purge_expired_roles_removes_only_past_the_window() {
 }
 
 #[test]
+fn a_closed_window_role_is_not_listed_as_restorable() {
+    // The purge REFUSES to delete a row something still references, so a window can
+    // close with the row on disk. The read must not offer it: restorable is the one
+    // word a caller acts on, and a row past its deadline is not. This is the pair to
+    // purge_expired_roles_removes_only_past_the_window above — one pins the sweep,
+    // this pins the read the Trash tab is fed by.
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    insert_authored_role(&conn, "[]");
+    store(&conn).soft_delete_role(AUTHORED).unwrap();
+    let old = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS + 1))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute(
+        "UPDATE roles SET deleted_at = ?1 WHERE id = ?2",
+        params![old, AUTHORED],
+    )
+    .unwrap();
+
+    assert!(
+        store(&conn).list_trashed_roles().unwrap().is_empty(),
+        "a window that has closed must not be listed as if it still had time"
+    );
+    // And the sweep still reaches it — the read's predicate is a VIEW, not a lock.
+    assert_eq!(store(&conn).purge_expired_roles().unwrap(), 1);
+}
+
+#[test]
+fn a_trashed_role_cannot_be_assigned_to_an_account() {
+    // The hole this closes: a trashed role stayed assignable, and every re-reference
+    // makes purge_expired_roles refuse the row for ever — the window never closes, and
+    // the role keeps granting while list_roles hides it from every picker.
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    insert_authored_role(&conn, "[]");
+    store(&conn).soft_delete_role(AUTHORED).unwrap();
+
+    let err = store(&conn)
+        .create_user("late", "pin-hash", "Late Starter", AUTHORED)
+        .expect_err("a trashed role must not be assignable");
+    assert!(
+        matches!(&err, CoreError::Validation { field, message }
+            if *field == "role_id" && message.contains("is in the trash")),
+        "expected the trash refusal, got {err:?}"
+    );
+
+    // The same door from the update side: rebinding a live account onto it.
+    store(&conn)
+        .create_user("live", "pin-hash", "Live User", "role-staff")
+        .unwrap();
+    let err = store(&conn)
+        .update_user("live", "live", "Live User", AUTHORED, true)
+        .expect_err("rebinding onto a trashed role must be refused too");
+    assert!(
+        matches!(&err, CoreError::Validation { field, .. } if *field == "role_id"),
+        "expected the trash refusal, got {err:?}"
+    );
+
+    // Which is what keeps the window closable: nothing references it, so the sweep
+    // can still delete it once the window closes.
+    let old = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS + 1))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute(
+        "UPDATE roles SET deleted_at = ?1 WHERE id = ?2",
+        params![old, AUTHORED],
+    )
+    .unwrap();
+    assert_eq!(store(&conn).purge_expired_roles().unwrap(), 1);
+}
+
+#[test]
 fn soft_delete_role_refuses_every_builtin_preset_id() {
     // Deleting a preset would not just lose a row: users hold these ids,
     // and `authorize_with` fails closed on an unresolvable role, so the
@@ -469,7 +539,7 @@ fn reference_counts_agree_with_the_delete_decision() {
 // ROLE_REFERRERS names four tables. The tests above reach two of them
 // (users, assignments); role_workspace_types and role_workspaces appear
 // nowhere in this file, so nothing pins that the delete guard sees them.
-// Dropping either entry from the array would let delete_role clear its
+// Dropping either entry from the array would let soft_delete_role clear its
 // own pre-check and then hit a bare FK constraint violation — exactly the
 // failure the guard exists to turn into "reassign these rows first" — and
 // every test here would stay green.
@@ -619,7 +689,7 @@ fn role_reference_counts_enumerates_every_referrer_table_in_declared_order() {
 
 #[test]
 fn create_role_refuses_every_builtin_preset_id() {
-    // The create-side half of the guard update_role and delete_role already
+    // The create-side half of the guard update_role and soft_delete_role already
     // had. Deliberately run on an UNSEEDED database: with no preset rows
     // present, the primary-key constraint cannot be what stops these writes,
     // so a refusal here can only come from the guard.

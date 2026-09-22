@@ -212,7 +212,7 @@ impl Store<'_> {
     ///
     /// Preset ids are refused — see [`Store::reject_builtin_role_id`]. This is
     /// the create-side half of the rule [`Store::update_role`] and
-    /// [`Store::delete_role`] already enforce: `seed_default_roles` upserts
+    /// [`Store::soft_delete_role`] already enforce: `seed_default_roles` upserts
     /// every `RolePreset` id and overwrites its grants, so a row minted at one
     /// of those ids before the first seed is silently destroyed by it later,
     /// with no error to trace. The production caller generates
@@ -554,12 +554,21 @@ impl Store<'_> {
     }
 
     /// The custom roles currently in the trash, newest first.
+    ///
+    /// RESTORABLE rows only: the same cutoff the purge compares against is a
+    /// predicate here, so a window that has closed is never listed as if it had
+    /// time left. The purge runs immediately before this read in the same command,
+    /// which is what makes the two consistent — a row that survives the purge
+    /// either has time left or is one the purge refused to delete because
+    /// something still references it, and neither is restorable-and-hidden.
     pub fn list_trashed_roles(&self) -> Result<Vec<TrashedRole>, CoreError> {
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let mut stmt = self.conn.prepare(
             "SELECT id, name, description, permissions, created_at, updated_at, deleted_at \
-             FROM roles WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC",
+             FROM roles WHERE deleted_at IS NOT NULL AND deleted_at >= ?1 ORDER BY deleted_at DESC",
         )?;
-        let rows = stmt.query_map([], |row| {
+        let rows = stmt.query_map([&cutoff], |row| {
             Ok(TrashedRole {
                 role: Role {
                     id: row.get("id")?,
@@ -587,21 +596,30 @@ impl Store<'_> {
     /// The reference check is repeated here anyway, inside the same
     /// transaction as the delete: the guard held at trash time, and this is the
     /// second door, not a copy of the first.
+    ///
+    /// Deliberately NOT through the RESTORABLE read: `list_trashed_roles` excludes a
+    /// closed window, which is precisely the set this sweep exists to delete. Reading
+    /// it here made the purge report 0 and delete nothing while the expired rows
+    /// stayed on disk, so the sweep asks the table for the expired set directly.
+    /// Fixed-width RFC 3339 millis, so comparing the strings compares the instants —
+    /// the clock check in SQL's own vocabulary, and the same boundary the read uses.
     pub fn purge_expired_roles(&self) -> Result<usize, CoreError> {
         let cutoff = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS))
             .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let expired: Vec<String> = {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT id FROM roles WHERE deleted_at IS NOT NULL AND deleted_at < ?1")?;
+            let rows = stmt.query_map([&cutoff], |row| row.get::<_, String>(0))?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        };
         let tx = self.conn.unchecked_transaction()?;
         let mut removed = 0usize;
-        for entry in self.list_trashed_roles()? {
-            // Fixed-width RFC 3339 millis: comparing the strings compares the
-            // instants, so this is the clock check in SQL's own vocabulary.
-            if entry.deleted_at >= cutoff {
+        for id in expired {
+            if !Self::role_references_on(&tx, &id)?.is_empty() {
                 continue;
             }
-            if !Self::role_references_on(&tx, &entry.role.id)?.is_empty() {
-                continue;
-            }
-            removed += tx.execute("DELETE FROM roles WHERE id = ?1", params![entry.role.id])?;
+            removed += tx.execute("DELETE FROM roles WHERE id = ?1", params![id])?;
         }
         tx.commit()?;
         Ok(removed)
