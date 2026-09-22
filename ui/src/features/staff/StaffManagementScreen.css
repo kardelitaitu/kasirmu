@@ -665,9 +665,11 @@
 }
 
 /* The days-left badge is the row's one urgency signal and the Restore button
-   is its one action, so the name block takes the slack: a long display name
-   or role description is clipped there and never pushes the button off the
-   row. */
+   is its one action, so the name block takes the slack. Measured against the
+   real sheet at 1280 / 768 / 390: the button's right edge stays 1px inside the
+   row's content box at every width, the display NAME wraps to a second line
+   once the row is narrow (the row grows; nothing is lost), and the second
+   line — username, or a role description — is what ellipsises. */
 .staff-mgmt-trash-row {
   display: flex;
   align-items: center;
