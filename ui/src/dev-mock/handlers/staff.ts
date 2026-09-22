@@ -9,7 +9,7 @@
  */
 
 import type { MockHandler } from '../core/mockDispatcher';
-import { MOCK_STAFF } from '../core/mockSeedData';
+import { MOCK_STAFF, MOCK_STAFF_IDENTITIES } from '../core/mockSeedData';
 import { MOCK_LOGIN_ATTEMPTS_KEY, MOCK_USER_PREFS_KEY, readSlice, writeSlice } from '../core/mockDatabase';
 import { MOCK_ROLE_PERMISSIONS, mockHandlerPayload } from './system';
 import {
@@ -71,16 +71,26 @@ function mockStaffMember(overrides: Partial<Record<string, unknown>> = {}): Reco
  * while its own expanded list named different ones -- the exact contradiction
  * the real backend was just fixed for, reproduced in the preview that exists
  * to catch it. One source, so the mock cannot show it.
+ *
+ * DERIVED from MOCK_STAFF_IDENTITIES rather than restated, because the roster
+ * and the login seed are two views of the same five people: the session a
+ * preview logs in with carries a user_id, and that id has to be a row this
+ * list serves. Two hand-written tables let `staff-1` be the Staff member at
+ * login and the Owner here, with no comparison anywhere to catch it — the
+ * ids looked plausible, so the divergence stayed invisible until a
+ * self-referencing guard (never delete/impersonate your own row) would have
+ * silently never matched. Deriving both is what makes that unrepresentable.
  */
-const MOCK_STAFF_ROWS: Array<Record<string, unknown>> = [
-  mockStaffMember({ id: 'staff-1', username: 'owner', display_name: 'Owner', role_id: 'role-owner', role_name: 'Owner' }),
-  mockStaffMember({ id: 'staff-2', username: 'admin', display_name: 'Admin', role_id: 'role-admin', role_name: 'Admin' }),
-  mockStaffMember({ id: 'staff-3', username: 'manager', display_name: 'Manager', role_id: 'role-manager', role_name: 'Manager' }),
-  mockStaffMember({ id: 'staff-4', username: 'staff', display_name: 'Staff', role_id: 'role-staff', role_name: 'Staff' }),
-  // Inactive on purpose: delete REFUSES an active member, so without one
-  // inactive row the trash flow would be unreachable in browser preview.
-  mockStaffMember({ id: 'staff-5', username: 'auditor', display_name: 'Auditor', role_id: 'role-auditor', role_name: 'Auditor', is_active: false }),
-];
+const MOCK_STAFF_ROWS: Array<Record<string, unknown>> = MOCK_STAFF_IDENTITIES.map((identity) =>
+  mockStaffMember({
+    id: identity.user_id,
+    username: identity.username,
+    display_name: identity.display_name,
+    role_id: identity.role,
+    role_name: mockRoleName(identity.role),
+    is_active: identity.is_active,
+  }),
+);
 
 /**
  * Soft-deleted members by id -> when they entered the trash. An id absent

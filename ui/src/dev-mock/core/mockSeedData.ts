@@ -28,18 +28,67 @@
 // exercise the same model the real backend seeds so browser previews gate
 // like production. Pins: 1234 for every account (dev convenience) except
 // admin, which keeps the historical 9999 that the E2E suite logs in with.
+//
+// ONE declared list, because the login seed and the roster describe the
+// SAME five people. They used to be two hand-written tables that
+// disagreed: the seed keyed them owner-1/admin-1/… while the roster served
+// staff-1…staff-5, so `staff-1` named the Staff member at login and the
+// Owner on the roster, and no row carried the id a session was minted
+// with. Nothing compared the two, which is exactly why the first
+// self-guard anyone adds (disabling delete or impersonate on your own
+// row) would silently never match in the preview. Deriving both from this
+// list is what makes that mismatch unrepresentable rather than merely
+// untested.
+//
+// `user_id` is BOTH the `users.id` the session is created with and the
+// roster row id, so it is the join between the two surfaces. `is_active`
+// is read by the roster (it decides whether the delete affordance
+// appears), so the seed states the same fact instead of a second opinion:
+// the auditor is inactive in both, which is what makes the delete/trash
+// flow reachable in a preview.
+
+/** One seeded staff identity, shared by the login seed and the roster. */
+export interface MockStaffIdentity {
+  /** The username the login form takes, and the seed's map key. */
+  username: string;
+  /** The `users.id` — also the id `list_staff_scoped` returns. */
+  user_id: string;
+  /** The PIN the dev preview logs in with. */
+  pin_hash: string;
+  /** The preset role id (`role-owner` … `role-auditor`). */
+  role: string;
+  /** The roster's display name. */
+  display_name: string;
+  /** The one active flag, read by the roster and stated by the seed. */
+  is_active: boolean;
+}
+
+/** The five seeded identities, in role-taxonomy order. */
+export const MOCK_STAFF_IDENTITIES: readonly MockStaffIdentity[] = [
+  { username: 'owner',   user_id: 'staff-1', pin_hash: '1234', role: 'role-owner',   display_name: 'Owner',   is_active: true },
+  { username: 'admin',   user_id: 'staff-2', pin_hash: '9999', role: 'role-admin',   display_name: 'Admin',   is_active: true },
+  { username: 'manager', user_id: 'staff-3', pin_hash: '1234', role: 'role-manager', display_name: 'Manager', is_active: true },
+  { username: 'staff',   user_id: 'staff-4', pin_hash: '1234', role: 'role-staff',   display_name: 'Staff',   is_active: true },
+  // Inactive on purpose: delete REFUSES an active member, so without one
+  // inactive identity the trash flow is unreachable in browser preview.
+  { username: 'auditor', user_id: 'staff-5', pin_hash: '1234', role: 'role-auditor', display_name: 'Auditor', is_active: false },
+];
+
+/**
+ * The login seed, keyed by username. Derived from {@link MOCK_STAFF_IDENTITIES}
+ * so a session's `user_id` is always an id the roster serves.
+ */
 export const MOCK_STAFF: Record<string, {
   user_id: string;
   pin_hash: string;
   role: string;
   is_active: boolean;
-}> = {
-  'owner':   { user_id: 'owner-1',   pin_hash: '1234', role: 'role-owner',   is_active: true },
-  'admin':   { user_id: 'admin-1',   pin_hash: '9999', role: 'role-admin',   is_active: true },
-  'manager': { user_id: 'manager-1', pin_hash: '1234', role: 'role-manager', is_active: true },
-  'staff':   { user_id: 'staff-1',   pin_hash: '1234', role: 'role-staff',   is_active: true },
-  'auditor': { user_id: 'auditor-1', pin_hash: '1234', role: 'role-auditor', is_active: true },
-};
+}> = Object.fromEntries(
+  MOCK_STAFF_IDENTITIES.map(({ username, user_id, pin_hash, role, is_active }) => [
+    username,
+    { user_id, pin_hash, role, is_active },
+  ]),
+);
 
 // ── Catalog shape ─────────────────────────────────────────────────
 
