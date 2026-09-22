@@ -536,9 +536,10 @@ async fn run_license_ride_along(db: &DbConnection) {
             }
         };
 
-    // Read the device verdict before the response is moved into the blocking
-    // closure below — it is needed for the log line, not for the cache write.
+    // Read the device verdict and tenant_id before the response is moved into
+    // the blocking closure below — it is needed for the log line and CRL check.
     let device_revoked = resp.device_revoked;
+    let tenant_id = resp.tenant_id.clone();
 
     let tenant_revoked = {
         let db_clone = db.clone();
@@ -556,6 +557,29 @@ async fn run_license_ride_along(db: &DbConnection) {
             device_revoked,
             "licence ride-along recorded a revocation verdict (ADR #58 §2.4a.2/§2.5)"
         );
+    }
+
+    // Also poll the signed CRL to enforce instantaneous revocation (ADR #58 §2.1/§2.2).
+    if let Ok(crl_resp) = kasirmu_core::license_verification::fetch_license_crl(None).await {
+        if let Ok(crl_payload) = kasirmu_core::license_verification::verify_crl_signature(
+            &crl_resp.payload,
+            &crl_resp.signature,
+        ) {
+            let db_clone = db.clone();
+            let mid = machine_id.clone();
+            let tid = tenant_id.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                let conn = db_clone.blocking_lock();
+                kasirmu_core::license_verification::apply_crl_to_cache(
+                    &conn,
+                    &crl_payload,
+                    Some(&tid),
+                    None,
+                    Some(&mid),
+                )
+            })
+            .await;
+        }
     }
 }
 

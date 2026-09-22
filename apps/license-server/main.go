@@ -339,6 +339,9 @@ func main() {
 		// Origin attestation (ADR #55): unauthenticated by design -- the client has
 		// no credential until it has attested the host it is about to use.
 		se.Router.POST("/api/v1/license/attest", handleAttest(app))
+		// Certificate/Licence Revocation List (ADR #58 §2.1/§2.2): public,
+		// cryptographically signed list of revoked keys and tenants.
+		se.Router.GET("/api/v1/license/crl", handleLicenseCrl(app))
 		// C3.3: Pause/resume subscription endpoints
 		se.Router.POST("/api/v1/license/pause", handlePause(app))
 		se.Router.POST("/api/v1/license/resume", handleResume(app))

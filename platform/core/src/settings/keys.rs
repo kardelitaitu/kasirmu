@@ -259,6 +259,10 @@ pub const MACHINE_ID: &str = "machine_id";
 /// exposure: ADR #57's threat model already assumes a patched client ignores
 /// server verdicts, which is why the enforcement that matters is server-side.
 pub const DEVICE_REVOKED: &str = "device.revoked";
+/// Cached Certificate/Licence Revocation List (CRL) JSON payload (ADR #58 §2.1/§2.2).
+pub const CRL_CACHE_JSON: &str = "crl.cache_json";
+/// RFC 3339 timestamp when the CRL was last fetched/checked.
+pub const CRL_CHECKED_AT: &str = "crl.checked_at";
 /// Persisted hardware fingerprint (`hw_` + full SHA-256 hex of the system
 /// UUID anchor): the license server's one-trial-per-device lock. Like
 /// [`MACHINE_ID`] it is per-device identity — shipping it to a peer hands

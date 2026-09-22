@@ -537,6 +537,38 @@ impl TenantSubscription {
         crate::license_verification::verify_license_signature(&self.signed_payload, &self.signature)
     }
 
+    /// Verify the subscription signature and ensure neither tenant nor device is revoked in the CRL.
+    ///
+    /// Checks the cached Certificate/Licence Revocation List (ADR #58 §2.1/§2.2).
+    /// If the tenant or device is present in the CRL, or if the subscription status is
+    /// already `"revoked"`, returns [`CoreError::LicenseRevoked`].
+    pub fn verify_signature_with_crl(
+        &self,
+        conn: &rusqlite::Connection,
+        machine_id: Option<&str>,
+    ) -> Result<(), CoreError> {
+        if self.status.eq_ignore_ascii_case("revoked") {
+            return Err(CoreError::LicenseRevoked(format!(
+                "Tenant {} is marked revoked",
+                self.tenant_id
+            )));
+        }
+
+        if crate::license_verification::is_revoked_in_cached_crl(
+            conn,
+            None,
+            Some(&self.tenant_id),
+            machine_id,
+        )? {
+            return Err(CoreError::LicenseRevoked(format!(
+                "Tenant {} or device is present in revoked list (CRL)",
+                self.tenant_id
+            )));
+        }
+
+        self.verify_signature()
+    }
+
     /// Compute the maximum ledger timestamp across all domain tables
     /// in the given database connection.
     ///

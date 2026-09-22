@@ -26,10 +26,11 @@ use kasirmu_core::Settings;
 use kasirmu_core::crypto::{decrypt_api_key, encrypt_api_key};
 use kasirmu_core::license_verification::{
     ActivateLicenseRequest, RenewLicenseRequest, SignedSubscriptionPayload,
-    activate_license as core_activate_license, apply_license_verdict_to_cache,
-    check_license_status as core_check_license_status,
+    activate_license as core_activate_license, apply_crl_to_cache, apply_license_verdict_to_cache,
+    check_license_status as core_check_license_status, fetch_license_crl,
     pause_subscription as core_pause_subscription, renew_license as core_renew_license,
-    resume_subscription as core_resume_subscription, store_subscription, verify_license_signature,
+    resume_subscription as core_resume_subscription, store_subscription, verify_crl_signature,
+    verify_license_signature,
 };
 use kasirmu_core::permissions;
 use kasirmu_core::subscription::{SubscriptionTier, TenantSubscription};
@@ -573,6 +574,28 @@ pub async fn check_license_status(
         );
     }
 
+    // Opportunistically refresh CRL on status check (ADR #58 §2.1/§2.2)
+    if let Ok(crl_resp) = fetch_license_crl(None).await {
+        if let Ok(crl_payload) = verify_crl_signature(&crl_resp.payload, &crl_resp.signature) {
+            let conn = ctx.lock_global().await;
+            if let Ok(crl_revoked) = apply_crl_to_cache(
+                &conn,
+                &crl_payload,
+                Some(&resp.tenant_id),
+                None,
+                Some(&machine_id),
+            ) {
+                if crl_revoked {
+                    let dropped = crate::auth::invalidate_all_sessions(ctx);
+                    tracing::warn!(
+                        dropped,
+                        "CRL revocation detected — invalidated every live session (ADR #58 §2.1/§2.2)"
+                    );
+                }
+            }
+        }
+    }
+
     let max_locations = resp.effective_max_locations();
 
     Ok(ServerLicenseStatusDto {
@@ -585,6 +608,47 @@ pub async fn check_license_status(
         grace_until: resp.grace_until,
         max_locations,
     })
+}
+
+/// Fetch, cryptographically verify, and apply the latest Certificate/Licence Revocation List (ADR #58 §2.1/§2.2).
+///
+/// Returns `true` if this tenant or device is revoked in the CRL.
+pub async fn refresh_license_crl(ctx: &BridgeCtx<'_>) -> Result<bool, BridgeError> {
+    let crl_resp = fetch_license_crl(None)
+        .await
+        .map_err(|e| BridgeError::Internal(e.to_string()))?;
+
+    let crl_payload = verify_crl_signature(&crl_resp.payload, &crl_resp.signature)
+        .map_err(|e| BridgeError::Internal(e.to_string()))?;
+
+    let (tenant_id, machine_id) = {
+        let conn = ctx.lock_global().await;
+        let sub = TenantSubscription::load(&conn, "default")?;
+        let mid = Settings::get(&conn, keys::MACHINE_ID)?.unwrap_or_default();
+        (sub.map(|s| s.tenant_id), mid)
+    };
+
+    let is_revoked = {
+        let conn = ctx.lock_global().await;
+        apply_crl_to_cache(
+            &conn,
+            &crl_payload,
+            tenant_id.as_deref(),
+            None,
+            Some(&machine_id),
+        )
+        .map_err(|e| BridgeError::Internal(e.to_string()))?
+    };
+
+    if is_revoked {
+        let dropped = crate::auth::invalidate_all_sessions(ctx);
+        tracing::warn!(
+            dropped,
+            "tenant or device revoked via CRL — invalidated all live sessions (ADR #58 §2.1/§2.2)"
+        );
+    }
+
+    Ok(is_revoked)
 }
 
 /// Data transfer object for the auth-server reachability probe.

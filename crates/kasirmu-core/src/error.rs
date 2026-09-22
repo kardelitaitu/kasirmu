@@ -47,6 +47,8 @@ pub enum CoreErrorKind {
     SubscriptionReadOnly,
     /// System clock tampering detected (ADR #5).
     SystemClockTampered,
+    /// License or tenant has been explicitly revoked (ADR #58).
+    LicenseRevoked,
     /// Authorization denied for the requested permission (ADR #35 D3).
     PermissionDenied,
     /// Stock insufficient at a specific location (ADR-19 §3.3).
@@ -135,6 +137,10 @@ pub enum CoreError {
     #[error("system clock tampered: {0}")]
     SystemClockTampered(String),
 
+    /// License or tenant has been explicitly revoked (ADR #58).
+    #[error("license revoked: {0}")]
+    LicenseRevoked(String),
+
     /// The caller is not authorized for the requested permission (ADR #35
     /// D3 / spec 0047). Distinct from [`CoreError::Validation`]: a denial is
     /// an authorization outcome, not an input error.
@@ -219,6 +225,7 @@ impl CoreError {
             CoreError::SubscriptionUpgradeRequired(_) => CoreErrorKind::SubscriptionUpgradeRequired,
             CoreError::SubscriptionReadOnly(_) => CoreErrorKind::SubscriptionReadOnly,
             CoreError::SystemClockTampered(_) => CoreErrorKind::SystemClockTampered,
+            CoreError::LicenseRevoked(_) => CoreErrorKind::LicenseRevoked,
             CoreError::PermissionDenied(_) => CoreErrorKind::PermissionDenied,
             CoreError::TopologyValidation { .. } => CoreErrorKind::Validation,
             CoreError::InsufficientStockAtLocation { .. } => {

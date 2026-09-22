@@ -687,3 +687,165 @@ fn extract_error_empty_string() {
     let msg = super::extract_server_error("");
     assert_eq!(msg, "");
 }
+
+// ── CRL Verification and Revocation Tests (ADR #58 §2.1/§2.2) ──────────
+
+#[test]
+fn test_crl_signature_verification_and_tamper_detection() {
+    let (private_key, public_pem) = generate_test_keypair();
+
+    let crl = CrlPayload {
+        issuer: "kasir.mu".into(),
+        issued_at: "2026-09-22T07:00:00Z".into(),
+        entries: vec![CrlEntry {
+            key: "OZ-PRO-COMPROMISED-01".into(),
+            key_hash: "a".repeat(64),
+            tenant_id: Some("tenant-compromised-1".into()),
+            revoked_at: "2026-09-22T06:00:00Z".into(),
+            reason: Some("Stolen key".into()),
+        }],
+        revoked_tenants: vec!["tenant-banned-99".into()],
+        revoked_devices: vec!["stolen-tablet-01".into()],
+    };
+
+    let payload_json = serde_json::to_string(&crl).unwrap();
+    let signature_base64 = sign_test_payload(&private_key, &payload_json);
+
+    // 1. Valid signature verifies successfully
+    let verified =
+        verify_crl_signature_with_pem(&payload_json, &signature_base64, &public_pem).expect("verify");
+    assert_eq!(verified.issuer, "kasir.mu");
+    assert_eq!(verified.entries.len(), 1);
+    assert_eq!(verified.entries[0].key, "OZ-PRO-COMPROMISED-01");
+    assert_eq!(verified.revoked_tenants, vec!["tenant-banned-99".to_string()]);
+    assert_eq!(verified.revoked_devices, vec!["stolen-tablet-01".to_string()]);
+
+    // 2. Tampered payload fails verification
+    let tampered_json = payload_json.replace("kasir.mu", "attacker.io");
+    let tampered_res =
+        verify_crl_signature_with_pem(&tampered_json, &signature_base64, &public_pem);
+    assert!(
+        matches!(tampered_res, Err(CoreError::InvalidSubscriptionSignature(_))),
+        "tampered CRL payload must fail verification"
+    );
+
+    // 3. Corrupted base64 fails verification
+    let corrupt_res =
+        verify_crl_signature_with_pem(&payload_json, "not-valid-base64!", &public_pem);
+    assert!(
+        matches!(corrupt_res, Err(CoreError::InvalidSubscriptionSignature(_))),
+        "invalid signature base64 must fail"
+    );
+}
+
+#[test]
+fn test_crl_caching_and_revocation_checks() {
+    use crate::migrations;
+    use crate::settings::{keys, Settings};
+
+    let conn = migrations::fresh_db();
+    seed_subscription_row(&conn, "active", Some("2027-01-01T00:00:00Z"));
+
+    let crl = CrlPayload {
+        issuer: "kasir.mu".into(),
+        issued_at: "2026-09-22T07:00:00Z".into(),
+        entries: vec![CrlEntry {
+            key: "OZ-REVOKED-KEY-123".into(),
+            key_hash: {
+                use sha2::Digest;
+                let mut hasher = Sha256::new();
+                hasher.update(b"OZ-REVOKED-KEY-123");
+                hex::encode(hasher.finalize())
+            },
+            tenant_id: Some("tenant-bad".into()),
+            revoked_at: "2026-09-22T00:00:00Z".into(),
+            reason: Some("chargeback".into()),
+        }],
+        revoked_tenants: vec!["tenant-bad".into(), "tenant-banned-456".into()],
+        revoked_devices: vec!["bad-pos-tablet-01".into()],
+    };
+
+    // 1. Initial state: not revoked
+    assert!(
+        !is_revoked_in_cached_crl(&conn, Some("OZ-REVOKED-KEY-123"), None, None).unwrap(),
+        "before CRL caching, should not be marked revoked"
+    );
+
+    // 2. Apply CRL to cache for an innocent tenant
+    let revoked = apply_crl_to_cache(
+        &conn,
+        &crl,
+        Some("default"),
+        Some("OZ-CLEAN-KEY-789"),
+        Some("clean-pos-01"),
+    )
+    .expect("apply CRL");
+    assert!(!revoked, "innocent tenant must not be revoked");
+
+    // Check cached settings
+    let cached = Settings::get(&conn, keys::CRL_CACHE_JSON).unwrap();
+    assert!(cached.is_some(), "crl.cache_json must be persisted");
+    let checked_at = Settings::get(&conn, keys::CRL_CHECKED_AT).unwrap();
+    assert!(checked_at.is_some(), "crl.checked_at must be persisted");
+
+    // 3. Query revocation in cached CRL
+    assert!(
+        is_revoked_in_cached_crl(&conn, Some("OZ-REVOKED-KEY-123"), None, None).unwrap(),
+        "revoked key must match in cached CRL"
+    );
+    assert!(
+        is_revoked_in_cached_crl(&conn, None, Some("tenant-banned-456"), None).unwrap(),
+        "revoked tenant must match in cached CRL"
+    );
+    assert!(
+        is_revoked_in_cached_crl(&conn, None, None, Some("bad-pos-tablet-01")).unwrap(),
+        "revoked device must match in cached CRL"
+    );
+    assert!(
+        !is_revoked_in_cached_crl(&conn, Some("OZ-GOOD-KEY"), Some("tenant-good"), Some("pos-02"))
+            .unwrap(),
+        "good key and tenant must not match in CRL"
+    );
+
+    // 4. Apply CRL where current tenant IS revoked -> should flip local status to revoked
+    let revoked_for_bad = apply_crl_to_cache(
+        &conn,
+        &crl,
+        Some("default"),
+        Some("OZ-REVOKED-KEY-123"),
+        None,
+    )
+    .expect("apply CRL");
+    assert!(revoked_for_bad, "tenant with revoked key must return true");
+
+    let sub = TenantSubscription::load(&conn, "default").unwrap().unwrap();
+    assert_eq!(
+        sub.status, "revoked",
+        "subscription row status must be flipped to revoked"
+    );
+}
+
+#[test]
+fn test_verify_signature_with_crl_denies_revoked_tenant() {
+    use crate::migrations;
+
+    let conn = migrations::fresh_db();
+    seed_subscription_row(&conn, "active", Some("2027-01-01T00:00:00Z"));
+
+    let crl = CrlPayload {
+        issuer: "kasir.mu".into(),
+        issued_at: "2026-09-22T07:00:00Z".into(),
+        entries: vec![],
+        revoked_tenants: vec!["default".into()],
+        revoked_devices: vec![],
+    };
+    apply_crl_to_cache(&conn, &crl, None, None, None).unwrap();
+
+    let sub = TenantSubscription::load(&conn, "default").unwrap().unwrap();
+    let res = sub.verify_signature_with_crl(&conn, None);
+    assert!(
+        matches!(res, Err(CoreError::LicenseRevoked(_))),
+        "verify_signature_with_crl must reject a tenant in CRL"
+    );
+}
+
