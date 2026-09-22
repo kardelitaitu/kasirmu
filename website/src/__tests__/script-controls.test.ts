@@ -63,6 +63,12 @@ const factories = factoryRegistry(sources);
 const declared = declaredFiles();
 const judged = sources.filter((file) => !declared.has(file.path));
 
+// The arms below read and scan the whole repository, and vitest's default 5 s
+// per-test budget is tight for that under a fully parallel run — a timed-out
+// guard fails the build for being slow rather than for being wrong. Explicit
+// budgets, generous enough that only a real hang trips them.
+const SLOW = 30_000;
+
 describe('controls a script builds, judged at the source', () => {
   it('finds the sources and the factory, so the arms below cannot pass vacuously', () => {
     expect(sources.length).toBeGreaterThan(60);
@@ -75,7 +81,15 @@ describe('controls a script builds, judged at the source', () => {
     // `el('input', …)` below would be invisible instead of judged.
     expect(factories.map((factory) => factory.name)).toContain('el');
     expect(judged.length).toBe(sources.length - declared.size);
-  });
+    // Exactly once each: the walk must not reach the generated
+    // `website/public/dev/` copy of every prototype as well as its source, or
+    // the file set would depend on whether a build had already run (CI runs
+    // `npm test` BEFORE `npm run build`) and every prototype finding would be
+    // counted twice. A duplicate path is the symptom.
+    expect(new Set(names).size).toBe(names.length);
+    expect(names.some((path) => path.startsWith('website/public/dev/'))).toBe(false);
+    expect(names.filter((path) => path === 'prototypes/app.js')).toHaveLength(1);
+  }, SLOW);
 
   it.each(judged.map((file) => [file.path, file]))('%s names every control it builds', (_name, file) => {
     expect(
@@ -86,7 +100,7 @@ describe('controls a script builds, judged at the source', () => {
 
   it('judges or declares every file that builds a control', () => {
     expect(coverageGaps(sources)).toEqual([]);
-  });
+  }, SLOW);
 
   it('shows the gate exactly the findings this file judges', () => {
     // Check 14 calls `judgedIssues`; the arm above calls `scriptControlIssues`
@@ -96,7 +110,7 @@ describe('controls a script builds, judged at the source', () => {
       scriptControlIssues(file, factories).map((message) => ({ file: file.path, message })),
     );
     expect(judgedIssues(sources)).toEqual(expected);
-  });
+  }, SLOW);
 });
 
 describe('a control built at runtime', () => {

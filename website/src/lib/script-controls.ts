@@ -83,7 +83,15 @@ import { unnamedControls } from './accessibility.ts';
  */
 export const SOURCE_ROOTS = ['website/src', 'website/public', 'prototypes'];
 
-/** Directories excluded from the walk, matched as path segments. */
+/**
+ * Path segments excluded from the walk. Matched against the key with a leading
+ * slash, so a segment can be anchored at the start of a root-relative path
+ * (`/website/public/dev/…`) as well as found in the middle (`/__tests__/…`).
+ * Matching the raw key instead is what let the generated `public/dev` copy of
+ * every prototype be walked a second time under a path a clean checkout does not
+ * have — the same markup judged twice, and the file set depending on whether a
+ * build had run.
+ */
 export const SKIPPED_SEGMENTS = ['/__tests__/', '/website/public/dev/'];
 
 /** The source extensions a control can be built from. */
@@ -674,9 +682,10 @@ export function collectScriptSources(repoRoot: string): SourceFile[] {
     for (const name of readdirSync(absolute).sort()) {
       const path = join(absolute, name);
       const key = `${relative}/${name}`;
+      const probe = `/${key}/`;
       if (statSync(path).isDirectory()) {
-        if (!SKIPPED_SEGMENTS.some((segment) => `${key}/`.includes(segment))) walk(path, key);
-      } else if (SOURCE_FILE.test(name) && !SKIPPED_SEGMENTS.some((segment) => `${key}`.includes(segment))) {
+        if (!SKIPPED_SEGMENTS.some((segment) => probe.includes(segment))) walk(path, key);
+      } else if (SOURCE_FILE.test(name) && !SKIPPED_SEGMENTS.some((segment) => probe.includes(segment))) {
         out.push({ path: key, source: readFileSync(path, 'utf8') });
       }
     }
