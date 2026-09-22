@@ -333,6 +333,8 @@
 
 .license-mode-tab {
   flex: 1;
+  /* Anchors this element's own noise-dither ::after (components.css). */
+  position: relative;
   padding: var(--space-2) var(--space-4);
   font-size: var(--text-sm);
   font-weight: var(--font-weight-medium);
@@ -377,11 +379,16 @@
   color: var(--color-fg-secondary);
   margin: 0 0 var(--space-5) 0;
   max-width: 20rem;
-  line-height: 1.4;
+  line-height: var(--leading-normal);
 }
 
+/* --color-paper, NOT a surface token: a QR quiet zone has to stay white in
+   every theme or scanners reject the code. Same reasoning, and the same
+   token, as components/QrisQrDisplay.css. */
 .license-pairing-qr-wrapper {
-  background: #ffffff;
+  /* Anchors its noise-dither ::after. */
+  position: relative;
+  background: var(--color-paper);
   padding: var(--space-4);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-md);
@@ -432,7 +439,15 @@
   height: 0.5rem;
   border-radius: 50%;
   background-color: var(--color-primary);
-  animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Gated: an infinite attention pulse. Under reduced motion the dot must not
+   pulse, and nothing is lost — the static dot in the rule above IS the
+   after-state, so suppressing the animation removes motion, not information. */
+@media (prefers-reduced-motion: no-preference) {
+  .license-pulse-dot {
+    animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
 }
 
 @keyframes pulse-ring {

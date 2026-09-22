@@ -175,7 +175,7 @@
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-4);
-  background: var(--color-bg-subtle, var(--color-bg));
+  background: var(--color-bg-subtle);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
 }
@@ -191,8 +191,8 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-3);
-  background: var(--color-success-subtle, rgba(34, 197, 94, 0.1));
-  border: 1px solid var(--color-success, #22c55e);
+  background: var(--color-success-subtle);
+  border: 1px solid var(--color-success);
   border-radius: var(--radius-lg);
   color: var(--color-fg-primary);
   font-size: var(--text-sm);
@@ -221,7 +221,7 @@
 
 .provisioning-status-warn {
   font-size: var(--text-sm);
-  color: var(--color-warning, #eab308);
+  color: var(--color-warning);
   margin: 0;
 }
 
@@ -278,7 +278,7 @@
   margin: 0;
   font-size: var(--text-xs);
   color: var(--color-fg-secondary);
-  line-height: 1.35;
+  line-height: var(--leading-normal);
 }
 
 /* Tablet linking subtabs & QR display */
@@ -299,6 +299,8 @@
 
 .provisioning-subtab {
   flex: 1;
+  /* Anchors this element's own noise-dither ::after (components.css). */
+  position: relative;
   padding: var(--space-2);
   font-size: var(--text-xs);
   font-weight: var(--font-weight-medium);
@@ -333,8 +335,13 @@
   gap: var(--space-3);
 }
 
+/* --color-paper, NOT a surface token: a QR quiet zone has to stay white in
+   every theme or scanners reject the code. Same reasoning, and the same
+   token, as components/QrisQrDisplay.css. */
 .provisioning-qr-wrapper {
-  background: #ffffff;
+  /* Anchors its noise-dither ::after. */
+  position: relative;
+  background: var(--color-paper);
   padding: var(--space-3);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
@@ -367,5 +374,13 @@
   height: 0.5rem;
   border-radius: 50%;
   background-color: var(--color-accent);
-  animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Gated: an infinite attention pulse. Under reduced motion the dot must not
+   pulse, and nothing is lost — the static dot in the rule above IS the
+   after-state. */
+@media (prefers-reduced-motion: no-preference) {
+  .provisioning-pulse-dot {
+    animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
 }

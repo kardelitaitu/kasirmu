@@ -466,6 +466,13 @@
      because tablet.css is a different sheet with its own rule. */
   .page-rotate-prompt > *::after,
   .tablet-shell .page-rotate-prompt > *::after,
+  /* Licence/provisioning elevated surfaces (ADR #56 pairing). Each is a plain
+     in-flow box, so it anchors the overlay with position:relative in its own
+     feature sheet (.kds-picker-modal pattern). */
+  .license-mode-tab.active::after,
+  .provisioning-subtab.active::after,
+  .license-pairing-qr-wrapper::after,
+  .provisioning-qr-wrapper::after,
   :global(.dark) .panel::after {
     content: '';
   position: absolute;
@@ -486,6 +493,10 @@
 
 /* High contrast mode — hide noise overlay for clarity */
 @media (prefers-contrast: high) {
+  .license-mode-tab.active::after,
+  .provisioning-subtab.active::after,
+  .license-pairing-qr-wrapper::after,
+  .provisioning-qr-wrapper::after,
   .card::after,
   .modal-panel::after,
   .staff-login-card::after,
@@ -618,6 +629,10 @@
 /* Reduced motion — hide noise overlay to reduce GPU compositing
    and prevent visual stress for users sensitive to texture/pattern. */
 @media (prefers-reduced-motion: reduce) {
+  .license-mode-tab.active::after,
+  .provisioning-subtab.active::after,
+  .license-pairing-qr-wrapper::after,
+  .provisioning-qr-wrapper::after,
   .card::after,
   .modal-panel::after,
   .staff-login-card::after,

@@ -103,6 +103,14 @@ const KNOWN_NOISE_SELECTORS = [
   '.status-indicator.offline',
   '.fastpin-card',
   '.qris-container',
+  // ADR #56 pairing surfaces (Licence activation + Provisioning): a mode tab,
+  // a subtab and both QR wrappers. Wired to ::after in components.css main
+  // list + both @media parity blocks; each anchors via position:relative in
+  // its own feature sheet.
+  '.license-mode-tab.active',
+  '.provisioning-subtab.active',
+  '.license-pairing-qr-wrapper',
+  '.provisioning-qr-wrapper',
   '.store-switcher-dropdown',
   '.create-pin-card',
   '.custom-context-menu',
