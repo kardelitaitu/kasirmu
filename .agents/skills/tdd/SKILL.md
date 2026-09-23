@@ -137,7 +137,7 @@ Record the why, decisions, and remaining risks — while fresh.
 
 Sync anything the change affects.
 
-- The affected layer's README, `docs/guides/api-reference.md`, `docs/guides/user-guide.md`, examples, or the code's `///` doc comments.
+- The affected layer's README, `docs/guides/developer/api-reference.md`, `docs/guides/user/user-guide.md`, examples, or the code's `///` doc comments.
 - If the change touches a path/type/trait/convention a skill describes, run the drift guard:
   ```bash
   bash .agents/skills/skill-drift-guard/scripts/detect.sh

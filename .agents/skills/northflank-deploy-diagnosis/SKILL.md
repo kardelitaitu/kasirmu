@@ -97,7 +97,7 @@ silently omitted `libudev-dev` for five days while the server file had always in
 - `rust:1.88-slim` ships `cc`/`gcc` but **not** `pkg-config` and **not** `make`.
 - The only related gate, `scripts/verify-dockerfile-workspace.py`, validates manifest COPYs and dummy
   src dirs only (it passes 42/42 for both files). It does **not** look at apt lists.
-  `docs/plans/northflank-p1-p7-plan.md:26` already records that it does not validate the unified file.
+  `docs/plans/_active/northflank-p1-p7-plan.md:26` already records that it does not validate the unified file.
 - **Do not write a naive "-dev must have a runtime counterpart" rule.** There is no `libssl3` line
   despite `libssl-dev` (it arrives via `ca-certificates` → `openssl`), so such a check would be wrong.
   It needs an explicit build-only allowlist.

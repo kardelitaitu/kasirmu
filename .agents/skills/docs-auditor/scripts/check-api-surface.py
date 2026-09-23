@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""check-api-surface.py -- reconcile docs/guides/api-reference.md against the real IPC surface.
+"""check-api-surface.py -- reconcile docs/guides/developer/api-reference.md against the real IPC surface.
 
 WHY THIS EXISTS
   The reference page claimed to be auto-derived from generate_handler! while listing
@@ -28,7 +28,7 @@ import re
 import sys
 from pathlib import Path
 
-DOC_REL = "docs/guides/api-reference.md"
+DOC_REL = "docs/guides/developer/api-reference.md"
 CLIENTS = {"desktop": "apps/desktop-tauri", "tablet": "apps/mobile-tauri"}
 BT = chr(96)  # a backtick, without embedding one in this file
 

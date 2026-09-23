@@ -3,7 +3,7 @@ name: docs-auditor
 description: Documentation-code audit and sync — keep technical docs accurate, traceable, and minimal with truth-anchor cross-referencing, drift classification, and repair rules. Use when auditing a doc (README, ARCHITECTURE.md, api-reference, spec, admin guide) against the current codebase, verifying that what a document claims still holds, or stamping a document as audited.
 ---
 
-<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: both helper scripts exist (`.agents/skills/docs-auditor/scripts/check-nav-paths.py`, `check-orphans.py`); all 12 other paths the file cites exist, including `docs/guides/QUICKSTART.md`, `docs/operations/ci-pipeline.md`, `docs/specs/_active/`, `website/src/content/docs/en/user-roles.md`, `ui/src/features/staff/register.tsx` and `crates/kasirmu-hal/src/drivers/mock.rs`. The `oz-*` cross-skill-protocol drift the 18-09-26 audit found at `:260` is confirmed repaired. Left alone deliberately, as the previous pass did: this stamp's predecessor closes with `)>` rather than `-->`, which the file documents in-file as intentional and benign. · NOT re-measured: the audit-classification taxonomy's behaviour against a live document. -->
+<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: both helper scripts exist (`.agents/skills/docs-auditor/scripts/check-nav-paths.py`, `check-orphans.py`); all 12 other paths the file cites exist, including `docs/guides/developer/QUICKSTART.md`, `docs/operations/ci-pipeline.md`, `docs/specs/_active/`, `website/src/content/docs/en/user-roles.md`, `ui/src/features/staff/register.tsx` and `crates/kasirmu-hal/src/drivers/mock.rs`. The `oz-*` cross-skill-protocol drift the 18-09-26 audit found at `:260` is confirmed repaired. Left alone deliberately, as the previous pass did: this stamp's predecessor closes with `)>` rather than `-->`, which the file documents in-file as intentional and benign. · NOT re-measured: the audit-classification taxonomy's behaviour against a live document. -->
 
 <!-- Superseded audit stamp: 2026-09-08 · DSH · status: ACCURATE at audit time (0 findings on 22-09-26) (rev 8 · .agents/skills/docs-auditor/scripts/check-orphans.py went red on a file that is not in the repository - an h2-to-h4 heading skip inside references/midtrans-nodejs-client/README.md, zero tracked entries, gitignored, a vendored third-party README. Its scanner now prefers git ls-files and falls back to the old directory walk only when git cannot be consulted, so the degraded mode is "scan more", never "scan nothing". Scope rule and caution are written into §Check table. 328 markdown files scanned became 321. Verified the narrowing did not disable the check by aiming --file at that same doc, which still reports the skip and exits 1 - my first attempt at that proof was worthless and nearly read as a broken tool: I appended a level-4 heading to a tracked guide whose nearest lower heading already included a level 3, which is legal, so the probe could only ever have found nothing. A self-test that cannot fail is not a self-test. · rev 7 · .agents/skills/docs-auditor/scripts/check-dead-refs.py burned to a clean exit the same day it was added: 62 files on the first sweep to 0 live findings across 332 docs, using git-ignore awareness (one batched git check-ignore decides, so .gitignore is the policy source and not my extension list) plus two pragma forms. The distinction it buys is the useful one: a gitignored missing path is absent by design, a NON-ignored missing path means something was never committed - which is how the gap in the iOS guides was found rather than asserted. Five silent bugs caught by self-testing it: a literal dot inside a placeholder character class (blind to every file), str.lstrip("./") eating leading dots, double-reporting from two regexes, capture_output piped stdio blocked in this sandbox, and a TemporaryFile read without seek(0). The last four all failed by returning nothing, i.e. by looking clean. )>
 
@@ -15,7 +15,7 @@ description: Documentation-code audit and sync — keep technical docs accurate,
 
 Keep technical documentation accurate, traceable, and minimal. Prefer verified facts over assumptions. A document is a **claim about the code** — when the code changes and the doc doesn't, the doc becomes a lie that future agents and humans read, then propagate.
 
-This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `docs/guides/api-reference.md`, `docs/guides/QUICKSTART.md`, spec files, admin guides, crate/app/module READMEs) against the **current codebase**. It is the sibling of `skill-drift-guard`, which audits the `.agents/skills/*/SKILL.md` files only — this skill covers everything else.
+This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `docs/guides/developer/api-reference.md`, `docs/guides/developer/QUICKSTART.md`, spec files, admin guides, crate/app/module READMEs) against the **current codebase**. It is the sibling of `skill-drift-guard`, which audits the `.agents/skills/*/SKILL.md` files only — this skill covers everything else.
 
 ## 2. Trigger Conditions
 
@@ -50,7 +50,7 @@ This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `doc
 - Verify **headline claims**: does the doc say feature X exists? Does `cargo check` pass?
 - **Structural orphan pass** (automatic): run `python3 .agents/skills/docs-auditor/scripts/check-orphans.py` — flags unversioned/orphan wrapper labels, `####` items without their `###` parent, and version headers stale against their own section body (§4b).
 - **IPC surface reconciliation** (when the doc under audit is
-  `docs/guides/api-reference.md`): run
+  `docs/guides/developer/api-reference.md`): run
   `python3 .agents/skills/docs-auditor/scripts/check-api-surface.py`. It parses
   `generate_handler!` in both clients, every `#[command]` fn under `src/`, and the entry
   lines of the page, then reports four separate drift classes — wrong availability marker,
@@ -139,7 +139,7 @@ This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `doc
 ```bash
 python3 .agents/skills/docs-auditor/scripts/check-orphans.py            # all checks, repo-wide
 python3 .agents/skills/docs-auditor/scripts/check-orphans.py --check=b  # one check (a|b|c)
-python3 .agents/skills/docs-auditor/scripts/check-orphans.py --file docs/guides/api-reference.md
+python3 .agents/skills/docs-auditor/scripts/check-orphans.py --file docs/guides/developer/api-reference.md
 python3 .agents/skills/docs-auditor/scripts/check-orphans.py --quiet    # findings only
 ```
 
@@ -216,7 +216,7 @@ Before starting any verification:
 | `scripts/check.sh` | Full local validation mirroring CI |
 | `python3 .agents/skills/docs-auditor/scripts/check-orphans.py` | Shallow-mode structural pass: unversioned wrappers, heading orphans, stale version headers (§4b) |
 | `python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py` | Compare every stamp date against its footer date across all `*.md`; flags the under-reporting direction and impossible footer dates (`detect.sh` accepts `31-13-26` on shape). Exit 1 on drift. |
-| `python3 .agents/skills/docs-auditor/scripts/check-api-surface.py` | Reconcile `docs/guides/api-reference.md` against both clients' `generate_handler!` registries; exit 1 on any of four drift classes (not wired into CI — the page is red against it by design) |
+| `python3 .agents/skills/docs-auditor/scripts/check-api-surface.py` | Reconcile `docs/guides/developer/api-reference.md` against both clients' `generate_handler!` registries; exit 1 on any of four drift classes (not wired into CI — the page is red against it by design) |
 | `python3 .agents/skills/docs-auditor/scripts/check-nav-paths.py` | Reconcile every bolded **X → Y** nav path in `website/src/content/docs/{en,id}` against the nav registry |
 | `python3 .agents/skills/docs-auditor/scripts/check-env-docs.py` | Fail when a variable the license server reads is named in no doc — closes the gap `verify-ci-docs-drift.py` cannot see (it compares docs to gates, not to config surface) |
 | `python3 .agents/skills/docs-auditor/scripts/check-ci-claims.py` | Fail when a live doc states CI facts the workflow files contradict: cites a `.yml` that exists only as inert `.bak`, names a workflow that exists nowhere, or asserts "the `x` job" for a job no live workflow defines. Read-only-informational baseline today (informational today: introduced at 33 findings in 15 docs on 09-09-26, all triaged to 0 the same day (12 cleared by pragma on dated-record text, 20 by repairing the claim)), not wired into CI. Suppress historical prose with `<!-- ci-claim: ok: reason -->` |
@@ -294,7 +294,7 @@ Findings: N major, N minor, N ambiguous
 
 ## 11b. Worked example (full audit of one anchor)
 
-Doc under audit: `docs/guides/api-reference.md` — heading "Sessions", paragraph 2 claims `create_shift` returns a `Shift` struct with a `total` field of type `Money`.
+Doc under audit: `docs/guides/developer/api-reference.md` — heading "Sessions", paragraph 2 claims `create_shift` returns a `Shift` struct with a `total` field of type `Money`.
 
 ```bash
 # 1. Find the command implementation and its return type

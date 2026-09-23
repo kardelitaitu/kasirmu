@@ -189,7 +189,7 @@ subdirectory is a Cargo crate.
 |--------|-------------|---------|
 | `feat/<name>` | New feature, capability, or user-visible change | `feat/cart-line-discount` |
 | `fix/<name>` | Bug fix | `fix/cart-overflow-on-coupon` |
-| `docs/<name>` | Documentation only | `docs/guides/api-reference.md` refresh |
+| `docs/<name>` | Documentation only | `docs/guides/developer/api-reference.md` refresh |
 | `chore/<name>` | Maintenance, deps, config, refactor with no behavior change | `chore/bump-tauri-v2.1` |
 | `test/<name>` | Test additions or fixes | `test/integration-sales-flow` |
 | `refactor/<name>` | Code restructuring, no behavior change | `refactor/extract-payment-port` |
@@ -268,7 +268,7 @@ Jobs (all on `ubuntu-latest`, Node pinned to **24**):
 | `cargo-check` | Installs Tauri's Linux system libs, creates the frontend build-output stubs (the `ui` dist folders) for the Tauri macro, then `cargo check --workspace --all-targets --all-features` with sccache + Swatinem/rust-cache. |
 | `cargo-nextest` | Same environment plus a `postgres:17-alpine` service (`OZ_TEST_PG_URL`), then `cargo nextest run --workspace --all-features`. |
 | `ui-test` | `ui/` npm ci → `npm test` (Vitest suite). |
-| `northflank-deploy` | Needs **seven** jobs — `changes, website, cargo-check, cargo-nextest, ui-test, i18n, static-gates` — so it excludes `ci-docs-drift` (advisory by design) and `release-readiness` (unexplained; see `docs/plans/0.0.36-backlog.md`), and `release-bridge-test` (push-only). Reached by **both** entry points, not dispatch alone: `on.push.branches: [main]` is declared at `dev-ci.yml:6-7`, so a merge to `main` runs this workflow and the `if:` (now at `dev-ci.yml:793`, gated on `github.ref == 'refs/heads/main'`; re-measured 22-09-26, this cell used to cite `:722`) deploys it. The file's own comment says the earlier “workflow_dispatch is the only non-PR event” claim was false. `workflow_dispatch` declares no branch filter, which is exactly why the `if:` gates on the ref. Calls the Northflank API; skips gracefully without `NORTHFLANK_API_TOKEN`. |
+| `northflank-deploy` | Needs **seven** jobs — `changes, website, cargo-check, cargo-nextest, ui-test, i18n, static-gates` — so it excludes `ci-docs-drift` (advisory by design) and `release-readiness` (unexplained; see `docs/plans/_backlog/0.0.36-backlog.md`), and `release-bridge-test` (push-only). Reached by **both** entry points, not dispatch alone: `on.push.branches: [main]` is declared at `dev-ci.yml:6-7`, so a merge to `main` runs this workflow and the `if:` (now at `dev-ci.yml:793`, gated on `github.ref == 'refs/heads/main'`; re-measured 22-09-26, this cell used to cite `:722`) deploys it. The file's own comment says the earlier “workflow_dispatch is the only non-PR event” claim was false. `workflow_dispatch` declares no branch filter, which is exactly why the `if:` gates on the ref. Calls the Northflank API; skips gracefully without `NORTHFLANK_API_TOKEN`. |
 
 **Rules:**
 - `RUSTFLAGS: -D warnings` means warnings fail the workflow even where no explicit clippy job runs.
