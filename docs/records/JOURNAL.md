@@ -12054,6 +12054,26 @@ My earlier metric (row `scrollWidth - clientWidth`) read 0 through all of that b
 
 **Still open:** the workspace test run's peer-owned failing targets, the peers' in-flight files, the Android shell (no device, no AVD), and the dead staff FTL keys (four proven dead, plus one cited only by the corrected guide row).
 
+## 2026-09-23 — Staff management: final verification bundle (repo)
+
+Every gate re-run by the parent on a QUIET machine (one heavy job at a time):
+
+| Gate | Result |
+| --- | --- |
+| clippy `--all-targets --all-features -- -D warnings` | exit 0 |
+| fmt `--all -- --check` | exit 0 |
+| `cargo test --workspace --all-features --no-fail-fast` | 127 targets, 9825 passed / 0 failed; 2 targets failed, both PEER-owned |
+| `npm run test` (UI) | 606 files, 10352 passed, exit 0 |
+| `e2e/staff-trash.spec.ts` (Playwright) | 6 passed, desktop Chromium + tablet WebKit |
+| IPC parity / bundle parity / FTL dedupe / FTL orphans / PG drift / migration column types | all green (0 missing keys; 127 tables/158 indexes/7 seeds; 65 migration files) |
+
+**Neither remaining test failure is staff, and neither is a staff regression:** `desktop_command_census_matches_pin` reports 2 of 67 pinned rows disagreeing (`data` pin 6 vs source 7, `pos` pin 17 vs source 18) after another lane added commands, and cloud-server's `push_outcome_documented_schema_matches_serde_wire_shape` fails in that lane. The census pins were deliberately NOT bumped: the metric is not a raw registration count (the desktop shell registers 8 `data::` and 18 `pos::` commands while the census reports 7 and 18), so a blind arithmetic update would be precisely the UNdeliberate edit the pin's own message warns against (`Update every pin deliberately - the full set is the review signal`). It belongs to whoever added those commands.
+
+**A flake that was mine, not the code's:** an earlier full UI run reported 7 failures across 5 unrelated files (`AppShell`, `SettingsPage`, `TopologyRevisionBrowser`, `useNewTicketSound`, dev-mock auth contract). Every staff file was green, the one failing file this session owns passed 30/30 in isolation, and the same suite is now 10352/10352 with the machine quiet. The cause was running it CONCURRENTLY with the E2E run and a cargo build. Heavy gates run one at a time.
+
+**Left open deliberately, each with the decision it needs:** workspace-wide gates stay in motion while other lanes hold dirty files; the Android/tablet shell is unverified because no device is attached and no AVD exists on this host (the tablet E2E project is WebKit at a POS viewport, not the device WebView); the dead staff FTL keys (four referenced nowhere in either locale, plus one cited only by the guide row corrected above) need a locale owner's call; and `scripts/verify-quota-coverage.sh` reports 4 PRE-EXISTING violations in the ADR-56 bootstrap path (`provision_device_inner`, `create_workspaces_in_tx`, `seed_provisioned_baseline` x2) which likely deserve the same reasoned KNOWN-GAP treatment `seed_primary_store` already carries - but excusing a provisioning door is that lane's call, and the guard is wired into no workflow, so the red is visible debt rather than a blocking gate.
+
+
 
 
 
