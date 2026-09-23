@@ -426,6 +426,15 @@ step "records index freshness" "node scripts/generate-records-index.mjs --check"
 # files, cross-reference table excluded (prose cells). Audit open item 2,
 # green from day one (54/54). Gate: scripts/gates.json -> "adr-status".
 step "adr status drift" "python3 .agents/skills/docs-auditor/scripts/check-adr-status.py" python3 .agents/skills/docs-auditor/scripts/check-adr-status.py
+# website/src/content docs link each other with Astro ROUTES (../cloud-sync/,
+# ../../pricing/, /en/docs/...), not filesystem paths: a file scanner flagged ~90
+# of them in the 2026-09-23 audit while every one resolved, and could not see a
+# ghost slug either way (audit open item 4). This builds the route table the site
+# actually serves -- astro.config i18n locales x src/pages ([locale] expanded,
+# directory-format URLs) x content routes enumerated the way [...slug].astro emits
+# them x public/ files and _redirects sources -- and resolves each markdown link
+# against it. Green from day one (38 content docs). Gate: scripts/gates.json -> "site-links".
+step "site links" "python3 .agents/skills/docs-auditor/scripts/check-site-links.py" python3 .agents/skills/docs-auditor/scripts/check-site-links.py
 # scripts/__tests__/*.test.mjs is a whole suite that ui/package.json exposes as
 # `npm run test:scripts` and that NOTHING invoked -- not the hook, not CI, not check.sh.
 # It had been red for an unknown period for exactly that reason: verify-ci-docs-drift.test.mjs

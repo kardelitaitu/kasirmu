@@ -7,8 +7,8 @@ working tree on 2026-09-23. Peer sessions were active during the run — see
 **Status: repaired the same session.** Every P0 and P1 finding below was fixed in this
 pass except the dead refs inside one file fenced off for a concurrent editor (7 at the
 close of the session, up from 2 mid-session as the peer kept writing — see *Deliberately
-not touched*), plus four open items that are separate work (listed at the bottom — items 1–3
-have since been closed in follow-up passes, so one remains).
+not touched*), plus four open items that are separate work (listed at the bottom — all four
+have since been closed in follow-up passes).
 
 ## Scope and method
 
@@ -166,7 +166,8 @@ removing it is a different decision than a typo repair, and it is right.
   paths their plans will create, and `website/src/content/docs/` links are site routes
   resolved by the Astro build (`../../login/`, `/en/docs/…`), not filesystem paths.
   A file-based scanner flags ~90 of them; they are not broken. The website deserves a
-  site-aware link checker — recorded as open item (4).
+  site-aware link checker — recorded as open item (4), closed 24-09-26 by
+  `check-site-links.py`, which resolves links against the route table instead.
 
 ## Deliberately not touched
 
@@ -239,7 +240,8 @@ removing it is a different decision than a typo repair, and it is right.
    targets are anchored there — no repo-root retry, no basename fallback — so a stale
    reorg link can no longer pass on the strength of a same-named survivor elsewhere
    (the ~25 hidden breaks this audit repointed by hand). `website/` stays exempt from
-   link extraction: its `../../login/` forms are Astro routes until open item 4 lands.
+   link extraction: its `../../login/` forms are Astro routes, resolved site-aware by
+   `check-site-links.py` (open item 4, resolved 24-09-26).
    The HTML-comment half was **withdrawn on evidence**: a probe line carrying a dead
    path inside an HTML comment was flagged on the first try, and this audit's own
    house-checker count included two audit-stamp path claims — only a scanner that reads
@@ -252,8 +254,37 @@ removing it is a different decision than a typo repair, and it is right.
    at root AGENTS — repointed, plus the three llms.txt `url`-target shape-quotes this
    document already knew about, pragma'd at their source. The live baseline held at
    7 refs in the fenced checklist.
-4. **A site-aware link checker for `website/`** — routes vs filesystem paths cannot be
-   told apart by a file scanner.
+4. ~~**A site-aware link checker for `website/`** — routes vs filesystem paths cannot be
+   told apart by a file scanner.~~ **Resolved 24-09-26 — `check-site-links.py` built,
+   wired, green.** The route table is what `astro build` would serve: `i18n.locales`
+   parsed from `astro.config.mjs` (unparseable = fatal, never a guess) × every
+   `src/pages/` file with `[locale]` expanded and Astro's default directory-format URLs ×
+   content routes enumerated exactly as `[...slug].astro` emits them — so a link to a
+   ghost slug is red *even though the catch-all pattern file exists*, the inverse of the
+   file lens's failure — × `public/` files/directories and `public/_redirects` sources (a
+   redirected URL resolves at deploy time). Per-collection bases: `docs` →
+   `/{loc}/docs/{slug}/`, `legal` → its consuming `legal/{name}.astro` (no consuming
+   page = finding). Extraction is fence- and backtick-aware, so the authoring guide's
+   *example* of a link is not a claim; fragments/queries are stripped
+   (`../activation/#heading` checks the page, not the heading — dead-refs'
+   anchors-unchecked stance, stated in the docstring); an empty `]()` is a finding.
+   Fail-loud contract: missing website/config/content, a renamed docs catch-all, or any
+   dynamic segment other than `[locale]` exit 1 instead of reading green. **The live tree
+   passed clean on the first run — 38 content docs, 0 findings**: the ~90 file-lens false
+   positives were exactly these route links, now validated against routes, and nothing
+   else was broken, so no tracked doc needed repointing. Twenty `--self-test` cases pin
+   it (red: ghost sibling, absolute ghost, over-escape above the locale root, empty
+   target, legal ghost, unmapped collection, out-of-config locale; green: the route
+   forms, external/mailto/fragment skips, fence and backtick examples, `_redirects`
+   source, public assets, plus `run()`'s exit codes on red and green trees and a fatal
+   on a missing website/). Wired house-style: `check.sh` step `site links` + gates.json
+   `site-links` (local-only like `adr-status`, no workflow) + the
+   `check-auditor-selftests.sh` roster (sixth checker) + ci-pipeline Pre-Merge row and
+   local-steps item 26 + the SKILL behavior bullet; dead-refs' docstring and code comment
+   now name the successor instead of the open item. Known limits stated in the
+   docstring: heading fragments, `.astro` component hrefs, reference-style links and
+   external fetches are out of scope; `website/*.md` outside `src/content/` stays in
+   dead-refs' path-literal domain.
 
 ## Re-verification (all run in this session, all green unless noted)
 

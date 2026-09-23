@@ -99,8 +99,8 @@ KNOWN LIMITATIONS (deliberate, and worth knowing before you trust a clean run):
     then the path-literal rules below unchanged. Targets that are not filesystem paths
     are skipped: URLs, mailto:/tel:, anchors (#...), site-absolute routes (/...), and
     everything under website/, whose ../../login/ forms are Astro routes rather than
-    paths (audit open item 4 owns telling those apart -- extracting them here produced
-    ~90 false findings when attempted).
+    paths (check-site-links.py resolves those site-aware -- audit open item 4,
+    resolved 2026-09-24; extracting them here produced ~90 false findings).
 
   Opt-out pragma: put "dead-ref: ok" in an HTML comment on the line, or on the line
   above it. Same contract as eslint-disable-next-line or #[allow(...)]: the doc states
@@ -392,7 +392,7 @@ def scan_text(path, text, files, dirs, basenames, include_bare=False):
     src_dir = path.rsplit("/", 1)[0] if "/" in path else ""
     # website/ keeps path-literal scanning only: its ../../login/ and /en/docs/ link
     # targets are Astro routes, not filesystem paths, and extracting them produced ~90
-    # false findings in the 2026-09-23 audit (open item 4 owns the site-aware checker).
+    # false findings in the 2026-09-23 audit; check-site-links.py owns them since 2026-09-24.
     links = not path.startswith("website/")
     hits = []
     lines = text.split(chr(10))

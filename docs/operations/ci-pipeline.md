@@ -131,6 +131,7 @@
 | Records index freshness | `ci-docs-drift` | Required | `check.sh` (records index freshness) |
 | Docs dead references | `ci-docs-drift` (advisory step) | Advisory (CI step `continue-on-error: true`) | — CI-only while findings > 0: `check.sh`'s `step()` exits on first failure, so a red leg would break every local pre-push |
 | ADR status drift | — | Required | `check.sh` (adr status drift) |
+| Website route links | — | Required | `check.sh` (site links) |
 | Windows config drift | `static-gates` | Required | `check.sh` (windows config) |
 | Unified healthcheck | `static-gates` | Required | `check.sh` (healthcheck script test) |
 | Data-testid compliance | — (no CI job) | Required | `check:all` (testid) — R1 kebab-case + R2 no full `data-testid` literal produced by two files (scripts/check-testid.mjs, baseline scripts/testid-baseline.json). Local-only: leg 0 of scripts/check-ui.mjs; no workflow runs it |
@@ -267,6 +268,7 @@ Comprehensive pre-push gate mirroring CI. Runs:
 23. `cargo deny check` — supply-chain advisories, **advisory**: prints PASS / SKIP / WARN and never fails the matrix (added `dd95374f7`; Rust only, no workflow, not in pre-push)
 24. Records index freshness — `node scripts/generate-records-index.mjs --check` (added 2026-09-23 by the documentation audit; its CI twin runs in `ci-docs-drift`, where the companion dead-ref step is CI-only advisory because `step()` exits on first failure)
 25. ADR status drift — `python3 .agents/skills/docs-auditor/scripts/check-adr-status.py` (added 2026-09-24, audit open item 2; check.sh-only, no workflow — the same local-only shape as the auditor self-tests gate)
+26. Website route links — `python3 .agents/skills/docs-auditor/scripts/check-site-links.py` (added 2026-09-24, audit open item 4; check.sh-only, no workflow — local-only like items 24's local leg and 25)
 
 ### `scripts/check-ui.mjs` (Node, cross-platform)
 
