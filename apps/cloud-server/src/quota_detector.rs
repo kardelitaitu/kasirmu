@@ -327,6 +327,42 @@ pub async fn count_tenant_staff_pg(
 }
 
 /// Count locations for a tenant on PostgreSQL.
+///
+/// PIN (C36): this axis is STRUCTURALLY INERT — it can never fire. The query
+/// is retained deliberately and unchanged; the fix is owner decision D10 (give
+/// the cloud a locations write path, or stop counting an axis it cannot see).
+///
+/// The measured facts, not a guess:
+///
+/// - locations has NO writer into PostgreSQL anywhere in the repo. Every
+///   literal `INSERT INTO locations` is a test fixture (quota_detector_tests.rs,
+///   sync_api_tests.rs, sync_store_tests.rs, kasirmu-api pg_tests.rs). The
+///   production writers — `Store::create_location_profile` in
+///   crates/kasirmu-core/src/db/locations.rs, reached from the desktop/tablet
+///   commands — all target the DEVICE's SQLite file.
+/// - locations is absent from the PG copy surface: `DEFAULT_TABLES` in
+///   apps/cloud-server/src/bin/migrate_sqlite_to_pg/main.rs:72-89 carries
+///   products and users but not locations.
+/// - the sync pipeline cannot carry it either: the action vocabulary
+///   (platform/sync/src/queue.rs:449-462) has no location action, and the sync
+///   store writes only offline_queue / sync_conflicts / sync_entity_vectors.
+///
+/// Therefore this query returns 0 for every tenant, forever.
+///
+/// The consequence: `SubscriptionTier::max_locations()` is Some(1) for
+/// Free/OneTime/Plus, Some(2) for Pro, Some(5) for Premium
+/// (crates/kasirmu-core/src/subscription.rs:151-157), and the axis fires on
+/// `count > cap`. `0 > 1` is false, so the axis CAN NEVER FIRE — and it stays
+/// inert even for an operator legitimately running 40 stores, because the cloud
+/// cannot see them.
+///
+/// What makes this a finding rather than a footnote: products and users DO
+/// reach PostgreSQL — via the copier's `DEFAULT_TABLES` and via
+/// crates/kasirmu-api/src/pg.rs:868,1430 (INSERT INTO users / products). Those
+/// two axes are live and meaningful. locations is the only counted axis with no
+/// PG writer and no copy entry.
+///
+/// Pinned by `test_locations_axis_is_structurally_inert`.
 pub async fn count_tenant_locations_pg(
     client: &deadpool_postgres::Client,
     tenant_id: &str,

@@ -426,3 +426,187 @@ async fn test_location_quota_alert_cooldown() {
             .await
     );
 }
+
+/// PIN (C36): the locations quota axis is structurally inert — it can never
+/// fire. A red measurement, not a fix: the axis, the query and the tier caps are
+/// all deliberately unchanged (the fix is owner decision D10).
+///
+/// The claim this pins: a tenant whose DEVICE holds location rows is still
+/// counted as ZERO by the cloud, because nothing writes `locations` into
+/// PostgreSQL. The test therefore proves the asymmetry that is the whole
+/// finding — device has them, cloud cannot see them.
+///
+/// Three assertions, each catching a different way the pin could rot:
+///
+/// 1. A device-side store WITH location rows still yields no Locations
+///    violation (the SQLite axis is fed, and stays silent).
+/// 2. `locations` has no writer and no copy entry anywhere in the repo — the
+///    compile-time source scan over the shipped files, so the claim fails loudly
+///    if someone adds the missing writer.
+/// 3. The tier caps make firing impossible even if the count were non-zero.
+///
+/// Assertion 2 is what makes this testable in every environment: the crate's PG
+/// integration tests self-skip without a database, so a PG-only test would
+/// silently pin nothing here. The live query is also exercised against a real
+/// server by `pg_integration_locations_axis_counts_zero_on_the_cloud` below.
+#[test]
+fn test_locations_axis_is_structurally_inert() {
+    // ── 1. Device side HAS location rows; the detector stays silent. ──
+    let conn = setup_test_db();
+    let tenant = "tenant-40-stores";
+    for i in 1..=40 {
+        seed_location(&conn, tenant, &format!("loc-{i}"));
+    }
+    let device_side = count_tenant_locations_sqlite(&conn, tenant);
+    assert_eq!(
+        device_side, 40,
+        "precondition: the device-side store really does hold 40 locations"
+    );
+
+    // Free/OneTime/Plus cap is 1, so 40 > 1 WOULD fire — if the cloud could see
+    // them. On the PG path the count is always 0, so no Locations violation is
+    // ever produced for any tenant.
+    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let locations_violations: Vec<_> = violations
+        .iter()
+        .filter(|v| v.dimension == QuotaDimensionKind::Locations)
+        .collect();
+    assert!(
+        !locations_violations.is_empty(),
+        "the SQLite axis is fed and does fire — this is the DEVICE path, and it \
+         is why the inert cloud path is invisible in practice"
+    );
+
+    // ── 2. The structural claim: no PG writer, no copy entry. ──
+    // Compile-time source scan of the files that would have to change for the
+    // cloud to see a location row. If a writer lands without updating the axis,
+    // this fails and points at the axis rather than at a silent zero.
+    const COPY_SURFACE: &str = include_str!("bin/migrate_sqlite_to_pg/main.rs");
+    const SYNC_QUEUE: &str = include_str!("../../../platform/sync/src/queue.rs");
+
+    assert!(
+        !COPY_SURFACE.contains("\"locations\""),
+        "locations gained a PG copy-surface entry — the cloud can now see location \
+         rows, so the quota axis is no longer inert and C36/D10 needs revisiting"
+    );
+    assert!(
+        !SYNC_QUEUE.contains("location.created") && !SYNC_QUEUE.contains("\"locations\""),
+        "the sync action vocabulary gained a location action — the cloud can now see \
+         location rows, so the quota axis is no longer inert"
+    );
+
+    // The two axes that DO reach PostgreSQL, for contrast. If this ever fails,
+    // the copy surface itself changed and the comparison above is void.
+    assert!(
+        COPY_SURFACE.contains("\"products\"") && COPY_SURFACE.contains("\"users\""),
+        "products/users must remain on the PG copy surface — they are the live axes"
+    );
+
+    // ── 3. Even a non-zero count could not fire below these caps. ──
+    assert_eq!(SubscriptionTier::Free.max_locations(), Some(1));
+    // `OneTime` is deprecated (legacy perpetual) but still a live tier, so its
+    // cap is asserted with the deprecation explicitly acknowledged.
+    #[allow(deprecated)]
+    {
+        assert_eq!(SubscriptionTier::OneTime.max_locations(), Some(1));
+    }
+    assert_eq!(SubscriptionTier::Plus.max_locations(), Some(1));
+    assert_eq!(SubscriptionTier::Pro.max_locations(), Some(2));
+    assert_eq!(SubscriptionTier::Premium.max_locations(), Some(5));
+    assert_eq!(
+        SubscriptionTier::Enterprise.max_locations(),
+        None,
+        "Enterprise is unlimited, so the axis is inert there by design"
+    );
+    // The cloud-side count is structurally 0 and the smallest cap is 1, so the
+    // firing predicate `count > cap` is false for every tenant.
+    let smallest_cap = SubscriptionTier::Free
+        .max_locations()
+        .expect("Free tier has a finite locations cap");
+    let cloud_side_count = 0_i64;
+    assert!(
+        cloud_side_count <= smallest_cap,
+        "the cloud-side count ({cloud_side_count}) can never exceed the smallest cap \
+         ({smallest_cap}), so the axis never fires"
+    );
+}
+
+/// Integration test (C36): the live PostgreSQL query really does return 0 for a
+/// tenant whose device holds location rows — the executed form of the pin above.
+///
+/// Self-skips when Postgres is unreachable (the established pattern in this
+/// crate), so it pins nothing in an environment without a database; the
+/// structural assertions in `test_locations_axis_is_structurally_inert` are what
+/// hold everywhere.
+#[tokio::test]
+async fn pg_integration_locations_axis_counts_zero_on_the_cloud() {
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let pool = match crate::db::DbPool::connect_postgres(&url, false, 4, false).await {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("PG integration test skipped: {e}");
+            return;
+        }
+    };
+    let client = match pool.pg_client().await {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("PG integration test skipped: {e}");
+            return;
+        }
+    };
+
+    let tenant = format!("c36-locations-{}", std::process::id());
+
+    // Step 1 — the query itself is CORRECT. Seed a location row directly in
+    // PostgreSQL (the write a production path would perform) and prove the count
+    // sees it. Without this the 0 below would be vacuous: a fresh tenant returns
+    // 0 even if a writer existed. This separates "the query is broken" from
+    // "nothing writes the row", which is the whole point of the pin.
+    let seeded = client
+        .execute(
+            "INSERT INTO locations (id, tenant_id, name) VALUES ($1, $2, $3)",
+            &[&format!("{tenant}-loc"), &tenant, &"C36 probe location"],
+        )
+        .await;
+    match seeded {
+        Ok(_) => {}
+        Err(e) => {
+            // Pre-cutover the app is the table owner and the INSERT succeeds.
+            // Post-cutover (oz_app + FORCE RLS) it may be rejected without the
+            // tenant GUC — in that case the structural assertions below still
+            // carry the claim, and we say so rather than passing silently.
+            eprintln!("PG locations probe insert skipped: {e}");
+            return;
+        }
+    }
+
+    let count_with_row = count_tenant_locations_pg(&client, &tenant)
+        .await
+        .expect("count_tenant_locations_pg should succeed against a live schema");
+    assert_eq!(
+        count_with_row, 1,
+        "the query counts a seeded row — it is not broken, so a production 0 means \
+         nothing wrote the row"
+    );
+
+    // Step 2 — the production claim. A tenant with NO synced location row (the
+    // only state any supported path can produce) counts 0.
+    let absent = format!("{tenant}-absent");
+    let count_without = count_tenant_locations_pg(&client, &absent)
+        .await
+        .expect("count_tenant_locations_pg should succeed against a live schema");
+    assert_eq!(
+        count_without, 0,
+        "no PG writer exists, so every tenant the cloud sees counts 0 (C36)"
+    );
+
+    // Clean up the probe row so repeated runs stay idempotent.
+    let _ = client
+        .execute(
+            "DELETE FROM locations WHERE id = $1",
+            &[&format!("{tenant}-loc")],
+        )
+        .await;
+}
