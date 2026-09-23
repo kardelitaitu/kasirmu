@@ -1614,6 +1614,12 @@ const SCREENS: ScreenEntry[] = [
     // 17 distinct class names spread over 30 selector rules (grep the leading
     // \.. tokens, sort -u), so "17 of 17" was true of this sheet and the run
     // agrees with it — 0 undefined, 0 dead.
+    // 2026-09-23: the desktop-link email view added two more class names
+    // (license-email-view, license-email-step-title), so this sheet and its TSX
+    // now both carry 38 distinct class names over 38 bare-class rules and walk A
+    // still reports 0 undefined / 0 dead. The 17/30 figure above measures an
+    // earlier revision; it was already stale before this change and is left as
+    // written rather than restated in a different counting method.
     name: 'LicenseActivationScreen',
     tsx: 'auth/LicenseActivationScreen.tsx',
     css: ['auth/LicenseActivationScreen.css'],
