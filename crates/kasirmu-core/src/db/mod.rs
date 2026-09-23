@@ -135,6 +135,8 @@ pub mod receipt_code;
 pub mod receipt_formats;
 /// Recipe / modifier CRUD.
 pub mod recipes;
+/// Restore-candidate validation and the atomic restore swap (C8, slice S2).
+pub mod recovery;
 /// Refund CRUD.
 pub mod refunds;
 /// Regional-configuration reads — the effective locale / timezone / currency
@@ -174,6 +176,9 @@ pub mod workspaces;
 // ── Re-exports ──────────────────────────────────────────────────────
 
 pub use products::{CreateProductAttributes, ProductWithDetails, UpdateProductAttributes};
+pub use recovery::{
+    CandidateReport, CandidateVerdict, pre_restore_snapshot_path, restore_from, validate_candidate,
+};
 pub use reports::{
     CategoryBreakdownRow, DailyRevenueRow, HourlyHeatmapRow, LowStockAlert, MonthlyRevenueRow,
     TopProductRow, WeeklyRevenueRow,

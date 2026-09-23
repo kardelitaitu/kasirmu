@@ -1,13 +1,17 @@
 //! Backup, restore, and CSV export commands.
 //!
-//! `run_backup` snapshots the live database; `run_restore` replaces it
-//! (CLI-4: checkpointing the WAL and deleting stale `-wal`/`-shm`
-//! sidecars before the copy); `run_export` writes CSV reports to stdout.
+//! `run_backup` snapshots the live database; `run_restore` validates the
+//! candidate, checkpoints the WAL and hands the swap to
+//! `kasirmu_core::db::restore_from` (CLI-4 sidecar handling kept, C8 slice S2
+//! adds validation, the pre-restore snapshot and the atomic swap);
+//! `run_export` writes CSV reports to stdout.
+
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 
-use kasirmu_core::db::Store;
+use kasirmu_core::db::{Store, pre_restore_snapshot_path, restore_from};
 
 /// Create an online SQLite snapshot of the database.
 pub(crate) fn run_backup(conn: &Connection, output: &str) -> Result<()> {
@@ -58,41 +62,36 @@ pub(crate) fn run_export(conn: &Connection, kind: &str) -> Result<()> {
 /// can leave a hot WAL whose frames would win the next open and silently
 /// resurrect pre-restore data over the copied backup (torn restore).
 /// The restore therefore checkpoints away the connection's WAL, then
-/// deletes both sidecars before the copy.
+/// hands over to `kasirmu_core::db::restore_from`, which validates the
+/// candidate, takes the pre-restore snapshot, deletes both sidecars and
+/// performs the atomic swap — the same validator and the same swap the
+/// future in-app restore path uses (C8 slice S2).
 pub(crate) fn run_restore(conn: Connection, input: &str) -> Result<()> {
     eprintln!("restoring from {input}...");
 
-    // Close the existing connection cleanly, then copy the backup over.
+    // Close the existing connection cleanly, then let core perform the swap.
     let db_path = conn
         .path()
-        .map(|p| p.to_owned())
-        .unwrap_or_else(|| "kasir.db".into());
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("kasir.db"));
 
     // Fold any WAL frames back into the main file so nothing live is
-    // stranded in the sidecars, then close.
+    // stranded in the sidecars (and so the pre-restore snapshot core takes
+    // carries the committed WAL content), then close.
     if let Err(e) = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);") {
         // In-memory or non-WAL databases return an error here; nothing
-        // to checkpoint is fine — the sidecar deletion below is the
-        // load-bearing step.
+        // to checkpoint is fine — the swap below is the load-bearing step.
         eprintln!("  note: wal_checkpoint skipped ({e})");
     }
     drop(conn);
 
-    for sidecar_ext in ["-wal", "-shm"] {
-        let sidecar = format!("{db_path}{sidecar_ext}");
-        match std::fs::remove_file(&sidecar) {
-            Ok(()) => eprintln!("  removed stale sidecar {sidecar}"),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => {
-                return Err(anyhow::Error::from(e))
-                    .with_context(|| format!("removing sidecar {sidecar} before restore"));
-            }
-        }
-    }
-
-    std::fs::copy(input, &db_path)
-        .with_context(|| format!("copying backup {input} to {db_path}"))?;
-
+    let report = restore_from(Path::new(input), &db_path)
+        .with_context(|| format!("restoring from {input}"))?;
+    eprintln!("  candidate accepted: {}", report.reason);
+    eprintln!(
+        "  pre-restore snapshot: {}",
+        pre_restore_snapshot_path(&db_path).display()
+    );
     eprintln!("restore complete — database replaced with backup");
     Ok(())
 }
