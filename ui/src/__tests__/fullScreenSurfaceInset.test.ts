@@ -96,6 +96,27 @@ describe('the live full-screen surface needs no orientation branch', () => {
     const container = ruleBody(PROVISIONING_CSS, '\\.provisioning-container');
     expect(container).toMatch(/overflow-y:\s*auto/);
   });
+
+  it('compacts its geometry on a short viewport instead of only scrolling', () => {
+    // Measured on the two viewports this flow ships to (playwright.config.ts):
+    // the card is 1460px against the desktop's 768px tall (748px of overflow)
+    // and 1633px against the tablet's 1366px (323px over). The 48px padding and
+    // 24px gap were desktop-sized and applied at every height, so 240px of a
+    // 768px screen — 31% — went to padding and whitespace before any content.
+    //
+    // Keyed on HEIGHT, not `orientation`: the scarce axis is vertical, and the
+    // orientation literal is what the shell owns (asserted directly above).
+    expect(PROVISIONING_CSS).toMatch(/@media\s*\(max-height:\s*900px\)/);
+    // The compact body must actually restate both properties, or the query is
+    // inert — the declaration-present-but-does-not-apply shape this repo has
+    // been bitten by (docs/frontend/css-verification.md).
+    // `ruleBodies` also matches the reduced-motion block, so pick the body that
+    // actually carries padding — the one under the height query.
+    const bodies = ruleBodies(PROVISIONING_CSS, '\\.provisioning-card');
+    const compactBody = bodies.find((b) => /padding:\s*var\(--space-6\)/.test(b));
+    expect(compactBody).toBeTruthy();
+    expect(compactBody).toMatch(/gap:\s*var\(--space-4\)/);
+  });
 });
 
 

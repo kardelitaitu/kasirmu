@@ -66,6 +66,26 @@
   gap: var(--space-6);
 }
 
+/* Compact geometry on a SHORT viewport. Measured on the two viewports this flow
+ * actually ships to (ui/e2e/playwright.config.ts): the card is 1460px against
+ * the desktop's 768px (748px of overflow) and 1633px against the tablet's 1366px
+ * (323px over). The 48px padding and 24px gap above are desktop-sized and were
+ * applied unchanged everywhere, so 240px of a 768px screen — 31% — went to
+ * padding and whitespace before any content.
+ *
+ * This is the one saving available without restructuring the flow: the remaining
+ * content (a 2-column mode choice, the account-linking box with its 181px QR,
+ * five inputs) is all load-bearing and cannot be trimmed.
+ *
+ * Keyed on height, not width: the problem is vertical room, and the same 1024px
+ * tablet is comfortable in landscape and cramped in a shorter window. */
+@media (max-height: 900px) {
+  .provisioning-card {
+    padding: var(--space-6);
+    gap: var(--space-4);
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .provisioning-card {
     opacity: 0;
