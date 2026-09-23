@@ -28,6 +28,7 @@ import {
   updateStaffScoped,
   deleteStaffScoped,
   impersonateUserScoped,
+  isStaffQuotaLimitError,
   type StaffMemberDto,
   type RoleDto,
 } from '@/api/staff';
@@ -138,6 +139,18 @@ export default function StaffManagementScreen() {
   const [deleteTarget, setDeleteTarget] = useState<StaffMemberDto | null>(null);
   /** True while the confirmed delete request is in flight. */
   const [deleting, setDeleting] = useState(false);
+  /**
+   * C1.1: the last reactivation was refused by the tier's staff-user limit.
+   *
+   * The cap is enforced on the inactive -> active transition as well as on
+   * create (core `update_user_in_tx` vetoes the post-update count), so this
+   * branch is REACHABLE from the roster's power button. It gets the treatment
+   * the drawer's create form already gives the identical rejection — the
+   * localized quota message plus an upgrade CTA — rather than the generic
+   * save-failed toast, which would tell the operator nothing about why an
+   * account they can see refuses to switch on.
+   */
+  const [quotaBlocked, setQuotaBlocked] = useState(false);
   const [showModal, setShowModal] = useState(false);
   /** The member the drawer edits; `null` while it creates. */
   const [editingMember, setEditingMember] = useState<StaffMemberDto | null>(null);
@@ -340,9 +353,14 @@ export default function StaffManagementScreen() {
           ? l10n.getString('staff-toast-deactivated', { name: member.display_name })
           : l10n.getString('staff-toast-restored', { name: member.display_name }),
       });
+      setQuotaBlocked(false);
       await load();
-    } catch {
-      addToast({ message: l10n.getString('staff-error-save-failed'), type: 'error' });
+    } catch (err) {
+      if (isStaffQuotaLimitError(err)) {
+        setQuotaBlocked(true);
+      } else {
+        addToast({ message: l10n.getString('staff-error-save-failed'), type: 'error' });
+      }
     }
   }, [load, sessionToken, addToast, l10n]);
 
@@ -506,6 +524,18 @@ export default function StaffManagementScreen() {
               <span>{l10n.getString('staff-limit-approaching-premium')}</span>
               <Button variant="primary" size="sm" onClick={() => openUpgradePricingPage(locale, 'premium')} data-testid="staff-quota-upgrade-btn">
                 {l10n.getString('staff-limit-approaching-premium-cta')}
+              </Button>
+            </div>
+          )}
+
+          {/* C1.1: a REFUSED REACTIVATION — the same message and the same
+              escape route the drawer shows when a create hits the cap, because
+              it is the same fact. */}
+          {quotaBlocked && (
+            <div className="staff-mgmt-quota-banner" role="alert" data-testid="staff-quota-blocked-banner">
+              <span>{l10n.getString('staff-error-quota-limit')}</span>
+              <Button variant="primary" size="sm" onClick={() => openUpgradePricingPage(locale, 'plus')} data-testid="staff-quota-blocked-upgrade-btn">
+                {l10n.getString('staff-upgrade-cta')}
               </Button>
             </div>
           )}

@@ -559,6 +559,52 @@ describe('StaffManagementScreen', () => {
     }, FAST_WAIT);
   });
 
+  it('shows the quota banner and CTA when a REACTIVATION is refused by the tier cap', async () => {
+    // The cap is enforced on the inactive -> active transition as well as on
+    // create (core `update_user_in_tx` vetoes the post-update count), so this
+    // rejection is reachable from the roster's own power button. Before the
+    // fix the catch showed the generic save-failed toast, which told the
+    // operator nothing about why an account they can see refuses to switch on.
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'update_staff_scoped') {
+        return Promise.reject(
+          new Error(
+            "Error invoking remote method 'update_staff_scoped': Error: " +
+              JSON.stringify({
+                kind: 'core',
+                subKind: 'subscriptionLimitExceeded',
+                message:
+                  'Your Free tier allows maximum 1 staff users. You currently have 1. Upgrade to add more.',
+              }),
+          ),
+        );
+      }
+      if (cmd === 'list_staff_scoped') return Promise.resolve(SAMPLE_STAFF);
+      if (cmd === 'list_roles_scoped') return Promise.resolve(SAMPLE_ROLES);
+      if (cmd === 'list_all_workspaces_scoped') return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+
+    renderWithProvidersSync(
+      <ImpersonationProvider>
+        <StaffManagementScreen />
+      </ImpersonationProvider>,
+      staffFtl,
+    );
+    await waitForTable();
+
+    // staff-2 is the inactive member, so this click is the reactivation half.
+    fireEvent.click(screen.getByTestId('staff-toggle-active-staff-2'));
+
+    // The same message and the same escape route the drawer shows for a refused
+    // CREATE, because it is the same fact. The two branches are if/else, so
+    // this banner appearing is itself the proof the generic path was not taken.
+    await waitFor(() => {
+      expect(screen.getByText(/your plan allows a limited number of staff/i)).toBeInTheDocument();
+    }, FAST_WAIT);
+    expect(screen.getByTestId('staff-quota-blocked-upgrade-btn')).toHaveTextContent(/upgrade plan/i);
+  });
+
   it('shows the upgrade CTA when staff creation hits the tier staff limit (C1.1)', async () => {
     // The backend rejects past the tier cap with subKind subscriptionLimitExceeded.
     invokeMock.mockImplementation((cmd: string) => {
