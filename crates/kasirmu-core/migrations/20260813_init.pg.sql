@@ -3072,7 +3072,13 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'audit_log entries are immutable: DELETE not allowed';
     END IF;
-    RETURN NULL;
+    -- RETURN OLD, NOT NULL (C44). A row-level BEFORE DELETE trigger that
+    -- returns NULL CANCELS the delete. The SQLite original is a WHEN-clause
+    -- trigger, and a false WHEN means the body never runs and the DELETE
+    -- PROCEEDS -- so NULL here made the retention sweep delete nothing while
+    -- reporting success: a compliance failure that raises no error anywhere.
+    -- Caught only by executing the port against real PostgreSQL.
+    RETURN OLD;
 END;
 $$;
 

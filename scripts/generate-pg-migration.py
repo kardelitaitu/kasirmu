@@ -175,7 +175,13 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'audit_log entries are immutable: DELETE not allowed';
     END IF;
-    RETURN NULL;
+    -- RETURN OLD, NOT NULL (C44). A row-level BEFORE DELETE trigger that
+    -- returns NULL CANCELS the delete. The SQLite original is a WHEN-clause
+    -- trigger, and a false WHEN means the body never runs and the DELETE
+    -- PROCEEDS -- so NULL here made the retention sweep delete nothing while
+    -- reporting success: a compliance failure that raises no error anywhere.
+    -- Caught only by executing the port against real PostgreSQL.
+    RETURN OLD;
 END;
 $$;
 
@@ -293,45 +299,53 @@ CREATE OR REPLACE TRIGGER stock_summary_qty_nonnegative_update
 # `body_sha256` — sha256 of the port body, newline-normalized. Any edit to a
 #   body without re-recording its digest fails generation.
 #
-# BE PRECISE ABOUT THE STRENGTH, per entry:
-#   * stock_summary_qty_nonnegative_* — the named test EXECUTES this plpgsql
-#     against a real throwaway PostgreSQL database (all three predicate
-#     cases), so the port itself is verified.
-#   * the other six — the named test pins the SQLITE trigger's behaviour.
-#     That is a compensating control, NOT PostgreSQL execution: a port that
-#     diverged from its SQLite original while keeping the same observable
-#     behaviour on those SQLite paths would still pass. Closing that for all
-#     six is C42's shape applied six more times and is deliberately NOT
-#     claimed here.
+# AS OF C44, ALL SEVEN ENTRIES NAME A TEST THAT EXECUTES THE PORT against a
+# real throwaway PostgreSQL database:
+#   * stock_summary_qty_nonnegative_* -> apps/cloud-server/tests/pg_stock_guard.rs
+#     (C42: all three predicate cases).
+#   * the other six -> apps/cloud-server/tests/pg_trigger_ports.rs (C44: both
+#     directions where conditional).
+# C44 was worth doing rather than declaring: executing the six found a real
+# divergence in audit_log_immutable_delete, whose port returned NULL from a
+# BEFORE DELETE trigger — which CANCELS the delete — while the SQLite
+# WHEN-clause original lets it through when the sweep marker is present. The
+# retention sweep therefore deleted nothing and reported success. The body
+# digest could not have caught it: the body was wrong from the day it was
+# written, and a digest only detects CHANGE.
+#
+# The residual limit stands: `verified_by` is only as strong as the named
+# test, and no field here compares plpgsql semantics to SQL. A NEW port is
+# covered the moment it names an executing test; a body that is wrong AND
+# whose test does not actually exercise the predicate still passes.
 TRIGGER_VERIFICATION: dict[str, dict[str, str]] = {
     "audit_log_immutable_delete": {
-        "verified_by": "crates/kasirmu-core/tests/audit_integration.rs",
-        "note": "pins the SQLITE trigger (delete_audit_entry_trigger_rejects_delete); no PG execution",
-        "body_sha256": "fb6db470317bb1a1aea64f520595c8b73961c9469aa59d75078591ca36426433",
+        "verified_by": "apps/cloud-server/tests/pg_trigger_ports.rs",
+        "note": "EXECUTES this plpgsql against real PostgreSQL (C44); both directions (refused without the sweep marker, the row actually DELETED with it)",
+        "body_sha256": "63cbde37094ca88e69b88112e62766d6196e1610d69c8d7658899c2645764029",
     },
     "audit_log_immutable_update": {
-        "verified_by": "crates/kasirmu-core/tests/audit_integration.rs",
-        "note": "pins the SQLITE trigger (update_audit_entry_trigger_rejects_update); no PG execution",
+        "verified_by": "apps/cloud-server/tests/pg_trigger_ports.rs",
+        "note": "EXECUTES this plpgsql against real PostgreSQL (C44); unconditional refusal, incl. under the sweep marker",
         "body_sha256": "889d995af65ea2656ad2a7713f5abaa081d980445c467b7eb469cc5822976757",
     },
     "loyalty_tiers_validate_insert": {
-        "verified_by": "crates/kasirmu-core/src/migrations_tests.rs",
-        "note": "pins the SQLITE trigger (loyalty_multiplier_backfill_from_legacy_real_column); no PG execution",
+        "verified_by": "apps/cloud-server/tests/pg_trigger_ports.rs",
+        "note": "EXECUTES this plpgsql against real PostgreSQL (C44); valid accepted, six invalid shapes refused",
         "body_sha256": "cbe5d469ef17abe21b3d127e0c334320b4acc2dad45f6e3f6cc92df67313251d",
     },
     "loyalty_tiers_validate_update": {
-        "verified_by": "crates/kasirmu-core/src/migrations_tests.rs",
-        "note": "pins the SQLITE trigger (loyalty_multiplier_backfill_from_legacy_real_column); no PG execution",
+        "verified_by": "apps/cloud-server/tests/pg_trigger_ports.rs",
+        "note": "EXECUTES this plpgsql against real PostgreSQL (C44); valid update accepted, invalid refused",
         "body_sha256": "590edd3ea39682af1e3ba60ea9ba894bb7dbf66d7420cf83639724fe94ea115f",
     },
     "trg_assignments_scope_id_pair": {
-        "verified_by": "crates/kasirmu-core/src/db/assignments_tests.rs",
-        "note": "pins the SQLITE trigger (scope-id pair); no PG execution",
+        "verified_by": "apps/cloud-server/tests/pg_trigger_ports.rs",
+        "note": "EXECUTES this plpgsql against real PostgreSQL (C44); two valid shapes accepted, two invalid refused",
         "body_sha256": "021fccd42df444737cd25bb99b3fcca42a5191d6da385bd10b92bd4b833ab3a2",
     },
     "trg_assignments_scope_id_pair_update": {
-        "verified_by": "crates/kasirmu-core/src/db/assignments_tests.rs",
-        "note": "pins the SQLITE trigger (scope-id pair update arm); no PG execution",
+        "verified_by": "apps/cloud-server/tests/pg_trigger_ports.rs",
+        "note": "EXECUTES this plpgsql against real PostgreSQL (C44); valid transition accepted, both invalid refused",
         "body_sha256": "5bf43fc06622c13ffde841a33fd94fd6ca62504c573785c892223055459ba822",
     },
     "stock_summary_qty_nonnegative_insert": {
