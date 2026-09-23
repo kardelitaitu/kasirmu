@@ -1905,6 +1905,94 @@ fn a_deduction_entry_with_no_qty_understates_the_bound_and_refuses_the_refund() 
     assert_eq!(movements, 0, "and a refusal moves no stock");
 }
 
+/// The refund ROW must carry the SALE's tenant. `refunds.tenant_id` is
+/// RLS-covered in PostgreSQL (scripts/generate-pg-migration.py RLS_TABLES), so
+/// a refund left at the column DEFAULT is either invisible to its own tenant or
+/// visible to another one. The tenant is READ from the sale, never a literal.
+#[test]
+fn create_refund_stamps_the_sale_tenant_on_the_refund_row() {
+    let conn = fresh();
+    seed_completed_sale(&conn);
+    conn.execute(
+        "UPDATE sales SET tenant_id = 'store-9' WHERE id = 'ref-sale-1'",
+        [],
+    )
+    .unwrap();
+    let s = store(&conn);
+
+    let refund = Refund::new(
+        "ref-sale-1",
+        price(700),
+        "customer changed mind",
+        "",
+        "user-1",
+        vec![RefundLine::new(
+            "ref-sl-1",
+            "COFFEE",
+            2,
+            price(350),
+            price(700),
+        )],
+    );
+    let refund_id = refund.id.clone();
+    s.create_refund(&refund).unwrap();
+
+    let stored: String = conn
+        .query_row(
+            "SELECT tenant_id FROM refunds WHERE id = ?1",
+            rusqlite::params![refund_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        stored, "store-9",
+        "the refund row carries the SALE's tenant, not the column DEFAULT"
+    );
+}
+
+/// The same sale read drives both the refund row and its outbox row: one
+/// source, so the row on this terminal and the tenant the queue is filed under
+/// cannot disagree.
+#[test]
+fn the_refund_row_and_its_outbox_row_share_one_tenant() {
+    let conn = fresh();
+    seed_completed_sale(&conn);
+    conn.execute(
+        "UPDATE sales SET tenant_id = 'store-9' WHERE id = 'ref-sale-1'",
+        [],
+    )
+    .unwrap();
+    let s = store(&conn);
+
+    let refund = Refund::new(
+        "ref-sale-1",
+        price(700),
+        "customer changed mind",
+        "",
+        "user-1",
+        vec![RefundLine::new(
+            "ref-sl-1",
+            "COFFEE",
+            2,
+            price(350),
+            price(700),
+        )],
+    );
+    let refund_id = refund.id.clone();
+    s.create_refund(&refund).unwrap();
+
+    let (row_tenant, queue_tenant): (String, String) = conn
+        .query_row(
+            "SELECT (SELECT tenant_id FROM refunds WHERE id = ?1),
+                    (SELECT tenant_id FROM offline_queue WHERE action = 'refund_sale')",
+            rusqlite::params![refund_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(row_tenant, "store-9");
+    assert_eq!(row_tenant, queue_tenant, "one source, one tenant");
+}
+
 // ── C4 S2: the refund producer (transactional outbox) ───────────
 
 /// The queue row for one committed refund, keyed on the refund id the
@@ -1920,7 +2008,8 @@ fn refund_outbox_rows(conn: &Connection, refund_id: &str) -> i64 {
 
 /// A committed refund must leave EXACTLY ONE queue row, carrying the
 /// `refund_sale` action, the refund id, the sale id, and the tenant read from
-/// the SALE row (refunds.tenant_id is never written by this path). Without this
+/// the SALE row (the same read now stamps `refunds.tenant_id`; see
+/// [create_refund_stamps_the_sale_tenant_on_the_refund_row]). Without this
 /// seat the pull-side `refund_sale` arm had no producer at all: a refund made
 /// on one terminal was never pushed.
 #[test]

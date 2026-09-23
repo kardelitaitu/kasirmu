@@ -2189,6 +2189,53 @@ fn apply_remote_atomic_refund_credits_stock_once_and_replay_is_noop() {
     assert_eq!(loyalty_points(&store), 0);
 }
 
+/// The replicated refund ROW carries the LOCAL sale's tenant.
+///
+/// `refunds.tenant_id` is RLS-covered in PostgreSQL
+/// (scripts/generate-pg-migration.py RLS_TABLES), so a refund left at the
+/// column DEFAULT is invisible to its own tenant — or visible to another one.
+/// The tenant is read from the local `sales` row the arm already requires, the
+/// same source the originator stamped, so both terminals agree.
+#[test]
+fn apply_remote_atomic_refund_stamps_the_local_sale_tenant() {
+    let store = setup_store();
+    seed_product_and_inventory(&store);
+    seed_refundable_sale(&store, "sale-tenant-1", 1);
+    deduct_one_coffee(&store);
+    store
+        .conn()
+        .execute(
+            "UPDATE sales SET tenant_id = 'store-9' WHERE id = 'sale-tenant-1'",
+            [],
+        )
+        .unwrap();
+    let queue = SyncQueue::new();
+
+    let remote = OfflineQueueItem::new(
+        "refund_sale",
+        refund_payload("refund-tenant-1", "sale-tenant-1"),
+    );
+    assert!(
+        queue
+            .apply_remote_atomic_full(&store, &remote)
+            .expect("refund_sale must apply, not dead-letter as unsupported")
+            .applied
+    );
+
+    let stored: String = store
+        .conn()
+        .query_row(
+            "SELECT tenant_id FROM refunds WHERE id = ?1",
+            ["refund-tenant-1"],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        stored, "store-9",
+        "the replicated refund row carries the LOCAL sale's tenant"
+    );
+}
+
 /// C4: a refund whose sale is ABSENT on this terminal applies the EFFECT and
 /// returns Ok, without inserting a refunds row (the FK forbids one) and
 /// without fabricating a sales row.

@@ -482,9 +482,25 @@ fn apply_refund_with_sale_in_tx(
     tx: &rusqlite::Transaction<'_>,
     payload: &RefundPayload,
 ) -> Result<(), CoreError> {
+    // TENANT: read from the LOCAL SALE row this arm already required to exist
+    // (the caller probes `sales` before dispatching here, and `refunds.sale_id`
+    // is a real FK to it) — the same source the originator's create_refund
+    // stamps from, so both terminals file the refund under one tenant. NOT from
+    // the payload and NOT a literal: the payload's tenant would be the
+    // originator's claim rather than this database's own scoping, and
+    // `refunds.tenant_id` is RLS-covered in PostgreSQL
+    // (scripts/generate-pg-migration.py RLS_TABLES). The value is bound as
+    // read, never substituted: a NULL local tenant binds NULL and the column's
+    // own NOT NULL constraint refuses the row rather than the refund silently
+    // becoming 'default'.
+    let tenant_id: Option<String> = tx.query_row(
+        "SELECT tenant_id FROM sales WHERE id = ?1",
+        rusqlite::params![payload.sale_id],
+        |row| row.get(0),
+    )?;
     tx.execute(
-        "INSERT INTO refunds (id, sale_id, total_minor, currency, reason, note, processed_by, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO refunds (id, sale_id, total_minor, currency, reason, note, processed_by, created_at, tenant_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
             payload.id,
             payload.sale_id,
@@ -494,6 +510,7 @@ fn apply_refund_with_sale_in_tx(
             payload.note,
             payload.processed_by,
             payload.created_at,
+            tenant_id,
         ],
     )?;
 

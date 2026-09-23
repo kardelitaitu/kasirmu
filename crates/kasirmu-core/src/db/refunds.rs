@@ -74,15 +74,24 @@ impl Store<'_> {
         // this check the same sale could be refunded unlimited times and
         // stock credited each time. Reject when the cumulative refunded
         // amount plus this refund would exceed the sale's total.
-        let (sale_total, sale_currency, sale_customer_id, sale_base_total): (
+        let (sale_total, sale_currency, sale_customer_id, sale_base_total, sale_tenant): (
             i64,
             String,
             Option<String>,
             Option<i64>,
+            Option<String>,
         ) = match tx.query_row(
-            "SELECT total_minor, currency, customer_id, base_total_minor FROM sales WHERE id = ?1",
+            "SELECT total_minor, currency, customer_id, base_total_minor, tenant_id FROM sales WHERE id = ?1",
             params![refund.sale_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         ) {
             Ok(pair) => pair,
             Err(rusqlite::Error::QueryReturnedNoRows) => {
@@ -339,10 +348,21 @@ impl Store<'_> {
         }
 
         // ── 1. Persist refund + lines ──────────────────────────────
+        // TENANT: copied verbatim from the SALE row read in step 0 — the same
+        // source the outbox helper and every other refund-adjacent writer
+        // resolves a tenant from, and the tenant the sync arm will re-read on
+        // the receiving terminal. Not a literal and not a second lookup:
+        // `refunds.tenant_id` is NOT NULL DEFAULT 'default' and is RLS-covered
+        // in PostgreSQL (scripts/generate-pg-migration.py RLS_TABLES), so a
+        // hardcoded value files a multi-store refund under the wrong tenant.
+        // The value is bound as read, never substituted: a sale with no tenant
+        // (unreachable — `sales.tenant_id` is NOT NULL too) binds NULL and the
+        // column's own NOT NULL constraint refuses the row, rather than the
+        // refund silently becoming 'default'.
         tx.execute(
-            "INSERT INTO refunds (id, sale_id, total_minor, currency, reason, note, processed_by, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![refund.id, refund.sale_id, refund.total.minor_units, cur_str, refund.reason, refund.note, refund.processed_by, refund.created_at],
+            "INSERT INTO refunds (id, sale_id, total_minor, currency, reason, note, processed_by, created_at, tenant_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![refund.id, refund.sale_id, refund.total.minor_units, cur_str, refund.reason, refund.note, refund.processed_by, refund.created_at, sale_tenant],
         )?;
 
         for line in &refund.lines {
