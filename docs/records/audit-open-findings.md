@@ -1636,53 +1636,36 @@ sed -n '730,732p' todo-tools.md
 **Nothing in the tree was changed to measure this** — every line above was read, not written, and the
 three files it names were clean in `git status --porcelain` at the time of reading.
 
-### New verified finding (2026-09-16, 11:24) — the tablet's manual sync retry pushes to the server and then writes the outcomes to the wrong database
+### ~~New verified finding (2026-09-16, 11:24) — the tablet's manual sync retry pushes to the server and then writes the outcomes to the wrong database~~ — **CLOSED 2026-09-23 (`78276320f`)**
 
-`retry_offline_sync_scoped` (`apps/tablet-client/src/commands/offline.rs`) is a three-phase command: read
-the pending queue, push it over HTTP with no lock held, then write the outcomes back. **Phase 1 and Phase
-3 do not use the same database.**
+**Closed.** Phase 1 read the pending queue from the STORE database and Phase 3 wrote the outcomes to
+`state.db`, the GLOBAL identity database — so `mark_offline_synced` hit ids that did not exist there,
+`CoreError::NotFound` propagated out of `apply_sync_outcomes`, and the store's rows stayed `pending`,
+making every retry re-send the same items. Phase 3 now re-resolves the STORE scope for its write
+(`apps/mobile-tauri/src/commands/offline.rs`), the same shape as its bridge twin
+(`crates/kasirmu-bridge/src/offline.rs`) and as this shell's own `sync_run_scoped`.
 
-| phase | tablet shell | bridge twin (`crates/oz-bridge/src/offline.rs:317-380`) |
-|---|---|---|
-| 1 — read pending | `state.resolve_scope(&session_token)` → **store** db | `ctx.resolve_scope(session_token)` → store db |
-| 3 — write outcomes | `state.db.lock().await` → **global identity** db | `ctx.resolve_scope(...)` again → store db |
+Proven by `retry_offline_sync_scoped_pushes_critical_before_an_earlier_low_item`
+(`apps/mobile-tauri/src/commands/offline_tests.rs`), which drives a real push through a loopback socket
+and asserts the store rows end `OfflineQueueStatus::Synced` with `pending_offline_count() == 0`, plus
+that the global queue stays empty. Its sibling
+`retry_offline_sync_scoped_records_a_push_failure_without_marking_synced` pins the other direction: a
+genuine HTTP failure records `Failed` and never `Synced`. The C54 divergence pin that asserted the old
+`NotFound` behaviour was deleted by the fixing commit, on purpose.
 
-`AppState.db` is the global identity database, not the store. `AppState::new` opens
-`<app_data_dir>/oz-pos.db` (`apps/tablet-client/src/state.rs:153-170`), and `BridgeCtx.db` is
-`&AppState.db` — the very field `BridgeCtx::lock_global` documents as *"Lock the global identity DB (the
-authz path)"* (`crates/oz-bridge/src/ctx.rs:374`). The store is a separate file,
-`<data_dir>/store-<store_id>.sqlite` (`platform/core/src/database/manager.rs:167`), reached through
-`resolve_scope` → `StoreDatabaseManager::open_store`. Two different files, and the comment on
-`AppState.db` (`state.rs:51`, "SQLite connection for the local store") is what makes this easy to
-misread.
-
-**Why it is a defect and not merely a fork.** `apply_sync_outcomes` calls `store.mark_offline_synced`
-per accepted item (`crates/oz-core/src/sync_client.rs:307`), and that method returns
-`CoreError::NotFound` when its `UPDATE offline_queue … WHERE id = ?1` affects zero rows
-(`crates/oz-core/src/db/offline.rs:421-433`). Run against `oz-pos.db`, where no such queue row exists,
-the update affects zero rows, the `?` propagates, and the command returns an error — **after Phase 2 has
-already transmitted the batch**. The store's rows therefore stay `pending`, so every subsequent retry
-re-sends the same items to the server.
-
-**Reachability.** `ui/src/features/offline/OfflineQueueScreen.tsx:216` calls `retryOfflineSyncScoped`,
-which invokes this command; it is registered on both shells (`apps/tablet-client/src/lib.rs:699`,
-`apps/desktop-client/src/lib.rs:1246`). The bridge twin, by contrast, has no desktop caller
-(`.agents/review-backlog-codebase-review.md:114` — *"no desktop UI calls retryOfflineSync"*), so the
-tablet is the shell where the wrong-database write actually runs.
-
-**Not fixed here.** ADR #49 §4 preserves pre-existing defects inside an extraction and reports them; the
-door is refused on the storage-source ground, so the body stays tablet-native and carries an
-`ADR #49 NOT APPLIED` block naming this finding.
+**Path note (corrected here).** This entry originally named `apps/tablet-client/src/commands/offline.rs`,
+`crates/oz-bridge/src/offline.rs`, `apps/tablet-client/src/state.rs`, `crates/oz-bridge/src/ctx.rs` and
+`crates/oz-core/*` — all pre-rebrand paths that no longer exist, so a reader following the record could
+not reach the code. The real paths are `apps/mobile-tauri/src/commands/offline.rs`,
+`crates/kasirmu-bridge/src/offline.rs`, `apps/mobile-tauri/src/state.rs`, `crates/kasirmu-bridge/src/ctx.rs`
+and `crates/kasirmu-core/src/*`.
 
 **Re-derive, verbatim:**
 
 ```bash
-grep -n "state.db.lock().await" apps/tablet-client/src/commands/offline.rs
-sed -n '153,170p' apps/tablet-client/src/state.rs
-sed -n '374p' crates/oz-bridge/src/ctx.rs
-sed -n '166,168p' platform/core/src/database/manager.rs
-sed -n '421,433p' crates/oz-core/src/db/offline.rs
-sed -n '216p' ui/src/features/offline/OfflineQueueScreen.tsx
+grep -n "resolve_scope(&session_token)" apps/mobile-tauri/src/commands/offline.rs
+grep -n "fn retry_offline_sync_scoped" crates/kasirmu-bridge/src/offline.rs
+cargo test -p kasirmu-mobile offline
 ```
 
 ## How to close these
