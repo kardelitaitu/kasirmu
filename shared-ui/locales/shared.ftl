@@ -451,8 +451,20 @@ audit-log-search-label = Search audit log
 audit-log-filter-label = Filter by outcome
 
 # Auth / License Activation
-auth-activate-title = Activate License
-auth-activate-subtitle = Enter your information below
+auth-activate-title = Setup
+auth-activate-subtitle = Sign in or link this device to get started
+
+# Two mutually exclusive first steps, modelled on the modes ProvisioningFlow
+# already exposes (setup-account-google / setup-tab-pair). Same commands, so the
+# two screens cannot drift into disagreeing about what linking means.
+auth-setup-title = How would you like to get started?
+auth-setup-google = Sign in with Google
+auth-setup-google-desc = Sign in, or create an account automatically if you are new.
+auth-setup-pair = Pair this device to your organization
+auth-setup-pair-desc = Scan a code from a phone or another terminal that is already set up.
+auth-setup-back = Back
+auth-setup-waiting-browser = Waiting for your browser to finish signing in…
+auth-setup-google-failed = Could not sign in with Google. Please try again.
 auth-email-label = Email Address
 auth-email-placeholder = store@example.com
 auth-phone-label = Phone Number
@@ -478,7 +490,8 @@ auth-validation-phone-required = Phone number is required.
 auth-validation-invalid-phone = Invalid phone number format. Enter at least 7 digits.
 auth-paste = Paste
 auth-version = Version { $version }
-auth-ip-address = IP Address : { $ip }
+auth-ip-local = Local : { $ip }
+auth-ip-public = Public : { $ip }
 auth-ip-detecting = Detecting...
 auth-ip-unknown = Unknown
 auth-copyright = kasir.mu © { $year } All rights reserved.

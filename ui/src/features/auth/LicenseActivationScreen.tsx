@@ -5,13 +5,15 @@ import {
   activateLicense,
   getHardwareFingerprint,
   getMachineId,
+  linkDeviceGoogle,
   startDevicePairing,
   pollDevicePairing,
   type PairingSessionStart,
 } from '@/api/license';
 import { detectTrialVertical } from '@/utils/trial-vertical';
 import { detectBundleId } from '@/utils/bundle';
-import { getVersion, getLocalIp } from '@/api/system';
+import { getVersion } from '@/api/system';
+import { useDeviceIp } from '@/hooks/useDeviceIp';
 import StatusBar from '@/components/StatusBar';
 import { Localized, useLocalization } from '@fluent/react';
 import ThemeToggle from '@/app/ThemeToggle';
@@ -41,7 +43,12 @@ export interface LicenseActivationScreenProps {
 /** License activation screen — form for entering a license key and email to activate the POS software. */
 export default function LicenseActivationScreen({ initialError, onActivated }: LicenseActivationScreenProps) {
   const { l10n } = useLocalization();
-  const [authMode, setAuthMode] = useState<'key' | 'pair'>(() => isTabletShell() ? 'pair' : 'key');
+  // 'choose' is the entry screen: the two ways in (Google, pair). 'key' and
+  // 'pair' are the detailed forms behind it. The tablet has no license-key
+  // route — activate_license/get_machine_id/get_hardware_fingerprint are
+  // desktop-only — so it never leaves 'pair', and its entry screen offers the
+  // two routes it actually has (Google + pair).
+  const [authMode, setAuthMode] = useState<'choose' | 'key' | 'pair'>('choose');
   const [pairingSession, setPairingSession] = useState<PairingSessionStart | null>(null);
   const [pairingLoading, setPairingLoading] = useState(false);
   const [pairingExpired, setPairingExpired] = useState(false);
@@ -56,12 +63,17 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
   // fix. Recording the offending field lets that input carry its own
   // aria-invalid and error border.
   const [badField, setBadField] = useState<'email' | 'phone' | null>(null);
+  // Google sign-in state. Mirrors ProvisioningFlow's LinkState so the two
+  // screens that both call link_device_google report it the same way.
+  const [link, setLink] = useState<'idle' | 'linking' | 'failed'>('idle');
 
   /** Drop the mark as soon as the user edits the field it names. */
   const clearBadField = (field: 'email' | 'phone') =>
     setBadField((prev) => (prev === field ? null : prev));
   const [appVersion, setAppVersion] = useState<string>('0.0.39');
-  const [ipAddress, setIpAddress] = useState<string>(requiredLocalized(l10n, 'auth-ip-detecting'));
+  // LAN + public addresses, each resolved independently (see useDeviceIp).
+  // The offline/unresolved placeholder is derivable, so it is not state.
+  const { local: localIp, public: publicIp } = useDeviceIp();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; field: 'email' | 'phone' | 'licenseKey' } | null>(null);
   // Segmented-trial vertical (C2.1): detected once from the landing-page
   // URL param (?v=restaurant etc.) and passed to the server on activation.
@@ -85,15 +97,27 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
     }).catch((err) => {
       console.warn('getVersion failed, using hardcoded fallback', err);
     });
-    
-    getLocalIp().then(ip => {
-      if (mounted) setIpAddress(ip);
-    }).catch(() => {
-      if (mounted) setIpAddress(requiredLocalized(l10nRef.current, 'auth-ip-unknown'));
-    });
 
     return () => { mounted = false; };
   }, []);
+
+  /**
+   * Sign in with Google — or create the account, since the licence server
+   * treats a first-time Google identity as a signup. On success the device is
+   * linked, so we report activation upward exactly as a license key would.
+   */
+  const signInWithGoogle = useCallback(async () => {
+    setLink('linking');
+    setErrorMsg(null);
+    try {
+      await linkDeviceGoogle();
+      setLink('idle');
+      onActivated();
+    } catch (err) {
+      setLink('failed');
+      console.warn('link_device_google failed', err);
+    }
+  }, [onActivated]);
 
   const loadPairingSession = useCallback(async () => {
     setPairingLoading(true);
@@ -284,10 +308,10 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
         <div className="license-activation-card">
           <div className="license-activation-header">
             <Localized id="auth-activate-title">
-              <h1>Activate License</h1>
+              <h1>Setup</h1>
             </Localized>
             <Localized id="auth-activate-subtitle">
-              <p>Enter your information below</p>
+              <p>Sign in or link this device to get started</p>
             </Localized>
             {/* Segmented-trial hint (C2.1): shown only when the user arrived
                 from a vertical landing page. General signups ('' ) get the
@@ -305,7 +329,107 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
             )}
           </div>
 
+          {/* A failure reported at boot (bad license, refused activation) belongs on the
+              FIRST screen the merchant sees. It used to render only inside the license-key
+              form, so on the entry screen it vanished — the merchant was told nothing. */}
+          {authMode === 'choose' && errorMsg && (
+            <div className="license-error-banner" role="alert">
+              {errorMsg}
+            </div>
+          )}
+
+          {authMode === 'choose' ? (
+            <div className="license-setup-choices" data-testid="license-setup-choices">
+              <div className="license-setup-choices-header">
+                <Localized id="auth-setup-title">
+                  <p>How would you like to get started?</p>
+                </Localized>
+              </div>
+
+              <button
+                type="button"
+                className="license-setup-choice"
+                data-testid="setup-google"
+                onClick={() => void signInWithGoogle()}
+                disabled={link === 'linking'}
+              >
+                <span className="license-setup-choice-title">
+                  <Localized id="auth-setup-google">Sign in with Google</Localized>
+                </span>
+                <span className="license-setup-choice-desc">
+                  <Localized id="auth-setup-google-desc">
+                    Sign in, or create an account automatically if you are new.
+                  </Localized>
+                </span>
+              </button>
+
+              {link === 'linking' && (
+                <p className="license-pairing-status" role="status">
+                  <span className="license-pulse-dot" aria-hidden="true" />
+                  <Localized id="auth-setup-waiting-browser">
+                    <span>Waiting for your browser to finish signing in…</span>
+                  </Localized>
+                </p>
+              )}
+
+              {/* Same escape as the provisioning flow offers: say what
+                  happened next to the control that did it, with a retry. */}
+              {link === 'failed' && (
+                <div className="license-error-banner" role="alert">
+                  <Localized id="auth-setup-google-failed">
+                    <span>Could not sign in with Google. Please try again.</span>
+                  </Localized>
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="license-setup-choice"
+                data-testid="setup-pair"
+                onClick={() => {
+                  setAuthMode('pair');
+                  if (!pairingSession) void loadPairingSession();
+                }}
+              >
+                <span className="license-setup-choice-title">
+                  <Localized id="auth-setup-pair">Pair this device to your organization</Localized>
+                </span>
+                <span className="license-setup-choice-desc">
+                  <Localized id="auth-setup-pair-desc">
+                    Scan a code from a phone or another terminal that is already set up.
+                  </Localized>
+                </span>
+              </button>
+
+              {/* The license-key form is desktop-only, so this is the one
+                  route to it from the entry screen. */}
+              {!isTabletShell() && (
+                <button
+                  type="button"
+                  className="license-setup-link"
+                  data-testid="setup-license-key"
+                  onClick={() => setAuthMode('key')}
+                >
+                  <Localized id="auth-tab-license-key">License Key</Localized>
+                </button>
+              )}
+            </div>
+          ) : (
+          <>
           <div className="license-mode-tabs" role="tablist" aria-label={l10n.getString('auth-activate-title')}>
+            <button
+              type="button"
+              className="license-mode-tab"
+              data-testid="setup-back"
+              onClick={() => {
+                setAuthMode('choose');
+                setErrorMsg(null);
+                setPairingError(null);
+              }}
+            >
+              {/* Not role="tab": it leaves the tablist rather than selecting a panel. */}
+              <Localized id="auth-setup-back">Back</Localized>
+            </button>
             {/* C47: the License Key tab is NOT offered on the tablet. Its form cannot
                 submit there — activate_license / get_machine_id / get_hardware_fingerprint
                 are desktop-only (see the guard in handleActivate), so the tab would be a
@@ -530,6 +654,8 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
               </form>
             </>
           )}
+          </>
+          )}
         </div>
       </div>
 
@@ -541,8 +667,11 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
         <Localized id="auth-version" vars={{ version: appVersion }}>
           <span>Version {appVersion}</span>
         </Localized>
-        <Localized id="auth-ip-address" vars={{ ip: ipAddress }}>
-          <span>IP Address : {ipAddress}</span>
+        <Localized id="auth-ip-local" vars={{ ip: localIp ?? requiredLocalized(l10n, 'auth-ip-detecting') }}>
+          <span>Local : {localIp ?? requiredLocalized(l10n, 'auth-ip-detecting')}</span>
+        </Localized>
+        <Localized id="auth-ip-public" vars={{ ip: publicIp ?? requiredLocalized(l10n, 'auth-ip-unknown') }}>
+          <span>Public : {publicIp ?? requiredLocalized(l10n, 'auth-ip-unknown')}</span>
         </Localized>
         <Localized id="auth-copyright" vars={{ year: new Date().getFullYear().toString() }}>
           <span>kasir.mu © {new Date().getFullYear()} All rights reserved.</span>

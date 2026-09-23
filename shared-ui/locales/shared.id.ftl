@@ -416,8 +416,17 @@ workspace-card-unpin-aria = Lepas sematan { $name }
 
 
 # Auth / License Activation
-auth-activate-title = Aktifkan Lisensi
-auth-activate-subtitle = Masukkan informasi Anda di bawah ini
+auth-activate-title = Penyiapan
+auth-activate-subtitle = Masuk atau tautkan perangkat ini untuk memulai
+
+auth-setup-title = Bagaimana Anda ingin memulai?
+auth-setup-google = Masuk dengan Google
+auth-setup-google-desc = Masuk, atau buat akun secara otomatis jika Anda baru.
+auth-setup-pair = Tautkan perangkat ini ke organisasi Anda
+auth-setup-pair-desc = Pindai kode dari HP atau terminal lain yang sudah disiapkan.
+auth-setup-back = Kembali
+auth-setup-waiting-browser = Menunggu browser Anda menyelesaikan proses masuk…
+auth-setup-google-failed = Tidak dapat masuk dengan Google. Silakan coba lagi.
 auth-email-label = Alamat Email
 auth-email-placeholder = toko@example.com
 auth-phone-label = Nomor Telepon
@@ -442,7 +451,8 @@ auth-validation-phone-required = Nomor telepon wajib diisi.
 auth-validation-invalid-phone = Format nomor telepon tidak valid. Masukkan minimal 7 digit.
 auth-paste = Tempel
 auth-version = Versi { $version }
-auth-ip-address = Alamat IP : { $ip }
+auth-ip-local = Lokal : { $ip }
+auth-ip-public = Publik : { $ip }
 auth-ip-detecting = Mendeteksi...
 auth-ip-unknown = Tidak diketahui
 auth-copyright = kasir.mu © { $year } Hak Cipta Dilindungi.

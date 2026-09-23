@@ -326,6 +326,74 @@
   }
 }
 
+/* Setup entry screen: the two ways in (Google / pair). Full-width stacked
+   cards rather than the tab strip below them: this is the first decision on
+   the screen and the two routes are independent, whereas the tabs switch
+   between panels of one form. */
+.license-setup-choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.license-setup-choices-header {
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+  margin-bottom: var(--space-1);
+}
+
+.license-setup-choice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-4) var(--space-5);
+  text-align: start;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color var(--duration-200) ease, box-shadow var(--duration-200) ease;
+}
+
+.license-setup-choice:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.license-setup-choice:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.license-setup-choice-title {
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+}
+
+.license-setup-choice-desc {
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+.license-setup-link {
+  align-self: center;
+  margin-top: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.license-setup-link:hover {
+  color: var(--color-fg);
+}
 /* Mode tabs (License Key vs Pair with Phone) */
 .license-mode-tabs {
   display: flex;

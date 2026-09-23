@@ -35,6 +35,9 @@ test.describe('Device pairing URL', () => {
     // Three seams: an inactive licence (routes to activation), no users and no
     // provisioning so the boot gate cannot fall through past it.
     await page.goto('/index.mobile.html?license=inactive&nousers=1&unprovisioned=1');
+    // The screen opens on the setup choice (Google / pair); the pairing view —
+    // and so the printed URL — is one step behind it.
+    await page.click('[data-testid="setup-pair"]');
     await page.waitForSelector('[data-testid="pairing-qr-code"]', { timeout: 20_000 });
 
     const instructions = page.locator('.license-pairing-instructions');

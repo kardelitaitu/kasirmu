@@ -57,8 +57,16 @@ vi.mock('@fluent/react', () => ({
     l10n: {
       getString: (id: string) => {
         const map: Record<string, string> = {
-          'auth-activate-title': 'Activate License',
-          'auth-activate-subtitle': 'Enter your information below',
+          'auth-activate-title': 'Setup',
+          'auth-activate-subtitle': 'Sign in or link this device to get started',
+          'auth-setup-title': 'How would you like to get started?',
+          'auth-setup-google': 'Sign in with Google',
+          'auth-setup-google-desc': 'Sign in, or create an account automatically if you are new.',
+          'auth-setup-pair': 'Pair this device to your organization',
+          'auth-setup-pair-desc': 'Scan a code from a phone or another terminal that is already set up.',
+          'auth-setup-back': 'Back',
+          'auth-setup-waiting-browser': 'Waiting for your browser to finish signing in…',
+          'auth-setup-google-failed': 'Could not sign in with Google. Please try again.',
           'auth-email-label': 'Email Address',
           'auth-email-placeholder': 'you@example.com',
           'auth-phone-label': 'Phone Number',
@@ -82,7 +90,8 @@ vi.mock('@fluent/react', () => ({
           'auth-ip-unknown': 'Unknown',
           'auth-paste': 'Paste',
           'auth-version': 'Version {version}',
-          'auth-ip-address': 'IP Address : {ip}',
+          'auth-ip-local': 'Local : {ip}',
+          'auth-ip-public': 'Public : {ip}',
           'auth-copyright': 'kasir.mu © {year} All rights reserved.',
           'staff-login-connection-auth': 'Auth Server',
           'staff-login-connection-sync': 'Sync Server',
@@ -93,10 +102,25 @@ vi.mock('@fluent/react', () => ({
   }),
 }));
 
+
 // ── Tests ──────────────────────────────────────────────────────────────
 
 describe('LicenseActivationScreen', () => {
   const onActivated = vi.fn();
+
+  // The screen opens on a CHOICE (Google / pair), not on the license-key form,
+  // so every case written against the old single-view screen must first step
+  // through the choice. Centralised here so a future change to the entry
+  // screen updates one place instead of ~70 assertions.
+  function openLicenseKeyForm() {
+    fireEvent.click(screen.getByTestId('setup-license-key'));
+  }
+
+  function renderOnForm() {
+    render(<LicenseActivationScreen onActivated={onActivated} />);
+    openLicenseKeyForm();
+  }
+
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -104,9 +128,14 @@ describe('LicenseActivationScreen', () => {
     mockGetHardwareFingerprint.mockResolvedValue('fp-abc');
   });
 
-  it('renders the activation form', () => {
+  it('opens on the setup choice, then reaches the activation form', () => {
     render(<LicenseActivationScreen onActivated={onActivated} />);
-    expect(screen.getByRole('heading', { name: 'Activate License' })).toBeInTheDocument();
+    // Entry screen: the two ways in, and the page is titled "Setup".
+    expect(screen.getByRole('heading', { name: 'Setup' })).toBeInTheDocument();
+    expect(screen.getByTestId('setup-google')).toBeInTheDocument();
+    expect(screen.getByTestId('setup-pair')).toBeInTheDocument();
+
+    openLicenseKeyForm();
     expect(screen.getByLabelText('Email Address')).toBeInTheDocument();
     expect(screen.getByLabelText('Phone Number')).toBeInTheDocument();
     expect(screen.getByLabelText('License Key')).toBeInTheDocument();
@@ -114,14 +143,14 @@ describe('LicenseActivationScreen', () => {
   });
 
   it('renders version and IP info', async () => {
-    render(<LicenseActivationScreen onActivated={onActivated} />);
+    renderOnForm();
     // The IP is set async via getLocalIp mock — use regex for whitespace
     const ipEl = await screen.findByText(/192\.168\.1\.1/, {}, { timeout: 5000 });
     expect(ipEl).toBeInTheDocument();
   });
 
   it('shows error when submitting empty form', async () => {
-    render(<LicenseActivationScreen onActivated={onActivated} />);
+    renderOnForm();
     
     // Button is disabled when fields are empty — use fireEvent.submit on the form
     const form = document.querySelector('form')!;
@@ -134,7 +163,7 @@ describe('LicenseActivationScreen', () => {
 
   it('shows error for invalid email', async () => {
     const user = userEvent.setup();
-    render(<LicenseActivationScreen onActivated={onActivated} />);
+    renderOnForm();
     
     await user.type(screen.getByLabelText('Email Address'), 'not-an-email');
     await user.type(screen.getByLabelText('Phone Number'), '1234567890');
@@ -149,7 +178,7 @@ describe('LicenseActivationScreen', () => {
 
   it('shows error for missing phone', async () => {
     const user = userEvent.setup();
-    render(<LicenseActivationScreen onActivated={onActivated} />);
+    renderOnForm();
     
     await user.type(screen.getByLabelText('Email Address'), 'test@example.com');
     await user.type(screen.getByLabelText('License Key'), 'TEST-KEY-1234');
@@ -163,7 +192,7 @@ describe('LicenseActivationScreen', () => {
 
   it('shows error for short phone number', async () => {
     const user = userEvent.setup();
-    render(<LicenseActivationScreen onActivated={onActivated} />);
+    renderOnForm();
     
     await user.type(screen.getByLabelText('Email Address'), 'test@example.com');
     await user.type(screen.getByLabelText('Phone Number'), '12345');
@@ -176,7 +205,7 @@ describe('LicenseActivationScreen', () => {
   it('activates successfully with valid inputs', async () => {
     mockActivateLicense.mockResolvedValue(true);
     const user = userEvent.setup();
-    render(<LicenseActivationScreen onActivated={onActivated} />);
+    renderOnForm();
     
     await user.type(screen.getByLabelText('Email Address'), 'test@example.com');
     await user.type(screen.getByLabelText('Phone Number'), '+6281234567890');
@@ -192,7 +221,7 @@ describe('LicenseActivationScreen', () => {
   it('shows error when activation returns false', async () => {
     mockActivateLicense.mockResolvedValue(false);
     const user = userEvent.setup();
-    render(<LicenseActivationScreen onActivated={onActivated} />);
+    renderOnForm();
     
     await user.type(screen.getByLabelText('Email Address'), 'test@example.com');
     await user.type(screen.getByLabelText('Phone Number'), '+6281234567890');
@@ -207,7 +236,7 @@ describe('LicenseActivationScreen', () => {
   it('shows error toast when activation throws', async () => {
     mockActivateLicense.mockRejectedValue(new Error('Server error'));
     const user = userEvent.setup();
-    render(<LicenseActivationScreen onActivated={onActivated} />);
+    renderOnForm();
     
     await user.type(screen.getByLabelText('Email Address'), 'test@example.com');
     await user.type(screen.getByLabelText('Phone Number'), '+6281234567890');
@@ -224,7 +253,7 @@ describe('LicenseActivationScreen', () => {
   it('disables submit button while loading', async () => {
     mockActivateLicense.mockReturnValue(new Promise(() => {})); // never resolves
     const user = userEvent.setup();
-    render(<LicenseActivationScreen onActivated={onActivated} />);
+    renderOnForm();
     
     await user.type(screen.getByLabelText('Email Address'), 'test@example.com');
     await user.type(screen.getByLabelText('Phone Number'), '+6281234567890');
@@ -238,7 +267,7 @@ describe('LicenseActivationScreen', () => {
 
   it('uppercases license key input', async () => {
     const user = userEvent.setup();
-    render(<LicenseActivationScreen onActivated={onActivated} />);
+    renderOnForm();
     
     await user.type(screen.getByLabelText('License Key'), 'test-key');
     expect(screen.getByLabelText('License Key')).toHaveValue('TEST-KEY');
@@ -251,12 +280,14 @@ describe('LicenseActivationScreen', () => {
         initialError="Previous activation failed"
       />,
     );
+    // The banner must be on the first screen the merchant sees, not only on the
+    // license-key form behind it.
     expect(screen.getByText('Previous activation failed')).toBeInTheDocument();
   });
 
   it('clears email when clear button clicked', async () => {
     const user = userEvent.setup();
-    render(<LicenseActivationScreen onActivated={onActivated} />);
+    renderOnForm();
     
     await user.type(screen.getByLabelText('Email Address'), 'test@example.com');
     const clearBtn = screen.getByLabelText('Clear email');
@@ -266,7 +297,7 @@ describe('LicenseActivationScreen', () => {
 
   it('clears phone when clear button clicked', async () => {
     const user = userEvent.setup();
-    render(<LicenseActivationScreen onActivated={onActivated} />);
+    renderOnForm();
     
     await user.type(screen.getByLabelText('Phone Number'), '1234567890');
     const clearBtn = screen.getByLabelText('Clear phone');
@@ -276,7 +307,7 @@ describe('LicenseActivationScreen', () => {
 
   it('clears license key when clear button clicked', async () => {
     const user = userEvent.setup();
-    render(<LicenseActivationScreen onActivated={onActivated} />);
+    renderOnForm();
     
     await user.type(screen.getByLabelText('License Key'), 'TEST-KEY');
     const clearBtn = screen.getByLabelText('Clear key');

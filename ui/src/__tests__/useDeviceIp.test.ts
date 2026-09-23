@@ -17,8 +17,9 @@ describe('useDeviceIp', () => {
 
   beforeEach(() => {
     mockGetLocalIp.mockReset();
-    // Prevent real network calls
-    fetchSpy = vi.spyOn(globalThis, 'fetch');
+    // Prevent real network calls. The default rejection makes a test that
+    // forgets to arm the lookup an offline terminal, not a DNS timeout.
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('no network'));
   });
 
   afterEach(() => {
@@ -31,6 +32,7 @@ describe('useDeviceIp', () => {
       ok: true,
       json: async () => ({ ip: '203.0.113.42' }),
     } as Response);
+    mockGetLocalIp.mockResolvedValue('192.168.1.50');
 
     const { result } = renderHook(() => useDeviceIp());
 
@@ -38,7 +40,38 @@ describe('useDeviceIp', () => {
       expect(result.current.ip).toBe('203.0.113.42');
     });
 
+    expect(result.current.local).toBe('192.168.1.50');
+    expect(result.current.public).toBe('203.0.113.42');
     expect(result.current.source).toBe('public');
+  });
+
+  it('still reports the LAN address when the public lookup fails', async () => {
+    fetchSpy.mockRejectedValueOnce(new Error('network error'));
+    mockGetLocalIp.mockResolvedValue('192.168.1.50');
+
+    const { result } = renderHook(() => useDeviceIp());
+
+    await waitFor(() => {
+      expect(result.current.local).toBe('192.168.1.50');
+    });
+
+    expect(result.current.public).toBeNull();
+  });
+
+  it('still reports the public address when getLocalIp fails', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ip: '203.0.113.42' }),
+    } as Response);
+    mockGetLocalIp.mockRejectedValue(new Error('no ip'));
+
+    const { result } = renderHook(() => useDeviceIp());
+
+    await waitFor(() => {
+      expect(result.current.public).toBe('203.0.113.42');
+    });
+
+    expect(result.current.local).toBeNull();
   });
 
   it('falls back to local IP when ipify fails', async () => {
@@ -80,6 +113,7 @@ describe('useDeviceIp', () => {
       expect(result.current.ip).toBe('10.0.0.1');
     });
 
+    expect(result.current.public).toBeNull();
     expect(result.current.source).toBe('local');
   });
 
