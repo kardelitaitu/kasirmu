@@ -11974,6 +11974,46 @@ My earlier metric (row `scrollWidth - clientWidth`) read 0 through all of that b
 
 **Commit:** `23d629649`.
 
+## 2026-09-23 — Staff management: a parallel audit round, and the defects it found (staff / bridge / core / ui)
+
+**Context:** the goal was 'continue the development of staff management, make sure everything works, spawn subagents'. Four subagents ran parallel audits with DISJOINT file ownership (UI surface, Rust surface, E2E role coverage, memo-overlap measurement) while the parent swept the surfaces none of them owned. That division is what found the defects below: each lane read code the others could not touch.
+
+**Defects found by the parent, each verified by reading the code and then RED-proved in the fix:**
+- QUOTA BYPASS on the INACTIVE -> ACTIVE transition. The tier cap was enforced only on CREATE (bridge `staff.rs` pre-check plus the W7-B post-insert veto in core `create_user`), while `count_staff_users` counts only `is_active = 1` non-owners. So on Free (limit 1): create A, deactivate A, create B, reactivate A = 2 active staff with every individual step allowed. Reachable from the product (the roster's power button -> `updateStaffScoped`). The fix needed THREE sites, not one: desktop delegates to the bridge, but the tablet FORKS `update_staff_scoped` (deliberately, for its `debug_upgrade` audit difference), so a bridge-only fix would have left the tablet bypassable.
+- DEV-MOCK IDENTITY SPLIT. The login seed and the roster were two hand-written tables that disagreed about the same five people: `staff-1` named the Staff member at login and the Owner on the roster, no roster row carried the id a session was minted with, and the seed called the auditor active while the roster called them inactive. Latent only because nothing compared the two (0 hits for `session.user_id` in the feature) — which is exactly why the first self-guard anyone adds would silently never match in the preview.
+- RESTORE IGNORED THE 90-DAY WINDOW. `staff.rs` stated 'a row past its deadline can never be read or restored', but only READ was enforced (the list purges then filters); `restore_user` / `restore_role` had no deadline predicate at all, so the guarantee held only as a side effect of a list having run. A trash page loaded at day 89 and clicked after the deadline restored an overdue row.
+
+**Defects found by the subagents:**
+- THE ROLES PANEL WAS STALE AFTER A ROLE RESTORE (found by the E2E lane in a live browser, fixed by the UI lane). The panel keeps its own role list and refreshed it only from a mount-keyed effect; the restore refreshed the SHELL's list, so the restored role was absent until a remount — the operator reads that as a failed restore and repeats it. The fix is a `refreshRoles` handle method called from one shared `refreshLiveLists`, which also closed THREE MORE instances of the same one-ring-short pattern in the same pass: the Roles stat tile after authoring, the shell list after a role restore, and the panel's `holder_count` after a staff create/edit.
+- THE MOCK'S LOGIN NEVER READ `is_active`. Invisible while the seed called everyone active; a live divergence the moment the identity fix made the auditor inactive, because the real command refuses an inactive account with the same uniform error a wrong PIN gets (`auth.rs:403`).
+- THE TABLET MEMO STACK OCCLUDED THE ROLE ROW'S DELETE BUTTON (found and measured by the layout lane, fixed by the parent). Measured at 1024x1366 with a full stack: the stack rect covered the authored 7th row's button (24 of 48 sampled points), the list did NOT overflow so no scroll position escaped, and the click could never land. At desktop the overlap is geometric but escapable by scrolling — so the passing desktop E2E was never evidence of no overlap.
+
+**A regression the parent introduced and then fixed:** making the auditor the inactive trash fixture cost the preview the ability to log in as the auditor AT ALL, and silently invalidated the documented `auditor / 1234` credential. The fixture is now its own dismissed identity (`staff-5` 'Former Auditor', id kept stable because the committed spec deletes that id) and the auditor is a sixth, ACTIVE identity (`staff-6`).
+
+**Verification (all by the parent unless noted):**
+- `cargo test` filters: core `db::staff` 68 (was 65), core `db::roles` 41 (was 40), bridge `staff` 130, mobile `staff` 54; `staff_integration` 25. `npm run test` 606 files / 10320 passed, exit 0.
+- RED proofs of the quota gate and the restore deadline, run by the parent: neutering the bridge arming FAILS 2 reactivation tests; neutering the deadline predicate FAILS the window test; both files restored byte-identically (SHA256 compared). The preset-key guard and the revalidation guard were proved the same way in the earlier entry.
+- RED proof of the roles-panel fix, run by the parent: reverting only the `refreshLiveLists` wiring FAILS `re-reads the Roles panel list after a restore, without remounting the panel`; restoring the hash PASSES it.
+- E2E `staff-trash.spec.ts`: 6 passed on BOTH projects (desktop Chromium + tablet WebKit), with two mutation proofs and a byte-identical mock restore; the parent re-ran and hash-matched the spec to the revision it committed.
+- The memo fix was proved with a throwaway probe rather than a claim: before, 24/48 sampled points intercepted and a trial click INTERCEPTED; after, scrolling the (now overflowing) region clears the row to 0/48 and the trial click is CLICKABLE. The full stack height was MEASURED (215px for 3 bubbles) because the first measurement offered (141px) was for 2 and would have under-reserved `MAX_STACK = 3`.
+
+**Two gate lessons worth keeping:**
+- `screenExtraction` reports a class the sheet references but the screen's markup cannot contain — as it should. The right device is the entry's `externalClasses`, NOT `EXTERNAL_CLASS_LEDGER`: that ledger is for values defined ONLY inside the declaring entry, and the parent's first attempt failed the case's second direction ('no exempt member without a matching violation') because the class lives in another sheet. `additionalTsx` would also have silenced it and was the wrong tool, because it broadens the sheet's used-set and weakens the dead-class rule.
+- `scripts/verify-quota-coverage.sh` scans `INSERT` statements only, which is precisely why an UPDATE-based reactivation door survived it. Extending it to activation doors is the durable fix for that class and is NOT done — recorded here rather than left implicit.
+
+**Recorded, not fixed (each with its reason):**
+- `update_user_pin` and the profile writer lack the `deleted_at` predicate their sibling has; both are unreachable for a trashed row because the guarded `update_user_in_tx` runs first in the same transaction. Defence in depth, deliberately not folded into the quota fix.
+- The quota veto is armed by the COMMAND layer, so an unarmed caller keeps the old behaviour. A core-level gate was tried and rejected: the veto reads the POST-update count, so at a tenant already over cap it would refuse an ordinary edit of an active member.
+- `count_staff_users` counts `users.role_id != OWNER` while authorization resolves ASSIGNMENT-first, so a divergent assignment can make the cap and the enforcement disagree. Pre-existing, out of scope.
+- `purge_expired_users` keeps `role_id` on the anonymised tombstone and `role_references_on` filters nothing, so a role held only by a tombstone can never be deleted. FK truth, not a bug, but a state with no exit.
+- The memo reserve is sized to a measured full stack (215px at 1024x1366); the stack's height is content-dependent, so a taller stack could still reach a row. It is gated on `body:has(.memo-stack)` so a session without memos pays no dead band.
+- Dead FTL keys in the staff pair (5 unreferenced in both locales; ~20 present only in `staff.id.ftl`), proved by exact-token grep. Removing them is a locale-cleanup decision with cross-file blast radius, and the orphan gate only blocks keys a commit ADDS or strands by removing a reference, so it does not force the call.
+- The Android/tablet shell is still unverified: no device attached and no AVD exists on this host. The tablet E2E project is WebKit at a POS viewport, not the device WebView.
+- Peer-owned reds seen and left alone: `ProvisioningFlow` `sr-only` (fixed by that lane mid-round), `payables_tests.rs` fmt, `platform/core/src/settings/typed.rs` clippy.
+
+**Commits:** `324c1a9cd` (one staff identity list), `f6dcb000e` (role-trash E2E), `30152281b` (mock login refuses an inactive account), `a950240ea` (Roles panel + stat tile refresh, four state-consistency fixes), `d45a78afe` (the dismissed fixture keeps every role loggable), `64a1740e8` (memo clearance for the tablet row), `2211f8da6` (quota reactivation door + restore deadline). Never push without a direct user order.
+
+
 
 
 
