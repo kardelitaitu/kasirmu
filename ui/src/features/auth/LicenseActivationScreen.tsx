@@ -6,6 +6,9 @@ import {
   getHardwareFingerprint,
   getMachineId,
   linkDeviceGoogle,
+  loginWithEmailPassword,
+  requestEmailLoginCode,
+  verifyEmailLoginCode,
   startDevicePairing,
   pollDevicePairing,
   type PairingSessionStart,
@@ -48,7 +51,16 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
   // route — activate_license/get_machine_id/get_hardware_fingerprint are
   // desktop-only — so it never leaves 'pair', and its entry screen offers the
   // two routes it actually has (Google + pair).
-  const [authMode, setAuthMode] = useState<'choose' | 'key' | 'pair'>('choose');
+  const [authMode, setAuthMode] = useState<'choose' | 'key' | 'pair' | 'email'>('choose');
+  // The email step's sub-view: enter the address, or enter the code that
+  // arrived (email-code), or the password (email-password).
+  const [emailStep, setEmailStep] = useState<'address' | 'code' | 'password'>('address');
+  const [emailAddress, setEmailAddress] = useState('');
+  const [emailCode, setEmailCode] = useState('');
+  const [emailPassword, setEmailPassword] = useState('');
+  const [emailBusy, setEmailBusy] = useState(false);
+  /** Per-flow failure, rendered beside the control that caused it. */
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [pairingSession, setPairingSession] = useState<PairingSessionStart | null>(null);
   const [pairingLoading, setPairingLoading] = useState(false);
   const [pairingExpired, setPairingExpired] = useState(false);
@@ -119,6 +131,60 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
     }
   }, [onActivated]);
 
+  /**
+   * Send a sign-in code to the address, then ask for it.
+   *
+   * Register-or-login: this creates the account when the address has none, so
+   * there is no separate signup step to fall into.
+   */
+  const sendEmailCode = useCallback(async () => {
+    setEmailBusy(true);
+    setEmailError(null);
+    try {
+      await requestEmailLoginCode(emailAddress.trim());
+      setEmailStep('code');
+      setEmailCode('');
+    } catch (err) {
+      setEmailError(plainErrorMessage(err, l10n));
+    } finally {
+      setEmailBusy(false);
+    }
+  }, [emailAddress, l10n]);
+
+  /** Spend the code; a proved address links the device and finishes the step. */
+  const submitEmailCode = useCallback(async () => {
+    setEmailBusy(true);
+    setEmailError(null);
+    try {
+      await verifyEmailLoginCode(emailAddress.trim(), emailCode.trim());
+      onActivated();
+    } catch (err) {
+      setEmailError(plainErrorMessage(err, l10n));
+    } finally {
+      setEmailBusy(false);
+    }
+  }, [emailAddress, emailCode, l10n, onActivated]);
+
+  const submitEmailPassword = useCallback(async () => {
+    setEmailBusy(true);
+    setEmailError(null);
+    try {
+      await loginWithEmailPassword(emailAddress.trim(), emailPassword);
+      onActivated();
+    } catch (err) {
+      setEmailError(plainErrorMessage(err, l10n));
+    } finally {
+      setEmailBusy(false);
+    }
+  }, [emailAddress, emailPassword, l10n, onActivated]);
+
+  /** Return to the address step, clearing whatever the last attempt left. */
+  const backToEmailAddress = useCallback(() => {
+    setEmailStep('address');
+    setEmailCode('');
+    setEmailPassword('');
+    setEmailError(null);
+  }, []);
   const loadPairingSession = useCallback(async () => {
     setPairingLoading(true);
     setPairingExpired(false);

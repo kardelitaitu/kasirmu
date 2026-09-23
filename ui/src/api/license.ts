@@ -121,6 +121,41 @@ export async function consumeDeviceLinkCode(code: string): Promise<VerifiedAccou
   return loggedInvoke('link_device_email_consume', { code });
 }
 
+/** The session a completed email sign-in earned. */
+export interface WebSession {
+  token: string;
+}
+
+/**
+ * Ask the licence server to email a 6-digit sign-in code.
+ *
+ * Register-or-login: an address with no account yet signs one up, and the reply
+ * is identical either way, so this never reveals whether the account existed.
+ *
+ * Routed through Rust, not `fetch`: `/web/*` enforces an Origin allowlist the
+ * Tauri origins are not on, so a WebView call would be refused with 403 — the
+ * same status a CORS failure wears.
+ */
+export async function requestEmailLoginCode(email: string): Promise<void> {
+  return loggedInvoke('request_email_login_code', { email });
+}
+
+/** Spend an emailed sign-in code and return the session it proved. */
+export async function verifyEmailLoginCode(email: string, code: string): Promise<WebSession> {
+  return loggedInvoke('verify_email_login_code', { email, code });
+}
+
+/**
+ * Sign in with an email address and the account's password.
+ *
+ * An account that never set a password gets the same generic 401 as a wrong
+ * one, by design — so a failure here must offer the code route as the way
+ * forward rather than being read as "wrong password".
+ */
+export async function loginWithEmailPassword(email: string, password: string): Promise<WebSession> {
+  return loggedInvoke('login_with_email_password', { email, password });
+}
+
 /** Response from starting a device-code pairing session (ADR #56 §2.5 / §5 Q1). */
 export interface PairingSessionStart {
   code: string;

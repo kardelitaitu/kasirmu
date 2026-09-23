@@ -607,6 +607,12 @@ export const systemHandlers: Record<string, MockHandler> = {
   // pattern back. The QR still drew, because QRCodeSVG got undefined and encoded
   // the string "undefined" — so the screen looked plausible while the scan target
   // and the printed URL were both wrong.
+  // Email account auth — the wizard's email login. Field-for-field the Rust
+  // `WebSession` (kasirmu-core/src/desktop_link.rs): one `token`.
+  // The code is fixed at 123456 so an E2E run can drive the flow end to end.
+  'request_email_login_code': () => undefined,
+  'verify_email_login_code': () => ({ token: 'mock-web-session-token' }),
+  'login_with_email_password': () => ({ token: 'mock-web-session-token' }),
   'start_device_pairing': () => ({
     code: 'ABCD-1234',
     poll_token: 'mock-poll-token',
