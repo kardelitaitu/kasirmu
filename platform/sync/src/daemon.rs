@@ -22,6 +22,7 @@ use tokio::sync::{Mutex, Notify, RwLock, watch};
 
 use kasirmu_core::db::Store;
 use kasirmu_core::events::SettingsUpdated;
+use kasirmu_core::offline::order_for_push;
 use kasirmu_core::settings::Settings;
 use kasirmu_core::sync_client::SyncConfig;
 
@@ -136,7 +137,12 @@ pub(crate) fn read_config_and_pending(
 ) {
     let store = Store::new(conn);
     let config = SyncConfig::from_settings(&store).ok().flatten();
-    let pending = store.list_pending_offline().unwrap_or_default();
+    let mut pending = store.list_pending_offline().unwrap_or_default();
+    // C49: the ONE ordering rule, shared by every push path. `list_pending_offline`
+    // orders by `created_at ASC` alone, so without this a Critical item queued
+    // behind a bulk one waits a full cycle and the priority column means nothing.
+    // Applied at the READ point so the same vector is pushed and applied by index.
+    order_for_push(&mut pending);
     (config, pending)
 }
 

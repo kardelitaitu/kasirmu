@@ -455,7 +455,7 @@ the APK/AAB builds unsigned.
 - [Tauri iOS Build](https://v2.tauri.app/start/mobile/ios/)
 - [Android Developer Docs](https://developer.android.com/docs)
 - [iOS Developer Docs](https://developer.apple.com/documentation/)
-- [`apps/mobile-tauri/AGENTS.md`](../../apps/mobile-tauri/AGENTS.md) — Android-specific dev notes
-- [ADR #4: Frontend Restructure](../../docs/decisions/2026-03-01-frontend-restructure.md)
+- [`apps/mobile-tauri/AGENTS.md`](../../../apps/mobile-tauri/AGENTS.md) — Android-specific dev notes
+- [ADR #4: Frontend Restructure](../../../docs/decisions/2026-03-01-frontend-restructure.md)
 
 > last audited 22-07-26 by Hermes-Agent

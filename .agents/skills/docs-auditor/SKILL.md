@@ -57,9 +57,21 @@ This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `doc
   listed but never registered, listed and not defined anywhere, registered but
   undocumented. Reporting them separately is the point: a single "the numbers disagree"
   count hides that three of the four need different fixes.
+- **ADR status-table drift** (when the audit touches `docs/decisions/` or its index):
+  run `python3 .agents/skills/docs-auditor/scripts/check-adr-status.py`. It compares
+  each hand-table row's status *word* in `docs/decisions/README.md` against the linked
+  ADR's own frontmatter `status:` — the contract that file's Conventions state — with
+  frontmatter over the header line (#53's header still reads `Proposed` while its
+  frontmatter says `Adopted`), rows resolved by file path so the documented duplicate
+  #43 checks each file against its own row, and the Trial & Billing cross-reference
+  table excluded (prose cells, not status words). Added 2026-09-24 (audit open item 2)
+  after three hand-reconciliations; blocking in `check.sh` (`adr status drift`,
+  gates.json `adr-status`) with `--self-test` in `scripts/check-auditor-selftests.sh`.
 - **Unresolved path references** (any doc): run
   `python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py`. It indexes the tree
-  once (pruned) and reports path literals in markdown that resolve to nothing,
+  once (pruned) and reports path literals and markdown link targets that resolve to
+  nothing — link targets against the source file's directory first, with `./` and `../`
+  targets anchored there (no repo-root retry, no basename fallback) since 2026-09-24 —
   separating live docs from dated records, plans and active specs — which are not drift,
   because a plan names files it intends to create. Burned down to **0 unresolved refs
   across 332 live docs (exit 0)** the same day, from 62 files on the first ad-hoc sweep.
@@ -215,7 +227,7 @@ Before starting any verification:
 | `rg` over `shared-ui/locales/*.ftl` | Verify Fluent IDs referenced by docs |
 | `scripts/check.sh` | Full local validation mirroring CI |
 | `python3 .agents/skills/docs-auditor/scripts/check-orphans.py` | Shallow-mode structural pass: unversioned wrappers, heading orphans, stale version headers (§4b) |
-| `python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py` | Compare every stamp date against its footer date across all `*.md`; flags the under-reporting direction and impossible footer dates (`detect.sh` accepts `31-13-26` on shape). Exit 1 on drift. |
+| `python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py` | Compare every stamp date against its footer date across all `*.md` (gitignored scratch is skipped — one `git check-ignore --stdin` per run, since 2026-09-23); flags the under-reporting direction and impossible footer dates (`detect.sh` accepts `31-13-26` on shape). Exit 1 on drift. |
 | `python3 .agents/skills/docs-auditor/scripts/check-api-surface.py` | Reconcile `docs/guides/developer/api-reference.md` against both clients' `generate_handler!` registries; exit 1 on any of four drift classes (not wired into CI — the page is red against it by design) |
 | `python3 .agents/skills/docs-auditor/scripts/check-nav-paths.py` | Reconcile every bolded **X → Y** nav path in `website/src/content/docs/{en,id}` against the nav registry |
 | `python3 .agents/skills/docs-auditor/scripts/check-env-docs.py` | Fail when a variable the license server reads is named in no doc — closes the gap `verify-ci-docs-drift.py` cannot see (it compares docs to gates, not to config surface) |

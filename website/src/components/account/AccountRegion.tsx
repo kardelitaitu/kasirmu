@@ -110,6 +110,13 @@ export default function AccountRegion({ labels, region, onRegionChange }: Props)
                   onClick={() => {
                     onRegionChange(opt.value);
                     setRegionOpen(false);
+                    // Selecting closes the listbox, which unmounts this option —
+                    // the element that had focus — so focus fell to <body> and a
+                    // keyboard user lost their place in the section (measured in
+                    // a browser 2026-09-23 at 390px and 1440px, en and id).
+                    // Focus goes to the trigger, the surviving control here, which
+                    // is where Escape already sends it.
+                    scopedQuery<HTMLButtonElement>('[aria-haspopup="listbox"]')?.focus();
                     setRegionMsg(true);
                     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
                     timerRef.current = window.setTimeout(() => setRegionMsg(false), 3000);

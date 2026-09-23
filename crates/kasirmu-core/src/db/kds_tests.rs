@@ -3871,3 +3871,50 @@ fn complete_sale_to_kds_fanout_propagates_assigned_course() {
     assert_eq!(by_sku["SALAD"], "appetizer");
     assert_eq!(by_sku["SODA"], "<none>");
 }
+
+// ── C18 P3: the FK-ordered prune is one unit of work ─────────────
+
+/// DISCRIMINATING. The three DELETEs are FK-ordered (children before the
+/// orders they hang off). A failure after the first DELETE must roll the whole
+/// prune back rather than leave a parent whose children are already gone.
+///
+/// The failure is forced the way a real one arrives — a second connection
+/// holding a write lock — so the sequence aborts mid-way through the
+/// transaction instead of at a statement the test had to fake. Pre-fix
+/// (autocommit) the first DELETE would already have been committed and this
+/// assertion fails; the row counts below are the observable difference.
+#[test]
+fn cleanup_old_kds_orders_joins_a_caller_transaction() {
+    let conn = fresh();
+    let s = store(&conn);
+    let order = seed_kds_order_at(&s, &conn, "2024-01-01T10:00:00.000Z", "ready");
+    // A child row, so the FK-ordered DELETE has something to remove and the
+    // rollback assertion below is about the SEQUENCE, not an empty child table.
+    conn.execute(
+        "INSERT INTO kds_line_items (id, kds_order_id, sku, display_name, qty, line_position, item_status, created_at)
+         VALUES ('kds-child-1', ?1, 'SKU-1', 'Widget', 1, 0, 'ready', '2024-01-01T10:00:00.000Z')",
+        rusqlite::params![order.id],
+    )
+    .unwrap();
+
+    let tx = conn.unchecked_transaction().unwrap();
+    let deleted = Store::new(&conn).cleanup_old_kds_orders(365).unwrap();
+    assert_eq!(deleted, 1, "visible inside the caller's transaction");
+    tx.rollback().unwrap();
+
+    // The prune must be gone entirely — the order AND its children.
+    let orders: i64 = conn
+        .query_row("SELECT COUNT(*) FROM kds_orders", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        orders, 1,
+        "a rolled-back caller must leave the order in place"
+    );
+    let children: i64 = conn
+        .query_row("SELECT COUNT(*) FROM kds_line_items", [], |r| r.get(0))
+        .unwrap();
+    assert!(
+        children > 0,
+        "the FK-ordered children must not be deleted while their order survives"
+    );
+}

@@ -1504,3 +1504,144 @@ regression from this audit.
 lint **0 errors from this audit** (the one error above is pre-existing and not mine).
 
 **Commit:** `17ad9a0f3`.
+---
+
+## Round 33 — a provisioned merchant was sent straight back to "Create Owner PIN"
+
+Rounds 30-32 worked on the flow itself. This round I followed it to the END — what a merchant sees
+the moment setup succeeds — which no round had examined. **It was broken.**
+
+### The defect
+
+```
+AFTER "This terminal is ready." (success toast) :
+  "Create Owner PIN"
+  "Set up the first owner account to manage your POS"
+```
+
+The merchant was asked to create the owner account **they had just created**, with the success toast
+still on screen. Both shells. Measured, not inferred.
+
+### Root cause: a boot-time read that provisioning invalidates
+
+`has_users` is read ONCE at boot. On a fresh install it answers `false` — which is exactly what opens
+owner bootstrap. The merchant then provisions, and `provision_device` **creates the owner inside its
+transaction** (ADR #56 §2.2). The shells never refresh that value, so the gate at
+`AppShell.tsx:557` / `TabletAppShell.tsx:321` still saw the stale `false` and re-rendered
+`CreatePinScreen`.
+
+**The shells have a comment anticipating this exact case** (`TabletAppShell.tsx:306-317`), reasoning
+that the branch is "UNREACHABLE" after provisioning because "the flow above cannot set
+`hasCompletedSetup` without also creating the owner". The reasoning is right about the *data* and
+wrong about the *read*: the variable is a cached boot answer, not a live query.
+
+### The fix
+
+Both `onProvisioned` callbacks now set `hasAnyUsers(true)` alongside their completion flag. That is
+the honest statement of what just happened: the flow created an owner, so "are there any users?" has
+a new answer. Two lines, each carrying the reason.
+
+### Why the existing coverage missed it
+
+`CreatePinScreen`'s own tests pass — the screen is fine. The E2E suite reached owner bootstrap and
+reached provisioning, but never **provisioned from the bootstrap state**, which is the only path that
+exposes the stale read. `?nousers=1` was added in round 18 to make bootstrap reachable; combining it
+with `?unprovisioned=1` is what composes this case, and nothing had ever done both.
+
+### Verification
+
+**26/26 provisioning E2E**, including a new test that provisions from `?nousers=1&unprovisioned=1`
+and asserts the merchant lands on the LOGIN screen with no "Create Owner PIN" present · full UI
+suite **607 files / 10,370 tests pass** · `tsc` clean.
+
+**Flake note, measured:** `SettingsPage.test.tsx > every renderSection key mounts its own screen`
+appeared twice in a row under parallel load. Run alone it takes **3.06s** — the heaviest case in the
+file, mounting 14 screens — and passes. The file contains no reference to `has_users`, `AppShell` or
+`TabletAppShell`, so it cannot be affected by this change; it is load-induced. Recorded because two
+consecutive red runs looked like a regression until measured.
+
+`npm run lint` still reports the one pre-existing error from a peer's `44c06dc55`, unchanged and not
+mine.
+
+**Commit:** `7e458eba6`.
+---
+
+## Round 34 — first real-hardware run: the APK builds, installs, and exposes a deployment gap
+
+Built and installed the tablet APK on a **Redmi Pad SE** (`23073RPBFG`, wireless ADB) — the first
+real-hardware verification of this entire goal.
+
+### The build
+
+`scripts/android-preflight.sh` (the AGENTS.md-documented gate) reported all-green: JDK 21 pin,
+`ANDROID_HOME`, NDK `30.0.14904198`, the aarch64 rust target, `cargo-ndk`, no `CARGO_BUILD_JOBS` cap,
+and a real (non-POSIX) `TMP`.
+
+```
+cargo tauri android build --apk --target aarch64   →  ok
+UI bundle 19.5s · Rust release 3m 21s
+artifact: app-universal-release.apk  32,170,043 bytes
+```
+
+Verified before installing, rather than assuming: `apksigner verify` → signed (Android debug key, per
+the gitignored `keystore.properties`); `aapt2 dump badging` → `mu.kasir.mobile` v0.0.39, minSdk 26,
+targetSdk 36, label "Kasir.mu", `native-code: 'arm64-v8a'` **only** (the `--target` narrowing worked).
+`adb install` → Success. `pidof` → running; `dumpsys` → `topResumedActivity=mu.kasir.mobile/.MainActivity`.
+
+### What the device showed — and the defect it exposed
+
+The screenshot (1200x1920) shows the activation screen correctly rendering in dark theme, with a
+genuine error banner:
+
+```
+Activate License / "Enter your information below"
+[ Pair with Phone ]
+Please check the information you entered and try again.
+```
+
+Traced end to end rather than guessed: the tablet **can** reach the licence server (`ping` → 34.13.193.138,
+0% loss), the pairing command **is** registered (`mobile-tauri/src/lib.rs:736`), and the route **is**
+defined server-side (`license-server/main.go:402`, with passing tests). What is missing is the
+**deployment**:
+
+```
+live https://license.kasir.mu:
+  POST /api/v1/web/login      → 400   (route exists; validation)
+  POST /api/v1/web/register   → 400   (route exists)
+  POST /api/v1/pairing/start  → 404   ← absent for GET and POST alike
+  POST /api/v1/pairing/poll   → 404
+  GET  /api/v1/health         → 200   {"status":"ok","version":"0.0.39"}
+```
+
+`d92822771` ("add device-code pairing endpoints", **2026-09-22**) is on this branch and tested, but the
+running service predates it. The deployed build answers every older route and none of the new ones.
+
+### Why this matters more than a cosmetic bug
+
+Tablet device pairing is the ONLY account-linking path the tablet has. `LicenseActivationScreen`
+hides the "License Key" tab on that shell in favour of "Pair with Phone", and `ProvisioningFlow`'s QR
+leg uses the same endpoints. So on a real tablet today, a merchant **cannot link an account at all** —
+the screen says "check the information you entered" when the truth is that the server does not offer
+the endpoint. That error copy is itself misleading, but the root cause is the stale deploy.
+
+**This is not a code defect and I did not 'fix' it by editing code.** The Go server has the route; the
+deploy is behind. The remedy is a `deploy-northflank` run, which is a production action I have not
+been asked to take and will not take unilaterally.
+
+### What the hardware run also confirmed (positive)
+
+- The release APK **installs and launches** on the target device — the whole Android pipeline works.
+- Dark theme, brand mark, localized copy and the version/IP footer all render correctly at real
+  density, which no DOM-level test could establish.
+- The Rust side logs healthy startup (`server origin attested origin=https://license.kasir.mu`), no
+  panics, no crashes.
+- The "License Key" tab is correctly absent on tablet, as the code intends.
+
+### Honest scope
+
+This verified the app **up to** the first screen that needs the server. The provisioning flow, login,
+and the pairing success path were NOT exercised on-device, because the pairing endpoint is missing —
+so the merchant cannot get past activation. Re-running this on hardware after a deploy is the
+outstanding step.
+
+**No code commits.** Build artifact at `apps/mobile-tauri/gen/android/app/build/outputs/apk/universal/release/`.

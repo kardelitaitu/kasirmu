@@ -269,30 +269,39 @@ pub async fn pending_offline_count_scoped(
 
 /// Attempt to sync all pending offline items through the real cloud sync resolved from a session token. ADR #7.
 ///
-/// # ADR #49 NOT APPLIED, deliberately — and this one is a defect, not just a fork
+/// # ADR #49 NOT APPLIED, deliberately — the body stays tablet-native
 ///
-/// Refused 2026-09-16. The gate is fine (case 1: `SYNC_MANAGE`, same kind, same
-/// order), but **Phase 3 writes to a different database than the twin's.**
+/// **Its twin is `kasirmu_bridge::offline::retry_offline_sync_scoped`
+/// (`crates/kasirmu-bridge/src/offline.rs`), which the desktop command
+/// (`apps/desktop-tauri/src/commands/offline.rs`) delegates to.** The two bodies are
+/// one operation implemented twice, and the ordering half — which is now the shared
+/// `kasirmu_core::offline::order_for_push` on both sides — is pinned by
+/// `offline_tests::retry_offline_sync_scoped_pushes_critical_before_an_earlier_low_item`.
 ///
-/// Phase 1 reads the pending rows from the store database on both sides. Phase 3
-/// then does `let db = state.db.lock().await;` (below, `:314`) and hands that to
-/// `apply_sync_outcomes` / `mark_all_failed` — and on this shell `state.db` is
-/// the **global identity** database (`<app_data_dir>/kasir.db`,
-/// `AppState::new` → `state.rs:153-170`), not the store database Phase 1 read.
-/// The bridge re-resolves the session and writes to
-/// `<data_dir>/store-<id>.sqlite` (`platform/core/src/database/manager.rs:167`).
-/// §4 pins the storage source, so the body stays tablet-native — the
-/// `branding::get_brand_settings` refusal class.
+/// Refused 2026-09-16 on the storage source, which was the one real difference.
+/// **That divergence is FIXED (C59): Phase 3 now writes the STORE database.** The
+/// delegation is still not made, for the reason the gate file gives — this body names
+/// its permission through the shell's own `require_permission_for_session` rather than
+/// the bridge's `ctx.require_session_permission`, and delegating would flip the
+/// registration-gate row from debt to `Gated`, paying debt by moving the body rather
+/// than by gating it (§1).
 ///
-/// **The divergence is also a live bug.** `mark_offline_synced` runs
-/// `UPDATE offline_queue SET status = 'synced' … WHERE id = ?1` and returns
-/// `CoreError::NotFound` when it affects no rows
-/// (`crates/kasirmu-core/src/db/offline.rs:421-433`). Against the global db that id
-/// does not exist, so the `?` inside `apply_sync_outcomes` aborts the command —
-/// *after* Phase 2 has already pushed the items to the server. The store's rows
-/// therefore stay `pending` and every retry re-sends them. Filed in
-/// `docs/records/audit-open-findings.md`; it is **not** fixed here, because an
-/// extraction preserves pre-existing defects and reports them (§4).
+/// # The live bug this body carried
+///
+/// Phase 1 reads the pending rows from the STORE database (`state.resolve_scope` →
+/// `db_manager.open_store` → `<data_dir>/store-<id>.sqlite`). Phase 3 then locked
+/// `state.db` — the **global identity** database (`<app_data_dir>/kasir.db`,
+/// `AppState::new` → `resolve_db_path`) — and handed that to `apply_sync_outcomes` /
+/// `mark_all_failed`. Those store-row ids do not exist in the global file, so
+/// `mark_offline_synced` returned `CoreError::NotFound`
+/// (`crates/kasirmu-core/src/db/offline.rs:643-666`) and the `?` inside
+/// `apply_sync_outcomes` aborted the command *after* Phase 2 had already pushed the
+/// items to the server. The store's rows therefore stayed `pending` and every retry
+/// re-sent them — a permanent, silent duplicate-push loop. Recorded open at
+/// `docs/records/audit-open-findings.md:1640-1650`; closed here.
+///
+/// Phase 3 re-resolves the STORE scope, which is the same shape this shell's
+/// `sync_run_scoped` uses and the bridge twin uses.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn retry_offline_sync_scoped(
@@ -335,17 +344,39 @@ pub async fn retry_offline_sync_scoped(
         });
     }
 
-    // OFF-09: critical-before-normal ordering. `Store::list_pending_offline`
-    // returns created_at ASC, so re-order the batch so Critical items
-    // always transmit before Normal/Low.
+    // C49: critical-before-normal ordering, through the ONE shared rule
+    // (`kasirmu_core::offline::order_for_push`). `Store::list_pending_offline`
+    // returns created_at ASC, so without this a Critical item queued behind a
+    // bulk one waits a whole cycle. The shared key is total — priority, then
+    // created_at, then the UUID v7 id — so same-millisecond items do not fall
+    // back to SQLite's unspecified row order.
+    //
+    // Sorted ONCE, before the push: Phase 3 below reuses this same vector, so
+    // the server's index-aligned outcome list still lines up.
     let mut pending_items = pending_items;
-    pending_items.sort_by_key(|i| i.priority);
+    kasirmu_core::offline::order_for_push(&mut pending_items);
 
     // Phase 2: Async HTTP push (no DB lock held).
     let outcomes = sync_client::send_items_to_server(&config, &pending_items).await;
 
-    // Phase 3: Write outcomes back to DB (brief lock).
-    let db = state.db.lock().await;
+    // Phase 3: Write outcomes back to the SAME store database the pending items
+    // were read from (brief lock, re-resolved after the HTTP await).
+    //
+    // C59: this used to lock `state.db` — the GLOBAL identity connection
+    // (`<app_data_dir>/kasir.db`) — so the marks landed on a different file's
+    // `offline_queue` than the rows Phase 1 read. Those ids do not exist there, so
+    // `mark_offline_synced` returned `CoreError::NotFound` and the `?` inside
+    // `apply_sync_outcomes` aborted the command AFTER the push had already reached
+    // the server: the store's rows stayed `pending` and every retry re-sent them —
+    // a permanent duplicate-push loop. Re-resolve the scope here rather than
+    // carrying the Phase 1 guard across the `send_items_to_server` await (the store
+    // manager's std::sync::Mutex guard is not `Send`). Same shape as this shell's
+    // `sync_run_scoped` and as `kasirmu_bridge::offline::retry_offline_sync_scoped`.
+    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let db_guard = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let db = &*db_guard;
     let store = Store::new(&db);
     let attempt = match outcomes {
         Ok(outcomes) => sync_client::apply_sync_outcomes(&store, &pending_items, &outcomes)?,
@@ -360,7 +391,6 @@ pub async fn retry_offline_sync_scoped(
         },
         Err(e) => sync_client::mark_all_failed(&store, &pending_items, &e.to_string())?,
     };
-    drop(db);
 
     Ok(SyncResult {
         synced_count: attempt.synced as i64,

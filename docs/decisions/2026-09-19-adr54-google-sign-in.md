@@ -310,7 +310,7 @@ redirects to Google. It is hidden entirely when the API URL is absent, because o
 that can only 404 is worse than not offering it. Strings live in both dictionaries (`en`/`id`),
 declared in `AUTH_FORM_LABELS` and asserted used by the island-label-coverage guard.
 
-**Corrected 2026-09-26 — the SIGNUP page was never covered.** §7 P2 named `login.astro` *and* the
+**Corrected 2026-09-20 — the SIGNUP page was never covered.** §7 P2 named `login.astro` *and* the
 signup page, and this note claimed the website half was done; but `/signup` renders `SignupForm.tsx`,
 a **separate component** from `AuthForm.tsx`, so the control existed only where sign-*in* lives. The
 explicit request was sign-in **and sign-up** with Google, so half of it was missing for eight rounds
@@ -329,7 +329,7 @@ each naming the failure it prevents. The console-first order is stated as a requ
 URIs match exactly, so registering both callback URIs **before** deploying is what keeps either
 live host from failing every sign-in with `redirect_uri_mismatch`.
 
-**Corrected 2026-09-26 — the web half answered a browser with JSON.** Only a *declined consent*
+**Corrected 2026-09-20 — the web half answered a browser with JSON.** Only a *declined consent*
 reached the login page; every other failure — a stale state, a failed exchange, an unverified or
 reserved address, a conflict — answered `400`/`502`/`403`/`409` JSON. That is the wrong shape for a
 URL Google sends a user's browser to: no way back and nothing to read. Both halves now redirect to
@@ -375,7 +375,7 @@ The wizard's step 7 offers *link this device to my account*. The Google variant:
    credential/device lists (§1.4), so encryption and non-export are inherited, not invented.
    The listener closes; the page says "return to the app".
 
-**The one browser page on this path speaks both site languages (2026-09-26).** The tab that
+**The one browser page on this path speaks both site languages (2026-09-20).** The tab that
 lands on the loopback listener is served by Rust, so the app's Fluent bundles cannot reach it,
 and routing a locale through the IPC to choose a single sentence would cost more than the
 sentence. It carries the English line and its Indonesian twin (`lang="id"`), which is better
@@ -506,7 +506,7 @@ The unsealing rule (base64 ciphertext bound to the machine id, else legacy plain
 "decrypt or fall back to plaintext" is exactly what drifts out of agreement in the
 less-exercised copy.
 
-**Deployed routing, found 2026-09-26 — the endpoints would have 404'd.** Everything above was
+**Deployed routing, found 2026-09-20 — the endpoints would have 404'd.** Everything above was
 tested against the router, and the router is not what a deployment talks to. The unified image
 path-routes one public port to two services, and caddy's `handle` is **first-match-wins**: the
 file sends `/api/v1/license|web|admin|paddle/*` to the PocketBase (licence) process and
@@ -537,7 +537,7 @@ code, and `consume` — reusing `login_lockout.go` and the `request-otp` limiter
 (`web_otp.go:575`) and counted per device + email, so neither door is the cheaper one to
 brute-force.
 
-**Shipped 2026-09-26 (server half):** `desktop_link_email.go` — `POST /api/v1/desktop/link/email/request`
+**Shipped 2026-09-20 (server half):** `desktop_link_email.go` — `POST /api/v1/desktop/link/email/request`
 mails a code to the tenant's own address, and `.../consume` spends it and marks the account verified.
 The store is now **purpose-keyed** (`purposeLogin` / `purposeLink`), which is what makes the §2.6 rule real:
 a link code presented at `/web/verify-otp` is refused **and left in place**, so a mistaken login attempt
@@ -555,7 +555,7 @@ can follow is the pair of `log.Printf` lines the path emits — “link code sen
 request and “tenant … verified by emailed code” on the consume — which is what the runbook's check
 reads when a merchant reports that linking failed.
 
-**Its sender is the shared one, and that was checked rather than assumed (2026-09-26).** The door
+**Its sender is the shared one, and that was checked rather than assumed (2026-09-20).** The door
 calls `sendOTPEmail`, the same sender the login codes use, which reads `OZ_SMTP_FROM`, falls back
 to a default only when it is unset, and is covered by the boot-time fail-fast (`main.go:97`) and the
 sender-identity health probe (`health.go:307`, which calls the unowned default an error). The
@@ -568,13 +568,13 @@ correct under an `ozpos.my.id` deployment rather than a mismatch to fix.
 > real UX consequence, and it is why the test that pins refusal-without-consumption lives at the store level
 > rather than in an HTTP sequence.
 
-**Shipped 2026-09-27 (client half):** both shells expose the two calls, and the tablet's Account step
+**Shipped 2026-09-20 (client half):** both shells expose the two calls, and the tablet's Account step
 is now a real form — the address, *Email me a code*, then the code — decided by the same shell flag that
 excludes the Google control, so a caller cannot re-enable either half. Five strings in both dictionaries;
 the dev-mock cannot answer these commands, so `ipc-parity-allowlist.json` carries them with reasons, as it
 does for the Google control.
 
-**Shipped 2026-09-26 (terminal credential, step 6):** `/consume` now registers the device with the sync
+**Shipped 2026-09-20 (terminal credential, step 6):** `/consume` now registers the device with the sync
 service and returns a one-time `device_secret`; both shells store it through the typed encrypting setters
 (`sync_terminal_id`, `sync_terminal_secret`), so the credential is encrypted at rest and the
 credential-storage-form gate is satisfied rather than sidestepped.
@@ -635,10 +635,10 @@ only in their entry, which is the seam this section names. `StepAccount` renders
 control on desktop and, on tablet, a line saying the account links itself when you sign in with
 Google **on the web**. Two tests pin both halves — the Google control on the desktop shell and
 its absence on the tablet, which offers the emailed code instead — and a third pins the tablet's
-retry after a failed verification (2026-09-26). The pair still names only the shell decision;
+retry after a failed verification (2026-09-20). The pair still names only the shell decision;
 the retry case belongs to the step's own copy.
 
-**One UX hole closed 2026-09-26.** The tablet's failure message says "try again", and until
+**One UX hole closed 2026-09-20.** The tablet's failure message says "try again", and until
 this round that was not quite true: the code field rendered only while the state was `sent`, so
 a **wrong** code collapsed it and the only route back was to request another one — a second
 email and a second rate-limit slot for a typo. The field now stays whenever a code was actually
@@ -656,7 +656,7 @@ linking", in both dictionaries and both JSX fallbacks.
 | Client | Type | Redirect | Secret |
 |---|---|---|---|
 | Web | Web application | both names for the same deployment (ADR #55): `https://license.kasir.mu/api/v1/web/oauth/google/callback` **and** `https://license.ozpos.my.id/api/v1/web/oauth/google/callback` **and** `https://license.ozpos.my.id/api/v1/web/oauth/google/callback` | server env only |
-| Desktop | Web application (shared with Web) — **corrected 2026-09-26** | the same client carries BOTH paths on BOTH names: `/api/v1/web/oauth/google/callback` and `/api/v1/desktop/link/google/callback` | server-side only |
+| Desktop | Web application (shared with Web) — **corrected 2026-09-20** | the same client carries BOTH paths on BOTH names: `/api/v1/web/oauth/google/callback` and `/api/v1/desktop/link/google/callback` | server-side only |
 
 Consent screen: External, scopes `openid email profile` only, published to Production. No
 sensitive-scope review is required for basic identity scopes; brand verification (verified
@@ -666,7 +666,7 @@ on the consent screen.
 > **Amended 2026-09-19 by ADR #55:** the Web flow cannot fall back between hosts — a browser
 > redirect goes where it goes and Google matches redirect URIs exactly. Both callback URIs above
 > must therefore be registered, and the Worker configured with whichever host serves the flow.
-> **Amended 2026-09-26:** naming both hosts in a `next` allowlist turned out to be unnecessary, and the
+> **Amended 2026-09-20:** naming both hosts in a `next` allowlist turned out to be unnecessary, and the
 > "remaining half of O1" was never owed. The shipped flow returns the browser to `oauthSiteURL()` —
 > `OZ_WEB_SITE_URL`, default `https://kasir.mu` (`web_oauth_google.go:263`, used at `:444`) — and
 > validates only the *path* (`oauthNextPath`, `:276`, applied at `:340`). There is no
@@ -754,7 +754,7 @@ rendered where it is relied on, rather than left implicit in a server comment.
 An unknown provider renders as its raw name instead of a blank row, so a future GitHub identity
 degrades visibly rather than silently.
 - **~~Loopback any-port behaviour for a Desktop-type client is assumed, not yet proven here.~~**
-  **Resolved 2026-09-26 — the question is moot in the shipped design.** Google never sees the
+  **Resolved 2026-09-20 — the question is moot in the shipped design.** Google never sees the
   app's port: the desktop link uses the same **Web-application** client as the web flow, the
   registered callback belongs to the licence server (§2.8), and the server then hands the app a
   one-time code at `http://127.0.0.1:<port>` — a plain redirect to a listener on the same
@@ -821,7 +821,7 @@ Each phase ships independently.
   timeout) and the tablet exclusion.
 - **Sandbox end-to-end — what is still worth confirming there.** The original plan named the exact
   redirect-URI behaviour of a Desktop-type client; that question is **moot** in the shipped design
-  (§5, 2026-09-26): Google never sees the app's port, because the registered callback belongs to the
+  (§5, 2026-09-20): Google never sees the app's port, because the registered callback belongs to the
   licence server and the loopback handoff is a local HTTP redirect. What remains is the consent screen
   with basic scopes only, the `hostname`-scoped state cookie surviving the `?code=` handoff, and the
   four callback URIs registered (both hosts × both paths — step 7b of the licence-server deploy).
@@ -859,7 +859,7 @@ Post-deploy, the runbook's Google sign-in block is the check: one real sign-in i
   keep the wizard as the only *entry point* surface but let Settings → Sync re-run the same
   one-shot link (§2.5/§2.6) — still no session, still no account UI. Otherwise the dead end
   is deliberate and should be stated in the support runbook.
-  **Partly discharged 2026-09-26:** the wizard's failure copy said "skip and link it later",
+  **Partly discharged 2026-09-20:** the wizard's failure copy said "skip and link it later",
   which promised this missing repair path in words; it now says "continue without linking", and the
   support runbook states the dead end (option two above) with the reason it is deliberate.
 - **O3 — Email mismatch in the wizard.** Recommended: refuse and name the registered

@@ -106,7 +106,7 @@ To maintain 100% test suite pass rates (`cargo test --workspace`) and non-breaki
 ---
 
 ## Related Documents
-- [ARCHITECTURE.md](../guides/ARCHITECTURE.md) — Target architecture specification
+- [ARCHITECTURE.md](../../ARCHITECTURE.md) — Target architecture specification
 - [ADR #1: Module System Design](2026-01-15-module-system-design.md)
 
 > last audited 09-08-26 by buffy

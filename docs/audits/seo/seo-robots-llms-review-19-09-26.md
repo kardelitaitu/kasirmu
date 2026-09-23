@@ -146,7 +146,7 @@ design decision.
 ### 2.2 Findings
 
 **L1 — Every link violates the spec's link syntax. Severity: High.**
-The llms.txt convention requires `- [name](url): optional notes`. This file uses `- Name: https://…`.
+The llms.txt convention requires `- [name](url): optional notes`. This file uses `- Name: https://…`. <!-- dead-ref: ok: quotes the llms.txt link SHAPE, not a repository path -->
 Measured: **16 unique URLs, 0 markdown links.** An LLM reading this gets no parseable link/anchor
 structure — the exact thing the format exists to provide.
 
@@ -289,7 +289,7 @@ marketing host has no soft-404 problem. The soft-404 is confined to `admin.kasir
 
 ### P0 — correctness of what already exists
 
-1. ✅ **Fix the `llms.txt` link syntax** to `- [name](url): notes` (L1). — `d64744a14`
+1. ✅ **Fix the `llms.txt` link syntax** to `- [name](url): notes` (L1). — `d64744a14` <!-- dead-ref: ok: quotes the llms.txt link SHAPE, not a repository path -->
 2. ✅ **Derive the `llms.txt` URL list instead of hardcoding it** (L2). Generate from the same source the
    sitemap uses, so it cannot rot, and include `/en/`. A hardcoded list is guaranteed to drift again.
    — `d64744a14`

@@ -105,7 +105,7 @@ These are load-bearing; several are the kind of thing a refactor quietly drops.
 ### T1 — Pages with a React island shipped 55 KB (gzip) of React, and translated islands another 19 KB (gzip) of dictionary · **fixed in this pass**
 
 - **Impact:** was **High** — these are the LCP- and conversion-critical pages.
-- **Location:** `website/src/i18n/index.ts` statically imports `en.json` and `id.json`, so any hydrated island that calls `t()` pulls both dictionaries — the consumers were `website/src/components/PricingGrid.tsx` and its siblings; the renderer cost was `website/src/components/HeroCarousel.tsx`, loaded by `website/src/pages/[locale]/index.astro`.
+- **Location:** `website/src/i18n/index.ts` statically imports `en.json` and `id.json`, so any hydrated island that calls `t()` pulls both dictionaries — the consumers were `website/src/components/PricingGrid.tsx` and its siblings; the renderer cost was `website/src/components/HeroCarousel.tsx`, loaded by `website/src/pages/[locale]/index.astro`. <!-- dead-ref: ok: names the pre-rework renderer, since replaced by HeroCarousel.astro -->
 - **Why it hurts:** 55–90 KB of gzip JS on top of a ~30 KB gzip document is the dominant INP/TBT cost on these pages, and on a mid-range Android phone it is most of the “time to interactive” budget.
 - **Fix (applied 2026-09-19):** every island now receives the strings it reads as a `labels` prop built server-side by `labelMap`, and resolves them through the dictionary-free `website/src/i18n/labels.ts`; each island root exports its own key list (`PRICING_LABELS`, `AUTH_FORM_LABELS`, `ACCOUNT_LABELS`, …) so the keys have one owner, and `src/__tests__/island-label-coverage.test.ts` fails if a call site and its list drift apart or a dictionary creeps back into the client graph. The carousel became static markup (`HeroCarousel.astro`) plus `src/lib/hero-carousel.ts`, a 1.4 KB vanilla module with its own jsdom tests, so the homepage loads **no React at all**.
 - **Measured result:** `/en/` and `/id/` **68.2 → 6.3 KB gzip**; every other island page **−18.7 to −19.0 KB gzip** (pricing 88.8 → 69.9, support 86.3 → 67.4, docs 88.8 → 69.8, login 90.3 → 71.6, signup 90.4 → 71.6, account 96.0 → 77.3); island-free pages unchanged at 6.3 KB. The strings now ride in the document instead — **+0.24 to +1.41 KB gzip** of island props per page.
@@ -169,7 +169,7 @@ Two distinct wastes, both now closed:
 ### T6 — `llms.txt` is Indonesian-only
 
 - **Impact:** **Low** (informational — already a recorded decision).
-- **Location:** `website/public/llms.txt` ships a single `id` document for both locales.
+- **Location:** `website/public/llms.txt` ships a single `id` document for both locales. <!-- dead-ref: ok: the audited file was retired; llms.txt is now a generated route (website/src/pages/llms.txt.ts) -->
 - **Why it hurts:** an English-language answer engine reading `llms.txt` gets Indonesian prose. No ranking effect; a discoverability one for AI answer engines only.
 - **Fix:** none — recorded as deliberate in the previous review (§6, L5), so this stays a decision rather than an oversight.
 
@@ -465,6 +465,6 @@ The audit's own DESIGN findings were structural: the `<head>` existed in three h
   normalized) of all built pages against the live pre-refactor host — every Base-layout page
   **identical**; docs pages differ only by the two intentional additions above; `admin/*.html` diffs are
   only the deploy-time `{{VERSION}}` cache-bust stamps. All gates re-run green (854 tests, check/links/
-  assets/build).
+  assets/build). <!-- dead-ref: ok: wrapped fragment of the gates list above ("check/links/ assets/build"), not a path -->
 
 ### Follow-up housekeeping

@@ -104,6 +104,18 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "no_session_resolution",
     ),
     (
+        "desktop_link::request_email_login_code",
+        "no_session_resolution",
+    ),
+    (
+        "desktop_link::verify_email_login_code",
+        "no_session_resolution",
+    ),
+    (
+        "desktop_link::login_with_email_password",
+        "no_session_resolution",
+    ),
+    (
         "desktop_link::start_device_pairing",
         "no_session_resolution",
     ),
@@ -264,7 +276,10 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// `get_credit_settings`) — 89 debt rows, down from 92. The fourth name of that inventory
 /// slice, `settings::get_hardware_settings`, is NOT retired: a live renderer arm still
 /// calls it (see `registration_gate_tests.rs`'s floor comment and C17b).
-pub const REGISTERED_TOTAL: usize = 339;
+/// Re-read 23-09-26: 342, with the floor raised to it in the same pass that absorbed the
+/// three `desktop_link` email sign-in commands — 92 debt rows, up from 89. The floor, this
+/// total and `DEBT_CEILING` all move together; the generator writes only this number.
+pub const REGISTERED_TOTAL: usize = 342;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///
@@ -337,7 +352,19 @@ pub const REGISTERED_TOTAL: usize = 339;
 /// `_scoped` twins), so each was a class-1 row whose only effect was to hold this ceiling up.
 /// The floor moves with them (three registrations fewer); class 2 does not.
 /// `settings::get_hardware_settings` stays: it is class-1 debt with a live caller.
-pub const DEBT_CEILING: usize = 89;
+/// 89 -> 92 with `fc2ea1938` (feat(setup): add the desktop-link email login commands to
+/// both shells): `desktop_link::request_email_login_code`,
+/// `desktop_link::verify_email_login_code` and `desktop_link::login_with_email_password`
+/// arrived in class 1 (`no_session_resolution`) and the same commit updated no pin in
+/// EITHER shell, so this ceiling, the floor and the class-1 count were all left behind at
+/// HEAD. All three are STRUCTURAL in class 1 for the same reason the `link_device_*` rows
+/// above are: they are the wizard's email sign-in, reached from `LicenseActivationScreen`
+/// (the pre-session boot gate), and each either mints the web session a permission would be
+/// checked against or is the step immediately before it. A session permission here would
+/// guard a door no session can reach. This is the TABLET twin of the desktop rise in
+/// `7a5292530` (75 -> 78); the two shells carry separate pins and separate numbers. The
+/// reason is recorded in docs/records/JOURNAL.md, which is what this pin asks of a rise.
+pub const DEBT_CEILING: usize = 92;
 
 /// Lowered from 89 by T11: `settings::set_hardware_settings` shed its row by deletion,
 /// not by gating. Its only argument beyond the DTO was a renderer-supplied `user_id` --
@@ -372,7 +399,9 @@ pub const DEBT_CEILING: usize = 89;
 /// this class, so it falls by the same three and the sum keeps holding: `48 + 44 = 92`.
 /// 48 -> 45 with C17 slice 2 (2026-09-23): the three retired unscoped settings reads were all
 /// in this class, so it falls by the same three and the sum keeps holding: `45 + 44 = 89`.
-pub const NO_SESSION_RESOLUTION: usize = 45;
+/// 45 -> 48 with the three email sign-in commands above. This count is a pin the generator
+/// does not recompute, so it moves by hand in the same pass as the ceiling: `48 + 44 = 92`.
+pub const NO_SESSION_RESOLUTION: usize = 48;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
 /// 45 + 44 = 89 = `DEBT_CEILING`, as the class counts must sum to the ledger.
@@ -382,6 +411,7 @@ pub const NO_SESSION_RESOLUTION: usize = 45;
 /// 51 + 44 = 95 after `setup::get_preset_features` joined class 1.
 /// 48 + 44 = 92 after C17 retired the three unscoped branding setters (class 1 only).
 /// 45 + 44 = 89 after C17 slice 2 retired the three unscoped settings reads (class 1 only).
+/// 48 + 44 = 92 after the three `desktop_link` email sign-in commands joined class 1 (only).
 pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 44;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).

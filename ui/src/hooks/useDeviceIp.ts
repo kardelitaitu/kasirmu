@@ -1,8 +1,12 @@
 //! `useDeviceIp` — device IP address indicator hook.
 //!
-//! Tries to fetch the **public IP** from ipify.org first (fast, free, no API key).
-//! Falls back to the **local IP** via the Tauri IPC command `get_local_ip`.
-//! If both fail, returns `null` for both `ip` and `source`.
+//! Reports **both** addresses of the device, each resolved independently so one
+//! failure cannot hide the other:
+//! - `local` — the LAN address, via the Tauri IPC command `get_local_ip`.
+//! - `public` — the internet-facing address, via ipify.org (free, no API key).
+//!
+//! `ip`/`source` are the single-value view of the same pair (public preferred,
+//! then local), kept for callers that render one address.
 
 import { useState, useEffect, useRef } from 'react';
 import { getLocalIp } from '@/api/system';
@@ -12,65 +16,53 @@ export type IpSource = 'public' | 'local';
 
 /** Return type of the `useDeviceIp` hook. */
 export interface DeviceIpStatus {
-  /** The detected IP address, or null if unavailable. */
+  /** The LAN address of the device, or null if unavailable. */
+  local: string | null;
+  /** The internet-facing address, or null if the lookup failed. */
+  public: string | null;
+  /** Best-known single address — public if resolved, otherwise local, else null. */
   ip: string | null;
-  /** Whether the IP is public (internet-facing) or local (LAN). */
+  /** Which address `ip` holds, or null when neither resolved. */
   source: IpSource | null;
 }
 
+/** How long to wait for the public-IP lookup before treating it as unavailable. */
+const PUBLIC_IP_TIMEOUT_MS = 5_000;
+
 /**
- * Detect the device's IP address — public if reachable, otherwise local.
+ * Detect the device's addresses — LAN and public, resolved in parallel.
  *
- * Resolution order:
- * 1. Fetch `https://api.ipify.org?format=json` (public IP via DNS)
- * 2. If that fails, invoke `get_local_ip` Tauri IPC (local IP)
- * 3. If both fail, returns `{ ip: null, source: null }`
+ * 1. `get_local_ip` Tauri IPC → `local` (no network round-trip; works offline)
+ * 2. `https://api.ipify.org?format=json` → `public` (5s timeout)
+ *
+ * Each side fails independently to null, so an offline terminal still shows its
+ * LAN address. The legacy fields stay consistent with the pair.
  */
 export function useDeviceIp(): DeviceIpStatus {
-  const [ip, setIp] = useState<string | null>(null);
-  const [source, setSource] = useState<IpSource | null>(null);
+  const [local, setLocal] = useState<string | null>(null);
+  const [publicIp, setPublicIp] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
     mountedRef.current = true;
 
     async function resolve() {
-      // 1. Try public IP via ipify.org
-      try {
-        const response = await fetch('https://api.ipify.org?format=json', {
-          signal: AbortSignal.timeout(5_000),
-        });
-        if (!mountedRef.current) return;
-        if (response.ok) {
-          const data: { ip: string } = await response.json();
-          if (mountedRef.current && data.ip) {
-            setIp(data.ip);
-            setSource('public');
-            return;
-          }
-        }
-      } catch {
-        // Public IP unavailable — fall through to local
-      }
-
+      const settled = await Promise.allSettled([
+        getLocalIp(),
+        (async () => {
+          const response = await fetch('https://api.ipify.org?format=json', {
+            signal: AbortSignal.timeout(PUBLIC_IP_TIMEOUT_MS),
+          });
+          if (!response.ok) return null;
+          const data: { ip?: string } = await response.json();
+          return data.ip ?? null;
+        })(),
+      ]);
       if (!mountedRef.current) return;
 
-      // 2. Fallback to local IP via Tauri IPC
-      try {
-        const localIp = await getLocalIp();
-        if (mountedRef.current && localIp) {
-          setIp(localIp);
-          setSource('local');
-          return;
-        }
-      } catch {
-        // Local IP also unavailable
-      }
-
-      if (mountedRef.current) {
-        setIp(null);
-        setSource(null);
-      }
+      const [localResult, publicResult] = settled;
+      setLocal(localResult.status === 'fulfilled' ? (localResult.value ?? null) : null);
+      setPublicIp(publicResult.status === 'fulfilled' ? (publicResult.value ?? null) : null);
     }
 
     resolve();
@@ -80,5 +72,7 @@ export function useDeviceIp(): DeviceIpStatus {
     };
   }, []);
 
-  return { ip, source };
+  if (publicIp) return { local, public: publicIp, ip: publicIp, source: 'public' };
+  if (local) return { local, public: null, ip: local, source: 'local' };
+  return { local: null, public: null, ip: null, source: null };
 }

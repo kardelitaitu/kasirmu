@@ -79,7 +79,7 @@ the working tree. Files where this matters: `ui/src/locales/shared.ftl`,
 | F3 | 🟠 S2 | ~66 hardcoded copy sites outside the dev-only `design` showcase | open |
 | F4 | 🟠 S2 | 20 `getString(…) ?? 'English'` fallbacks breach the `requiredLocalized` rule | open |
 | S3 | 🟡 | Parity gate blind spots: no `getString`, no `i18nKey`, only `features/**`, 98+23 dynamic sites | open |
-| S4 | ⚪ | 79 dead id-only keys · orphan `ui/locales/` · 225 identical en/id values | open |
+| S4 | ⚪ | 79 dead id-only keys · orphan `ui/locales/` · 225 identical en/id values <!-- dead-ref: ok: names the orphan dir as the open finding --> | open |
 
 ---
 
@@ -123,7 +123,7 @@ Verification:
 Discovered mid-P1: `ui/src/locales/shared.ftl` mtime moved from before my
 baseline read to `06:54:43`, adding `workspace-home-staff-empty{,-desc}` and
 bumping `statusbar-version` to v0.0.35 — en key count went 4290 → 4292 under me.
-Files touched in the last 30 min include `crates/oz-api/src/{spec,lib}.rs`,
+Files touched in the last 30 min include `crates/oz-api/src/{spec,lib}.rs`, <!-- dead-ref: ok: snapshot of files touched at audit time; oz-api later renamed kasirmu-api -->
 `apps/license-server/*`, `website/public/admin/*`, `scripts/tmp-split-spec.ps1`.
 
 **This is not my work.** Consequences adopted as standing rules:
@@ -371,7 +371,7 @@ fallbacks plus placeholders).
 Remaining: P8 (StaffLoginScreen + the 6 template-literal `?? 'English'`
 fallbacks), P9 (98 `<Localized id={expr}>` + 23 `getString(\`…\`)` sites — the
 only class no static gate can close), P10 (gate screens), P11 (hygiene: 79 dead
-id-only keys, orphan `ui/locales/`, 225 identical en/id values).
+id-only keys, orphan `ui/locales/`, 225 identical en/id values). <!-- dead-ref: ok: names the orphan dir as the cited finding -->
 
 ### P8 — dynamic-key sites: one real bug, one dead fallback ✅ `994c1448`
 
@@ -515,7 +515,7 @@ Also corrected mid-phase: my first read of SetupWizard:603 as a direct render
 (line 602 wraps it), and a `call_strings.py` bug that would have written its
 TSV into the repo root — caught before running.
 
-Remaining: **P11 hygiene** (79 dead id-only keys, orphan `ui/locales/`, 225
+Remaining: **P11 hygiene** (79 dead id-only keys, orphan `ui/locales/`, <!-- dead-ref: ok: names the orphan dir as the cited finding --> 225
 identical en/id values) and the still-deferred `StaffLoginScreen` title, whose
 file has carried another worker's uncommitted version line since P7.
 

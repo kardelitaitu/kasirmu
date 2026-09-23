@@ -1,9 +1,9 @@
 # Windows Desktop Launch Test — kasir.mu
-<!-- Audit stamp: 2026-09-09 . DSH . status: ACCURATE (re-verified 2026-09-18: binary path and lib/bin names re-pointed to kasirmu-app / kasirmu_app_lib after the T3-2 rename), 1 precision note (seed references flagged, not fixed) . Verified-true: scripts/build-exe-release.ps1 exists with -BuildConfig (line 5) and -NoInstaller (line 11) params; expected binary path apps/desktop-tauri/target/release/kasirmu-app.exe matches the script (scripts/build-exe-release.ps1:211); Tauri productName kasir.mu (apps/desktop-tauri/tauri.conf.json) so installer is kasir.mu_0.0.X_x64-setup.exe; window 1280x800 confirmed; internal doc links resolve (../releases/checklist.md; ../operations/vps-migration.md, docker-deployment.md, runbook.md tracked); Rust MSRV 1.88 (rust-toolchain.toml), Node>=22/npm>=11 (ui/package.json:80-82). FLAGGED not fixed: Option A runs cargo run --bin seeder (line 30) but no seeder binary exists in the repo (git grep name=seeder empty; apps/desktop-tauri/Cargo.toml defines only kasirmu-app and kasirmu_app_lib); Settings to Database to Seed Sample Data (line 34) and login error No staff accounts found (line 44) do not exist in code (absent from ui/src/features/settings/ and all .rs). Doc claims about a seed path that does not exist; left for the doc owner under code/config drift rule D. -->
+<!-- Audit stamp: 2026-09-09 . DSH . status: ACCURATE (re-verified 2026-09-18: binary path and lib/bin names re-pointed to kasirmu-app / kasirmu_app_lib after the T3-2 rename), 1 precision note (seed references flagged, not fixed) . Verified-true: scripts/build-exe-release.ps1 exists with -BuildConfig (line 5) and -NoInstaller (line 11) params; expected binary path apps/desktop-tauri/target/release/kasirmu-app.exe matches the script (scripts/build-exe-release.ps1:211); Tauri productName kasir.mu (apps/desktop-tauri/tauri.conf.json) so installer is kasir.mu_0.0.X_x64-setup.exe; window 1280x800 confirmed; internal doc links resolve (../../releases/checklist.md; ../operations/vps-migration.md, docker-deployment.md, runbook.md tracked); Rust MSRV 1.88 (rust-toolchain.toml), Node>=22/npm>=11 (ui/package.json:80-82). FLAGGED not fixed: Option A runs cargo run --bin seeder (line 30) but no seeder binary exists in the repo (git grep name=seeder empty; apps/desktop-tauri/Cargo.toml defines only kasirmu-app and kasirmu_app_lib); Settings to Database to Seed Sample Data (line 34) and login error No staff accounts found (line 44) do not exist in code (absent from ui/src/features/settings/ and all .rs). Doc claims about a seed path that does not exist; left for the doc owner under code/config drift rule D. -->
 
 > **Status:** Implemented (2026-07-20)
 > **Target audience:** QA / developers testing on Windows 10/11
-> **Related:** [Release Checklist](../releases/checklist.md) · [Build Script](https://github.com/kardelitaitu/oz-pos/blob/main/scripts/build-exe-release.ps1) · [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-tauri/tauri.conf.json)
+> **Related:** [Release Checklist](../../releases/checklist.md) · [Build Script](https://github.com/kardelitaitu/oz-pos/blob/main/scripts/build-exe-release.ps1) · [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-tauri/tauri.conf.json)
 
 This guide covers building the kasir.mu desktop client on Windows and
 running the core POS flow end-to-end on a physical Windows machine.
@@ -433,10 +433,10 @@ Notes:
 ## Related
 
 - [Build Script](https://github.com/kardelitaitu/oz-pos/blob/main/scripts/build-exe-release.ps1) — Automated Windows build
-- [Release Checklist](../releases/checklist.md) — Pre-release verification
+- [Release Checklist](../../releases/checklist.md) — Pre-release verification
 - [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-tauri/tauri.conf.json) — Window size, CSP, bundle settings
-- [VPS Migration Guide](../operations/vps-migration.md) — Cloud server deployment
-- [Docker Deployment Guide](../operations/docker-deployment.md) — Full stack deployment
-- [Runbook](../operations/runbook.md) — Incident response procedures
+- [VPS Migration Guide](../../operations/vps-migration.md) — Cloud server deployment
+- [Docker Deployment Guide](../../operations/docker-deployment.md) — Full stack deployment
+- [Runbook](../../operations/runbook.md) — Incident response procedures
 
 > last audited 09-09-26 by docs-auditor

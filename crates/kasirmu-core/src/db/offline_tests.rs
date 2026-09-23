@@ -494,9 +494,9 @@ fn enqueue_offline_scoped_combines_tenant_and_priority() {
 
 #[test]
 fn pending_batch_orders_critical_before_normal_before_low() {
-    // OFF-09: the retry command sorts the batch by priority so Critical
-    // items always transmit first. Pins the ordering contract on the
-    // raw items returned by the store.
+    // C49: the retry commands order the batch through the ONE shared rule
+    // (`crate::offline::order_for_push`), so Critical items always transmit
+    // first. Pins the ordering contract on the raw items returned by the store.
     let conn = fresh();
     let s = store(&conn);
     s.enqueue_offline_scoped("settings.change", "{}", "default", SyncPriority::Low)
@@ -507,7 +507,7 @@ fn pending_batch_orders_critical_before_normal_before_low() {
         .unwrap();
 
     let mut batch = s.list_pending_offline().unwrap();
-    batch.sort_by_key(|i| i.priority);
+    crate::offline::order_for_push(&mut batch);
     assert_eq!(batch.len(), 3);
     assert_eq!(batch[0].priority, SyncPriority::Critical);
     assert_eq!(batch[1].priority, SyncPriority::Normal);

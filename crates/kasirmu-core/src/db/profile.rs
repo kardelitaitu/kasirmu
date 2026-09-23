@@ -992,6 +992,18 @@ impl Store<'_> {
     ) -> Result<crate::User, CoreError> {
         self.require_role_assignable(target_user_id, new_role_id)?;
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        // C18 P3: `users.role_id` and the `assignments.role_id` mirror are ONE
+        // logical write — the two rows are the same fact stored twice (the
+        // second is what the scope gate reads). A failure between them would
+        // leave a user whose role row and whose assignment disagree, which is
+        // exactly the state the assignment path exists to prevent. Own-or-join:
+        // SQLite has no nested BEGIN, so a caller that already holds one keeps
+        // it and owns the commit.
+        let tx = if self.conn.is_autocommit() {
+            Some(self.conn.unchecked_transaction()?)
+        } else {
+            None
+        };
         self.conn.execute(
             "UPDATE users SET role_id = ?1, updated_at = ?2 WHERE id = ?3",
             params![new_role_id, now, target_user_id],
@@ -1002,6 +1014,9 @@ impl Store<'_> {
              ON CONFLICT(user_id) DO UPDATE SET role_id = excluded.role_id, updated_at = excluded.updated_at",
             params![target_user_id, new_role_id, now],
         )?;
+        if let Some(tx) = tx {
+            tx.commit()?;
+        }
         self.get_user(target_user_id)?
             .ok_or_else(|| CoreError::NotFound {
                 entity: "user",

@@ -5,13 +5,18 @@ import {
   activateLicense,
   getHardwareFingerprint,
   getMachineId,
+  linkDeviceGoogle,
+  loginWithEmailPassword,
+  requestEmailLoginCode,
+  verifyEmailLoginCode,
   startDevicePairing,
   pollDevicePairing,
   type PairingSessionStart,
 } from '@/api/license';
 import { detectTrialVertical } from '@/utils/trial-vertical';
 import { detectBundleId } from '@/utils/bundle';
-import { getVersion, getLocalIp } from '@/api/system';
+import { getVersion } from '@/api/system';
+import { useDeviceIp } from '@/hooks/useDeviceIp';
 import StatusBar from '@/components/StatusBar';
 import { Localized, useLocalization } from '@fluent/react';
 import ThemeToggle from '@/app/ThemeToggle';
@@ -41,7 +46,21 @@ export interface LicenseActivationScreenProps {
 /** License activation screen — form for entering a license key and email to activate the POS software. */
 export default function LicenseActivationScreen({ initialError, onActivated }: LicenseActivationScreenProps) {
   const { l10n } = useLocalization();
-  const [authMode, setAuthMode] = useState<'key' | 'pair'>(() => isTabletShell() ? 'pair' : 'key');
+  // 'choose' is the entry screen: the two ways in (Google, pair). 'key' and
+  // 'pair' are the detailed forms behind it. The tablet has no license-key
+  // route — activate_license/get_machine_id/get_hardware_fingerprint are
+  // desktop-only — so it never leaves 'pair', and its entry screen offers the
+  // two routes it actually has (Google + pair).
+  const [authMode, setAuthMode] = useState<'choose' | 'key' | 'pair' | 'email'>('choose');
+  // The email step's sub-view: enter the address, or enter the code that
+  // arrived (email-code), or the password (email-password).
+  const [emailStep, setEmailStep] = useState<'address' | 'code' | 'password'>('address');
+  const [emailAddress, setEmailAddress] = useState('');
+  const [emailCode, setEmailCode] = useState('');
+  const [emailPassword, setEmailPassword] = useState('');
+  const [emailBusy, setEmailBusy] = useState(false);
+  /** Per-flow failure, rendered beside the control that caused it. */
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [pairingSession, setPairingSession] = useState<PairingSessionStart | null>(null);
   const [pairingLoading, setPairingLoading] = useState(false);
   const [pairingExpired, setPairingExpired] = useState(false);
@@ -56,12 +75,17 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
   // fix. Recording the offending field lets that input carry its own
   // aria-invalid and error border.
   const [badField, setBadField] = useState<'email' | 'phone' | null>(null);
+  // Google sign-in state. Mirrors ProvisioningFlow's LinkState so the two
+  // screens that both call link_device_google report it the same way.
+  const [link, setLink] = useState<'idle' | 'linking' | 'failed'>('idle');
 
   /** Drop the mark as soon as the user edits the field it names. */
   const clearBadField = (field: 'email' | 'phone') =>
     setBadField((prev) => (prev === field ? null : prev));
   const [appVersion, setAppVersion] = useState<string>('0.0.39');
-  const [ipAddress, setIpAddress] = useState<string>(requiredLocalized(l10n, 'auth-ip-detecting'));
+  // LAN + public addresses, each resolved independently (see useDeviceIp).
+  // The offline/unresolved placeholder is derivable, so it is not state.
+  const { local: localIp, public: publicIp } = useDeviceIp();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; field: 'email' | 'phone' | 'licenseKey' } | null>(null);
   // Segmented-trial vertical (C2.1): detected once from the landing-page
   // URL param (?v=restaurant etc.) and passed to the server on activation.
@@ -85,16 +109,82 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
     }).catch((err) => {
       console.warn('getVersion failed, using hardcoded fallback', err);
     });
-    
-    getLocalIp().then(ip => {
-      if (mounted) setIpAddress(ip);
-    }).catch(() => {
-      if (mounted) setIpAddress(requiredLocalized(l10nRef.current, 'auth-ip-unknown'));
-    });
 
     return () => { mounted = false; };
   }, []);
 
+  /**
+   * Sign in with Google — or create the account, since the licence server
+   * treats a first-time Google identity as a signup. On success the device is
+   * linked, so we report activation upward exactly as a license key would.
+   */
+  const signInWithGoogle = useCallback(async () => {
+    setLink('linking');
+    setErrorMsg(null);
+    try {
+      await linkDeviceGoogle();
+      setLink('idle');
+      onActivated();
+    } catch (err) {
+      setLink('failed');
+      console.warn('link_device_google failed', err);
+    }
+  }, [onActivated]);
+
+  /**
+   * Send a sign-in code to the address, then ask for it.
+   *
+   * Register-or-login: this creates the account when the address has none, so
+   * there is no separate signup step to fall into.
+   */
+  const sendEmailCode = useCallback(async () => {
+    setEmailBusy(true);
+    setEmailError(null);
+    try {
+      await requestEmailLoginCode(emailAddress.trim());
+      setEmailStep('code');
+      setEmailCode('');
+    } catch (err) {
+      setEmailError(l10nErrorMessage(err, l10n, 'auth-email-failed'));
+    } finally {
+      setEmailBusy(false);
+    }
+  }, [emailAddress, l10n]);
+
+  /** Spend the code; a proved address links the device and finishes the step. */
+  const submitEmailCode = useCallback(async () => {
+    setEmailBusy(true);
+    setEmailError(null);
+    try {
+      await verifyEmailLoginCode(emailAddress.trim(), emailCode.trim());
+      onActivated();
+    } catch (err) {
+      setEmailError(l10nErrorMessage(err, l10n, 'auth-email-failed'));
+    } finally {
+      setEmailBusy(false);
+    }
+  }, [emailAddress, emailCode, l10n, onActivated]);
+
+  const submitEmailPassword = useCallback(async () => {
+    setEmailBusy(true);
+    setEmailError(null);
+    try {
+      await loginWithEmailPassword(emailAddress.trim(), emailPassword);
+      onActivated();
+    } catch (err) {
+      setEmailError(l10nErrorMessage(err, l10n, 'auth-email-failed'));
+    } finally {
+      setEmailBusy(false);
+    }
+  }, [emailAddress, emailPassword, l10n, onActivated]);
+
+  /** Return to the address step, clearing whatever the last attempt left. */
+  const backToEmailAddress = useCallback(() => {
+    setEmailStep('address');
+    setEmailCode('');
+    setEmailPassword('');
+    setEmailError(null);
+  }, []);
   const loadPairingSession = useCallback(async () => {
     setPairingLoading(true);
     setPairingExpired(false);
@@ -175,31 +265,52 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
 
     setLoading(true);
     try {
-      const machineId = await getMachineId();
-      // Device-level fingerprint (SPEC-2026-TRIAL-LOCK): the server's
-      // one-trial-per-device lock keys on it, falling back to machine_id
-      // when omitted. Always sent — it never gates paid keys.
-      const hardwareFingerprint = await getHardwareFingerprint();
+      // C47: shell-guarded, and the guard is load-bearing rather than decorative.
+      //
+      // The tablet shell registers NONE of the three commands this path needs:
+      // activate_license, get_machine_id and get_hardware_fingerprint are desktop-only
+      // (apps/desktop-tauri/src/lib.rs:1261, :1267, :1269 — the tablet's commands::license
+      // surface is get_license_status / check_license_status alone, and its activation
+      // path is device pairing). Unguarded, a tablet submit is rejected as an unknown
+      // command and the catch below reports a generic activation failure the operator
+      // cannot act on: the C40 shape, on the licensing screen.
+      //
+      // `success` is deliberately three-state. `null` means NOT ATTEMPTED on this shell,
+      // which is not the same claim as `false` (attempted and refused) — the same
+      // distinction BackupSection draws between a failed read and an answered-empty one.
+      // A tablet therefore reports nothing rather than inventing a failure.
+      //
+      // The three calls sit inside this `if` block on purpose: that brace is the guard
+      // scripts/verify-ipc-parity.py's shell-blind leg reads, so an edit that lifts them
+      // back out is caught by the gate rather than by a licensing outage.
+      let success: boolean | null = null;
+      if (!isTabletShell()) {
+        const machineId = await getMachineId();
+        // Device-level fingerprint (SPEC-2026-TRIAL-LOCK): the server's
+        // one-trial-per-device lock keys on it, falling back to machine_id
+        // when omitted. Always sent — it never gates paid keys.
+        const hardwareFingerprint = await getHardwareFingerprint();
 
-      // Pass the segmented-trial vertical only when detected, so generic
-      // activations stay 4-arg (and the server ignores it for paid keys
-      // regardless).
-      const success = trialVertical || bundleId
-        ? await activateLicense(
-            key.trim(),
-            email.trim(),
-            machineId,
-            phone.trim(),
-            trialVertical || undefined,
-            bundleId || undefined,
-            hardwareFingerprint
-          )
-        : await activateLicense(key.trim(), email.trim(), machineId, phone.trim(), undefined, undefined, hardwareFingerprint);
+        // Pass the segmented-trial vertical only when detected, so generic
+        // activations stay 4-arg (and the server ignores it for paid keys
+        // regardless).
+        success = trialVertical || bundleId
+          ? await activateLicense(
+              key.trim(),
+              email.trim(),
+              machineId,
+              phone.trim(),
+              trialVertical || undefined,
+              bundleId || undefined,
+              hardwareFingerprint
+            )
+          : await activateLicense(key.trim(), email.trim(), machineId, phone.trim(), undefined, undefined, hardwareFingerprint);
+      }
 
-      if (success) {
+      if (success === true) {
         addToast({ type: 'success', message: l10n.getString('auth-activation-success') });
         onActivated();
-      } else {
+      } else if (success === false) {
         setErrorMsg(l10n.getString('auth-activation-failed'));
       }
     } catch (err: unknown) {
@@ -263,10 +374,10 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
         <div className="license-activation-card">
           <div className="license-activation-header">
             <Localized id="auth-activate-title">
-              <h1>Activate License</h1>
+              <h1>Setup</h1>
             </Localized>
             <Localized id="auth-activate-subtitle">
-              <p>Enter your information below</p>
+              <p>Sign in or link this device to get started</p>
             </Localized>
             {/* Segmented-trial hint (C2.1): shown only when the user arrived
                 from a vertical landing page. General signups ('' ) get the
@@ -284,16 +395,146 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
             )}
           </div>
 
+          {/* A failure reported at boot (bad license, refused activation) belongs on the
+              FIRST screen the merchant sees. It used to render only inside the license-key
+              form, so on the entry screen it vanished — the merchant was told nothing. */}
+          {authMode === 'choose' && errorMsg && (
+            <div className="license-error-banner" role="alert">
+              {errorMsg}
+            </div>
+          )}
+
+          {authMode === 'choose' ? (
+            <div className="license-setup-choices" data-testid="license-setup-choices">
+              <div className="license-setup-choices-header">
+                <Localized id="auth-setup-title">
+                  <p>How would you like to get started?</p>
+                </Localized>
+              </div>
+
+              <button
+                type="button"
+                className="license-setup-choice"
+                data-testid="setup-google"
+                onClick={() => void signInWithGoogle()}
+                disabled={link === 'linking'}
+              >
+                <span className="license-setup-choice-title">
+                  <Localized id="auth-setup-google">Sign in with Google</Localized>
+                </span>
+                <span className="license-setup-choice-desc">
+                  <Localized id="auth-setup-google-desc">
+                    Sign in, or create an account automatically if you are new.
+                  </Localized>
+                </span>
+              </button>
+
+              {link === 'linking' && (
+                <p className="license-pairing-status" role="status">
+                  <span className="license-pulse-dot" aria-hidden="true" />
+                  <Localized id="auth-setup-waiting-browser">
+                    <span>Waiting for your browser to finish signing in…</span>
+                  </Localized>
+                </p>
+              )}
+
+              {/* Same escape as the provisioning flow offers: say what
+                  happened next to the control that did it, with a retry. */}
+              {link === 'failed' && (
+                <div className="license-error-banner" role="alert">
+                  <Localized id="auth-setup-google-failed">
+                    <span>Could not sign in with Google. Please try again.</span>
+                  </Localized>
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="license-setup-choice"
+                data-testid="setup-pair"
+                onClick={() => {
+                  setAuthMode('pair');
+                  if (!pairingSession) void loadPairingSession();
+                }}
+              >
+                <span className="license-setup-choice-title">
+                  <Localized id="auth-setup-pair">Pair this device to your organization</Localized>
+                </span>
+                <span className="license-setup-choice-desc">
+                  <Localized id="auth-setup-pair-desc">
+                    Scan a code from a phone or another terminal that is already set up.
+                  </Localized>
+                </span>
+              </button>
+
+              {/* Email sign-in: the third way in, beside Google and pairing.
+                  Same shape as the pair choice — set the mode, and the flow's
+                  own view below takes over from the entry screen. */}
+              <button
+                type="button"
+                className="license-setup-choice"
+                data-testid="setup-email"
+                onClick={() => setAuthMode('email')}
+              >
+                <span className="license-setup-choice-title">
+                  <Localized id="auth-setup-email">Sign in with Email</Localized>
+                </span>
+                <span className="license-setup-choice-desc">
+                  <Localized id="auth-setup-email-desc">
+                    Get a one-time code by email, or sign in with your password.
+                  </Localized>
+                </span>
+              </button>
+
+              {/* The license-key form is desktop-only, so this is the one
+                  route to it from the entry screen. */}
+              {!isTabletShell() && (
+                <button
+                  type="button"
+                  className="license-setup-link"
+                  data-testid="setup-license-key"
+                  onClick={() => setAuthMode('key')}
+                >
+                  <Localized id="auth-tab-license-key">License Key</Localized>
+                </button>
+              )}
+            </div>
+          ) : (
+          <>
           <div className="license-mode-tabs" role="tablist" aria-label={l10n.getString('auth-activate-title')}>
             <button
               type="button"
-              role="tab"
-              aria-selected={authMode === 'key'}
-              className={`license-mode-tab ${authMode === 'key' ? 'active' : ''}`}
-              onClick={() => setAuthMode('key')}
+              className="license-mode-tab"
+              data-testid="setup-back"
+              onClick={() => {
+                setAuthMode('choose');
+                setErrorMsg(null);
+                setPairingError(null);
+              }}
             >
-              <Localized id="auth-tab-license-key">License Key</Localized>
+              {/* Not role="tab": it leaves the tablist rather than selecting a panel. */}
+              <Localized id="auth-setup-back">Back</Localized>
             </button>
+            {/* C47: the License Key tab is NOT offered on the tablet. Its form cannot
+                submit there — activate_license / get_machine_id / get_hardware_fingerprint
+                are desktop-only (see the guard in handleActivate), so the tab would be a
+                dead end an operator could fill in and then watch fail. The tablet's own
+                activation surface is the pairing tab beside it, which is the mode the
+                initial state already selects on that shell. Hiding the affordance is the
+                honest half of the fix; the guard below is the enforced half, and the two
+                are kept together because a tab is easy to re-add and the guard is what
+                the parity gate reads. */}
+            {!isTabletShell() && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={authMode === 'key'}
+                className={`license-mode-tab ${authMode === 'key' ? 'active' : ''}`}
+                onClick={() => setAuthMode('key')}
+              >
+                <Localized id="auth-tab-license-key">License Key</Localized>
+              </button>
+            )}
             <button
               type="button"
               role="tab"
@@ -308,7 +549,175 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
             </button>
           </div>
 
-          {authMode === 'pair' ? (
+          {authMode === 'email' ? (
+            /* The email flow: one view, three steps, switched by emailStep.
+               Every step keeps the same failure surface (emailError) so a
+               rejected code and a rejected password report in one place. */
+            <div className="license-email-view" data-testid="license-email-view">
+              {emailError && (
+                <div className="license-error-banner" role="alert">
+                  {emailError}
+                </div>
+              )}
+
+              {emailStep === 'address' ? (
+                <>
+                  <p className="license-email-step-title">
+                    <Localized id="auth-email-step-title">Sign in with your email address</Localized>
+                  </p>
+
+                  <div className="license-form-group">
+                    <Localized id="auth-email-label">
+                      <label htmlFor="emailLoginAddress">Email Address</label>
+                    </Localized>
+                    <input
+                      id="emailLoginAddress"
+                      name="email-login-address"
+                      type="email"
+                      autoComplete="email"
+                      spellCheck={false}
+                      className="license-input"
+                      data-testid="email-login-address-input"
+                      placeholder={l10n.getString('auth-email-placeholder')}
+                      value={emailAddress}
+                      onChange={(e) => setEmailAddress(e.target.value)}
+                      disabled={emailBusy}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    className="license-submit-btn"
+                    data-testid="email-login-send-code"
+                    onClick={() => void sendEmailCode()}
+                    disabled={emailBusy || !emailAddress.trim()}
+                  >
+                    {emailBusy ? (
+                      <>
+                        <svg className="spinner" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
+                          <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+                          <path d="M12 2a10 10 0 0 1 10 10" />
+                        </svg>
+                        <Localized id="auth-email-send-code">Send code</Localized>
+                      </>
+                    ) : (
+                      <Localized id="auth-email-send-code">Send code</Localized>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="license-setup-link"
+                    data-testid="email-login-use-password"
+                    onClick={() => {
+                      setEmailError(null);
+                      setEmailStep('password');
+                    }}
+                  >
+                    <Localized id="auth-email-use-password">Use a password instead</Localized>
+                  </button>
+                </>
+              ) : emailStep === 'code' ? (
+                <>
+                  <p className="license-email-step-title">
+                    <Localized id="auth-email-code-title">Enter the code we emailed you</Localized>
+                  </p>
+
+                  <div className="license-form-group">
+                    <Localized id="auth-email-code-label">
+                      <label htmlFor="emailLoginCode">Sign-in code</label>
+                    </Localized>
+                    <input
+                      id="emailLoginCode"
+                      name="email-login-code"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      spellCheck={false}
+                      className="license-input"
+                      data-testid="email-login-code-input"
+                      placeholder={l10n.getString('auth-email-code-placeholder')}
+                      value={emailCode}
+                      onChange={(e) => setEmailCode(e.target.value)}
+                      disabled={emailBusy}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    className="license-submit-btn"
+                    data-testid="email-login-verify"
+                    onClick={() => void submitEmailCode()}
+                    disabled={emailBusy || !emailCode.trim()}
+                  >
+                    {emailBusy ? (
+                      <>
+                        <svg className="spinner" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
+                          <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+                          <path d="M12 2a10 10 0 0 1 10 10" />
+                        </svg>
+                        <Localized id="auth-email-verify">Verify code</Localized>
+                      </>
+                    ) : (
+                      <Localized id="auth-email-verify">Verify code</Localized>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="license-setup-link"
+                    data-testid="email-login-back"
+                    onClick={backToEmailAddress}
+                  >
+                    <Localized id="auth-email-back">Use a different email address</Localized>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="license-email-step-title">
+                    <Localized id="auth-email-password-title">Sign in with your password</Localized>
+                  </p>
+
+                  <div className="license-form-group">
+                    <Localized id="auth-email-password-label">
+                      <label htmlFor="emailLoginPassword">Password</label>
+                    </Localized>
+                    <input
+                      id="emailLoginPassword"
+                      name="email-login-password"
+                      type="password"
+                      autoComplete="current-password"
+                      className="license-input"
+                      data-testid="email-login-password-input"
+                      value={emailPassword}
+                      onChange={(e) => setEmailPassword(e.target.value)}
+                      disabled={emailBusy}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    className="license-submit-btn"
+                    data-testid="email-login-submit-password"
+                    onClick={() => void submitEmailPassword()}
+                    disabled={emailBusy || !emailAddress.trim() || !emailPassword}
+                  >
+                    {emailBusy ? (
+                      <>
+                        <svg className="spinner" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
+                          <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+                          <path d="M12 2a10 10 0 0 1 10 10" />
+                        </svg>
+                        <Localized id="auth-email-password-submit">Sign in</Localized>
+                      </>
+                    ) : (
+                      <Localized id="auth-email-password-submit">Sign in</Localized>
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
+          ) : authMode === 'pair' ? (
             <div className="license-pairing-view" data-testid="license-pairing-view">
               {pairingError && (
                 <div className="license-error-banner" role="alert">
@@ -498,6 +907,8 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
               </form>
             </>
           )}
+          </>
+          )}
         </div>
       </div>
 
@@ -509,8 +920,11 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
         <Localized id="auth-version" vars={{ version: appVersion }}>
           <span>Version {appVersion}</span>
         </Localized>
-        <Localized id="auth-ip-address" vars={{ ip: ipAddress }}>
-          <span>IP Address : {ipAddress}</span>
+        <Localized id="auth-ip-local" vars={{ ip: localIp ?? requiredLocalized(l10n, 'auth-ip-detecting') }}>
+          <span>Local : {localIp ?? requiredLocalized(l10n, 'auth-ip-detecting')}</span>
+        </Localized>
+        <Localized id="auth-ip-public" vars={{ ip: publicIp ?? requiredLocalized(l10n, 'auth-ip-unknown') }}>
+          <span>Public : {publicIp ?? requiredLocalized(l10n, 'auth-ip-unknown')}</span>
         </Localized>
         <Localized id="auth-copyright" vars={{ year: new Date().getFullYear().toString() }}>
           <span>kasir.mu © {new Date().getFullYear()} All rights reserved.</span>

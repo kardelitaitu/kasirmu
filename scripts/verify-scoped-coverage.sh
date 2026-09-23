@@ -62,6 +62,39 @@ violations=0
 #      `export_data_without_session` is category 1/emergency (ADR #58 §2.6 /
 #      Q-A Option 3): an emergency data export twin for revoked tenants when
 #      session creation is refused.
+#      The wizard's three web-sign-in commands — `request_email_login_code`,
+#      `verify_email_login_code` and `login_with_email_password` — are category 1
+#      on the same pre-auth reasoning as the three device-link commands above.
+#      All three take NO session_token (verified:
+#      `grep -c session_token apps/desktop-tauri/src/commands/desktop_link.rs` → 0);
+#      they run on the setup wizard BEFORE any session exists, and each either
+#      CREATES the web session (`verify_email_login_code`, `login_with_email_password`)
+#      or is the step that precedes creating it (`request_email_login_code`). A
+#      `_scoped` variant would have to resolve the very session this flow is
+#      establishing. They authenticate against the tenant the DEVICE already holds
+#      (`kasirmu_core::desktop_link` → the resolved server origin), which is
+#      per-install rather than per-store, so there is no store to resolve. Recorded
+#      as legitimate ungated pre-auth doors in docs/records/JOURNAL.md by 7a5292530
+#      (the same slice that raised the registration-gate debt ceiling 75 → 78); this
+#      entry is the scoped-coverage half of that same ruling, added 2026-09-24.
+#      The three restore commands — `list_restore_candidates`, `restore_status`,
+#      `restore_prepare` — are category 2 (GENUINELY GLOBAL). Each DOES take a
+#      `session_token` and checks its permission inline
+#      (`require_permission_for_session`, SETTINGS_READ for the two readers and
+#      SETTINGS_EDIT for the writer — apps/desktop-tauri/src/commands/data.rs), so
+#      the AUTHENTICATE half of the rule is satisfied in substance. What they
+#      cannot satisfy is the second half: the restore chain operates on the WHOLE
+#      DATABASE FILE, not on a store's rows. They pass `state.db_path` to
+#      `kasirmu_bridge::data::{list_restore_candidates,restore_status,restore_prepare}`,
+#      which work against `ctx.lock_global()` / the `db_path` file — the same
+#      reasoning as `export_data`, `import_data`, `create_backup` and
+#      `get_backup_status`, already in this list above. A `_scoped` variant would
+#      resolve a store connection that the operation never uses. Registered by
+#      91500dc0f (C8 S5a, which made the restore chain reachable); added here
+#      2026-09-24. NOTE these are NOT a naming-only exception: if the restore chain
+#      is ever narrowed to a single store's rows, these three stop being category 2
+#      and owe `_scoped` twins.
+#
 #   2. GENUINELY GLOBAL — the data is not per-store, so store scoping is
 #      meaningless; the command still authenticates and checks its own
 #      permission inline. This is the whole topology group: topology is a
@@ -124,7 +157,7 @@ violations=0
 # started with get_subscription_capabilities and get_over_quota_report, the
 # latter added 2026-09-08). Prefer a `_scoped` variant whenever the command
 # reads or writes store data.
-ALLOWLIST="staff_login|staff_check_username|has_users|bootstrap_owner|create_session|destroy_session|session_keepalive|verify_pin|refresh_picker_ticket|activate_license|check_license_status|get_license_status|get_machine_id|get_hardware_fingerprint|renew_license|pause_subscription|resume_subscription|test_auth_connection|ping|version|get_device_id|get_local_ip|resolve_boot_store|get_subscription_capabilities|get_over_quota_report|get_deployment_info|complete_setup|dismiss_setup_wizard|get_setup_status|get_enabled_features|load_topology|can_save_topology|apply_topology_diff|recover_pending_topology_apply_at_startup|save_topology_template|load_topology_template|list_topology_templates|delete_topology_template|list_topology_revisions|load_topology_revision|pin_topology_revision|export_data|import_preview|import_data|create_backup|get_backup_status|gateway_status|edc_terminal_status|edc_sale|edc_refund|edc_void|send_test_report|save_report_schedule|get_report_schedule|list_all_features|set_feature|set_features_bulk|get_key_rotation_info|rotate_encryption_key|currency_info|pick_logo_file|settings_changed_sink|create_inventory_location|create_inventory_transaction|deactivate_inventory_location|delete_stock_threshold|end_inventory_shift|finalize_sale|get_active_inventory_shift|get_inventory_transaction|get_stock_thresholds|get_workspace_inventory_locations|list_inventory_locations|list_inventory_shifts|list_inventory_transactions|list_inventory_transactions_for_shift|set_stock_threshold|set_workspace_inventory_locations|start_inventory_shift|update_inventory_location|void_pending_sale|list_warehouse_products_at_location|list_organizations|switch_organization|link_device_google|link_device_email_request|link_device_email_consume|export_data_without_session|start_device_pairing|poll_device_pairing|get_first_run_state|provision_device|get_preset_features"
+ALLOWLIST="staff_login|staff_check_username|has_users|bootstrap_owner|create_session|destroy_session|session_keepalive|verify_pin|refresh_picker_ticket|activate_license|check_license_status|get_license_status|get_machine_id|get_hardware_fingerprint|renew_license|pause_subscription|resume_subscription|test_auth_connection|ping|version|get_device_id|get_local_ip|resolve_boot_store|get_subscription_capabilities|get_over_quota_report|get_deployment_info|complete_setup|dismiss_setup_wizard|get_setup_status|get_enabled_features|load_topology|can_save_topology|apply_topology_diff|recover_pending_topology_apply_at_startup|save_topology_template|load_topology_template|list_topology_templates|delete_topology_template|list_topology_revisions|load_topology_revision|pin_topology_revision|export_data|import_preview|import_data|create_backup|get_backup_status|gateway_status|edc_terminal_status|edc_sale|edc_refund|edc_void|send_test_report|save_report_schedule|get_report_schedule|list_all_features|set_feature|set_features_bulk|get_key_rotation_info|rotate_encryption_key|currency_info|pick_logo_file|settings_changed_sink|create_inventory_location|create_inventory_transaction|deactivate_inventory_location|delete_stock_threshold|end_inventory_shift|finalize_sale|get_active_inventory_shift|get_inventory_transaction|get_stock_thresholds|get_workspace_inventory_locations|list_inventory_locations|list_inventory_shifts|list_inventory_transactions|list_inventory_transactions_for_shift|set_stock_threshold|set_workspace_inventory_locations|start_inventory_shift|update_inventory_location|void_pending_sale|list_warehouse_products_at_location|list_organizations|switch_organization|link_device_google|link_device_email_request|link_device_email_consume|export_data_without_session|start_device_pairing|poll_device_pairing|get_first_run_state|provision_device|get_preset_features|request_email_login_code|verify_email_login_code|login_with_email_password|list_restore_candidates|restore_prepare|restore_status"
 
 # Get all _scoped function names
 scoped_funcs=$(grep -roh "pub async fn [a-z_]*_scoped" apps/desktop-tauri/src/commands --include="*.rs" 2>/dev/null | sed 's/pub async fn //' | sort -u)

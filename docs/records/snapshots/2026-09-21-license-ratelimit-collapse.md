@@ -152,7 +152,7 @@ Staged, because the fix changes how a live server keys its buckets:
    request after deploy is also the first request that trusts the header.
 2. **Deploy**, then verify with `python scripts/verify-deployment.py`
    (`scripts/verify-deployment.py:1-24`; exit 0 = complete). Pace the probes: a scripted pass
-   over both names tripped a 403 on every `/api/v1/*` path on 2026-09-26, which is a
+   over both names tripped a 403 on every `/api/v1/*` path on 2026-09-21, which is a
    property of the edge, not of the deployment.
 3. **Flip** `LICENSE_CLIENTIP_MODE` to `xff` and restart.
 4. **Discriminator:** two *distinct* client IPs must get *independent* budgets — one IP

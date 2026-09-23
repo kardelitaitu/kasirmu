@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { RUNTIME_CONFIG_EVENT, onRuntimeConfigArrived } from '../runtime-config';
+import {
+  RUNTIME_CONFIG_EVENT,
+  contactRouteState,
+  onRuntimeConfigArrived,
+  onRuntimeConfigScript,
+} from '../runtime-config';
 
 /**
  * The late-arrival signal (see onRuntimeConfigArrived).
@@ -88,5 +93,84 @@ describe('onRuntimeConfigArrived', () => {
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledWith('https://late.example');
     stopSecond();
+  });
+});
+
+/**
+ * The support form's route (see contactRouteState). Separate concern from the
+ * URL above: a config can be silent about the backend and still be an answer
+ * about the contact route, and a config that never arrives is not an answer at
+ * all — which is exactly the distinction an unanswered form turns on.
+ */
+describe('contactRouteState', () => {
+  afterEach(() => {
+    delete (import.meta.env as Record<string, unknown>).PUBLIC_CONTACT_ENDPOINT;
+  });
+
+  it('is unknown before the script has answered', () => {
+    window.__OZ_CONFIG__ = undefined;
+    expect(contactRouteState()).toBe('unknown');
+  });
+
+  it('is unconfigured once the Worker answers with null', () => {
+    window.__OZ_CONFIG__ = { licenseApiUrl: 'https://license.example', contactEndpoint: null };
+    expect(contactRouteState()).toBe('unconfigured');
+  });
+
+  it('is configured when the Worker names a route', () => {
+    window.__OZ_CONFIG__ = { contactEndpoint: '/api/contact' };
+    expect(contactRouteState()).toBe('configured');
+  });
+
+  it('is configured from the build-time route on a host with no config', () => {
+    // The static-host path `.env.example` documents: no Worker, but a route was
+    // baked in, so the form is not a dead end and must stay the affordance.
+    window.__OZ_CONFIG__ = undefined;
+    (import.meta.env as Record<string, unknown>).PUBLIC_CONTACT_ENDPOINT = 'https://static.example/contact';
+    expect(contactRouteState()).toBe('configured');
+  });
+});
+
+describe('onRuntimeConfigScript', () => {
+  afterEach(() => {
+    window.__OZ_CONFIG__ = undefined;
+  });
+
+  it('fires for a config that carries no URL at all', () => {
+    // The case onRuntimeConfigArrived misses by design: the Worker sends two
+    // nulls, and a caller gated on a URL would never hear the answer and would
+    // keep offering a form that cannot send.
+    window.__OZ_CONFIG__ = undefined;
+    const seen = vi.fn();
+    const stop = onRuntimeConfigScript(seen);
+
+    expect(seen).not.toHaveBeenCalled();
+    window.__OZ_CONFIG__ = { contactEndpoint: null };
+    window.dispatchEvent(new Event(RUNTIME_CONFIG_EVENT));
+
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(contactRouteState()).toBe('unconfigured');
+    stop();
+  });
+
+  it('fires immediately when the config already landed', () => {
+    window.__OZ_CONFIG__ = { contactEndpoint: '/api/contact' };
+    const seen = vi.fn();
+    const stop = onRuntimeConfigScript(seen);
+
+    expect(seen).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it('stops firing once unsubscribed', () => {
+    window.__OZ_CONFIG__ = undefined;
+    const seen = vi.fn();
+    const stop = onRuntimeConfigScript(seen);
+    stop();
+
+    window.__OZ_CONFIG__ = { contactEndpoint: null };
+    window.dispatchEvent(new Event(RUNTIME_CONFIG_EVENT));
+
+    expect(seen).not.toHaveBeenCalled();
   });
 });

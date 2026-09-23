@@ -10,7 +10,7 @@ commands that once persisted its state were deleted, so it now ships with an orp
 ## Executive summary
 
 **Correction to the first draft of this audit.** The wizard is unreachable — that stands. But
-it is not an oversight to be fixed by deletion: `docs/decisions/2026-10-04-adr56-first-run-provisioning.md`
+it is not an oversight to be fixed by deletion: `docs/decisions/2026-09-21-adr56-first-run-provisioning.md`
 §2.3 **explicitly keeps the component**. It removes the nine steps *from the critical path*, not
 from the product ("its later stages are the in-app settings a provisioned terminal now reaches").
 §3.1 lists "the wizard's nine steps" under **Real deletion**, but the PART IMPLEMENTED note

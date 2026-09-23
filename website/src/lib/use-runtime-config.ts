@@ -20,9 +20,20 @@
  * dashboard and the auth/pairing forms). Click-time readers — the payment
  * helpers and the subscription section inside the loaded dashboard — read
  * `licenseApiUrl()` when the user acts, so they are already correct.
+ *
+ * `useContactRoute()` is the same idea for the support form's route, which the
+ * config states as an answer rather than as a URL (see [contactRouteState]):
+ * the form has to know it cannot send BEFORE the visitor types, not when they
+ * press send.
  */
-import { useEffect, useReducer, useRef } from 'react';
-import { licenseApiUrl, onRuntimeConfigArrived } from './runtime-config';
+import { useEffect, useReducer, useRef, useState } from 'react';
+import {
+  contactRouteState,
+  licenseApiUrl,
+  onRuntimeConfigArrived,
+  onRuntimeConfigScript,
+  type ContactRouteState,
+} from './runtime-config';
 
 /** Re-render the caller when the runtime config supplies a URL it did not have. */
 export function useRuntimeConfigArrival(): void {
@@ -39,4 +50,26 @@ export function useRuntimeConfigArrival(): void {
       }),
     [],
   );
+}
+
+/**
+ * The contact route's state, re-read once when the config script lands.
+ *
+ * A caller that renders from `contactRouteState()` alone keeps whatever it saw
+ * on the first render, because the script is deferred and the island hydrates
+ * first (the same race as above). This closes it without a timer: the config
+ * announces its arrival, this re-reads, and a state that did not change is not
+ * re-rendered at all.
+ */
+export function useContactRoute(): ContactRouteState {
+  const [state, setState] = useState<ContactRouteState>(contactRouteState);
+  useEffect(
+    () =>
+      onRuntimeConfigScript(() => {
+        const next = contactRouteState();
+        setState((prev) => (prev === next ? prev : next));
+      }),
+    [],
+  );
+  return state;
 }

@@ -2523,3 +2523,120 @@ async fn pg_integration_pool_recovers_after_exhaustion() {
         .await
         .unwrap();
 }
+
+// ── C50: the push metric label classifier ─────────────────────
+//
+// The `sync_pushes_total` `outcome` label is what makes duplicate-id
+// replays visible as `conflict` instead of being buried in `rejected`.
+// Before C50 the classifier re-typed the `"duplicate id:"` literal
+// instead of calling the shared predicate, so the producer
+// (`sync_store/{sqlite,pg}.rs`) and the classifier could drift apart
+// silently. These tests assert BOTH directions, because a classifier that
+// always answers `conflict` is as useless as one that never does.
+
+/// A duplicate-id rejection is labelled `conflict`.
+#[test]
+fn duplicate_id_rejection_is_labelled_conflict() {
+    let reason = format!(
+        "{}{}",
+        kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX,
+        "0190a4b2-0000-7000-8000-000000000000"
+    );
+    let outcome = PushOutcome::Rejected { reason };
+    assert_eq!(
+        push_outcome_label(&outcome),
+        "conflict",
+        "a replay the server already holds is a conflict, not a rejection"
+    );
+}
+
+/// A genuine rejection is labelled `rejected` — the carve-out must not
+/// swallow real failures. Both non-duplicate reasons the handler can
+/// produce are covered.
+#[test]
+fn genuine_rejection_is_labelled_rejected() {
+    for reason in [
+        "invalid id: not-a-uuid",
+        "missing batch outcome for 0190a4b2",
+        "pg insert failed: deadlock detected",
+    ] {
+        let outcome = PushOutcome::Rejected {
+            reason: reason.into(),
+        };
+        assert_eq!(
+            push_outcome_label(&outcome),
+            "rejected",
+            "{reason:?} is not a replay and must not be labelled conflict"
+        );
+    }
+}
+
+/// The predicate is `starts_with`, so the classification must be ANCHORED:
+/// a reason that merely mentions a duplicate id is still a rejection.
+#[test]
+fn duplicate_prefix_in_the_middle_is_labelled_rejected() {
+    let outcome = PushOutcome::Rejected {
+        reason: "pg insert failed: duplicate id: retried".into(),
+    };
+    assert_eq!(
+        push_outcome_label(&outcome),
+        "rejected",
+        "only a reason that BEGINS with the prefix is a replay"
+    );
+}
+
+/// `Accepted` and `Conflict` keep their labels.
+#[test]
+fn accepted_and_conflict_labels_are_unchanged() {
+    assert_eq!(push_outcome_label(&PushOutcome::Accepted), "accepted");
+    let server_copy = kasirmu_core::offline::OfflineQueueItem::new("sale.create", "{}");
+    assert_eq!(
+        push_outcome_label(&PushOutcome::Conflict(server_copy)),
+        "conflict"
+    );
+}
+
+/// C50 (3): the two sides SHARE the rule rather than agreeing by luck.
+///
+/// The classifier must call the client's predicate, and the prefix the
+/// producer formats into its reason must be the same constant — so a reword
+/// of `DUPLICATE_ID_REJECTION_PREFIX` moves both sides at once and cannot
+/// silently split the metric from the thing it measures.
+///
+/// Asserted on the SOURCE, because the coupling is a compile-time fact that
+/// no runtime value can distinguish: two independent literals that happen to
+/// be equal today behave identically at runtime and diverge tomorrow. This
+/// pins the call, not the current equality.
+#[test]
+fn metric_classifier_shares_the_client_predicate() {
+    let src = include_str!("sync_api.rs");
+    let classifier = src
+        .split("fn push_outcome_label(")
+        .nth(1)
+        .expect("push_outcome_label must exist in sync_api.rs");
+    assert!(
+        classifier.contains("kasirmu_core::sync_client::is_duplicate_id_rejection"),
+        "the metric classifier must call the shared predicate, not re-type the prefix"
+    );
+    assert!(
+        !classifier.contains("starts_with(\"duplicate id:\")"),
+        "the hand-written prefix literal must not come back"
+    );
+
+    // The PRODUCER side cannot call the constant: both store arms build the
+    // reason with a literal (`format!("duplicate id: {}", item.id)`), and
+    // C50's fence forbids changing them. So pin the two ends by requiring
+    // each producer's source to contain the CONSTANT'S VALUE verbatim:
+    // a reword of `DUPLICATE_ID_REJECTION_PREFIX` fails HERE, naming the
+    // files that must move with it, instead of silently splitting the metric
+    // from the thing it measures.
+    for (name, producer) in [
+        ("sync_store/sqlite.rs", include_str!("sync_store/sqlite.rs")),
+        ("sync_store/pg.rs", include_str!("sync_store/pg.rs")),
+    ] {
+        assert!(
+            producer.contains(kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX),
+            "{name} must format its reason with the shared prefix value; if it was reworded, reword it there too"
+        );
+    }
+}

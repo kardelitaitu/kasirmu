@@ -173,6 +173,48 @@ impl OfflineQueueItem {
     }
 }
 
+/// Order a pending batch the way a push MUST send it — THE shared expression.
+///
+/// This is the ONE definition of the queue's transmit order. It lives here, in
+/// `kasirmu_core::offline`, because every push path already depends on this
+/// crate: the daemon and the engine (platform-sync), the desktop bridge
+/// (kasirmu-bridge), and the tablet (kasirmu-mobile). Before this existed the
+/// same rule was written out at each of those sites, which is how they came to
+/// disagree — one of them sorted by priority only.
+///
+/// # The order, and why priority ALONE is not enough
+///
+/// Ascending `priority` is the P-2 contract: [`SyncPriority`] derives `Ord`
+/// with Critical=0 < Normal=1 < Low=2, so lower transmits first. But that is
+/// not a total order. It has three values and most items are `Critical`
+/// (every sale, void, refund and payment split), so ties are the COMMON case
+/// rather than the corner. The key is therefore total, in three parts:
+///
+/// 1. `priority` — the contract above, higher tier first;
+/// 2. `created_at` — the arrival order `Store::list_pending_offline`
+///    already returns and documents (`ORDER BY created_at ASC`), preserved
+///    WITHIN a tier so the oldest critical sale still goes first;
+/// 3. `id` — a UUID v7 primary key: unique, and itself time-ordered.
+///    This is the part that makes the order DETERMINISTIC rather than merely
+///    stable. `created_at` is millisecond precision, so two items enqueued
+///    in the same millisecond compare equal on the first two keys and would
+///    otherwise fall back to SQLite's unspecified row order, reordering
+///    between runs.
+///
+/// # Reorders in place, on purpose
+///
+/// The sort is applied ONCE, before the push, and every downstream consumer
+/// iterates that SAME vector: the batch is sent as-is, and the per-item
+/// outcomes are matched back by index. The server is explicit that this
+/// alignment is load-bearing — a reordering would mark the WRONG items as
+/// synced or failed. So this takes `&mut` and reorders the caller's own
+/// vector rather than returning a parallel sorted copy.
+pub fn order_for_push(items: &mut [OfflineQueueItem]) {
+    items.sort_by(|a, b| {
+        (a.priority, &a.created_at, &a.id).cmp(&(b.priority, &b.created_at, &b.id))
+    });
+}
+
 #[cfg(test)]
 #[path = "offline_tests.rs"]
 mod tests;

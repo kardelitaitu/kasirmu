@@ -568,6 +568,16 @@ pub async fn sync_run_scoped(
         });
     }
 
+    // C49: the ONE ordering rule, shared by every push path
+    // (`kasirmu_core::offline::order_for_push`). Without it a Critical item
+    // queued behind a bulk one waits a whole cycle, so the value of the priority
+    // column would depend on which of the push paths happened to run.
+    //
+    // Sorted ONCE, before the push: Phase 3 and the 401 retry below both reuse
+    // this same vector, so the server's index-aligned outcome list still lines up.
+    let mut pending_items = pending_items;
+    kasirmu_core::offline::order_for_push(&mut pending_items);
+
     // Phase 2: Async HTTP push (no DB lock held).
     let mut outcomes = sync_client::send_items_to_server(&config, &pending_items).await;
 

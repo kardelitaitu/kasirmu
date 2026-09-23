@@ -526,6 +526,30 @@ jobs:
           python3 scripts/verify-agents-mirrors.py
           python3 scripts/verify-agents-mirrors.py --self-test
 
+      # docs/records/README.md calls itself the single entry point, and its
+      # freshness gate was "unbuilt by decision" (docs/README.md) -- a decision
+      # the 2026-09-23 documentation audit reversed once the generator defect
+      # behind seven dead snapshots/ rows was fixed and the 148-vs-158-line
+      # drift repaired: a gate deferred to avoid crying wolf had let the wolf
+      # in. Blocking from day one because the drift was repaired BEFORE this
+      # step landed, so there is nothing to be red about -- the opposite
+      # ordering of ci-docs-drift's advisory->required arc, and for the same
+      # reason: a step with a known-red baseline gets disabled.
+      # Gate: scripts/gates.json -> "records-index".
+      - name: Records index freshness check
+        run: node scripts/generate-records-index.mjs --check
+      # Advisory (gates.json ci.advisory_at: step) while the findings sit in
+      # manager-codebase-review-checklist.md, which a concurrent session was
+      # actively writing during the audit (count grew 2 -> 7 mid-session as the
+      # peer kept writing) -- racing it would have been the wrong move, and
+      # check.sh cannot host the leg either (step() exits on first failure). FLIP: drop continue-on-error and advisory_at, set the
+      # gate to required when check-dead-refs reports 0 -- the same arc
+      # ci-docs-drift took in R36-10, with the trigger written down.
+      # Gate: scripts/gates.json -> "dead-refs".
+      - name: Docs dead references
+        continue-on-error: true
+        run: python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py
+
   # ── 7. Static gates that had no CI runner at all ──────────────────────
   # Six checks existed only in scripts/check.sh, which is manual and unhooked,
   # so nothing enforced them on a clone that skipped setup-dev.ps1. Each was run
@@ -692,6 +716,16 @@ jobs:
         run: python3 scripts/verify-test-shadow-copies.py
       - name: IPC command parity
         run: python3 scripts/verify-ipc-parity.py
+      # The parity checker's own liveness cases, beside the sibling that already runs
+      # this way ("Scoped ambient reads self-test", two steps below). Blocking: the
+      # "IPC command parity" step above, scripts/check.sh and scripts/run-pre-push.py all
+      # invoke the checker WITHOUT --self-test, so until this step existed a regression in the
+      # LEG -- a parser that stops seeing the surface it claims to check, or a mask/guard
+      # rule that goes blind -- could sit red for weeks while every gate stayed green.
+      # That is exactly how the two stale expectations fixed in C55 survived. No bare run
+      # of the checker can see this class; only the self-test can. Gate: C55.
+      - name: IPC command parity self-test
+        run: python3 scripts/verify-ipc-parity.py --self-test
       - name: IPC invoke token parity
         run: python3 scripts/verify-invoke-parity.py
       - name: Scoped ambient reads self-test

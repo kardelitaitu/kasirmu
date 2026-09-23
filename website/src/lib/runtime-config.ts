@@ -13,6 +13,10 @@
  * at render time then sees nothing and never learns better. The script
  * therefore announces itself (`RUNTIME_CONFIG_EVENT`) and
  * [onRuntimeConfigArrived] lets a caller hear about the URL it missed.
+ *
+ * The same script is where the Worker states whether the support form has a
+ * route it can actually post to ([contactEndpoint] / [contactRouteState]) —
+ * see those two for why "no route" has to be knowable before a visitor types.
  */
 
 export interface RuntimeConfig {
@@ -103,6 +107,81 @@ export function onRuntimeConfigArrived(cb: (url: string) => void): () => void {
   window.addEventListener(RUNTIME_CONFIG_EVENT, report);
   // The event is missed by anyone subscribing after it fired, and "after" can
   // mean the few milliseconds between the caller's render and this call.
+  report();
+  return () => window.removeEventListener(RUNTIME_CONFIG_EVENT, report);
+}
+
+/**
+ * The contact route this deployment actually has: the Worker's runtime value
+ * first, then the build-time PUBLIC_CONTACT_ENDPOINT, else nothing.
+ *
+ * Read at submit time, not at module scope: the config script is deferred, so
+ * a value read while the module loads would miss it. `null` from the Worker
+ * means this deployment has no contact route of its own — it is a meaningful
+ * answer, not an absent one, and the build-time value may still name one on a
+ * host that serves the form itself.
+ */
+export function contactEndpoint(): string | undefined {
+  const runtime = typeof window !== 'undefined' ? window.__OZ_CONFIG__?.contactEndpoint : undefined;
+  if (runtime) return runtime;
+  const built = import.meta.env.PUBLIC_CONTACT_ENDPOINT as string | undefined;
+  return built?.trim() ? built.trim() : undefined;
+}
+
+/**
+ * What is known about the contact route.
+ *
+ * - `configured`   — there is a route; the form is the right affordance.
+ * - `unconfigured` — the config script has answered and this deployment has no
+ *                    route, so a form here can only fail. The support page
+ *                    leads with its mailto path instead.
+ * - `unknown`      — nothing has answered yet: the script is still in flight,
+ *                    or this host serves no config at all (a plain static
+ *                    host or a local preview). The form renders exactly as it
+ *                    did before, with its submit-time degrade intact — silence
+ *                    is not evidence of a missing route, and treating it as one
+ *                    would replace the form with mailto on every non-Worker
+ *                    host and on every page while the config is in flight.
+ *
+ * `unknown` is therefore a distinct state, not a synonym for unconfigured: the
+ * Worker echoing `contactEndpoint: null` is a guarantee, whereas a config that
+ * never arrives is not.
+ */
+export type ContactRouteState = 'configured' | 'unconfigured' | 'unknown';
+
+/** Whether the support form has a route it can send, or whether that is unknown. */
+export function contactRouteState(): ContactRouteState {
+  if (contactEndpoint()) return 'configured';
+  // Deriving from [contactEndpoint] rather than reading the global directly
+  // keeps this in step with what submit posts to: if a build-time route
+  // exists, the form is not the dead end this state is meant to prevent.
+  return typeof window !== 'undefined' && typeof window.__OZ_CONFIG__ !== 'undefined'
+    ? 'unconfigured'
+    : 'unknown';
+}
+
+/**
+ * Call `cb` once the config script has assigned `window.__OZ_CONFIG__`, whatever
+ * that config contained — including one that carries no URL at all.
+ *
+ * [onRuntimeConfigArrived] reports a URL, which is the wrong shape for the
+ * contact route: a deployment with neither LICENSE_API_URL nor
+ * CONTACT_WEBHOOK_URL answers with two nulls, and a caller gated on a URL would
+ * never hear that answer and would keep offering a form that cannot send. This
+ * fires on the arrival itself, so the caller re-reads the config it now has.
+ * Bounded exactly like its sibling: no timer, nothing to poll, and a
+ * deployment that never serves a config never calls it.
+ *
+ * Returns an unsubscribe function.
+ */
+export function onRuntimeConfigScript(cb: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const report = () => {
+    if (typeof window.__OZ_CONFIG__ !== 'undefined') cb();
+  };
+  window.addEventListener(RUNTIME_CONFIG_EVENT, report);
+  // Already-landed configs are missed by the event, and "already" includes the
+  // gap between the caller's render and this call.
   report();
   return () => window.removeEventListener(RUNTIME_CONFIG_EVENT, report);
 }

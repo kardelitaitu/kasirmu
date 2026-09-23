@@ -92,6 +92,16 @@ impl Store<'_> {
     ///
     /// The `store_id` identifies which store the delta originated from
     /// for cross-store routing (ADR #6).
+    /// # Transaction behaviour (C18 P1.9)
+    ///
+    /// SQLite has no nested `BEGIN`, so this JOINS a caller-owned transaction
+    /// and only opens its own in autocommit — the `log_audit` idiom. It used to
+    /// write on `self.conn` unconditionally: correct in isolation (a bare
+    /// statement in autocommit IS its own transaction), but it left the caller
+    /// unable to make the ledger row commit or roll back with its own work. The
+    /// sync lane's atomic replay path already used
+    /// [`Self::insert_stock_movement_in_tx`]; this makes the standalone entry
+    /// point agree with its twin instead of being the weaker one.
     #[allow(clippy::too_many_arguments)]
     pub fn insert_stock_movement(
         &self,
@@ -104,7 +114,51 @@ impl Store<'_> {
         store_id: &str,
         created_at: &str,
     ) -> Result<(), CoreError> {
-        self.conn.execute(
+        if self.conn.is_autocommit() {
+            let tx = self.conn.unchecked_transaction()?;
+            Self::insert_stock_movement_on(
+                &tx,
+                id,
+                item_id,
+                delta,
+                reason,
+                source_terminal_id,
+                source_user_id,
+                store_id,
+                created_at,
+            )?;
+            tx.commit()?;
+            Ok(())
+        } else {
+            Self::insert_stock_movement_on(
+                self.conn,
+                id,
+                item_id,
+                delta,
+                reason,
+                source_terminal_id,
+                source_user_id,
+                store_id,
+                created_at,
+            )
+        }
+    }
+
+    /// The single statement both entry points run, on a connection OR a
+    /// caller-owned transaction (`Transaction` derefs to `Connection`).
+    #[allow(clippy::too_many_arguments)]
+    fn insert_stock_movement_on(
+        conn: &rusqlite::Connection,
+        id: &str,
+        item_id: &str,
+        delta: i64,
+        reason: Option<&str>,
+        source_terminal_id: Option<&str>,
+        source_user_id: Option<&str>,
+        store_id: &str,
+        created_at: &str,
+    ) -> Result<(), CoreError> {
+        conn.execute(
             "INSERT INTO stock_movements (id, item_id, delta, reason,
                                           source_terminal_id, source_user_id,
                                           store_id, created_at)
@@ -401,3 +455,7 @@ impl Store<'_> {
         self.adjust_stock_with_reason(sku, delta, None, None, None)
     }
 }
+
+#[cfg(test)]
+#[path = "products_stock_query_tests.rs"]
+mod tests;

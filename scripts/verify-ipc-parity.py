@@ -1225,6 +1225,40 @@ READ_ATTEMPTS = 50
 READ_RETRY_SECONDS = 0.001
 
 
+def assert_allowlist_bytes(path: Path, written: bytes) -> None:
+    """Re-read a file this helper just wrote and refuse unless it holds `written`, byte for byte.
+
+    The write below is LF BY CONSTRUCTION -- `NamedTemporaryFile(..., newline="\n")` -- and
+    this is the independent second half of that claim. Construction says what SHOULD land;
+    this says what DID. It is not a normalisation pass and it repairs nothing: it refuses, so
+    a future edit to the write path that drops the `newline` argument -- or swaps the temp
+    file for a bare `ALLOWLIST_PATH.write_text(...)` -- fails the writer run that makes it,
+    instead of silently re-emitting every line of a file another lane owns as CRLF.
+
+    Bytes, not text: `read_text` translates CRLF back to LF on the way in and would hide
+    exactly the defect this exists to catch. Measured against the real payload: this writer
+    produces 35545 bytes with 0 CR, and the same text pushed through a text-mode open with no
+    `newline` argument is 35813 bytes with 268 CR -- a whole-file byte difference with zero
+    differing text lines, which is why no assertion on the payload can see it.
+
+    Called twice per write, and the order is the point. Once on the SIBLING TEMP before the
+    rename, where a failure costs nothing -- the previous allowlist is still on disk and the
+    bad bytes never leave the temp. Once on the TARGET after it, which is what a subsequent
+    reader will actually open. The first is the fail-safe; the second is the proof.
+    """
+    landed = path.read_bytes()
+    if landed == written:
+        return
+    raise AllowlistWriteRefusal([
+        f"{path.name} did not come back as the bytes this run wrote: "
+        f"{len(written)} bytes written, {len(landed)} on it now "
+        f"({landed.count(b'\r')} CR there, {written.count(b'\r')} CR written). The write "
+        f"path has lost its LF guarantee -- check the `newline=` argument on the temporary "
+        f"file in write_allowlist_payload. Nothing was normalised: whatever the write "
+        f"actually produced is what is there."
+    ])
+
+
 def write_allowlist_payload(payload: dict) -> None:
     """The ONE way this gate writes the allowlist file: LF endings, UTF-8, no escapes.
 
@@ -1266,20 +1300,40 @@ def write_allowlist_payload(payload: dict) -> None:
     and the writer turns that into a refusal -- the previous file stays exactly as it was,
     which is the property that made the rename worth having: a failed write cannot leave
     anything half-built, and cannot corrupt what was already there.
+
+    Fourth job, added after the C41/C47 lanes each re-discovered CRLF in this file: the bytes
+    are not assumed to be the ones this function meant to write. `assert_allowlist_bytes`
+    re-reads and compares, twice -- on the sibling temp before the rename (fail-safe: the bad
+    bytes never reach the shared path) and on the target after it (proof: what a reader opens
+    is what was written). Construction says what SHOULD land, the guard says what DID, and
+    neither is a normalisation: the guard refuses, so a future edit that drops the `newline=`
+    argument above fails the writer run that makes it instead of quietly re-emitting all 268
+    lines of a file another lane owns as CRLF.
     """
     ALLOWLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = tempfile.NamedTemporaryFile(
         "w", encoding="utf-8", newline="\n", delete=False,
         dir=str(ALLOWLIST_PATH.parent), prefix=ALLOWLIST_PATH.name + ".", suffix=".tmp")
     tmp_path = Path(tmp.name)
+    # The exact text this helper intends to land, kept so the guard below can compare BYTES
+    # rather than re-serialising (a second json.dumps could differ from the first).
+    text = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    written = text.encode("utf-8")
     try:
         with tmp:
-            tmp.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+            tmp.write(text)
             tmp.flush()
             os.fsync(tmp.fileno())
+        # Fail-safe half: if the write path ever loses its LF guarantee, the mismatch is
+        # caught HERE, while the bad bytes are still a sibling temp and the allowlist on disk
+        # is untouched. Raising past the rename is what keeps a regression from landing.
+        assert_allowlist_bytes(tmp_path, written)
         for attempt in range(REPLACE_ATTEMPTS):
             try:
                 os.replace(tmp_path, ALLOWLIST_PATH)
+                # Proof half: the rename is the write, so read the TARGET back -- the file a
+                # reader will open -- and refuse unless it is byte-for-byte what was written.
+                assert_allowlist_bytes(ALLOWLIST_PATH, written)
                 return
             except PermissionError:
                 # Windows denies a rename onto a file another process has open. Retry: the
@@ -1311,6 +1365,13 @@ EXTERNALLY_READ_SECTIONS = ("desktop", "tablet")
 
 # Sections this gate is willing to read in either shape.
 OBJECT_ALLOWED_SECTIONS = ("dev_mock", "scoped_orphans")
+
+# C41: the shell-blind section. Deliberately NOT part of KNOWN_SECTIONS -- the self-test
+# pins that tuple to the shared schema's four required sections, and this one is private to
+# this gate (scripts/verify-scoped-reads.py never reads it). It carries the object form like
+# dev_mock/scoped_orphans, because every entry wants a reason: an entry here records a call
+# the shell WILL make, not a command it simply lacks.
+SHELL_BLIND_SECTIONS = ("shell_blind",)
 
 # Everything this file enforces, in the order the messages should list it.
 KNOWN_SECTIONS = (*EXTERNALLY_READ_SECTIONS, *OBJECT_ALLOWED_SECTIONS)
@@ -1366,7 +1427,7 @@ def allowlist_shape_problems(payload: dict, path) -> list[str]:
             f"an entry inside a {type(payload).__name__}."
         ]
     for key in payload:
-        if key in KNOWN_SECTIONS or str(key).startswith("_"):
+        if key in KNOWN_SECTIONS or key in SHELL_BLIND_SECTIONS or str(key).startswith("_"):
             continue
         problems.append(
             f'{name} has a top-level section "{key}" that this gate does not read, so every '
@@ -1526,7 +1587,7 @@ class AllowlistWriteRefusal(RuntimeError):
 
     Not a subclass of `AllowlistUnusable`, and that separation is the whole point: that class
     means the bytes never arrived, while every refusal in this class arrives AFTER a clean read
-    and a clean validation. Three causes, all of them about this process and its attempt to put
+    and a clean validation. Four causes, all of them about this process and its attempt to put
     new bytes where a shared file sits, none of them about the surface the gate grades --
 
     1. drift: the file on disk is not the file this run validated, because another lane
@@ -1535,7 +1596,13 @@ class AllowlistWriteRefusal(RuntimeError):
     2. a busy target: Windows denied the rename onto a file a reader holds open, past the
        `REPLACE_ATTEMPTS` ceiling (the `AllowlistBusyError` from `write_allowlist_payload`);
     3. any other failure of the write itself: the sibling temp could not be made, the
-       directory could not be created, the swap raised something that is not a sharing denial.
+       directory could not be created, the swap raised something that is not a sharing denial;
+    4. the read-back guard: the bytes that landed are not the bytes this run wrote
+       (`assert_allowlist_bytes`). Raised from the sibling temp BEFORE the rename -- where
+       the previous allowlist is still on disk -- and again on the target after it. This is
+       the only cause that can mean the write path itself has regressed rather than the
+       environment refusing it, and it is the reason the line-ending defect can no longer be
+       reintroduced silently by an edit to `write_allowlist_payload`.
 
     Until now all three came back through `update_allowlist` as a `list[str]` and were
     printed as `FAIL: N allowlist write problem(s)` at exit 1 -- the VERDICT
@@ -1769,6 +1836,311 @@ def write_scoped_orphans(orphans: set[str], validated: dict | None = None) -> li
         )
 
     return update_allowlist(mutate, validated, "--write-scoped-orphans")
+
+
+# ── C41: the shell-blind reachability leg ─────────────────────────────
+#
+# WHY THIS EXISTS. C40 shipped a real defect every leg in this file passed: the shared
+# hook ui/src/features/settings/hooks/useBackupStatus.ts invoked `getBackupStatus` /
+# `getBackupStatusScoped`, both registered ONLY in apps/desktop-tauri/src/lib.rs. The
+# tablet registers neither, so on that shell the invoke was rejected for an unknown
+# command, the hook's `.catch()` swallowed it, and the operator got a spurious error
+# toast plus a permanently failed panel on every mount of the Data tab.
+#
+# The forward leg below IS per-shell (main() builds `missing[shell]` per shell) and it
+# did report all four names. What hid the defect is the ALLOWLIST: get_backup_status,
+# get_backup_status_scoped, create_backup and create_backup_scoped all sat in the
+# `tablet` section, because when they were recorded the Data screen was believed
+# desktop-only. An exemption that is correct for a desktop-only screen and WRONG for a
+# shared one reads identically in that file, so the gap was invisible.
+#
+# WHAT THIS LEG MEASURES, and what it deliberately does not. "Every invoke must be
+# registered by every shell" is FALSE in this tree -- a screen registered only in one
+# shell's nav legitimately targets that shell (memo authoring, KDS rule editing,
+# billing actions) -- so this leg asks a narrower question that IS answerable
+# statically:
+#
+#     an ALLOWLISTED gap, called from a file that BRANCHES ON THE SHELL, at a call
+#     site NOT inside a shell-guarded region, in a file that also calls a command
+#     this shell DOES register.
+#
+# A file that branches on `isTabletShell()` has declared it runs on both shells. A call
+# in such a file that is not under that branch is a call this shell will make, and if
+# this shell registers no door for it, it is the C40 shape.
+#
+# STATED LIMITS -- the rule is narrow on purpose, and these are the false NEGATIVES it
+# accepts rather than papering over:
+#   1. A file that never branches on the discriminator is NOT examined. A shared screen
+#      mounted by both shells that never mentions the discriminator is OUT OF SCOPE.
+#      Measured on this tree: 7 of ~470 runtime files branch on it.
+#   2. The guard is SYNTACTIC: the enclosing brace block's header must name the
+#      discriminator, or a boolean derived from it. A guard expressed another way (a
+#      helper predicate, a registry flag, an early return) is not seen, so a genuinely
+#      guarded call can still be reported -- the safe direction, but it is a false
+#      positive an operator has to read.
+#   3. A call reached through a shell-gated HANDLER is exempted when every reference to
+#      that handler sits near a shell-derived boolean. That is a window, not a proof.
+#   4. Only names ALREADY in a shell's allowlist section are graded. A shared-UI call to
+#      a name in NEITHER shell is the existing forward leg's job, not this one's.
+#
+# Findings report through the allowlist's own `shell_blind` section, so a false positive
+# is a recorded decision with a reason rather than a permanently red gate.
+
+SHELL_DISCRIMINATOR_RE = re.compile(r"isTabletShell|getShellKind|shellKind")
+
+# `const NAME = <expr naming the discriminator>` and the destructuring form
+# `const [NAME, setX] = useState(() => isTabletShell() ? ... )` -- the latter is how
+# LicenseActivationScreen derives `authMode`, which gates its whole key-vs-pair tree.
+_SHELL_DERIVED_RE = re.compile(
+    r"const\s+(?:\[\s*([A-Za-z_]\w*)\s*,[^\]]*\]|([A-Za-z_]\w*))"
+    r"\s*(?::[^=]+)?=\s*[^;\n]*"
+    r"(?:isTabletShell|getShellKind|shellKind)[^;\n]*"
+)
+_IMPORT_STATEMENT_START_RE = re.compile(r"import\b")
+
+# The allowlist section findings land in. Absent from the shared schema's required set
+# (measured: an extra section is not a shape problem), so a tree that has never run this
+# leg is not refused -- it is graded and reported like any other finding.
+SHELL_BLIND_SECTION = SHELL_BLIND_SECTIONS[0]
+
+
+def _strip_comments(text: str) -> str:
+    """`text` with // and /* */ comments blanked, newlines preserved.
+
+    Blanked rather than deleted so every offset still maps to its original line.
+    """
+    out = list(text)
+    i, n = 0, len(text)
+    while i < n:
+        if text.startswith("//", i):
+            j = text.find("\n", i)
+            j = n if j < 0 else j
+            for k in range(i, j):
+                out[k] = " "
+            i = j
+        elif text.startswith("/*", i):
+            j = text.find("*/", i)
+            j = n if j < 0 else j + 2
+            for k in range(i, j):
+                if out[k] != "\n":
+                    out[k] = " "
+            i = j
+        else:
+            i += 1
+    return "".join(out)
+
+
+def _mask_imports(text: str) -> str:
+    """Blank `import` STATEMENTS (which may span lines), keeping offsets.
+
+    An import of a wrapper is not a CALL to it. Without this the leg is a no-op: every
+    wrapper named in an `import { ... } from '@/api/...'` block reads as a reference, so
+    every allowlisted name looks reached from every file that imports it -- measured: the
+    un-masked rule flagged 116 of the tablet's 129 gaps, which is a gate nobody keeps.
+    """
+    out = list(text)
+    i, n = 0, len(text)
+    while i < n:
+        if _IMPORT_STATEMENT_START_RE.match(text, i) and (
+            i == 0 or text[i - 1] in "\n;{} \t"
+        ):
+            j = text.find("\n", i)
+            while (
+                j != -1
+                and "from" not in text[i:j]
+                and "'" not in text[i:j]
+                and '"' not in text[i:j]
+            ):
+                j = text.find("\n", j + 1)
+            end = n if j == -1 else j
+            for k in range(i, end):
+                if out[k] != "\n":
+                    out[k] = " "
+            i = end
+        else:
+            i += 1
+    return "".join(out)
+
+
+def _shell_derived_names(text: str) -> set:
+    """Locals in `text` assigned from an expression naming the shell discriminator."""
+    names = set()
+    for a, b in _SHELL_DERIVED_RE.findall(_mask_imports(_strip_comments(text))):
+        names.add(a or b)
+    return names
+
+
+def _shell_guard_re(text: str):
+    """The discriminator plus every local derived from it, as one alternation."""
+    names = _shell_derived_names(text)
+    if not names:
+        return SHELL_DISCRIMINATOR_RE
+    alt = "|".join(r"(?<![\w.])" + re.escape(x) + r"\b" for x in sorted(names))
+    return re.compile(SHELL_DISCRIMINATOR_RE.pattern + "|" + alt)
+
+
+def shell_guarded_spans(text: str) -> list:
+    """Offset spans of `text` that sit under a shell-discriminating condition.
+
+    Two sources, both syntactic: a brace block whose HEADER names the discriminator (or a
+    boolean derived from it), and a statement segment bounded by `;`, `{` or `}` that
+    does. An `else` block inherits the guard of the block it follows, so the false arm of
+    `isTabletShell() ? desktopCall() : tabletCall()` -- the ADR #7 conditional this repo
+    uses everywhere -- is guarded like its true arm.
+    """
+    masked = _mask_imports(_strip_comments(text))
+    guard = _shell_guard_re(text)
+    spans = []
+    opens = []
+    last_closed = None
+    for i, ch in enumerate(masked):
+        if ch == "{":
+            h = i - 1
+            while h >= 0 and masked[h] not in ";{}":
+                h -= 1
+            header = masked[h + 1 : i]
+            guarded = bool(guard.search(header))
+            if not guarded and re.match(r"\s*else\b", header) and last_closed is not None:
+                guarded = last_closed
+            opens.append((i, guarded))
+        elif ch == "}":
+            if opens:
+                open_at, guarded = opens.pop()
+                last_closed = guarded
+                if guarded:
+                    spans.append((open_at, i))
+    prev = 0
+    for bound in [i for i, ch in enumerate(masked) if ch in ";{}"] + [len(masked)]:
+        if guard.search(masked[prev:bound]):
+            spans.append((prev, bound))
+        prev = bound + 1
+    return spans
+
+
+_HANDLER_DECL_RE = re.compile(
+    r"const\s+([A-Za-z_]\w*)\s*=\s*useCallback\s*\(|function\s+([A-Za-z_]\w*)\s*\("
+)
+# How far back a handler reference is read for its render gate. Generous on purpose: a JSX
+# condition and its handler can be separated by a long prop block.
+_RENDER_GATE_WINDOW = 1500
+
+
+def _enclosing_handler(text: str, offset: int):
+    """The name of the last handler declared before `offset`, if any."""
+    masked = _mask_imports(_strip_comments(text))
+    name = None
+    for match in _HANDLER_DECL_RE.finditer(masked[:offset]):
+        name = match.group(1) or match.group(2)
+    return name
+
+
+def _handler_is_render_gated(text: str, handler: str) -> bool:
+    """True when every reference to `handler` sits near a shell-derived boolean.
+
+    `const actionsAvailable = !isTabletShell()` then `{actionsAvailable && <Button
+    onClick={handlePause} />}` is a real gate whose condition is not lexically around the
+    call, so the guard is followed one hop. The declaration is not a reference, and an
+    empty reference set is NOT a gate -- a never-referenced handler is a different finding
+    and not this leg's to make.
+    """
+    masked = _mask_imports(_strip_comments(text))
+    guard = _shell_guard_re(text)
+    refs = [
+        m.start() for m in re.finditer(r"(?<![\w.])" + re.escape(handler) + r"\b", masked)
+    ]
+    decl = re.search(
+        r"const\s+" + re.escape(handler) + r"\s*=\s*useCallback\s*\(|function\s+"
+        + re.escape(handler) + r"\s*\(",
+        masked,
+    )
+    if decl:
+        refs = [i for i in refs if i > decl.end()]
+    if not refs:
+        return False
+    return all(
+        guard.search(masked[max(0, i - _RENDER_GATE_WINDOW) : i]) for i in refs
+    )
+
+
+def shell_blind_findings(
+    files: list,
+    registered: set,
+    gaps: set,
+) -> dict:
+    """Allowlisted gaps this shell will be asked for anyway, by command.
+
+    Pure over (relative path, text) pairs plus two sets, so --self-test can hand it a
+    fabricated tree: the whole point is a claim about a shape, and a check that cannot be
+    shown red cannot be trusted green. See the block comment above for the rule and its
+    stated limits.
+    """
+    by_path = dict(files)
+    shell_aware = {
+        path
+        for path, text in files
+        if SHELL_DISCRIMINATOR_RE.search(_mask_imports(_strip_comments(text)))
+    }
+    if not shell_aware:
+        return {}
+    # wrapper name -> command, so "does this file prove it runs here?" can be asked of a
+    # command this shell DOES register. The api layer owns the definitions.
+    wrapper_to_cmd = {}
+    for path, text in files:
+        if path.startswith("ui/src/api"):
+            for wrapper, cmd in API_WRAPPER_RE.findall(text):
+                wrapper_to_cmd.setdefault(wrapper, cmd)
+
+    findings = {}
+    for command in sorted(gaps):
+        hits = set()
+        for ref in wrapper_reach(files, command)["runtime"]:
+            path, wrapper = ref.split("#")
+            if path not in shell_aware:
+                continue
+            text = by_path.get(path, "")
+            masked = _mask_imports(_strip_comments(text))
+            # The file has to PROVE it executes in this shell: it must also call a command
+            # this shell registers. A file that branches on the shell but only ever calls
+            # this shell's names is that shell's own screen, and its gaps are not C40.
+            proves = any(
+                cmd in registered
+                and cmd != command
+                and re.search(r"(?<![\w.])" + re.escape(wn) + r"\b", masked)
+                for wn, cmd in wrapper_to_cmd.items()
+            )
+            if not proves:
+                continue
+            spans = shell_guarded_spans(text)
+            for match in re.finditer(r"(?<![\w.])" + re.escape(wrapper) + r"\b", masked):
+                if any(start <= match.start() < end for start, end in spans):
+                    continue
+                # A render-gated handler (\`const actionsAvailable = !isTabletShell()\` then
+                # \`{actionsAvailable && <Button onClick={h}/>}\`) is NOT exempted here. A
+                # 1500-char window heuristic was tried and REMOVED: it exempted the 9 real
+                # hits in LicenseActivationScreen / LicenseSettings / OverQuotaCard, whose
+                # handler references sit near a shell-derived boolean for an unrelated
+                # reason (\`authMode\`, derived from the discriminator, appears throughout the
+                # render tree). Reporting those is the correct direction; a false positive
+                # is answered with a "shell_blind" entry carrying a reason.
+                line = text.count("\n", 0, match.start()) + 1
+                hits.add(f"{path}:{line}#{wrapper}")
+        if hits:
+            findings[command] = sorted(hits)
+    return findings
+
+
+def shell_blind_message(shell: str, command: str, hits: list, allowlist_name: str) -> str:
+    """The failure line for a shared-UI call this shell cannot serve."""
+    where = ", ".join(hits[:3])
+    more = f" (+{len(hits) - 3} more)" if len(hits) > 3 else ""
+    return (
+        f"{shell}: UI invokes '{command}' from a file that branches on the shell (so this "
+        f"shell runs it) but this shell registers no door for it -- at {where}{more}. This "
+        "is the C40 shape: the invoke is rejected as an unknown command at runtime, so the "
+        "caller silently renders its failure path. Register the command in this shell, "
+        "guard the call, or record it in " + allowlist_name + ' "shell_blind" with a reason '
+        "if the call is genuinely unreachable here."
+    )
 
 
 def orphan_scoped(handlers: list[str], ui_commands: dict[str, dict]) -> list[str]:
@@ -2047,6 +2419,21 @@ export function applyScopedAliases(): void {
 """
 
 
+# WIRING DECISION (C55, 2026-09-23): this self-test is NOT invoked by any always-run gate.
+# .github/workflows/dev-ci.yml:694, scripts/check.sh:71 and scripts/run-pre-push.py:252 all call
+# this script WITHOUT --self-test, so a case here can sit red for weeks while every gate stays
+# green -- which is exactly how the two stale expectations fixed in C55 survived. It belongs as
+# its own CI step immediately beside "IPC command parity" in dev-ci.yml, mirroring the sibling
+# that already does this: "Scoped ambient reads self-test" runs verify-scoped-reads.py
+# --self-test two steps below. What it would block is a regression in the LEG rather than in the
+# tree -- a parser that stops seeing the surface it claims to check, a mask or guard rule that
+# goes blind -- which is the class these cases exist to catch and which no bare run can see.
+# The cost is seconds and it is hermetic: every case writes to a TemporaryDirectory and rebinds
+# ALLOWLIST_PATH, so it never touches the real allowlist (asserted by the case that checks the
+# path was restored). It is deliberately NOT added to scripts/run-pre-push.py's static gates:
+# that path runs on every agent push and this is a CI-depth check, not a push-blocking one.
+# The step itself lives in dev-ci.yml, which is outside this file's fence -- filed as a
+# Fence_Request rather than assumed.
 def self_test() -> int:
     """Exercise the dev-mock parsers on synthetic sources and prove they can fail.
 
@@ -2245,6 +2632,107 @@ def self_test() -> int:
             globals()["ALLOWLIST_PATH"] = saved_path
     case("case 9  the self-test never touched the real allowlist path",
          globals()["ALLOWLIST_PATH"] == saved_path)
+
+    # 9b: the guard the writer now calls on every write. Case 9 above proves the write path
+    # PRODUCES LF; this one proves the read-back that REFUSES when it does not, and that the
+    # writer actually calls it -- a guard nothing invokes is not a guard. Measured against the
+    # real payload: this writer produces 35545 bytes with 0 CR, and the same text through a
+    # text-mode open with no newline argument is 35813 with 268 CR, so the sabotage below is
+    # the real defect and not a fixture invented to be catchable.
+    with tempfile.TemporaryDirectory() as tmp:
+        saved_path = globals()["ALLOWLIST_PATH"]
+        saved_guard = globals()["assert_allowlist_bytes"]
+        probe = Path(tmp) / "allowlist.json"
+        seen: list[Path] = []
+        refused = None
+
+        def spy(path: Path, written: bytes) -> None:
+            seen.append(path)
+            saved_guard(path, written)
+
+        try:
+            globals()["ALLOWLIST_PATH"] = probe
+            globals()["assert_allowlist_bytes"] = spy
+            with redirect_stdout(io.StringIO()):
+                write_allowlist_payload(sample)
+            produced = probe.read_bytes()
+            # Two calls per write, and the ORDER is the guarantee: the sibling temp BEFORE
+            # the rename (so a regression never lands) and the target AFTER it (so what a
+            # reader opens is what was written). One call, or the wrong order, is a guard
+            # that lets the bad bytes through -- hence an assertion on the sequence.
+            case("case 9b the writer guards the temp before the rename and the target after",
+                 len(seen) == 2 and seen[0].name.endswith(".tmp") and seen[1] == probe)
+            case("case 9b the guard accepts the LF bytes that write just produced",
+                 b"\r" not in produced and produced.endswith(b"}\n"))
+
+            # The defect itself, reproduced through the mechanism that caused it rather than
+            # by editing bytes: a text-mode open with NO newline argument, which is exactly
+            # the pre-fix write path. newline="\r\n" is stated explicitly, not left to
+            # os.linesep, so this sabotage produces the Windows outcome on any host -- a
+            # fixture that silently degrades to a no-op on Linux would prove nothing there.
+            with open(probe, "w", encoding="utf-8", newline="\r\n") as fh:
+                fh.write(produced.decode("utf-8"))
+            crlf = probe.read_bytes()
+            case("case 9b the pre-fix write path really does produce CRLF bytes",
+                 b"\r\n" in crlf and len(crlf) > len(produced))
+
+            # The guard must REFUSE it, and must leave the bytes alone: a guard that repaired
+            # the file would be the post-pass this whole change exists to avoid.
+            try:
+                assert_allowlist_bytes(probe, produced)
+            except AllowlistWriteRefusal as exc:
+                refused = exc
+            case("case 9b a CRLF file is refused, never normalised back to LF",
+                 refused is not None and probe.read_bytes() == crlf)
+            case("case 9b the refusal states both byte counts and the CR count",
+                 refused is not None
+                 and f"{len(crlf)} on it now" in str(refused)
+                 and f"{crlf.count(b'\r')} CR there" in str(refused))
+        finally:
+            globals()["assert_allowlist_bytes"] = saved_guard
+            globals()["ALLOWLIST_PATH"] = saved_path
+    case("case 9b the guard self-test never touched the real allowlist path",
+         globals()["ALLOWLIST_PATH"] == saved_path
+         and globals()["assert_allowlist_bytes"] is saved_guard)
+
+    # 9c: the fail-safe half, which is the whole reason the guard is called twice. A write path
+    # that has regressed must be caught while the bad bytes are still a sibling temp -- the
+    # allowlist another lane owns has to come out of the failed run exactly as it went in.
+    # Here the guard is made to fail on the temp ONLY, standing in for a write path that lost
+    # its LF guarantee; the run must raise, and the target must keep its previous bytes.
+    with tempfile.TemporaryDirectory() as tmp:
+        saved_path = globals()["ALLOWLIST_PATH"]
+        saved_guard = globals()["assert_allowlist_bytes"]
+        target = Path(tmp) / "allowlist.json"
+        target.write_bytes(b'{"previous": true}\n')
+        before = target.read_bytes()
+        raised = None
+
+        def refuse_temp(path: Path, written: bytes) -> None:
+            if path.name.endswith(".tmp"):
+                raise AllowlistWriteRefusal(["the write path lost its LF guarantee"])
+            saved_guard(path, written)
+
+        try:
+            globals()["ALLOWLIST_PATH"] = target
+            globals()["assert_allowlist_bytes"] = refuse_temp
+            with redirect_stdout(io.StringIO()):
+                try:
+                    write_allowlist_payload(sample)
+                except AllowlistWriteRefusal as exc:
+                    raised = exc
+        finally:
+            globals()["assert_allowlist_bytes"] = saved_guard
+            globals()["ALLOWLIST_PATH"] = saved_path
+        case("case 9c a regressed write path is refused before the rename lands",
+             raised is not None)
+        case("case 9c the refusal leaves the existing allowlist byte-for-byte intact",
+             target.read_bytes() == before)
+        case("case 9c the refusal leaves no sibling temp behind",
+             [p.name for p in Path(tmp).iterdir() if p.name.endswith(".tmp")] == [])
+    case("case 9c the fail-safe self-test never touched the real allowlist path",
+         globals()["ALLOWLIST_PATH"] == saved_path
+         and globals()["assert_allowlist_bytes"] is saved_guard)
 
     # 10: the three reads that used to hand a raw section straight to set(). Grouped as the
     # no-op claim: routing them through section_names had to change nothing on a tree where
@@ -3405,31 +3893,42 @@ def self_test() -> int:
     case("fallback both arrow forms are reported together without doubling a name",
          len(no_token_fallbacks([fb_api, fb_hook, fb_api2, fb_param],
                                 {"list_scanners_scoped", "start_scanner_scoped"})) == 2)
-    # And the real tree, so a regex that matched only its own fixture cannot pass: if a future
-    # pass registers these doors and this case goes red, delete the case after reading the
-    # print, not before -- it is the only thing here that knows the shape was ever broken.
-    real_fb = no_token_fallbacks(ui_runtime_files(), set(extract_handlers(REPO_ROOT / SHELLS["tablet"])))
-    # LINEAGE OF THE NAME, which is what licenses this case to carry a different one than it was
-    # born with: it pinned "list_scanners" until 3162b97b6 ("refactor(ui): delete the scanner
-    # hooks' no-session arms") retired that name from the else-arm -- it deleted
-    # `export const listScanners = (): Promise<ScannerInfo[]> => loggedInvoke('list_scanners')`
-    # from ui/src/api/hardware.ts along with the ternary that reached it (fallback 10->7 desktop,
-    # 5->2 tablet). The registered set never moved -- "list_scanners" is absent from BOTH shells
-    # today, exactly as it was when this case was written -- so the gate did not break and the
-    # tree did not regress: the defect this arm was written to witness was REPAIRED for the
-    # scanner trio, and a guard that keeps asserting a repaired defect is a lie that prints
-    # False. It is re-anchored here to the one no-session fallback the real tree still holds,
-    # "list_products" -- unregistered in both shells, reached at
-    # ui/src/features/products/useProducts.ts:132.
-    # THE NAME IS NOT DROPPED: `len(real_fb) >= 1` alone passes for ANY fallback, so it cannot
-    # say the specific arm this leg was written for is still reachable -- which is why this case,
-    # and not the three synthetic ones above, is the thing that knows the shape was ever broken.
-    # One named witness stays; its population now rides in the case name, so a future red prints
-    # its own denominator instead of a bare False. Move the name only under a proven red, and
-    # read the print before deleting anything.
-    case("fallback the real tablet tree exposes the shape the leg was written for "
-         f"[n={len(real_fb)} names={sorted(real_fb)}]",
-         len(real_fb) >= 1 and "list_products" in real_fb)
+    # And the real tree, so a regex that matched only its own fixture cannot pass.
+    #
+    # LINEAGE, because this case has now gone stale twice for one reason and the fix has to
+    # name it: it pinned "list_scanners" until 3162b97b6 deleted that name from the else-arm,
+    # then "list_products" until b82373a80 ("finish the scoped-catalogue migration - drop the
+    # unscoped doors") deleted the unscoped product wrappers outright. Both times the LEG was
+    # right and the TREE was better -- the defect this arm witnesses had been repaired -- and
+    # both times the case reddened anyway, because a pinned name is a guard that forbids the
+    # very repair it exists to encourage.
+    #
+    # So the anchor is the MECHANISM, not a name. What the leg guarantees, and what is asserted
+    # below, is structural: (1) production UI still reaches at least one command through a
+    # no-session branch that its own shell does not register -- the shape exists in the real
+    # tree; (2) every name reported really is unregistered in the shell that reported it, so a
+    # witness cannot be a false positive; (3) every name carries a file:line site, so a red is
+    # actionable. That is STRONGER than the count it replaces, which checked neither (2) nor
+    # (3), and it no longer forbids a repair from landing.
+    #
+    # It is measured on BOTH shells, because the population moved and pinning the shell would
+    # repeat the same mistake one level up. The tablet measures 0 today -- a CLEAN result, not a
+    # blind leg: the same function over the same files reports witnesses against the desktop
+    # shell, so the difference is the registered set and not a walk that stopped walking. The
+    # synthetic cases above are what prove the leg can still find the shape at all.
+    _fb_ui = ui_runtime_files()
+    real_fb_shells = {}
+    for _fb_shell in ("tablet", "desktop"):
+        _fb_reg = set(extract_handlers(REPO_ROOT / SHELLS[_fb_shell]))
+        real_fb_shells[_fb_shell] = (_fb_reg, no_token_fallbacks(_fb_ui, _fb_reg))
+    real_fb = {n: v for _reg, _found in real_fb_shells.values() for n, v in _found.items()}
+    real_fb_sound = all(n not in _reg for _reg, _found in real_fb_shells.values() for n in _found)
+    real_fb_by_shell = {s: sorted(f) for s, (_r, f) in sorted(real_fb_shells.items())}
+    case("fallback the real tree still exposes the shape the leg was written for "
+         f"[n={len(real_fb)} names={sorted(real_fb)} by_shell={real_fb_by_shell}]",
+         len(real_fb) >= 1
+         and real_fb_sound
+         and all(all(":" in site for site in sites) for sites in real_fb.values()))
 
     # The reachability buckets, same discipline: without the second and third cases the first
     # would pass for a classifier that counts a wrapper's own definition as one of its users,
@@ -3527,6 +4026,85 @@ def self_test() -> int:
                                         "    table: Table,\n"
                                         "    state: State<'_, AppState>,\n) -> R {}\n")],
                               "c") == ["session_token", "table"])
+
+    # C41: the shell-blind leg. The C40 defect passed every other leg in this file because
+    # the shell-blind name sat in the "tablet" allowlist section, and an exemption that is
+    # correct for a desktop-only screen reads identically to one hiding a shared-UI call.
+    # These cases are the fixture for that shape and are differential on purpose: the same
+    # tree, once with the call guarded and once without.
+    _blind_hook = "ui/src/features/settings/hooks/useBackupStatus.ts"
+    _blind_api = "ui/src/api/data.ts"
+    _blind_shared = (
+        "import { isTabletShell } from '@/utils/shellKind';\n"
+        "import { getBackupStatus, exportData } from '@/api/data';\n"
+        "export function h() {\n"
+        "  if (isTabletShell()) { exportData(); }\n"
+        "  return getBackupStatus();\n"
+        "}\n"
+    )
+    _blind_guarded = _blind_shared.replace(
+        "  return getBackupStatus();",
+        "  return isTabletShell() ? null : getBackupStatus();",
+    )
+    _blind_api_src = (
+        "export const getBackupStatus = () => loggedInvoke('get_backup_status');\n"
+        "export const exportData = () => loggedInvoke('export_data');\n"
+    )
+    _blind_registered = {"export_data"}
+    _blind_gaps = {"get_backup_status"}
+    _blind_files = [(_blind_hook, _blind_shared), (_blind_api, _blind_api_src)]
+    _blind_found = shell_blind_findings(_blind_files, _blind_registered, _blind_gaps)
+    case("case 24  the C40 shape is FOUND: a shared-UI call this shell cannot serve",
+         "get_backup_status" in _blind_found)
+    case("case 24  and the finding names the file and the line, not only the command",
+         any("useBackupStatus.ts:5#" in h for h in _blind_found.get("get_backup_status", [])))
+    _blind_guarded_found = shell_blind_findings(
+        [(_blind_hook, _blind_guarded), (_blind_api, _blind_api_src)],
+        _blind_registered, _blind_gaps,
+    )
+    case("case 24  guarding the call clears it -- the leg is differential, not constant",
+         _blind_guarded_found == {})
+    _blind_no_shell = shell_blind_findings(
+        [(_blind_hook, _blind_shared.replace("isTabletShell()", "true")),
+         (_blind_api, _blind_api_src)],
+        _blind_registered, _blind_gaps,
+    )
+    case("case 24  a file that never branches on the shell is OUT OF SCOPE (limit 1)",
+         _blind_no_shell == {})
+    _blind_import_only = shell_blind_findings(
+        [(_blind_hook, "import { isTabletShell } from '@/utils/shellKind';\n"
+                       "import { getBackupStatus } from '@/api/data';\n"
+                       "if (isTabletShell()) { exportData(); }\n"),
+         (_blind_api, _blind_api_src)],
+        _blind_registered, _blind_gaps,
+    )
+    case("case 24  an IMPORT of the wrapper is not a call to it (masking is load-bearing)",
+         _blind_import_only == {})
+    _blind_real_tab = extract_handlers(REPO_ROOT / SHELLS["tablet"])
+    _blind_real_gaps = {c for c in extract_ui_commands() if c not in _blind_real_tab}
+    # The real-tree half of case 24, and the reason it does NOT pin a count. The count was 9
+    # when this case was written; C47 (464782f53) repaired three of the nine, the leg dropped
+    # them on its own with no edit here, and the tree now measures 6. A frozen number would
+    # have called that repair a regression and forbidden the leg from ever succeeding -- the
+    # same stale-expectation failure the fallback case above documents at length. What the
+    # mechanism actually guarantees is structural, and none of it is a population size:
+    #   1. it still REACHES the real tree -- a walk that silently returned {} would pass every
+    #      synthetic case in this block, so non-emptiness is what keeps them honest;
+    #   2. every name it reports is a command this shell genuinely does not register. That is
+    #      the assertion that matters, because this leg decides whether an allowlist entry is
+    #      hiding a live call: a finding outside `gaps` would be a false positive, and a false
+    #      positive here reads as somebody's legitimate exemption being wrong;
+    #   3. every name carries file:line#wrapper evidence, so a red is actionable.
+    # The population rides in the case NAME, so a future red prints its own denominator and the
+    # next reader can tell a repair (shrank) from a regression (grew) without re-deriving it.
+    _blind_real_found = shell_blind_findings(ui_runtime_files(), _blind_real_tab, _blind_real_gaps)
+    case("case 24  real tree: every shared-UI call the leg reports is one this shell cannot "
+         f"serve, and it still reports at least one [n={len(_blind_real_found)} "
+         f"names={sorted(_blind_real_found)}]",
+         len(_blind_real_found) >= 1
+         and all(name in _blind_real_gaps for name in _blind_real_found)
+         and all(all("#" in site and ":" in site for site in sites)
+                 for sites in _blind_real_found.values()))
 
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
@@ -3701,6 +4279,35 @@ def main() -> int:
             failures.append(
                 unreproduced_entry_message(shell, command, ALLOWLIST_PATH.name))
 
+    # C41: the shell-blind reachability leg. An allowlisted gap in a shell section is an
+    # exemption; this asks whether the shell will be asked for the command ANYWAY, from a
+    # file that has already declared it runs on both shells. See the block comment above
+    # shell_blind_findings for the rule and its stated limits.
+    blind_allow = section_names(allowlist, SHELL_BLIND_SECTION)
+    shell_blind = {}
+    for shell in SHELLS:
+        shell_blind[shell] = shell_blind_findings(
+            ui_runtime_files(), set(handlers[shell]), missing[shell]
+        )
+    all_blind = {}
+    for shell in SHELLS:
+        for command, hits in shell_blind[shell].items():
+            all_blind.setdefault(command, []).extend(f"{shell}::{h}" for h in hits)
+    for command in sorted(set(all_blind) - blind_allow):
+        failures.append(
+            shell_blind_message(
+                ", ".join(s for s in SHELLS if command in shell_blind[s]),
+                command,
+                all_blind[command],
+                ALLOWLIST_PATH.name,
+            )
+        )
+    for command in sorted(blind_allow - set(all_blind)):
+        failures.append(
+            f"stale {SHELL_BLIND_SECTION} entry '{command}' -- no shell-blind call site "
+            f"reproduces it any more; remove it from {ALLOWLIST_PATH.name}"
+        )
+
     mock_entries = allowlist_section(allowlist, "dev_mock")
     mock_allow = {name for name, _ in mock_entries}
     # A second read of the mock tree in this run. Ten small files, and the note below has to
@@ -3745,6 +4352,14 @@ def main() -> int:
         failures.append(
             f"stale dev_mock entry '{command}' -- the mock can now answer it; "
             f"remove it from {ALLOWLIST_PATH.name}"
+        )
+
+    for shell in SHELLS:
+        blind = shell_blind[shell]
+        print(
+            f"info[{shell}-shellblind]: {len(blind)} allowlisted gap(s) this shell is asked "
+            f"for from a file that branches on the shell (the C40 shape; "
+            f"{len(blind_allow)} allowlisted as shell_blind)"
         )
 
     for shell in SHELLS:

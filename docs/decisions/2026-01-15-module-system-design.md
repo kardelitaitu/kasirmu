@@ -29,7 +29,7 @@ The target architecture, defined in `ARCHITECTURE.md`, requires:
 
 A proof-of-concept trait definition already exists in `foundation/src/contracts.rs`.
 
-### Measured state of the first requirement (added 2026-10-04)
+### Measured state of the first requirement (added 2026-09-21)
 
 The first requirement above is the **target**. This is where the tree actually stands, because a
 reader who takes the sentence as a description will form the wrong picture (recorded by ADR #59

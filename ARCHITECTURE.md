@@ -500,11 +500,155 @@ All 6 restructuring phases have been completed.
 
 ---
 
+## Module Details
+
+> Merged here from `docs/architecture/ARCHITECTURE.md` on 2026-09-23 (documentation
+> audit): two files both claimed authority over this system and had diverged by 841
+> diff lines. This file is canonical; that path is now a pointer stub. Section content
+> carries the audit lineage of the source file (DSH 2026-09-08 stamp, C30 count pass
+> 2026-09-23), with one repair at the port: the `SetupWizard.tsx:70` citation named a
+> file deleted in the wizard retirement, so preset facts now point at their live owners.
+
+### kasirmu-core
+- **Responsibilities**: Foundation crate. Every other crate depends on it.
+- **Key types**:
+  - `Money(i64 minor_units, Currency)` — integer-only, checked arithmetic. Never f32/f64.
+  - `Currency([u8; 3])` — ISO-4217 currency code.
+  - `Cart` / `CartLine` — in-memory sale pipeline with currency matching.
+  - `Sale` / `SaleLine` — transaction lifecycle state machine: `Pending → Active → Completed | Voided`.
+  - `Product`, `Category`, `Inventory`, `Sku` — domain types with serde.
+  - `Feature` — **39** toggleable feature flags (counted over the `pub enum Feature` variants in `crates/kasirmu-core/src/features.rs`; the file's own `//!` header still says 32 and is stale — a code finding, left alone) with dependency resolution, and **6** setup presets: `simple-retail`, `restaurant`, `full-store`, `cafe`, `franchise`, `custom` (union in `ui/src/api/settings.ts`, keys in `shared-ui/locales/settings.ftl`, preset→feature bundles owned by `preset_feature_keys` in `crates/kasirmu-core/src/features.rs`). The count on this line said 5 until 08-09-26, the same stale count corrected in `docs/guides/developer/admin-guide.md` the same day.
+  - `Store<'a>` — typed CRUD facade over `&Connection`. All writes inside transactions.
+- **Migrations**: 66 SQLite `.sql` files plus the generated PG file, **67 in all as measured
+  2026-09-23** (`ls crates/kasirmu-core/migrations/*.sql | wc -l` → 67;
+  `ls crates/kasirmu-core/migrations/*.pg.sql | wc -l` → 1), embedded by the
+  `include_str!` list in `crates/kasirmu-core/src/migrations.rs`. Re-derive both numbers — this
+  line has now been corrected twice (44 → 59 → 67) because a migration lands with most slices.
+  The 131-file history was squashed into `20260813_init.sql` — not `init.sql`. `kasirmu_core::migrations::run(conn)` is invoked at
+  **application-state construction**, not by a platform subsystem:
+  `apps/desktop-tauri/src/state.rs:212`, `apps/mobile-tauri/src/state.rs:117`,
+  `apps/cloud-server/src/db.rs:134`, `crates/kasirmu-api/src/lib.rs:457` and `crates/kasirmu-cli`.
+  `platform/startup` does **not** run migrations — it only calls the
+  `migrations::fresh_db()` test helper in `event_handlers_tests.rs`.
+- **Rules**: `#![deny(unsafe_code)]` in `lib.rs`; `missing_docs = "warn"` comes from the root `[workspace.lints]` via `[lints] workspace = true` in every member manifest.
+
+### kasirmu-hal
+- **Responsibilities**: Uniform async API for all peripheral devices.
+- **Traits**: six device traits in `traits/` — `BarcodeScanner`, `ReceiptPrinter`, `CashDrawer`, `CustomerDisplay`, `WeightScale`, `EdcTerminal`. All async, all returning `Result<T, HalError>`.
+- **Registry**: `DriverRegistry` — `HashMap<String, Arc<dyn Trait>>` per device category behind `RwLock`. Register/lookup/discover. At startup, `platform-startup` maps the saved `TerminalProfile` → `HardwareConfig` and calls `apply_config()` to register the operator's devices under the exact ids commands look up. Barcode scanners are the exception and are enumerated instead (`HardwareConfig::autodetect_scanners` → `discover_scanners()`), because no caller names a scanner: the UI lists registered ids and hands one back. The rest of `discover()` is not a startup path — its hardware-derived ids can never satisfy a fixed-string lookup.
+- **Transport layer** (`transport/`): `usb.rs` enumerates HID-class and printer-class USB devices by known VID/PID pairs. `serial.rs` enumerates serial ports with POS adapter detection and Bluetooth SPP port filtering. `tcp.rs` provides async TCP connection helpers for network printers (port 9100).
+- **Real drivers**:
+  - `UsbHidBarcodeScanner` — USB HID interrupt transfers, HID keycode → ASCII conversion, Enter-terminated scan accumulation.
+  - `SerialBarcodeScanner` — serial port read until `\r`/`\n` terminator, configurable baud rate.
+  - `UsbReceiptPrinter` — ESC/POS formatting over USB bulk OUT.
+  - `BtReceiptPrinter` — Bluetooth SPP printer via virtual COM port. Auto-discovered by `serial::probe_bluetooth()`.
+  - `TcpReceiptPrinter` — TCP/network printer via raw port 9100. Registered through `registry.register_tcp_printer()` with user-provided IP/hostname.
+- **Shared ESC/POS** (`escpos.rs`): all printer drivers use a single `format_receipt()` helper and shared cut/init constants.
+- **Mock driver**: In `drivers/mock.rs` — programmable queues, error injection, call counters. Required for all tests.
+- Business code only uses traits via `DriverRegistry`; never imports concrete drivers.
+- Blocking USB/serial I/O wrapped in `tokio::task::spawn_blocking`. Device handles held behind `tokio::sync::Mutex`.
+
+### kasirmu-api
+- **Responsibilities**: Standalone REST API server for third-party integrations and headless operation.
+- **Stack**: axum 0.8 + jsonwebtoken + tower-http.
+- **Server**: Listens on port 3099 (`OZ_API_PORT` env var). `AppState` wraps `Arc<Mutex<Connection>>`.
+- **Auth**: JWT HS256 tokens. `POST /api/v1/tokens` creates them; when `OZ_ADMIN_KEY` is configured the mint requires the matching `X-Admin-Key` header (dev mode stays open when unset). `auth_middleware` guards protected routes.
+- **Sync plan gating** (ADR sync-plan-gating): the sync router runs `plan_middleware` between auth and the handler. With `OZ_ENFORCE_PLANS=1`, tenants on the `free` plan (or with no plan row) get `403 {"error":"plan_required"}`; plans live in the `tenant_plans` table, are set via `PUT /api/v1/tenants/{tenant_id}/plan`, and are upgraded automatically by paid Stripe subscriptions via the webhook.
+- **Routes**:
+  - Public: `GET /api/v1/health`
+  - Admin (`X-Admin-Key` when `OZ_ADMIN_KEY` is set; open in dev): `POST /api/v1/tokens`, `PUT /api/v1/tenants/{tenant_id}/plan`
+  - Protected (JWT): `GET/POST /api/v1/products`, `GET /api/v1/products/{sku}`, `PATCH /api/v1/products/{sku}/stock`, `GET /api/v1/categories`
+- **Tests**: 30+ integration tests on seeded in-memory databases.
+
+### kasirmu-cli
+- **Responsibilities**: Command-line administration tool (`oz` binary).
+- **Subcommands** (via clap): `migrate` (working), `backup` (stub), `export` (stub).
+- Uses `anyhow` for error propagation.
+
+### kasirmu-lua, kasirmu-payment, and kasirmu-reporting (implemented)
+These crates were originally scaffolded and are now fully implemented:
+
+- **kasirmu-lua** — Embedded Lua scripting runtime built on [`mlua`](https://github.com/mlua-rs/mlua). Loads merchant scripts from `scripts/` and exposes business-rule hooks (`apply_discount`, `calc_line_tax`, `validate_order`). Sandboxed VM with instruction/memory limits and a restricted global environment.
+- **kasirmu-payment** — `PaymentProcessor` trait with Stripe, Square, QRIS/Midtrans, Paddle, and mock implementations. Supports authorize, capture, void, refund, and sale flows.
+- **kasirmu-reporting** — Daily summaries, sales-by-hour, top-products, menu-engineering, and inventory reports; optional `metrics` feature for Prometheus-style counters/gauges.
+
+### kasirmu-security (implemented)
+- **Keyring trait** with three platform-native backends: Windows Credential Manager (`windows-sys`), macOS Keychain (`security-framework`), Linux Secret Service (`zbus`).
+- **InMemoryKeyring** fallback for development/CI.
+- **TlsConfig** — client cert + CA bundle loading, validation, builder API.
+- **Mask** — card number masking for PCI-DSS safe display.
+
+### kasirmu-logging
+- `tracing` + `tracing-subscriber` with env-filter.
+- Single `kasirmu_logging::init()` call wires up log sinks. Used by `apps/desktop-tauri` and `kasirmu-api`.
+- JSON formatter, syslog, and Windows Event Log outputs planned for Phase 2.
+
+### apps/desktop-tauri & apps/mobile-tauri (Tauri v2 Shells)
+Each app crate has an identical command surface, wired through `platform-startup`:
+- **Entry point**: `main.rs` → `lib.rs::run()`.
+- **State**: `AppState` holds `Mutex<Connection>` (SQLite WAL mode), `Arc<DriverRegistry>`, `AppHandle`.
+- **Commands**: the registered IPC surface is indexed by [`docs/guides/developer/api-reference.md`](./docs/guides/developer/api-reference.md), which owns the count — quote the number from there (the 505 figure that used to sit here counted registrations across 49 modules and was superseded by that file's audit of the registered surface).
+- **Error**: `AppError` — tagged JSON with `{kind, message}`, `From` impls for `CoreError`, `HalError`, `tauri::Error`.
+
+### platform/ (Platform Crates)
+- **platform-core**: Shared DB schema, Store facade, migration runner for all platform crates.
+- **platform-startup**: Initialisation orchestration — DB setup, event-handler registration, audit logging, and HAL hardware registration (`register_hardware` → `apply_config`). (It does **not** run the kasirmu-core migrations — see the Migrations line above.)
+- **platform-sync**: Offline-first sync engine with `SyncTransport` (reqwest-based HTTP push/pull), conflict detection, retry logic.
+
+### modules/ (Business Modules)
+14 modules wired via the event bus in `platform-startup`:
+- **sales**, **inventory**, **crm**, **tax**, **settings**, **staff**, **reporting**, **terminal**, **currency**, **giftcards**, **kitchen**, **loyalty**, **promotions**, **purchasing**
+- Each module registers event handlers (e.g. `SaleCompleted` → stock decrement, audit log, report update).
+- **Currency module** (`modules/currency`): Manages exchange rates, currency listings, and currency-format settings via `CurrencyRepository`. Provides `ExchangeRateRow`, `CurrencyDto`, `CurrencyError` (with `Platform`, `Db`, `Validation`, `NotFound` variants), and 15+ typed DB methods. All settings delegate to `platform_core::settings::Settings`. The original 15 `kasirmu-core` Store wrappers are `#[deprecated]` in favour of direct `CurrencyRepository` calls.
+
+### ui/ (React Frontend)
+- **Stack**: React 18 + TypeScript + Vite 6 + `@fluent/react` (i18n) + Vitest (testing).
+- **Architecture rule**: Components never call `invoke()` directly — they go through `ui/src/api/` (or a documented infrastructure adapter). `scripts/verify-architecture-boundaries.py` blocks new production direct calls and tracks existing exceptions in an expiring baseline.
+- **i18n rule**: All user-visible strings use `@fluent/react`. No hardcoded English in JSX.
+- **Types**: `ui/src/types/domain.ts` mirrors Rust types with branded TypeScript (CartId, LineId, Sku, Money).
+
+---
+
+## Build & Run Instructions
+1. **Install Rust toolchain** (stable) and `cargo`.
+2. **Install Node.js** (≥ 22) for the front‑end.
+3. **Install Tauri prerequisites** — see [Tauri docs](https://tauri.app/v2/guides/) for platform‑specific SDKs.
+4. **Bootstrap workspace**:
+   ```bash
+cargo build --workspace
+cd ui && npm ci --no-audit --no-fund && cd ..  # uses pinned install-script approvals
+cd apps/desktop-tauri && cargo tauri dev       # launches Tauri dev window
+   ```
+5. **Run on Android/iPad** — Use Tauri's mobile targets (requires Android SDK / Xcode).
+
+---
+
+## Extensibility
+- New device drivers can be added under `crates/kasirmu-hal/src/drivers/` by implementing the relevant trait.
+- Additional business logic can be scripted in Lua files placed in a `scripts/` directory (Phase 3).
+- Payment gateway integrations can be introduced as separate crates linked to `kasirmu-core`.
+- New REST endpoints go in `crates/kasirmu-api/src/routes/` and are registered in `lib.rs`.
+- See [MODULAR_APP_PLAN.md](./docs/architecture/MODULAR_APP_PLAN.md) for detailed execution roadmaps covering dynamic module lifecycle hot-reloading (`platform/kernel`), LAN peer-to-peer KDS sync, and Docker containerized cloud server deployments (`apps/cloud-server`).
+
+---
+
+## License & Commercial Governance
+- **Proprietary & Confidential (`All Rights Reserved`)**: See [`LICENSE`](./LICENSE) for terms.
+- No commercial deployment, redistribution, or modification is permitted without an executed commercial license agreement from kasir.mu Contributors.
+- Internal developer contributions are governed under proprietary contributor agreements; all code strictly adheres to quality gates enforced at pre-commit and beyond (pre-commit: LF normalization, bundle parity, FTL dedupe, migration column-type lint, PG drift guard, Go, FTL orphan lint; pre-push/CI additionally check `cargo fmt` and clippy — fmt left pre-commit on 2026-09-13). The live list of gates is whatever [`docs/operations/ci-pipeline.md`](./docs/operations/ci-pipeline.md) and `scripts/gates.json` say — do not re-derive it from this sentence.
+
+---
+
 ## Documentation Requirements
 
 Every module must contain:
 - `README.md` — Purpose, usage, configuration
-- `CHANGELOG.md` — Version history
+
+Version history lives in the single root `CHANGELOG.md` (plus per-release
+`CHANGELOG-0.0.XX.md` files under `docs/releases/`). A per-module
+`CHANGELOG.md` was previously required here; 0 of 14 modules carried one and
+no tooling reads them, so the rule was dropped by the 2026-09-23 documentation
+audit rather than kept as a requirement nothing satisfies.
 
 Every architectural change must create an Architecture Decision Record (ADR).
 As of September 2026 there are 71 ADRs in `docs/decisions/` (plus 2 archived). Key documents include:

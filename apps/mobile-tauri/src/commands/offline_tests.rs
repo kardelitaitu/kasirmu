@@ -315,6 +315,308 @@ fn run_requeue_remote_failure_unknown_id_errors() {
     }
 }
 
+// ── C54: the tablet retry path's push order, and its twin ────────
+//
+// `retry_offline_sync_scoped` is the tablet's own body for the operation the
+// desktop delegates to `kasirmu_bridge::offline::retry_offline_sync_scoped`.
+// Two implementations, one operation — the divergent-twin class. This test is
+// the tablet's call-site proof, which the bridge's test file cannot provide:
+// the tablet command needs `AppState`, and the bridge harness builds a
+// `BridgeCtx`.
+//
+// It asserts the ORDER OF THE HTTP REQUEST BODY captured from a raw loopback
+// socket (this crate has no mock-HTTP dev-dependency), the same pattern
+// `sync_tests.rs` uses for `sync_run_scoped`. The queue is seeded in the WRONG
+// order on purpose — Low first — so `Store::list_pending_offline`'s
+// `ORDER BY created_at ASC` alone would push Low ahead of Critical. Deleting
+// the `order_for_push` call makes this fail: that is the C20 negative control.
+#[tokio::test]
+async fn retry_offline_sync_scoped_pushes_critical_before_an_earlier_low_item() {
+    use crate::commands::sync::{UpdateSyncSettingsArgs, update_sync_settings_data};
+    use crate::state::AppState;
+    use kasirmu_core::Store;
+    use kasirmu_core::auth;
+    use kasirmu_core::migrations;
+    use kasirmu_core::offline::SyncPriority;
+    use kasirmu_core::session::SessionContext;
+    use platform_core::StoreDatabaseManager;
+    use tauri::Manager as _;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    // Fake push server: accept one request, capture the body, accept all three.
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server_url = format!("http://{}", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move {
+        let Ok((mut socket, _)) = listener.accept().await else {
+            return String::new();
+        };
+        let mut buffer = vec![0_u8; 16 * 1024];
+        let read = socket.read(&mut buffer).await.unwrap_or(0);
+        let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+        let body =
+            r#"{"results":[{"outcome":"accepted"},{"outcome":"accepted"},{"outcome":"accepted"}]}"#;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let _ = socket.write_all(response.as_bytes()).await;
+        request
+    });
+
+    // The global db carries identity (roles + user) only; the scoped store db is
+    // a separate file the manager creates below.
+    let conn = migrations::fresh_db();
+    let sync_user_id = {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+        let hash = auth::hash_pin("1234").unwrap();
+        store
+            .create_user("sync-admin", &hash, "Sync Admin", "role-owner")
+            .unwrap()
+            .id
+    };
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut state = AppState::for_test_with_conn(conn);
+    state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
+    state.session_store.write().unwrap().insert(
+        "retry-order-token".into(),
+        SessionContext::new(
+            sync_user_id,
+            "role-owner".into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "instance-1".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    // Settings and the queue go through the STORE db — the queue the scoped push
+    // reads. Enqueued Low first, on purpose.
+    {
+        let state = app.state::<AppState>();
+        let conn_arc = state.resolve_store("retry-order-token").unwrap();
+        let db_guard = conn_arc.lock().unwrap();
+        update_sync_settings_data(
+            &db_guard,
+            &UpdateSyncSettingsArgs {
+                server_url: Some(server_url),
+                api_key: Some("test-jwt".into()),
+                enabled: true,
+            },
+        )
+        .unwrap();
+        let store = Store::new(&db_guard);
+        store
+            .enqueue_offline_priority("bulk", r#"{"n":1}"#, SyncPriority::Low)
+            .unwrap();
+        store
+            .enqueue_offline_priority("money", r#"{"n":2}"#, SyncPriority::Critical)
+            .unwrap();
+        store
+            .enqueue_offline_priority("catalog", r#"{"n":3}"#, SyncPriority::Normal)
+            .unwrap();
+    }
+
+    let result = retry_offline_sync_scoped("retry-order-token".into(), app.state()).await;
+    let request = task.await.expect("the fake server task must finish");
+    let body_start = request.find("\r\n\r\n").expect("a complete HTTP request") + 4;
+    let body = &request[body_start..];
+    let sent: Vec<String> =
+        serde_json::from_str::<Vec<kasirmu_core::offline::OfflineQueueItem>>(body)
+            .expect("the push body is the item array")
+            .iter()
+            .map(|i| i.action.clone())
+            .collect();
+    assert_eq!(
+        sent,
+        vec!["money", "catalog", "bulk"],
+        "the REQUEST BODY must carry Critical before Normal before Low; delete the \
+         order_for_push call and the Low item leads, which is the C20 negative control"
+    );
+
+    // ── C59: THE ASSERTION THAT CLOSES THE DUPLICATE-PUSH LOOP ──────
+    //
+    // This replaced the C54 divergence pin, which asserted the command returned
+    // `AppError::Core { sub_kind: NotFound }` after the body proved the push
+    // succeeded — the pin existed so that whoever fixed Phase 3 had to delete it on
+    // purpose. This is that fix.
+    //
+    // Before: Phase 3 wrote `state.db` (the GLOBAL identity db), where these
+    // store-row ids do not exist, so `mark_offline_synced` returned NotFound and the
+    // `?` in `apply_sync_outcomes` aborted the command. The rows stayed `pending`
+    // and every retry re-sent them forever.
+    // After: the command returns Ok and the STORE rows the push read are `synced`,
+    // so the next `list_pending_offline` no longer offers them.
+    let result = result.expect("a successful push must no longer abort on Phase 3");
+    assert_eq!(result.synced_count, 3, "all three items are accepted");
+    assert_eq!(result.failed_count, 0);
+    assert!(!result.plan_required);
+
+    // Assertion 1 — the STORE rows flip to `synced` and the pending queue drains.
+    // This is the observable difference: pre-fix these were still `pending`.
+    {
+        let state = app.state::<AppState>();
+        let conn_arc = state.resolve_store("retry-order-token").unwrap();
+        let db_guard = conn_arc.lock().unwrap();
+        let store = Store::new(&db_guard);
+        let items = store.list_all_offline().unwrap();
+        assert_eq!(items.len(), 3);
+        assert!(
+            items.iter().all(|i| i.status == OfflineQueueStatus::Synced),
+            "every pushed item must be marked synced in the STORE db, got {:?}",
+            items
+                .iter()
+                .map(|i| (&i.action, &i.status))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            store.pending_offline_count().unwrap(),
+            0,
+            "the pending queue must drain, or the next retry re-sends the same items"
+        );
+    }
+
+    // Assertion 2 — the GLOBAL database queue is untouched. Phase 3 used to write
+    // its marks there; this is the assertion that keeps the fix from silently
+    // re-introducing that.
+    {
+        let state = app.state::<AppState>();
+        let db = state.db.lock().await;
+        let items = Store::new(&db).list_all_offline().unwrap();
+        assert!(
+            items.is_empty(),
+            "the global offline_queue must not receive scoped marks, got {items:?}"
+        );
+    }
+}
+
+/// The other half: a GENUINE push failure must not mark anything `synced`.
+///
+/// The fix moved Phase 3's write target, and the hazard of that kind of change is
+/// over-marking — a body that reports success for a push that never landed. This
+/// drives a real HTTP 500 through the same path and pins the honest outcome: the
+/// command does not abort, nothing is `synced`, and the failure is RECORDED on the
+/// store rows (`failed` + `last_error` + `retry_count`), which is the pre-existing
+/// `mark_all_failed` contract this slice did not change.
+#[tokio::test]
+async fn retry_offline_sync_scoped_records_a_push_failure_without_marking_synced() {
+    use crate::commands::sync::{UpdateSyncSettingsArgs, update_sync_settings_data};
+    use crate::state::AppState;
+    use kasirmu_core::Store;
+    use kasirmu_core::auth;
+    use kasirmu_core::migrations;
+    use kasirmu_core::session::SessionContext;
+    use platform_core::StoreDatabaseManager;
+    use tauri::Manager as _;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    // Fake push server: a genuine server-side failure, not a plan gate.
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server_url = format!("http://{}", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move {
+        let Ok((mut socket, _)) = listener.accept().await else {
+            return;
+        };
+        let mut buffer = vec![0_u8; 16 * 1024];
+        let _ = socket.read(&mut buffer).await;
+        let body = r#"{"error":"upstream exploded"}"#;
+        let response = format!(
+            "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let _ = socket.write_all(response.as_bytes()).await;
+    });
+
+    let conn = migrations::fresh_db();
+    let sync_user_id = {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+        let hash = auth::hash_pin("1234").unwrap();
+        store
+            .create_user("sync-admin", &hash, "Sync Admin", "role-owner")
+            .unwrap()
+            .id
+    };
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut state = AppState::for_test_with_conn(conn);
+    state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
+    state.session_store.write().unwrap().insert(
+        "retry-fail-token".into(),
+        SessionContext::new(
+            sync_user_id,
+            "role-owner".into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "instance-1".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    {
+        let state = app.state::<AppState>();
+        let conn_arc = state.resolve_store("retry-fail-token").unwrap();
+        let db_guard = conn_arc.lock().unwrap();
+        update_sync_settings_data(
+            &db_guard,
+            &UpdateSyncSettingsArgs {
+                server_url: Some(server_url),
+                api_key: Some("test-jwt".into()),
+                enabled: true,
+            },
+        )
+        .unwrap();
+        Store::new(&db_guard)
+            .enqueue_offline("complete_sale", r#"{"id":"will-fail"}"#)
+            .unwrap();
+    }
+
+    let result = retry_offline_sync_scoped("retry-fail-token".into(), app.state()).await;
+    task.await.expect("the fake server task must finish");
+
+    let result = result.expect("a recorded push failure is not a command abort");
+    assert_eq!(result.synced_count, 0, "nothing was accepted");
+    assert_eq!(result.failed_count, 1, "the failure is counted");
+
+    let state = app.state::<AppState>();
+    let conn_arc = state.resolve_store("retry-fail-token").unwrap();
+    let db_guard = conn_arc.lock().unwrap();
+    let store = Store::new(&db_guard);
+    let items = store.list_all_offline().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_ne!(
+        items[0].status,
+        OfflineQueueStatus::Synced,
+        "a failed push must never be recorded as synced"
+    );
+    assert_eq!(items[0].status, OfflineQueueStatus::Failed);
+    assert_eq!(
+        items[0].retry_count, 1,
+        "the attempt is counted for retry policy"
+    );
+    assert!(
+        items[0].last_error.is_some(),
+        "the reason must be recorded on the row, not swallowed"
+    );
+}
+
 #[test]
 fn requeue_remote_failure_args_deserialize() {
     let json = r#"{"itemId":"dl-1"}"#;

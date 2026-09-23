@@ -31,7 +31,7 @@ Modern POS systems often suffer from vendor lock-in, expensive subscriptions, cl
 - **Modular by design** — Independent modules for inventory, CRM, reporting, etc.
 - **Secure by default** — Encrypted `.kasirpkg` snapshots (whole-file `.db` backups are unencrypted), PAN masking, platform keychains
 - **Hardware abstraction** — Vendor-independent drivers for printers, scanners, displays, payment terminals, scales
-- **Enterprise-grade code quality** — 8,355 Rust `#[test]` functions and 593 front-end test files (measured 2026-09-18: `grep -rn --include='*.rs' -o '#\[test\]' . | wc -l` → 8,355; `find ui/src/__tests__ -type f | wc -l` → 593); strict Clippy (a project standard that developers and `scripts/check.sh` enforce, not CI); typed Money; transactional DB. The Vitest case total is not measured — it exists only in a run, and none is recorded here.
+- **Enterprise-grade code quality** — 8,695 Rust `#[test]` functions and 607 front-end test files (measured 2026-09-23; re-derive both, they move with every slice: `grep -rn --include='*.rs' -o '#\[test\]' . | wc -l` → 8,695; `ls ui/src/**/*.test.* | wc -l` → 607). Note the two front-end bases differ and are not interchangeable: 607 is `ui/src/**/*.test.*` (what the command above counts), while `ls ui/src/__tests__/**/* | wc -l` → 616 counts every file in that directory including one `.json` fixture. Quote the base with the number. Strict Clippy (a project standard that developers and `scripts/check.sh` enforce, not CI); typed Money; transactional DB. The Vitest **case** total is not measured — it exists only in a run, and none is recorded here.
 
 ---
 
@@ -115,7 +115,7 @@ kasir.mu/
 ├─ crates/                   # unchanged — the 17 libraries
 │
 ├─ shared-ui/                # NEW — assets no UI toolkit owns
-│   ├─ locales/              # ← ui/src/locales/  (54 .ftl, ~9,841 message definitions, en+id)
+│   ├─ locales/              # ← ui/src/locales/  (54 .ftl — `ls shared-ui/locales/*.ftl | wc -l`; ~9,751 message definitions — `grep -rhE '^[A-Za-z][A-Za-z0-9_.-]*[[:space:]]*=' shared-ui/locales | wc -l`; en+id)
 │   └─ tokens/               # ← token VALUES lifted out of tokens.css (DEFERRED — see P9b)
 │                              #   (NOT created empty — see principle 2)
 │
@@ -124,12 +124,12 @@ kasir.mu/
 │   ├─ index.mobile.html     # unchanged — <script src="/src/main.mobile.tsx">
 │   └─ src/
 │       ├─ app/              # ← frontend/shell/        (11 files + 1 subdir)
-│       ├─ components/       # ← components/ (55, survives) MERGED WITH frontend/shared/ (22)
+│       ├─ components/       # ← components/ (42 .tsx + 26 .css = 68 files — `ls ui/src/components/* | wc -l`; MERGED WITH frontend/shared/, whose former 22 files are NOT re-derivable from this checkout because that directory no longer exists)
 │       ├─ theme/            # ← frontend/themes/       (CSS binding only — values lift in P9b)
 │       ├─ registries/       # ← platform/ui/           (4 files: page/menu/widget registry + icon)
-│       ├─ api/              # unchanged (51 files)
+│       ├─ api/              # unchanged (53 .ts files — `ls ui/src/api/*.ts | wc -l`)
 │       ├─ features/         # unchanged (35 dirs + index.ts barrel)
-│       ├─ hooks/ utils/ contexts/ types/ i18n/ test-utils/ dev-mock/ __tests__/
+│       ├─ hooks/ utils/ contexts/ types/ i18n/ dev-mock/ __tests__/   # test-utils is a FILE (`ui/src/test-utils.tsx`), not a directory
 │       ├─ App.tsx           # unchanged
 │       ├─ main.tsx          # unchanged — Vite entry, referenced by index.html
 │       └─ main.mobile.tsx   # unchanged — referenced by index.mobile.html
@@ -146,16 +146,18 @@ kasir.mu/
 │
 ├─ prototypes/               # ← dev/              (KDS PWA prototype: kds-pwa/, app.js, sw.js…)
 │
-├─ docs/                     # unchanged 15 subdirs, PLUS:
+├─ docs/                     # 16 subdirs (`ls -d docs/*/ | wc -l`), PLUS:
 │   └─ plans/                #   NO CHANGE — the root .md files are the owner's working files
 │                              #   and stay at the root. Includes this file and
 │                              #   DSH.md, which is also a root-name tool contract
 │
-├─ website/                  # unchanged (separate Cloudflare deploy, 208 tracked files)
-├─ scripts/                  # unchanged (165 tracked files)
+├─ website/                  # unchanged (separate Cloudflare deploy; tracked-file count removed
+│                             #   2026-09-23, C30 — it cannot be re-derived without git, and a
+│                             #   number nobody can re-derive is what C30 exists to remove)
+├─ scripts/                  # unchanged (same: the tracked-file count was removed, not restated)
 ├─ assets/  fuzz/            # unchanged — fuzz/ stays workspace-excluded on purpose
 │
-├─ .github/workflows/        # 2 live: dev-ci.yml, release.yml
+├─ .github/workflows/        # 3 live: dev-ci.yml, release.yml, android.yml (`ls .github/workflows/*.yml`)
 │   └─ attic/                # ← the retired *.yml.bak files
 │
 └─ <root files>              # see §5 of todo-project-folder-restructure.md — only what a tool looks up BY NAME at the project root,
@@ -174,7 +176,7 @@ kasir.mu/
 | Desktop Shell | Tauri v2 | Native window, IPC bridge, updater |
 | Mobile Shell | Tauri v2 | Native window, IPC bridge, updater (Android) |
 | Frontend | React 18 + TypeScript + Vite 6 | POS UI |
-| Database | SQLite (rusqlite) | On-device persistence, 59 migration files (2026-09-13: `ls crates/kasirmu-core/migrations/*.sql \| wc -l` = 59, of which 58 are SQLite and one is the generated `20260813_init.pg.sql`; the 131 pre-Aug-2026 ones squashed into `20260813_init.sql`) |
+| Database | SQLite (rusqlite) | On-device persistence, 67 migration files — `ls crates/kasirmu-core/migrations/*.sql \| wc -l` = 67 (measured 2026-09-23), of which 66 are SQLite and one is the generated `20260813_init.pg.sql` (`ls crates/kasirmu-core/migrations/*.pg.sql \| wc -l` = 1; that file is generated by `scripts/generate-pg-migration.py`, never hand-edited). The 131 pre-Aug-2026 ones squashed into `20260813_init.sql`. Re-derive both numbers rather than quoting these — a migration lands with most slices. |
 | Localization | @fluent/react | All UI strings in `.ftl` files (54 files, shared-ui/locales/) |
 | Hardware | kasirmu-hal traits | USB/TCP/BT/serial/mock drivers |
 | Money | `i64` minor units | Never `f32`/`f64` — Currency, Money structs |
@@ -211,7 +213,7 @@ See [docs/guides/developer/QUICKSTART.md](./docs/guides/developer/QUICKSTART.md)
 | `npm run build:mobile` | Mobile production build |
 | `npm run typecheck` | TypeScript validation |
 | `npm run lint` | ESLint + jsx-a11y |
-| `npm run test` | Vitest — 593 files under `ui/src/__tests__` (`find ui/src/__tests__ -type f \| wc -l`). No case total: that number exists only in a run, and none is recorded here. |
+| `npm run test` | Vitest — 607 test files under `ui/src` (`ls ui/src/**/*.test.* \| wc -l` = 607, measured 2026-09-23). The base matters: `ls ui/src/__tests__/**/* \| wc -l` = 616 counts every file in that directory including one `.json` fixture, and is a different number for a different reason. No **case** total: that number exists only in a run, and none is recorded here. |
 | `npm run e2e` | Full E2E suite: Docker → Vite → Playwright → cleanup |
 | `npm run e2e:headed` | E2E with browser visible |
 | `npm run e2e:api` | API integration tests only |
@@ -224,8 +226,8 @@ See [docs/guides/developer/QUICKSTART.md](./docs/guides/developer/QUICKSTART.md)
 | Command | Action |
 |---|---|
 | `cargo fmt --all` | Format Rust code (CI checks it: the `Cargo fmt check` step in `dev-ci.yml` runs `cargo fmt --all -- --check` — cited by step name, not line number, because lines move) |
-| `cargo clippy --all-targets -- -D warnings` | Lint — **local only**: `grep -c clippy` over the two live workflows (`dev-ci.yml`, `release.yml`) returns 0, so this gate is run by `scripts/release.sh` and by the step NAMED `clippy workspace` inside `scripts/check.sh` — re-find it by that name with `grep -n 'clippy workspace' scripts/check.sh`, because the `:44` this row carried predates `ee5aacd46`, which moved the step, and a pointer verified today is false the next time anyone inserts a leg above it — never by CI |
-| `cargo test --workspace` | Run tests (8,355 `#[test]` fns — `grep -rn --include='*.rs' -o '#\[test\]' . \| wc -l`, 2026-09-18; 8,280 on 2026-09-15) |
+| `cargo clippy --all-targets -- -D warnings` | Lint — **local only**: `grep -c clippy` over the live workflows (`ls .github/workflows/*.yml` → `android.yml`, `dev-ci.yml`, `release.yml`) returns 0, so this gate is run by `scripts/release.sh` and by the step NAMED `clippy workspace` inside `scripts/check.sh` — re-find it by that name with `grep -n 'clippy workspace' scripts/check.sh`, because the `:44` this row carried predates `ee5aacd46`, which moved the step, and a pointer verified today is false the next time anyone inserts a leg above it — never by CI |
+| `cargo test --workspace` | Run tests (8,695 `#[test]` fns — `grep -rn --include='*.rs' -o '#\[test\]' . \| wc -l` = 8,695, measured 2026-09-23; it was 8,280 on 2026-09-15 and 8,355 on 2026-09-18, so quote the command, not the figure) |
 | `bash scripts/check.sh` | The FULL local matrix (Rust + UI + migrations), run by hand — **not** what `git push` runs. `.githooks/pre-push` invokes `scripts/run-pre-push.py` and nothing else (one call site, re-find it with `grep -n 'run-pre-push.py \$FLAGS' .githooks/pre-push`; the `:83-84` this row carried moved to a lower line inside the hour when `f5ec19201` widened the hook, which is the reason it is cited by pattern and not by number), and that script never calls `check.sh` (`grep -n check.sh .githooks/pre-push scripts/run-pre-push.py` exits 1, on the working copy and on the `HEAD` blob). What a push does run is a SUBSET of this matrix: the always-on static gates, then path-routed `cargo check --workspace`, `cargo fmt --check`, `ui typecheck`, `ui vite… |
 | `bash scripts/coverage.sh` | Rust + UI coverage reports |
 | `bash scripts/reset-dev-pg.sh` | Reset the dev PostgreSQL container to the committed PG_INIT schema (`.ps1` twin on Windows) |
@@ -240,7 +242,7 @@ See [docs/guides/developer/QUICKSTART.md](./docs/guides/developer/QUICKSTART.md)
 | **Frontend** | Component tests, feature tests, localization validation, accessibility checks |
 | **Coverage** | LLVM source-based (Rust) + v8 (UI) — HTML + JSON in `coverage/` |
 
-Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before merge — as policy. As enforcement only three of the four fail a build: `cargo fmt --all -- --check` is CI (the `Cargo fmt check` step in `dev-ci.yml`), typecheck and Vitest are CI (`dev-ci.yml#ui-test`), and **Clippy runs in no live workflow** — `grep -c clippy .github/workflows/dev-ci.yml .github/workflows/release.yml` prints `:0` for both files and exits 1 (re-verified 2026-09-18); the only clippy left anywhere under `.github/workflows/` is inside the retired `.github/workflows/attic/ci.yml.bak` (moved to `attic/` in P4 of the folder restructure), which `grep -rln clippy .github/workflows/` names alone (3 matches) — so it is local policy: it runs in `scripts/release.sh` and in the step NAMED `clippy workspace` inside `scripts/check.sh` (`grep -n 'clippy workspace' scripts/check.sh` — ci…
+Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before merge — as policy. As enforcement only three of the four fail a build: `cargo fmt --all -- --check` is CI (the `Cargo fmt check` step in `dev-ci.yml`), typecheck and Vitest are CI (`dev-ci.yml#ui-test`), and **Clippy runs in no live workflow** — `grep -c clippy .github/workflows/*.yml` prints `:0` for every live file and exits 1 (re-verified 2026-09-23 over all three: `android.yml`, `dev-ci.yml`, `release.yml`); the only clippy left anywhere under `.github/workflows/` is inside the retired `.github/workflows/attic/ci.yml.bak` (moved to `attic/` in P4 of the folder restructure), which `grep -rln clippy .github/workflows/` names alone (3 matches) — so it is local policy: it runs in `scripts/release.sh` and in the step NAMED `clippy workspace` inside `scripts/check.sh` (`grep -n 'clippy workspace' scripts/check.sh` — ci…
 
 ---
 
@@ -251,9 +253,9 @@ Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before mer
 | Phase (ROADMAP) | State | What's real | What's still open |
 |---|---|---|---|
 | 1 — Foundation & MVP | Done | Scan → cart → pay → receipt, setup wizard, feature flags, Money/CRUD core | Windows/Linux launch box unchecked |
-| 2 — Hardening | Done | kasirmu-security, kasirmu-logging, backup/restore, updaters, packaging | Log sinks exist but are never wired (no log file on any shipped binary); security/nightly CI retired to `.bak` |
+| 2 — Hardening | Done | kasirmu-security, kasirmu-logging, backup/restore, updaters, packaging | **Log output is stdout-only on every shipped binary.** Precisely: `kasirmu_logging::try_init()` IS called by all three apps (desktop `apps/desktop-tauri/src/lib.rs:108`, tablet `apps/mobile-tauri/src/lib.rs:82`, cloud `apps/cloud-server/src/main.rs:217`) and it writes to stdout at info level; the file/rotation, syslog and eventlog sinks are the part that is never wired — `try_init_with_file`, `try_init_json_with_file`, `init_syslog` and `init_eventlog` have zero call sites outside their own crate and its tests (`grep -rn 'try_init_with_file\|init_syslog\|init_eventlog' --include='*.rs' .` → definitions + `crates/kasirmu-logging/src/lib_tests.rs` only). So an incident has console output but **no log file to hand a support engineer**. Corrected 2026-09-23 (C30): the previous wording read as if logging were not initialised at all, which is the false half; security/nightly CI retired to `.bak` |
 | 3 — Transactions & Staff | Done | Void/refund/hold/split, PIN auth + RBAC, shifts + EOD, tax engine, Lua runtime | — |
-| 4 — Scaling | Done, 2 gaps | Cloud sync (outbox → PG/HTTP), multi-store + terminals, Stripe/Square/QRIS, Android tablet build, responsive UI | Exchange-rate auto-sync daemon never starts (rates are manager-entered); receipt carries charge currency only, no base-currency line |
+| 4 — Scaling | Done, 2 gaps | Cloud sync (outbox → PG/HTTP), multi-store + terminals, Stripe/Square/QRIS, Android tablet build, responsive UI | **Exchange-rate auto-sync daemon never starts — re-verified TRUE 2026-09-23.** `init_rate_sync` is defined at `platform/startup/src/lib.rs:429` and `grep -rn 'init_rate_sync' --include='*.rs' .` returns that definition and nothing else, so there is no caller in any app (rates are manager-entered); receipt carries charge currency only, no base-currency line |
 | 5 — Intelligence | Done, 1 gap | Daily/weekly/monthly + EOD reporting, revenue/COGS/gross-profit, dashboards, en+id i18n | Custom report builder + cloud-warehouse export never built |
 | 6 — Ecosystem | Done, 1 gap | Loyalty, promotions, bundles, KDS, kiosk, table management, plugin sandbox, theming | Voice checkout (research, deferred) |
 

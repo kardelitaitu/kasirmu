@@ -7,6 +7,106 @@ use super::*;
 
 use std::sync::Arc;
 
+// ── C49: the push path CALLS the shared ordering rule ────────────
+//
+// The three comparator tests that used to live here are gone on purpose: the
+// comparator moved to `kasirmu_core::offline::order_for_push` and is tested
+// there, so re-asserting it here would be a second copy of the same test. What
+// this file must prove instead is the thing the C20 slice could NOT — that
+// `sync_run_scoped` actually CALLS it. Deleting the call used to leave these
+// tests green, which is exactly the gap this test closes.
+
+/// End-to-end: a LOW-priority item is enqueued FIRST, so the un-sorted read
+/// puts it at the head of the batch, and the HTTP body the bridge actually
+/// sends must carry the Critical item first.
+///
+/// This asserts the ORDER OF THE REQUEST BODY, not a sorted local vector, so it
+/// fails if the call site is removed. The server is a raw loopback socket that
+/// captures the pushed JSON — the same pattern the tablet's
+/// `sync_run_scoped_marks_store_queue_and_leaves_global_untouched` uses, chosen
+/// over a mock HTTP crate because `kasirmu-bridge` has no dev-dependency on one.
+#[tokio::test]
+async fn sync_run_scoped_pushes_critical_before_an_earlier_low_item() {
+    use kasirmu_core::offline::SyncPriority;
+    use kasirmu_core::permissions;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    // Fake push server: accept one request, capture the body, accept every item.
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server_url = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        let Ok((mut socket, _)) = listener.accept().await else {
+            return String::new();
+        };
+        let mut buffer = vec![0_u8; 64 * 1024];
+        let read = socket.read(&mut buffer).await.unwrap_or(0);
+        let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+        let body =
+            r#"{"results":[{"outcome":"accepted"},{"outcome":"accepted"},{"outcome":"accepted"}]}"#;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let _ = socket.write_all(response.as_bytes()).await;
+        request
+    });
+
+    let bridge = crate::testing::TestBridge::new();
+    let token = bridge.token_granting(permissions::SYNC_MANAGE).await;
+    let store_id = "store-pin";
+
+    // Configure sync through the PRODUCTION setter, not raw keys: `from_settings`
+    // reads the typed `sync_enabled` / `sync.server_url` rows, and a hand-written
+    // `sync.enabled` is simply ignored — the run then returns synced 0 and the
+    // test would assert nothing.
+    {
+        let conn = bridge.db_manager().open_store(store_id).unwrap();
+        let db = conn.lock().unwrap();
+        update_sync_settings_data(
+            &db,
+            &UpdateSyncSettingsArgs {
+                server_url: Some(server_url.clone()),
+                api_key: Some("test-jwt".into()),
+                enabled: true,
+            },
+        )
+        .unwrap();
+        let store = Store::new(&db);
+        store
+            .enqueue_offline_priority("bulk", r#"{"n":1}"#, SyncPriority::Low)
+            .unwrap();
+        store
+            .enqueue_offline_priority("money", r#"{"n":2}"#, SyncPriority::Critical)
+            .unwrap();
+        store
+            .enqueue_offline_priority("catalog", r#"{"n":3}"#, SyncPriority::Normal)
+            .unwrap();
+    }
+
+    let ctx = bridge.ctx();
+    let result = sync_run_scoped(&ctx, &token)
+        .await
+        .expect("the push must reach the fake server");
+    assert_eq!(result.synced, 3, "all three items are accepted");
+
+    let request = server.await.expect("the fake server task must finish");
+    let body_start = request.find("\r\n\r\n").expect("a complete HTTP request") + 4;
+    let body = &request[body_start..];
+    let sent: Vec<String> =
+        serde_json::from_str::<Vec<kasirmu_core::offline::OfflineQueueItem>>(body)
+            .expect("the push body is the item array")
+            .iter()
+            .map(|i| i.action.clone())
+            .collect();
+    assert_eq!(
+        sent,
+        vec!["money", "catalog", "bulk"],
+        "the REQUEST BODY must carry Critical before Normal before Low — the call-site assertion the C20 slice could not make"
+    );
+}
+
 #[test]
 fn sync_settings_serialize() {
     let s = SyncSettingsDto {

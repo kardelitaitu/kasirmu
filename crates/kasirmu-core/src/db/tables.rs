@@ -61,6 +61,21 @@ fn validate_table_geometry(table: &Table) -> Result<(), CoreError> {
     Ok(())
 }
 
+/// Read one table row on a connection OR a caller-owned transaction
+/// (`Transaction` derefs to `Connection`).
+/// Free rather than a `Store` method because C18 P1.12's write paths must read
+/// back through the SAME transaction they wrote in; `Store::get_table` is the
+/// public wrapper over this.
+fn read_table(conn: &rusqlite::Connection, id: &str) -> Result<Option<Table>, CoreError> {
+    let mut stmt = conn.prepare("SELECT * FROM tables WHERE id = ?1")?;
+    let result = stmt.query_row(params![id], Store::row_to_table);
+    match result {
+        Ok(t) => Ok(Some(t)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
 impl Store<'_> {
     fn row_to_table(row: &rusqlite::Row) -> rusqlite::Result<Table> {
         let active_int: i64 = row.get("active")?;
@@ -103,13 +118,7 @@ impl Store<'_> {
 
     /// Look up a single table by id.
     pub fn get_table(&self, id: &str) -> Result<Option<Table>, CoreError> {
-        let mut stmt = self.conn.prepare("SELECT * FROM tables WHERE id = ?1")?;
-        let result = stmt.query_row(params![id], Self::row_to_table);
-        match result {
-            Ok(t) => Ok(Some(t)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+        read_table(self.conn, id)
     }
 
     /// Insert a new table; assigns a UUID if `table.id` is empty.
@@ -295,9 +304,33 @@ impl Store<'_> {
     }
 
     /// Set table status to `occupied` and link it to an active sale.
+    /// # Transaction behaviour (C18 P1.12)
+    ///
+    /// The UPDATE and the read-back are one unit of work: a caller that rolls
+    /// back must not leave the table `occupied`, and the read-back must observe
+    /// the row this call wrote rather than a concurrent one. So the pair runs in
+    /// a single transaction — the caller's if one is open (SQLite has no nested
+    /// `BEGIN`), this method's own in autocommit. The `log_audit` idiom.
     pub fn assign_table_order(&self, table_id: &str, sale_id: &str) -> Result<Table, CoreError> {
+        if self.conn.is_autocommit() {
+            let tx = self.conn.unchecked_transaction()?;
+            let table = Self::assign_table_order_on(&tx, table_id, sale_id)?;
+            tx.commit()?;
+            Ok(table)
+        } else {
+            Self::assign_table_order_on(self.conn, table_id, sale_id)
+        }
+    }
+
+    /// The UPDATE plus its read-back, on a connection OR a caller-owned
+    /// transaction (`Transaction` derefs to `Connection`).
+    fn assign_table_order_on(
+        conn: &rusqlite::Connection,
+        table_id: &str,
+        sale_id: &str,
+    ) -> Result<Table, CoreError> {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        let rows = self.conn.execute(
+        let rows = conn.execute(
             "UPDATE tables SET status = 'occupied', active_sale_id = ?1, updated_at = ?2 WHERE id = ?3",
             params![sale_id, now, table_id],
         )?;
@@ -307,17 +340,31 @@ impl Store<'_> {
                 id: table_id.to_owned(),
             });
         }
-        self.get_table(table_id)?
-            .ok_or_else(|| CoreError::NotFound {
-                entity: "table",
-                id: table_id.to_owned(),
-            })
+        read_table(conn, table_id)?.ok_or_else(|| CoreError::NotFound {
+            entity: "table",
+            id: table_id.to_owned(),
+        })
     }
 
     /// Release an occupied table: set status to cleaning, clear the sale link.
+    /// Same transaction shape as [`Self::assign_table_order`] — see there for
+    /// why the UPDATE and its read-back must share one transaction.
     pub fn release_table(&self, table_id: &str) -> Result<Table, CoreError> {
+        if self.conn.is_autocommit() {
+            let tx = self.conn.unchecked_transaction()?;
+            let table = Self::release_table_on(&tx, table_id)?;
+            tx.commit()?;
+            Ok(table)
+        } else {
+            Self::release_table_on(self.conn, table_id)
+        }
+    }
+
+    /// The UPDATE plus its read-back, on a connection OR a caller-owned
+    /// transaction.
+    fn release_table_on(conn: &rusqlite::Connection, table_id: &str) -> Result<Table, CoreError> {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        let rows = self.conn.execute(
+        let rows = conn.execute(
             "UPDATE tables SET status = 'cleaning', active_sale_id = NULL, updated_at = ?1 WHERE id = ?2",
             params![now, table_id],
         )?;
@@ -327,11 +374,10 @@ impl Store<'_> {
                 id: table_id.to_owned(),
             });
         }
-        self.get_table(table_id)?
-            .ok_or_else(|| CoreError::NotFound {
-                entity: "table",
-                id: table_id.to_owned(),
-            })
+        read_table(conn, table_id)?.ok_or_else(|| CoreError::NotFound {
+            entity: "table",
+            id: table_id.to_owned(),
+        })
     }
 
     /// Return distinct non-empty section names from active tables.

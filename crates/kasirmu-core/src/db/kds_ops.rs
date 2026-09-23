@@ -74,7 +74,21 @@ impl Store<'_> {
     /// Returns the number of orders deleted. Used by the daily cleanup
     /// daemon to prevent unbounded event log growth (plan §4.0).
     /// Only prunes orders in terminal states (ready, served, cancelled).
+    /// # Transaction behaviour (C18 P3)
+    ///
+    /// The three DELETEs are FK-ordered (line items and targets before the
+    /// orders they hang off), which is a real sequence invariant, not three
+    /// independent statements: a failure between them leaves a pruned parent
+    /// with orphaned children, or — worse — the parent rows gone while a
+    /// child table still references them, which the FK then refuses to let a
+    /// later prune fix. Own-or-join, the `stock_counts.rs` idiom.
     pub fn cleanup_old_kds_orders(&self, retention_days: i64) -> Result<usize, CoreError> {
+        let owned = self.conn.is_autocommit();
+        let tx = if owned {
+            Some(self.conn.unchecked_transaction()?)
+        } else {
+            None
+        };
         let cutoff = (chrono::Utc::now() - chrono::Duration::days(retention_days))
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string();
@@ -104,6 +118,10 @@ impl Store<'_> {
             params![cutoff],
         )?;
 
+        if let Some(tx) = tx {
+            tx.commit()?;
+        }
+
         if deleted_orders > 0 {
             tracing::info!(
                 orders = deleted_orders,
@@ -114,6 +132,7 @@ impl Store<'_> {
             );
         }
 
+        let _ = owned;
         Ok(deleted_orders)
     }
 }

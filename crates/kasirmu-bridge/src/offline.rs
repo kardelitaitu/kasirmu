@@ -351,8 +351,20 @@ pub async fn retry_offline_sync_scoped(
         });
     }
 
+    // C49: the push order comes from the ONE shared rule
+    // (`kasirmu_core::offline::order_for_push`) — priority, then `created_at`,
+    // then the UUID v7 `id`. `Store::list_pending_offline` already returns
+    // `created_at` ASC, so priority ALONE is not a total order: most items are
+    // Critical and `created_at` is millisecond precision, which leaves
+    // same-millisecond items to SQLite's unspecified row order. This path was the
+    // last of the copies that rule had; it sorted by priority only.
+    //
+    // Reordered IN PLACE on purpose: `send_items_to_server` and
+    // `apply_sync_outcomes` below both iterate this SAME vector, and the server's
+    // outcome list is index-aligned with it, so a parallel sorted copy would
+    // mis-attribute every outcome.
     let mut pending_items = pending_items;
-    pending_items.sort_by_key(|i| i.priority);
+    kasirmu_core::offline::order_for_push(&mut pending_items);
 
     let outcomes = sync_client::send_items_to_server(&config, &pending_items).await;
 

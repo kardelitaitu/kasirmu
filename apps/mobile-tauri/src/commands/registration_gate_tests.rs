@@ -174,7 +174,23 @@ mod debt;
 /// deleting the door would break a live renderer path. It is carried as its own item
 /// (C17b): retire that fallback arm first, then delete the command and its row in a
 /// slice whose acceptance proves hardware settings still resolve WITH a session.
-const REGISTERED_FLOOR: usize = 339;
+///
+/// The 339 -> 342 step is **not this lane's**: `fc2ea1938` (feat(setup): add the
+/// desktop-link email login commands to both shells) registered
+/// `desktop_link::request_email_login_code`, `desktop_link::verify_email_login_code`
+/// and `desktop_link::login_with_email_password` in this shell and updated no pin in
+/// either one, so the floor, the ceiling and the ledger's total were all left behind at
+/// HEAD. All three arrive UNGATED and are class 1 (`no_session_resolution`) structurally:
+/// they are the wizard's email sign-in, reached from `LicenseActivationScreen` — the
+/// pre-session boot gate — and each either mints the web session a permission would be
+/// checked against or is the step immediately before it. So this step moves the floor, the
+/// debt ceiling and the class-1 count together and records the reason in
+/// docs/records/JOURNAL.md, which is what the ceiling pin asks of a RISE. This is the
+/// tablet twin of the desktop step in `7a5292530` (there 472 -> 475); the two shells carry
+/// separate floors and separate numbers, and only the registering commit's own shape — one
+/// that touched neither pin — is common to both. The provenance is the point: this pass
+/// records what landed, it does not approve it.
+const REGISTERED_FLOOR: usize = 342;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.

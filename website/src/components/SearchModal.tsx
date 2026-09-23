@@ -158,6 +158,21 @@ export default function SearchModal({ isOpen, onClose, locale, labels, docs }: P
             // A placeholder is not a name: it disappears as soon as the reader
             // types, so the field carries the dictionary's own label too.
             aria-label={t(labels, 'search.quickSearch')}
+            // The listbox is navigated from the field: the arrows move the
+            // selection and focus stays here. Without `aria-activedescendant`
+            // plus per-option ids, that moving position was invisible to
+            // assistive tech — the highlight moved on screen and nothing was
+            // announced (measured in a browser 2026-09-23: the input had no
+            // aria-activedescendant and every option had an empty id, while
+            // ArrowDown moved aria-selected from the first result to the
+            // second). role=combobox + aria-controls + aria-expanded is what
+            // makes the ownership of that listbox explicit.
+            role="combobox"
+            aria-expanded={filteredItems.length > 0}
+            aria-controls="search-results-listbox"
+            aria-activedescendant={
+              filteredItems.length > 0 ? `search-option-${selectedIndex}` : undefined
+            }
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -174,7 +189,12 @@ export default function SearchModal({ isOpen, onClose, locale, labels, docs }: P
         </div>
 
         {/* Search Results List */}
-        <div className="mt-3 max-h-80 overflow-y-auto space-y-1" role="listbox" aria-label={t(labels, 'search.quickSearch')}>
+        <div
+          id="search-results-listbox"
+          className="mt-3 max-h-80 overflow-y-auto space-y-1"
+          role="listbox"
+          aria-label={t(labels, 'search.quickSearch')}
+        >
           {filteredItems.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted">
               {t(labels, 'search.noResults')} <span className="font-semibold text-ink">"{query}"</span>
@@ -193,6 +213,7 @@ export default function SearchModal({ isOpen, onClose, locale, labels, docs }: P
                     </p>
                   )}
                   <a
+                    id={`search-option-${idx}`}
                     role="option"
                     aria-selected={selectedIndex === idx}
                     href={item.url}

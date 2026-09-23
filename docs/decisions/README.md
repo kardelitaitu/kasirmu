@@ -6,10 +6,20 @@ an ADR in this directory (`docs/decisions/`). Each ADR follows the
 its header. Some ADRs have a companion `*.status.md` file with a fuller
 implementation-status walkthrough.
 
-- Numbered ADRs (#1–#52) are the primary record. **Seven numbers are unused** —
-  #16 and #24–#29 are claimed by no file and cited by nothing anywhere in the repo
-  (verified: zero references to `ADR #16` or `ADR #24`–`#29` in any `*.md`). They are
-  skipped numbers, not lost documents; do not go looking for them.
+- Numbered ADRs run **#1–#60** and are the primary record. Re-derive the ceiling rather than
+  trusting it: `ls docs/decisions/*adr*.md | sed 's/.*adr\([0-9]*\).*/\1/' | sort -n | tail -1`
+  → `60` (measured 2026-09-23; the ceiling was 52 when this line was written, which is exactly
+  how a range claim rots — it grows by one per ADR and nothing re-derives it).
+- **Seven numbers are unused** — #16 and #24–#29 are claimed by no file. `ADR #16` and
+  `ADR #24`–`#29` are cited by nothing anywhere in the repo
+  (re-derive: `grep -rn 'ADR #16\|ADR #2[4-9]' --include='*.md' .` → one hit, this sentence).
+  They are skipped numbers, not lost documents; do not go looking for them.
+- **The hand table below is NOT the authority.** It used to be incomplete — **#53 had
+  no row** while the file existed on disk and in the generated `docs/records/README.md`
+  (`docs/decisions/2026-09-15-adr53-ui-vocabulary-boundary.md`) — and the row was added
+  2026-09-23; as of 2026-09-24 every numbered ADR file has exactly one row (re-derive:
+  match frontmatter `num:` files against the `^| N |` rows below; measured 54/54).
+  Find a missing row the same way. The generated index still wins where they disagree.
 - **`#43` is ambiguous and has been since 2026-09-02.** Two files claim it:
   `2026-07-24-react-only-decision.md` (ADR #43 – React-only UI decision) and
   `2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md` (ADR #43: Cloud Sync
@@ -77,13 +87,14 @@ implementation-status walkthrough.
 | 50 | [Sync Authentication Hardening (token refresh, gating, terminal credentials)](./2026-09-11-adr50-sync-auth-hardening.md) | Accepted (2026-09-11) - partially implemented |
 | 51 | [Sealed Settings Ingest Policy — One Funnel for Every Untrusted Settings Lane](./2026-09-11-adr51-sealed-settings-ingest-policy.md) | Accepted (2026-09-11) |
 | 52 | [Tracked Settings Funnel Refuses Cleartext Credentials](./2026-09-12-adr52-tracked-settings-funnel-refuses-cleartext-credentials.md) | Accepted (2026-09-12) |
+| 53 | [The UI Vocabulary Boundary — what the application layer may say about a renderer](./2026-09-15-adr53-ui-vocabulary-boundary.md) | Adopted (2026-09-15) — Option A implemented as rule ui-framework-vocabulary at 0ca2c0f27, landing at zero findings with no baseline; the Option A premise was corrected ~22:55, see Correction. **Row added 2026-09-23 (C30): it was missing from this hand table while existing on disk and in the generated index** |
 | 54 | [Google Sign-In — web sign-in/sign-up and desktop setup-wizard account linking](./2026-09-19-adr54-google-sign-in.md) | Proposed (2026-09-19) — nothing implemented |
-| 55 | [One Server Origin — the compiled list, the fallback pair and the allowlists that must agree with it](./2026-09-19-adr55-server-origin-model.md) | Accepted (2026-09-19) |
-| 56 | [First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the multi-boolean boot gate](./2026-10-04-adr56-first-run-provisioning.md) | Proposed (2026-10-04) — nothing implemented |
-| 57 | [Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection](./2026-10-04-adr57-client-tamper-resistance.md) | Proposed (2026-10-04) — part implemented, part to build |
-| 58 | [Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State](./2026-10-04-adr58-online-licence-heartbeat-and-revocation.md) | Proposed (2026-10-04) — mechanism largely implemented, one state to add |
-| 59 | [Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and the built-vs-module seam](./2026-10-04-adr59-regional-topology-and-modular-delivery.md) | Proposed (2026-10-04) — nothing implemented |
-| 60 | [Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared escape hatch, and a walker gate)](./2026-10-11-adr60-orientation-and-adaptive-layout-strategy.md) | Implemented (2026-10-11) — all four tiers landed and gated; 7 sheets migrated |
+| 55 | [One Server Origin — the compiled list, the fallback pair and the allowlists that must agree with it](./2026-09-19-adr55-server-origin-model.md) | Implemented (2026-09-19) — resolver, literal collapse, drift gate, attestation (endpoint and client) and the boot-time cascade all shipped |
+| 56 | [First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the multi-boolean boot gate](./2026-09-21-adr56-first-run-provisioning.md) | Partially implemented (2026-09-21; re-audited 2026-09-22) — §2.1, §2.2, §2.5, §2.6, §5 and the `local` tier of §2.3/§2.4 shipped; §2.3's `identify` leg (linked tier) still pending |
+| 57 | [Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection](./2026-09-21-adr57-client-tamper-resistance.md) | Proposed (2026-09-21) — part implemented, part to build |
+| 58 | [Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State](./2026-09-21-adr58-online-licence-heartbeat-and-revocation.md) | Partially implemented (2026-09-21; re-audited 2026-09-22) — Revoked state, session lock, export twin command, ride-along, per-device renewal refusal and the Rust-side pre-expiry re-auth shipped; the export twin has no UI caller, so §2.6 is unreachable |
+| 59 | [Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and the built-vs-module seam](./2026-09-21-adr59-regional-topology-and-modular-delivery.md) | Proposed (2026-09-21) — region field, admin route and audit trail shipped; topology and modules not |
+| 60 | [Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared escape hatch, and a walker gate)](./2026-09-21-adr60-orientation-and-adaptive-layout-strategy.md) | Implemented (2026-09-21) — all four tiers landed and gated; 7 sheets migrated |
 
 ## Research notes
 
@@ -153,7 +164,19 @@ authoritative record.
   `Implemented (2026-07-15)` while the index called them unknown. The cells were empty
   because nobody had filled them in, and the page then supplied a tidy reason for the
   gap. An invented explanation is worse than the gap: it stops anyone looking again.
-  Re-derive the column with a script that reads the frontmatter, never by hand.
+  Re-derive the column with a script that reads the frontmatter, never by hand — and
+  since 2026-09-24 one runs in every full local matrix:
+  `.agents/skills/docs-auditor/scripts/check-adr-status.py` compares each row's status
+  word against its file's frontmatter (check.sh step `adr status drift`, gates.json
+  `adr-status`), so the next drift fails a gate instead of waiting for a re-audit.
+  A third sweep on 23-09-26 caught three more cells trailing their frontmatter — #55 read `Accepted` while the decision had shipped as `Implemented`, and #56/#58 read `Proposed` while both frontmatters had been re-audited to `Partially implemented` on 2026-09-22 — and corrected them to match. The duplicate #43 rows were left as they are: the collision is documented at the top of this file and renaming either file would break the citations counted there.
+- **On 23-09-26 the five future-dated records were re-dated to their authored dates.**
+  ADRs #56–#60 had October-2026 prefixes and in-body dates no commit could produce;
+  `git log -S` attribution pinned their authoring and every recorded event to 2026-09-21,
+  so the files, status lines, the cells above and the in-body claims were corrected together
+  (line counts preserved — cross-file line anchors still hold). The superseded labels live
+  in git history; the method and the second, unfixed date cluster are recorded in
+  `docs/audits/documentation-audit-23-09-26.md`.
 - **`TODO.md` no longer exists at the repo root.** It was moved to
   `docs/plans/todo.md` by `f3d9cca60` ("tidy up project root files into docs, dev, and
   scripts") — a pure rename, content intact, so every `TODO.md` C-phase citation went dead
@@ -163,4 +186,4 @@ authoritative record.
 
 ---
 
-> last audited 08-09-26 by docs-auditor
+> last audited 23-09-26 by docs-auditor

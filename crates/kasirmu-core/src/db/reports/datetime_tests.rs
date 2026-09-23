@@ -35,7 +35,10 @@ fn jakarta_resolves_to_plus_seven_so_a_local_day_is_the_bucket() {
 fn the_other_indonesian_launch_zones_resolve_through_the_same_resolver() {
     assert_eq!(parse_utc_offset("Asia/Makassar").as_deref(), Some("+08:00"));
     assert_eq!(parse_utc_offset("Asia/Jayapura").as_deref(), Some("+09:00"));
-    assert_eq!(parse_utc_offset("Asia/Pontianak").as_deref(), Some("+07:00"));
+    assert_eq!(
+        parse_utc_offset("Asia/Pontianak").as_deref(),
+        Some("+07:00")
+    );
 }
 
 #[test]
@@ -51,7 +54,9 @@ fn unknown_zone_is_unresolvable_not_silently_utc() {
 #[test]
 fn malformed_shapes_stay_rejected() {
     // The pre-existing shape rules must not be loosened by the IANA branch.
-    for bad in ["", "UTC+7", "+7:00", "+05:5", "+0530", "25:00", "+05:60", "junk"] {
+    for bad in [
+        "", "UTC+7", "+7:00", "+05:5", "+0530", "25:00", "+05:60", "junk",
+    ] {
         assert_eq!(parse_utc_offset(bad), None, "{bad:?}");
     }
 }
@@ -64,7 +69,10 @@ fn every_known_zone_resolves_to_a_sqlite_safe_offset_shape() {
         let got = parse_utc_offset(zone).unwrap_or_else(|| panic!("{zone} must resolve"));
         let b = got.as_bytes();
         assert_eq!(got.len(), 6, "{zone} -> {got:?} is not a 6-byte offset");
-        assert!(matches!(b[0], b'+' | b'-'), "{zone} -> {got:?} lost its sign");
+        assert!(
+            matches!(b[0], b'+' | b'-'),
+            "{zone} -> {got:?} lost its sign"
+        );
         assert_eq!(b[3], b':', "{zone} -> {got:?} lost its colon");
     }
 }

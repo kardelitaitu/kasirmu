@@ -4,7 +4,7 @@
 that started this is fixed and verified (§2). Nothing in §5 was implemented, on purpose: the
 choice is yours, and §4 shows that the obvious half-fix makes the visible signal *less* truthful.
 
-**Date:** 2026-10-06 · **Recorded against:** branch `0.0.39` @ `191c37b42`
+**Date:** 2026-09-22 · **Recorded against:** branch `0.0.39` @ `191c37b42`
 **Corrects:** the round-1 reading, "desktop has sync_bootstrap, mobile doesn't". That is true and
 misleading — see §1.
 

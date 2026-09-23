@@ -263,7 +263,7 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [x] Front-end: Vitest + React Testing Library (`ui/src/__tests__/`)
 - [x] `eslint-plugin-jsx-a11y` enabled in `ui/eslint.config.js`
 - [x] Test coverage target: ≥ 80% on `kasirmu-core`, `kasirmu-hal`, `kasirmu-lua` (requires tarpaulin)
-- [x] `.tarpaulin.toml` config + coverage CI job + local coverage gate in `scripts/check.sh`
+- [x] `.tarpaulin.toml` config + local coverage gate in `scripts/check.sh` — **the "coverage CI job" half is FALSE.** `scripts/gates.json` records the `coverage` gate as `"status": "retired"` ("Coverage reporting ran in ci.yml#coverage only"). Corrected 2026-09-23 (C30): what runs is the local gate, not a CI job.
 
 ### CI/CD
 - [x] `.github/workflows/ci.yml`: lint → test → Tauri bundle — **retired to `ci.yml.bak` by `23c96330`**; the live pipeline is `dev-ci.yml`, and `release.yml` was restored desktop-only in 0.0.36. Kept because it records what shipped, not what runs.
@@ -511,11 +511,11 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [x] ARIA labels on all interactive elements
 - [x] `shared-ui/locales/*.ftl` — English per-feature bundles
 - [x] `shared-ui/locales/*.id.ftl` — Bahasa Indonesia per-feature bundles
-- [x] 25 per-feature bundles × 2 locales = 50 `.ftl` files
+- [x] Per-feature bundles × 2 locales — **the arithmetic no longer closes.** `ls shared-ui/locales/*.ftl | wc -l` → **54** files (measured 2026-09-23), so either the bundle count rose or some files have no twin. The `× 2 = 50` form is not re-derivable without a grouping command, which does not exist here; the 54 is re-derivable and is the number to trust.
 - [x] `@fluent/react` integration — no hardcoded strings in JSX
 - [x] `docs/archived/a11y.md` — accessibility compliance checklist
-- [x] Lighthouse a11y score ≥ 90 on all pages (CI gate via `.lighthouserc.json`, 0.90 threshold)
-- [x] UI fully translated in English + Bahasa Indonesia (25 per-feature Fluent bundles, 50 `.ftl` files, lint-i18n.sh clean)
+- [x] Lighthouse a11y score ≥ 90 on all pages — **NOT a CI gate, and this box is checked on a measurement nobody can re-derive from this checkout.** `scripts/gates.json` records the `lighthouse` gate as `"status": "retired"` ("Lighthouse a11y audit ran in ci.yml#lighthouse only"), and `ci.yml` is `ci.yml.bak`. Corrected 2026-09-23 (C30): the parenthetical claimed a CI gate that does not run.
+- [x] UI fully translated in English + Bahasa Indonesia — **re-derive the counts, both are stale.** `ls shared-ui/locales/*.ftl | wc -l` → 54 files (measured 2026-09-23), not 50. The "25 per-feature bundles" figure is unverified from this checkout: a bundle pair is only countable by grouping filenames into en/id twins, and this runbook-style count has no command that produces it — treat 25 as unsupported rather than confirmed.
 - [x] Thai locale removed — not a target market
 
 ### kasirmu-reporting — Performance & Profiling
@@ -635,7 +635,7 @@ Phase 1 (MVP)
 On-Features can be activated at any phase once the core infrastructure is in place.
 
 > [!NOTE]
-> For granular, step-by-step checklists covering admin feature configuration, restaurant workflows (`Resto POS + KDS + Inventory`), LAN peer-to-peer sync, and Docker containerized cloud server deployments (`apps/cloud-server`), see **[MODULAR_APP_PLAN.md](./MODULAR_APP_PLAN.md)**.
+> For granular, step-by-step checklists covering admin feature configuration, restaurant workflows (`Resto POS + KDS + Inventory`), LAN peer-to-peer sync, and Docker containerized cloud server deployments (`apps/cloud-server`), see **[MODULAR_APP_PLAN.md](../../architecture/MODULAR_APP_PLAN.md)**.
 
 ---
 

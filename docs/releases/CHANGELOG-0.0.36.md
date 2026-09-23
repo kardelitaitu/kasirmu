@@ -15,7 +15,7 @@
 > and actually contains the restoration of the release pipeline (R36-11). A
 > concurrent agent's whole-tree commit swept ten staged files in under its own
 > message. The area table below classifies by files touched, not by subject, and
-> flags the case — see [R36-13](../plans/0.0.36-backlog.md).
+> flags the case — see [R36-13](../plans/_backlog/0.0.36-backlog.md).
 
 
 ---
@@ -523,7 +523,7 @@ types, and one commit's message is a pasted `git status` block:
 | `5855c429` | `updated gitignore` |
 | `84a71f3e` | `	new file:   lighthouse-report.json 	new file:   website/src/assets/…` |
 
-This is tracked as **R36-04** in [`docs/plans/_backlog/0.0.36-backlog.md`](../plans/0.0.36-backlog.md):
+This is tracked as **R36-04** in [`docs/plans/_backlog/0.0.36-backlog.md`](../plans/_backlog/0.0.36-backlog.md):
 `AGENTS.md` states the format is "enforced", but there is no `commit-msg` hook
 and nothing checks it. These four are the proof.
 

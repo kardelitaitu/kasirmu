@@ -143,7 +143,7 @@ both are pinned by tests, together with a foreign-key rejection and a cross-nonc
 
 ### 2.6 Allowlists carry both names, and a gate keeps them honest
 
-**Shipped 2026-09-26 (the CORS default too).** One allowlist had not caught up: the licence
+**Shipped 2026-09-20 (the CORS default too).** One allowlist had not caught up: the licence
 server's compiled `OZ_WEB_ALLOWED_ORIGINS` default named `https://kasir.mu` but not
 `https://ozpos.my.id` — while `/en/account/` answers **200 on both** (re-measured this pass,
 and `/llms.txt` is byte-identical at 7256 bytes). A merchant signing in on the second name
@@ -268,7 +268,7 @@ main question rather than an afterthought.
   renewal, which is exactly what §2.4's attestation is for.
   `MARKETING_HOST = 'kasir.mu'` and `DASHBOARD_HOSTS = {'admin.kasir.mu'}` while the runbook
 
-  **Re-verified 2026-09-26 (the dashboard fork is not one).** The question this caveat raises is
+  **Re-verified 2026-09-20 (the dashboard fork is not one).** The question this caveat raises is
   whether the second name needs its own panel hosts. Measured, they are not panels:
   `admin.kasir.mu` serves the admin sign-in (title `kasir.mu Admin — Sign in`) and
   `dashboard.kasir.mu` serves the account portal (`kasir.mu — Account`), while

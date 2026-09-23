@@ -23,7 +23,7 @@ npm run dev            # vite dev server on http://localhost:1420
 npm run check:all      # chained validation: lint → typecheck → test → i18n → E2E*
 npm run typecheck      # tsc --noEmit
 npm run lint           # eslint .
-npm run test           # vitest run (532 test files under ui/src)
+npm run test           # vitest run (607 .test.* files under ui/src — `ls ui/src/**/*.test.* | wc -l`)
 npm run build          # tsc -b && vite build
 npm run e2e            # Full E2E suite: Docker → Vite → Playwright → cleanup
 npm run e2e:headed     # E2E with browser visible
@@ -67,7 +67,10 @@ CI skips postinstall scripts entirely via `npm ci --ignore-scripts`, so these lo
 ```
 ui/src/
 ├── api/
-│   └── (40 per-domain files)  # Typed invoke() wrappers — no invoke() in components
+│   └── (53 .ts files)   # Typed invoke() wrappers — no invoke() in components
+│                        #   re-derive: `ls ui/src/api/*.ts | wc -l` (measured 2026-09-23; this
+│                        #   block said 40 on 2026-08-29 and 51 in README.md — three documents,
+│                        #   three numbers, one directory. That is the drift this file warns about.)
 ├── components/
 │   ├── AppLayout.tsx    # Sidebar navigation, route definitions, feature gates
 │   ├── Badge.tsx        # status/role badges
@@ -98,25 +101,28 @@ ui/src/
 │   └── tax/             # TaxConfigurationScreen
 ├── hooks/
 │   └── useFeatures.ts   # Feature flag hook for route gating
-├── frontend/
-│   └── themes/
-│       ├── reset.css
-│       ├── tokens.css   # CSS custom properties (colors, spacing, typography)
-│       ├── components.css # Shared component styles
-│       └── responsive.css
-├── locales/
-│   ├── shared.ftl       # Shared UI strings
-│   ├── sales.ftl        # POS, cart, sales history
-│   ├── products.ftl     # Product management
-│   ├── settings.ftl     # Settings, setup wizard, sync
-│   ├── ...              # Per-feature Fluent bundles (en + id variants; 50 files total)
-│   └── index.ts         # Bundle loader
+├── theme/               # ← was frontend/themes/. `ui/src/frontend/` NO LONGER EXISTS
+│   ├── reset.css        #   (verify: `ls ui/src/frontend` → No such file or directory).
+│   ├── tokens.css       #   This block described the ghost directory until 2026-09-23.
+│   ├── components.css   #   CSS custom properties (colors, spacing, typography)
+│   └── responsive.css
+├── registries/          # page / menu / widget registry + icon.tsx
+├── test-utils.tsx       # a FILE, not a directory — see the note below this block
+│                        #   (`ls ui/src/test-utils*` → ui/src/test-utils.tsx only)
 ├── types/
 │   └── domain.ts        # Money, CartId, Sku, LineId, Product, formatMoney
-├── __tests__/           # Per-screen test files (400 files, ~6700 tests)
-├── App.tsx              # Root: setup guard → auth guard → AppLayout
-└── main.tsx             # Entry: Fluent bundle registration + StrictMode
+├── __tests__/           # Per-screen test files (607 .test.* files under ui/src —
+├── App.tsx              #   `ls ui/src/**/*.test.* | wc -l`; 616 entries under this directory
+├── main.tsx             #   including one .json fixture: `ls ui/src/__tests__/**/* | wc -l`)
+└── main.mobile.tsx      # Entry for the tablet shell (index.mobile.html)
 ```
+
+> **The locale bundles are NOT in this directory any more.** They moved to
+> `shared-ui/locales/` (P9a of the folder restructure) — the `.ftl` corpus serves any UI
+> toolkit, so it does not belong to this one. Re-derive:
+> `ls shared-ui/locales/*.ftl | wc -l` → 54 (measured 2026-09-23);
+> `ls ui/src/locales` → No such file or directory. The prose below this block was
+> updated in the same pass; if you find a remaining `src/locales/` reference, it is stale.
 
 ## IPC Rules
 
@@ -126,8 +132,12 @@ ui/src/
 
 ## i18n
 
-- User-visible strings live in per-feature Fluent bundles under `src/locales/` (e.g. `shared.ftl`, `sales.ftl`, `sales.id.ftl`)
-- Bundles are loaded and merged by `src/locales/index.ts`
+- User-visible strings live in per-feature Fluent bundles under **`shared-ui/locales/`** (e.g.
+  `shared.ftl`, `sales.ftl`, `sales.id.ftl`) — 54 `.ftl` files, `ls shared-ui/locales/*.ftl | wc -l`.
+  They were moved out of `ui/src/locales/` (P9a) because the corpus serves any UI toolkit; the <!-- dead-ref: ok: names the former location; the corpus now lives at shared-ui/locales/ -->
+  directory no longer exists (`ls ui/src/locales` → No such file or directory).
+- Bundles are loaded and merged by the loader under `ui/src/i18n/` — this line said
+  `src/locales/index.ts` until 2026-09-23, naming a file in a directory that no longer exists.
 - Referenced via `<Localized id="...">` from `@fluent/react`
 - A Fluent key that resolves in neither the `en .ftl` nor the `id .ftl` bundle IS a build failure: pre-commit step 2 (bundle parity, eight checked surfaces) and CI's `i18n` job (`bash scripts/lint-i18n.sh`, leg 3 → `python3 scripts/verify-bundle-parity.py --full-census`) both fail closed on it.
 - Hardcoded English where a localization call belongs is NOT — it is forbidden (`.agents/AGENTS.md` → *Tauri & UI Standards* → **Localization**) but policed by code review only, because every extraction pattern in `verify-bundle-parity.py` is keyed off a localization *call site* and no gate scans visible text. The form that escapes them all today is `addToast({ message: '<English>' })`; re-count it with `grep -rn "addToast({ message: '" ui/src --include=*.tsx --include=*.ts | wc -l` (13 at `2c03ae152`, 2026-09-16 — trust the command, not the number).
@@ -139,11 +149,13 @@ ui/src/
 - Each feature screen has a `__tests__/<Screen>.test.tsx` file
 - IPC is mocked via `vi.hoisted()` → `vi.mock('@tauri-apps/api/core')`
 - Fluent strings are provided inline via `FluentBundle` + `FluentResource`
-- Run: `npm run test` (532 test files under `ui/src`; vitest excludes only `e2e/**`, so
-  re-count with `ls ui/src/**/*.test.* ui/src/**/*.spec.*`). The earlier "~6700 tests,
-  ~14s" figures are a runtime measurement of one run rather than a file count - kept as a
-  dated observation, because nothing in this repo re-derives them and a number nobody can
-  reproduce is a claim, not a measurement:
+- Run: `npm run test` (**607** `.test.*` files under `ui/src` — `ls ui/src/**/*.test.* | wc -l`,
+  measured 2026-09-23; there are 0 `.spec.*` files, so the two-glob form this line used to carry
+  counted the same set twice. Vitest excludes only `e2e/**`, so the file layout IS the test
+  universe). The earlier "~6700 tests, ~14s" figures are a runtime measurement of one run rather
+  than a file count — kept as a dated observation, because nothing in this repo re-derives them
+  and a number nobody can reproduce is a claim, not a measurement. The file count itself is
+  re-derivable and is quoted with its command for that reason.
 
 ## Conventions
 

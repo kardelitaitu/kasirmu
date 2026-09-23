@@ -190,6 +190,28 @@ describe('SearchModal — keyboard navigation', () => {
     }
   });
 
+  it('exposes the active option to assistive tech as it moves', async () => {
+    // Focus stays in the field while the arrows move the selection, so without
+    // aria-activedescendant (and ids on the options) the moving position was
+    // invisible to assistive tech — measured in a browser 2026-09-23: the input
+    // had no aria-activedescendant and every option's id was empty, while
+    // ArrowDown moved aria-selected from the first result to the second.
+    const m = await renderOpen();
+    try {
+      const input = document.body.querySelector('input[type="search"]') as HTMLInputElement;
+      expect(input.getAttribute('aria-activedescendant')).toBe(m.options()[0].id);
+      expect(m.options()[0].id).toBeTruthy();
+      expect(input.getAttribute('aria-controls')).toBe('search-results-listbox');
+
+      await m.press('ArrowDown');
+      const active = m.options()[m.selected()];
+      expect(input.getAttribute('aria-activedescendant')).toBe(active.id);
+      expect(input.getAttribute('aria-activedescendant')).not.toBe(m.options()[0].id);
+    } finally {
+      await m.unmount();
+    }
+  });
+
   it('ArrowDown wraps from the last option to the first', async () => {
     const m = await renderOpen();
     try {

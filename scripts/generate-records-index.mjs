@@ -20,10 +20,12 @@
 // Unknown arguments exit 2. Output is order-stable because every scan is either
 // over an explicit list or sorted by filename — the records scan sorts readdir
 // output on purpose, since a checker that moved rows with the filesystem order
-// would fail at random. Nothing wires --check into a hook or CI yet; see
-// docs/records/adr7-conditional-scoping-fallback-class.md §7 for why.
+// would fail at random. --check runs in scripts/check.sh ("records index
+// freshness") and in dev-ci.yml#ci-docs-drift since 2026-09-23 (gates.json
+// "records-index"), wired in the same change that repaired the snapshots/
+// drift it was first run against.
 
-import { readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, writeFileSync, existsSync } from 'node:fs';
 import { join, relative, basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -198,6 +200,7 @@ function render() {
   const research = [];
   const phases = [];
   const audits = [];
+  const docsAudits = [];
   const observability = [];
 
   if (existsSync(decisionsDir)) {
@@ -256,6 +259,42 @@ function render() {
     audits.sort((a, b) => (a.num ?? 99) - (b.num ?? 99));
   }
 
+  // ── one-off audit reports (docs/audits/) ───────────────────────────────────
+  // Decision 2026-09-23 (documentation-audit follow-up): this directory was the
+  // one class of records the "single entry point" never scanned. The audit/
+  // collector above reads a root folder deleted in 0689d5652 (its own DECISION
+  // note explains why that branch stays), so "0 audits" was permanent while
+  // eleven real reports — frontend, seo, setup, skills, and the documentation
+  // audit of the docs system itself — stayed invisible to the page that claims
+  // to index ADRs, audits and system analyses. Same rules as the records scan:
+  // recurse with readdir sorted at each depth so --check stays byte-stable, no
+  // front matter required, status read from the record or the shared em-dash
+  // (never invented). Area prefers the subdirectory — it carries the real topic
+  // — and falls back to the filename keywords for files sitting at the root of
+  // docs/audits/.
+  const docsAuditsDir = join(ROOT, 'docs', 'audits');
+  const collectAudits = (dir) => {
+    const found = [];
+    for (const f of readdirSync(dir).sort()) {
+      const file = join(dir, f);
+      if (statSync(file).isDirectory()) {
+        found.push(...collectAudits(file));
+      } else if (f.endsWith('.md')) {
+        found.push(file);
+      }
+    }
+    return found;
+  };
+  if (existsSync(docsAuditsDir)) {
+    for (const file of collectAudits(docsAuditsDir)) {
+      const rec = readRecord(file);
+      const parts = file.split(/[/\\]/);
+      const parent = parts[parts.length - 2];
+      if (parent && parent.toLowerCase() !== 'audits') rec.area = parent;
+      docsAudits.push(rec);
+    }
+  }
+
   if (existsSync(observabilityDir)) {
     for (const f of readdirSync(observabilityDir).filter((f) => f.endsWith('.md'))) {
       observability.push(readRecord(join(observabilityDir, f)));
@@ -279,17 +318,31 @@ function render() {
   // registry that the record does not make about itself. So: front-matter `status:`
   // if a record declares one, otherwise the same em-dash the other sections use
   // when there is no status.
+  // RECURSIVE since 2026-09-23 (documentation audit P0-1): the dated records
+  // were moved into docs/records/snapshots/ while this scan only read the
+  // directory's top level, so the committed index kept seven rows whose hrefs
+  // no longer resolved — and a refresh would have silently dropped the whole
+  // set from the page that calls itself the entry point. readdir is sorted at
+  // every depth so --check stays byte-stable regardless of filesystem order.
+  const collectRecords = (dir) => {
+    const found = [];
+    for (const f of readdirSync(dir).sort()) {
+      const file = join(dir, f);
+      if (statSync(file).isDirectory()) {
+        found.push(...collectRecords(file));
+      } else if (f.endsWith('.md') && f !== 'README.md') {
+        found.push(file);
+      }
+    }
+    return found;
+  };
   const records = existsSync(RECORDS)
-    ? readdirSync(RECORDS)
-        .filter((f) => f.endsWith('.md') && f !== 'README.md')
-        .sort()
-        .map((f) => {
-          const file = join(RECORDS, f);
-          const rec = readRecord(file);
-          const fm = frontMatter(readFileSync(file, 'utf8').replace(/\r/g, ''));
-          rec.status = fm?.status ? fm.status.replace(/\r/g, '').trim() : '—';
-          return rec;
-        })
+    ? collectRecords(RECORDS).map((file) => {
+        const rec = readRecord(file);
+        const fm = frontMatter(readFileSync(file, 'utf8').replace(/\r/g, ''));
+        rec.status = fm?.status ? fm.status.replace(/\r/g, '').trim() : '—';
+        return rec;
+      })
     : [];
 
   // ── scattered docs list (kept explicit — they have no folder pattern) ──────
@@ -406,6 +459,18 @@ function render() {
     L.push('');
   }
 
+  // ── One-off audit reports (docs/audits/) ───────────────────────────────────
+  if (docsAudits.length) {
+    L.push('## Audit Reports (`docs/audits/`)');
+    L.push('');
+    L.push(row(['Area', 'Title', 'Status']));
+    L.push(row(['---', '---', '---']));
+    for (const r of docsAudits) {
+      L.push(row([mdCell(r.area), linkCell(r.title, relFromRecords(r.file)), mdCell(r.status)]));
+    }
+    L.push('');
+  }
+
   // ── Scattered audit reports ──
   L.push('## Scattered Audit Reports (`docs/`)');
   L.push('');
@@ -432,14 +497,14 @@ function render() {
   L.push('- **`area:` tag:** derived from the filename slug (see `AREA_KEYWORDS` in the generator); set `area:` in YAML front-matter to override');
   L.push('- **Status vocabulary:** ADRs use *proposed / accepted / implemented / superseded / re-scoped*; audits use *remediated / partially remediated / audited / open*');
   L.push('- **Adding a new record:** drop the file in the right folder, then run `node scripts/generate-records-index.mjs`');
-  L.push('- **Records under `docs/records/`:** every `.md` here except `README.md` is listed automatically — no front matter required, and no edit to this script needed');
+  L.push('- **Records under `docs/records/`:** every `.md` beneath it at any depth (snapshots/ included) except `README.md` is listed automatically — no front matter required, and no edit to this script needed');
 
   const text = L.join('\n') + '\n';
   const counts = [
     [numbered.length, 'ADRs'],
     [research.length, 'research'],
     [phases.length, 'phased'],
-    [audits.length, 'audits'],
+    [audits.length + docsAudits.length, 'audits'],
     [scattered.length, 'scattered'],
     [observability.length, 'observability'],
     [records.length, 'records'],

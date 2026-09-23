@@ -2,23 +2,23 @@
 num: 60
 area: frontend-architecture
 title: ADR-60: Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared escape hatch, and a walker gate)
-status: Implemented (2026-10-11) — all four tiers landed and gated; 7 sheets migrated
+status: Implemented (2026-09-21) — all four tiers landed and gated; 7 sheets migrated
 ---
 
 # ADR-60: Orientation & Adaptive Layout Strategy
 
-**Status:** Implemented (2026-10-11). All four tiers (T1 shell media queries, T2 container
+**Status:** Implemented (2026-09-21). All four tiers (T1 shell media queries, T2 container
 queries, T3 declared layout escape hatch, T4 walker gate) are in the tree and enforced. Slices
 0-7 landed; seven sheets migrated (RetailPos, KDS, SalesHistory, PaymentModal, PosScreen,
 EodReport, CartPanel). The remaining sheets are future Slice-5 work under the same gate.
-**Date:** 2026-10-11
+**Date:** 2026-09-21
 **Recorded against:** branch `0.0.39`
 **Tags:** css, layout, orientation, container-queries, tablet, tauri, gates, walker
 
 > **Provenance note.** This record was originally written under `docs/adr/ADR-0001-*.md`
 > (a separate directory that predated this unification) and later merged into `docs/decisions/`
-> as `2026-10-11-adr60-orientation-and-adaptive-layout-strategy.md` — the next available
-> number after ADR-59. The old `docs/adr/` series used `ADR-0001`; this file is now
+> as `2026-09-21-adr60-orientation-and-adaptive-layout-strategy.md` — the next available
+> number after ADR-59; its future-dated prefix was corrected to the authored date on 2026-09-23. The old `docs/adr/` series used `ADR-0001`; this file is now
 > canonically **ADR-60** in the `docs/decisions/` sequence. **Cite by filename.**
 > Code and tests that reference `ADR-0001` by label are correct historical citations.
 
@@ -233,7 +233,7 @@ grep -n "--bp-" ui/src/theme/tokens.css
 sed -n '13,20p' docs/audits/frontend/css-verification.md
 ```
 
-**Measured 2026-10-21** (replaces the briefed 97/115 figure, which no command reproduced):
+**Measured 2026-09-21** (replaces the briefed 97/115 figure, which no command reproduced):
 
 ```
 find ui/src -name '*.css' | wc -l                           → 139   (all sheets)

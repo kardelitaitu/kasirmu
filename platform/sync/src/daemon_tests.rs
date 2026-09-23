@@ -549,6 +549,114 @@ async fn daemon_surfaces_plan_required_without_retry_or_quarantine() {
 /// We test this by creating a valid DB, then extract the config read
 /// through the `read_config_and_pending` helper (which does the same
 /// work the `spawn_blocking` closure does).
+// ── C20: priority ordering on the push path ──────────────────────
+
+/// The acceptance case: a LOW-priority item is enqueued FIRST, so the
+/// un-sorted read (`ORDER BY created_at ASC`) puts it at the head of the batch
+/// and it would be pushed before the Critical one. The daemon must send
+/// Critical first.
+#[test]
+fn read_config_and_pending_orders_critical_before_an_earlier_low_item() {
+    use kasirmu_core::offline::SyncPriority;
+
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    // Enqueued in the WRONG order on purpose: Low arrives first, so
+    // created_at ASC alone would keep it ahead of Critical.
+    store
+        .enqueue_offline_priority("bulk", r#"{}"#, SyncPriority::Low)
+        .unwrap();
+    store
+        .enqueue_offline_priority("money", r#"{}"#, SyncPriority::Critical)
+        .unwrap();
+    store
+        .enqueue_offline_priority("catalog", r#"{}"#, SyncPriority::Normal)
+        .unwrap();
+
+    let (_config, pending) = read_config_and_pending(&conn);
+
+    let order: Vec<&str> = pending.iter().map(|i| i.action.as_str()).collect();
+    assert_eq!(
+        order,
+        vec!["money", "catalog", "bulk"],
+        "Critical must transmit before Normal, which before Low — the priority column is what the push order is FOR"
+    );
+}
+
+/// The tie-break, stated as a test rather than left to the sort's mercy.
+/// Same priority and the same millisecond `created_at`: the order must still be
+/// deterministic (UUID v7 `id`), so two reads agree.
+#[test]
+fn equal_priority_items_are_ordered_deterministically_by_id() {
+    use kasirmu_core::offline::SyncPriority;
+
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    for action in ["c", "a", "b"] {
+        store
+            .enqueue_offline_priority(action, r#"{}"#, SyncPriority::Critical)
+            .unwrap();
+    }
+    // Force identical timestamps: with millisecond precision three enqueues in
+    // a loop can already collide, and this makes the collision the fixture
+    // rather than an accident of timing.
+    conn.execute(
+        "UPDATE offline_queue SET created_at = '2026-01-01T00:00:00.000Z'",
+        [],
+    )
+    .unwrap();
+
+    let first = read_config_and_pending(&conn).1;
+    let second = read_config_and_pending(&conn).1;
+    let ids = |v: &[kasirmu_core::offline::OfflineQueueItem]| {
+        v.iter().map(|i| i.id.clone()).collect::<Vec<_>>()
+    };
+    assert_eq!(
+        ids(&first),
+        ids(&second),
+        "equal-priority, equal-timestamp items must not reorder between reads"
+    );
+    // And the tie-break is the id, ascending — provable because ids are unique.
+    let mut sorted_ids = ids(&first);
+    sorted_ids.sort();
+    assert_eq!(
+        ids(&first),
+        sorted_ids,
+        "ties break on the unique id, ascending"
+    );
+}
+
+/// Within one tier the arrival order is preserved, which is what keeps a batch
+/// of same-priority sales in the order the till took them.
+#[test]
+fn same_priority_items_keep_their_arrival_order() {
+    use kasirmu_core::offline::SyncPriority;
+
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    for (action, at) in [
+        ("first", "2026-01-01T00:00:00.000Z"),
+        ("second", "2026-01-01T00:00:01.000Z"),
+        ("third", "2026-01-01T00:00:02.000Z"),
+    ] {
+        store
+            .enqueue_offline_priority(action, r#"{}"#, SyncPriority::Critical)
+            .unwrap();
+        conn.execute(
+            "UPDATE offline_queue SET created_at = ?1 WHERE action = ?2",
+            rusqlite::params![at, action],
+        )
+        .unwrap();
+    }
+
+    let order: Vec<String> = read_config_and_pending(&conn)
+        .1
+        .iter()
+        .map(|i| i.action.clone())
+        .collect();
+    assert_eq!(order, vec!["first", "second", "third"]);
+}
+
 #[test]
 fn read_config_and_pending_returns_pending_count() {
     let conn = kasirmu_core::migrations::fresh_db();

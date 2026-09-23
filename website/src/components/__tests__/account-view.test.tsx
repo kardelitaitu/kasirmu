@@ -805,6 +805,11 @@ describe('AccountView — region selector', () => {
       });
       expect(localStorage.getItem('oz_region')).toBe('id');
       expect(trigger.getAttribute('aria-expanded')).toBe('false');
+      // Selecting unmounts the option that had focus, so focus must be put back
+      // deliberately: an element that no longer exists cannot hold it, and the
+      // keyboard user would otherwise be dropped on <body> (measured in a
+      // browser 2026-09-23 at 390px and 1440px, en and id).
+      expect(document.activeElement).toBe(trigger);
     } finally {
       act(() => root.unmount());
       container.remove();
@@ -973,6 +978,45 @@ describe('AccountView — password change', () => {
       assertText(container, 'Password');
       assertText(container, 'Optional. With a password you can sign in without requesting an email code.');
       assertText(container, 'Save password');
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('moves focus to the section heading after a successful password save', async () => {
+    // A successful save clears both fields, which disables the submit button
+    // the user just pressed — a disabled element cannot hold focus, so the
+    // browser dropped focus on <body> (measured in a browser 2026-09-23 at
+    // 390px and 1440px, en and id). The heading is the stable target in the
+    // section, the same "no surviving control" branch the revoke and unlink
+    // sections use.
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const { default: AccountPassword } = await import('../account/AccountPassword');
+    const labels = labelMap('en', ['account.password', 'account.passwordHelp', 'account.passwordPlaceholder', 'account.passwordSave', 'account.passwordSaved', 'account.passwordError', 'password.strength.weak', 'password.strength.fair', 'password.strength.good', 'password.strength.strong', 'password.show', 'password.hide', 'password.confirmLabel']);
+    const props = {
+      labels,
+      email: 'test@example.com',
+      saving: false,
+      onPwChange: () => {},
+      onPwConfirmChange: () => {},
+      onSave: () => {},
+    };
+    act(() => {
+      root.render(<AccountPassword {...props} pw="Correct-Horse-9-Battery!" pwConfirm="Correct-Horse-9-Battery!" msg="idle" />);
+    });
+    try {
+      const submit = container.querySelector('button[type="submit"]') as HTMLButtonElement;
+      act(() => submit.focus());
+      expect(document.activeElement).toBe(submit);
+      act(() => {
+        root.render(<AccountPassword {...props} pw="" pwConfirm="" msg="saved" />);
+      });
+      const heading = container.querySelector('h2') as HTMLHeadingElement;
+      expect(document.activeElement).toBe(heading);
+      expect(heading.getAttribute('tabindex')).toBe('-1');
     } finally {
       act(() => root.unmount());
       container.remove();

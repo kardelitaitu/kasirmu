@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { t, type Labels } from '../../i18n/labels';
 import { isStrongPassword, passwordsMatch } from '../../lib/passwordPolicy';
 import PasswordField from '../PasswordField';
@@ -29,9 +30,24 @@ interface Props {
 }
 
 export default function AccountPassword({ labels, email, pw, pwConfirm, msg, saving, onPwChange, onPwConfirmChange, onSave }: Props) {
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
+  const wasSaved = useRef(false);
+  // A successful save clears both fields, which disables the submit button the
+  // user just pressed — a disabled element cannot hold focus, so the browser
+  // dropped focus on <body> and a keyboard user was restarted at the top of the
+  // document (measured in a browser 2026-09-23 at 390px and 1440px, en and id).
+  // The section heading is the stable target: the rule this shares with the
+  // revoke/unlink sections is "next surviving control, else the section
+  // heading", and the surviving control here is an emptied password field,
+  // which would only invite a second entry. The global :focus-visible rule
+  // paints the ring, so the landing place is visible too.
+  useEffect(() => {
+    if (msg === 'saved' && !wasSaved.current) headingRef.current?.focus();
+    wasSaved.current = msg === 'saved';
+  }, [msg]);
   return (
     <section className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm" aria-label={t(labels, 'account.password')}>
-      <h2 className="text-lg font-semibold">{t(labels, 'account.password')}</h2>
+      <h2 ref={headingRef} tabIndex={-1} className="text-lg font-semibold">{t(labels, 'account.password')}</h2>
       <p className="mt-1 text-sm text-muted">{t(labels, 'account.passwordHelp')}</p>
       <form
         onSubmit={(e) => {

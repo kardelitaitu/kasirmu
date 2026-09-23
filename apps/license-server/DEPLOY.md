@@ -204,7 +204,7 @@ The license server requires the RSA private key as an environment variable. **Ne
 > route is `PATCH /v1/projects/{projectId}/services/combined/{serviceId}`. The generic
 > `/v1/projects/{projectId}/services/{serviceId}` path answers `405` with `Allow: HEAD, GET,
 > DELETE`, which reads as "no update endpoint exists" rather than "wrong path" — measured
-> 2026-09-26 while adding the Google keys. Send the **complete** `runtimeEnvironment` object, not
+> 2026-09-20 while adding the Google keys. Send the **complete** `runtimeEnvironment` object, not
 > just the new keys: that is idempotent whether the route merges or replaces, so it cannot drop a
 > secret. Also measured then: 18 -> 22 keys, all 18 pre-existing values byte-identical afterwards,
 > and the PATCH **redeployed the running image** (a brief `503`, then healthy with `uptime=6s`) —
@@ -286,7 +286,7 @@ The license server requires the RSA private key as an environment variable. **Ne
       is host-scoped, so a flow started on one name and returned on the other dies at
       `400 invalid oauth state`.
       **Authorized JavaScript origins: leave empty.** Those entries exist for Google's browser-side JS
-      (GSI / One Tap / `google.accounts.id`), which nothing here uses — measured 2026-09-26 by
+      (GSI / One Tap / `google.accounts.id`), which nothing here uses — measured 2026-09-20 by
       grepping the repo for `gsi/client`, `accounts.google.com/gsi`, `@react-oauth/google` and
       `google.accounts`: no hits. Both flows are server-side redirects (`web_oauth_google.go:106-109`
       builds the authorize URL, `:429` redirects), so only the redirect URIs are consulted. Add

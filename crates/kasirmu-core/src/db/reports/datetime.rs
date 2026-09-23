@@ -9,7 +9,7 @@
 //! functions the sibling `analytics` / `popularity` modules import through
 //! `db::reports`.
 //!
-//! C6 (26-09-26): IANA names used to be rejected here while every *writer* of
+//! C6 (23-09-26): IANA names used to be rejected here while every *writer* of
 //! `locations.timezone` stores one (the setup wizard hardcodes `Asia/Jakarta`;
 //! the bridge accepts only the three Indonesian zones plus `UTC`), so the read
 //! path bucketed a WIB store's revenue in UTC. Resolution now goes through the

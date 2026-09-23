@@ -331,7 +331,7 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 
 ### `commands::desktop_link` (3)
 
-> Added 2026-09-26: these three shipped with ADR #54 §2.5 and were never listed here. The
+> Added 2026-09-20: these three shipped with ADR #54 §2.5 and were never listed here. The
 > `check-api-surface.py` checker had been unable to run since `apps/desktop-client` was renamed,
 > which is why nothing noticed; reviving it is what surfaced them.
 

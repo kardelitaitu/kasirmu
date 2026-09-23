@@ -57,7 +57,17 @@ impl Store<'_> {
     // ── Stock Count CRUD ───────────────────────────────────────────
 
     /// Create a new stock count record.
+    ///
+    /// C18 P1.10: runs inside a transaction — the caller's if one is open
+    /// (SQLite has no nested `BEGIN`), otherwise its own. See
+    /// [`Self::add_count_line`] for why the write surface of this file is
+    /// transactional as a class.
     pub fn create_stock_count(&self, count: &StockCount) -> Result<(), CoreError> {
+        let tx = if self.conn.is_autocommit() {
+            Some(self.conn.unchecked_transaction()?)
+        } else {
+            None
+        };
         self.conn.execute(
             "INSERT INTO stock_counts (id, count_number, status, count_type, notes, counted_by, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -72,6 +82,9 @@ impl Store<'_> {
                 count.updated_at,
             ],
         )?;
+        if let Some(tx) = tx {
+            tx.commit()?;
+        }
         Ok(())
     }
 
@@ -86,11 +99,20 @@ impl Store<'_> {
         count: &mut StockCount,
     ) -> Result<(), CoreError> {
         // `Store` intentionally borrows an immutable `Connection` for its
-        // CRUD surface. Begin an IMMEDIATE transaction explicitly here so the
-        // MAX-based sequence read and insert hold SQLite's write reservation
-        // for the whole allocation, without changing every Store method to
-        // require `&mut Connection`.
-        self.conn.execute_batch("BEGIN IMMEDIATE")?;
+        // CRUD surface, so the IMMEDIATE transaction is opened by hand here:
+        // the MAX-based sequence read and the insert must hold SQLite's write
+        // reservation for the whole allocation.
+        //
+        // C18 P1.10: only when there is not one already. This used to run
+        // `BEGIN IMMEDIATE` unconditionally, which FAILS with "cannot start a
+        // transaction within a transaction" for any caller that already holds
+        // one — the defect is not a lost rollback, it is an outright error.
+        // SQLite has no nested `BEGIN`, so when a transaction is open we join it
+        // and leave the commit to its owner.
+        let owned = self.conn.is_autocommit();
+        if owned {
+            self.conn.execute_batch("BEGIN IMMEDIATE")?;
+        }
         let result = (|| {
             let inserted = self.conn.execute(
                 "INSERT INTO stock_counts
@@ -125,6 +147,14 @@ impl Store<'_> {
             )?;
             Ok(number)
         })();
+
+        // Commit or roll back only what THIS call opened; a joined caller owns
+        // its own commit (and a rollback here would silently discard its work).
+        if !owned {
+            return result.map(|number| {
+                count.count_number = number;
+            });
+        }
 
         match result {
             Ok(number) => {
@@ -222,6 +252,12 @@ impl Store<'_> {
                 message: "completed or cancelled stock counts cannot be modified".into(),
             });
         }
+        // C18 P1.10: the guard read above and this UPDATE are one unit of work.
+        let tx = if self.conn.is_autocommit() {
+            Some(self.conn.unchecked_transaction()?)
+        } else {
+            None
+        };
         self.conn.execute(
             "UPDATE stock_counts SET status = ?1, count_type = ?2, notes = ?3, counted_by = ?4, completed_at = ?5, updated_at = ?6
              WHERE id = ?7",
@@ -235,6 +271,9 @@ impl Store<'_> {
                 count.id,
             ],
         )?;
+        if let Some(tx) = tx {
+            tx.commit()?;
+        }
         Ok(())
     }
 
@@ -263,6 +302,15 @@ impl Store<'_> {
             });
         }
         validate_line_quantities(line)?;
+        // C18 P1.10: the guard read above and this INSERT are one unit of work —
+        // the same check-then-write race `stock_transfers` had. Joins a
+        // caller-owned transaction (SQLite has no nested `BEGIN`), or owns one in
+        // autocommit. The `log_audit` idiom.
+        let tx = if self.conn.is_autocommit() {
+            Some(self.conn.unchecked_transaction()?)
+        } else {
+            None
+        };
         self.conn.execute(
             "INSERT INTO stock_count_lines (id, count_id, sku, product_name, expected_qty, counted_qty, difference, notes)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -271,6 +319,9 @@ impl Store<'_> {
                 line.expected_qty, line.counted_qty, line.difference, line.notes,
             ],
         )?;
+        if let Some(tx) = tx {
+            tx.commit()?;
+        }
         Ok(())
     }
 
@@ -299,10 +350,19 @@ impl Store<'_> {
             });
         }
         validate_line_quantities(line)?;
+        // C18 P1.10: the guard read above and this UPDATE are one unit of work.
+        let tx = if self.conn.is_autocommit() {
+            Some(self.conn.unchecked_transaction()?)
+        } else {
+            None
+        };
         self.conn.execute(
             "UPDATE stock_count_lines SET counted_qty = ?1, difference = ?2, notes = ?3 WHERE id = ?4",
             params![line.counted_qty, line.difference, line.notes, line.id],
         )?;
+        if let Some(tx) = tx {
+            tx.commit()?;
+        }
         Ok(())
     }
 
@@ -329,10 +389,19 @@ impl Store<'_> {
                 message: "count lines can only be removed from an editable stock count".into(),
             });
         }
+        // C18 P1.10: the guard read above and this DELETE are one unit of work.
+        let tx = if self.conn.is_autocommit() {
+            Some(self.conn.unchecked_transaction()?)
+        } else {
+            None
+        };
         self.conn.execute(
             "DELETE FROM stock_count_lines WHERE id = ?1",
             params![line_id],
         )?;
+        if let Some(tx) = tx {
+            tx.commit()?;
+        }
         Ok(())
     }
 

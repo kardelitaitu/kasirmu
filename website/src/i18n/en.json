@@ -65,6 +65,7 @@
     "success": "Thanks! Your message is on its way — we'll reply soon.",
     "sendAnother": "Send another message",
     "formError": "Couldn't send your message. Please try again later.",
+    "formUnavailable": "The contact form isn't available right now. Please email us instead.",
     "faqTitle": "Frequently asked questions",
     "faq": [
       {

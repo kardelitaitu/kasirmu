@@ -2519,3 +2519,68 @@ fn enforce_product_quota_enterprise_unlimited() {
         .enforce_product_quota(&crate::subscription::SubscriptionTier::Enterprise)
         .expect("Enterprise is unlimited");
 }
+
+// ── C18 P1.13: the variant writes join the caller's transaction ──
+
+fn rollback_variant(id: &str, sku: &str, name: &str) -> ProductVariant {
+    ProductVariant {
+        id: id.into(),
+        parent_sku: "DRINK-001".into(),
+        name: name.into(),
+        sku: sku.into(),
+        price: None,
+        barcode: None,
+        sort_order: 1,
+        is_active: true,
+        created_at: "2025-01-01T00:00:00.000Z".into(),
+        updated_at: "2025-01-01T00:00:00.000Z".into(),
+    }
+}
+
+/// `create_product_variant` joins: a rollback leaves no variant. Transaction
+/// SHAPE only — no tenant is stamped (D9).
+#[test]
+fn create_product_variant_joins_a_caller_transaction() {
+    let conn = fresh();
+    seed_everything(&conn);
+    let v = rollback_variant("v-rb", "DRINK-001-L", "Large");
+
+    let tx = conn.unchecked_transaction().unwrap();
+    Store::new(&conn).create_product_variant(&v).unwrap();
+    tx.rollback().unwrap();
+
+    let n: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM product_variants WHERE id = 'v-rb'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(n, 0, "a rolled-back caller must leave no variant");
+}
+
+/// `update_product_variant` joins: a rollback restores the old name.
+#[test]
+fn update_product_variant_joins_a_caller_transaction() {
+    let conn = fresh();
+    seed_everything(&conn);
+    let mut v = rollback_variant("v-rb2", "DRINK-001-XL", "Original");
+    store(&conn).create_product_variant(&v).unwrap();
+
+    v.name = "Changed".into();
+    let tx = conn.unchecked_transaction().unwrap();
+    store(&conn).update_product_variant(&v).unwrap();
+    tx.rollback().unwrap();
+
+    let name: String = conn
+        .query_row(
+            "SELECT name FROM product_variants WHERE sku = 'DRINK-001-XL'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        name, "Original",
+        "a rolled-back caller must not keep the update"
+    );
+}

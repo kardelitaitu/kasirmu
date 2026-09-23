@@ -1467,3 +1467,77 @@ fn assignment_covers_session_asks_about_the_resource_not_the_branch() {
         "the branch id is not the resource being asked about"
     );
 }
+
+// ── C18 P3: the replacement write is one unit of work ─────────────
+
+/// DISCRIMINATING. `write_assignment_scope` replaces both dimension sets
+/// (DELETE-then-INSERT) after upserting the assignment row. A mid-sequence
+/// failure must leave NOTHING behind, not a half-replaced scope.
+///
+/// The failure is reachable and does not need a mock: the second dimension's
+/// INSERT carries a real FK (`assignment_workspaces.workspace_key REFERENCES
+/// workspaces(key)`), so an unknown workspace key aborts the sequence AFTER the
+/// assignment row was upserted and AFTER the branch rows were deleted. Pre-fix
+/// (autocommit, no transaction) the caller observed an error and the database
+/// still held the new assignment row with its branch rows already destroyed —
+/// a silently narrowed scope. This test fails against that code and passes now.
+#[test]
+fn write_assignment_scope_leaves_nothing_behind_when_a_later_step_fails() {
+    let conn = migrations::fresh_db();
+    seed_user(&conn);
+    let store = Store::new(&conn);
+
+    // A first, good scope: one branch, one real workspace.
+    store
+        .set_assignment(
+            "u1",
+            "role-staff",
+            &AssignmentSpec {
+                scope_mode: ScopeMode::Scoped,
+                branches_all: false,
+                branches: vec!["store-a".into()],
+                workspaces_all: false,
+                workspaces: vec!["retail-pos".into()],
+                scope_type: ScopeType::Organization,
+                scope_id: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        store.assignment_for_user("u1").unwrap().unwrap().branches,
+        vec!["store-a".to_string()]
+    );
+
+    // A second scope that fails on the workspace INSERT: the key does not exist.
+    let err = store.write_assignment_scope(
+        "u1",
+        "role-staff",
+        &AssignmentSpec {
+            scope_mode: ScopeMode::Scoped,
+            branches_all: false,
+            branches: vec!["store-b".into()],
+            workspaces_all: false,
+            workspaces: vec!["no-such-workspace".into()],
+            scope_type: ScopeType::Organization,
+            scope_id: None,
+        },
+    );
+    assert!(
+        err.is_err(),
+        "the unknown workspace key must abort the write"
+    );
+
+    // The FIRST scope must still be intact — not the new branches with no
+    // workspaces, and not a deleted branch set.
+    let after = store.assignment_for_user("u1").unwrap().unwrap();
+    assert_eq!(
+        after.branches,
+        vec!["store-a".to_string()],
+        "a failed replacement must not have destroyed the previous branch set"
+    );
+    assert_eq!(
+        after.workspaces,
+        vec!["retail-pos".to_string()],
+        "a failed replacement must not have cleared the previous workspaces"
+    );
+}

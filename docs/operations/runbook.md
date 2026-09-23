@@ -501,7 +501,7 @@ answers — `GET /api/v1/web/me` and `GET /api/v1/web/identities` → 401, `POST
 /api/v1/desktop/link/email/request` → 400, `POST /api/v1/desktop/link/google/start` → 400,
 `POST /api/v1/web/request-otp` → 400, `GET /api/sync/snapshot` → 401, `POST /api/v1/terminals`
 → 422, and both OAuth endpoints → 302 (configured) — so the `deployment COMPLETE` verdict is
-current, not the 2026-09-26 `predated ADR #54` reading this section used to carry.
+current, not the 2026-09-20 `predated ADR #54` reading this section used to carry.
 
 **Two probe paths that produce 404 by design — do not read them as a stale deploy.**
 `/api/v1/desktop/link/` and `/api/v1/desktop/link/start` **do not exist in the source**; the
@@ -605,7 +605,7 @@ failures to expect, and what each means:
   > **You can check registration without the console.** Ask Google: build the authorize URL
   > with the client id and the callback under test and GET it. An unregistered `redirect_uri`
   > answers `400 redirect_uri_mismatch` *before* consent; a registered one answers `302`
-  > onward. Measured 2026-09-26 — it settled a "did we register these?" question in one call,
+  > onward. Measured 2026-09-20 — it settled a "did we register these?" question in one call,
   > and a `302` also proves the client id itself is valid.
 - `400 invalid oauth state` after the consent screen: the browser did not send the
   `oz_oauth_state` cookie back — something in front of the licence host is stripping
@@ -1445,32 +1445,112 @@ The request is a file beside the live database:
 
 ### 11.2 How a restore is requested
 
-Two mechanisms exist, and **which one you can use today is not the same for both**.
+Two mechanisms exist, and **which one is available is not the same on the two shells.**
 
-**A. In-app request — the preferred path, and not yet reachable from the UI.**
+**A. In-app request — the preferred path. Registered on the DESKTOP shell only.**
 `restore_prepare` validates the candidate, checks a typed confirmation against the candidate's
 own `store.name`, requires `SETTINGS_EDIT`, and writes the request file
-(`crates/kasirmu-bridge/src/data.rs:1130-1221`). `list_restore_candidates` lists the backup
+(`crates/kasirmu-bridge/src/data.rs:1152-1221`). `list_restore_candidates` lists the backup
 generations with their verdicts (`:1092-1128`); `restore_status` reports what is pending
 (`:1233-1266`).
 
-> ⚠️ **UNVERIFIED AS AN OPERATOR PATH: no IPC command is registered for any of the three.**
-> Measured at this revision by reading both `invoke_handler!` blocks —
-> `apps/desktop-tauri/src/lib.rs:964-980` and `apps/mobile-tauri/src/lib.rs:644-656` register
-> `get_backup_status*`, `create_backup*`, `export_data*`, `import_*` and `create_backup_to`,
-> and **nothing else from `kasirmu_bridge::data`**; grepping
-> `list_restore_candidates|restore_prepare|restore_status` across `apps/` returns only module
-> docs and tests. The workstream checklist records the same gap as the outstanding slice S5
-> (`manager-codebase-review-checklist.md:266`). **Do not look for a restore button in
-> Settings → Data Management** — the screen there is Backup status plus one-click snapshot
-> (`ui/src/features/settings/DataManagementScreen.tsx`).
+> **Re-derive this, do not trust it — it changed once already.**
+> This section stated "no IPC command is registered for any of the three" until 2026-09-23,
+> which was true when written and false from the commit that registered them. A census of
+> registrations is one grep:
+> ```bash
+> grep -n 'list_restore_candidates\|restore_prepare\|restore_status' apps/*/src/lib.rs
+> ```
+> **Expected today: three hits, all in `apps/desktop-tauri/src/lib.rs` (`:971`, `:972`, `:973`)
+> and none in `apps/mobile-tauri/src/lib.rs`.** If that changes, this section is stale again.
+
+**The three commands, and the permission each one enforces.** The gate sits on the
+renderer-reachable wrapper in `apps/desktop-tauri/src/commands/data.rs`, not on the bridge
+function — the wrapper is the path the renderer actually takes, and the wrapper is what the
+registration sweep reads:
+
+| IPC command | Permission | Where the gate is | What it does |
+|---|---|---|---|
+| `list_restore_candidates` | `SETTINGS_READ` | `commands/data.rs:177` | Lists the backup generations with their verdicts. Read-only. |
+| `restore_status` | `SETTINGS_READ` | `commands/data.rs:196` | Reports whether a request file is pending. Read-only. |
+| `restore_prepare` | **`SETTINGS_EDIT`** | `commands/data.rs:228` | Writes `<db>.restore-request.json` — the file the next boot promotes. **The only one that changes anything.** |
+
+The read/write split is deliberate and load-bearing: the two reads take the **read** half of the
+same family, so an operator who may *see* that a restore is pending does not thereby gain the
+right to *request* one. The asymmetry is pinned by
+`apps/desktop-tauri/src/commands/data_tests.rs:153-179` (`restore_status_is_readable_without_the_write_permission`)
+and by the registration ledger row `("data", 10, &["DATA_EXPORT", "SETTINGS_EDIT", "SETTINGS_READ"])`
+at `apps/desktop-tauri/tests/gate_audit.rs:117-121`.
+
+> ⚠️ **What the bridge functions themselves take is NOT uniform — do not generalise from the two
+> reads.** `list_restore_candidates(db_path)` and `restore_status(db_path)` take **no session
+> token by design** — they are pure reads (`crates/kasirmu-bridge/src/data.rs:1092`, `:1233`).
+> `restore_prepare` **does** take one: its signature is
+> `(ctx, session_token, db_path, args)` and it enforces `SETTINGS_EDIT` itself at `:1158-1160`.
+> So the wrapper gate on `restore_prepare` is not an independent second check — removing it still
+> denies via the bridge, which is why `gate_audit.rs:111-116` calls the ledger row, not the
+> runtime behaviour, the thing that makes the wrapper gate observable.
+
+**Which role has to hold `SETTINGS_EDIT` to request a restore.** The permission keys are
+`settings:read` and `settings:edit` (`platform/core/src/rbac.rs:434`, `:436`). Of the built-in
+role presets (`platform/core/src/rbac_presets.rs`), the roles that carry `SETTINGS_EDIT` are:
+
+| Role | `SETTINGS_EDIT`? | Evidence |
+|---|---|---|
+| **Owner** | yes — via the `["*"]` wildcard grant | `rbac_presets.rs:42-47` |
+| **Manager** | yes, explicitly | `rbac_presets.rs:79-80` |
+| **Admin** | yes, explicitly | `rbac_presets.rs:193-194` |
+| Staff | **no** — the register role grants neither key | `rbac_presets.rs:136-159` |
+| Auditor | **no** — `SETTINGS_READ` only, deliberately | `rbac_presets.rs:260-275` |
+
+So: **an Owner, Manager or Admin can request a restore; Staff and Auditor cannot** — and an
+Auditor *can* still list candidates and see that one is pending, which is the split working as
+designed. A custom role needs `settings:edit` added explicitly.
+
+**What an operator sees when they do not hold it.** The gate denies fail-closed and the renderer
+receives `{ kind: "permissionDenied", message: … }`
+(`apps/desktop-tauri/src/error.rs:124-126` and `:147`; the underlying denial text is produced
+in `crates/kasirmu-core/src/db/staff.rs:388-412`, e.g. `"user is inactive"`,
+`"role <id> not found"`). The UI maps that kind to the localized string
+**"You don't have permission to do this."** (`ui/src/utils/app-error.ts:248-249` →
+`app-error-permission` in `shared-ui/locales/shared.ftl:40`; the Indonesian form is
+`shared-ui/locales/shared.id.ftl:125`). A session that is not recognised at all is refused
+earlier and separately, as `AppError::InvalidSession`
+(`apps/desktop-tauri/src/commands/data_tests.rs:135-151`).
+
+**The TABLET registers NONE of the three.** `apps/mobile-tauri/src/lib.rs:644-656` registers
+`export_data`, `import_preview`, `import_data`, `create_backup_to` and
+`export_data_without_session` from `commands::data` — and nothing else. A tablet operator
+therefore still has **only the CLI path** (§11.8). This is the position this section previously
+stated for both shells; it is now true for exactly one of them. Re-derive it with the same grep
+above.
+
+**Re-check every claim in this table in one command:**
+```bash
+python3 scripts/verify-ipc-parity.py    # the repo's own parity gate; step "ipc parity" in scripts/check.sh:71
+```
+It cross-checks each shell's `generate_handler!` against the UI's command strings and the
+registration ledger, and it is what would have caught this section going stale.
+
+**Registered is not the same as clickable.** No React code calls any of the three:
+`ui/src/api/data.ts` wraps only `get_backup_status`, `create_backup`, `create_backup_to`,
+`export_data`, `import_preview` and `import_data` (`:210`–`:336`), and grepping the three
+names across `ui/src` returns nothing. So on desktop the request path is **reachable over IPC**
+but **has no UI caller yet** — do not send an operator looking for a restore button in
+Settings → Data Management; the screen there is Backup status plus one-click snapshot
+(`ui/src/features/settings/DataManagementScreen.tsx` — the live one, imported by
+`ui/src/features/settings/register.tsx:7` and registered at `:31` as route `data-management`
+with `requiredRole: 'owner'`; the same-named file under `settings/screens/` is a blank
+placeholder shell). Re-derive with
+`grep -rn 'restore_prepare\|list_restore_candidates\|restore_status' ui/src`.
 
 **Why the in-app path is nonetheless the intended one.** On Android the default backup lands in
 app-private storage an operator cannot reach with a file manager, so a shell is not an available
 tool on that shell; that is the whole reason D5 chose a safe-mode boot consumer over an
 in-process restore (`manager-codebase-review-decisions.md:105-118`).
 
-**B. The CLI restore** — reachable today, and it does **not** use the request file. See §11.8.
+**B. The CLI restore** — reachable on both shells today, and it does **not** use the request
+file. See §11.8.
 
 ### 11.3 What the operator sees on the next boot
 
@@ -1575,9 +1655,9 @@ invariant (`crates/kasirmu-core/src/db/recovery.rs:20-21`), pinned on both shell
 3. **Fix the cause, or decide not to restore.** The common cases:
    - `Corrupt` — the candidate is unusable. Choose another generation.
      `list_restore_candidates` lists every generation that exists **including** the unusable
-     ones, precisely so you can read why (`crates/kasirmu-bridge/src/data.rs:1075-1085`). If
-     the request was written by an earlier process, it must be re-created once the trigger path
-     is available (§11.2).
+     ones, precisely so you can read why (`crates/kasirmu-bridge/src/data.rs:1075-1085`).
+     `list_restore_candidates` is itself an IPC command on the desktop shell (§11.2), so you can
+     read the verdicts without leaving the app.
    - `NewerThanThisBuild` — the candidate came from a **newer** build. Do not force it: run the
      newer build, or restore an older generation.
    - "the restore request names the relative path …" or "… a path containing '..'" — the request
@@ -1593,7 +1673,7 @@ invariant (`crates/kasirmu-core/src/db/recovery.rs:20-21`), pinned on both shell
 5. **Restore by the other route** if you need the data back now and the request path is blocked
    — §11.8.
 
-### 11.8 The CLI restore (the currently reachable route)
+### 11.8 The CLI restore (the only route on the TABLET, and the direct one on desktop)
 
 ```bash
 # the app must be CLOSED first
@@ -1622,16 +1702,32 @@ the swap directly, which is why the app must be closed.
 - `<db>.restore-request.json.done` is the consumed request. Safe to delete once you have read
   it.
 - The tablet's copies sit beside its own `kasir.db` in app-private storage
-  (`apps/mobile-tauri/src/state.rs:388-411`), which is not operator-browsable — the reason the
-  in-app request path is the one that matters on that shell (§11.2).
+  (`apps/mobile-tauri/src/state.rs:388-411`), which is not operator-browsable. **On that shell
+  the in-app request path is not merely unavailable in the UI — none of the three IPC commands
+  is registered at all (§11.2)**, so the CLI in §11.8 is the only route an operator has there.
+  Getting the file onto a machine where the CLI can reach it is part of the procedure.
 
 ---
 
 > **Sections 10–11 added for C11b + C8 S7 (workstream date 2026-09-23) and NOT covered by the
 > 09-09-26 audit stamp above.** Every path, file name, command and line reference in these two
-> sections was read out of the source named beside it. Two steps are deliberately marked rather
-> than asserted: §11.2's in-app request trigger has no registered IPC command today, and §10.3's
-> literal Windows path is derived from the verified identifier and `app_data_dir()` join, not
-> observed by calling the OS API.
+> sections was read out of the source named beside it.
+>
+> **§11.2 was corrected on 2026-09-23 (C57) and this note is part of that correction.** It
+> previously read that the in-app request trigger "has no registered IPC command today" — true
+> when written, false from the commit that registered them. What is true now: the three
+> commands `list_restore_candidates`, `restore_status` and `restore_prepare` are registered
+> on the **desktop** shell (`apps/desktop-tauri/src/lib.rs:971-973`) and gated in
+> `apps/desktop-tauri/src/commands/data.rs` — `SETTINGS_EDIT` for `restore_prepare` (`:228`),
+> `SETTINGS_READ` for the two reads (`:177`, `:196`); the **tablet registers none of the
+> three** (`apps/mobile-tauri/src/lib.rs:644-656`). Re-derive the whole census with
+> `grep -n 'list_restore_candidates\|restore_prepare\|restore_status' apps/*/src/lib.rs`
+> (expect three hits, all desktop) or `python3 scripts/verify-ipc-parity.py`. This is the
+> second correction to this section in one day, so it is stated with its command rather than
+> as a fact to be trusted.
+>
+> One step remains deliberately marked rather than asserted: §10.3's literal Windows path is
+> derived from the verified identifier and `app_data_dir()` join, not observed by calling the
+> OS API.
 
 > last audited 09-09-26 by docs-auditor

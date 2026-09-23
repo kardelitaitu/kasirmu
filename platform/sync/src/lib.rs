@@ -144,17 +144,18 @@ pub const MAX_BATCH_BYTES: usize = 64 * 1024;
 /// Split pending items into batches that each serialise to ≤ `max_bytes`
 /// bytes of JSON. Ensures at least one item per batch (no empty requests).
 ///
-/// Items are sorted by priority (P-2) before chunking: all Critical items
-/// transmit before any Normal item, which transmit before Low items.
-/// Within each priority tier, original arrival order is preserved.
+/// Items are ordered by the shared rule ([`kasirmu_core::offline::order_for_push`])
+/// before chunking: all Critical items transmit before any Normal item, which
+/// transmit before Low items, and within a tier the arrival order is preserved.
+///
+/// C49: this used to sort by priority alone, which is NOT a total order. See the
+/// shared function for why same-millisecond items need the id tie-break.
 pub fn build_batches(
     items: &[kasirmu_core::offline::OfflineQueueItem],
     max_bytes: usize,
 ) -> Vec<Vec<kasirmu_core::offline::OfflineQueueItem>> {
-    // Sort by priority (Critical=0, Normal=1, Low=2) — stable sort
-    // preserves arrival order within each tier.
     let mut sorted: Vec<kasirmu_core::offline::OfflineQueueItem> = items.to_vec();
-    sorted.sort_by_key(|item| item.priority);
+    kasirmu_core::offline::order_for_push(&mut sorted);
 
     let mut batches: Vec<Vec<kasirmu_core::offline::OfflineQueueItem>> = Vec::new();
     let mut current: Vec<kasirmu_core::offline::OfflineQueueItem> = Vec::new();
@@ -181,6 +182,67 @@ pub fn build_batches(
     }
 
     batches
+}
+
+/// Apply per-item push outcomes to the local offline queue.
+///
+/// The third push-outcome applier in the workspace, alongside
+/// `kasirmu_core::sync_client::apply_sync_outcomes` (the immediate path) and
+/// `daemon::apply_push_results` (the SQLite daemon). All three MUST classify
+/// outcomes identically: a rejection rule applied in two of three appliers is
+/// the divergent-twin failure, not a smaller change.
+///
+/// # Duplicate-id replays are not rejections
+///
+/// A `Rejected` reason carrying the
+/// [`kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX`] marker means
+/// the server already holds this item id, so the mutation landed on a previous
+/// push and only the local mark was lost (the canonical case: a crash between
+/// the server insert and `mark_offline_synced`, then a re-push). Item ids are
+/// client-generated UUIDv7 values assigned once at enqueue and never reused
+/// (`OfflineQueueItem::new`), so a duplicate id can only ever be THIS item.
+/// The correct local state is `synced`. Routing it to `mark_failed` would be
+/// silently terminal: push-side `failed` rows have no requeue path, so the
+/// item would be stranded locally while sitting durably on the server.
+///
+/// # Errors
+///
+/// Propagates the first queue-write failure. A duplicate-id replay is the ONLY
+/// rejection that marks synced; every other reason still dead-letters the row.
+fn apply_push_outcomes(
+    queue: &SyncQueue,
+    store: &Store<'_>,
+    batch: &[kasirmu_core::offline::OfflineQueueItem],
+    results: &[transport::PushOutcome],
+) -> Result<(), SyncError> {
+    for (item, outcome) in batch.iter().zip(results.iter()) {
+        match outcome {
+            transport::PushOutcome::Accepted => {
+                queue.mark_synced(store, &item.id)?;
+            }
+            transport::PushOutcome::Conflict(server_item) => {
+                // SYNC-02: single shared conflict-application service --
+                // identical ADR #21 strategy whether the conflict is
+                // processed here or by the daemon.
+                queue.apply_push_conflict(store, item, server_item)?;
+            }
+            transport::PushOutcome::Rejected { reason }
+                if kasirmu_core::sync_client::is_duplicate_id_rejection(reason) =>
+            {
+                // Idempotent replay: the server already holds this exact item,
+                // so the mutation landed. Mark synced, never failed.
+                tracing::info!(
+                    item_id = %item.id,
+                    "sync engine: duplicate-id replay, item already on server, marking synced"
+                );
+                queue.mark_synced(store, &item.id)?;
+            }
+            transport::PushOutcome::Rejected { reason } => {
+                queue.mark_failed(store, &item.id, reason)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Whether a snapshot tax rate's scope can be honoured in this database.
@@ -551,22 +613,7 @@ impl SyncEngine {
                 );
 
                 let results = self.transport.push_items(batch).await?;
-                for (item, outcome) in batch.iter().zip(results.iter()) {
-                    match outcome {
-                        transport::PushOutcome::Accepted => {
-                            queue.mark_synced(store, &item.id)?;
-                        }
-                        transport::PushOutcome::Conflict(server_item) => {
-                            // SYNC-02: single shared conflict-application
-                            // service — identical ADR #21 strategy whether the
-                            // conflict is processed here or by the daemon.
-                            queue.apply_push_conflict(store, item, server_item)?;
-                        }
-                        transport::PushOutcome::Rejected { reason } => {
-                            queue.mark_failed(store, &item.id, reason)?;
-                        }
-                    }
-                }
+                apply_push_outcomes(&queue, store, batch, &results)?;
                 total_pushed += results.len();
             }
         } else {
