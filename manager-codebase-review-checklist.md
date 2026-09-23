@@ -1,6 +1,6 @@
 # Remediation Checklist - kasir.mu
 
-**Progress at 2026-09-23:** 9 items verified and ticked (C5, C5b, C6, C6b, C9, C11-code, C12, C17 slice 1, C27); 3 partial with named remainders (C1 stage 1 of 3, C2 first step, C8 slice S1 of 7); the rest queued or blocked on an owner decision. Every ticked line names its commit, and the verification log at the end carries the command and its result.
+**Progress at 2026-09-23.** **10 checklist items fully ticked** (C5, C5b, C6, C6b, C7 detection half, C9, C11 code half, C12, C13, C27) **plus 13 further slices landed inside items whose checkbox stays open until the whole item is done** (C1 S1 and S1.5, C2 step 1, C3 S1, C8 S1 and S2, C10a, C17 slices 1-2, C18 P1.1, P1.2, P1.3, P1.5). Every one names its commit SHA, and the verification log at the end carries the command and its result. Do not read a ticked line as 'this area is finished' - read the annotation beside it for the remainder.
 
 Derived from manager-codebase-review.md (commit 954d4b094), 2026-09-23. Nothing here is new evidence: every item traces to a numbered section of that review, and the acceptance check is the one stated there.
 ---
