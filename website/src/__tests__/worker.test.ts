@@ -102,6 +102,56 @@ describe('Cloudflare Worker — worker.ts', () => {
     expect(await res.text()).toBe('static asset');
   });
 
+  // ── Canonical host: www → apex ──────────────────────────────────
+
+  it('301s www.kasir.mu to the apex, preserving path and query', async () => {
+    // Before this, www.kasir.mu was a proxied CNAME with no Worker route, so it
+    // fell through to the dummy origin and answered 522 on every path.
+    const req = new Request('https://www.kasir.mu/en/docs/offline-mode/?tab=setup');
+    // Counted before/after rather than asserted absent: the ASSETS mock is shared
+    // across this file, so earlier tests have already called it.
+    const assetsCallsBefore = mockEnv.ASSETS.fetch.mock.calls.length;
+    const res = await worker.fetch(req, mockEnv);
+
+    expect(res.status).toBe(301);
+    expect(res.headers.get('Location')).toBe('https://kasir.mu/en/docs/offline-mode/?tab=setup');
+    // The redirect is answered by the Worker itself; nothing is served from www.
+    expect(mockEnv.ASSETS.fetch.mock.calls.length).toBe(assetsCallsBefore);
+  });
+
+  it.each([
+    ['/', 'https://kasir.mu/'],
+    ['/en/', 'https://kasir.mu/en/'],
+    ['/id/pricing/?plan=plus', 'https://kasir.mu/id/pricing/?plan=plus'],
+    ['/en/account/', 'https://kasir.mu/en/account/'],
+    ['/robots.txt', 'https://kasir.mu/robots.txt'],
+    ['/__oz/runtime-config.js', 'https://kasir.mu/__oz/runtime-config.js'],
+  ])('canonicalises www path %s', async (path, expected) => {
+    const res = await worker.fetch(new Request(`https://www.kasir.mu${path}`), mockEnv);
+
+    expect(res.status).toBe(301);
+    expect(res.headers.get('Location')).toBe(expected);
+  });
+
+  it('collapses a double-slash www path (B24: no protocol-relative Location)', async () => {
+    const res = await worker.fetch(new Request('https://www.kasir.mu//evil.example/x'), mockEnv);
+
+    expect(res.status).toBe(301);
+    expect(res.headers.get('Location')).toBe('https://kasir.mu/evil.example/x');
+  });
+
+  it('leaves the apex, dashboard and admin hosts alone', async () => {
+    const apex = await worker.fetch(new Request('https://kasir.mu/en/docs'), mockEnv);
+    expect(apex.status).toBe(200);
+
+    const dashboard = await worker.fetch(new Request('https://dashboard.kasir.mu/'), mockEnv);
+    expect(dashboard.status).toBe(302);
+    expect(dashboard.headers.get('Location')).toBe('https://kasir.mu/en/account/');
+
+    const admin = await worker.fetch(new Request('https://admin.kasir.mu/'), mockEnv);
+    expect(admin.status).toBe(200);
+  });
+
   // ── Auth gate (ADR #42) ─────────────────────────────────────────
 
   it('redirects dashboard.kasir.mu / to kasir.mu/en/account/', async () => {

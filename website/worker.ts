@@ -90,6 +90,19 @@ const CUSTOMER_DASHBOARD_HOST = 'dashboard.kasir.mu';
 const MARKETING_HOST = 'kasir.mu';
 
 /**
+ * The `www.` alias of the marketing host. It is NOT a host of its own: the zone
+ * carries it as a proxied CNAME to the apex, whose DNS points at a dummy origin
+ * (192.0.2.1), so the only thing serving that name is this Worker's route. With
+ * the route missing — as it was until 2026-09-23 — every www request fell
+ * through to that non-existent origin and answered 522, while the site's own
+ * canonicals, hreflang and sitemap all name the apex. Hence: permanent redirect
+ * to the canonical host, path and query preserved, and nothing else that "www"
+ * could stand for (no subdomain gate, no separate robots.txt — robots.txt is
+ * per-authority, so a 301 to the apex hands the crawler the apex's own file).
+ */
+const WWW_HOST = 'www.kasir.mu';
+
+/**
  * Every host that is NOT the marketing host. Each needs its own robots.txt:
  * robots.txt is per-authority, so `kasir.mu/robots.txt` governs nothing on
  * admin.kasir.mu or dashboard.kasir.mu. Both subdomains are entirely
@@ -255,6 +268,27 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const hostname = url.hostname;
+
+    // ── Canonical host: www → apex (301) ──────────────────────────────
+    // Must come first: on www there is nothing to serve, only somewhere to send
+    // the visitor, and every later branch (robots.txt, the dashboard redirect,
+    // the admin gate) assumes a host that owns its own content. Measured before
+    // this: www responded 522 to every path.
+    if (hostname === WWW_HOST) {
+      // B24: single-slash, same rule as the exchange redirect below. A path like
+      // '//evil.com' would otherwise make the Location header protocol-relative
+      // and turn the canonical redirect into an OPEN REDIRECT.
+      const path = '/' + url.pathname.replace(/^[/\\]+/, '');
+      return new Response(null, {
+        status: 301,
+        headers: {
+          Location: `https://${MARKETING_HOST}${path}${url.search}`,
+          // A permanent canonical redirect is meant to be cached; nothing here
+          // varies per visitor.
+          'Cache-Control': 'public, max-age=3600',
+        },
+      });
+    }
 
     // ── Crawler policy on the auth subdomains (R3) ────────────────────
     // robots.txt is per-authority: kasir.mu/robots.txt governs nothing on
