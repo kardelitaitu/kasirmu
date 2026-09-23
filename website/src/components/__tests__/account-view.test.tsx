@@ -1122,6 +1122,53 @@ describe('AccountView — Devices & Invoices', () => {
       // It names the terminal and is announced (role="status").
       const status = container.querySelector('[role="status"]');
       expect(status?.textContent).toContain('Terminal MACHINE-001 revoked');
+      // Focus recovery: the button that was pressed has just removed itself, and
+      // removing the focused element would drop focus on <body>. With no other
+      // active terminal the section heading is the stable target.
+      expect(document.activeElement?.textContent?.trim()).toBe('Registered Terminals');
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('moves focus to the next active terminal when one survives the revoke', async () => {
+    sessionStorage.setItem('oz_session', 'tok-revoke-next');
+    mockFetch((url, init) => {
+      if (url.includes('/devices') && init?.method === 'POST') {
+        return okJson({ status: 'revoked', revoked_at: '2026-08-29T00:00:00Z' });
+      }
+      if (url.includes('/devices')) {
+        return okJson({
+          devices: [
+            { id: 'mac-1', machine_id: 'MACHINE-001', created: '2026-08-01T00:00:00Z', revoked_at: null },
+            { id: 'mac-2', machine_id: 'MACHINE-002', created: '2026-08-02T00:00:00Z', revoked_at: null },
+          ],
+        });
+      }
+      return okJson({
+        tenant: { email: 'test@example.com', emailVerified: true, status: 'active' },
+        license: { key: 'OZ-TEST-0001', tierKey: 'pro', status: 'active', expiresAt: '2027-01-01' },
+        subscription: null,
+      });
+    });
+    const { container, root } = await renderAccount('en');
+    try {
+      const revokeBtns = Array.from(container.querySelectorAll('button')).filter(
+        (b) => b.textContent?.trim() === 'Revoke',
+      );
+      expect(revokeBtns).toHaveLength(2);
+      act(() => {
+        revokeBtns[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+      // Focus lands on the terminal that can still be managed, so the keyboard
+      // user continues in the list instead of being sent back to the top.
+      const focused = document.activeElement as HTMLElement | null;
+      expect(focused?.textContent?.trim()).toBe('Revoke');
+      expect(focused?.closest('.rounded-lg')?.textContent).toContain('MACHINE-002');
     } finally {
       act(() => root.unmount());
       container.remove();
@@ -1131,13 +1178,19 @@ describe('AccountView — Devices & Invoices', () => {
   it('confirms an unlink, naming the provider and repeating that the email code still works', async () => {
     sessionStorage.setItem('oz_session', 'tok-unlink');
     const unlinkCalls: string[] = [];
+    // Stateful: the DELETE really removes the method, so the row disappears the
+    // way it does against the license server.
+    let unlinked = false;
     mockFetch((url, init) => {
       if (url.includes('/identities') && init?.method === 'DELETE') {
         unlinkCalls.push(url);
+        unlinked = true;
         return okJson({ status: 'unlinked' });
       }
       if (url.includes('/identities')) {
-        return okJson({ identities: [{ id: 'id_google', provider: 'google', email: 'test@example.com' }] });
+        return okJson({
+          identities: unlinked ? [] : [{ id: 'id_google', provider: 'google', email: 'test@example.com' }],
+        });
       }
       if (url.includes('/devices')) return okJson({ devices: [] });
       return okJson({
@@ -1165,6 +1218,55 @@ describe('AccountView — Devices & Invoices', () => {
       const status = container.querySelector('[role="status"]');
       expect(status?.textContent).toContain('Google unlinked');
       expect(status?.textContent).toContain('email code still works');
+      // The whole row is gone, so the pressed Unlink button is gone with it;
+      // focus must not be left on <body>.
+      expect(document.activeElement?.textContent?.trim()).toBe('Sign-in methods');
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('moves focus to the next sign-in method when one survives the unlink', async () => {
+    sessionStorage.setItem('oz_session', 'tok-unlink-next');
+    let unlinked = false;
+    mockFetch((url, init) => {
+      if (url.includes('/identities') && init?.method === 'DELETE') {
+        unlinked = true;
+        return okJson({ status: 'unlinked' });
+      }
+      if (url.includes('/identities')) {
+        return okJson({
+          identities: unlinked
+            ? [{ id: 'id_apple', provider: 'apple', email: 'test@example.com' }]
+            : [
+                { id: 'id_google', provider: 'google', email: 'test@example.com' },
+                { id: 'id_apple', provider: 'apple', email: 'test@example.com' },
+              ],
+        });
+      }
+      if (url.includes('/devices')) return okJson({ devices: [] });
+      return okJson({
+        tenant: { email: 'test@example.com', emailVerified: true, status: 'active' },
+        license: { key: 'OZ-TEST-0001', tierKey: 'pro', status: 'active', expiresAt: '2027-01-01' },
+        subscription: null,
+      });
+    });
+    const { container, root } = await renderAccount('en');
+    try {
+      const unlinkBtns = Array.from(container.querySelectorAll('button')).filter(
+        (b) => b.textContent?.trim() === 'Unlink',
+      );
+      expect(unlinkBtns).toHaveLength(2);
+      act(() => {
+        unlinkBtns[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+      const focused = document.activeElement as HTMLElement | null;
+      expect(focused?.textContent?.trim()).toBe('Unlink');
+      expect(focused?.closest('.rounded-lg')?.textContent).toContain('apple');
     } finally {
       act(() => root.unmount());
       container.remove();

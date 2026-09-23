@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { t, type Labels } from '../../i18n/labels';
 import { fmtDate } from './accountShared';
 
@@ -32,11 +33,46 @@ interface Props {
  * in the parent.
  */
 export default function AccountDevices({ locale, labels, devices, licenseTierKey, revokingId, revokeError, revokedMachine, onRevoke }: Props) {
+  // Focus recovery. The button the user pressed removes itself — its row now
+  // renders "Revoked" — and removing the focused element drops focus on <body>,
+  // dumping a keyboard user at the top of the document. MEASURED 2026-09-23 in
+  // Chromium: activate Revoke with the keyboard, then read
+  // document.activeElement → BODY.
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
+  const revokeButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const focusedFor = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!revokedMachine || focusedFor.current === revokedMachine) return;
+    // Wait for the list to settle. Until this row renders as revoked its own
+    // button is still on screen, so there is a focus target and nothing to
+    // recover yet — moving focus then would only re-run once the button goes.
+    const pressed = (devices ?? []).find((d) => d.machine_id === revokedMachine);
+    if (pressed && !pressed.revoked_at) return;
+    focusedFor.current = revokedMachine;
+    // The next terminal still offering Revoke keeps the keyboard where the work
+    // is; the section heading is the stable fallback. Focus deliberately does
+    // NOT go to the status line: that is a live region, and moving focus into it
+    // makes assistive tech read the confirmation twice.
+    const next = (devices ?? [])
+      .filter((d) => d.id && !d.revoked_at)
+      .map((d) => revokeButtonRefs.current[d.id as string])
+      .find(Boolean);
+    (next ?? headingRef.current)?.focus();
+  }, [devices, revokedMachine]);
+
   return (
     <section className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm" aria-label={t(labels, 'account.devices')}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <h2 className="text-lg font-semibold">{t(labels, 'account.devices')}</h2>
+          {/* tabIndex={-1}: programmatic focus target for the revoke recovery
+              above. The ring itself is NOT styled here — the global
+              :focus-visible rule is the single owner of the focus indicator
+              (keyboard-a11y.test.ts bans a second one), so a keyboard user who
+              lands here via Enter sees the one ring this site has. */}
+          <h2 ref={headingRef} tabIndex={-1} className="text-lg font-semibold">
+            {t(labels, 'account.devices')}
+          </h2>
           <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-semibold text-link">
             {devices !== null
               ? t(labels, 'account.terminalCountLive').replace('{count}', String(devices.length))
@@ -83,6 +119,9 @@ export default function AccountDevices({ locale, labels, devices, licenseTierKey
                 {!d.revoked_at && d.id && (
                   <button
                     type="button"
+                    ref={(el) => {
+                      if (d.id) revokeButtonRefs.current[d.id] = el;
+                    }}
                     onClick={() => onRevoke(d)}
                     disabled={revokingId === d.id}
                     className="inline-flex items-center gap-1 rounded border border-ink/15 bg-surface px-2 py-1 text-xs font-medium text-ink transition hover:bg-ink/5 hover:border-danger/40 disabled:opacity-50"
