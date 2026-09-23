@@ -3109,7 +3109,10 @@ fn open_shift_uniqueness_index_bites_on_raw_sql() {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(open, 2, "the negative control must actually reproduce the defect");
+        assert_eq!(
+            open, 2,
+            "the negative control must actually reproduce the defect"
+        );
     }
 
     // ── Leg B: WITH the index, the same raw statement is refused. ──
@@ -3147,8 +3150,11 @@ fn open_shift_uniqueness_index_bites_on_raw_sql() {
 
     // Exemption 2: closing the first shift releases the user — a closed row
     // leaves the partial index entirely.
-    conn.execute("UPDATE shifts SET status = 'closed' WHERE id = 'shift-a'", [])
-        .unwrap();
+    conn.execute(
+        "UPDATE shifts SET status = 'closed' WHERE id = 'shift-a'",
+        [],
+    )
+    .unwrap();
     conn.execute(DUPLICATE_INSERT, rusqlite::params!["shift-d", "user-open"])
         .expect("a closed shift must not block the next open for that user");
 
@@ -3182,7 +3188,8 @@ fn open_shift_uniqueness_migration_reconciles_pre_existing_duplicates() {
     seed_shift_user(&conn, "user-legacy");
 
     // Simulate the pre-fix store: drop the guard, then write the duplicate.
-    conn.execute("DROP INDEX idx_shifts_open_per_user", []).unwrap();
+    conn.execute("DROP INDEX idx_shifts_open_per_user", [])
+        .unwrap();
     conn.execute_batch(
         "INSERT INTO shifts (id, user_id, opened_at, created_at, updated_at, status) VALUES
            ('legacy-old', 'user-legacy', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 'open'),

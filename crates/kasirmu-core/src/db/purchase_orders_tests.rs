@@ -1053,8 +1053,7 @@ fn update_po_status_race_cannot_overwrite_a_competing_transition() {
     /// Set by A's busy handler — i.e. A has passed its pre-read and is now
     /// blocked on the write lock B holds. The handler is a `fn` pointer with
     /// no captured state, so the flag it needs is process-wide.
-    static A_IS_BLOCKED: std::sync::atomic::AtomicBool =
-        std::sync::atomic::AtomicBool::new(false);
+    static A_IS_BLOCKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     /// Bounds the wait for that flag so a genuine deadlock fails loudly
     /// instead of hanging the suite.
     static B_WAITED_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -1105,7 +1104,9 @@ fn update_po_status_race_cannot_overwrite_a_competing_transition() {
             // deadline below.
             while !A_IS_BLOCKED.load(std::sync::atomic::Ordering::SeqCst) {
                 if B_WAITED_MS.load(std::sync::atomic::Ordering::SeqCst) > 10_000 {
-                    panic!("A never reached its write lock within 10s — the forced interleaving was not established");
+                    panic!(
+                        "A never reached its write lock within 10s — the forced interleaving was not established"
+                    );
                 }
                 std::thread::sleep(std::time::Duration::from_millis(5));
                 B_WAITED_MS.fetch_add(5, std::sync::atomic::Ordering::SeqCst);

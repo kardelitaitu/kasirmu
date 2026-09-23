@@ -963,7 +963,9 @@ fn dir_entries(dir: &std::path::Path) -> Vec<String> {
 
 /// Drive the REAL `restore_prepare` against a scratch directory and return the
 /// scratch (kept alive), the result DTO, and the file's parsed JSON.
-async fn prepared_request(label: &str) -> (RestoreScratch, RestorePrepareResult, serde_json::Value) {
+async fn prepared_request(
+    label: &str,
+) -> (RestoreScratch, RestorePrepareResult, serde_json::Value) {
     let scratch = RestoreScratch::new(label);
     let live = scratch.live();
     scratch.write_db(&live, "Live Store");
