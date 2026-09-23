@@ -1370,15 +1370,14 @@ BEGIN
 END
 $oz_reconcile$;
 
--- ── Pre-index reconciliations (see PRE_INDEX_RECONCILIATIONS) ──────────
--- DML the SQLite chain performs before a DDL statement that would
--- otherwise fail on the un-repaired rows. The generator cannot translate
--- SQLite DML in general, so each one is hand-written, declared and
--- digest-pinned above. Each is guarded on its table existing, so it is a
--- no-op on a fresh database.
+-- ── Pre-index reconciliations (see RECONCILIATIONS) ────────────────────
+-- DML the SQLite chain performs BEFORE a DDL statement that would
+-- otherwise fail on the un-repaired rows. Hand-written, declared and
+-- digest-pinned above; guarded on its table existing, so it is a no-op
+-- on a fresh database.
 
 -- before: idx_shifts_open_per_user (on shifts)
-DO $oz_pre_index$
+DO $oz_reconciliation$
 BEGIN
     IF to_regclass('public.shifts') IS NOT NULL THEN
         UPDATE shifts
@@ -1400,7 +1399,7 @@ BEGIN
            );
     END IF;
 END
-$oz_pre_index$;
+$oz_reconciliation$;
 
 CREATE TABLE IF NOT EXISTS audit_log (
     id          TEXT PRIMARY KEY,                          -- UUID v4
@@ -3095,6 +3094,23 @@ CREATE TABLE IF NOT EXISTS stock_movements_archive (
     NOT NULL DEFAULT '01926b3a-0000-7000-8000-000000000001'
     REFERENCES inventory_locations(id) ON DELETE RESTRICT, inventory_transaction_id TEXT
     REFERENCES inventory_transactions(id) ON DELETE RESTRICT);
+
+-- ── Table backfills (see RECONCILIATIONS) ──────────────────────────────
+-- DML the SQLite chain performed to converge PRE-EXISTING rows onto the
+-- final schema. Emitted after the DDL so the table and its columns
+-- exist; a no-op on a fresh database, which has no such rows.
+
+-- backfill: memo_recipients (on memo_recipients)
+DO $oz_reconciliation$
+BEGIN
+    IF to_regclass('public.memo_recipients') IS NOT NULL THEN
+        UPDATE memo_recipients
+           SET tenant_id = (SELECT m.tenant_id FROM memos m WHERE m.id = memo_recipients.memo_id)
+         WHERE tenant_id = 'default'
+           AND EXISTS (SELECT 1 FROM memos m WHERE m.id = memo_recipients.memo_id);
+    END IF;
+END
+$oz_reconciliation$;
 
 CREATE OR REPLACE FUNCTION audit_log_immutable_delete_fn() RETURNS trigger
 LANGUAGE plpgsql AS $$

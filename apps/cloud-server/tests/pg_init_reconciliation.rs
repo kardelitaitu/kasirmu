@@ -1,4 +1,15 @@
-//! PostgreSQL init-time verification of the C38 pre-index reconciliation.
+//! PostgreSQL init-time verification of the C38 pre-index reconciliation and
+//! the C46 table backfills.
+//!
+//! C46: the generator drops every DML statement in the migration chain, so six
+//! backfills the SQLite chain performed never reached an EXISTING PostgreSQL
+//! database. C46 measured all six and ported the ONE that unambiguously
+//! matters — 20260910_memo_child_tenant_id.sql — because memo_recipients has a
+//! live PG writer (crates/kasirmu-api/src/pg.rs:2621, the memo fan-out) AND is
+//! in RLS_TABLES, so its tenant_id is a live isolation key: a pre-migration row
+//! carries the DEFAULT 'default' and is invisible to the correct tenant. The
+//! other five are recorded as unmatterable in the RECONCILIATIONS comment,
+//! each with its reason.
 //!
 //! The SQLite migration 20261011_open_shift_uniqueness.sql closes every open
 //! shift but the newest for a user BEFORE it creates
@@ -223,6 +234,82 @@ async fn pg_init_survives_and_reconciles_a_seeded_duplicate_open_shift() {
     );
 
     eprintln!("PROVEN: seeded duplicate reconciled by PG init (index created, older row closed)");
+    drop(client);
+    drop_throwaway(&db_name).await;
+}
+/// C46 STRONG FORM: a pre-migration `memo_recipients` row (tenant_id still at
+/// its DEFAULT 'default') must be repaired to its owning memo's tenant by
+/// PG_INIT.
+///
+/// This is the only one of the six C46 backfills with a live PostgreSQL writer
+/// AND RLS membership, so it is the only one where the missing port is a real
+/// isolation defect rather than dormant surface: the row belongs to a
+/// non-default tenant but carries 'default', and RLS filters on tenant_id.
+///
+/// Seeding the pre-migration state is the point. A fresh database has no such
+/// row, so asserting a no-op would prove nothing.
+#[tokio::test]
+async fn pg_init_backfills_a_pre_migration_memo_recipient_tenant() {
+    let Some((client, db_name)) = empty_throwaway_db().await else {
+        eprintln!(
+            "SKIP: PostgreSQL unreachable — set OZ_TEST_PG_URL to run the memo backfill case"
+        );
+        return;
+    };
+
+    // The pre-migration shape: memo_recipients WITHOUT tenant_id, holding a row
+    // that belongs to tenant 'acme'. Enough of the surrounding schema for the
+    // backfill's join to resolve; PG_INIT then converges everything else.
+    client
+        .batch_execute(
+            "CREATE TABLE terminals (
+                 id TEXT PRIMARY KEY,
+                 name TEXT NOT NULL,
+                 device_id TEXT NOT NULL UNIQUE
+             );
+             CREATE TABLE memos (
+                 id         TEXT PRIMARY KEY,
+                 tenant_id  TEXT NOT NULL,
+                 title      TEXT NOT NULL,
+                 body       TEXT NOT NULL
+             );
+             CREATE TABLE memo_recipients (
+                 id              TEXT PRIMARY KEY,
+                 memo_id         TEXT NOT NULL,
+                 terminal_id     TEXT NOT NULL,
+                 delivery_status TEXT NOT NULL DEFAULT 'pending',
+                 UNIQUE (memo_id, terminal_id)
+             );
+             INSERT INTO terminals (id, name, device_id) VALUES ('term-1', 'T1', 'dev-1');
+             INSERT INTO memos (id, tenant_id, title, body)
+             VALUES ('memo-1', 'acme', 'Closing', 'Count the drawer');
+             INSERT INTO memo_recipients (id, memo_id, terminal_id)
+             VALUES ('rec-1', 'memo-1', 'term-1');",
+        )
+        .await
+        .expect("seed the pre-migration memo_recipients state");
+
+    // PG_INIT must apply (it adds tenant_id via the column reconciliation) and
+    // the backfill must repair the row.
+    client
+        .batch_execute(kasirmu_core::migrations::PG_INIT)
+        .await
+        .expect("PG_INIT must apply over the pre-migration memo_recipients table");
+
+    let tenant: String = client
+        .query_one(
+            "SELECT tenant_id FROM memo_recipients WHERE id = 'rec-1'",
+            &[],
+        )
+        .await
+        .expect("the recipient row must survive the migration")
+        .get(0);
+    assert_eq!(
+        tenant, "acme",
+        "the backfill must stamp the OWNING memo's tenant, not the 'default' column default — a 'default' here hides the row from its real tenant under RLS"
+    );
+
+    eprintln!("PROVEN: pre-migration memo_recipients row backfilled to its memo tenant");
     drop(client);
     drop_throwaway(&db_name).await;
 }

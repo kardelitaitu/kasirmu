@@ -360,8 +360,48 @@ TRIGGER_VERIFICATION: dict[str, dict[str, str]] = {
     },
 }
 
-# Data statements a SQLite migration performs BEFORE a DDL statement that would
-# otherwise fail on the un-repaired rows (C38).
+# Data statements the SQLite migration chain performs that the generator cannot
+# translate, because it rebuilds PG from the FINAL SQLite state and drops every
+# DML statement in the chain (measured: the generated file contains ZERO UPDATE
+# statements, while seven migrations carry one).
+#
+# ONE LIST, TWO ANCHOR KINDS — deliberately not a second parallel list. Two
+# lists with one discipline is how divergent twins start: the enforcement
+# (declared `verified_by` that must exist, pinned `body_sha256`, stale-entry
+# rejection, fail-closed self-test) is identical for both kinds and lives in
+# ONE gate, so a rule added to one kind cannot silently miss the other.
+#
+#   * anchor_kind "index" — a reconciliation a DDL statement DEPENDS ON:
+#     emitted before the DDL, because the index cannot be created until the
+#     rows are repaired. C38: 20261011_open_shift_uniqueness.sql.
+#   * anchor_kind "table" — a BACKFILL that converges pre-existing rows onto
+#     the final schema: emitted immediately AFTER that table is created, so
+#     the table and (via the column reconciliation) its columns exist. A
+#     fresh database has no rows to change, so it is a no-op there; an
+#     existing database gets the repair the migration chain performed on
+#     SQLite.
+#
+# C46 measured the six backfills this list was extended for. Only
+# memo_recipients is ported — the single one with a LIVE PostgreSQL writer of
+# the affected rows AND RLS membership. The other five are recorded as
+# unmatterable, each with its reason, rather than ported for symmetry:
+#
+#   * 20260826 sale_lines snapshots — PG reads them through
+#     COALESCE(sl.product_id, p.id, 'deleted:'||sl.sku) (email_pg/analytics.rs),
+#     which computes exactly what the backfill would freeze, so a NULL snapshot
+#     is served identically. Not observable.
+#   * 20260831 loyalty multiplier — the pre-state is INEXPRESSIBLE in PG: the
+#     old `earn_multiplier REAL` column never existed there (grep = 0), and the
+#     migration header itself records "Postgres: intentionally NOT touched"
+#     because the cloud server has no loyalty code path.
+#   * 20260906 workspace_screens screen_key — no PG reader exists anywhere
+#     (grep over apps/cloud-server + kasirmu-api = 0), and the emitted seed
+#     carries only the converged 'locations' row.
+#   * 20260908 locations.legal_entity_id — no PG reader of that column (the
+#     legal_entity_id reads are all on tax_rates, a different column).
+#   * 20260912 terminals.tenant_id — no PG reader, and `terminals` is in
+#     RLS_EXEMPT, so the column is not an isolation key on PG; the cloud reads
+#     tenancy through `sync_terminals`, a different table.
 #
 # WHY THIS LIST EXISTS. The generator rebuilds the PG schema from the FINAL
 # SQLite state: it re-emits tables, indexes, triggers and seeds, and it drops
@@ -397,9 +437,10 @@ TRIGGER_VERIFICATION: dict[str, dict[str, str]] = {
 # The SQL is wrapped in a to_regclass guard by render_pre_index_reconciliations,
 # so it is a no-op on a fresh database (where the table does not exist yet at
 # this point) and effective on one that already holds the offending rows.
-PRE_INDEX_RECONCILIATIONS: list[dict[str, str]] = [
+RECONCILIATIONS: list[dict[str, str]] = [
     {
-        "index_name": "idx_shifts_open_per_user",
+        "anchor_kind": "index",
+        "anchor": "idx_shifts_open_per_user",
         "sql": """\
 UPDATE shifts
    SET status = 'closed',
@@ -420,6 +461,31 @@ UPDATE shifts
    );""",
         "verified_by": "apps/cloud-server/tests/pg_init_reconciliation.rs",
         "body_sha256": "d706e0a43cc96278c4d11f5d8e3127d2600c64f18a4ffd0d70ff8a45549c643b",
+    },
+    # C46 — 20260910_memo_child_tenant_id.sql. RANK 1 of the six: this is the
+    # only one with a LIVE PostgreSQL writer of the affected rows.
+    # `crates/kasirmu-api/src/pg.rs:2621` INSERTs into memo_recipients (the
+    # memo fan-out), and the migration text itself says the tenant_id
+    # denormalization exists so those tables "can be tenant-filtered by
+    # predicate (SQLite) and covered by RLS (Postgres)" — memo_recipients IS
+    # in RLS_TABLES, so its tenant_id is a live isolation key, not dormant
+    # surface. The writer stamps tenant_id explicitly, so rows written after
+    # 20260910 are already correct; the backfill repairs rows written BEFORE
+    # it, which on a cloud database is exactly the RLS leak window the
+    # migration was written to close. Emitted as a table backfill because the
+    # column carries DEFAULT 'default' — the pre-migration value — so a
+    # pre-existing row is indistinguishable from an un-backfilled one without
+    # the repair.
+    {
+        "anchor_kind": "table",
+        "anchor": "memo_recipients",
+        "sql": """\
+UPDATE memo_recipients
+   SET tenant_id = (SELECT m.tenant_id FROM memos m WHERE m.id = memo_recipients.memo_id)
+ WHERE tenant_id = 'default'
+   AND EXISTS (SELECT 1 FROM memos m WHERE m.id = memo_recipients.memo_id);""",
+        "verified_by": "apps/cloud-server/tests/pg_init_reconciliation.rs",
+        "body_sha256": "829a4e9ae5550f9eb9bd2ad37717700a18acf14afe1fce7a893eea441e1052dc",
     },
 ]
 
@@ -752,8 +818,8 @@ def _self_test_trigger_gate() -> None:
     print("ok: trigger verification gate self-test (fail-closed in both directions)")
 
 
-def _self_test_pre_index_gate() -> None:
-    """Exercise the pre-index reconciliation gate fail directions."""
+def _self_test_reconciliation_gate() -> None:
+    """Exercise the reconciliation gate's fail directions, for BOTH kinds."""
     import tempfile
 
     with tempfile.TemporaryDirectory() as td:
@@ -761,28 +827,38 @@ def _self_test_pre_index_gate() -> None:
         (root / "a_test.rs").write_text("// stand-in", encoding="utf-8")
         sql = "UPDATE shifts SET status = 'closed';"
         digest = hashlib.sha256(sql.encode("utf-8")).hexdigest()
-        good = [{"index_name": "idx_x", "sql": sql, "verified_by": "a_test.rs", "body_sha256": digest}]
-        # The passing direction must actually pass, and an empty list is legal.
-        check_pre_index_reconciliations(good, {"idx_x"}, root)
-        check_pre_index_reconciliations([], set(), root)
+        idx = {
+            "anchor_kind": "index",
+            "anchor": "idx_x",
+            "sql": sql,
+            "verified_by": "a_test.rs",
+            "body_sha256": digest,
+        }
+        tbl = {**idx, "anchor_kind": "table", "anchor": "t_x"}
+        # Both kinds pass on their own known-set; an empty list is legal.
+        check_reconciliations([idx], {"idx_x"}, set(), root)
+        check_reconciliations([tbl], set(), {"t_x"}, root)
+        check_reconciliations([], set(), set(), root)
 
         failures = [
-            ([{"index_name": "", "sql": sql, "verified_by": "a_test.rs", "body_sha256": digest}], {"idx_x"}, "entry with no index_name"),
-            ([{**good[0], "index_name": "idx_ghost"}], {"idx_x"}, "stale entry naming an unemitted index"),
-            ([{**good[0], "verified_by": ""}], {"idx_x"}, "blank verified_by"),
-            ([{**good[0], "verified_by": "nope.rs"}], {"idx_x"}, "verified_by names a missing test"),
-            ([{**good[0], "body_sha256": "0" * 64}], {"idx_x"}, "reconciliation digest mismatch"),
-            ([good[0], good[0]], {"idx_x"}, "duplicate entry for one index"),
+            ([{**idx, "anchor_kind": "nonsense"}], {"idx_x"}, set(), "unknown anchor_kind"),
+            ([{**idx, "anchor": ""}], {"idx_x"}, set(), "entry with no anchor"),
+            ([{**idx, "anchor": "idx_ghost"}], {"idx_x"}, set(), "stale index anchor"),
+            ([{**tbl, "anchor": "t_ghost"}], set(), {"t_x"}, "stale table anchor"),
+            ([{**idx, "verified_by": ""}], {"idx_x"}, set(), "blank verified_by"),
+            ([{**idx, "verified_by": "nope.rs"}], {"idx_x"}, set(), "missing test"),
+            ([{**idx, "body_sha256": "0" * 64}], {"idx_x"}, set(), "digest mismatch"),
+            ([idx, idx], {"idx_x"}, set(), "duplicate entry"),
         ]
-        for entries, emitted, case in failures:
+        for entries, indexes, tables, case in failures:
             try:
-                check_pre_index_reconciliations(entries, emitted, root)
+                check_reconciliations(entries, indexes, tables, root)
             except SystemExit:
                 continue
             raise SystemExit(
-                f"error: pre-index reconciliation gate self-test: {case} did not fail"
+                f"error: reconciliation gate self-test: {case} did not fail"
             )
-    print("ok: pre-index reconciliation gate self-test (fail-closed in both directions)")
+    print("ok: reconciliation gate self-test (fail-closed in both directions, both kinds)")
 
 
 def _self_test_rls_gate() -> None:
@@ -1211,96 +1287,140 @@ def render_reconciliation(
         for table, col, typ, dflt, notnull in specs
     )
     return RECONCILE_TEMPLATE.replace("__ROWS__", rows)
-
-
-def check_pre_index_reconciliations(
+def check_reconciliations(
     entries: list[dict[str, str]],
     emitted_indexes: set[str],
+    emitted_tables: set[str],
     root: Path,
 ) -> None:
-    """Fail closed when a pre-index reconciliation is undeclared or unverified.
+    """Fail closed when a reconciliation is undeclared or unverified.
 
-    The generator drops every DML statement in the migration chain, so a
-    reconciliation that makes a following DDL statement applicable must be
-    declared here explicitly. This gate enforces the declaration the way
-    check_trigger_verification enforces the trigger ports: a named test that
-    EXISTS (so the reconciliation cannot be added without evidence) and a body
-    digest (so an edit cannot ride along silently). It also fails a stale entry
-    naming an index the generator does not emit, which would otherwise place a
-    statement nothing depends on.
+    ONE gate for BOTH anchor kinds, deliberately: two parallel lists with one
+    discipline is how divergent twins start, so a rule added here cannot miss
+    one kind. The generator drops every DML statement in the migration chain,
+    so a reconciliation the chain performed must be declared explicitly. This
+    gate enforces the declaration the way check_trigger_verification enforces
+    the trigger ports: a named test that EXISTS (so the reconciliation cannot
+    be added without evidence), a body digest (so an edit cannot ride along
+    silently), and a rejection of a stale anchor naming an index/table the
+    generator does not emit.
     """
     if not entries:
         return
     problems: list[str] = []
     seen: set[str] = set()
     for entry in entries:
-        name = entry.get("index_name", "")
-        if not name:
-            problems.append("entry with no index_name")
+        kind = entry.get("anchor_kind", "")
+        name = entry.get("anchor", "")
+        label = f"{kind}:{name}" if name else "entry with no anchor"
+        if kind not in ("index", "table"):
+            problems.append(f"{label}: anchor_kind must be 'index' or 'table'")
             continue
-        if name in seen:
-            problems.append(f"{name}: duplicate entry")
-        seen.add(name)
-        if name not in emitted_indexes:
+        if not name:
+            problems.append("entry with no anchor")
+            continue
+        if label in seen:
+            problems.append(f"{label}: duplicate entry")
+        seen.add(label)
+        known = emitted_indexes if kind == "index" else emitted_tables
+        if name not in known:
             problems.append(
-                f"{name}: names an index the generator does not emit (stale entry)"
+                f"{label}: names an {kind} the generator does not emit (stale entry)"
             )
         test_path = entry.get("verified_by", "")
         if not test_path:
-            problems.append(f"{name}: no verified_by")
+            problems.append(f"{label}: no verified_by")
         elif not (root / test_path).is_file():
-            problems.append(f"{name}: verified_by names a missing test: {test_path}")
+            problems.append(f"{label}: verified_by names a missing test: {test_path}")
         declared = entry.get("body_sha256", "")
         actual = hashlib.sha256(
             entry.get("sql", "").replace("\r\n", "\n").encode("utf-8")
         ).hexdigest()
         if declared != actual:
             problems.append(
-                f"{name}: reconciliation changed (declared {declared[:12]}, actual "
-                f"{actual[:12]}) — re-record body_sha256 in "
-                "PRE_INDEX_RECONCILIATIONS after confirming it still matches the "
-                "SQLite migration"
+                f"{label}: reconciliation changed (declared {declared[:12]}, actual "
+                f"{actual[:12]}) — re-record body_sha256 in RECONCILIATIONS after "
+                "confirming it still matches the SQLite migration"
             )
     if problems:
         raise SystemExit(
-            "error: pre-index reconciliation failed (a dropped DML statement that "
-            "a DDL statement depends on bricks PG init):\n  - " + "\n  - ".join(problems)
+            "error: reconciliation failed (a dropped DML statement the PG twin "
+            "needs):\n  - " + "\n  - ".join(problems)
         )
+
+
+def _render_reconciliation_block(entry: dict[str, str], table: str, tag: str) -> list[str]:
+    """One guarded DO block: run the DML only when its table already exists."""
+    lines = [
+        f"-- {tag}: {entry['anchor']} (on {table})",
+        "DO $oz_reconciliation$",
+        "BEGIN",
+        f"    IF to_regclass('public.{table}') IS NOT NULL THEN",
+    ]
+    for stmt_line in entry["sql"].splitlines():
+        lines.append("        " + stmt_line if stmt_line else "")
+    lines.append("    END IF;")
+    lines.append("END")
+    lines.append("$oz_reconciliation$;")
+    return lines
 
 
 def render_pre_index_reconciliations(index_tables: dict[str, str]) -> str:
-    """Emit each declared reconciliation, guarded, immediately before its index.
+    """Emit anchor_kind "index" reconciliations, before the DDL.
 
-    The guard is to_regclass: on a fresh database the table does not exist at
-    this point in the script (the CREATE TABLE comes later, because these
-    statements run before the DDL), so the whole block is a no-op and the
-    index is created normally. On a database that already holds the rows, the
-    reconciliation runs first and the index creation below cannot fail.
+    These are the ones a DDL statement DEPENDS ON: the index cannot be created
+    until the offending rows are repaired, so the block must precede the DDL
+    section. Guarded on the table existing, so a fresh database (where the
+    table does not exist yet at this point) skips it and the index is created
+    normally.
     """
-    if not PRE_INDEX_RECONCILIATIONS:
+    entries = [e for e in RECONCILIATIONS if e["anchor_kind"] == "index"]
+    if not entries:
         return ""
     lines = [
-        "-- ── Pre-index reconciliations (see PRE_INDEX_RECONCILIATIONS) ──────────",
-        "-- DML the SQLite chain performs before a DDL statement that would",
-        "-- otherwise fail on the un-repaired rows. The generator cannot translate",
-        "-- SQLite DML in general, so each one is hand-written, declared and",
-        "-- digest-pinned above. Each is guarded on its table existing, so it is a",
-        "-- no-op on a fresh database.",
+        "-- ── Pre-index reconciliations (see RECONCILIATIONS) ────────────────────",
+        "-- DML the SQLite chain performs BEFORE a DDL statement that would",
+        "-- otherwise fail on the un-repaired rows. Hand-written, declared and",
+        "-- digest-pinned above; guarded on its table existing, so it is a no-op",
+        "-- on a fresh database.",
     ]
-    for entry in PRE_INDEX_RECONCILIATIONS:
+    for entry in entries:
         lines.append("")
-        table = index_tables[entry["index_name"]]
-        lines.append(f"-- before: {entry['index_name']} (on {table})")
-        lines.append("DO $oz_pre_index$")
-        lines.append("BEGIN")
-        lines.append(
-            f"    IF to_regclass('public.{table}') IS NOT NULL THEN"
+        lines.extend(
+            _render_reconciliation_block(
+                entry, index_tables[entry["anchor"]], "before"
+            )
         )
-        for stmt_line in entry["sql"].splitlines():
-            lines.append("        " + stmt_line if stmt_line else "")
-        lines.append("    END IF;")
-        lines.append("END")
-        lines.append("$oz_pre_index$;")
+    return "\n".join(lines)
+
+
+def render_table_reconciliations(ordered_names: list[str]) -> str:
+    """Emit anchor_kind "table" BACKFILLS, after the DDL creates their tables.
+
+    These converge PRE-EXISTING rows onto the final schema (the migration chain
+    performed them on SQLite; the generator drops them). They run after the DDL
+    so both the table and its columns exist — the column-reconciliation block
+    above only restores columns on tables that already existed. A fresh
+    database has no rows for them to change, so they are no-ops there.
+    """
+    entries = [
+        e
+        for e in RECONCILIATIONS
+        if e["anchor_kind"] == "table" and e["anchor"] in set(ordered_names)
+    ]
+    if not entries:
+        return ""
+    lines = [
+        "-- ── Table backfills (see RECONCILIATIONS) ──────────────────────────────",
+        "-- DML the SQLite chain performed to converge PRE-EXISTING rows onto the",
+        "-- final schema. Emitted after the DDL so the table and its columns",
+        "-- exist; a no-op on a fresh database, which has no such rows.",
+    ]
+    for entry in entries:
+        lines.append("")
+        lines.extend(
+            _render_reconciliation_block(entry, entry["anchor"], "backfill")
+        )
     return "\n".join(lines)
 
 
@@ -1379,9 +1499,10 @@ def render() -> tuple[str, int, int, int, list[str]]:
     # means the same thing as the SQLite trigger it mirrors. This is the
     # compensating control — declared evidence plus a body digest.
     check_trigger_verification(TRIGGER_MAP, TRIGGER_VERIFICATION, ROOT)
-    check_pre_index_reconciliations(PRE_INDEX_RECONCILIATIONS, set(index_tables), ROOT)
-
     ordered_names = [name for name, _, _ in ordered]
+    check_reconciliations(
+        RECONCILIATIONS, set(index_tables), set(ordered_names), ROOT
+    )
     seeds = dump_seeds(db, ordered_names)
     specs = pg_column_specs(db, ordered_names)
     db.close()
@@ -1397,9 +1518,9 @@ def render() -> tuple[str, int, int, int, list[str]]:
     out.extend([render_obsolete_indexes(), ""])
     out.extend([render_evolution_ops(table_renames, column_renames), ""])
     out.extend([render_reconciliation(specs), ""])
-    # C38: a declared reconciliation must run BEFORE the DDL that creates its
-    # index, and the index is emitted with its table in the topological loop
-    # below — so this block precedes the whole DDL section.
+    # C38: an anchor_kind "index" reconciliation must run BEFORE the DDL that
+    # creates its index, and the index is emitted with its table in the
+    # topological loop below — so this block precedes the whole DDL section.
     pre_index = render_pre_index_reconciliations(index_tables)
     if pre_index:
         out.extend([pre_index, ""])
@@ -1407,6 +1528,12 @@ def render() -> tuple[str, int, int, int, list[str]]:
         out.extend([stmt, ""])
         for idx in unique_by_table.get(name, []):
             out.extend([idx, ""])
+    # C46: an anchor_kind "table" BACKFILL converges pre-existing rows, so it
+    # runs AFTER the DDL created the table (and, via the column
+    # reconciliation above, its columns).
+    backfills = render_table_reconciliations(ordered_names)
+    if backfills:
+        out.extend([backfills, ""])
     for trig in sorted(TRIGGER_MAP):
         out.extend([TRIGGER_MAP[trig], ""])
     for idx in indexes:
@@ -1423,7 +1550,7 @@ def main(argv: list[str]) -> int:
     if "--self-test" in argv:
         _self_test_rls_gate()
         _self_test_trigger_gate()
-        _self_test_pre_index_gate()
+        _self_test_reconciliation_gate()
         return 0
     body, n_tables, n_indexes, n_seeds, skipped = render()
 
